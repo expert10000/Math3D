@@ -58,11 +58,16 @@ export type ParamSurfaceId =
   | "helicoid"
   | "catenoid"
   | "sphere"
+  | "ellipsoid"
   | "torus"
   | "mobius"
   | "kleinBottle"
   | "hyperbolicParaboloid"
   | "enneper"
+  | "paraboloid"
+  | "pseudosphere"
+  | "dini"
+  | "twistedStrip"
   // ✅ NEW (your Figure 8 pair)
   | "expCone" // σ(u,v)=(u cos v, u sin v, ln u), u>0
   | "helicoidUV" // τ(u,v)=(u cos v, u sin v, v)
@@ -75,12 +80,20 @@ type Props = {
   customZ?: string;
   wireframe?: boolean;
   showPlanes?: boolean;
+  lightPreset?: "studio" | "soft" | "contrast" | "neutral" | "warm";
+  materialRoughness?: number;
+  materialMetalness?: number;
+  materialOpacity?: number;
+  paramResolution?: number;
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
   showBoundingBox?: boolean;
   resetToken?: number;
 
   probeEnabled?: boolean;
+  showProbeNormal?: boolean;
+  showProbeTangentPlane?: boolean;
+  showProbeTangents?: boolean;
   onProbe?: (info: ProbeInfo) => void;
 
   paramProbeUV?: { u: number; v: number } | null;
@@ -148,6 +161,9 @@ function getDomain(surfaceId: ParamSurfaceId) {
     case "enneper":
       return { uMin: -2, uMax: 2, vMin: -2, vMax: 2 };
 
+    case "paraboloid":
+      return { uMin: 0, uMax: 2, vMin: 0, vMax: 2 * Math.PI };
+
     case "cylinder":
     case "cone":
     case "helicoid":
@@ -155,6 +171,7 @@ function getDomain(surfaceId: ParamSurfaceId) {
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -2, vMax: 2 };
 
     case "sphere":
+    case "ellipsoid":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: Math.PI };
 
     case "torus":
@@ -165,6 +182,15 @@ function getDomain(surfaceId: ParamSurfaceId) {
 
     case "kleinBottle":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 * Math.PI };
+
+    case "pseudosphere":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2.6 };
+
+    case "dini":
+      return { uMin: 0, uMax: 4 * Math.PI, vMin: 0.25, vMax: 1.35 };
+
+    case "twistedStrip":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -0.6, vMax: 0.6 };
 
     // ✅ NEW: exponential cone (u>0), v is angle
     case "expCone":
@@ -692,14 +718,19 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
     surfaceId === "helicoid" ||
     surfaceId === "catenoid" ||
     surfaceId === "sphere" ||
+    surfaceId === "ellipsoid" ||
     surfaceId === "torus" ||
     surfaceId === "mobius" ||
-    surfaceId === "kleinBottle";
+    surfaceId === "kleinBottle" ||
+    surfaceId === "pseudosphere" ||
+    surfaceId === "dini" ||
+    surfaceId === "twistedStrip";
 
   const wrapV =
     surfaceId === "torus" ||
     surfaceId === "kleinBottle" ||
-    surfaceId === "expCone"; // ✅ v is angle for expCone
+    surfaceId === "expCone" ||
+    surfaceId === "paraboloid"; // ✅ v is angle for expCone/paraboloid
 
   // NOTE: helicoidUV: v is not “just angle” because z=v, so NO wrapping.
   return { wrapU, wrapV };
@@ -712,11 +743,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   customZ,
   wireframe,
   showPlanes,
+  lightPreset = "studio",
+  materialRoughness = 0.6,
+  materialMetalness = 0.1,
+  materialOpacity = 1,
+  paramResolution = 64,
   colorMode = "solid",
   colorPalette = "blueRed",
   showBoundingBox = false,
   resetToken,
   probeEnabled = false,
+  showProbeNormal = true,
+  showProbeTangentPlane = true,
+  showProbeTangents = true,
   onProbe,
   paramProbeUV = null,
   paramProbeToken,
@@ -741,6 +780,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const viewerRef = useRef<ViewerState | null>(null);
   const onProbeRef = useRef(onProbe);
   const probeEnabledRef = useRef(probeEnabled);
+  const showProbeNormalRef = useRef(showProbeNormal);
+  const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
+  const showProbeTangentsRef = useRef(showProbeTangents);
 
   // last known probe uv in DOMAIN coords
   const [probeUV, setProbeUV] = useState<{ u: number; v: number } | null>(null);
@@ -764,6 +806,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   const sliceDirtyRef = useRef(true);
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
+  const probeWidgetsRef = useRef<{
+    marker: THREE.Mesh;
+    normal: THREE.ArrowHelper;
+    plane: THREE.Mesh;
+    t1: THREE.ArrowHelper;
+    t2: THREE.ArrowHelper;
+  } | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
   const sliceSheetsRef = useRef<THREE.Group | null>(null);
@@ -866,6 +915,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     onProbeRef.current = onProbe;
   }, [onProbe]);
+
+  useEffect(() => {
+    showProbeNormalRef.current = showProbeNormal;
+    showProbeTangentPlaneRef.current = showProbeTangentPlane;
+    showProbeTangentsRef.current = showProbeTangents;
+  }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   useEffect(() => {
     probeEnabledRef.current = probeEnabled;
@@ -1106,12 +1161,39 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     cameraRef.current = camera;
     controlsRef.current = controls;
 
-    const light1 = new THREE.DirectionalLight(0xffffff, 0.9);
-    light1.position.set(5, 6, 4);
-    scene.add(light1);
-
-    const light2 = new THREE.AmbientLight(0xffffff, 0.3);
-    scene.add(light2);
+    if (lightPreset === "contrast") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+      const key = new THREE.DirectionalLight(0xffffff, 1.15);
+      key.position.set(4, 6, 3);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+      rim.position.set(-3, -2, -4);
+      scene.add(rim);
+    } else if (lightPreset === "soft") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+      hemi.position.set(0, 6, 0);
+      scene.add(hemi);
+    } else if (lightPreset === "neutral") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const key = new THREE.DirectionalLight(0xffffff, 0.7);
+      key.position.set(4, 4.5, 4);
+      scene.add(key);
+    } else if (lightPreset === "warm") {
+      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+      key.position.set(4, 5, 3);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+      fill.position.set(-4, 2, -3);
+      scene.add(fill);
+    } else {
+      const light1 = new THREE.DirectionalLight(0xffffff, 0.9);
+      light1.position.set(5, 6, 4);
+      scene.add(light1);
+      const light2 = new THREE.AmbientLight(0xffffff, 0.3);
+      scene.add(light2);
+    }
 
     const sheetsGroup = new THREE.Group();
     sliceSheetsRef.current = sheetsGroup;
@@ -1210,8 +1292,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       extraMats.push(matXZ, matXY, matYZ);
     }
 
-    const slices = 64;
-    const stacks = 64;
+    const slices = Math.max(16, Math.round(paramResolution));
+    const stacks = Math.max(16, Math.round(paramResolution));
 
     const { uMin, uMax, vMin, vMax } = getDomain(surfaceId);
 
@@ -1279,6 +1361,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             break;
           }
 
+          case "ellipsoid": {
+            const a = 1.3;
+            const b = 0.95;
+            const c = 0.7;
+            x = a * Math.sin(v) * Math.cos(u);
+            y = b * Math.sin(v) * Math.sin(u);
+            z = c * Math.cos(v);
+            break;
+          }
+
           case "torus": {
             const R = 1.4;
             const r = 0.5;
@@ -1321,11 +1413,46 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             z = u * v;
             break;
 
+          case "paraboloid":
+            x = u * Math.cos(v);
+            y = u * Math.sin(v);
+            z = 0.6 * u * u;
+            break;
+
           case "enneper":
             x = u - (u * u * u) / 3 + u * v * v;
             y = v - (v * v * v) / 3 + v * u * u;
             z = u * u - v * v;
             break;
+
+          case "pseudosphere": {
+            const sech = 1 / Math.cosh(v);
+            x = Math.cos(u) * sech;
+            y = Math.sin(u) * sech;
+            z = v - Math.tanh(v);
+            break;
+          }
+
+          case "dini": {
+            const a = 1;
+            const b = 0.2;
+            const sinV = Math.sin(v);
+            const tanHalf = Math.tan(v / 2);
+            const logTerm = Math.log(Math.max(tanHalf, 1e-6));
+            x = a * Math.cos(u) * sinV;
+            y = a * Math.sin(u) * sinV;
+            z = a * (Math.cos(v) + logTerm) + b * u;
+            break;
+          }
+
+          case "twistedStrip": {
+            const twist = 2 * u;
+            const rho = 1 + v * Math.cos(twist);
+            x = rho * Math.cos(u);
+            y = rho * Math.sin(u);
+            z = v * Math.sin(twist);
+            break;
+          }
 
           // ✅ NEW: σ(u,v) = (u cos v, u sin v, ln u)
           case "expCone":
@@ -1357,13 +1484,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     applyParamColoring(geometry, colorMode, colorPalette, { paramFunc, uMin, uMax, vMin, vMax });
 
+    const opacity = Math.min(1, Math.max(0, materialOpacity));
     const material = new THREE.MeshStandardMaterial({
       color: colorMode === "solid" ? 0x3366cc : 0xffffff, // ✅ keep vertex colors “pure”
-      metalness: 0.1,
-      roughness: 0.6,
+      metalness: materialMetalness,
+      roughness: materialRoughness,
       side: THREE.DoubleSide,
       wireframe: !!wireframe,
       vertexColors: colorMode !== "solid",
+      transparent: opacity < 1,
+      opacity,
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -1442,6 +1572,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     tangentArrow2.visible = false;
     scene.add(tangentArrow2);
 
+    probeWidgetsRef.current = {
+      marker: probeMarker,
+      normal: normalArrow,
+      plane: tangentPlane,
+      t1: tangentArrow1,
+      t2: tangentArrow2,
+    };
+
     // shared helper
     const applyProbe = (
       point: THREE.Vector3,
@@ -1455,7 +1593,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       normalArrow.position.copy(point);
       normalArrow.setDirection(n);
-      normalArrow.visible = true;
+      normalArrow.visible = !!showProbeNormalRef.current;
 
       const tmp =
         Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
@@ -1467,15 +1605,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       tangentPlane.position.copy(point).add(n.clone().multiplyScalar(0.002));
       tangentPlane.setRotationFromMatrix(basisMat);
-      tangentPlane.visible = true;
+      tangentPlane.visible = !!showProbeTangentPlaneRef.current;
 
       tangentArrow1.position.copy(point);
       tangentArrow1.setDirection(e1);
-      tangentArrow1.visible = true;
+      tangentArrow1.visible = !!showProbeTangentsRef.current;
 
       tangentArrow2.position.copy(point);
       tangentArrow2.setDirection(e2);
-      tangentArrow2.visible = true;
+      tangentArrow2.visible = !!showProbeTangentsRef.current;
 
       // store last uv for geodesic
       setProbeUV(uvDomain ?? null);
@@ -1609,10 +1747,24 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customZ,
     wireframe,
     showPlanes,
+    lightPreset,
     colorMode,
     showBoundingBox,
     resetToken,
+    paramResolution,
   ]);
+
+  useEffect(() => {
+    const widgets = probeWidgetsRef.current;
+    if (!widgets) return;
+    const hasProbe = widgets.marker.visible;
+
+    widgets.normal.visible = hasProbe && showProbeNormal;
+    widgets.plane.visible = hasProbe && showProbeTangentPlane;
+    const showT = hasProbe && showProbeTangents;
+    widgets.t1.visible = showT;
+    widgets.t2.visible = showT;
+  }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   useEffect(() => {
     const obj = surfaceObjRef.current;
@@ -1632,6 +1784,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const mesh = obj as THREE.Mesh;
     const geom = mesh.geometry as THREE.BufferGeometry;
     const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
+    const opacity = Math.min(1, Math.max(0, materialOpacity));
 
     if (colorMode === "solid") {
       geom.deleteAttribute("color");
@@ -1649,8 +1802,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       mat.color.set("#ffffff"); // don't tint vertex colors
     }
 
+    mat.roughness = materialRoughness;
+    mat.metalness = materialMetalness;
+    mat.transparent = opacity < 1;
+    mat.opacity = opacity;
     mat.needsUpdate = true;
-  }, [colorMode, colorPalette, surfaceId]);
+  }, [colorMode, colorPalette, surfaceId, materialRoughness, materialMetalness, materialOpacity]);
 
   // --- reverse probe: (u,v) click on param map → 3D marker/normal ---
   useEffect(() => {

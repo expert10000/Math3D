@@ -1,13 +1,26 @@
 /* ---- Global typography / rendering ---- */
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Avenir, Helvetica, Arial, sans-serif;
+  --bg: #f7f4ee;
+  --bg-2: #eef2f6;
+  --panel: rgba(255, 255, 255, 0.92);
+  --panel-strong: #fffdf8;
+  --border: rgba(23, 34, 54, 0.16);
+  --accent: #1f3556;
+  --accent-strong: #16263f;
+  --accent-soft: #e6ecf7;
+  --text: #1b2431;
+  --muted: #5f6772;
+  --shadow: 0 6px 12px rgba(18, 24, 32, 0.08);
+  --shadow-soft: 0 4px 8px rgba(18, 24, 32, 0.06);
+  --radius: 12px;
+  --radius-sm: 8px;
+
+  font-family: "Georgia", "Times New Roman", serif;
   line-height: 1.5;
   font-weight: 400;
 
-  /* we run in a light UI only */
-  color: #213547;
-  background-color: #ffffff;
+  color: var(--text);
+  background-color: var(--bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -33,19 +46,21 @@ body,
 
 /* ---- Basic elements ---- */
 a {
-  font-weight: 500;
-  color: #646cff;
+  font-weight: 600;
+  color: var(--accent);
   text-decoration: none;
 }
 
 a:hover {
-  color: #535bf2;
+  color: var(--accent-strong);
 }
 
 /* body is just a plain container, App handles layout */
 body {
   margin: 0;
-  background-color: #ffffff;
+  color: var(--text);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  background-attachment: fixed;
 }
 
 /* keep this if you still want big h1 in generic pages;
@@ -55,41 +70,45 @@ h1 {
   line-height: 1.1;
 }
 
-/* default button style – your TabButton etc. also add inline styles */
+/* default button style - your TabButton etc. also add inline styles */
 button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  padding: 0.6em 1.1em;
+  font-size: 0.95em;
+  font-weight: 600;
   font-family: inherit;
-  background-color: #f9f9f9;
+  background-color: var(--panel-strong);
+  color: var(--text);
   cursor: pointer;
-  transition: border-color 0.25s, background-color 0.25s;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  box-shadow: var(--shadow-soft);
 }
 
 button:hover {
-  border-color: #646cff;
+  border-color: var(--accent);
+  background-color: var(--accent-soft);
 }
 
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---- D3 plane styles ---- */
 .grid-line {
-  stroke: #ddd;
+  stroke: #d7d0c8;
   stroke-width: 1;
 }
 
 .axis-zero {
-  stroke: #444;
+  stroke: #2b3640;
   stroke-width: 1.5;
 }
 
 .badge {
-  font-family: system-ui, sans-serif;
+  font-family: "Palatino Linotype", "Book Antiqua", "Georgia", serif;
   font-size: 10px;
-  fill: #666;
+  fill: var(--muted);
 }

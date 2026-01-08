@@ -69,11 +69,22 @@ const SURFACES_EQ_META: {
     { id: "cone", label: "Cone", formula: "x² + y² = z²", note: "Double cone with vertex at the origin." },
     { id: "cylinder", label: "Cylinder", formula: "x² + y² = R²", note: "Circle extruded along an axis." },
 
+    { id: "hyperboloid_twoSheet", label: "Two-sheet hyperboloid", formula: "z^2/c^2 - x^2/a^2 - y^2/b^2 = 1", note: "Two disconnected bowls along z." },
+    { id: "ellipsoid", label: "Ellipsoid", formula: "x^2/a^2 + y^2/b^2 + z^2/c^2 = 1", note: "Stretched sphere with three radii." },
+    { id: "torus_implicit", label: "Torus (implicit)", formula: "(sqrt(x^2+y^2)-R)^2 + z^2 = r^2", note: "Implicit donut surface." },
+    { id: "gyroid", label: "Gyroid", formula: "sin x cos y + sin y cos z + sin z cos x = 0", note: "Triply periodic minimal surface." },
+    { id: "superquadric", label: "Superquadric", formula: "|x|^n + |y|^n + |z|^n = 1", note: "Boxy to round as n varies." },
+
     // graph surfaces
     { id: "graph_saddle", label: "Saddle graph", formula: "z = x² − y²", note: "Classical saddle; negative curvature at the origin." },
     { id: "graph_rotatedSaddle", label: "Rotated saddle", formula: "z = 2xy", note: "Same as x² − y² rotated by 45°." },
     { id: "graph_monkey", label: "Monkey saddle", formula: "z = x³ − 3xy²", note: "Saddle with 3 valleys; higher-order critical point." },
     { id: "graph_wave", label: "Wave", formula: "z = sin x · cos y", note: "Periodic surface; good for gradients." },
+    { id: "graph_paraboloid", label: "Paraboloid graph", formula: "z = 0.3(x^2+y^2)", note: "Convex bowl; positive curvature." },
+    { id: "graph_gaussian", label: "Gaussian bump", formula: "z = exp(-(x^2+y^2))", note: "Bell-shaped bump with fast decay." },
+    { id: "graph_ripple", label: "Ripple", formula: "z = sin(3r)/(3r)", note: "Radial ripples, r = sqrt(x^2+y^2)." },
+    { id: "graph_mexican", label: "Mexican hat", formula: "z = (1-r^2) exp(-r^2/2)", note: "Ring with a central peak." },
+    { id: "graph_sinSum", label: "Sin+Cos", formula: "z = sin x + cos y", note: "Simple sinusoidal grid." },
     { id: "graph_custom", label: "Custom graph", formula: "z = f(x, y)", note: "User-defined graph expression in x,y." },
 
     // implicit custom
@@ -85,6 +96,11 @@ const GRAPH_SURFACE_IDS: SurfaceId[] = [
   "graph_rotatedSaddle",
   "graph_monkey",
   "graph_wave",
+  "graph_paraboloid",
+  "graph_gaussian",
+  "graph_ripple",
+  "graph_mexican",
+  "graph_sinSum",
   "graph_custom",
 ];
 
@@ -139,6 +155,11 @@ const PARAM_SURFACES_META: {
     { id: "helicoid", label: "Helicoid", formula: "σ(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
     { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal surface of revolution." },
     { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
+    { id: "ellipsoid", label: "Ellipsoid", formula: "σ(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
+    { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (u cos v, u sin v, u^2)", note: "Parametric paraboloid." },
+    { id: "pseudosphere", label: "Pseudosphere", formula: "σ(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Constant negative curvature surface." },
+    { id: "dini", label: "Dini surface", formula: "σ(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
+    { id: "twistedStrip", label: "Twisted strip", formula: "σ(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
     { id: "torus", label: "Torus", formula: "σ(u,v) = ((R + r cos v) cos u, (R + r cos v) sin u, r sin v)", note: "Donut surface." },
     { id: "mobius", label: "Möbius strip", formula: "σ(u,v) ≈ ((1 + v/2 cos(u/2)) cos u, …)", note: "Non-orientable strip." },
     { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
@@ -160,6 +181,18 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
 
+    case "paraboloid":
+      return { uMin: 0, uMax: 2, vMin: 0, vMax: 2 * Math.PI };
+
+    case "pseudosphere":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2.6 };
+
+    case "dini":
+      return { uMin: 0, uMax: 4 * Math.PI, vMin: 0.25, vMax: 1.35 };
+
+    case "twistedStrip":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -0.6, vMax: 0.6 };
+
     // defaults for everything else (safe generic)
     default:
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -1, vMax: 1 };
@@ -170,6 +203,20 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
+type Vec3 = { x: number; y: number; z: number };
+const vLen = (v: Vec3) => Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+const vDot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
+const vScale = (v: Vec3, s: number): Vec3 => ({ x: v.x * s, y: v.y * s, z: v.z * s });
+const vSub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const vCross = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const vNormalize = (v: Vec3): Vec3 => {
+  const len = vLen(v);
+  return len > 1e-12 ? vScale(v, 1 / len) : { x: 0, y: 0, z: 0 };
+};
 
 /* ---------------- App ---------------- */
 
@@ -218,11 +265,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showPlanes, setShowPlanes] = useState(false);
   const [colorMode, setColorMode] = useState<ColorMode>("solid");
   const [colorPalette, setColorPalette] = useState<ColorPalette>("blueRed");
+  const [lightPreset, setLightPreset] = useState<"studio" | "soft" | "contrast" | "neutral" | "warm">("studio");
+  const [materialRoughness, setMaterialRoughness] = useState(0.3);
+  const [materialMetalness, setMaterialMetalness] = useState(0.1);
+  const [materialOpacity, setMaterialOpacity] = useState(1);
+  const [graphResolution, setGraphResolution] = useState(80);
+  const [implicitResolution, setImplicitResolution] = useState(32);
+  const [paramResolution, setParamResolution] = useState(64);
   const [showBoundingBox, setShowBoundingBox] = useState(false);
   const [cameraResetToken, setCameraResetToken] = useState(0);
 
   // probe
   const [probeEnabled, setProbeEnabled] = useState(false);
+  const [showProbeNormal, setShowProbeNormal] = useState(true);
+  const [showProbeTangentPlane, setShowProbeTangentPlane] = useState(true);
+  const [showProbeTangents, setShowProbeTangents] = useState(true);
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
 
@@ -231,6 +288,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramProbeToken, setParamProbeToken] = useState(0);
   const [graphProbeXY, setGraphProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [graphProbeToken, setGraphProbeToken] = useState(0);
+
+  // command prompt
+  const [commandInput, setCommandInput] = useState("");
+  const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
 
   // contours (graph mode)
   const [showContours, setShowContours] = useState(true);
@@ -442,6 +503,295 @@ case "mobius":
     }
   };
 
+  const pushCommandResult = useCallback((cmd: string, out: string) => {
+    setCommandHistory((prev) => [{ cmd, out }, ...prev].slice(0, 12));
+  }, []);
+
+  const tokenizeCommand = (input: string) => {
+    const out: string[] = [];
+    const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(input))) {
+      out.push(match[1] ?? match[2] ?? match[3]);
+    }
+    return out;
+  };
+
+  const runSurfaceCommand = useCallback(
+    (raw: string) => {
+      const cmd = raw.trim();
+      if (!cmd) return;
+
+      const tokens = tokenizeCommand(cmd);
+      const head = (tokens[0] ?? "").toLowerCase();
+
+      const say = (out: string) => pushCommandResult(cmd, out);
+
+      if (head === "help") {
+        return say(
+          [
+            "surface implicit|graph|param <id>",
+            "colorMode <solid|height|radius|curvature|gaussian|mean|k1|k2>",
+            "palette <blueRed|rainbow|grayscale|redYellow>",
+            "wireframe on|off  |  planes on|off  |  probe on|off",
+            "normals on|off  |  tangents on|off  |  tangentPlane on|off",
+            "lighting <studio|soft|contrast|neutral|warm>",
+            "roughness <0..1>  metalness <0..1>  opacity <0..1>",
+            "resolution graph|implicit|param <n>",
+            "expr graph|implicit \"expr\"  |  expr param x|y|z \"expr\"",
+            "probe at <x> <y>  |  probe uv <u> <v>",
+            "position  |  gaussmap  |  curvature",
+          ].join("\n")
+        );
+      }
+
+      if (head === "surface") {
+        const kind = (tokens[1] ?? "").toLowerCase();
+        const id = tokens[2] as SurfaceId | ParamSurfaceId | undefined;
+        if (!id) return say("Missing surface id.");
+        if (kind === "graph") {
+          if (!isGraphSurface(id as SurfaceId)) return say(`Not a graph surface: ${id}`);
+          setSurfaceViewerKind("graph");
+          setGraphSurfaceId(id as SurfaceId);
+          return say(`graph surface = ${id}`);
+        }
+        if (kind === "implicit") {
+          if (isGraphSurface(id as SurfaceId)) return say(`Not an implicit surface: ${id}`);
+          setSurfaceViewerKind("implicit");
+          setImplicitSurfaceId(id as SurfaceId);
+          return say(`implicit surface = ${id}`);
+        }
+        if (kind === "param") {
+          setSurfaceViewerKind("param");
+          setParamSurfaceId(id as ParamSurfaceId);
+          return say(`param surface = ${id}`);
+        }
+        return say("Usage: surface implicit|graph|param <id>");
+      }
+
+      if (head === "colormode") {
+        const m = tokens[1] as ColorMode | undefined;
+        if (!m) return say("Missing colorMode.");
+        setColorMode(m);
+        return say(`colorMode = ${m}`);
+      }
+
+      if (head === "palette") {
+        const p = tokens[1] as ColorPalette | undefined;
+        if (!p) return say("Missing palette.");
+        setColorPalette(p);
+        return say(`palette = ${p}`);
+      }
+
+      if (head === "wireframe") {
+        const v = (tokens[1] ?? "").toLowerCase();
+        const on = v === "on" || v === "true" || v === "1";
+        setShowWireframe(on);
+        return say(`wireframe = ${on ? "on" : "off"}`);
+      }
+
+      if (head === "planes") {
+        const v = (tokens[1] ?? "").toLowerCase();
+        const on = v === "on" || v === "true" || v === "1";
+        setShowPlanes(on);
+        return say(`planes = ${on ? "on" : "off"}`);
+      }
+
+      if (head === "probe") {
+        const sub = (tokens[1] ?? "").toLowerCase();
+        if (sub === "on" || sub === "off") {
+          const on = sub === "on";
+          setProbeEnabled(on);
+          return say(`probe = ${on ? "on" : "off"}`);
+        }
+        if (sub === "at" || sub === "xy") {
+          const x = Number(tokens[2]);
+          const y = Number(tokens[3]);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) return say("Usage: probe at <x> <y>");
+          setProbeEnabled(true);
+          setGraphProbeXY({ x, y });
+          setGraphProbeToken((t) => t + 1);
+          return say(`probe graph at (${x}, ${y})`);
+        }
+        if (sub === "uv") {
+          const u = Number(tokens[2]);
+          const v = Number(tokens[3]);
+          if (!Number.isFinite(u) || !Number.isFinite(v)) return say("Usage: probe uv <u> <v>");
+          setProbeEnabled(true);
+          setParamProbeUV({ u, v });
+          setParamProbeToken((t) => t + 1);
+          return say(`probe param at (${u}, ${v})`);
+        }
+        return say("Usage: probe on|off | probe at <x> <y> | probe uv <u> <v>");
+      }
+
+      if (head === "normals") {
+        const v = (tokens[1] ?? "").toLowerCase();
+        const on = v === "on" || v === "true" || v === "1";
+        setShowProbeNormal(on);
+        return say(`show normals = ${on ? "on" : "off"}`);
+      }
+
+      if (head === "tangents") {
+        const v = (tokens[1] ?? "").toLowerCase();
+        const on = v === "on" || v === "true" || v === "1";
+        setShowProbeTangents(on);
+        return say(`show tangents = ${on ? "on" : "off"}`);
+      }
+
+      if (head === "tangentplane") {
+        const v = (tokens[1] ?? "").toLowerCase();
+        const on = v === "on" || v === "true" || v === "1";
+        setShowProbeTangentPlane(on);
+        return say(`show tangent plane = ${on ? "on" : "off"}`);
+      }
+
+      if (head === "lighting") {
+        const p = (tokens[1] ?? "").toLowerCase() as "studio" | "soft" | "contrast" | "neutral" | "warm";
+        if (!p || !["studio", "soft", "contrast", "neutral", "warm"].includes(p)) return say("lighting studio|soft|contrast|neutral|warm");
+        setLightPreset(p);
+        return say(`lighting = ${p}`);
+      }
+
+      if (head === "roughness") {
+        const v = Number(tokens[1]);
+        if (!Number.isFinite(v)) return say("roughness <0..1>");
+        setMaterialRoughness(Math.min(1, Math.max(0, v)));
+        return say(`roughness = ${Math.min(1, Math.max(0, v)).toFixed(2)}`);
+      }
+
+      if (head === "metalness") {
+        const v = Number(tokens[1]);
+        if (!Number.isFinite(v)) return say("metalness <0..1>");
+        setMaterialMetalness(Math.min(1, Math.max(0, v)));
+        return say(`metalness = ${Math.min(1, Math.max(0, v)).toFixed(2)}`);
+      }
+
+      if (head === "opacity") {
+        const v = Number(tokens[1]);
+        if (!Number.isFinite(v)) return say("opacity <0..1>");
+        setMaterialOpacity(Math.min(1, Math.max(0, v)));
+        return say(`opacity = ${Math.min(1, Math.max(0, v)).toFixed(2)}`);
+      }
+
+      if (head === "resolution") {
+        const kind = (tokens[1] ?? "").toLowerCase();
+        const n = Number(tokens[2]);
+        if (!Number.isFinite(n)) return say("resolution graph|implicit|param <n>");
+        if (kind === "graph") {
+          setGraphResolution(Math.round(n));
+          return say(`graph resolution = ${Math.round(n)}`);
+        }
+        if (kind === "implicit") {
+          setImplicitResolution(Math.round(n));
+          return say(`implicit resolution = ${Math.round(n)}`);
+        }
+        if (kind === "param") {
+          setParamResolution(Math.round(n));
+          return say(`param resolution = ${Math.round(n)}`);
+        }
+        return say("resolution graph|implicit|param <n>");
+      }
+
+      if (head === "expr") {
+        const kind = (tokens[1] ?? "").toLowerCase();
+        if (kind === "graph") {
+          const expr = tokens.slice(2).join(" ");
+          if (!expr) return say("expr graph \"<expr>\"");
+          setSurfaceViewerKind("graph");
+          setGraphSurfaceId("graph_custom");
+          setGraphExpr(expr);
+          return say("graph expr updated");
+        }
+        if (kind === "implicit") {
+          const expr = tokens.slice(2).join(" ");
+          if (!expr) return say("expr implicit \"<expr>\"");
+          setSurfaceViewerKind("implicit");
+          setImplicitSurfaceId("implicit_custom");
+          setImplicitExpr(expr);
+          return say("implicit expr updated");
+        }
+        if (kind === "param") {
+          const axis = (tokens[2] ?? "").toLowerCase();
+          const expr = tokens.slice(3).join(" ");
+          if (!axis || !expr) return say("expr param x|y|z \"<expr>\"");
+          setSurfaceViewerKind("param");
+          setParamSurfaceId("custom");
+          if (axis === "x") setParamXExpr(expr);
+          else if (axis === "y") setParamYExpr(expr);
+          else if (axis === "z") setParamZExpr(expr);
+          else return say("expr param x|y|z \"<expr>\"");
+          return say(`param ${axis} expr updated`);
+        }
+        return say("expr graph|implicit|param ...");
+      }
+
+      if (head === "position") {
+        if (!probeInfo) return say("No probe data.");
+        const p = probeInfo.point;
+        return say(`p = (${p.x.toFixed(4)}, ${p.y.toFixed(4)}, ${p.z.toFixed(4)})`);
+      }
+
+      if (head === "gaussmap") {
+        if (!probeInfo) return say("No probe data.");
+        const n = probeInfo.normal;
+        return say(`n = (${n.x.toFixed(4)}, ${n.y.toFixed(4)}, ${n.z.toFixed(4)})`);
+      }
+
+      if (head === "curvature") {
+        if (!probeCurv || !isGraphSurface(activeEqSurfaceId)) return say("Curvature only available for graph surfaces.");
+        return say(
+          `K=${probeCurv.K.toFixed(5)}  H=${probeCurv.H.toFixed(5)}  k1=${probeCurv.k1.toFixed(5)}  k2=${probeCurv.k2.toFixed(5)}`
+        );
+      }
+
+      return say(`Unknown command: ${head}`);
+    },
+    [
+      activeEqSurfaceId,
+      probeCurv,
+      probeInfo,
+      pushCommandResult,
+      setColorMode,
+      setColorPalette,
+      setGraphExpr,
+      setGraphProbeToken,
+      setGraphProbeXY,
+      setGraphResolution,
+      setImplicitExpr,
+      setImplicitResolution,
+      setImplicitSurfaceId,
+      setLightPreset,
+      setMaterialMetalness,
+      setMaterialOpacity,
+      setMaterialRoughness,
+      setParamProbeToken,
+      setParamProbeUV,
+      setParamResolution,
+      setParamSurfaceId,
+      setParamXExpr,
+      setParamYExpr,
+      setParamZExpr,
+      setProbeEnabled,
+      setShowPlanes,
+      setShowProbeNormal,
+      setShowProbeTangents,
+      setShowProbeTangentPlane,
+      setShowWireframe,
+      setSurfaceViewerKind,
+      setGraphSurfaceId,
+    ]
+  );
+
+  const handleRunCommand = useCallback(
+    (cmd: string) => {
+      if (!cmd.trim()) return;
+      runSurfaceCommand(cmd);
+      setCommandInput("");
+    },
+    [runSurfaceCommand]
+  );
+
   return (
     <div style={rootStyle}>
       <header style={styles.header}>
@@ -530,16 +880,37 @@ case "mobius":
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showPlanes={showPlanes}
                 onTogglePlanes={() => setShowPlanes((p) => !p)}
+                lightPreset={lightPreset}
+                onChangeLightPreset={setLightPreset}
+                materialRoughness={materialRoughness}
+                onSetMaterialRoughness={setMaterialRoughness}
+                materialMetalness={materialMetalness}
+                onSetMaterialMetalness={setMaterialMetalness}
+                materialOpacity={materialOpacity}
+                onSetMaterialOpacity={setMaterialOpacity}
+                graphResolution={graphResolution}
+                onSetGraphResolution={setGraphResolution}
+                implicitResolution={implicitResolution}
+                onSetImplicitResolution={setImplicitResolution}
+                paramResolution={paramResolution}
+                onSetParamResolution={setParamResolution}
                 colorMode={colorMode}
                 onChangeColorMode={setColorMode}
                 colorPalette={colorPalette}
                 onChangeColorPalette={setColorPalette}
                 probeEnabled={probeEnabled}
                 onToggleProbe={() => setProbeEnabled((p) => !p)}
+                showProbeNormal={showProbeNormal}
+                onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                showProbeTangentPlane={showProbeTangentPlane}
+                onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                showProbeTangents={showProbeTangents}
+                onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 onResetCamera={() => setCameraResetToken((t) => t + 1)}
                 probeInfo={probeInfo}
+                probeCurv={probeCurv}
                 onSnapSlicesToProbe={snapSlicesToProbe}
                 // contours
                 showContours={showContours}
@@ -573,6 +944,10 @@ case "mobius":
                 onSetSliceYZOffset={setSliceYZOffset}
                 sliceXZOffset={sliceXZOffset}
                 onSetSliceXZOffset={setSliceXZOffset}
+                commandInput={commandInput}
+                onChangeCommandInput={setCommandInput}
+                onRunCommand={handleRunCommand}
+                commandHistory={commandHistory}
                 // legacy
                 slicePreset={slicePreset}
                 onSetSlicePreset={setSlicePreset}
@@ -606,9 +981,17 @@ case "mobius":
                     customZ={paramZExpr}
                     wireframe={showWireframe}
                     showPlanes={showPlanes}
+                    lightPreset={lightPreset}
+                    materialRoughness={materialRoughness}
+                    materialMetalness={materialMetalness}
+                    materialOpacity={materialOpacity}
+                    paramResolution={paramResolution}
                     colorMode={colorMode}
                     colorPalette={colorPalette}
                     probeEnabled={probeEnabled}
+                    showProbeNormal={showProbeNormal}
+                    showProbeTangentPlane={showProbeTangentPlane}
+                    showProbeTangents={showProbeTangents}
                     showBoundingBox={showBoundingBox}
                     resetToken={cameraResetToken}
                     onProbe={handleProbe}
@@ -636,6 +1019,12 @@ case "mobius":
                     implicitExpr={implicitExpr}
                     wireframe={showWireframe}
                     showPlanes={showPlanes}
+                    lightPreset={lightPreset}
+                    materialRoughness={materialRoughness}
+                    materialMetalness={materialMetalness}
+                    materialOpacity={materialOpacity}
+                    graphResolution={graphResolution}
+                    implicitResolution={implicitResolution}
                     colorMode={colorMode}
                     colorPalette={colorPalette}
                     showBoundingBox={showBoundingBox}
@@ -643,6 +1032,9 @@ case "mobius":
                     graphProbeXY={graphProbeXY}
                     graphProbeToken={graphProbeToken}
                     probeEnabled={probeEnabled}
+                    showProbeNormal={showProbeNormal}
+                    showProbeTangentPlane={showProbeTangentPlane}
+                    showProbeTangents={showProbeTangents}
                     onProbe={handleProbe}
                     onSetGraphExpr={setGraphExpr}
                     onSetImplicitExpr={setImplicitExpr}
@@ -680,7 +1072,6 @@ case "mobius":
                 implicitExpr={implicitExpr}
                 onChangeImplicitExpr={setImplicitExpr}
                 probeInfo={probeInfo}
-                probeCurv={probeCurv}
                 onPickDomainUV={(uv) => {
                   setParamProbeUV(uv);
                   setParamProbeToken((t) => t + 1);
@@ -1013,6 +1404,20 @@ type SurfacesLeftPanelProps = {
   onToggleWireframe: () => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
+  lightPreset: "studio" | "soft" | "contrast" | "neutral" | "warm";
+  onChangeLightPreset: (p: "studio" | "soft" | "contrast" | "neutral" | "warm") => void;
+  materialRoughness: number;
+  onSetMaterialRoughness: (v: number) => void;
+  materialMetalness: number;
+  onSetMaterialMetalness: (v: number) => void;
+  materialOpacity: number;
+  onSetMaterialOpacity: (v: number) => void;
+  graphResolution: number;
+  onSetGraphResolution: (v: number) => void;
+  implicitResolution: number;
+  onSetImplicitResolution: (v: number) => void;
+  paramResolution: number;
+  onSetParamResolution: (v: number) => void;
 
   colorMode: ColorMode;
   onChangeColorMode: (m: ColorMode) => void;
@@ -1021,11 +1426,18 @@ type SurfacesLeftPanelProps = {
 
   probeEnabled: boolean;
   onToggleProbe: () => void;
+  showProbeNormal: boolean;
+  onToggleProbeNormal: () => void;
+  showProbeTangentPlane: boolean;
+  onToggleProbeTangentPlane: () => void;
+  showProbeTangents: boolean;
+  onToggleProbeTangents: () => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   onResetCamera: () => void;
 
   probeInfo: ProbeInfo | null;
+  probeCurv: CurvatureData | null;
   onSnapSlicesToProbe: () => void;
 
   // contours (graph surfaces)
@@ -1070,6 +1482,11 @@ type SurfacesLeftPanelProps = {
   sliceXZOffset: number;
   onSetSliceXZOffset: (v: number) => void;
 
+  commandInput: string;
+  onChangeCommandInput: (v: string) => void;
+  onRunCommand: (cmd: string) => void;
+  commandHistory: { cmd: string; out: string }[];
+
   // legacy
   slicePreset: SlicePreset;
   onSetSlicePreset: (p: SlicePreset) => void;
@@ -1097,16 +1514,37 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleWireframe,
   showPlanes,
   onTogglePlanes,
+  lightPreset,
+  onChangeLightPreset,
+  materialRoughness,
+  onSetMaterialRoughness,
+  materialMetalness,
+  onSetMaterialMetalness,
+  materialOpacity,
+  onSetMaterialOpacity,
+  graphResolution,
+  onSetGraphResolution,
+  implicitResolution,
+  onSetImplicitResolution,
+  paramResolution,
+  onSetParamResolution,
   colorMode,
   onChangeColorMode,
   colorPalette,
   onChangeColorPalette,
   probeEnabled,
   onToggleProbe,
+  showProbeNormal,
+  onToggleProbeNormal,
+  showProbeTangentPlane,
+  onToggleProbeTangentPlane,
+  showProbeTangents,
+  onToggleProbeTangents,
   showBoundingBox,
   onToggleBoundingBox,
   onResetCamera,
   probeInfo,
+  probeCurv,
   onSnapSlicesToProbe,
   showContours,
   onToggleContours,
@@ -1138,6 +1576,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onSetSliceYZOffset,
   sliceXZOffset,
   onSetSliceXZOffset,
+  commandInput,
+  onChangeCommandInput,
+  onRunCommand,
+  commandHistory,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
@@ -1156,6 +1598,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
+  const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const colorModes: ColorMode[] =
     viewerKind === "param"
       ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
@@ -1170,6 +1615,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         Rotate with mouse, scroll to zoom. In <strong>probe mode</strong> click the surface to read point p and unit normal n.
       </p>
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {(["controls", "theory"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setLeftTab(t)}
+            style={pill(leftTab === t)}
+            aria-pressed={leftTab === t}
+          >
+            {t === "controls" ? "Controls" : "Theory"}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: leftTab === "controls" ? "block" : "none" }}>
       <h3 style={styles.h3}>{activeMeta.label}</h3>
       <p style={styles.hint}>
         Mode: <strong>{modeLabel}</strong>
@@ -1191,6 +1651,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} style={{ marginRight: 6 }} />
           Probe mode: pick point on surface
         </label>
+
+        <div style={{ marginLeft: 20, marginTop: 4, fontSize: 12 }}>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} style={{ marginRight: 6 }} />
+            Show normal arrow
+          </label>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input type="checkbox" checked={showProbeTangentPlane} onChange={onToggleProbeTangentPlane} style={{ marginRight: 6 }} />
+            Show tangent plane
+          </label>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
+            Show tangent directions
+          </label>
+        </div>
 
         <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
           <input type="checkbox" checked={showBoundingBox} onChange={onToggleBoundingBox} style={{ marginRight: 6 }} />
@@ -1235,6 +1710,186 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     ))}
   </div>
 </div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Lighting</div>
+        <div style={pillRow}>
+          {(["studio", "soft", "contrast", "neutral", "warm"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onChangeLightPreset(p)}
+              style={pill(lightPreset === p)}
+              aria-pressed={lightPreset === p}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Material</div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ minWidth: 80 }}>Roughness</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={materialRoughness}
+            onChange={(e) => onSetMaterialRoughness(clamp01(Number(e.target.value)))}
+            style={{ flex: 1 }}
+          />
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={materialRoughness}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) onSetMaterialRoughness(clamp01(v));
+            }}
+            style={{ width: 70 }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ minWidth: 80 }}>Metalness</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={materialMetalness}
+            onChange={(e) => onSetMaterialMetalness(clamp01(Number(e.target.value)))}
+            style={{ flex: 1 }}
+          />
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={materialMetalness}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) onSetMaterialMetalness(clamp01(v));
+            }}
+            style={{ width: 70 }}
+          />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ minWidth: 80 }}>Opacity</span>
+          <input
+            type="range"
+            min={0.05}
+            max={1}
+            step={0.01}
+            value={materialOpacity}
+            onChange={(e) => onSetMaterialOpacity(clamp01(Number(e.target.value)))}
+            style={{ flex: 1 }}
+          />
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={materialOpacity}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) onSetMaterialOpacity(clamp01(v));
+            }}
+            style={{ width: 70 }}
+          />
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh resolution</div>
+        {viewerKind === "graph" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ minWidth: 80 }}>Graph</span>
+            <input
+              type="range"
+              min={20}
+              max={160}
+              step={1}
+              value={graphResolution}
+              onChange={(e) => onSetGraphResolution(clampInt(Number(e.target.value), 20, 160))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number"
+              min={20}
+              max={200}
+              step={1}
+              value={graphResolution}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onSetGraphResolution(clampInt(v, 20, 200));
+              }}
+              style={{ width: 70 }}
+            />
+          </div>
+        )}
+
+        {viewerKind === "implicit" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ minWidth: 80 }}>Implicit</span>
+            <input
+              type="range"
+              min={18}
+              max={64}
+              step={1}
+              value={implicitResolution}
+              onChange={(e) => onSetImplicitResolution(clampInt(Number(e.target.value), 18, 64))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number"
+              min={18}
+              max={80}
+              step={1}
+              value={implicitResolution}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onSetImplicitResolution(clampInt(v, 18, 80));
+              }}
+              style={{ width: 70 }}
+            />
+          </div>
+        )}
+
+        {viewerKind === "param" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ minWidth: 80 }}>Param</span>
+            <input
+              type="range"
+              min={20}
+              max={160}
+              step={1}
+              value={paramResolution}
+              onChange={(e) => onSetParamResolution(clampInt(Number(e.target.value), 20, 160))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number"
+              min={20}
+              max={200}
+              step={1}
+              value={paramResolution}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onSetParamResolution(clampInt(v, 20, 200));
+              }}
+              style={{ width: 70 }}
+            />
+          </div>
+        )}
       </div>
 
       {/* palette */}
@@ -1588,11 +2243,203 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           />
         </div>
       )}
+      </div>
+
+      <div style={{ display: leftTab === "theory" ? "block" : "none" }}>
+        <h3 style={styles.h3}>{activeMeta.label} theory</h3>
+        <p style={styles.hint}>Curvature, gradients, and vectors from the latest probe.</p>
+
+        {!probeInfo ? (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            Enable <b>Probe mode</b> and click the surface to populate details.
+          </div>
+        ) : (
+          <>
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Probe</div>
+              <div style={{ fontSize: 12, marginBottom: 6 }}>
+                <b>p</b> = <span style={{ fontFamily: "monospace" }}>{fmt3(probeInfo.point)}</span>
+              </div>
+              <div style={{ fontSize: 12, marginBottom: 6 }}>
+                <b>n</b> = <span style={{ fontFamily: "monospace" }}>{fmt3(probeInfo.normal)}</span>
+              </div>
+              {probeInfo.xy && (
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <b>x,y</b> ={" "}
+                  <span style={{ fontFamily: "monospace" }}>
+                    ({fmt(probeInfo.xy.x)}, {fmt(probeInfo.xy.y)})
+                  </span>
+                </div>
+              )}
+              {probeInfo.uv && (
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <b>u,v</b> ={" "}
+                  <span style={{ fontFamily: "monospace" }}>
+                    ({fmt(probeInfo.uv.u)}, {fmt(probeInfo.uv.v)})
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {probeCurv && isGraphAny ? (
+              <>
+                {(() => {
+                  const xu = { x: 1, y: probeCurv.fx, z: 0 };
+                  const xv = { x: 0, y: probeCurv.fy, z: 1 };
+                  const e1 = vNormalize(xu);
+                  const proj = vScale(e1, vDot(xv, e1));
+                  const e2 = vNormalize(vSub(xv, proj));
+                  const nFromXuXv = vNormalize(vCross(xu, xv));
+
+                  return (
+                    <>
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Tangent basis (world)</div>
+                        <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
+                          Xu = {fmt3(xu)}
+                          <br />
+                          Xv = {fmt3(xv)}
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Orthonormal basis (world)</div>
+                        <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
+                          e1 = {fmt3(e1)}
+                          <br />
+                          e2 = {fmt3(e2)}
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Normal from Xu x Xv</div>
+                        <div style={{ fontFamily: "monospace", fontSize: 12 }}>
+                          n = {fmt3(nFromXuXv)}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Derivatives</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
+                    fx = {fmt(probeCurv.fx)}{"  "}fy = {fmt(probeCurv.fy)}
+                    <br />
+                    fxx = {fmt(probeCurv.fxx)}{"  "}fyy = {fmt(probeCurv.fyy)}{"  "}fxy = {fmt(probeCurv.fxy)}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Gradient</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12 }}>
+                    grad f = ({fmt(probeCurv.fx)}, {fmt(probeCurv.fy)})
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Curvature / invariants</div>
+                  <pre
+                    style={{
+                      marginTop: 6,
+                      marginBottom: 0,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      fontSize: 11,
+                      background: "#fafafa",
+                      border: "1px solid #eee",
+                      borderRadius: 8,
+                      padding: 8,
+                    }}
+                  >
+                    {JSON.stringify(probeCurv, null, 2)}
+                  </pre>
+                </div>
+              </>
+            ) : (
+              <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
+                Curvature details currently compute only for graph surfaces.
+              </div>
+            )}
+          </>
+        )}
+
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Command prompt</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="text"
+              value={commandInput}
+              onChange={(e) => onChangeCommandInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRunCommand(commandInput);
+              }}
+              placeholder='Try: surface graph graph_ripple'
+              style={{
+                flex: 1,
+                padding: "6px 8px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                fontFamily: "monospace",
+                fontSize: 12,
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => onRunCommand(commandInput)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                background: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              Run
+            </button>
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+            Examples: <code>help</code>, <code>colorMode gaussian</code>, <code>probe at 0.4 -0.2</code>, <code>expr graph "sin(x)+cos(y)"</code>
+          </div>
+
+          {commandHistory.length > 0 && (
+            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+              {commandHistory.slice(0, 4).map((h, i) => (
+                <div
+                  key={`${h.cmd}-${i}`}
+                  style={{
+                    background: "#fafafa",
+                    border: "1px solid #eee",
+                    borderRadius: 8,
+                    padding: "6px 8px",
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ fontFamily: "monospace", marginBottom: 4 }}>&gt; {h.cmd}</div>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{h.out}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Theory notes</div>
+          <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.5 }}>
+            <div>Graph parametrization: X(u,v) = (u, f(u,v), v) in world coordinates.</div>
+            <div>Tangents: Xu = (1, fx, 0), Xv = (0, fy, 1).</div>
+            <div>First fundamental form: E = dot(Xu, Xu), F = dot(Xu, Xv), G = dot(Xv, Xv).</div>
+            <div>Second fundamental form: e = dot(n, Xuu), f = dot(n, Xuv), g = dot(n, Xvv).</div>
+            <div>Curvatures: K = (eg - f^2)/(EG - F^2), H = (Eg - 2Ff + Ge)/(2(EG - F^2)).</div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 };
 
-/* ---------------- Right Panel (domain previews + probe readout) ---------------- */
+/* ---------------- Right Panel (domain previews) ---------------- */
 
 type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
@@ -1606,7 +2453,6 @@ type SurfacesRightPanelProps = {
   onChangeImplicitExpr: (s: string) => void;
 
   probeInfo: ProbeInfo | null;
-  probeCurv: CurvatureData | null;
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
@@ -1621,7 +2467,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   implicitExpr,
   onChangeImplicitExpr,
   probeInfo,
-  probeCurv,
   onPickDomainUV,
   onPickDomainXY,
 }) => {
@@ -1713,76 +2558,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       )}
 
-      {/* Probe readout */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Probe readout</div>
-
-        {!probeInfo ? (
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            Enable <b>Probe mode</b> (left panel) and click the surface.
-          </div>
-        ) : (
-          <div
-            style={{
-              background: "#fff",
-              border: "1px solid #e6e6e6",
-              borderRadius: 10,
-              padding: 10,
-              fontSize: 12,
-            }}
-          >
-            <div style={{ marginBottom: 6 }}>
-              <b>p</b> = <span style={{ fontFamily: "monospace" }}>{fmt3(probeInfo.point)}</span>
-            </div>
-            <div style={{ marginBottom: 6 }}>
-              <b>n</b> = <span style={{ fontFamily: "monospace" }}>{fmt3(probeInfo.normal)}</span>
-            </div>
-            {probeInfo.xy && (
-              <div style={{ marginBottom: 6 }}>
-                <b>x,y</b> ={" "}
-                <span style={{ fontFamily: "monospace" }}>
-                  ({fmt(probeInfo.xy.x)}, {fmt(probeInfo.xy.y)})
-                </span>
-              </div>
-            )}
-            {probeInfo.uv && (
-              <div style={{ marginBottom: 6 }}>
-                <b>u,v</b> ={" "}
-                <span style={{ fontFamily: "monospace" }}>
-                  ({fmt(probeInfo.uv.u)}, {fmt(probeInfo.uv.v)})
-                </span>
-              </div>
-            )}
-
-            {probeCurv ? (
-              <>
-                <div style={{ marginTop: 8, fontWeight: 700 }}>Curvature / invariants</div>
-                <pre
-                  style={{
-                    marginTop: 6,
-                    marginBottom: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontSize: 11,
-                    background: "#fafafa",
-                    border: "1px solid #eee",
-                    borderRadius: 8,
-                    padding: 8,
-                  }}
-                >
-                  {JSON.stringify(probeCurv, null, 2)}
-                </pre>
-                {isGraphViewer && (
-                  <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-                    (Computed from graph derivatives at the probed point.)
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ fontSize: 11, opacity: 0.75 }}>No invariants for this mode (or not implemented).</div>
-            )}
-          </div>
-        )}
+      <div style={{ marginBottom: 12, fontSize: 11, opacity: 0.75 }}>
+        Probe details, gradients, and curvature live in the left panel (Theory tab).
       </div>
 
       <details style={{ marginBottom: 12 }}>

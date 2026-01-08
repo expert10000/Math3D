@@ -26,6 +26,11 @@ export type SliceNormal = { x: number; y: number; z: number };
 export type SurfaceId =
   | "sphere"
   | "hyperboloid"
+  | "hyperboloid_twoSheet"
+  | "ellipsoid"
+  | "torus_implicit"
+  | "gyroid"
+  | "superquadric"
   | "paraboloid"
   | "cone"
   | "cylinder"
@@ -34,6 +39,11 @@ export type SurfaceId =
   | "graph_rotatedSaddle"
   | "graph_monkey"
   | "graph_wave"
+  | "graph_paraboloid"
+  | "graph_gaussian"
+  | "graph_ripple"
+  | "graph_mexican"
+  | "graph_sinSum"
   | "graph_custom"
   // implicit f(x,y,z)=0
   | "implicit_custom";
@@ -555,6 +565,14 @@ type Props = {
   wireframe?: boolean;
   showPlanes?: boolean;
 
+  lightPreset?: "studio" | "soft" | "contrast" | "neutral" | "warm";
+  materialRoughness?: number;
+  materialMetalness?: number;
+  materialOpacity?: number;
+
+  graphResolution?: number;
+  implicitResolution?: number;
+
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
 
@@ -562,6 +580,9 @@ type Props = {
   resetToken?: number;
 
   probeEnabled?: boolean;
+  showProbeNormal?: boolean;
+  showProbeTangentPlane?: boolean;
+  showProbeTangents?: boolean;
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
   onProbe?: (info: ProbeInfo) => void;
@@ -600,6 +621,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     wireframe,
     showPlanes,
 
+    lightPreset = "studio",
+    materialRoughness = 0.3,
+    materialMetalness = 0.1,
+    materialOpacity = 1,
+
+    graphResolution = 80,
+    implicitResolution = 32,
+
     colorMode = "solid",
     colorPalette = "blueRed",
 
@@ -607,6 +636,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     resetToken,
 
     probeEnabled = false,
+    showProbeNormal = true,
+    showProbeTangentPlane = true,
+    showProbeTangents = true,
     graphProbeXY = null,
     graphProbeToken,
     onProbe,
@@ -640,6 +672,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const sliceDirtyRef = useRef(true);
+  const probeWidgetsRef = useRef<{
+    marker: THREE.Mesh;
+    normal: THREE.ArrowHelper;
+    plane: THREE.Mesh;
+    t1: THREE.ArrowHelper;
+    t2: THREE.ArrowHelper;
+  } | null>(null);
 
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
@@ -654,6 +693,16 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onProbeRef.current = onProbe;
   }, [onProbe]);
+
+  const showProbeNormalRef = useRef(showProbeNormal);
+  const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
+  const showProbeTangentsRef = useRef(showProbeTangents);
+
+  useEffect(() => {
+    showProbeNormalRef.current = showProbeNormal;
+    showProbeTangentPlaneRef.current = showProbeTangentPlane;
+    showProbeTangentsRef.current = showProbeTangents;
+  }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   const sliceParamsRef = useRef({
     enabled: sliceEnabled,
@@ -752,6 +801,11 @@ useEffect(() => {
     id === "graph_rotatedSaddle" ||
     id === "graph_monkey" ||
     id === "graph_wave" ||
+    id === "graph_paraboloid" ||
+    id === "graph_gaussian" ||
+    id === "graph_ripple" ||
+    id === "graph_mexican" ||
+    id === "graph_sinSum" ||
     id === "graph_custom";
 
   const [graphCompileError, setGraphCompileError] = useState<string | null>(null);
@@ -811,6 +865,17 @@ useEffect(() => {
     if (surfaceId === "graph_rotatedSaddle") return (x, y) => 0.8 * x * y;
     if (surfaceId === "graph_monkey") return (x, y) => 0.2 * (x * x * x - 3 * x * y * y);
     if (surfaceId === "graph_wave") return (x, y) => 0.6 * Math.sin(x * 1.3) * Math.cos(y * 1.3);
+    if (surfaceId === "graph_paraboloid") return (x, y) => 0.3 * (x * x + y * y);
+    if (surfaceId === "graph_gaussian") return (x, y) => Math.exp(-0.7 * (x * x + y * y));
+    if (surfaceId === "graph_ripple") return (x, y) => {
+      const r = Math.sqrt(x * x + y * y);
+      return r < 1e-4 ? 1 : Math.sin(3 * r) / (3 * r);
+    };
+    if (surfaceId === "graph_mexican") return (x, y) => {
+      const r2 = x * x + y * y;
+      return (1 - r2) * Math.exp(-0.5 * r2);
+    };
+    if (surfaceId === "graph_sinSum") return (x, y) => 0.45 * (Math.sin(x) + Math.cos(y));
 
     // graph_custom: compiled
     return graphFnRef.current ?? ((x, y) => x * x - y * y);
@@ -831,6 +896,10 @@ useEffect(() => {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
           (m as any).vertexColors = false;
+          (m as any).roughness = materialRoughness;
+          (m as any).metalness = materialMetalness;
+          (m as any).transparent = clamp01(materialOpacity) < 1;
+          (m as any).opacity = clamp01(materialOpacity);
           if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
           } else {
@@ -862,6 +931,10 @@ useEffect(() => {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
           (m as any).vertexColors = colorMode !== "solid";
+          (m as any).roughness = materialRoughness;
+          (m as any).metalness = materialMetalness;
+          (m as any).transparent = clamp01(materialOpacity) < 1;
+          (m as any).opacity = clamp01(materialOpacity);
           if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
           } else {
@@ -880,7 +953,7 @@ useEffect(() => {
       }
     });
 
-  }, [surfaceId, graphExpr, colorMode, colorPalette, wireframe]);
+  }, [surfaceId, graphExpr, colorMode, colorPalette, wireframe, materialRoughness, materialMetalness, materialOpacity]);
 
   // --- rebuild graph contours live (no scene rebuild) ---
   useEffect(() => {
@@ -1353,10 +1426,41 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cameraRef.current = camera;
     controlsRef.current = controls;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(3, 5, 4);
-    scene.add(dir);
+    if (lightPreset === "contrast") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+      const key = new THREE.DirectionalLight(0xffffff, 1.15);
+      key.position.set(4, 6, 3);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+      rim.position.set(-3, -2, -4);
+      scene.add(rim);
+    } else if (lightPreset === "soft") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.45));
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+      hemi.position.set(0, 6, 0);
+      scene.add(hemi);
+    } else if (lightPreset === "neutral") {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      const key = new THREE.DirectionalLight(0xffffff, 0.7);
+      key.position.set(4, 4.5, 4);
+      scene.add(key);
+    } else if (lightPreset === "warm") {
+      scene.add(new THREE.AmbientLight(0xfff4e6, 0.5));
+      const key = new THREE.DirectionalLight(0xffe2c7, 0.85);
+      key.position.set(4, 5, 3);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+      fill.position.set(-4, 2, -3);
+      scene.add(fill);
+    } else {
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      const key = new THREE.DirectionalLight(0xffffff, 0.85);
+      key.position.set(3, 5, 4);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.35);
+      fill.position.set(-4, 2, -3);
+      scene.add(fill);
+    }
 
     const sheetsGroup = new THREE.Group();
     sliceSheetsRef.current = sheetsGroup;
@@ -1379,28 +1483,62 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     sliceLinesRef.current = sliceLines;
     scene.add(sliceLines);
 
+    const opacity = clamp01(materialOpacity);
+    const graphRes = Math.max(20, Math.round(graphResolution));
+    const implicitRes = Math.max(18, Math.round(implicitResolution));
+
     const makeMaterial2 = () =>
       new THREE.MeshStandardMaterial({
         color: 0x0b5ed7,
-        metalness: 0.1,
-        roughness: 0.3,
+        metalness: materialMetalness,
+        roughness: materialRoughness,
         side: THREE.DoubleSide,
         wireframe: !!wireframe,
         vertexColors: colorMode !== "solid",
+        transparent: opacity < 1,
+        opacity,
+      });
+
+    const makeMaterial = () =>
+      new THREE.MeshStandardMaterial({
+        color: colorMode === "solid" ? solidColorForPalette(colorPalette) : 0xffffff,
+        metalness: materialMetalness,
+        roughness: materialRoughness,
+        side: THREE.DoubleSide,
+        wireframe: !!wireframe,
+        vertexColors: colorMode !== "solid",
+        transparent: opacity < 1,
+        opacity,
       });
 
 
-const makeMaterial = () =>
-  new THREE.MeshStandardMaterial({
-    color: colorMode === "solid" ? solidColorForPalette(colorPalette) : 0xffffff,
-    metalness: 0.1,
-    roughness: 0.3,
-    side: THREE.DoubleSide,
-    wireframe: !!wireframe,
-    vertexColors: colorMode !== "solid",
-  });
 
+    const makeImplicitSurface = (f: (x: number, y: number, z: number) => number, size = 2.2) => {
+      const effect = new MarchingCubes(implicitRes, makeMaterial(), true, true);
+      const field = effect.field;
 
+      let idx = 0;
+      for (let k = 0; k < implicitRes; k++) {
+        const z = ((k / (implicitRes - 1)) * 2 - 1) * size;
+        for (let j = 0; j < implicitRes; j++) {
+          const y = ((j / (implicitRes - 1)) * 2 - 1) * size;
+          for (let i = 0; i < implicitRes; i++) {
+            const x = ((i / (implicitRes - 1)) * 2 - 1) * size;
+
+            let raw = f(x, y, z);
+            if (!Number.isFinite(raw)) raw = 1e3;
+            field[idx++] = raw;
+          }
+        }
+      }
+
+      effect.isolation = 0;
+      effect.enableUvs = false;
+      effect.enableColors = false;
+      effect.update();
+
+      return effect;
+    };
 
     const makeSurface = (id: SurfaceId): THREE.Object3D => {
       switch (id) {
@@ -1455,6 +1593,40 @@ const makeMaterial = () =>
           if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
           return new THREE.Mesh(geo, makeMaterial());
         }
+        case "hyperboloid_twoSheet": {
+          const a = 0.7;
+          const b = 0.7;
+          const c = 0.9;
+          return makeImplicitSurface(
+            (x, y, z) => (z * z) / (c * c) - (x * x) / (a * a) - (y * y) / (b * b) - 1,
+            2.3
+          );
+        }
+        case "ellipsoid": {
+          const a = 1.3;
+          const b = 0.9;
+          const c = 0.7;
+          return makeImplicitSurface((x, y, z) => (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c) - 1);
+        }
+        case "torus_implicit": {
+          const R = 1.05;
+          const r = 0.45;
+          return makeImplicitSurface((x, y, z) => {
+            const q = Math.sqrt(x * x + y * y) - R;
+            return q * q + z * z - r * r;
+          }, 2.1);
+        }
+        case "gyroid": {
+          const s = 1.4;
+          return makeImplicitSurface(
+            (x, y, z) => Math.sin(x * s) * Math.cos(y * s) + Math.sin(y * s) * Math.cos(z * s) + Math.sin(z * s) * Math.cos(x * s),
+            2.2
+          );
+        }
+        case "superquadric": {
+          const n = 4;
+          return makeImplicitSurface((x, y, z) => Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n) + Math.pow(Math.abs(z), n) - 1.2);
+        }
 
         // graphs z=f(x,y): ALWAYS return a Group and store spans
         case "graph_saddle": {
@@ -1462,7 +1634,7 @@ const makeMaterial = () =>
           const xSpan = 1.5,
             ySpan = 1.5;
 
-          const geo = makeGraphGeometry(f, xSpan, ySpan);
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
           else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
 
@@ -1478,7 +1650,7 @@ const makeMaterial = () =>
           const xSpan = 1.5,
             ySpan = 1.5;
 
-          const geo = makeGraphGeometry(f, xSpan, ySpan);
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
           else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
 
@@ -1494,7 +1666,7 @@ const makeMaterial = () =>
           const xSpan = 1.4,
             ySpan = 1.4;
 
-          const geo = makeGraphGeometry(f, xSpan, ySpan);
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
           else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
 
@@ -1510,7 +1682,93 @@ const makeMaterial = () =>
           const xSpan = Math.PI,
             ySpan = Math.PI;
 
-          const geo = makeGraphGeometry(f, xSpan, ySpan);
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_paraboloid": {
+          const f = (x: number, y: number) => 0.3 * (x * x + y * y);
+          const xSpan = 1.7,
+            ySpan = 1.7;
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_gaussian": {
+          const f = (x: number, y: number) => Math.exp(-0.7 * (x * x + y * y));
+          const xSpan = 2.0,
+            ySpan = 2.0;
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_ripple": {
+          const f = (x: number, y: number) => {
+            const r = Math.sqrt(x * x + y * y);
+            return r < 1e-4 ? 1 : Math.sin(3 * r) / (3 * r);
+          };
+          const xSpan = 2.4,
+            ySpan = 2.4;
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_mexican": {
+          const f = (x: number, y: number) => {
+            const r2 = x * x + y * y;
+            return (1 - r2) * Math.exp(-0.5 * r2);
+          };
+          const xSpan = 2.2,
+            ySpan = 2.2;
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_sinSum": {
+          const f = (x: number, y: number) => 0.45 * (Math.sin(x) + Math.cos(y));
+          const xSpan = Math.PI,
+            ySpan = Math.PI;
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
           else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
 
@@ -1526,7 +1784,7 @@ const makeMaterial = () =>
           const xSpan = 2,
             ySpan = 2;
 
-          const geo = makeGraphGeometry(f, xSpan, ySpan, 80, 80);
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
           else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
 
@@ -1538,37 +1796,10 @@ const makeMaterial = () =>
         }
 
         case "implicit_custom": {
-          const resolution = 32;
-          const size = 2;
-
-          const effect = new MarchingCubes(resolution, makeMaterial(), true, true);
-          const field = effect.field;
-
           const f =
             implicitFnRef.current ??
             ((x: number, y: number, z: number) => x * x + y * y + z * z - 1);
-
-          let idx = 0;
-          for (let k = 0; k < resolution; k++) {
-            const z = ((k / (resolution - 1)) * 2 - 1) * size;
-            for (let j = 0; j < resolution; j++) {
-              const y = ((j / (resolution - 1)) * 2 - 1) * size;
-              for (let i = 0; i < resolution; i++) {
-                const x = ((i / (resolution - 1)) * 2 - 1) * size;
-
-                let raw = f(x, y, z);
-                if (!Number.isFinite(raw)) raw = 1e3;
-                field[idx++] = raw;
-              }
-            }
-          }
-
-          effect.isolation = 0;
-          effect.enableUvs = false;
-          effect.enableColors = false;
-          effect.update();
-
-          return effect;
+          return makeImplicitSurface(f, 2.1);
         }
 
         default: {
@@ -1702,6 +1933,14 @@ const makeMaterial = () =>
     tangentArrow2.visible = false;
     scene.add(tangentArrow2);
 
+    probeWidgetsRef.current = {
+      marker: probeMarker,
+      normal: normalArrow,
+      plane: tangentPlane,
+      t1: tangentArrow1,
+      t2: tangentArrow2,
+    };
+
     const applyProbe = (point: THREE.Vector3, normalWorld: THREE.Vector3, xyDomain?: { x: number; y: number }) => {
       const n = normalWorld.clone().normalize();
 
@@ -1710,7 +1949,7 @@ const makeMaterial = () =>
 
       normalArrow.position.copy(point);
       normalArrow.setDirection(n);
-      normalArrow.visible = true;
+      normalArrow.visible = !!showProbeNormalRef.current;
 
       const offset = 0.014;
       const viewDir = camera.position.clone().sub(point).normalize();
@@ -1723,15 +1962,15 @@ const makeMaterial = () =>
 
       tangentPlane.position.copy(point.clone().add(viewDir.multiplyScalar(offset)));
       tangentPlane.setRotationFromMatrix(basisMat);
-      tangentPlane.visible = true;
+      tangentPlane.visible = !!showProbeTangentPlaneRef.current;
 
       tangentArrow1.position.copy(point);
       tangentArrow1.setDirection(e1);
-      tangentArrow1.visible = true;
+      tangentArrow1.visible = !!showProbeTangentsRef.current;
 
       tangentArrow2.position.copy(point);
       tangentArrow2.setDirection(e2);
-      tangentArrow2.visible = true;
+      tangentArrow2.visible = !!showProbeTangentsRef.current;
 
       const cb = onProbeRef.current;
       if (cb) {
@@ -1890,6 +2129,7 @@ const makeMaterial = () =>
     implicitExpr,
     wireframe,
     showPlanes,
+    lightPreset,
     colorMode,
     colorPalette,
     showBoundingBox,
@@ -1897,7 +2137,21 @@ const makeMaterial = () =>
     probeEnabled,
     graphProbeXY,
     graphProbeToken,
+    graphResolution,
+    implicitResolution,
   ]);
+
+  useEffect(() => {
+    const widgets = probeWidgetsRef.current;
+    if (!widgets) return;
+    const hasProbe = widgets.marker.visible;
+
+    widgets.normal.visible = hasProbe && showProbeNormal;
+    widgets.plane.visible = hasProbe && showProbeTangentPlane;
+    const showT = hasProbe && showProbeTangents;
+    widgets.t1.visible = showT;
+    widgets.t2.visible = showT;
+  }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 
