@@ -32,6 +32,8 @@ import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surf
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
 type SurfaceViewerKind = "implicit" | "graph" | "param";
+type GraphDomain = { xSpan: number; ySpan: number };
+type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 
 /* ---------------- constants ---------------- */
 
@@ -74,6 +76,8 @@ const SURFACES_EQ_META: {
     { id: "torus_implicit", label: "Torus (implicit)", formula: "(sqrt(x^2+y^2)-R)^2 + z^2 = r^2", note: "Implicit donut surface." },
     { id: "gyroid", label: "Gyroid", formula: "sin x cos y + sin y cos z + sin z cos x = 0", note: "Triply periodic minimal surface." },
     { id: "superquadric", label: "Superquadric", formula: "|x|^n + |y|^n + |z|^n = 1", note: "Boxy to round as n varies." },
+    { id: "roman", label: "Roman (Steiner) surface", formula: "x^2 y^2 + y^2 z^2 + z^2 x^2 - 2xyz = 0", note: "Classical self-intersecting quartic." },
+    { id: "scherk", label: "Scherk minimal surface", formula: "sin z - sinh x sinh y = 0", note: "Periodic minimal surface with saddle sheets." },
 
     // graph surfaces
     { id: "graph_saddle", label: "Saddle graph", formula: "z = x² − y²", note: "Classical saddle; negative curvature at the origin." },
@@ -85,6 +89,8 @@ const SURFACES_EQ_META: {
     { id: "graph_ripple", label: "Ripple", formula: "z = sin(3r)/(3r)", note: "Radial ripples, r = sqrt(x^2+y^2)." },
     { id: "graph_mexican", label: "Mexican hat", formula: "z = (1-r^2) exp(-r^2/2)", note: "Ring with a central peak." },
     { id: "graph_sinSum", label: "Sin+Cos", formula: "z = sin x + cos y", note: "Simple sinusoidal grid." },
+    { id: "graph_sinc", label: "Sinc", formula: "z = sin r / r", note: "Radial sinc with gentle decay." },
+    { id: "graph_sinc2", label: "Sinc (decay)", formula: "z = sin(2r) / (1 + r^2)", note: "Higher frequency with decay." },
     { id: "graph_custom", label: "Custom graph", formula: "z = f(x, y)", note: "User-defined graph expression in x,y." },
 
     // implicit custom
@@ -101,6 +107,8 @@ const GRAPH_SURFACE_IDS: SurfaceId[] = [
   "graph_ripple",
   "graph_mexican",
   "graph_sinSum",
+  "graph_sinc",
+  "graph_sinc2",
   "graph_custom",
 ];
 
@@ -142,6 +150,35 @@ function isGraphSurface(id: SurfaceId): boolean {
   return GRAPH_SURFACE_IDS.includes(id);
 }
 
+function getDefaultGraphSpan(id: SurfaceId): GraphDomain {
+  switch (id) {
+    case "graph_saddle":
+    case "graph_rotatedSaddle":
+      return { xSpan: 1.5, ySpan: 1.5 };
+    case "graph_monkey":
+      return { xSpan: 1.4, ySpan: 1.4 };
+    case "graph_wave":
+      return { xSpan: Math.PI, ySpan: Math.PI };
+    case "graph_paraboloid":
+      return { xSpan: 1.7, ySpan: 1.7 };
+    case "graph_gaussian":
+      return { xSpan: 2.0, ySpan: 2.0 };
+    case "graph_ripple":
+      return { xSpan: 2.4, ySpan: 2.4 };
+    case "graph_mexican":
+      return { xSpan: 2.2, ySpan: 2.2 };
+    case "graph_sinSum":
+      return { xSpan: Math.PI, ySpan: Math.PI };
+    case "graph_sinc":
+    case "graph_sinc2":
+      return { xSpan: 5, ySpan: 5 };
+    case "graph_custom":
+      return { xSpan: 2, ySpan: 2 };
+    default:
+      return { xSpan: 2, ySpan: 2 };
+  }
+}
+
 // parametric surfaces metadata (for ParamSurfaceViewer)
 const PARAM_SURFACES_META: {
   id: ParamSurfaceId;
@@ -168,6 +205,7 @@ const PARAM_SURFACES_META: {
       { id: "expCone", label: "Exp cone", formula: "σ(u,v) = (e^u cos v, e^u sin v, u)", note: "u>0; v is angle." },
 
   { id: "helicoidUV", label: "Helicoid (u,v)", formula: "σ(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
+  { id: "boy", label: "Boy's surface", formula: "σ(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
 
     { id: "custom", label: "Custom σ(u,v)", formula: "σ(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
   ];
@@ -180,6 +218,8 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
 
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
+    case "boy":
+      return { uMin: 0, uMax: Math.PI, vMin: 0, vMax: Math.PI };
 
     case "paraboloid":
       return { uMin: 0, uMax: 2, vMin: 0, vMax: 2 * Math.PI };
@@ -200,6 +240,91 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
 }
 
 /* ---------------- small helpers ---------------- */
+
+type GraphDomainPreset = {
+  id: string;
+  surfaceId: SurfaceId;
+  label: string;
+  xSpan: number;
+  ySpan: number;
+  createdAt: number;
+};
+
+type ParamDomainPreset = {
+  id: string;
+  surfaceId: ParamSurfaceId;
+  label: string;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+  createdAt: number;
+};
+
+function safeParseArray<T>(raw: string | null): T[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? (v as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function safeParseRecord<T>(raw: string | null): Record<string, T> {
+  if (!raw) return {};
+  try {
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    return v as Record<string, T>;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeGraphDomain(d: GraphDomain, fallback: GraphDomain): GraphDomain {
+  const x = Number.isFinite(d.xSpan) ? Math.max(0.2, d.xSpan) : fallback.xSpan;
+  const y = Number.isFinite(d.ySpan) ? Math.max(0.2, d.ySpan) : fallback.ySpan;
+  return { xSpan: x, ySpan: y };
+}
+
+function normalizeParamDomain(d: ParamDomain, fallback: ParamDomain): ParamDomain {
+  const uMin = Number.isFinite(d.uMin) ? d.uMin : fallback.uMin;
+  const uMax = Number.isFinite(d.uMax) ? d.uMax : fallback.uMax;
+  const vMin = Number.isFinite(d.vMin) ? d.vMin : fallback.vMin;
+  const vMax = Number.isFinite(d.vMax) ? d.vMax : fallback.vMax;
+
+  let u0 = uMin;
+  let u1 = uMax;
+  let v0 = vMin;
+  let v1 = vMax;
+  if (u0 === u1) u1 = u0 + 0.1;
+  if (v0 === v1) v1 = v0 + 0.1;
+  if (u0 > u1) [u0, u1] = [u1, u0];
+  if (v0 > v1) [v0, v1] = [v1, v0];
+  return { uMin: u0, uMax: u1, vMin: v0, vMax: v1 };
+}
+
+function saveArray(key: string, arr: unknown[]) {
+  try {
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch {
+    // ignore
+  }
+}
+
+function makeId() {
+  const c: any = globalThis.crypto;
+  return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
+}
+
+function autoLabelGraphDomain(xSpan: number, ySpan: number) {
+  return `x±${xSpan.toFixed(2)} y±${ySpan.toFixed(2)}`;
+}
+
+function autoLabelParamDomain(p: ParamDomain) {
+  return `u:${p.uMin.toFixed(2)}..${p.uMax.toFixed(2)} v:${p.vMin.toFixed(2)}..${p.vMax.toFixed(2)}`;
+}
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
@@ -296,6 +421,31 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // contours (graph mode)
   const [showContours, setShowContours] = useState(true);
   const [contourCount, setContourCount] = useState(12);
+  const [implicitOverlay, setImplicitOverlay] = useState<"none" | "normals" | "curvature">("none");
+
+  const [graphDomains, setGraphDomains] = useState<Record<string, GraphDomain>>(() => {
+    const raw = safeParseRecord<GraphDomain>(localStorage.getItem("mathapp.domainState.graph.v1"));
+    const out: Record<string, GraphDomain> = {};
+    for (const key of Object.keys(raw)) {
+      out[key] = normalizeGraphDomain(raw[key], getDefaultGraphSpan(key as SurfaceId));
+    }
+    return out;
+  });
+  const [paramDomains, setParamDomains] = useState<Record<string, ParamDomain>>(() => {
+    const raw = safeParseRecord<ParamDomain>(localStorage.getItem("mathapp.domainState.param.v1"));
+    const out: Record<string, ParamDomain> = {};
+    for (const key of Object.keys(raw)) {
+      out[key] = normalizeParamDomain(raw[key], getParamDomainPreviewBounds(key as ParamSurfaceId));
+    }
+    return out;
+  });
+
+  const [graphDomainPresets, setGraphDomainPresets] = useState<GraphDomainPreset[]>(() =>
+    safeParseArray<GraphDomainPreset>(localStorage.getItem("mathapp.domainPresets.graph.v1"))
+  );
+  const [paramDomainPresets, setParamDomainPresets] = useState<ParamDomainPreset[]>(() =>
+    safeParseArray<ParamDomainPreset>(localStorage.getItem("mathapp.domainPresets.param.v1"))
+  );
 
   // slicing (multi-plane)
   const [sliceEnabled, setSliceEnabled] = useState(false);
@@ -323,6 +473,59 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // active equation surface id (single truth)
   const activeEqSurfaceId = surfaceViewerKind === "graph" ? graphSurfaceId : implicitSurfaceId;
+  const activeGraphDomain = useMemo(
+    () =>
+      normalizeGraphDomain(
+        graphDomains[graphSurfaceId] ?? getDefaultGraphSpan(graphSurfaceId),
+        getDefaultGraphSpan(graphSurfaceId)
+      ),
+    [graphSurfaceId, graphDomains[graphSurfaceId]?.xSpan, graphDomains[graphSurfaceId]?.ySpan]
+  );
+  const activeParamDomain = useMemo(
+    () =>
+      normalizeParamDomain(
+        paramDomains[paramSurfaceId] ?? getParamDomainPreviewBounds(paramSurfaceId),
+        getParamDomainPreviewBounds(paramSurfaceId)
+      ),
+    [
+      paramSurfaceId,
+      paramDomains[paramSurfaceId]?.uMin,
+      paramDomains[paramSurfaceId]?.uMax,
+      paramDomains[paramSurfaceId]?.vMin,
+      paramDomains[paramSurfaceId]?.vMax,
+    ]
+  );
+
+  useEffect(() => {
+    if (!isGraphSurface(graphSurfaceId)) return;
+    setGraphDomains((prev) => {
+      if (prev[graphSurfaceId]) return prev;
+      return { ...prev, [graphSurfaceId]: getDefaultGraphSpan(graphSurfaceId) };
+    });
+  }, [graphSurfaceId]);
+
+  useEffect(() => {
+    setParamDomains((prev) => {
+      if (prev[paramSurfaceId]) return prev;
+      return { ...prev, [paramSurfaceId]: getParamDomainPreviewBounds(paramSurfaceId) };
+    });
+  }, [paramSurfaceId]);
+
+  useEffect(() => {
+    saveArray("mathapp.domainPresets.graph.v1", graphDomainPresets);
+  }, [graphDomainPresets]);
+
+  useEffect(() => {
+    saveArray("mathapp.domainPresets.param.v1", paramDomainPresets);
+  }, [paramDomainPresets]);
+
+  useEffect(() => {
+    saveArray("mathapp.domainState.graph.v1", graphDomains);
+  }, [graphDomains]);
+
+  useEffect(() => {
+    saveArray("mathapp.domainState.param.v1", paramDomains);
+  }, [paramDomains]);
 
   // build slicePlanes ONCE (App is the single source of truth)
   const slicePlanes = useMemo(
@@ -487,6 +690,92 @@ case "mobius":
     },
     [surfaceViewerKind, activeEqSurfaceId, graphExpr]
   );
+
+  const handleChangeGraphDomain = useCallback(
+    (d: GraphDomain) => {
+      setGraphDomains((prev) => ({
+        ...prev,
+        [graphSurfaceId]: normalizeGraphDomain(d, getDefaultGraphSpan(graphSurfaceId)),
+      }));
+    },
+    [graphSurfaceId]
+  );
+
+  const handleChangeParamDomain = useCallback(
+    (d: ParamDomain) => {
+      setParamDomains((prev) => ({
+        ...prev,
+        [paramSurfaceId]: normalizeParamDomain(d, getParamDomainPreviewBounds(paramSurfaceId)),
+      }));
+    },
+    [paramSurfaceId]
+  );
+
+  const saveGraphDomainPreset = useCallback(
+    (label: string) => {
+      const l = label.trim() || autoLabelGraphDomain(activeGraphDomain.xSpan, activeGraphDomain.ySpan);
+      const preset: GraphDomainPreset = {
+        id: makeId(),
+        surfaceId: graphSurfaceId,
+        label: l,
+        xSpan: activeGraphDomain.xSpan,
+        ySpan: activeGraphDomain.ySpan,
+        createdAt: Date.now(),
+      };
+      setGraphDomainPresets((prev) => [preset, ...prev]);
+    },
+    [activeGraphDomain.xSpan, activeGraphDomain.ySpan, graphSurfaceId]
+  );
+
+  const saveParamDomainPreset = useCallback(
+    (label: string) => {
+      const l = label.trim() || autoLabelParamDomain(activeParamDomain);
+      const preset: ParamDomainPreset = {
+        id: makeId(),
+        surfaceId: paramSurfaceId,
+        label: l,
+        uMin: activeParamDomain.uMin,
+        uMax: activeParamDomain.uMax,
+        vMin: activeParamDomain.vMin,
+        vMax: activeParamDomain.vMax,
+        createdAt: Date.now(),
+      };
+      setParamDomainPresets((prev) => [preset, ...prev]);
+    },
+    [activeParamDomain, paramSurfaceId]
+  );
+
+  const applyGraphDomainPreset = useCallback((id: string) => {
+    const preset = graphDomainPresets.find((p) => p.id === id);
+    if (!preset) return;
+    setGraphDomains((prev) => ({
+      ...prev,
+      [preset.surfaceId]: normalizeGraphDomain(
+        { xSpan: preset.xSpan, ySpan: preset.ySpan },
+        getDefaultGraphSpan(preset.surfaceId)
+      ),
+    }));
+  }, [graphDomainPresets]);
+
+  const applyParamDomainPreset = useCallback((id: string) => {
+    const preset = paramDomainPresets.find((p) => p.id === id);
+    if (!preset) return;
+    setParamDomains((prev) => ({
+      ...prev,
+      [preset.surfaceId]: normalizeParamDomain(
+        { uMin: preset.uMin, uMax: preset.uMax, vMin: preset.vMin, vMax: preset.vMax },
+        getParamDomainPreviewBounds(preset.surfaceId)
+      ),
+    }));
+  }, [paramDomainPresets]);
+
+  const removeGraphDomainPreset = useCallback((id: string) => {
+    setGraphDomainPresets((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const removeParamDomainPreset = useCallback((id: string) => {
+    setParamDomainPresets((prev) => prev.filter((p) => p.id !== id));
+  }, []);
 
   const handlePickParamSurface = (id: ParamSurfaceId) => {
     setSurfaceViewerKind("param");
@@ -898,6 +1187,8 @@ case "mobius":
                 onChangeColorMode={setColorMode}
                 colorPalette={colorPalette}
                 onChangeColorPalette={setColorPalette}
+                implicitOverlay={implicitOverlay}
+                onChangeImplicitOverlay={setImplicitOverlay}
                 probeEnabled={probeEnabled}
                 onToggleProbe={() => setProbeEnabled((p) => !p)}
                 showProbeNormal={showProbeNormal}
@@ -988,6 +1279,7 @@ case "mobius":
                     paramResolution={paramResolution}
                     colorMode={colorMode}
                     colorPalette={colorPalette}
+                    paramDomain={activeParamDomain}
                     probeEnabled={probeEnabled}
                     showProbeNormal={showProbeNormal}
                     showProbeTangentPlane={showProbeTangentPlane}
@@ -1027,6 +1319,8 @@ case "mobius":
                     implicitResolution={implicitResolution}
                     colorMode={colorMode}
                     colorPalette={colorPalette}
+                    implicitOverlay={implicitOverlay}
+                    graphDomain={activeGraphDomain}
                     showBoundingBox={showBoundingBox}
                     resetToken={cameraResetToken}
                     graphProbeXY={graphProbeXY}
@@ -1080,6 +1374,18 @@ case "mobius":
                   setGraphProbeXY(xy);
                   setGraphProbeToken((t) => t + 1);
                 }}
+                graphDomain={activeGraphDomain}
+                onChangeGraphDomain={handleChangeGraphDomain}
+                paramDomain={activeParamDomain}
+                onChangeParamDomain={handleChangeParamDomain}
+                graphDomainPresets={graphDomainPresets}
+                paramDomainPresets={paramDomainPresets}
+                onSaveGraphDomainPreset={saveGraphDomainPreset}
+                onSaveParamDomainPreset={saveParamDomainPreset}
+                onApplyGraphDomainPreset={applyGraphDomainPreset}
+                onApplyParamDomainPreset={applyParamDomainPreset}
+                onRemoveGraphDomainPreset={removeGraphDomainPreset}
+                onRemoveParamDomainPreset={removeParamDomainPreset}
               />
             </div>
           </div>
@@ -1423,6 +1729,8 @@ type SurfacesLeftPanelProps = {
   onChangeColorMode: (m: ColorMode) => void;
   colorPalette: ColorPalette;
   onChangeColorPalette: (p: ColorPalette) => void;
+  implicitOverlay: "none" | "normals" | "curvature";
+  onChangeImplicitOverlay: (m: "none" | "normals" | "curvature") => void;
 
   probeEnabled: boolean;
   onToggleProbe: () => void;
@@ -1532,6 +1840,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeColorMode,
   colorPalette,
   onChangeColorPalette,
+  implicitOverlay,
+  onChangeImplicitOverlay,
   probeEnabled,
   onToggleProbe,
   showProbeNormal,
@@ -1891,6 +2201,26 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </div>
         )}
       </div>
+
+      {viewerKind === "implicit" && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Implicit overlays</div>
+          <div style={pillRow}>
+            {(["none", "normals", "curvature"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onChangeImplicitOverlay(m)}
+                style={pill(implicitOverlay === m)}
+                aria-pressed={implicitOverlay === m}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          <div style={styles.hint}>Normals use f(x,y,z) gradients; curvature colors the implicit mesh.</div>
+        </div>
+      )}
 
       {/* palette */}
       <div style={{ marginBottom: 10 }}>
@@ -2456,6 +2786,20 @@ type SurfacesRightPanelProps = {
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
+
+  graphDomain: GraphDomain;
+  onChangeGraphDomain: (d: GraphDomain) => void;
+  paramDomain: ParamDomain;
+  onChangeParamDomain: (d: ParamDomain) => void;
+
+  graphDomainPresets: GraphDomainPreset[];
+  paramDomainPresets: ParamDomainPreset[];
+  onSaveGraphDomainPreset: (label: string) => void;
+  onSaveParamDomainPreset: (label: string) => void;
+  onApplyGraphDomainPreset: (id: string) => void;
+  onApplyParamDomainPreset: (id: string) => void;
+  onRemoveGraphDomainPreset: (id: string) => void;
+  onRemoveParamDomainPreset: (id: string) => void;
 };
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -2469,6 +2813,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   probeInfo,
   onPickDomainUV,
   onPickDomainXY,
+  graphDomain,
+  onChangeGraphDomain,
+  paramDomain,
+  onChangeParamDomain,
+  graphDomainPresets,
+  paramDomainPresets,
+  onSaveGraphDomainPreset,
+  onSaveParamDomainPreset,
+  onApplyGraphDomainPreset,
+  onApplyParamDomainPreset,
+  onRemoveGraphDomainPreset,
+  onRemoveParamDomainPreset,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
@@ -2478,7 +2834,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const isParamViewer = viewerKind === "param";
   const showDomainPicker = isGraphViewer || isParamViewer;
 
-  const uvBounds = getParamDomainPreviewBounds(paramId);
+  const [graphDomainLabel, setGraphDomainLabel] = useState("");
+  const [paramDomainLabel, setParamDomainLabel] = useState("");
+
+  const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
+  const safeParamDomain = normalizeParamDomain(paramDomain, getParamDomainPreviewBounds(paramId));
 
 
   return (
@@ -2507,10 +2867,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <ParamDomainPreview
               width={260}
               height={220}
-              uMin={uvBounds.uMin}
-              uMax={uvBounds.uMax}
-              vMin={uvBounds.vMin}
-              vMax={uvBounds.vMax}
+              uMin={safeParamDomain.uMin}
+              uMax={safeParamDomain.uMax}
+              vMin={safeParamDomain.vMin}
+              vMax={safeParamDomain.vMax}
               onPick={onPickDomainUV}
               picked={probeInfo?.uv ?? null}
             />
@@ -2523,7 +2883,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <XYDomainPreview
               width={260}
               height={220}
-              extent={2}
+              xSpan={safeGraphDomain.xSpan}
+              ySpan={safeGraphDomain.ySpan}
               onPick={onPickDomainXY}
               picked={probeInfo?.xy ?? null}
             />
@@ -2533,6 +2894,194 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </>
         )}
       </div>
+
+      {showDomainPicker && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Domain bounds</div>
+          {isGraphViewer && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label style={{ fontSize: 11 }}>
+                  x span
+                  <input
+                    type="number"
+                    min={0.2}
+                    step={0.1}
+                    value={safeGraphDomain.xSpan}
+                    onChange={(e) =>
+                      onChangeGraphDomain({
+                        ...safeGraphDomain,
+                        xSpan: Math.max(0.2, Number(e.target.value)),
+                      })
+                    }
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  y span
+                  <input
+                    type="number"
+                    min={0.2}
+                    step={0.1}
+                    value={safeGraphDomain.ySpan}
+                    onChange={(e) =>
+                      onChangeGraphDomain({
+                        ...safeGraphDomain,
+                        ySpan: Math.max(0.2, Number(e.target.value)),
+                      })
+                    }
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                    onClick={() => onChangeGraphDomain(getDefaultGraphSpan(surfaceId))}
+                    style={{ padding: "4px 8px" }}
+                  >
+                  Reset
+                </button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Saved domains</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="text"
+                    placeholder="Label (optional)"
+                    value={graphDomainLabel}
+                    onChange={(e) => setGraphDomainLabel(e.target.value)}
+                    style={{ flex: 1, padding: "4px 6px", fontSize: 12 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSaveGraphDomainPreset(graphDomainLabel);
+                      setGraphDomainLabel("");
+                    }}
+                    style={{ padding: "4px 8px" }}
+                  >
+                    Save
+                  </button>
+                </div>
+                {graphDomainPresets.filter((p) => p.surfaceId === surfaceId).length === 0 ? (
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>No saved domains yet.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                    {graphDomainPresets
+                      .filter((p) => p.surfaceId === surfaceId)
+                      .map((p) => (
+                        <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button type="button" onClick={() => onApplyGraphDomainPreset(p.id)} style={{ flex: 1, padding: "4px 8px" }}>
+                            {p.label}
+                          </button>
+                          <button type="button" onClick={() => onRemoveGraphDomainPreset(p.id)} style={{ padding: "4px 8px" }}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {isParamViewer && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label style={{ fontSize: 11 }}>
+                  u min
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={safeParamDomain.uMin}
+                    onChange={(e) => onChangeParamDomain({ ...safeParamDomain, uMin: Number(e.target.value) })}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  u max
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={safeParamDomain.uMax}
+                    onChange={(e) => onChangeParamDomain({ ...safeParamDomain, uMax: Number(e.target.value) })}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  v min
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={safeParamDomain.vMin}
+                    onChange={(e) => onChangeParamDomain({ ...safeParamDomain, vMin: Number(e.target.value) })}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  v max
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={safeParamDomain.vMax}
+                    onChange={(e) => onChangeParamDomain({ ...safeParamDomain, vMax: Number(e.target.value) })}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onChangeParamDomain(getParamDomainPreviewBounds(paramId))}
+                  style={{ padding: "4px 8px" }}
+                >
+                  Reset
+                </button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Saved domains</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="text"
+                    placeholder="Label (optional)"
+                    value={paramDomainLabel}
+                    onChange={(e) => setParamDomainLabel(e.target.value)}
+                    style={{ flex: 1, padding: "4px 6px", fontSize: 12 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSaveParamDomainPreset(paramDomainLabel);
+                      setParamDomainLabel("");
+                    }}
+                    style={{ padding: "4px 8px" }}
+                  >
+                    Save
+                  </button>
+                </div>
+                {paramDomainPresets.filter((p) => p.surfaceId === paramId).length === 0 ? (
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>No saved domains yet.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                    {paramDomainPresets
+                      .filter((p) => p.surfaceId === paramId)
+                      .map((p) => (
+                        <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button type="button" onClick={() => onApplyParamDomainPreset(p.id)} style={{ flex: 1, padding: "4px 8px" }}>
+                            {p.label}
+                          </button>
+                          <button type="button" onClick={() => onRemoveParamDomainPreset(p.id)} style={{ padding: "4px 8px" }}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Custom implicit editor (optional, but handy) */}
       {isImplicitCustom && (
@@ -2621,16 +3170,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 type XYDomainPreviewProps = {
   width: number;
   height: number;
-  extent: number; // shows x,y in [-extent, extent]
+  xSpan: number; // shows x in [-xSpan, xSpan]
+  ySpan: number; // shows y in [-ySpan, ySpan]
   onPick: (xy: { x: number; y: number }) => void;
   picked?: { x: number; y: number } | null;
 };
 
-const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, extent, onPick, picked: pickedProp }) => {
+const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan, ySpan, onPick, picked: pickedProp }) => {
   const [picked, setPicked] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (pickedProp) setPicked(pickedProp);
   }, [pickedProp?.x, pickedProp?.y]);
+
+  const safeXSpan = Number.isFinite(xSpan) && xSpan > 0 ? xSpan : 1;
+  const safeYSpan = Number.isFinite(ySpan) && ySpan > 0 ? ySpan : 1;
 
   const pad = 12;
   const w = width;
@@ -2640,14 +3193,14 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, extent
     const r = svg.getBoundingClientRect();
     const px = (clientX - r.left - pad) / (r.width - 2 * pad);
     const py = (clientY - r.top - pad) / (r.height - 2 * pad);
-    const x = (px * 2 - 1) * extent;
-    const y = (1 - py * 2) * extent;
+    const x = (px * 2 - 1) * safeXSpan;
+    const y = (1 - py * 2) * safeYSpan;
     return { x, y };
   };
 
   const toPx = (x: number, y: number) => {
-    const px = pad + ((x / extent + 1) * 0.5) * (w - 2 * pad);
-    const py = pad + ((1 - (y / extent + 1) * 0.5) * (h - 2 * pad));
+    const px = pad + ((x / safeXSpan + 1) * 0.5) * (w - 2 * pad);
+    const py = pad + ((1 - (y / safeYSpan + 1) * 0.5) * (h - 2 * pad));
     return { px, py };
   };
 
@@ -2709,7 +3262,7 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, extent
       </svg>
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ opacity: 0.75 }}>x,y ∈ [{-extent}, {extent}]</span>
+        <span style={{ opacity: 0.75 }}>x ? ±{xSpan.toFixed(2)}  y ? ±{ySpan.toFixed(2)}</span>
         <span style={{ fontFamily: "monospace" }}>
           {picked ? `(${fmt(picked.x)}, ${fmt(picked.y)})` : "(click)"}
         </span>

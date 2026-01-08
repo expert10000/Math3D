@@ -22,6 +22,7 @@ export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
 
 export type SlicePreset = "xy" | "yz" | "xz" | "custom";
 export type SliceNormal = { x: number; y: number; z: number };
+type GraphDomain = { xSpan: number; ySpan: number };
 
 export type SurfaceId =
   | "sphere"
@@ -31,6 +32,8 @@ export type SurfaceId =
   | "torus_implicit"
   | "gyroid"
   | "superquadric"
+  | "roman"
+  | "scherk"
   | "paraboloid"
   | "cone"
   | "cylinder"
@@ -44,6 +47,8 @@ export type SurfaceId =
   | "graph_ripple"
   | "graph_mexican"
   | "graph_sinSum"
+  | "graph_sinc"
+  | "graph_sinc2"
   | "graph_custom"
   // implicit f(x,y,z)=0
   | "implicit_custom";
@@ -227,6 +232,127 @@ function applyVertexColors(
     console.log("[applyVertexColors] done", { colorMode, palette, min, max, range, colorAttr: colorAttrStats(geometry) });
   }
 
+}
+
+function sampleImplicitDerivatives(
+  f: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+  h = 1e-2
+) {
+  const fx = (f(x + h, y, z) - f(x - h, y, z)) / (2 * h);
+  const fy = (f(x, y + h, z) - f(x, y - h, z)) / (2 * h);
+  const fz = (f(x, y, z + h) - f(x, y, z - h)) / (2 * h);
+
+  const fxx = (f(x + h, y, z) - 2 * f(x, y, z) + f(x - h, y, z)) / (h * h);
+  const fyy = (f(x, y + h, z) - 2 * f(x, y, z) + f(x, y - h, z)) / (h * h);
+  const fzz = (f(x, y, z + h) - 2 * f(x, y, z) + f(x, y, z - h)) / (h * h);
+
+  const fxy = (f(x + h, y + h, z) - f(x + h, y - h, z) - f(x - h, y + h, z) + f(x - h, y - h, z)) / (4 * h * h);
+  const fxz = (f(x + h, y, z + h) - f(x + h, y, z - h) - f(x - h, y, z + h) + f(x - h, y, z - h)) / (4 * h * h);
+  const fyz = (f(x, y + h, z + h) - f(x, y + h, z - h) - f(x, y - h, z + h) + f(x, y - h, z - h)) / (4 * h * h);
+
+  return { fx, fy, fz, fxx, fyy, fzz, fxy, fxz, fyz };
+}
+
+function applyImplicitCurvatureColors(
+  geometry: THREE.BufferGeometry,
+  f: (x: number, y: number, z: number) => number,
+  palette: ColorPalette
+) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+
+  const count = pos.count;
+  if (!count) return;
+
+  const values = new Float32Array(count);
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (let i = 0; i < count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const d = sampleImplicitDerivatives(f, x, y, z);
+    const gx = d.fx;
+    const gy = d.fy;
+    const gz = d.fz;
+    const g2 = gx * gx + gy * gy + gz * gz;
+    const gLen = Math.sqrt(g2);
+    let H = 0;
+    if (gLen > 1e-8 && Number.isFinite(gLen)) {
+      const num =
+        d.fxx * (gy * gy + gz * gz) +
+        d.fyy * (gx * gx + gz * gz) +
+        d.fzz * (gx * gx + gy * gy) -
+        2 * (gx * gy * d.fxy + gx * gz * d.fxz + gy * gz * d.fyz);
+      H = num / (2 * gLen * gLen * gLen);
+    }
+    const v = Math.log10(1 + Math.abs(H));
+    values[i] = v;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let t = (values[i] - min) / range;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    const { r, g, b } = scalarToColor01(t, palette);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+}
+
+function buildImplicitNormalLines(
+  geometry: THREE.BufferGeometry,
+  f: (x: number, y: number, z: number) => number,
+  scale = 0.2
+) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return null;
+
+  const count = pos.count;
+  if (!count) return null;
+
+  const stride = Math.max(1, Math.floor(count / 800));
+  const positions: number[] = [];
+
+  for (let i = 0; i < count; i += stride) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const d = sampleImplicitDerivatives(f, x, y, z);
+    const gx = d.fx;
+    const gy = d.fy;
+    const gz = d.fz;
+    const gLen = Math.sqrt(gx * gx + gy * gy + gz * gz);
+    if (!Number.isFinite(gLen) || gLen < 1e-8) continue;
+    const nx = gx / gLen;
+    const ny = gy / gLen;
+    const nz = gz / gLen;
+
+    positions.push(x, y, z, x + nx * scale, y + ny * scale, z + nz * scale);
+  }
+
+  if (positions.length === 0) return null;
+
+  const lineGeom = new THREE.BufferGeometry();
+  lineGeom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x1f3556, transparent: true, opacity: 0.85 });
+  const lines = new THREE.LineSegments(lineGeom, lineMat);
+  lines.frustumCulled = false;
+  return lines;
 }
 
 
@@ -575,6 +701,8 @@ type Props = {
 
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
+  implicitOverlay?: "none" | "normals" | "curvature";
+  graphDomain?: GraphDomain;
 
   showBoundingBox?: boolean;
   resetToken?: number;
@@ -631,6 +759,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
     colorMode = "solid",
     colorPalette = "blueRed",
+    implicitOverlay = "none",
+    graphDomain,
 
     showBoundingBox = false,
     resetToken,
@@ -806,6 +936,8 @@ useEffect(() => {
     id === "graph_ripple" ||
     id === "graph_mexican" ||
     id === "graph_sinSum" ||
+    id === "graph_sinc" ||
+    id === "graph_sinc2" ||
     id === "graph_custom";
 
   const [graphCompileError, setGraphCompileError] = useState<string | null>(null);
@@ -876,10 +1008,23 @@ useEffect(() => {
       return (1 - r2) * Math.exp(-0.5 * r2);
     };
     if (surfaceId === "graph_sinSum") return (x, y) => 0.45 * (Math.sin(x) + Math.cos(y));
+    if (surfaceId === "graph_sinc") return (x, y) => {
+      const r = Math.sqrt(x * x + y * y);
+      return r < 1e-4 ? 1 : Math.sin(r) / r;
+    };
+    if (surfaceId === "graph_sinc2") return (x, y) => {
+      const r = Math.sqrt(x * x + y * y);
+      return Math.sin(2 * r) / (1 + r * r);
+    };
 
     // graph_custom: compiled
     return graphFnRef.current ?? ((x, y) => x * x - y * y);
   };
+
+  const getGraphSpan = (xFallback: number, yFallback: number) => ({
+    xSpan: graphDomain?.xSpan ?? xFallback,
+    ySpan: graphDomain?.ySpan ?? yFallback,
+  });
 
   // update vertex colors / wireframe without rebuilding full scene
   useEffect(() => {
@@ -891,21 +1036,35 @@ useEffect(() => {
     root.traverse((o) => {
       const anyO = o as any;
       if (anyO?.isMarchingCubes) {
+        const implicitMeta = (anyO as any).userData?.__implicit as
+          | { f: (x: number, y: number, z: number) => number }
+          | undefined;
+        const useImplicitCurv = implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+
         const mats = Array.isArray(anyO.material) ? anyO.material : [anyO.material];
         for (const m of mats) {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
-          (m as any).vertexColors = false;
+          (m as any).vertexColors = useImplicitCurv;
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
           (m as any).transparent = clamp01(materialOpacity) < 1;
           (m as any).opacity = clamp01(materialOpacity);
-          if (colorMode === "solid") {
+          if (useImplicitCurv) {
+            (m as any).color?.set(0xffffff);
+          } else if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
           } else {
             (m as any).color?.set(0xffffff);
           }
           m.needsUpdate = true;
+        }
+        if (anyO.geometry) {
+          if (useImplicitCurv && implicitMeta?.f) {
+            applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
+          } else if (anyO.geometry.getAttribute("color")) {
+            anyO.geometry.deleteAttribute("color");
+          }
         }
         return;
       }
@@ -1387,7 +1546,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   geom.attributes.color && (geom.attributes.color.needsUpdate = true);
 
   console.log("[SurfaceViewer] recolor OK", { surfaceId, colorMode, colorPalette });
-}, [surfaceId, graphExpr, implicitExpr, colorMode, colorPalette]);
+}, [surfaceId, graphExpr, implicitExpr, colorMode, colorPalette, implicitOverlay]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -1536,6 +1695,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       effect.enableUvs = false;
       effect.enableColors = false;
       effect.update();
+      (effect as any).userData.__implicit = { f, size };
 
       return effect;
     };
@@ -1627,12 +1787,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const n = 4;
           return makeImplicitSurface((x, y, z) => Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n) + Math.pow(Math.abs(z), n) - 1.2);
         }
+        case "roman": {
+          return makeImplicitSurface(
+            (x, y, z) => x * x * y * y + y * y * z * z + z * z * x * x - 2 * x * y * z,
+            1.8
+          );
+        }
+        case "scherk": {
+          return makeImplicitSurface((x, y, z) => Math.sin(z) - Math.sinh(x) * Math.sinh(y), 1.6);
+        }
 
         // graphs z=f(x,y): ALWAYS return a Group and store spans
         case "graph_saddle": {
           const f = (x: number, y: number) => 0.4 * (x * x - y * y);
-          const xSpan = 1.5,
-            ySpan = 1.5;
+          const { xSpan, ySpan } = getGraphSpan(1.5, 1.5);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1647,8 +1815,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_rotatedSaddle": {
           const f = (x: number, y: number) => 0.8 * x * y;
-          const xSpan = 1.5,
-            ySpan = 1.5;
+          const { xSpan, ySpan } = getGraphSpan(1.5, 1.5);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1663,8 +1830,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_monkey": {
           const f = (x: number, y: number) => 0.2 * (x * x * x - 3 * x * y * y);
-          const xSpan = 1.4,
-            ySpan = 1.4;
+          const { xSpan, ySpan } = getGraphSpan(1.4, 1.4);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1679,8 +1845,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_wave": {
           const f = (x: number, y: number) => 0.6 * Math.sin(x * 1.3) * Math.cos(y * 1.3);
-          const xSpan = Math.PI,
-            ySpan = Math.PI;
+          const { xSpan, ySpan } = getGraphSpan(Math.PI, Math.PI);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1695,8 +1860,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_paraboloid": {
           const f = (x: number, y: number) => 0.3 * (x * x + y * y);
-          const xSpan = 1.7,
-            ySpan = 1.7;
+          const { xSpan, ySpan } = getGraphSpan(1.7, 1.7);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1711,8 +1875,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_gaussian": {
           const f = (x: number, y: number) => Math.exp(-0.7 * (x * x + y * y));
-          const xSpan = 2.0,
-            ySpan = 2.0;
+          const { xSpan, ySpan } = getGraphSpan(2.0, 2.0);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1730,8 +1893,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const r = Math.sqrt(x * x + y * y);
             return r < 1e-4 ? 1 : Math.sin(3 * r) / (3 * r);
           };
-          const xSpan = 2.4,
-            ySpan = 2.4;
+          const { xSpan, ySpan } = getGraphSpan(2.4, 2.4);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1749,8 +1911,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const r2 = x * x + y * y;
             return (1 - r2) * Math.exp(-0.5 * r2);
           };
-          const xSpan = 2.2,
-            ySpan = 2.2;
+          const { xSpan, ySpan } = getGraphSpan(2.2, 2.2);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1765,8 +1926,43 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_sinSum": {
           const f = (x: number, y: number) => 0.45 * (Math.sin(x) + Math.cos(y));
-          const xSpan = Math.PI,
-            ySpan = Math.PI;
+          const { xSpan, ySpan } = getGraphSpan(Math.PI, Math.PI);
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_sinc": {
+          const f = (x: number, y: number) => {
+            const r = Math.sqrt(x * x + y * y);
+            return r < 1e-4 ? 1 : Math.sin(r) / r;
+          };
+          const { xSpan, ySpan } = getGraphSpan(5, 5);
+
+          const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
+          if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
+          else if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+
+          const mesh = new THREE.Mesh(geo, makeMaterial());
+          const group = new THREE.Group();
+          (group as any).userData.__graph = { xSpan, ySpan };
+          group.add(mesh);
+          return group;
+        }
+
+        case "graph_sinc2": {
+          const f = (x: number, y: number) => {
+            const r = Math.sqrt(x * x + y * y);
+            return Math.sin(2 * r) / (1 + r * r);
+          };
+          const { xSpan, ySpan } = getGraphSpan(5, 5);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1781,8 +1977,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
         case "graph_custom": {
           const f = graphFnRef.current ?? ((x: number, y: number) => x * x - y * y);
-          const xSpan = 2,
-            ySpan = 2;
+          const { xSpan, ySpan } = getGraphSpan(2, 2);
 
           const geo = makeGraphGeometry(f, xSpan, ySpan, graphRes, graphRes);
           if (colorMode === "curvature") applyCurvatureHeatToGraph(geo, f, colorPalette);
@@ -1813,6 +2008,28 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const surfaceObj = makeSurface(surfaceId);
     scene.add(surfaceObj);
     surfaceObjRef.current = surfaceObj;
+
+    let implicitOverlayLines: THREE.LineSegments | null = null;
+    const findImplicitObj = (): THREE.Object3D | null => {
+      let found: THREE.Object3D | null = null;
+      surfaceObj.traverse((obj) => {
+        if ((obj as any)?.isMarchingCubes) found = obj;
+      });
+      return found;
+    };
+    const implicitObj = findImplicitObj();
+    const implicitMeta = (implicitObj as any)?.userData?.__implicit as
+      | { f: (x: number, y: number, z: number) => number }
+      | undefined;
+    if (implicitObj && implicitMeta?.f) {
+      if (implicitOverlay === "curvature" && (implicitObj as any).geometry) {
+        applyImplicitCurvatureColors((implicitObj as any).geometry, implicitMeta.f, colorPalette);
+      }
+      if (implicitOverlay === "normals" && (implicitObj as any).geometry) {
+        implicitOverlayLines = buildImplicitNormalLines((implicitObj as any).geometry, implicitMeta.f, 0.22);
+        if (implicitOverlayLines) scene.add(implicitOverlayLines);
+      }
+    }
 
     const box = new THREE.Box3().setFromObject(surfaceObj);
     const center = new THREE.Vector3();
@@ -2099,6 +2316,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         });
       }
 
+      if (implicitOverlayLines) {
+        implicitOverlayLines.geometry.dispose();
+        const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
+        if (matAny) {
+          if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
+          else matAny.dispose();
+        }
+      }
+
       sliceLinesRef.current = null;
       sliceMatRef.current = null;
       sliceSheetsRef.current = null;
@@ -2132,6 +2358,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     lightPreset,
     colorMode,
     colorPalette,
+    implicitOverlay,
     showBoundingBox,
     resetToken,
     probeEnabled,
@@ -2139,6 +2366,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphProbeToken,
     graphResolution,
     implicitResolution,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
   ]);
 
   useEffect(() => {

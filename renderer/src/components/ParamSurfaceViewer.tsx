@@ -20,6 +20,7 @@ type ParamPreset = {
 };
 
 const LS_PARAM_KEY = "mathapp.surfacePresets.param.v1";
+type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 
 function safeParseArray<T>(raw: string | null): T[] {
   if (!raw) return [];
@@ -71,6 +72,7 @@ export type ParamSurfaceId =
   // ✅ NEW (your Figure 8 pair)
   | "expCone" // σ(u,v)=(u cos v, u sin v, ln u), u>0
   | "helicoidUV" // τ(u,v)=(u cos v, u sin v, v)
+  | "boy"
   | "custom";
 
 type Props = {
@@ -87,6 +89,7 @@ type Props = {
   paramResolution?: number;
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
+  paramDomain?: ParamDomain;
   showBoundingBox?: boolean;
   resetToken?: number;
 
@@ -200,6 +203,8 @@ function getDomain(surfaceId: ParamSurfaceId) {
     // v is BOTH angle and height, so we DO NOT wrap it (no identification); just choose a few turns
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
+    case "boy":
+      return { uMin: 0, uMax: Math.PI, vMin: 0, vMax: Math.PI };
 
     case "custom":
     default:
@@ -750,6 +755,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   paramResolution = 64,
   colorMode = "solid",
   colorPalette = "blueRed",
+  paramDomain,
   showBoundingBox = false,
   resetToken,
   probeEnabled = false,
@@ -1295,7 +1301,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const slices = Math.max(16, Math.round(paramResolution));
     const stacks = Math.max(16, Math.round(paramResolution));
 
-    const { uMin, uMax, vMin, vMax } = getDomain(surfaceId);
+    const rawDomain = paramDomain ?? getDomain(surfaceId);
+    let uMin = Number.isFinite(rawDomain.uMin) ? rawDomain.uMin : -Math.PI;
+    let uMax = Number.isFinite(rawDomain.uMax) ? rawDomain.uMax : Math.PI;
+    let vMin = Number.isFinite(rawDomain.vMin) ? rawDomain.vMin : -2;
+    let vMax = Number.isFinite(rawDomain.vMax) ? rawDomain.vMax : 2;
+    if (uMin === uMax) uMax = uMin + 0.1;
+    if (vMin === vMax) vMax = vMin + 0.1;
+    if (uMin > uMax) [uMin, uMax] = [uMax, uMin];
+    if (vMin > vMax) [vMin, vMax] = [vMax, vMin];
 
     let paramFunc: (u: number, v: number, target: THREE.Vector3) => void;
 
@@ -1467,6 +1481,22 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             y = u * Math.sin(v);
             z = v;
             break;
+
+          case "boy": {
+            const sqrt2 = Math.SQRT2;
+            const cos2v = Math.cos(2 * v);
+            const sin2v = Math.sin(2 * v);
+            const cos2u = Math.cos(2 * u);
+            const sin2u = Math.sin(2 * u);
+            const sin3u = Math.sin(3 * u);
+            const cos3u = Math.cos(3 * u);
+            const denom = 2 - sqrt2 * sin3u * sin2v;
+            const d = Math.abs(denom) < 1e-3 ? (denom < 0 ? -1e-3 : 1e-3) : denom;
+            x = (sqrt2 * Math.cos(u) * cos2v + cos2u * sin2v) / d;
+            y = (sqrt2 * Math.sin(u) * cos2v - sin2u * sin2v) / d;
+            z = cos3u / d;
+            break;
+          }
         }
 
         target.set(x, y, z);
@@ -1752,6 +1782,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     showBoundingBox,
     resetToken,
     paramResolution,
+    paramDomain?.uMin,
+    paramDomain?.uMax,
+    paramDomain?.vMin,
+    paramDomain?.vMax,
   ]);
 
   useEffect(() => {
