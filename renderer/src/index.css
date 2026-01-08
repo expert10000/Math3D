@@ -1,0 +1,95 @@
+/* ---- Global typography / rendering ---- */
+:root {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* we run in a light UI only */
+  color: #213547;
+  background-color: #ffffff;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Layout: let React fill the whole Electron window ---- */
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* #root should NOT be limited to 1280px, no centering */
+#root {
+  max-width: none;
+  display: flex; /* App uses flex column and fills this */
+}
+
+/* ---- Basic elements ---- */
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: none;
+}
+
+a:hover {
+  color: #535bf2;
+}
+
+/* body is just a plain container, App handles layout */
+body {
+  margin: 0;
+  background-color: #ffffff;
+}
+
+/* keep this if you still want big h1 in generic pages;
+   App header has its own inline styles anyway */
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+/* default button style – your TabButton etc. also add inline styles */
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #f9f9f9;
+  cursor: pointer;
+  transition: border-color 0.25s, background-color 0.25s;
+}
+
+button:hover {
+  border-color: #646cff;
+}
+
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* ---- D3 plane styles ---- */
+.grid-line {
+  stroke: #ddd;
+  stroke-width: 1;
+}
+
+.axis-zero {
+  stroke: #444;
+  stroke-width: 1.5;
+}
+
+.badge {
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  fill: #666;
+}

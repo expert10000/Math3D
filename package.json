@@ -1,0 +1,45 @@
+{
+  "name": "math3d",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Interactive Möbius & Chebyshev viewer (Electron + React + D3)",
+  "author": "developer",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:renderer\" \"npm:dev:main\"",
+    "dev:renderer": "npm --prefix renderer run dev",
+    "dev:main": "electron .",
+    "predev:main": "npm run build:main",
+    "build:renderer": "npm --prefix renderer run build",
+  
+    "build:main": "tsc -p tsconfig.node.json",
+    "build:core": "npm run build:main && npm run build:renderer",
+    "build": "npm run build:core && electron .",
+    "dist": "npm run build:core && electron-builder -w"
+  },
+  "build": {
+    "appId": "com.example.math3d",
+    "productName": "Math3D",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "renderer/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "@types/d3": "^7.4.3",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "d3": "^7.9.0"
+  },
+  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
+}

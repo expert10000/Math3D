@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Electron + TypeScript + D3</title>
+    <style>
+      :root {
+        --pad: 12px;
+      }
+
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+      }
+
+      header {
+        padding: var(--pad) calc(var(--pad) * 1.5);
+        border-bottom: 1px solid #eee;
+      }
+
+      h1 {
+        margin: 0 0 8px 0;
+        font-size: 22px;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 8px;
+        align-items: end;
+      }
+
+      .controls label {
+        font-size: 12px;
+        color: #444;
+      }
+
+      .controls input,
+      .controls select,
+      .controls button {
+        width: 100%;
+        padding: 6px 8px;
+      }
+
+      .group {
+        grid-column: span 3;
+        display: grid;
+        gap: 4px;
+      }
+
+      .group.wide {
+        grid-column: span 6;
+      }
+
+      .wrap {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 12px;
+        padding: 12px;
+      }
+
+      .panel {
+        border-right: 1px solid #eee;
+        padding-right: 12px;
+      }
+
+      .panel h2 {
+        font-size: 14px;
+        margin: 8px 0;
+        color: #333;
+      }
+
+      .hint {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #vizZ,
+      #vizW {
+        background: #fafafa;
+        border: 1px solid #ddd;
+        width: 100%;
+        height: 320px;
+      }
+
+      .badge {
+        font: 12px/1.4 system-ui, sans-serif;
+        fill: #333;
+      }
+
+      .grid-line {
+        stroke: #e3e3e3;
+        stroke-width: 1;
+        opacity: 0.9;
+      }
+
+      .grid-axis {
+        stroke: #999;
+        stroke-width: 1.2;
+      }
+
+      .axis-zero {
+        stroke: #444;
+        stroke-width: 2;
+      }
+
+      .orig {
+        stroke: #7aa3c7;
+        fill: none;
+        stroke-width: 1;
+        opacity: 0.9;
+      }
+
+      .mapped {
+        stroke: steelblue;
+        fill: none;
+        stroke-width: 1.5;
+      }
+
+      .circle {
+        stroke: #8a2be2;
+        fill: none;
+        stroke-width: 1.5;
+      }
+
+      .axis path,
+      .axis line {
+        stroke: #999;
+      }
+
+      h3 {
+        font: 600 13px/1 system-ui, sans-serif;
+        color: #333;
+      }
+
+      .cursorZ {
+        fill: #d33;
+        stroke: #fff;
+        stroke-width: 1.2;
+      }
+
+      .cursorW {
+        fill: #1e88e5;
+        stroke: #fff;
+        stroke-width: 1.2;
+      }
+
+      .coord-badge {
+        font: 11px system-ui, sans-serif;
+        fill: #333;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 12px;
+      }
+      .tab {
+        padding: 6px 12px;
+        border: 1px solid #ccc;
+        background: #f7f7f7;
+        cursor: pointer;
+        border-radius: 6px;
+      }
+      .tab.active {
+        background: white;
+        border-color: #888;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) inset;
+      }
+
+      .panel[hidden] {
+        display: none !important;
+      }
+
+      #mode {
+        display: none;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- React will render everything inside this -->
+    <div id="root"></div>
+
+    <!-- D3 as global (like you had) -->
+    <script src="../node_modules/d3/dist/d3.min.js"></script>
+    <!-- Compiled React renderer entry (from renderer.tsx) -->
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
