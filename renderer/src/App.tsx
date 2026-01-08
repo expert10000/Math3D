@@ -34,6 +34,11 @@ type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
 type SurfaceViewerKind = "implicit" | "graph" | "param";
 type GraphDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
+type CameraSyncState = {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  up: { x: number; y: number; z: number };
+};
 
 /* ---------------- constants ---------------- */
 
@@ -375,6 +380,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // Parametric surface selector
   const [paramSurfaceId, setParamSurfaceId] = useState<ParamSurfaceId>("plane");
+  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareSurfaceId, setCompareSurfaceId] = useState<SurfaceId>("sphere");
+  const [compareParamId, setCompareParamId] = useState<ParamSurfaceId>("plane");
+  const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
@@ -510,6 +519,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return { ...prev, [paramSurfaceId]: getParamDomainPreviewBounds(paramSurfaceId) };
     });
   }, [paramSurfaceId]);
+
+  useEffect(() => {
+    if (!compareEnabled) return;
+    if (surfaceViewerKind === "graph" && !isGraphSurface(compareSurfaceId)) {
+      setCompareSurfaceId("graph_saddle");
+    }
+    if (surfaceViewerKind === "implicit" && isGraphSurface(compareSurfaceId)) {
+      setCompareSurfaceId("sphere");
+    }
+  }, [compareEnabled, surfaceViewerKind, compareSurfaceId]);
 
   useEffect(() => {
     saveArray("mathapp.domainPresets.graph.v1", graphDomainPresets);
@@ -1119,6 +1138,15 @@ case "mobius":
               onChangeSurface={handlePickEqSurface}
               paramId={paramSurfaceId}
               onChangeParamId={setParamSurfaceId}
+              compareEnabled={compareEnabled}
+              onToggleCompare={() => {
+                setCompareEnabled((v) => !v);
+                setCameraSync(null);
+              }}
+              compareSurfaceId={compareSurfaceId}
+              onChangeCompareSurface={setCompareSurfaceId}
+              compareParamId={compareParamId}
+              onChangeCompareParamId={setCompareParamId}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -1262,94 +1290,200 @@ case "mobius":
                   boxShadow: "0 0 0 1px #e0e0e0",
                   overflow: "hidden",
                   background: "#f8f9fb",
+                  padding: compareEnabled ? 10 : 0,
+                  boxSizing: "border-box",
                 }}
               >
-                {surfaceViewerKind === "param" ? (
-                  <ParamSurfaceViewer
-                    surfaceId={paramSurfaceId}
-                    customX={paramXExpr}
-                    customY={paramYExpr}
-                    customZ={paramZExpr}
-                    wireframe={showWireframe}
-                    showPlanes={showPlanes}
-                    lightPreset={lightPreset}
-                    materialRoughness={materialRoughness}
-                    materialMetalness={materialMetalness}
-                    materialOpacity={materialOpacity}
-                    paramResolution={paramResolution}
-                    colorMode={colorMode}
-                    colorPalette={colorPalette}
-                    paramDomain={activeParamDomain}
-                    probeEnabled={probeEnabled}
-                    showProbeNormal={showProbeNormal}
-                    showProbeTangentPlane={showProbeTangentPlane}
-                    showProbeTangents={showProbeTangents}
-                    showBoundingBox={showBoundingBox}
-                    resetToken={cameraResetToken}
-                    onProbe={handleProbe}
-                    paramProbeUV={paramProbeUV}
-                    paramProbeToken={paramProbeToken}
-                    sliceEnabled={sliceEnabled}
-                    slicePreset={slicePreset}
-                    sliceOffset={sliceOffset}
-                    sliceNormal={sliceNormal}
-                    sliceShowPlane={sliceShowPlane}
-                    sliceShowSheet={sliceShowSheet}
-                    sliceThickness={sliceThickness}
-                    slicePlanes={slicePlanes}
-                    sliceLineColorMode={sliceLineColorMode}
-                    sliceLinePalette={sliceLinePalette}
-                    sliceSheetOpacity={sliceSheetOpacity}
-                    onSetCustomX={setParamXExpr}
-                    onSetCustomY={setParamYExpr}
-                    onSetCustomZ={setParamZExpr}
-                  />
-                ) : (
-                  <SurfaceViewer
-                    surfaceId={activeEqSurfaceId}
-                    graphExpr={graphExpr}
-                    implicitExpr={implicitExpr}
-                    wireframe={showWireframe}
-                    showPlanes={showPlanes}
-                    lightPreset={lightPreset}
-                    materialRoughness={materialRoughness}
-                    materialMetalness={materialMetalness}
-                    materialOpacity={materialOpacity}
-                    graphResolution={graphResolution}
-                    implicitResolution={implicitResolution}
-                    colorMode={colorMode}
-                    colorPalette={colorPalette}
-                    implicitOverlay={implicitOverlay}
-                    graphDomain={activeGraphDomain}
-                    showBoundingBox={showBoundingBox}
-                    resetToken={cameraResetToken}
-                    graphProbeXY={graphProbeXY}
-                    graphProbeToken={graphProbeToken}
-                    probeEnabled={probeEnabled}
-                    showProbeNormal={showProbeNormal}
-                    showProbeTangentPlane={showProbeTangentPlane}
-                    showProbeTangents={showProbeTangents}
-                    onProbe={handleProbe}
-                    onSetGraphExpr={setGraphExpr}
-                    onSetImplicitExpr={setImplicitExpr}
-                    // contours (remove if SurfaceViewer doesn’t support yet)
-                    showContours={showContours}
-                    contourCount={contourCount}
-                    // slicing
-                    sliceEnabled={sliceEnabled}
-                    sliceShowPlane={sliceShowPlane}
-                    sliceShowSheet={sliceShowSheet}
-                    sliceThickness={sliceThickness}
-                    sliceSheetOpacity={sliceSheetOpacity}
-                    sliceLineColorMode={sliceLineColorMode}
-                    sliceLinePalette={sliceLinePalette}
-                    slicePlanes={slicePlanes}
-                    // legacy
-                    slicePreset={slicePreset}
-                    sliceOffset={sliceOffset}
-                    sliceNormal={sliceNormal}
-                  />
-                )}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: compareEnabled ? "1fr 1fr" : "1fr",
+                    gap: compareEnabled ? 10 : 0,
+                    height: "100%",
+                  }}
+                >
+                  <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                    {surfaceViewerKind === "param" ? (
+                      <ParamSurfaceViewer
+                        surfaceId={paramSurfaceId}
+                        customX={paramXExpr}
+                        customY={paramYExpr}
+                        customZ={paramZExpr}
+                        wireframe={showWireframe}
+                        showPlanes={showPlanes}
+                        lightPreset={lightPreset}
+                        materialRoughness={materialRoughness}
+                        materialMetalness={materialMetalness}
+                        materialOpacity={materialOpacity}
+                        paramResolution={paramResolution}
+                        colorMode={colorMode}
+                        colorPalette={colorPalette}
+                        paramDomain={activeParamDomain}
+                        probeEnabled={probeEnabled}
+                        showProbeNormal={showProbeNormal}
+                        showProbeTangentPlane={showProbeTangentPlane}
+                        showProbeTangents={showProbeTangents}
+                        showBoundingBox={showBoundingBox}
+                        resetToken={cameraResetToken}
+                        onProbe={handleProbe}
+                        paramProbeUV={paramProbeUV}
+                        paramProbeToken={paramProbeToken}
+                        sliceEnabled={sliceEnabled}
+                        slicePreset={slicePreset}
+                        sliceOffset={sliceOffset}
+                        sliceNormal={sliceNormal}
+                        sliceShowPlane={sliceShowPlane}
+                        sliceShowSheet={sliceShowSheet}
+                        sliceThickness={sliceThickness}
+                        slicePlanes={slicePlanes}
+                        sliceLineColorMode={sliceLineColorMode}
+                        sliceLinePalette={sliceLinePalette}
+                        sliceSheetOpacity={sliceSheetOpacity}
+                        onSetCustomX={setParamXExpr}
+                        onSetCustomY={setParamYExpr}
+                        onSetCustomZ={setParamZExpr}
+                        isCameraLeader={compareEnabled}
+                        onCameraSync={compareEnabled ? setCameraSync : undefined}
+                      />
+                    ) : (
+                      <SurfaceViewer
+                        surfaceId={activeEqSurfaceId}
+                        graphExpr={graphExpr}
+                        implicitExpr={implicitExpr}
+                        wireframe={showWireframe}
+                        showPlanes={showPlanes}
+                        lightPreset={lightPreset}
+                        materialRoughness={materialRoughness}
+                        materialMetalness={materialMetalness}
+                        materialOpacity={materialOpacity}
+                        graphResolution={graphResolution}
+                        implicitResolution={implicitResolution}
+                        colorMode={colorMode}
+                        colorPalette={colorPalette}
+                        implicitOverlay={implicitOverlay}
+                        graphDomain={activeGraphDomain}
+                        showBoundingBox={showBoundingBox}
+                        resetToken={cameraResetToken}
+                        graphProbeXY={graphProbeXY}
+                        graphProbeToken={graphProbeToken}
+                        probeEnabled={probeEnabled}
+                        showProbeNormal={showProbeNormal}
+                        showProbeTangentPlane={showProbeTangentPlane}
+                        showProbeTangents={showProbeTangents}
+                        onProbe={handleProbe}
+                        onSetGraphExpr={setGraphExpr}
+                        onSetImplicitExpr={setImplicitExpr}
+                        // contours (remove if SurfaceViewer doesn't support yet)
+                        showContours={showContours}
+                        contourCount={contourCount}
+                        // slicing
+                        sliceEnabled={sliceEnabled}
+                        sliceShowPlane={sliceShowPlane}
+                        sliceShowSheet={sliceShowSheet}
+                        sliceThickness={sliceThickness}
+                        sliceSheetOpacity={sliceSheetOpacity}
+                        sliceLineColorMode={sliceLineColorMode}
+                        sliceLinePalette={sliceLinePalette}
+                        slicePlanes={slicePlanes}
+                        // legacy
+                        slicePreset={slicePreset}
+                        sliceOffset={sliceOffset}
+                        sliceNormal={sliceNormal}
+                        isCameraLeader={compareEnabled}
+                        onCameraSync={compareEnabled ? setCameraSync : undefined}
+                      />
+                    )}
+                  </div>
+
+                  {compareEnabled && (
+                    <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                      {surfaceViewerKind === "param" ? (
+                        <ParamSurfaceViewer
+                          surfaceId={compareParamId}
+                          customX={paramXExpr}
+                          customY={paramYExpr}
+                          customZ={paramZExpr}
+                          wireframe={showWireframe}
+                          showPlanes={showPlanes}
+                          lightPreset={lightPreset}
+                          materialRoughness={materialRoughness}
+                          materialMetalness={materialMetalness}
+                          materialOpacity={materialOpacity}
+                          paramResolution={paramResolution}
+                          colorMode={colorMode}
+                          colorPalette={colorPalette}
+                          paramDomain={activeParamDomain}
+                          probeEnabled={false}
+                          showProbeNormal={false}
+                          showProbeTangentPlane={false}
+                          showProbeTangents={false}
+                          showBoundingBox={showBoundingBox}
+                          resetToken={cameraResetToken}
+                          sliceEnabled={sliceEnabled}
+                          slicePreset={slicePreset}
+                          sliceOffset={sliceOffset}
+                          sliceNormal={sliceNormal}
+                          sliceShowPlane={sliceShowPlane}
+                          sliceShowSheet={sliceShowSheet}
+                          sliceThickness={sliceThickness}
+                          slicePlanes={slicePlanes}
+                          sliceLineColorMode={sliceLineColorMode}
+                          sliceLinePalette={sliceLinePalette}
+                          sliceSheetOpacity={sliceSheetOpacity}
+                          onSetCustomX={setParamXExpr}
+                          onSetCustomY={setParamYExpr}
+                          onSetCustomZ={setParamZExpr}
+                          isCameraLeader={false}
+                          cameraSync={cameraSync}
+                        />
+                      ) : (
+                        <SurfaceViewer
+                          surfaceId={compareSurfaceId}
+                          graphExpr={graphExpr}
+                          implicitExpr={implicitExpr}
+                          wireframe={showWireframe}
+                          showPlanes={showPlanes}
+                          lightPreset={lightPreset}
+                          materialRoughness={materialRoughness}
+                          materialMetalness={materialMetalness}
+                          materialOpacity={materialOpacity}
+                          graphResolution={graphResolution}
+                          implicitResolution={implicitResolution}
+                          colorMode={colorMode}
+                          colorPalette={colorPalette}
+                          implicitOverlay={implicitOverlay}
+                          graphDomain={activeGraphDomain}
+                          showBoundingBox={showBoundingBox}
+                          resetToken={cameraResetToken}
+                          graphProbeXY={null}
+                          graphProbeToken={0}
+                          probeEnabled={false}
+                          showProbeNormal={false}
+                          showProbeTangentPlane={false}
+                          showProbeTangents={false}
+                          // contours (remove if SurfaceViewer doesn't support yet)
+                          showContours={showContours}
+                          contourCount={contourCount}
+                          // slicing
+                          sliceEnabled={sliceEnabled}
+                          sliceShowPlane={sliceShowPlane}
+                          sliceShowSheet={sliceShowSheet}
+                          sliceThickness={sliceThickness}
+                          sliceSheetOpacity={sliceSheetOpacity}
+                          sliceLineColorMode={sliceLineColorMode}
+                          sliceLinePalette={sliceLinePalette}
+                          slicePlanes={slicePlanes}
+                          // legacy
+                          slicePreset={slicePreset}
+                          sliceOffset={sliceOffset}
+                          sliceNormal={sliceNormal}
+                          isCameraLeader={false}
+                          cameraSync={cameraSync}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1557,6 +1691,12 @@ type SurfacesControlsProps = {
   onChangeSurface: (s: SurfaceId) => void;
   paramId: ParamSurfaceId;
   onChangeParamId: (p: ParamSurfaceId) => void;
+  compareEnabled: boolean;
+  onToggleCompare: () => void;
+  compareSurfaceId: SurfaceId;
+  onChangeCompareSurface: (s: SurfaceId) => void;
+  compareParamId: ParamSurfaceId;
+  onChangeCompareParamId: (p: ParamSurfaceId) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -1566,6 +1706,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeSurface,
   paramId,
   onChangeParamId,
+  compareEnabled,
+  onToggleCompare,
+  compareSurfaceId,
+  onChangeCompareSurface,
+  compareParamId,
+  onChangeCompareParamId,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -1626,6 +1772,27 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         {viewerKind === "graph" && <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />}
         {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
       </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <input type="checkbox" checked={compareEnabled} onChange={onToggleCompare} />
+          Compare
+        </label>
+      </div>
+
+      {compareEnabled && (
+        <div style={{ flex: 1 }}>
+          {viewerKind === "implicit" && (
+            <SurfacesButtons surfaceId={compareSurfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeCompareSurface} />
+          )}
+          {viewerKind === "graph" && (
+            <SurfacesButtons surfaceId={compareSurfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeCompareSurface} />
+          )}
+          {viewerKind === "param" && (
+            <ParamSurfacesButtons paramId={compareParamId} onChangeParamId={onChangeCompareParamId} />
+          )}
+        </div>
+      )}
     </div>
   );
 };

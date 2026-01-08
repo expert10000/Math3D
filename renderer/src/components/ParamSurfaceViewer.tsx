@@ -21,6 +21,11 @@ type ParamPreset = {
 
 const LS_PARAM_KEY = "mathapp.surfacePresets.param.v1";
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
+type CameraSyncState = {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  up: { x: number; y: number; z: number };
+};
 
 function safeParseArray<T>(raw: string | null): T[] {
   if (!raw) return [];
@@ -90,6 +95,9 @@ type Props = {
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
   paramDomain?: ParamDomain;
+  isCameraLeader?: boolean;
+  cameraSync?: CameraSyncState | null;
+  onCameraSync?: (state: CameraSyncState) => void;
   showBoundingBox?: boolean;
   resetToken?: number;
 
@@ -756,6 +764,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   colorMode = "solid",
   colorPalette = "blueRed",
   paramDomain,
+  isCameraLeader = false,
+  cameraSync = null,
+  onCameraSync,
   showBoundingBox = false,
   resetToken,
   probeEnabled = false,
@@ -807,6 +818,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
 
@@ -1166,6 +1178,43 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     cameraRef.current = camera;
     controlsRef.current = controls;
+
+    const emitCameraSync = () => {
+      if (!isCameraLeader || !onCameraSync) return;
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
+
+      const next: CameraSyncState = {
+        position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+        target: { x: ctrls.target.x, y: ctrls.target.y, z: ctrls.target.z },
+        up: { x: cam.up.x, y: cam.up.y, z: cam.up.z },
+      };
+
+      const prev = lastCameraSyncRef.current;
+      if (
+        prev &&
+        Math.abs(prev.position.x - next.position.x) < 1e-4 &&
+        Math.abs(prev.position.y - next.position.y) < 1e-4 &&
+        Math.abs(prev.position.z - next.position.z) < 1e-4 &&
+        Math.abs(prev.target.x - next.target.x) < 1e-4 &&
+        Math.abs(prev.target.y - next.target.y) < 1e-4 &&
+        Math.abs(prev.target.z - next.target.z) < 1e-4 &&
+        Math.abs(prev.up.x - next.up.x) < 1e-4 &&
+        Math.abs(prev.up.y - next.up.y) < 1e-4 &&
+        Math.abs(prev.up.z - next.up.z) < 1e-4
+      ) {
+        return;
+      }
+
+      lastCameraSyncRef.current = next;
+      onCameraSync(next);
+    };
+
+    if (isCameraLeader && onCameraSync) {
+      controls.addEventListener("change", emitCameraSync);
+      emitCameraSync();
+    }
 
     if (lightPreset === "contrast") {
       scene.add(new THREE.AmbientLight(0xffffff, 0.18));
@@ -1735,6 +1784,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       viewerRef.current = null;
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      if (isCameraLeader && onCameraSync) {
+        controls.removeEventListener("change", emitCameraSync);
+      }
       controls.dispose();
       geometry.dispose();
       material.dispose();
@@ -1786,6 +1838,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     paramDomain?.uMax,
     paramDomain?.vMin,
     paramDomain?.vMax,
+    isCameraLeader,
+    onCameraSync,
   ]);
 
   useEffect(() => {
@@ -1799,6 +1853,30 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    if (!cameraSync || isCameraLeader) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    cam.position.set(cameraSync.position.x, cameraSync.position.y, cameraSync.position.z);
+    cam.up.set(cameraSync.up.x, cameraSync.up.y, cameraSync.up.z);
+    ctrls.target.set(cameraSync.target.x, cameraSync.target.y, cameraSync.target.z);
+    cam.updateProjectionMatrix();
+    ctrls.update();
+  }, [
+    cameraSync?.position.x,
+    cameraSync?.position.y,
+    cameraSync?.position.z,
+    cameraSync?.target.x,
+    cameraSync?.target.y,
+    cameraSync?.target.z,
+    cameraSync?.up.x,
+    cameraSync?.up.y,
+    cameraSync?.up.z,
+    isCameraLeader,
+  ]);
 
   useEffect(() => {
     const obj = surfaceObjRef.current;

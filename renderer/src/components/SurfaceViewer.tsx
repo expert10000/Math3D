@@ -23,6 +23,11 @@ export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
 export type SlicePreset = "xy" | "yz" | "xz" | "custom";
 export type SliceNormal = { x: number; y: number; z: number };
 type GraphDomain = { xSpan: number; ySpan: number };
+type CameraSyncState = {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  up: { x: number; y: number; z: number };
+};
 
 export type SurfaceId =
   | "sphere"
@@ -703,6 +708,9 @@ type Props = {
   colorPalette?: ColorPalette;
   implicitOverlay?: "none" | "normals" | "curvature";
   graphDomain?: GraphDomain;
+  isCameraLeader?: boolean;
+  cameraSync?: CameraSyncState | null;
+  onCameraSync?: (state: CameraSyncState) => void;
 
   showBoundingBox?: boolean;
   resetToken?: number;
@@ -761,6 +769,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     colorPalette = "blueRed",
     implicitOverlay = "none",
     graphDomain,
+    isCameraLeader = false,
+    cameraSync = null,
+    onCameraSync,
 
     showBoundingBox = false,
     resetToken,
@@ -1025,6 +1036,8 @@ useEffect(() => {
     xSpan: graphDomain?.xSpan ?? xFallback,
     ySpan: graphDomain?.ySpan ?? yFallback,
   });
+
+  const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
 
   // update vertex colors / wireframe without rebuilding full scene
   useEffect(() => {
@@ -1584,6 +1597,43 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     cameraRef.current = camera;
     controlsRef.current = controls;
+
+    const emitCameraSync = () => {
+      if (!isCameraLeader || !onCameraSync) return;
+      const cam = cameraRef.current;
+      const ctrls = controlsRef.current;
+      if (!cam || !ctrls) return;
+
+      const next: CameraSyncState = {
+        position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+        target: { x: ctrls.target.x, y: ctrls.target.y, z: ctrls.target.z },
+        up: { x: cam.up.x, y: cam.up.y, z: cam.up.z },
+      };
+
+      const prev = lastCameraSyncRef.current;
+      if (
+        prev &&
+        Math.abs(prev.position.x - next.position.x) < 1e-4 &&
+        Math.abs(prev.position.y - next.position.y) < 1e-4 &&
+        Math.abs(prev.position.z - next.position.z) < 1e-4 &&
+        Math.abs(prev.target.x - next.target.x) < 1e-4 &&
+        Math.abs(prev.target.y - next.target.y) < 1e-4 &&
+        Math.abs(prev.target.z - next.target.z) < 1e-4 &&
+        Math.abs(prev.up.x - next.up.x) < 1e-4 &&
+        Math.abs(prev.up.y - next.up.y) < 1e-4 &&
+        Math.abs(prev.up.z - next.up.z) < 1e-4
+      ) {
+        return;
+      }
+
+      lastCameraSyncRef.current = next;
+      onCameraSync(next);
+    };
+
+    if (isCameraLeader && onCameraSync) {
+      controls.addEventListener("change", emitCameraSync);
+      emitCameraSync();
+    }
 
     if (lightPreset === "contrast") {
       scene.add(new THREE.AmbientLight(0xffffff, 0.18));
@@ -2290,6 +2340,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
 
+      if (isCameraLeader && onCameraSync) {
+        controls.removeEventListener("change", emitCameraSync);
+      }
       controls.dispose();
 
       labelSprites.forEach((s) => {
@@ -2368,6 +2421,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitResolution,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
+    isCameraLeader,
+    onCameraSync,
   ]);
 
   useEffect(() => {
@@ -2381,6 +2436,30 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    if (!cameraSync || isCameraLeader) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    cam.position.set(cameraSync.position.x, cameraSync.position.y, cameraSync.position.z);
+    cam.up.set(cameraSync.up.x, cameraSync.up.y, cameraSync.up.z);
+    ctrls.target.set(cameraSync.target.x, cameraSync.target.y, cameraSync.target.z);
+    cam.updateProjectionMatrix();
+    ctrls.update();
+  }, [
+    cameraSync?.position.x,
+    cameraSync?.position.y,
+    cameraSync?.position.z,
+    cameraSync?.target.x,
+    cameraSync?.target.y,
+    cameraSync?.target.z,
+    cameraSync?.up.x,
+    cameraSync?.up.y,
+    cameraSync?.up.z,
+    isCameraLeader,
+  ]);
 
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 
