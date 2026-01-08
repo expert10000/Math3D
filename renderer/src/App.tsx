@@ -106,6 +106,19 @@ const pill = (active: boolean): React.CSSProperties => ({
   fontSize: 12,
 });
 
+const PARAM_CURVATURE_COLOR_MODES: ColorMode[] = ["gaussian", "mean", "k1", "k2"];
+
+const COLOR_MODE_LABELS: Record<ColorMode, string> = {
+  solid: "Solid",
+  height: "Height",
+  radius: "Radius",
+  curvature: "Curvature",
+  gaussian: "K",
+  mean: "H",
+  k1: "k1",
+  k2: "k2",
+};
+
 
 
 
@@ -346,6 +359,12 @@ const mobiusEffectiveParams = useMemo(() => {
       { colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId }
     );
   }, [colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId]);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "param" && PARAM_CURVATURE_COLOR_MODES.includes(colorMode)) {
+      setColorMode("height");
+    }
+  }, [surfaceViewerKind, colorMode]);
 
   /* ---------- central drawing effect (2D modes) ---------- */
   useEffect(() => {
@@ -1137,6 +1156,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
+  const colorModes: ColorMode[] =
+    viewerKind === "param"
+      ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
+      : viewerKind === "graph"
+      ? ["solid", "height", "radius", "curvature"]
+      : ["solid", "height", "radius"];
 
   return (
     <section>
@@ -1197,7 +1222,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Coloring</div>
 
   <div style={pillRow}>
-    {(["solid", "height", "radius", "curvature"] as ColorMode[]).map((m) => (
+    {colorModes.map((m) => (
       <button
         key={m}
         type="button"
@@ -1205,7 +1230,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         style={pill(colorMode === m)}
         aria-pressed={colorMode === m}
       >
-        {m}
+        {COLOR_MODE_LABELS[m]}
       </button>
     ))}
   </div>

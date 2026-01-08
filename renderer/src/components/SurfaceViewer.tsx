@@ -9,7 +9,15 @@ import { buildGraphContours } from "../math/contours";
 import AxisGizmo from "./AxisGizmo";
 import { compileExpression } from "../math/expression";
 
-export type ColorMode = "solid" | "height" | "radius" | "curvature";
+export type ColorMode =
+  | "solid"
+  | "height"
+  | "radius"
+  | "curvature"
+  | "gaussian"
+  | "mean"
+  | "k1"
+  | "k2";
 export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
 
 export type SlicePreset = "xy" | "yz" | "xz" | "custom";

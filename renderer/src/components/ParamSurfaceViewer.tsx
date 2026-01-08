@@ -275,6 +275,168 @@ function applyVertexColors(
   geometry.attributes.color.needsUpdate = true;
 }
 
+const PARAM_CURVATURE_MODES = new Set<ColorMode>(["gaussian", "mean", "k1", "k2"]);
+
+type ParamCurvatureMode = "gaussian" | "mean" | "k1" | "k2";
+
+function isParamCurvatureMode(mode: ColorMode): mode is ParamCurvatureMode {
+  return PARAM_CURVATURE_MODES.has(mode);
+}
+
+function applyParamCurvatureColors(
+  geometry: THREE.BufferGeometry,
+  mode: ParamCurvatureMode,
+  palette: ColorPalette,
+  paramFunc: (u: number, v: number, target: THREE.Vector3) => void,
+  uMin: number,
+  uMax: number,
+  vMin: number,
+  vMax: number
+) {
+  const uvAttr = geometry.getAttribute("uv") as THREE.BufferAttribute | null;
+  if (!uvAttr) {
+    applyVertexColors(geometry, "radius", palette);
+    return;
+  }
+
+  const count = uvAttr.count;
+  if (!count) return;
+
+  const values = new Float32Array(count);
+  let min = Infinity;
+  let max = -Infinity;
+
+  const uRange = uMax - uMin;
+  const vRange = vMax - vMin;
+  const du = Math.max(1e-5, Math.abs(uRange) * 1e-3);
+  const dv = Math.max(1e-5, Math.abs(vRange) * 1e-3);
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const evalParam = (u: number, v: number, target: THREE.Vector3) => {
+    paramFunc(clamp(u, uMin, uMax), clamp(v, vMin, vMax), target);
+  };
+
+  const p = new THREE.Vector3();
+  const pu1 = new THREE.Vector3();
+  const pu2 = new THREE.Vector3();
+  const pv1 = new THREE.Vector3();
+  const pv2 = new THREE.Vector3();
+  const puv1 = new THREE.Vector3();
+  const puv2 = new THREE.Vector3();
+  const puv3 = new THREE.Vector3();
+  const puv4 = new THREE.Vector3();
+
+  const Xu = new THREE.Vector3();
+  const Xv = new THREE.Vector3();
+  const Xuu = new THREE.Vector3();
+  const Xvv = new THREE.Vector3();
+  const Xuv = new THREE.Vector3();
+  const n = new THREE.Vector3();
+
+  for (let i = 0; i < count; i++) {
+    const u = uMin + uvAttr.getX(i) * uRange;
+    const v = vMin + uvAttr.getY(i) * vRange;
+
+    evalParam(u, v, p);
+
+    evalParam(u + du, v, pu1);
+    evalParam(u - du, v, pu2);
+    Xu.copy(pu1).sub(pu2).multiplyScalar(0.5 / du);
+    Xuu.copy(pu1).add(pu2).addScaledVector(p, -2).multiplyScalar(1 / (du * du));
+
+    evalParam(u, v + dv, pv1);
+    evalParam(u, v - dv, pv2);
+    Xv.copy(pv1).sub(pv2).multiplyScalar(0.5 / dv);
+    Xvv.copy(pv1).add(pv2).addScaledVector(p, -2).multiplyScalar(1 / (dv * dv));
+
+    evalParam(u + du, v + dv, puv1);
+    evalParam(u + du, v - dv, puv2);
+    evalParam(u - du, v + dv, puv3);
+    evalParam(u - du, v - dv, puv4);
+    Xuv.copy(puv1).sub(puv2).sub(puv3).add(puv4).multiplyScalar(1 / (4 * du * dv));
+
+    n.copy(Xu).cross(Xv);
+    const nLen2 = n.lengthSq();
+    const E = Xu.dot(Xu);
+    const F = Xu.dot(Xv);
+    const G = Xv.dot(Xv);
+    const denom = E * G - F * F;
+
+    let val = 0;
+    if (nLen2 >= 1e-12 && Math.abs(denom) >= 1e-12) {
+      n.multiplyScalar(1 / Math.sqrt(nLen2));
+      const e = Xuu.dot(n);
+      const f = Xuv.dot(n);
+      const g = Xvv.dot(n);
+
+      const H = (e * G - 2 * f * F + g * E) / (2 * denom);
+      const K = (e * g - f * f) / denom;
+      const disc = Math.max(0, H * H - K);
+
+      if (mode === "gaussian") val = K;
+      else if (mode === "mean") val = H;
+      else if (mode === "k1") val = H + Math.sqrt(disc);
+      else val = H - Math.sqrt(disc);
+    }
+
+    if (!Number.isFinite(val)) val = 0;
+    values[i] = val;
+    if (val < min) min = val;
+    if (val > max) max = val;
+  }
+
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let t = (values[i] - min) / range;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    const { r, g, b } = scalarToColor01(t, palette);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.attributes.color.needsUpdate = true;
+}
+
+function applyParamColoring(
+  geometry: THREE.BufferGeometry,
+  colorMode: ColorMode,
+  palette: ColorPalette,
+  paramState?: {
+    paramFunc: (u: number, v: number, target: THREE.Vector3) => void;
+    uMin: number;
+    uMax: number;
+    vMin: number;
+    vMax: number;
+  }
+) {
+  if (colorMode === "solid") {
+    geometry.deleteAttribute("color");
+    return;
+  }
+
+  if (isParamCurvatureMode(colorMode) && paramState) {
+    applyParamCurvatureColors(
+      geometry,
+      colorMode,
+      palette,
+      paramState.paramFunc,
+      paramState.uMin,
+      paramState.uMax,
+      paramState.vMin,
+      paramState.vMax
+    );
+    return;
+  }
+
+  applyVertexColors(geometry, colorMode, palette);
+}
+
 function makeSlicePlane(preset: SlicePreset, offset: number, normalCustom: SliceNormal) {
   let n =
     preset === "xy"
@@ -1193,7 +1355,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const geometry = new ParametricGeometry(paramWrapped, slices, stacks);
     geometry.computeVertexNormals();
 
-    if (colorMode !== "solid") applyVertexColors(geometry, colorMode, colorPalette);
+    applyParamColoring(geometry, colorMode, colorPalette, { paramFunc, uMin, uMax, vMin, vMax });
 
     const material = new THREE.MeshStandardMaterial({
       color: colorMode === "solid" ? 0x3366cc : 0xffffff, // ✅ keep vertex colors “pure”
@@ -1456,6 +1618,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const obj = surfaceObjRef.current;
     if (!obj) return;
 
+    const state = viewerRef.current;
+    const paramState = state
+      ? {
+          paramFunc: state.paramFunc,
+          uMin: state.uMin,
+          uMax: state.uMax,
+          vMin: state.vMin,
+          vMax: state.vMax,
+        }
+      : undefined;
+
     const mesh = obj as THREE.Mesh;
     const geom = mesh.geometry as THREE.BufferGeometry;
     const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
@@ -1471,7 +1644,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         : "#6a5cff"
       );
     } else {
-      applyVertexColors(geom, colorMode, colorPalette);
+      applyParamColoring(geom, colorMode, colorPalette, paramState);
       mat.vertexColors = true;
       mat.color.set("#ffffff"); // don't tint vertex colors
     }
