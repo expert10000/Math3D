@@ -10,6 +10,7 @@ import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } f
 import { marchingSquares } from "../math/marchingSquares";
 
 import AxisGizmo from "./AxisGizmo";
+import { Slice2DPreview } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
 
 export type ColorMode =
@@ -709,16 +710,26 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [sceneEpoch, setSceneEpoch] = useState(0);
+  const sliceFrameRef = useRef<{
+    n: THREE.Vector3;
+    e1: THREE.Vector3;
+    e2: THREE.Vector3;
+    x0: THREE.Vector3;
+    size: number;
+  } | null>(null);
+  const lockSliceRestoreRef = useRef<{ rotate: boolean; pan: boolean; zoom: boolean } | null>(null);
 
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
-  const [lockToPlane, setLockToPlane] = useState(false);
+  const [lockToAxisPlane, setLockToAxisPlane] = useState(false);
+  const [lockToSlicePlane, setLockToSlicePlane] = useState(false);
   const [slicePlaneEnabled, setSlicePlaneEnabled] = useState(false);
   const [slicePlanePreset, setSlicePlanePreset] = useState<SlicePreset>("xy");
   const [slicePlaneTheta, setSlicePlaneTheta] = useState(0);
   const [slicePlanePhi, setSlicePlanePhi] = useState(0);
   const [slicePlaneOffset, setSlicePlaneOffset] = useState(0);
   const [slicePlaneSize, setSlicePlaneSize] = useState(3.5);
+  const [slicePolylines2D, setSlicePolylines2D] = useState<Array<Array<{ s: number; t: number }>>>([]);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -791,7 +802,7 @@ useEffect(() => {
 
   useEffect(() => {
     setViewMode("free");
-    setLockToPlane(false);
+    setLockToAxisPlane(false);
   }, [resetToken]);
 
   useEffect(() => {
@@ -799,12 +810,70 @@ useEffect(() => {
     const cam = cameraRef.current;
     if (!controls || !cam) return;
 
-    const shouldLock = lockToPlane && viewMode !== "free";
+    if (lockToSlicePlane) return;
+    const shouldLock = lockToAxisPlane && viewMode !== "free";
     controls.enableRotate = !shouldLock;
 
     if (viewMode === "free") return;
     applyCameraView(viewMode as GizmoView);
-  }, [viewMode, lockToPlane]);
+  }, [viewMode, lockToAxisPlane, lockToSlicePlane]);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    const cam = cameraRef.current;
+    if (!controls || !cam) return;
+
+    if (!lockToSlicePlane || !slicePlaneEnabled) {
+      if (lockSliceRestoreRef.current) {
+        controls.enableRotate = lockSliceRestoreRef.current.rotate;
+        controls.enablePan = lockSliceRestoreRef.current.pan;
+        controls.enableZoom = lockSliceRestoreRef.current.zoom;
+        lockSliceRestoreRef.current = null;
+        controls.update();
+      }
+      return;
+    }
+
+    if (!lockSliceRestoreRef.current) {
+      lockSliceRestoreRef.current = {
+        rotate: controls.enableRotate,
+        pan: controls.enablePan,
+        zoom: controls.enableZoom,
+      };
+    }
+
+    controls.enableRotate = false;
+    controls.enablePan = false;
+    controls.enableZoom = true;
+
+    const frame = sliceFrameRef.current ?? buildSliceFrame();
+    sliceFrameRef.current = {
+      n: frame.n.clone(),
+      e1: frame.e1.clone(),
+      e2: frame.e2.clone(),
+      x0: frame.x0.clone(),
+      size: frame.size,
+    };
+
+    const target = frame.x0;
+    const currentDist = cam.position.distanceTo(target);
+    const minDist = Math.max(frame.size * 1.6, radiusRef.current || 3);
+    const dist = Math.max(minDist, currentDist);
+
+    controls.target.copy(target);
+    cam.position.copy(target).add(frame.n.clone().multiplyScalar(dist));
+    cam.up.copy(frame.e2);
+    cam.lookAt(target);
+    cam.updateProjectionMatrix();
+    controls.update();
+  }, [
+    lockToSlicePlane,
+    slicePlaneEnabled,
+    slicePlaneTheta,
+    slicePlanePhi,
+    slicePlaneOffset,
+    slicePlaneSize,
+  ]);
 
   const isGraphId = (id: SurfaceId) =>
     id === "graph_saddle" ||
@@ -842,6 +911,14 @@ useEffect(() => {
     );
     if (n.lengthSq() < 1e-12) n.set(0, 0, 1);
     return n.normalize();
+  };
+
+  const buildSliceFrame = () => {
+    const n = sliceNormalFromAngles();
+    const { e1, e2 } = makePlaneBasis(n);
+    const size = Math.max(0.5, slicePlaneSize);
+    const x0 = n.clone().multiplyScalar(slicePlaneOffset);
+    return { n, e1, e2, x0, size };
   };
 
   const applySlicePreset = (preset: SlicePreset) => {
@@ -1079,17 +1156,30 @@ useEffect(() => {
 
     clearGroup(group);
 
-    if (!slicePlaneEnabled) return;
+    if (!slicePlaneEnabled) {
+      setSlicePolylines2D([]);
+      sliceFrameRef.current = null;
+      return;
+    }
 
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
-    if (!isGraphSurface && !isImplicitSurface) return;
+    if (!isGraphSurface && !isImplicitSurface) {
+      setSlicePolylines2D([]);
+      sliceFrameRef.current = null;
+      return;
+    }
 
-    const normal = sliceNormalFromAngles();
-    const offset = slicePlaneOffset;
-    const planeSize = Math.max(0.5, slicePlaneSize);
+    const frame = buildSliceFrame();
+    sliceFrameRef.current = {
+      n: frame.n.clone(),
+      e1: frame.e1.clone(),
+      e2: frame.e2.clone(),
+      x0: frame.x0.clone(),
+      size: frame.size,
+    };
 
-    const planeGeom = new THREE.PlaneGeometry(planeSize, planeSize, 1, 1);
+    const planeGeom = new THREE.PlaneGeometry(frame.size, frame.size, 1, 1);
     const planeMat = new THREE.MeshBasicMaterial({
       color: 0x9aa3ad,
       transparent: true,
@@ -1102,8 +1192,8 @@ useEffect(() => {
     (planeMat as any).polygonOffsetUnits = -1;
 
     const planeMesh = new THREE.Mesh(planeGeom, planeMat);
-    planeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
-    planeMesh.position.copy(normal.clone().multiplyScalar(offset));
+    planeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frame.n);
+    planeMesh.position.copy(frame.x0);
     planeMesh.renderOrder = 8;
     group.add(planeMesh);
 
@@ -1116,7 +1206,7 @@ useEffect(() => {
     });
 
     const lineOffset = Math.max(0.001, (radiusRef.current || 3) * 0.002);
-    const normalOffset = normal.clone().multiplyScalar(lineOffset);
+    const normalOffset = frame.n.clone().multiplyScalar(lineOffset);
 
     if (isGraphSurface) {
       const f = getGraphF();
@@ -1149,24 +1239,34 @@ useEffect(() => {
           const y = yMin + j * dy;
           const z = f(x, y);
           if (!Number.isFinite(z)) return NaN;
-          return normal.x * x + normal.y * z + normal.z * y - offset;
+          return frame.n.x * x + frame.n.y * z + frame.n.z * y - slicePlaneOffset;
         },
       });
+
+      const polylines2D: Array<Array<{ s: number; t: number }>> = [];
 
       for (const poly of polylines) {
         if (poly.length < 2) continue;
         const pts: THREE.Vector3[] = [];
+        const pts2D: Array<{ s: number; t: number }> = [];
         for (const pt of poly) {
           const z = f(pt.x, pt.y);
           if (!Number.isFinite(z)) continue;
-          pts.push(new THREE.Vector3(pt.x, z, pt.y).add(normalOffset));
+          const world = new THREE.Vector3(pt.x, z, pt.y);
+          const rel = world.clone().sub(frame.x0);
+          const s = rel.dot(frame.e1);
+          const t = rel.dot(frame.e2);
+          pts2D.push({ s, t });
+          pts.push(world.add(normalOffset));
         }
         if (pts.length < 2) continue;
+        if (pts2D.length >= 2) polylines2D.push(pts2D);
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
         const line = new THREE.Line(geom, lineMat);
         line.renderOrder = 12;
         group.add(line);
       }
+      setSlicePolylines2D(polylines2D);
     } else if (isImplicitSurface) {
       const root = surfaceObjRef.current as THREE.Object3D | null;
       let implicitF: ((x: number, y: number, z: number) => number) | null = null;
@@ -1184,13 +1284,14 @@ useEffect(() => {
 
       if (!implicitF) {
         lineMat.dispose();
+        setSlicePolylines2D([]);
         return;
       }
 
-      const { e1, e2 } = makePlaneBasis(normal);
-      const x0 = normal.clone().multiplyScalar(offset);
+      const { e1, e2 } = frame;
+      const x0 = frame.x0;
 
-      const sMax = planeSize * 0.5;
+      const sMax = frame.size * 0.5;
       const sMin = -sMax;
 
       const nx = 120;
@@ -1228,9 +1329,12 @@ useEffect(() => {
         },
       });
 
+      const polylines2D: Array<Array<{ s: number; t: number }>> = [];
+
       for (const poly of polylines) {
         if (poly.length < 2) continue;
         const pts: THREE.Vector3[] = [];
+        const pts2D: Array<{ s: number; t: number }> = [];
         for (const pt of poly) {
           const s = pt.x;
           const t = pt.y;
@@ -1238,14 +1342,17 @@ useEffect(() => {
           const y = x0y + e1y * s + e2y * t;
           const z = x0z + e1z * s + e2z * t;
           if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+          pts2D.push({ s, t });
           pts.push(new THREE.Vector3(x, y, z).add(normalOffset));
         }
         if (pts.length < 2) continue;
+        if (pts2D.length >= 2) polylines2D.push(pts2D);
         const geom = new THREE.BufferGeometry().setFromPoints(pts);
         const line = new THREE.Line(geom, lineMat);
         line.renderOrder = 12;
         group.add(line);
       }
+      setSlicePolylines2D(polylines2D);
     }
   }, [
     slicePlaneEnabled,
@@ -2552,6 +2659,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   const sliceSizeMax = Math.max(2, sliceOffsetRange * 2.5);
   const sliceThetaDeg = toDeg(slicePlaneTheta);
   const slicePhiDeg = toDeg(slicePlanePhi);
+  const slicePreviewSpan = Math.max(0.5, slicePlaneSize * 0.5);
   const presetButtonStyle = (active: boolean) => ({
     padding: "2px 8px",
     borderRadius: 6,
@@ -2600,6 +2708,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
           {slicePlaneEnabled && (
             <>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={lockToSlicePlane}
+                  onChange={(e) => setLockToSlicePlane(e.target.checked)}
+                />
+                <span>Lock view to plane</span>
+              </label>
+
               <div style={{ display: "flex", gap: 6 }}>
                 <button
                   type="button"
@@ -2681,6 +2798,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 value={slicePlaneSize}
                 onChange={(e) => setSlicePlaneSize(Number(e.target.value))}
               />
+
+              <Slice2DPreview
+                enabled={slicePlaneEnabled}
+                planeSize={slicePreviewSpan}
+                polylines={slicePolylines2D}
+              />
             </>
           )}
         </div>
@@ -2709,10 +2832,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         <label style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
           <input
             type="checkbox"
-            checked={lockToPlane && viewMode !== "free"}
-            onChange={(e) => setLockToPlane(e.target.checked)}
+            checked={lockToAxisPlane && viewMode !== "free"}
+            onChange={(e) => setLockToAxisPlane(e.target.checked)}
           />
-          <span>Lock view to plane</span>
+          <span>Lock view to axis</span>
         </label>
       </div>
 
