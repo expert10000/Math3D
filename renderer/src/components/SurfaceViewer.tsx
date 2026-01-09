@@ -730,6 +730,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const [slicePlaneOffset, setSlicePlaneOffset] = useState(0);
   const [slicePlaneSize, setSlicePlaneSize] = useState(3.5);
   const [slicePolylines2D, setSlicePolylines2D] = useState<Array<Array<{ s: number; t: number }>>>([]);
+  const [sliceSnapToCurve, setSliceSnapToCurve] = useState(true);
+  const [sliceHoverST, setSliceHoverST] = useState<{ s: number; t: number } | null>(null);
+  const [sliceHoverReadout, setSliceHoverReadout] = useState<{ s: number; t: number } | null>(null);
+  const sliceHoverReadoutTimerRef = useRef<number | null>(null);
+  const [sliceHoverSnap, setSliceHoverSnap] = useState<{ s: number; t: number } | null>(null);
+  const sliceHoverMarkerRef = useRef<THREE.Mesh | null>(null);
+  const sliceHoverSmoothRef = useRef<{ s: number; t: number } | null>(null);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -1404,6 +1411,115 @@ useEffect(() => {
     implicitExpr,
     sceneEpoch,
   ]);
+
+  useEffect(() => {
+    if (!slicePlaneEnabled) {
+      setSliceHoverST(null);
+      setSliceHoverSnap(null);
+      setSliceHoverReadout(null);
+      if (sliceHoverReadoutTimerRef.current !== null) {
+        window.clearTimeout(sliceHoverReadoutTimerRef.current);
+        sliceHoverReadoutTimerRef.current = null;
+      }
+    }
+  }, [slicePlaneEnabled]);
+
+  useEffect(() => {
+    if (sliceHoverReadoutTimerRef.current !== null) {
+      window.clearTimeout(sliceHoverReadoutTimerRef.current);
+      sliceHoverReadoutTimerRef.current = null;
+    }
+    if (!sliceHoverST) {
+      setSliceHoverReadout(null);
+      return;
+    }
+    sliceHoverReadoutTimerRef.current = window.setTimeout(() => {
+      setSliceHoverReadout(sliceHoverST);
+      sliceHoverReadoutTimerRef.current = null;
+    }, 120);
+  }, [sliceHoverST]);
+
+  useEffect(() => {
+    if (!sliceHoverST) {
+      setSliceHoverSnap(null);
+      sliceHoverSmoothRef.current = null;
+      return;
+    }
+    if (!sliceSnapToCurve || !slicePolylines2D.length) {
+      sliceHoverSmoothRef.current = sliceHoverST;
+      setSliceHoverSnap(sliceHoverST);
+      return;
+    }
+    let best = sliceHoverST;
+    let bestD2 = Infinity;
+    for (const line of slicePolylines2D) {
+      for (let i = 0; i + 1 < line.length; i++) {
+        const a = line[i];
+        const b = line[i + 1];
+        const vx = b.s - a.s;
+        const vy = b.t - a.t;
+        const wx = sliceHoverST.s - a.s;
+        const wy = sliceHoverST.t - a.t;
+        const vv = vx * vx + vy * vy;
+        const t = vv > 1e-12 ? Math.min(1, Math.max(0, (wx * vx + wy * vy) / vv)) : 0;
+        const ps = a.s + vx * t;
+        const pt = a.t + vy * t;
+        const dx = ps - sliceHoverST.s;
+        const dy = pt - sliceHoverST.t;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) {
+          bestD2 = d2;
+          best = { s: ps, t: pt };
+        }
+      }
+    }
+    const prev = sliceHoverSmoothRef.current ?? best;
+    const alpha = 0.35;
+    const smooth = {
+      s: prev.s + (best.s - prev.s) * alpha,
+      t: prev.t + (best.t - prev.t) * alpha,
+    };
+    sliceHoverSmoothRef.current = smooth;
+    setSliceHoverSnap(smooth);
+  }, [sliceHoverST, slicePolylines2D, sliceSnapToCurve]);
+
+  useEffect(() => {
+    const group = sliceGroupRef.current;
+    if (!group) return;
+
+    if (!slicePlaneEnabled || !sliceHoverSnap) {
+      if (sliceHoverMarkerRef.current) {
+        const marker = sliceHoverMarkerRef.current;
+        group.remove(marker);
+        marker.geometry.dispose();
+        const mat = marker.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
+        sliceHoverMarkerRef.current = null;
+      }
+      return;
+    }
+
+    const frame = sliceFrameRef.current;
+    if (!frame) return;
+
+    const point = frame.x0
+      .clone()
+      .add(frame.e1.clone().multiplyScalar(sliceHoverSnap.s))
+      .add(frame.e2.clone().multiplyScalar(sliceHoverSnap.t));
+    const offset = Math.max(0.001, (radiusRef.current || 3) * 0.002);
+    const radius = Math.max(0.01, frame.size * 0.012);
+
+    if (!sliceHoverMarkerRef.current) {
+      const geom = new THREE.SphereGeometry(radius, 14, 14);
+      const mat = new THREE.MeshBasicMaterial({ color: 0xe1563b });
+      const marker = new THREE.Mesh(geom, mat);
+      marker.renderOrder = 13;
+      sliceHoverMarkerRef.current = marker;
+      group.add(marker);
+    }
+
+    sliceHoverMarkerRef.current.position.copy(point).add(frame.n.clone().multiplyScalar(offset));
+  }, [slicePlaneEnabled, sliceHoverSnap]);
 
 function firstMeshIn(obj: THREE.Object3D): THREE.Mesh | null {
 
@@ -2696,6 +2812,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   const sliceThetaDeg = toDeg(slicePlaneTheta);
   const slicePhiDeg = toDeg(slicePlanePhi);
   const slicePreviewSpan = Math.max(0.5, slicePlaneSize * 0.5);
+  const sliceHoverInfo = (() => {
+    const st = sliceHoverReadout ?? sliceHoverSnap ?? sliceHoverST;
+    const frame = sliceFrameRef.current;
+    if (!slicePlaneEnabled || !st || !frame) return null;
+    const world = frame.x0
+      .clone()
+      .add(frame.e1.clone().multiplyScalar(st.s))
+      .add(frame.e2.clone().multiplyScalar(st.t));
+    return { st, world };
+  })();
   const presetButtonStyle = (active: boolean) => ({
     padding: "2px 8px",
     borderRadius: 6,
@@ -2840,9 +2966,62 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 enabled={slicePlaneEnabled}
                 planeSize={slicePreviewSpan}
                 polylines={slicePolylines2D}
+                onHover={setSliceHoverST}
+                onClickST={(pt) => {
+                  const frame = sliceFrameRef.current ?? buildSliceFrame();
+                  const xclick = frame.x0
+                    .clone()
+                    .add(frame.e1.clone().multiplyScalar(pt.s))
+                    .add(frame.e2.clone().multiplyScalar(pt.t));
+                  const newOffset = frame.n.dot(xclick);
+                  setSlicePlaneOffset(newOffset);
+                }}
               />
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                <input
+                  type="checkbox"
+                  checked={sliceSnapToCurve}
+                  onChange={(e) => setSliceSnapToCurve(e.target.checked)}
+                />
+                <span>Snap hover to curve</span>
+              </label>
+
             </>
           )}
+        </div>
+      )}
+
+      {sliceHoverInfo && slicePlaneEnabled && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            left: 12,
+            zIndex: 30,
+            width: "52ch",
+            height: 44,
+            padding: "8px 12px",
+            borderRadius: 12,
+            background: "rgba(255,255,255,0.96)",
+            border: "1px solid rgba(0,0,0,0.12)",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.14)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontFamily:
+              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
+            fontSize: 13,
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            color: "#2f3a45",
+          }}
+        >
+          {(() => {
+            const fmt = (v: number) => v.toFixed(2).padStart(6, " ");
+            return `Slice hover: s ${fmt(sliceHoverInfo.st.s)}, t ${fmt(sliceHoverInfo.st.t)} | X (${fmt(sliceHoverInfo.world.x)}, ${fmt(sliceHoverInfo.world.y)}, ${fmt(sliceHoverInfo.world.z)})`;
+          })()}
         </div>
       )}
 
