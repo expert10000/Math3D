@@ -6,7 +6,12 @@ import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeom
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
-import { computePrincipalCurvatureAtUV, type PrincipalCurvatureScalars } from "../math/principalCurvature";
+import {
+  computePrincipalCurvatureAtUV,
+  type PrincipalCurvatureResult,
+  type PrincipalCurvatureScalars,
+} from "../math/principalCurvature";
+import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 
 import type { ColorMode, ColorPalette, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
@@ -862,6 +867,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     t2: THREE.ArrowHelper;
   } | null>(null);
   const principalGroupRef = useRef<THREE.Group | null>(null);
+  const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
   const sliceSheetsRef = useRef<THREE.Group | null>(null);
@@ -970,6 +976,35 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     showProbeTangentPlaneRef.current = showProbeTangentPlane;
     showProbeTangentsRef.current = showProbeTangents;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    if (probeEnabled) return;
+    prevPrincipalRef.current = null;
+    setProbeUV(null);
+    if (principalGroupRef.current) clearGroup(principalGroupRef.current);
+    const widgets = probeWidgetsRef.current;
+    if (widgets) {
+      widgets.marker.visible = false;
+      widgets.normal.visible = false;
+      widgets.plane.visible = false;
+      widgets.t1.visible = false;
+      widgets.t2.visible = false;
+    }
+  }, [probeEnabled]);
+
+  useEffect(() => {
+    prevPrincipalRef.current = null;
+    if (principalGroupRef.current) clearGroup(principalGroupRef.current);
+  }, [
+    surfaceId,
+    customX,
+    customY,
+    customZ,
+    paramDomain?.uMin,
+    paramDomain?.uMax,
+    paramDomain?.vMin,
+    paramDomain?.vMax,
+  ]);
 
   useEffect(() => {
     probeEnabledRef.current = probeEnabled;
@@ -1908,6 +1943,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       return;
     }
 
+    if (!probeEnabled) {
+      onParamCurvature?.(null);
+      return;
+    }
+
     const { paramFunc, uMin, uMax, vMin, vMax } = st;
     const res = computePrincipalCurvatureAtUV({
       paramFunc,
@@ -1920,27 +1960,31 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     });
 
     if (!res) {
+      prevPrincipalRef.current = null;
       onParamCurvature?.(null);
       return;
     }
 
+    const stable = stabilizePrincipalResult(res, prevPrincipalRef.current);
+    prevPrincipalRef.current = stable;
+
     onParamCurvature?.({
-      k1: res.k1,
-      k2: res.k2,
-      H: res.H,
-      K: res.K,
-      isUmbilic: res.isUmbilic,
+      k1: stable.k1,
+      k2: stable.k2,
+      H: stable.H,
+      K: stable.K,
+      isUmbilic: stable.isUmbilic,
     });
 
-    if (res.isUmbilic) return;
+    if (stable.isUmbilic) return;
 
     const arrowLen = Math.max(0.25, Math.min(0.9, (radiusRef.current || 3) * 0.28));
     const planeSize = arrowLen * 2.2;
     const lineOffset = Math.max(0.002, (radiusRef.current || 3) * 0.0025);
 
     if (showPrincipalDirections) {
-      const a1 = new THREE.ArrowHelper(res.dir1, res.point, arrowLen, 0x1b9e77);
-      const a2 = new THREE.ArrowHelper(res.dir2, res.point, arrowLen, 0xd95f02);
+      const a1 = new THREE.ArrowHelper(stable.dir1, stable.point, arrowLen, 0x1b9e77);
+      const a2 = new THREE.ArrowHelper(stable.dir2, stable.point, arrowLen, 0xd95f02);
       a1.renderOrder = 998;
       a2.renderOrder = 998;
       group.add(a1, a2);
@@ -1964,13 +2008,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         depthWrite: false,
       });
 
-      const n1 = new THREE.Vector3().crossVectors(res.dir1, res.normal).normalize();
-      const n2 = new THREE.Vector3().crossVectors(res.dir2, res.normal).normalize();
+      const n1 = new THREE.Vector3().crossVectors(stable.dir1, stable.normal).normalize();
+      const n2 = new THREE.Vector3().crossVectors(stable.dir2, stable.normal).normalize();
 
       const p1 = new THREE.Mesh(planeGeom1, mat1);
       const p2 = new THREE.Mesh(planeGeom2, mat2);
-      p1.position.copy(res.point);
-      p2.position.copy(res.point);
+      p1.position.copy(stable.point);
+      p2.position.copy(stable.point);
       p1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
       p2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n2);
       p1.renderOrder = 997;
@@ -1983,46 +2027,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const uRange = uMax - uMin || 1;
       const vRange = vMax - vMin || 1;
       const step = 0.02 * Math.min(Math.abs(uRange), Math.abs(vRange));
-
-      const trace = (dirIndex: 1 | 2, sign: 1 | -1) => {
-        const pts: THREE.Vector3[] = [];
-        let uv = { u: probeUV.u, v: probeUV.v };
-        let prev: { du: number; dv: number } | null = null;
-
-        for (let i = 0; i < steps; i++) {
-          const cur = computePrincipalCurvatureAtUV({
-            paramFunc,
-            u: uv.u,
-            v: uv.v,
-            uMin,
-            uMax,
-            vMin,
-            vMax,
-          });
-          if (!cur || cur.isUmbilic) break;
-
-          const uvDir = dirIndex === 1 ? cur.uvDir1 : cur.uvDir2;
-          let du = uvDir.du;
-          let dv = uvDir.dv;
-          const len = Math.hypot(du, dv);
-          if (len < 1e-12) break;
-          du /= len;
-          dv /= len;
-          if (prev && du * prev.du + dv * prev.dv < 0) {
-            du = -du;
-            dv = -dv;
-          }
-          prev = { du, dv };
-
-          pts.push(cur.point.clone().add(cur.normal.clone().multiplyScalar(lineOffset)));
-
-          const nextU = uv.u + du * step * sign;
-          const nextV = uv.v + dv * step * sign;
-          if (nextU < uMin || nextU > uMax || nextV < vMin || nextV > vMax) break;
-          uv = { u: nextU, v: nextV };
-        }
-
-        return pts;
+      const frameAt = (uv: { u: number; v: number }) => {
+        if (uv.u < uMin || uv.u > uMax || uv.v < vMin || uv.v > vMax) return null;
+        return computePrincipalCurvatureAtUV({
+          paramFunc,
+          u: uv.u,
+          v: uv.v,
+          uMin,
+          uMax,
+          vMin,
+          vMax,
+        });
       };
 
       const lineMaterial1 = new THREE.LineBasicMaterial({
@@ -2036,11 +2051,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         depthWrite: false,
       });
 
-      const f1 = trace(1, 1);
-      const b1 = trace(1, -1);
-      if (b1.length) b1.reverse();
-      if (b1.length && f1.length) b1.pop();
-      const p1 = b1.concat(f1);
+      const startUV = { u: probeUV.u, v: probeUV.v };
+
+      const p1 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 1, {
+        steps,
+        step,
+        normalOffset: lineOffset,
+      });
       if (p1.length >= 2) {
         const geom = new THREE.BufferGeometry().setFromPoints(p1);
         const line = new THREE.Line(geom, lineMaterial1);
@@ -2050,11 +2067,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         lineMaterial1.dispose();
       }
 
-      const f2 = trace(2, 1);
-      const b2 = trace(2, -1);
-      if (b2.length) b2.reverse();
-      if (b2.length && f2.length) b2.pop();
-      const p2 = b2.concat(f2);
+      const p2 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 2, {
+        steps,
+        step,
+        normalOffset: lineOffset,
+      });
       if (p2.length >= 2) {
         const geom = new THREE.BufferGeometry().setFromPoints(p2);
         const line = new THREE.Line(geom, lineMaterial2);
@@ -2079,6 +2096,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     showPrincipalNormalPlanes,
     showPrincipalLines,
     onParamCurvature,
+    probeEnabled,
     sceneEpoch,
   ]);
 

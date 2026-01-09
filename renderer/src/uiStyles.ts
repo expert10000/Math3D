@@ -51,8 +51,9 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     margin: "0 0 6px 0",
     fontSize: 22,
     fontWeight: 600,
-    letterSpacing: "0.15px",
+    letterSpacing: "0.25px",
     fontFamily: "Georgia, \"Times New Roman\", serif",
+    textTransform: "uppercase",
   },
   tabs: {
     display: "flex",
@@ -113,8 +114,20 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     flex: 1,
     width: "100%",
   },
-  h2: { fontSize: 14, margin: "10px 0 6px", letterSpacing: "0.2px" },
-  h3: { fontSize: 13, margin: 0, color: "var(--text)" },
+  h2: {
+    fontSize: 14,
+    margin: "10px 0 6px",
+    letterSpacing: "0.25px",
+    fontWeight: 600,
+    textTransform: "uppercase",
+  },
+  h3: {
+    fontSize: 13,
+    margin: 0,
+    color: "var(--text)",
+    letterSpacing: "0.2px",
+    fontWeight: 600,
+  },
   grid4: {
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",

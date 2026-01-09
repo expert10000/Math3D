@@ -2,6 +2,11 @@
 import type { SurfaceId } from "../components/SurfaceViewer";
 
 export type CurvatureData = {
+  fx: number;
+  fy: number;
+  fxx: number;
+  fyy: number;
+  fxy: number;
   E: number;
   F: number;
   G: number;
@@ -21,24 +26,24 @@ function numericGraphInvariants(
   y: number,
   h = 1e-2
 ): CurvatureData | null {
-  const fxy = (xx: number, yy: number) => f(xx, yy);
+  const fVal = (xx: number, yy: number) => f(xx, yy);
 
   const fx =
-    (fxy(x + h, y) - fxy(x - h, y)) / (2 * h);
+    (fVal(x + h, y) - fVal(x - h, y)) / (2 * h);
   const fy =
-    (fxy(x, y + h) - fxy(x, y - h)) / (2 * h);
+    (fVal(x, y + h) - fVal(x, y - h)) / (2 * h);
 
   const fxx =
-    (fxy(x + h, y) - 2 * fxy(x, y) + fxy(x - h, y)) /
+    (fVal(x + h, y) - 2 * fVal(x, y) + fVal(x - h, y)) /
     (h * h);
   const fyy =
-    (fxy(x, y + h) - 2 * fxy(x, y) + fxy(x, y - h)) /
+    (fVal(x, y + h) - 2 * fVal(x, y) + fVal(x, y - h)) /
     (h * h);
-  const f_xy =
-    (fxy(x + h, y + h) -
-      fxy(x + h, y - h) -
-      fxy(x - h, y + h) +
-      fxy(x - h, y - h)) /
+  const fxy =
+    (fVal(x + h, y + h) -
+      fVal(x + h, y - h) -
+      fVal(x - h, y + h) +
+      fVal(x - h, y - h)) /
     (4 * h * h);
 
   const E = 1 + fx * fx;
@@ -49,12 +54,17 @@ function numericGraphInvariants(
   if (!isFinite(denom1) || denom1 === 0) return null;
 
   const e = fxx / denom1;
-  const fcoef = f_xy / denom1;
+  const fcoef = fxy / denom1;
   const g = fyy / denom1;
 
   const EGminusF2 = E * G - F * F;
   if (!isFinite(EGminusF2) || Math.abs(EGminusF2) < 1e-8) {
     return {
+      fx,
+      fy,
+      fxx,
+      fyy,
+      fxy,
       E,
       F,
       G,
@@ -82,7 +92,7 @@ function numericGraphInvariants(
     k2 = H - root;
   }
 
-  return { E, F, G, e, f: fcoef, g, K, H, k1, k2 };
+  return { fx, fy, fxx, fyy, fxy, E, F, G, e, f: fcoef, g, K, H, k1, k2 };
 }
 
 // small parser for z = f(x,y) (copy of what we use in SurfaceViewer)
@@ -157,6 +167,32 @@ function getGraphFunction(
     case "graph_wave":
       return (x, y) =>
         0.6 * Math.sin(1.3 * x) * Math.cos(1.3 * y);
+    case "graph_paraboloid":
+      return (x, y) => 0.3 * (x * x + y * y);
+    case "graph_gaussian":
+      return (x, y) => Math.exp(-0.7 * (x * x + y * y));
+    case "graph_ripple":
+      return (x, y) => {
+        const r = Math.sqrt(x * x + y * y);
+        return r < 1e-4 ? 1 : Math.sin(3 * r) / (3 * r);
+      };
+    case "graph_mexican":
+      return (x, y) => {
+        const r2 = x * x + y * y;
+        return (1 - r2) * Math.exp(-0.5 * r2);
+      };
+    case "graph_sinSum":
+      return (x, y) => 0.45 * (Math.sin(x) + Math.cos(y));
+    case "graph_sinc":
+      return (x, y) => {
+        const r = Math.sqrt(x * x + y * y);
+        return r < 1e-4 ? 1 : Math.sin(r) / r;
+      };
+    case "graph_sinc2":
+      return (x, y) => {
+        const r = Math.sqrt(x * x + y * y);
+        return Math.sin(2 * r) / (1 + r * r);
+      };
     case "graph_custom":
       return makeZFunction(
         graphExpr || "x*x - y*y"
