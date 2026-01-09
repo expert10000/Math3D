@@ -11,7 +11,6 @@
     "dev:main": "electron .",
     "predev:main": "npm run build:main",
     "build:renderer": "npm --prefix renderer run build",
-  
     "build:main": "tsc -p tsconfig.node.json",
     "build:core": "npm run build:main && npm run build:renderer",
     "build": "npm run build:core && electron .",
@@ -34,11 +33,14 @@
     }
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/d3": "^7.4.3",
+    "concurrently": "^9.2.1",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "better-sqlite3": "^12.5.0",
     "d3": "^7.9.0"
   },
   "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
