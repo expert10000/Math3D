@@ -890,6 +890,11 @@ useEffect(() => {
     id === "graph_custom";
 
   const isImplicitId = (id: SurfaceId) =>
+    id === "sphere" ||
+    id === "hyperboloid" ||
+    id === "paraboloid" ||
+    id === "cone" ||
+    id === "cylinder" ||
     id === "hyperboloid_twoSheet" ||
     id === "ellipsoid" ||
     id === "torus_implicit" ||
@@ -932,6 +937,32 @@ useEffect(() => {
     } else if (preset === "xz") {
       setSlicePlaneTheta(Math.PI / 2);
       setSlicePlanePhi(Math.PI / 2);
+    }
+  };
+
+  const getImplicitFallback = (id: SurfaceId) => {
+    switch (id) {
+      case "sphere":
+        return (x: number, y: number, z: number) => x * x + y * y + z * z - 1;
+      case "cylinder":
+        return (x: number, y: number, z: number) => x * x + z * z - 1;
+      case "cone": {
+        const r = 1.2;
+        const h = 2.4;
+        return (x: number, y: number, z: number) => {
+          const ry = (r / h) * (h * 0.5 - y);
+          return x * x + z * z - ry * ry;
+        };
+      }
+      case "paraboloid":
+        return (x: number, y: number, z: number) => y - (x * x + z * z);
+      case "hyperboloid": {
+        const a = 0.8;
+        const c = 0.6;
+        return (x: number, y: number, z: number) => (x * x) / (a * a) + (z * z) / (a * a) - (y * y) / (c * c) - 1;
+      }
+      default:
+        return null;
     }
   };
 
@@ -1283,9 +1314,14 @@ useEffect(() => {
       }
 
       if (!implicitF) {
-        lineMat.dispose();
-        setSlicePolylines2D([]);
-        return;
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) {
+          implicitF = fallback;
+        } else {
+          lineMat.dispose();
+          setSlicePolylines2D([]);
+          return;
+        }
       }
 
       const { e1, e2 } = frame;
@@ -2686,6 +2722,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             position: "absolute",
             top: 12,
             right: 12,
+            zIndex: 20,
             borderRadius: 8,
             background: "rgba(255,255,255,0.92)",
             boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
