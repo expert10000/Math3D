@@ -1392,6 +1392,9 @@ case "mobius":
                         showProbeNormal={showProbeNormal}
                         showProbeTangentPlane={showProbeTangentPlane}
                         showProbeTangents={showProbeTangents}
+                        showPrincipalDirections={showPrincipalDirections}
+                        showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                        showPrincipalLines={showPrincipalLines}
                         onProbe={handleProbe}
                         onSetGraphExpr={setGraphExpr}
                         onSetImplicitExpr={setImplicitExpr}
@@ -1486,6 +1489,9 @@ case "mobius":
                           showProbeNormal={false}
                           showProbeTangentPlane={false}
                           showProbeTangents={false}
+                          showPrincipalDirections={false}
+                          showPrincipalNormalPlanes={false}
+                          showPrincipalLines={false}
                           // contours (remove if SurfaceViewer doesn't support yet)
                           showContours={showContours}
                           contourCount={contourCount}
@@ -1813,7 +1819,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           {viewerKind === "graph" && (
             <SurfacesButtons surfaceId={compareSurfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeCompareSurface} />
           )}
-          {viewerKind === "param" && (
+          {(viewerKind === "param" || viewerKind === "graph") && (
             <ParamSurfacesButtons paramId={compareParamId} onChangeParamId={onChangeCompareParamId} />
           )}
         </div>
@@ -2181,7 +2187,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
             Show tangent directions
           </label>
-          {viewerKind === "param" && (
+          {(viewerKind === "param" || viewerKind === "graph") && (
             <div style={{ marginTop: 6 }}>
               <label style={{ display: "block", cursor: "pointer" }}>
                 <input
@@ -2850,6 +2856,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
             {probeCurv && isGraphAny ? (
               <>
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Principal curvatures</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
+                    k1 = {fmt(probeCurv.k1)}
+                    <br />
+                    k2 = {fmt(probeCurv.k2)}
+                    <br />
+                    H = {fmt(probeCurv.H)}
+                    <br />
+                    K = {fmt(probeCurv.K)}
+                  </div>
+                </div>
                 {(() => {
                   const xu = { x: 1, y: probeCurv.fx, z: 0 };
                   const xv = { x: 0, y: probeCurv.fy, z: 1 };

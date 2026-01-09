@@ -5,6 +5,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
 import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { buildGraphContours } from "../math/contours";
+import { computePrincipalCurvatureAtUV } from "../math/principalCurvature";
 
 import AxisGizmo from "./AxisGizmo";
 import { compileExpression } from "../math/expression";
@@ -28,6 +29,26 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+
+function disposeObject3D(obj: THREE.Object3D) {
+  const anyObj = obj as any;
+  if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
+    anyObj.geometry.dispose();
+  }
+  const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
+  if (mat) {
+    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+    else mat.dispose();
+  }
+}
+
+function clearGroup(group: THREE.Group) {
+  const children = [...group.children];
+  children.forEach((child) => {
+    child.traverse(disposeObject3D);
+    group.remove(child);
+  });
+}
 
 export type SurfaceId =
   | "sphere"
@@ -719,6 +740,9 @@ type Props = {
   showProbeNormal?: boolean;
   showProbeTangentPlane?: boolean;
   showProbeTangents?: boolean;
+  showPrincipalDirections?: boolean;
+  showPrincipalNormalPlanes?: boolean;
+  showPrincipalLines?: boolean;
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
   onProbe?: (info: ProbeInfo) => void;
@@ -780,6 +804,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showProbeNormal = true,
     showProbeTangentPlane = true,
     showProbeTangents = true,
+    showPrincipalDirections = false,
+    showPrincipalNormalPlanes = false,
+    showPrincipalLines = false,
     graphProbeXY = null,
     graphProbeToken,
     onProbe,
@@ -820,6 +847,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     t1: THREE.ArrowHelper;
     t2: THREE.ArrowHelper;
   } | null>(null);
+  const principalGroupRef = useRef<THREE.Group | null>(null);
+  const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
+  const [sceneEpoch, setSceneEpoch] = useState(0);
 
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
@@ -844,6 +874,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showProbeTangentPlaneRef.current = showProbeTangentPlane;
     showProbeTangentsRef.current = showProbeTangents;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    if (!probeEnabled) {
+      setProbeXY(null);
+    }
+  }, [probeEnabled]);
 
   const sliceParamsRef = useRef({
     enabled: sliceEnabled,
@@ -2208,6 +2244,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       t2: tangentArrow2,
     };
 
+    const principalGroup = new THREE.Group();
+    scene.add(principalGroup);
+    principalGroupRef.current = principalGroup;
+
     const applyProbe = (point: THREE.Vector3, normalWorld: THREE.Vector3, xyDomain?: { x: number; y: number }) => {
       const n = normalWorld.clone().normalize();
 
@@ -2238,6 +2278,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       tangentArrow2.position.copy(point);
       tangentArrow2.setDirection(e2);
       tangentArrow2.visible = !!showProbeTangentsRef.current;
+
+      setProbeXY(xyDomain ?? null);
 
       const cb = onProbeRef.current;
       if (cb) {
@@ -2287,6 +2329,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+
+    setSceneEpoch((v) => v + 1);
 
     // ---- programmatic probe for graphs (from XY mini-map) ----
     if (graphProbeXY && isGraphId(surfaceId)) {
@@ -2369,6 +2413,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         });
       }
 
+      if (principalGroupRef.current) {
+        clearGroup(principalGroupRef.current);
+        scene.remove(principalGroupRef.current);
+        principalGroupRef.current = null;
+      }
+
       if (implicitOverlayLines) {
         implicitOverlayLines.geometry.dispose();
         const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
@@ -2436,6 +2486,185 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    const group = principalGroupRef.current;
+    if (!group) return;
+
+    clearGroup(group);
+
+    if (!isGraphId(surfaceId)) return;
+    if (!probeXY) return;
+    if (!showPrincipalDirections && !showPrincipalNormalPlanes && !showPrincipalLines) return;
+
+    const f = getGraphF();
+    const root = surfaceObjRef.current as THREE.Object3D | null;
+    const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
+    const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+    const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
+
+    const uMin = -xSpan;
+    const uMax = xSpan;
+    const vMin = -ySpan;
+    const vMax = ySpan;
+
+    const paramFunc = (u: number, v: number, target: THREE.Vector3) => {
+      target.set(u, f(u, v), v);
+    };
+
+    const res = computePrincipalCurvatureAtUV({
+      paramFunc,
+      u: probeXY.x,
+      v: probeXY.y,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+    });
+
+    if (!res || res.isUmbilic) return;
+
+    const arrowLen = Math.max(0.25, Math.min(1.2, (radiusRef.current || 3) * 0.28));
+    const planeSize = arrowLen * 2.2;
+    const lineOffset = Math.max(0.002, (radiusRef.current || 3) * 0.0025);
+
+    if (showPrincipalDirections) {
+      const a1 = new THREE.ArrowHelper(res.dir1, res.point, arrowLen, 0x1b9e77);
+      const a2 = new THREE.ArrowHelper(res.dir2, res.point, arrowLen, 0xd95f02);
+      a1.renderOrder = 998;
+      a2.renderOrder = 998;
+      group.add(a1, a2);
+    }
+
+    if (showPrincipalNormalPlanes) {
+      const planeGeom1 = new THREE.PlaneGeometry(planeSize, planeSize);
+      const planeGeom2 = new THREE.PlaneGeometry(planeSize, planeSize);
+      const mat1 = new THREE.MeshBasicMaterial({
+        color: 0x3f8efc,
+        transparent: true,
+        opacity: 0.18,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const mat2 = new THREE.MeshBasicMaterial({
+        color: 0xf85f73,
+        transparent: true,
+        opacity: 0.18,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const n1 = new THREE.Vector3().crossVectors(res.dir1, res.normal).normalize();
+      const n2 = new THREE.Vector3().crossVectors(res.dir2, res.normal).normalize();
+
+      const p1 = new THREE.Mesh(planeGeom1, mat1);
+      const p2 = new THREE.Mesh(planeGeom2, mat2);
+      p1.position.copy(res.point);
+      p2.position.copy(res.point);
+      p1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+      p2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n2);
+      p1.renderOrder = 997;
+      p2.renderOrder = 997;
+      group.add(p1, p2);
+    }
+
+    if (showPrincipalLines) {
+      const steps = 320;
+      const range = Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin));
+      const step = 0.02 * range;
+
+      const trace = (dirIndex: 1 | 2, sign: 1 | -1) => {
+        const pts: THREE.Vector3[] = [];
+        let uv = { u: probeXY.x, v: probeXY.y };
+        let prev: { du: number; dv: number } | null = null;
+
+        for (let i = 0; i < steps; i++) {
+          const cur = computePrincipalCurvatureAtUV({
+            paramFunc,
+            u: uv.u,
+            v: uv.v,
+            uMin,
+            uMax,
+            vMin,
+            vMax,
+          });
+          if (!cur || cur.isUmbilic) break;
+
+          const uvDir = dirIndex === 1 ? cur.uvDir1 : cur.uvDir2;
+          let du = uvDir.du;
+          let dv = uvDir.dv;
+          const len = Math.hypot(du, dv);
+          if (len < 1e-12) break;
+          du /= len;
+          dv /= len;
+          if (prev && du * prev.du + dv * prev.dv < 0) {
+            du = -du;
+            dv = -dv;
+          }
+          prev = { du, dv };
+
+          pts.push(cur.point.clone().add(cur.normal.clone().multiplyScalar(lineOffset)));
+
+          const nextU = uv.u + du * step * sign;
+          const nextV = uv.v + dv * step * sign;
+          if (nextU < uMin || nextU > uMax || nextV < vMin || nextV > vMax) break;
+          uv = { u: nextU, v: nextV };
+        }
+
+        return pts;
+      };
+
+      const lineMaterial1 = new THREE.LineBasicMaterial({
+        color: 0x1b9e77,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const lineMaterial2 = new THREE.LineBasicMaterial({
+        color: 0xd95f02,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      const f1 = trace(1, 1);
+      const b1 = trace(1, -1);
+      if (b1.length) b1.reverse();
+      if (b1.length && f1.length) b1.pop();
+      const p1 = b1.concat(f1);
+      if (p1.length >= 2) {
+        const geom = new THREE.BufferGeometry().setFromPoints(p1);
+        const line = new THREE.Line(geom, lineMaterial1);
+        line.renderOrder = 996;
+        group.add(line);
+      } else {
+        lineMaterial1.dispose();
+      }
+
+      const f2 = trace(2, 1);
+      const b2 = trace(2, -1);
+      if (b2.length) b2.reverse();
+      if (b2.length && f2.length) b2.pop();
+      const p2 = b2.concat(f2);
+      if (p2.length >= 2) {
+        const geom = new THREE.BufferGeometry().setFromPoints(p2);
+        const line = new THREE.Line(geom, lineMaterial2);
+        line.renderOrder = 996;
+        group.add(line);
+      } else {
+        lineMaterial2.dispose();
+      }
+    }
+  }, [
+    probeXY?.x,
+    probeXY?.y,
+    surfaceId,
+    graphExpr,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    showPrincipalDirections,
+    showPrincipalNormalPlanes,
+    showPrincipalLines,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     if (!cameraSync || isCameraLeader) return;
