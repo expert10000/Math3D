@@ -27,6 +27,7 @@ import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
+import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 
 /* ---------------- App modes ---------------- */
 
@@ -414,8 +415,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showProbeNormal, setShowProbeNormal] = useState(true);
   const [showProbeTangentPlane, setShowProbeTangentPlane] = useState(true);
   const [showProbeTangents, setShowProbeTangents] = useState(true);
+  const [showPrincipalDirections, setShowPrincipalDirections] = useState(false);
+  const [showPrincipalNormalPlanes, setShowPrincipalNormalPlanes] = useState(false);
+  const [showPrincipalLines, setShowPrincipalLines] = useState(false);
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
+  const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
 
   // domain pick tokens (right panel)
   const [paramProbeUV, setParamProbeUV] = useState<{ u: number; v: number } | null>(null);
@@ -685,6 +690,7 @@ case "mobius":
     // changing surface/mode makes previous probe misleading
     setProbeInfo(null);
     setProbeCurv(null);
+    setParamProbeCurv(null);
     setGraphProbeXY(null);
     setParamProbeUV(null);
   }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind, colorMode]);
@@ -693,6 +699,7 @@ case "mobius":
     if (!probeEnabled) {
       setProbeInfo(null);
       setProbeCurv(null);
+      setParamProbeCurv(null);
     }
   }, [probeEnabled]);
 
@@ -709,6 +716,10 @@ case "mobius":
     },
     [surfaceViewerKind, activeEqSurfaceId, graphExpr]
   );
+
+  const handleParamCurvature = useCallback((data: PrincipalCurvatureScalars | null) => {
+    setParamProbeCurv(data);
+  }, []);
 
   const handleChangeGraphDomain = useCallback(
     (d: GraphDomain) => {
@@ -1225,11 +1236,18 @@ case "mobius":
                 onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
                 showProbeTangents={showProbeTangents}
                 onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                showPrincipalDirections={showPrincipalDirections}
+                onTogglePrincipalDirections={() => setShowPrincipalDirections((v) => !v)}
+                showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                onTogglePrincipalNormalPlanes={() => setShowPrincipalNormalPlanes((v) => !v)}
+                showPrincipalLines={showPrincipalLines}
+                onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 onResetCamera={() => setCameraResetToken((t) => t + 1)}
                 probeInfo={probeInfo}
                 probeCurv={probeCurv}
+                paramProbeCurv={paramProbeCurv}
                 onSnapSlicesToProbe={snapSlicesToProbe}
                 // contours
                 showContours={showContours}
@@ -1323,9 +1341,13 @@ case "mobius":
                         showProbeNormal={showProbeNormal}
                         showProbeTangentPlane={showProbeTangentPlane}
                         showProbeTangents={showProbeTangents}
+                        showPrincipalDirections={showPrincipalDirections}
+                        showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                        showPrincipalLines={showPrincipalLines}
                         showBoundingBox={showBoundingBox}
                         resetToken={cameraResetToken}
                         onProbe={handleProbe}
+                        onParamCurvature={handleParamCurvature}
                         paramProbeUV={paramProbeUV}
                         paramProbeToken={paramProbeToken}
                         sliceEnabled={sliceEnabled}
@@ -1417,6 +1439,9 @@ case "mobius":
                           showProbeNormal={false}
                           showProbeTangentPlane={false}
                           showProbeTangents={false}
+                          showPrincipalDirections={false}
+                          showPrincipalNormalPlanes={false}
+                          showPrincipalLines={false}
                           showBoundingBox={showBoundingBox}
                           resetToken={cameraResetToken}
                           sliceEnabled={sliceEnabled}
@@ -1907,12 +1932,19 @@ type SurfacesLeftPanelProps = {
   onToggleProbeTangentPlane: () => void;
   showProbeTangents: boolean;
   onToggleProbeTangents: () => void;
+  showPrincipalDirections: boolean;
+  onTogglePrincipalDirections: () => void;
+  showPrincipalNormalPlanes: boolean;
+  onTogglePrincipalNormalPlanes: () => void;
+  showPrincipalLines: boolean;
+  onTogglePrincipalLines: () => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   onResetCamera: () => void;
 
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
+  paramProbeCurv: PrincipalCurvatureScalars | null;
   onSnapSlicesToProbe: () => void;
 
   // contours (graph surfaces)
@@ -2017,11 +2049,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleProbeTangentPlane,
   showProbeTangents,
   onToggleProbeTangents,
+  showPrincipalDirections,
+  onTogglePrincipalDirections,
+  showPrincipalNormalPlanes,
+  onTogglePrincipalNormalPlanes,
+  showPrincipalLines,
+  onTogglePrincipalLines,
   showBoundingBox,
   onToggleBoundingBox,
   onResetCamera,
   probeInfo,
   probeCurv,
+  paramProbeCurv,
   onSnapSlicesToProbe,
   showContours,
   onToggleContours,
@@ -2142,6 +2181,37 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
             Show tangent directions
           </label>
+          {viewerKind === "param" && (
+            <div style={{ marginTop: 6 }}>
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalDirections}
+                  onChange={onTogglePrincipalDirections}
+                  style={{ marginRight: 6 }}
+                />
+                Show principal directions
+              </label>
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalNormalPlanes}
+                  onChange={onTogglePrincipalNormalPlanes}
+                  style={{ marginRight: 6 }}
+                />
+                Show principal normal planes
+              </label>
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalLines}
+                  onChange={onTogglePrincipalLines}
+                  style={{ marginRight: 6 }}
+                />
+                Trace principal curvature lines
+              </label>
+            </div>
+          )}
         </div>
 
         <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
@@ -2853,9 +2923,29 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   </pre>
                 </div>
               </>
+            ) : viewerKind === "param" && paramProbeCurv ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Principal curvatures</div>
+                <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
+                  k1 = {fmt(paramProbeCurv.k1)}
+                  <br />
+                  k2 = {fmt(paramProbeCurv.k2)}
+                  <br />
+                  H = {fmt(paramProbeCurv.H)}
+                  <br />
+                  K = {fmt(paramProbeCurv.K)}
+                </div>
+                {paramProbeCurv.isUmbilic && (
+                  <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                    Umbilic point: principal directions are unstable.
+                  </div>
+                )}
+              </div>
             ) : (
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
-                Curvature details currently compute only for graph surfaces.
+                {viewerKind === "param"
+                  ? "Principal curvature data unavailable for this probe."
+                  : "Curvature details currently compute only for graph surfaces."}
               </div>
             )}
           </>
