@@ -7,6 +7,7 @@ import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { buildGraphContours } from "../math/contours";
 import { computePrincipalCurvatureAtUV, type PrincipalCurvatureResult } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
+import { marchingSquares } from "../math/marchingSquares";
 
 import AxisGizmo from "./AxisGizmo";
 import { compileExpression } from "../math/expression";
@@ -838,6 +839,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
   const sliceSheetsRef = useRef<THREE.Group | null>(null);
+  const sliceGroupRef = useRef<THREE.Group | null>(null);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const sliceDirtyRef = useRef(true);
@@ -856,6 +858,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
   const [lockToPlane, setLockToPlane] = useState(false);
+  const [slicePlaneEnabled, setSlicePlaneEnabled] = useState(false);
+  const [slicePlanePreset, setSlicePlanePreset] = useState<SlicePreset>("xy");
+  const [slicePlaneTheta, setSlicePlaneTheta] = useState(0);
+  const [slicePlanePhi, setSlicePlanePhi] = useState(0);
+  const [slicePlaneOffset, setSlicePlaneOffset] = useState(0);
+  const [slicePlaneSize, setSlicePlaneSize] = useState(3.5);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
@@ -1003,6 +1011,34 @@ useEffect(() => {
     id === "graph_sinc" ||
     id === "graph_sinc2" ||
     id === "graph_custom";
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const sliceNormalFromAngles = () => {
+    const sinT = Math.sin(slicePlaneTheta);
+    const n = new THREE.Vector3(
+      sinT * Math.cos(slicePlanePhi),
+      sinT * Math.sin(slicePlanePhi),
+      Math.cos(slicePlaneTheta)
+    );
+    if (n.lengthSq() < 1e-12) n.set(0, 0, 1);
+    return n.normalize();
+  };
+
+  const applySlicePreset = (preset: SlicePreset) => {
+    setSlicePlanePreset(preset);
+    if (preset === "xy") {
+      setSlicePlaneTheta(0);
+      setSlicePlanePhi(0);
+    } else if (preset === "yz") {
+      setSlicePlaneTheta(Math.PI / 2);
+      setSlicePlanePhi(0);
+    } else if (preset === "xz") {
+      setSlicePlaneTheta(Math.PI / 2);
+      setSlicePlanePhi(Math.PI / 2);
+    }
+  };
 
   const [graphCompileError, setGraphCompileError] = useState<string | null>(null);
   const [implicitCompileError, setImplicitCompileError] = useState<string | null>(null);
@@ -1217,6 +1253,110 @@ useEffect(() => {
     (contours as any).userData = { ...(contours as any).userData, __contours: true };
     group.add(contours);
   }, [surfaceId, graphExpr, showContours, contourCount]);
+
+  // --- slicing plane + intersection (graph surfaces) ---
+  useEffect(() => {
+    const group = sliceGroupRef.current;
+    if (!group) return;
+
+    clearGroup(group);
+
+    if (!slicePlaneEnabled || !isGraphId(surfaceId)) return;
+
+    const normal = sliceNormalFromAngles();
+    const offset = slicePlaneOffset;
+    const planeSize = Math.max(0.5, slicePlaneSize);
+
+    const planeGeom = new THREE.PlaneGeometry(planeSize, planeSize, 1, 1);
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: 0x9aa3ad,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    (planeMat as any).polygonOffset = true;
+    (planeMat as any).polygonOffsetFactor = -1;
+    (planeMat as any).polygonOffsetUnits = -1;
+
+    const planeMesh = new THREE.Mesh(planeGeom, planeMat);
+    planeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    planeMesh.position.copy(normal.clone().multiplyScalar(offset));
+    planeMesh.renderOrder = 8;
+    group.add(planeMesh);
+
+    const f = getGraphF();
+    const root = surfaceObjRef.current as THREE.Object3D | null;
+    const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
+    const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+    const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
+
+    const xMin = -xSpan;
+    const xMax = xSpan;
+    const yMin = -ySpan;
+    const yMax = ySpan;
+
+    const nx = Math.max(30, Math.round(graphResolution));
+    const ny = Math.max(30, Math.round(graphResolution));
+
+    const dx = (xMax - xMin) / (nx - 1);
+    const dy = (yMax - yMin) / (ny - 1);
+
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x1f3556,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    const lineOffset = Math.max(0.001, (radiusRef.current || 3) * 0.002);
+    const normalOffset = normal.clone().multiplyScalar(lineOffset);
+
+    const polylines = marchingSquares({
+      nx,
+      ny,
+      xMin,
+      xMax,
+      yMin,
+      yMax,
+      level: 0,
+      sample: (i, j) => {
+        const x = xMin + i * dx;
+        const y = yMin + j * dy;
+        const z = f(x, y);
+        if (!Number.isFinite(z)) return NaN;
+        return normal.x * x + normal.y * z + normal.z * y - offset;
+      },
+    });
+
+    for (const poly of polylines) {
+      if (poly.length < 2) continue;
+      const pts: THREE.Vector3[] = [];
+      for (const pt of poly) {
+        const z = f(pt.x, pt.y);
+        if (!Number.isFinite(z)) continue;
+        pts.push(new THREE.Vector3(pt.x, z, pt.y).add(normalOffset));
+      }
+      if (pts.length < 2) continue;
+      const geom = new THREE.BufferGeometry().setFromPoints(pts);
+      const line = new THREE.Line(geom, lineMat);
+      line.renderOrder = 12;
+      group.add(line);
+    }
+  }, [
+    slicePlaneEnabled,
+    slicePlaneTheta,
+    slicePlanePhi,
+    slicePlaneOffset,
+    slicePlaneSize,
+    surfaceId,
+    graphExpr,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    graphResolution,
+    sceneEpoch,
+  ]);
 
   // --- slice update uses ONLY refs (no stale closure) ---
   function updateSlice(surfaceObj: THREE.Object3D) {
@@ -1744,6 +1884,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     sliceLines.renderOrder = 10;
     sliceLinesRef.current = sliceLines;
     scene.add(sliceLines);
+
+    const sliceGroup = new THREE.Group();
+    sliceGroupRef.current = sliceGroup;
+    scene.add(sliceGroup);
 
     const opacity = clamp01(materialOpacity);
     const graphRes = Math.max(20, Math.round(graphResolution));
@@ -2429,6 +2573,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           }
         });
       }
+      if (sliceGroupRef.current) {
+        clearGroup(sliceGroupRef.current);
+        scene.remove(sliceGroupRef.current);
+      }
 
       if (principalGroupRef.current) {
         clearGroup(principalGroupRef.current);
@@ -2448,6 +2596,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       sliceLinesRef.current = null;
       sliceMatRef.current = null;
       sliceSheetsRef.current = null;
+      sliceGroupRef.current = null;
 
       scene.traverse((obj) => {
         const anyO = obj as any;
@@ -2856,6 +3005,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     await removeFromDb(id);
   };
 
+  const sliceUiEnabled = isGraphId(surfaceId);
+  const sliceOffsetRange = sliceUiEnabled
+    ? Math.max(1, graphDomain?.xSpan ?? 1.5, graphDomain?.ySpan ?? 1.5)
+    : Math.max(1, radiusRef.current || 3);
+  const sliceSizeMax = Math.max(2, sliceOffsetRange * 2.5);
+  const sliceThetaDeg = toDeg(slicePlaneTheta);
+  const slicePhiDeg = toDeg(slicePlanePhi);
+  const presetButtonStyle = (active: boolean) => ({
+    padding: "2px 8px",
+    borderRadius: 6,
+    border: "1px solid #cfd6df",
+    background: active ? "#dbe7ff" : "#f2f4f7",
+    fontSize: 11,
+    cursor: "pointer",
+  });
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div
@@ -2866,6 +3031,120 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           display: "flex",
         }}
       />
+
+      {sliceUiEnabled && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.92)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            padding: "8px 10px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            fontSize: 11,
+            minWidth: 180,
+          }}
+        >
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={slicePlaneEnabled}
+              onChange={(e) => setSlicePlaneEnabled(e.target.checked)}
+            />
+            <span>Slice plane</span>
+          </label>
+
+          {slicePlaneEnabled && (
+            <>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  style={presetButtonStyle(slicePlanePreset === "xy")}
+                  onClick={() => applySlicePreset("xy")}
+                >
+                  XY
+                </button>
+                <button
+                  type="button"
+                  style={presetButtonStyle(slicePlanePreset === "yz")}
+                  onClick={() => applySlicePreset("yz")}
+                >
+                  YZ
+                </button>
+                <button
+                  type="button"
+                  style={presetButtonStyle(slicePlanePreset === "xz")}
+                  onClick={() => applySlicePreset("xz")}
+                >
+                  XZ
+                </button>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Theta</span>
+                <span>{sliceThetaDeg.toFixed(0)} deg</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={180}
+                step={1}
+                value={sliceThetaDeg}
+                onChange={(e) => {
+                  setSlicePlaneTheta(toRad(Number(e.target.value)));
+                  setSlicePlanePreset("custom");
+                }}
+              />
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Phi</span>
+                <span>{slicePhiDeg.toFixed(0)} deg</span>
+              </div>
+              <input
+                type="range"
+                min={-180}
+                max={180}
+                step={1}
+                value={slicePhiDeg}
+                onChange={(e) => {
+                  setSlicePlanePhi(toRad(Number(e.target.value)));
+                  setSlicePlanePreset("custom");
+                }}
+              />
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Offset</span>
+                <span>{slicePlaneOffset.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min={-sliceOffsetRange}
+                max={sliceOffsetRange}
+                step={0.01}
+                value={slicePlaneOffset}
+                onChange={(e) => setSlicePlaneOffset(Number(e.target.value))}
+              />
+
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Plane size</span>
+                <span>{slicePlaneSize.toFixed(2)}</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={sliceSizeMax}
+                step={0.05}
+                value={slicePlaneSize}
+                onChange={(e) => setSlicePlaneSize(Number(e.target.value))}
+              />
+            </>
+          )}
+        </div>
+      )}
 
       <div
         style={{

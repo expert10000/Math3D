@@ -119,6 +119,13 @@ Slicing adds multi-plane cross sections:
 Slicing is effective for understanding the implicit surfaces because it reveals how the
 level set intersects coordinate planes.
 
+Slice plane intersections for graph surfaces are computed by defining a unit normal n and
+offset c so the plane is n dot X = c. For graph surfaces z=f(x,y), we sample
+g(x,y)=nx*x + ny*f(x,y) + nz*y - c on a grid and run marching squares at level 0 to get
+polylines. Those polylines are mapped to 3D points (x, f(x,y), y) and drawn as lines; the
+translucent plane is a rectangle oriented to n. It updates only when slice params or the
+surface/domain change (not every frame).
+
 Domain pickers and presets
 
 Right-panel domain tools let you control where your surface is sampled:
