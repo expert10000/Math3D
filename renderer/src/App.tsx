@@ -14,8 +14,6 @@ import {
   type ColorMode,
   type ColorPalette,
   type ProbeInfo,
-  type SlicePreset,
-  type SliceNormal,
 } from "./components/SurfaceViewer";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
@@ -461,30 +459,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     safeParseArray<ParamDomainPreset>(localStorage.getItem("mathapp.domainPresets.param.v1"))
   );
 
-  // slicing (multi-plane)
-  const [sliceEnabled, setSliceEnabled] = useState(false);
-  const [sliceShowPlane, setSliceShowPlane] = useState(true);
-  const [sliceShowSheet, setSliceShowSheet] = useState(true);
-  const [sliceThickness, setSliceThickness] = useState(0);
-  const [sliceSheetOpacity, setSliceSheetOpacity] = useState(0.12);
-
-  const [sliceLineColorMode, setSliceLineColorMode] = useState<"solid" | "height" | "arclen">("solid");
-  const [sliceLinePalette, setSliceLinePalette] = useState<"blueRed" | "rainbow" | "grayscale">("rainbow");
-
-  // multi-plane toggles + offsets
-  const [sliceXY, setSliceXY] = useState(true);
-  const [sliceYZ, setSliceYZ] = useState(false);
-  const [sliceXZ, setSliceXZ] = useState(false);
-
-  const [sliceXYOffset, setSliceXYOffset] = useState(0);
-  const [sliceYZOffset, setSliceYZOffset] = useState(0);
-  const [sliceXZOffset, setSliceXZOffset] = useState(0);
-
-  // legacy single-plane controls (kept for compatibility if SurfaceViewer expects them)
-  const [slicePreset, setSlicePreset] = useState<SlicePreset>("xy");
-  const [sliceOffset, setSliceOffset] = useState(0);
-  const [sliceNormal, setSliceNormal] = useState<SliceNormal>({ x: 0, y: 0, z: 1 });
-
   // active equation surface id (single truth)
   const activeEqSurfaceId = surfaceViewerKind === "graph" ? graphSurfaceId : implicitSurfaceId;
   const activeGraphDomain = useMemo(
@@ -550,29 +524,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     saveArray("mathapp.domainState.param.v1", paramDomains);
   }, [paramDomains]);
-
-  // build slicePlanes ONCE (App is the single source of truth)
-  const slicePlanes = useMemo(
-    () =>
-    ([
-      sliceXY ? { preset: "xy" as const, offset: sliceXYOffset, normal: { x: 0, y: 0, z: 1 } } : null,
-      sliceYZ ? { preset: "yz" as const, offset: sliceYZOffset, normal: { x: 1, y: 0, z: 0 } } : null,
-      sliceXZ ? { preset: "xz" as const, offset: sliceXZOffset, normal: { x: 0, y: 1, z: 0 } } : null,
-    ].filter(Boolean) as {
-      preset: "xy" | "yz" | "xz";
-      offset: number;
-      normal: { x: number; y: number; z: number };
-    }[]),
-    [sliceXY, sliceYZ, sliceXZ, sliceXYOffset, sliceYZOffset, sliceXZOffset]
-  );
-
-  const snapSlicesToProbe = useCallback(() => {
-    if (!probeInfo) return;
-    const { x, y, z } = probeInfo.point;
-    if (sliceXY) setSliceXYOffset(z);
-    if (sliceYZ) setSliceYZOffset(x);
-    if (sliceXZ) setSliceXZOffset(y);
-  }, [probeInfo, sliceXY, sliceYZ, sliceXZ]);
 
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
@@ -1248,50 +1199,15 @@ case "mobius":
                 probeInfo={probeInfo}
                 probeCurv={probeCurv}
                 paramProbeCurv={paramProbeCurv}
-                onSnapSlicesToProbe={snapSlicesToProbe}
                 // contours
                 showContours={showContours}
                 onToggleContours={() => setShowContours((v) => !v)}
                 contourCount={contourCount}
                 onSetContourCount={setContourCount}
-                // slicing
-                sliceEnabled={sliceEnabled}
-                onSetSliceEnabled={setSliceEnabled}
-                sliceShowPlane={sliceShowPlane}
-                onSetSliceShowPlane={setSliceShowPlane}
-                sliceShowSheet={sliceShowSheet}
-                onSetSliceShowSheet={setSliceShowSheet}
-                sliceThickness={sliceThickness}
-                onSetSliceThickness={setSliceThickness}
-                sliceSheetOpacity={sliceSheetOpacity}
-                onSetSliceSheetOpacity={setSliceSheetOpacity}
-                sliceLineColorMode={sliceLineColorMode}
-                onSetSliceLineColorMode={setSliceLineColorMode}
-                sliceLinePalette={sliceLinePalette}
-                onSetSliceLinePalette={setSliceLinePalette}
-                sliceXY={sliceXY}
-                onSetSliceXY={setSliceXY}
-                sliceYZ={sliceYZ}
-                onSetSliceYZ={setSliceYZ}
-                sliceXZ={sliceXZ}
-                onSetSliceXZ={setSliceXZ}
-                sliceXYOffset={sliceXYOffset}
-                onSetSliceXYOffset={setSliceXYOffset}
-                sliceYZOffset={sliceYZOffset}
-                onSetSliceYZOffset={setSliceYZOffset}
-                sliceXZOffset={sliceXZOffset}
-                onSetSliceXZOffset={setSliceXZOffset}
                 commandInput={commandInput}
                 onChangeCommandInput={setCommandInput}
                 onRunCommand={handleRunCommand}
                 commandHistory={commandHistory}
-                // legacy
-                slicePreset={slicePreset}
-                onSetSlicePreset={setSlicePreset}
-                sliceOffset={sliceOffset}
-                onSetSliceOffset={setSliceOffset}
-                sliceNormal={sliceNormal}
-                onSetSliceNormal={setSliceNormal}
               />
             </div>
 
@@ -1350,17 +1266,6 @@ case "mobius":
                         onParamCurvature={handleParamCurvature}
                         paramProbeUV={paramProbeUV}
                         paramProbeToken={paramProbeToken}
-                        sliceEnabled={sliceEnabled}
-                        slicePreset={slicePreset}
-                        sliceOffset={sliceOffset}
-                        sliceNormal={sliceNormal}
-                        sliceShowPlane={sliceShowPlane}
-                        sliceShowSheet={sliceShowSheet}
-                        sliceThickness={sliceThickness}
-                        slicePlanes={slicePlanes}
-                        sliceLineColorMode={sliceLineColorMode}
-                        sliceLinePalette={sliceLinePalette}
-                        sliceSheetOpacity={sliceSheetOpacity}
                         onSetCustomX={setParamXExpr}
                         onSetCustomY={setParamYExpr}
                         onSetCustomZ={setParamZExpr}
@@ -1401,19 +1306,6 @@ case "mobius":
                         // contours (remove if SurfaceViewer doesn't support yet)
                         showContours={showContours}
                         contourCount={contourCount}
-                        // slicing
-                        sliceEnabled={sliceEnabled}
-                        sliceShowPlane={sliceShowPlane}
-                        sliceShowSheet={sliceShowSheet}
-                        sliceThickness={sliceThickness}
-                        sliceSheetOpacity={sliceSheetOpacity}
-                        sliceLineColorMode={sliceLineColorMode}
-                        sliceLinePalette={sliceLinePalette}
-                        slicePlanes={slicePlanes}
-                        // legacy
-                        slicePreset={slicePreset}
-                        sliceOffset={sliceOffset}
-                        sliceNormal={sliceNormal}
                         isCameraLeader={compareEnabled}
                         onCameraSync={compareEnabled ? setCameraSync : undefined}
                       />
@@ -1447,17 +1339,6 @@ case "mobius":
                           showPrincipalLines={false}
                           showBoundingBox={showBoundingBox}
                           resetToken={cameraResetToken}
-                          sliceEnabled={sliceEnabled}
-                          slicePreset={slicePreset}
-                          sliceOffset={sliceOffset}
-                          sliceNormal={sliceNormal}
-                          sliceShowPlane={sliceShowPlane}
-                          sliceShowSheet={sliceShowSheet}
-                          sliceThickness={sliceThickness}
-                          slicePlanes={slicePlanes}
-                          sliceLineColorMode={sliceLineColorMode}
-                          sliceLinePalette={sliceLinePalette}
-                          sliceSheetOpacity={sliceSheetOpacity}
                           onSetCustomX={setParamXExpr}
                           onSetCustomY={setParamYExpr}
                           onSetCustomZ={setParamZExpr}
@@ -1495,19 +1376,6 @@ case "mobius":
                           // contours (remove if SurfaceViewer doesn't support yet)
                           showContours={showContours}
                           contourCount={contourCount}
-                          // slicing
-                          sliceEnabled={sliceEnabled}
-                          sliceShowPlane={sliceShowPlane}
-                          sliceShowSheet={sliceShowSheet}
-                          sliceThickness={sliceThickness}
-                          sliceSheetOpacity={sliceSheetOpacity}
-                          sliceLineColorMode={sliceLineColorMode}
-                          sliceLinePalette={sliceLinePalette}
-                          slicePlanes={slicePlanes}
-                          // legacy
-                          slicePreset={slicePreset}
-                          sliceOffset={sliceOffset}
-                          sliceNormal={sliceNormal}
                           isCameraLeader={false}
                           cameraSync={cameraSync}
                         />
@@ -1951,7 +1819,6 @@ type SurfacesLeftPanelProps = {
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
   paramProbeCurv: PrincipalCurvatureScalars | null;
-  onSnapSlicesToProbe: () => void;
 
   // contours (graph surfaces)
   showContours: boolean;
@@ -1959,54 +1826,11 @@ type SurfacesLeftPanelProps = {
   contourCount: number;
   onSetContourCount: (n: number) => void;
 
-  // slicing
-  sliceEnabled: boolean;
-  onSetSliceEnabled: (v: boolean) => void;
-
-  sliceShowPlane: boolean;
-  onSetSliceShowPlane: (v: boolean) => void;
-
-  sliceShowSheet: boolean;
-  onSetSliceShowSheet: (v: boolean) => void;
-
-  sliceThickness: number;
-  onSetSliceThickness: (v: number) => void;
-
-  sliceSheetOpacity: number;
-  onSetSliceSheetOpacity: (v: number) => void;
-
-  sliceLineColorMode: "solid" | "height" | "arclen";
-  onSetSliceLineColorMode: (v: "solid" | "height" | "arclen") => void;
-
-  sliceLinePalette: "blueRed" | "rainbow" | "grayscale";
-  onSetSliceLinePalette: (v: "blueRed" | "rainbow" | "grayscale") => void;
-
-  sliceXY: boolean;
-  onSetSliceXY: (v: boolean) => void;
-  sliceYZ: boolean;
-  onSetSliceYZ: (v: boolean) => void;
-  sliceXZ: boolean;
-  onSetSliceXZ: (v: boolean) => void;
-
-  sliceXYOffset: number;
-  onSetSliceXYOffset: (v: number) => void;
-  sliceYZOffset: number;
-  onSetSliceYZOffset: (v: number) => void;
-  sliceXZOffset: number;
-  onSetSliceXZOffset: (v: number) => void;
-
   commandInput: string;
   onChangeCommandInput: (v: string) => void;
   onRunCommand: (cmd: string) => void;
   commandHistory: { cmd: string; out: string }[];
 
-  // legacy
-  slicePreset: SlicePreset;
-  onSetSlicePreset: (p: SlicePreset) => void;
-  sliceOffset: number;
-  onSetSliceOffset: (v: number) => void;
-  sliceNormal: SliceNormal;
-  onSetSliceNormal: (n: SliceNormal) => void;
 };
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
@@ -2067,37 +1891,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   probeInfo,
   probeCurv,
   paramProbeCurv,
-  onSnapSlicesToProbe,
   showContours,
   onToggleContours,
   contourCount,
   onSetContourCount,
-  sliceEnabled,
-  onSetSliceEnabled,
-  sliceShowPlane,
-  onSetSliceShowPlane,
-  sliceShowSheet,
-  onSetSliceShowSheet,
-  sliceThickness,
-  onSetSliceThickness,
-  sliceSheetOpacity,
-  onSetSliceSheetOpacity,
-  sliceLineColorMode,
-  onSetSliceLineColorMode,
-  sliceLinePalette,
-  onSetSliceLinePalette,
-  sliceXY,
-  onSetSliceXY,
-  sliceYZ,
-  onSetSliceYZ,
-  sliceXZ,
-  onSetSliceXZ,
-  sliceXYOffset,
-  onSetSliceXYOffset,
-  sliceYZOffset,
-  onSetSliceYZOffset,
-  sliceXZOffset,
-  onSetSliceXZOffset,
   commandInput,
   onChangeCommandInput,
   onRunCommand,
@@ -2538,198 +2335,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </div>
         </div>
       )}
-
-      {/* slicing */}
-      <div style={{ marginTop: 10 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="checkbox" checked={sliceEnabled} onChange={(e) => onSetSliceEnabled(e.target.checked)} />
-          <b>Slice plane (cross-section)</b>
-        </label>
-
-        {sliceEnabled && (
-          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="checkbox" checked={sliceXY} onChange={(e) => onSetSliceXY(e.target.checked)} />
-                XY
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="checkbox" checked={sliceYZ} onChange={(e) => onSetSliceYZ(e.target.checked)} />
-                YZ
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="checkbox" checked={sliceXZ} onChange={(e) => onSetSliceXZ(e.target.checked)} />
-                XZ
-              </label>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onSetSliceXY(true);
-                  onSetSliceYZ(true);
-                  onSetSliceXZ(true);
-                }}
-                style={{ padding: "2px 8px" }}
-              >
-                All 3
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  onSetSliceXY(true);
-                  onSetSliceYZ(false);
-                  onSetSliceXZ(false);
-                }}
-                style={{ padding: "2px 8px" }}
-              >
-                Only XY
-              </button>
-            </div>
-
-            {sliceXY && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>XY offset (z)</span>
-                  <span>{sliceXYOffset.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={-2}
-                  max={2}
-                  step={0.01}
-                  value={sliceXYOffset}
-                  onChange={(e) => onSetSliceXYOffset(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            )}
-
-            {sliceYZ && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>YZ offset (x)</span>
-                  <span>{sliceYZOffset.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={-2}
-                  max={2}
-                  step={0.01}
-                  value={sliceYZOffset}
-                  onChange={(e) => onSetSliceYZOffset(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            )}
-
-            {sliceXZ && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>XZ offset (y)</span>
-                  <span>{sliceXZOffset.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={-2}
-                  max={2}
-                  step={0.01}
-                  value={sliceXZOffset}
-                  onChange={(e) => onSetSliceXZOffset(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            )}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={sliceShowPlane} onChange={(e) => onSetSliceShowPlane(e.target.checked)} />
-                Show intersection curve
-              </label>
-
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input type="checkbox" checked={sliceShowSheet} onChange={(e) => onSetSliceShowSheet(e.target.checked)} />
-                Show slice sheet
-              </label>
-            </div>
-
-            {sliceShowSheet && (
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>Sheet opacity</span>
-                  <span>{sliceSheetOpacity.toFixed(2)}</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.02}
-                  max={0.35}
-                  step={0.01}
-                  value={sliceSheetOpacity}
-                  onChange={(e) => onSetSliceSheetOpacity(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </div>
-            )}
-
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>Thickness (slab)</span>
-                <span>{sliceThickness.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1.0}
-                step={0.01}
-                value={sliceThickness}
-                onChange={(e) => onSetSliceThickness(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-              <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
-                0 = single plane, &gt;0 keeps a slab between two planes (CT-scan feel)
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontWeight: 600 }}>Intersection coloring</div>
-
-              <select value={sliceLineColorMode} onChange={(e) => onSetSliceLineColorMode(e.target.value as any)}>
-                <option value="solid">Solid</option>
-                <option value="height">By height</option>
-                <option value="arclen">By arc length</option>
-              </select>
-
-              <button
-                type="button"
-                disabled={!probeInfo}
-                onClick={onSnapSlicesToProbe}
-                style={{
-                  marginTop: 8,
-                  padding: "4px 8px",
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                  background: probeInfo ? "#fff" : "#f3f3f3",
-                  cursor: probeInfo ? "pointer" : "not-allowed",
-                  fontSize: 12,
-                }}
-              >
-                Slice through probe
-              </button>
-
-              {sliceLineColorMode !== "solid" && (
-                <div style={{ display: "flex", gap: 10 }}>
-                  {(["rainbow", "blueRed", "grayscale"] as const).map((p) => (
-                    <label key={p} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <input type="radio" name="sliceLinePalette" checked={sliceLinePalette === p} onChange={() => onSetSliceLinePalette(p)} />
-                      {p === "blueRed" ? "blue-red" : p}
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* custom implicit */}
       {isImplicitCustom && (

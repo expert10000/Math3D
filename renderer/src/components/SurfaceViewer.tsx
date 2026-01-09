@@ -583,133 +583,19 @@ function applyCurvatureHeatToGraph(
 
 }
 
-function makeSlicePlane(preset: SlicePreset, offset: number, normalCustom: SliceNormal) {
-  let n =
-    preset === "xy"
-      ? new THREE.Vector3(0, 0, 1)
-      : preset === "yz"
-      ? new THREE.Vector3(1, 0, 0)
-      : preset === "xz"
-      ? new THREE.Vector3(0, 1, 0)
-      : new THREE.Vector3(normalCustom.x, normalCustom.y, normalCustom.z);
-
-  if (n.lengthSq() < 1e-12) n.set(0, 0, 1);
-  n.normalize();
-
-  return new THREE.Plane(n, -offset);
-}
-
-// slab: keep points with (offset - h) <= n·x <= (offset + h)
-function makeSlabPlanes(preset: SlicePreset, offset: number, normalCustom: SliceNormal, thickness: number): THREE.Plane[] {
-  const base = makeSlicePlane(preset, offset, normalCustom);
-  const n = base.normal.clone().normalize();
-  const h = Math.max(0, thickness) * 0.5;
-
-  const a = offset - h;
-  const b = offset + h;
-
-  const p1 = new THREE.Plane(n.clone(), -a);
-  const p2 = new THREE.Plane(n.clone().multiplyScalar(-1), b);
-
-  return [p1, p2];
-}
-
-// Build intersection *segments* positions between triangle mesh and plane (world-space)
-function buildSliceSegmentsPositions(geom: THREE.BufferGeometry, plane: THREE.Plane): number[] {
-  const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
-  if (!posAttr) return [];
-
-  const idx = geom.getIndex();
-
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-
-  const p1 = new THREE.Vector3();
-  const p2 = new THREE.Vector3();
-
-  const out: number[] = [];
-
-  const getV = (i: number, target: THREE.Vector3) => {
-    target.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-  };
-
-  const intersectEdge = (p: THREE.Vector3, q: THREE.Vector3, dp: number, dq: number, outPt: THREE.Vector3) => {
-    const t = dp / (dp - dq);
-    outPt.copy(p).lerp(q, t);
-  };
-
-  const triCount = idx ? idx.count / 3 : posAttr.count / 3;
-
-  for (let t = 0; t < triCount; t++) {
-    const i0 = idx ? idx.getX(3 * t + 0) : 3 * t + 0;
-    const i1 = idx ? idx.getX(3 * t + 1) : 3 * t + 1;
-    const i2 = idx ? idx.getX(3 * t + 2) : 3 * t + 2;
-
-    getV(i0, a);
-    getV(i1, b);
-    getV(i2, c);
-
-    const da = plane.distanceToPoint(a);
-    const db = plane.distanceToPoint(b);
-    const dc = plane.distanceToPoint(c);
-
-    let hit = 0;
-
-    if ((da >= 0 && db < 0) || (da < 0 && db >= 0)) {
-      intersectEdge(a, b, da, db, hit === 0 ? p1 : p2);
-      hit++;
-    }
-    if ((db >= 0 && dc < 0) || (db < 0 && dc >= 0)) {
-      intersectEdge(b, c, db, dc, hit === 0 ? p1 : p2);
-      hit++;
-    }
-    if (hit < 2 && ((dc >= 0 && da < 0) || (dc < 0 && da >= 0))) {
-      intersectEdge(c, a, dc, da, hit === 0 ? p1 : p2);
-      hit++;
-    }
-
-    if (hit === 2) {
-      out.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z);
-    }
+function makePlaneBasis(n: THREE.Vector3) {
+  const up = Math.abs(n.y) < 0.95 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const e1 = new THREE.Vector3().crossVectors(up, n);
+  if (e1.lengthSq() < 1e-12) {
+    up.set(1, 0, 0);
+    e1.crossVectors(up, n);
   }
-
-  return out;
-}
-
-function applySliceClipping(root: THREE.Object3D, enabled: boolean, planes: THREE.Plane[] | null) {
-  root.traverse((obj) => {
-    const mesh = obj as any;
-    if (!mesh?.isMesh) return;
-
-    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-    if (!mat) return;
-
-    const setForOne = (m: THREE.Material) => {
-      const mm = m as any;
-
-      if (!enabled || !planes || planes.length === 0) {
-        mm.clippingPlanes = null;
-      } else {
-        mm.clippingPlanes = planes;
-        mm.clipIntersection = false;
-      }
-
-      mm.needsUpdate = true;
-    };
-
-    if (Array.isArray(mat)) mat.forEach(setForOne);
-    else setForOne(mat);
-  });
+  e1.normalize();
+  const e2 = new THREE.Vector3().crossVectors(n, e1).normalize();
+  return { e1, e2 };
 }
 
 /* ---------- props ---------- */
-
-type SlicePlaneConfig = {
-  preset: SlicePreset;
-  offset: number;
-  normal: SliceNormal;
-};
 
 type Props = {
   surfaceId: SurfaceId;
@@ -751,20 +637,6 @@ type Props = {
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
-
-  sliceEnabled?: boolean;
-  slicePreset?: SlicePreset;
-  sliceOffset?: number;
-  sliceNormal?: SliceNormal;
-
-  sliceShowPlane?: boolean;
-
-  sliceShowSheet?: boolean;
-  sliceThickness?: number;
-  slicePlanes?: SlicePlaneConfig[];
-  sliceLineColorMode?: "solid" | "height" | "arclen";
-  sliceLinePalette?: ColorPalette;
-  sliceSheetOpacity?: number;
 
   showContours?: boolean;
   contourCount?: number;
@@ -816,19 +688,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onSetGraphExpr,
     onSetImplicitExpr,
 
-    sliceEnabled = false,
-    slicePreset = "xy",
-    sliceOffset = 0,
-    sliceNormal = { x: 0, y: 0, z: 1 },
-    sliceShowPlane = true,
-
-    sliceShowSheet = false,
-    sliceThickness = 0,
-    slicePlanes,
-    sliceLineColorMode = "solid",
-    sliceLinePalette = "rainbow",
-    sliceSheetOpacity = 0.12,
-
     showContours = false,
     contourCount = 12,
   } = props;
@@ -836,13 +695,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // slice visuals
-  const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
-  const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
-  const sliceSheetsRef = useRef<THREE.Group | null>(null);
   const sliceGroupRef = useRef<THREE.Group | null>(null);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
-  const sliceDirtyRef = useRef(true);
   const probeWidgetsRef = useRef<{
     marker: THREE.Mesh;
     normal: THREE.ArrowHelper;
@@ -906,56 +761,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     if (principalGroupRef.current) clearGroup(principalGroupRef.current);
   }, [surfaceId, graphExpr, implicitExpr, graphDomain?.xSpan, graphDomain?.ySpan]);
 
-  const sliceParamsRef = useRef({
-    enabled: sliceEnabled,
-    preset: slicePreset as SlicePreset,
-    offset: sliceOffset,
-    normal: sliceNormal as SliceNormal,
-    showIntersection: sliceShowPlane,
-    showSheet: sliceShowSheet,
-    thickness: sliceThickness,
-    planes: (slicePlanes ?? null) as SlicePlaneConfig[] | null,
-    lineColorMode: sliceLineColorMode as "solid" | "height" | "arclen",
-    linePalette: sliceLinePalette as ColorPalette,
-    sheetOpacity: sliceSheetOpacity,
-  });
-
 useEffect(() => {
   console.log("[SurfaceViewer] props", { surfaceId, colorMode, colorPalette, wireframe });
 }, [surfaceId, colorMode, colorPalette, wireframe]);
-
-
-
-
-
-  useEffect(() => {
-    sliceParamsRef.current = {
-      enabled: sliceEnabled,
-      preset: slicePreset,
-      offset: sliceOffset,
-      normal: sliceNormal,
-      showIntersection: sliceShowPlane,
-      showSheet: sliceShowSheet,
-      thickness: sliceThickness,
-      planes: slicePlanes ?? null,
-      lineColorMode: sliceLineColorMode,
-      linePalette: sliceLinePalette,
-      sheetOpacity: sliceSheetOpacity,
-    };
-    sliceDirtyRef.current = true;
-  }, [
-    sliceEnabled,
-    slicePreset,
-    sliceOffset,
-    sliceNormal,
-    sliceShowPlane,
-    sliceShowSheet,
-    sliceThickness,
-    slicePlanes,
-    sliceLineColorMode,
-    sliceLinePalette,
-    sliceSheetOpacity,
-  ]);
 
   const applyCameraView = (view: GizmoView) => {
     const cam = cameraRef.current;
@@ -1011,6 +819,16 @@ useEffect(() => {
     id === "graph_sinc" ||
     id === "graph_sinc2" ||
     id === "graph_custom";
+
+  const isImplicitId = (id: SurfaceId) =>
+    id === "hyperboloid_twoSheet" ||
+    id === "ellipsoid" ||
+    id === "torus_implicit" ||
+    id === "gyroid" ||
+    id === "superquadric" ||
+    id === "roman" ||
+    id === "scherk" ||
+    id === "implicit_custom";
 
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const toDeg = (rad: number) => (rad * 180) / Math.PI;
@@ -1254,14 +1072,18 @@ useEffect(() => {
     group.add(contours);
   }, [surfaceId, graphExpr, showContours, contourCount]);
 
-  // --- slicing plane + intersection (graph surfaces) ---
+  // --- slicing plane + intersection (graph + implicit surfaces) ---
   useEffect(() => {
     const group = sliceGroupRef.current;
     if (!group) return;
 
     clearGroup(group);
 
-    if (!slicePlaneEnabled || !isGraphId(surfaceId)) return;
+    if (!slicePlaneEnabled) return;
+
+    const isGraphSurface = isGraphId(surfaceId);
+    const isImplicitSurface = isImplicitId(surfaceId);
+    if (!isGraphSurface && !isImplicitSurface) return;
 
     const normal = sliceNormalFromAngles();
     const offset = slicePlaneOffset;
@@ -1285,23 +1107,6 @@ useEffect(() => {
     planeMesh.renderOrder = 8;
     group.add(planeMesh);
 
-    const f = getGraphF();
-    const root = surfaceObjRef.current as THREE.Object3D | null;
-    const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
-    const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
-    const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
-
-    const xMin = -xSpan;
-    const xMax = xSpan;
-    const yMin = -ySpan;
-    const yMax = ySpan;
-
-    const nx = Math.max(30, Math.round(graphResolution));
-    const ny = Math.max(30, Math.round(graphResolution));
-
-    const dx = (xMax - xMin) / (nx - 1);
-    const dy = (yMax - yMin) / (ny - 1);
-
     const lineMat = new THREE.LineBasicMaterial({
       color: 0x1f3556,
       transparent: true,
@@ -1313,36 +1118,134 @@ useEffect(() => {
     const lineOffset = Math.max(0.001, (radiusRef.current || 3) * 0.002);
     const normalOffset = normal.clone().multiplyScalar(lineOffset);
 
-    const polylines = marchingSquares({
-      nx,
-      ny,
-      xMin,
-      xMax,
-      yMin,
-      yMax,
-      level: 0,
-      sample: (i, j) => {
-        const x = xMin + i * dx;
-        const y = yMin + j * dy;
-        const z = f(x, y);
-        if (!Number.isFinite(z)) return NaN;
-        return normal.x * x + normal.y * z + normal.z * y - offset;
-      },
-    });
+    if (isGraphSurface) {
+      const f = getGraphF();
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
+      const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+      const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
 
-    for (const poly of polylines) {
-      if (poly.length < 2) continue;
-      const pts: THREE.Vector3[] = [];
-      for (const pt of poly) {
-        const z = f(pt.x, pt.y);
-        if (!Number.isFinite(z)) continue;
-        pts.push(new THREE.Vector3(pt.x, z, pt.y).add(normalOffset));
+      const xMin = -xSpan;
+      const xMax = xSpan;
+      const yMin = -ySpan;
+      const yMax = ySpan;
+
+      const nx = Math.max(30, Math.round(graphResolution));
+      const ny = Math.max(30, Math.round(graphResolution));
+
+      const dx = (xMax - xMin) / (nx - 1);
+      const dy = (yMax - yMin) / (ny - 1);
+
+      const polylines = marchingSquares({
+        nx,
+        ny,
+        xMin,
+        xMax,
+        yMin,
+        yMax,
+        level: 0,
+        sample: (i, j) => {
+          const x = xMin + i * dx;
+          const y = yMin + j * dy;
+          const z = f(x, y);
+          if (!Number.isFinite(z)) return NaN;
+          return normal.x * x + normal.y * z + normal.z * y - offset;
+        },
+      });
+
+      for (const poly of polylines) {
+        if (poly.length < 2) continue;
+        const pts: THREE.Vector3[] = [];
+        for (const pt of poly) {
+          const z = f(pt.x, pt.y);
+          if (!Number.isFinite(z)) continue;
+          pts.push(new THREE.Vector3(pt.x, z, pt.y).add(normalOffset));
+        }
+        if (pts.length < 2) continue;
+        const geom = new THREE.BufferGeometry().setFromPoints(pts);
+        const line = new THREE.Line(geom, lineMat);
+        line.renderOrder = 12;
+        group.add(line);
       }
-      if (pts.length < 2) continue;
-      const geom = new THREE.BufferGeometry().setFromPoints(pts);
-      const line = new THREE.Line(geom, lineMat);
-      line.renderOrder = 12;
-      group.add(line);
+    } else if (isImplicitSurface) {
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+
+      if (root) {
+        root.traverse((obj) => {
+          if (implicitF) return;
+          const anyObj = obj as any;
+          if (anyObj?.isMarchingCubes) {
+            const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number } | undefined;
+            if (meta?.f) implicitF = meta.f;
+          }
+        });
+      }
+
+      if (!implicitF) {
+        lineMat.dispose();
+        return;
+      }
+
+      const { e1, e2 } = makePlaneBasis(normal);
+      const x0 = normal.clone().multiplyScalar(offset);
+
+      const sMax = planeSize * 0.5;
+      const sMin = -sMax;
+
+      const nx = 120;
+      const ny = 120;
+
+      const dx = (sMax - sMin) / (nx - 1);
+      const dy = (sMax - sMin) / (ny - 1);
+
+      const x0x = x0.x;
+      const x0y = x0.y;
+      const x0z = x0.z;
+      const e1x = e1.x;
+      const e1y = e1.y;
+      const e1z = e1.z;
+      const e2x = e2.x;
+      const e2y = e2.y;
+      const e2z = e2.z;
+
+      const polylines = marchingSquares({
+        nx,
+        ny,
+        xMin: sMin,
+        xMax: sMax,
+        yMin: sMin,
+        yMax: sMax,
+        level: 0,
+        sample: (i, j) => {
+          const s = sMin + i * dx;
+          const t = sMin + j * dy;
+          const x = x0x + e1x * s + e2x * t;
+          const y = x0y + e1y * s + e2y * t;
+          const z = x0z + e1z * s + e2z * t;
+          const v = implicitF!(x, y, z);
+          return Number.isFinite(v) ? v : NaN;
+        },
+      });
+
+      for (const poly of polylines) {
+        if (poly.length < 2) continue;
+        const pts: THREE.Vector3[] = [];
+        for (const pt of poly) {
+          const s = pt.x;
+          const t = pt.y;
+          const x = x0x + e1x * s + e2x * t;
+          const y = x0y + e1y * s + e2y * t;
+          const z = x0z + e1z * s + e2z * t;
+          if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+          pts.push(new THREE.Vector3(x, y, z).add(normalOffset));
+        }
+        if (pts.length < 2) continue;
+        const geom = new THREE.BufferGeometry().setFromPoints(pts);
+        const line = new THREE.Line(geom, lineMat);
+        line.renderOrder = 12;
+        group.add(line);
+      }
     }
   }, [
     slicePlaneEnabled,
@@ -1355,326 +1258,10 @@ useEffect(() => {
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     graphResolution,
+    implicitExpr,
     sceneEpoch,
   ]);
 
-  // --- slice update uses ONLY refs (no stale closure) ---
-  function updateSlice(surfaceObj: THREE.Object3D) {
-    const p = sliceParamsRef.current;
-
-    const baseConfigs: SlicePlaneConfig[] =
-      p.planes && p.planes.length > 0
-        ? p.planes
-        : [{ preset: p.preset, offset: p.offset, normal: p.normal }];
-
-    const clipPlanes: THREE.Plane[] = [];
-    for (const cfg of baseConfigs) {
-      if (p.thickness > 0) {
-        clipPlanes.push(...makeSlabPlanes(cfg.preset, cfg.offset, cfg.normal, p.thickness));
-      } else {
-        clipPlanes.push(makeSlicePlane(cfg.preset, cfg.offset, cfg.normal));
-      }
-    }
-
-    applySliceClipping(surfaceObj, p.enabled, p.enabled ? clipPlanes : null);
-
-    const lines = sliceLinesRef.current;
-    const lineMat = sliceMatRef.current;
-    if (!lines || !lineMat) return;
-
-    if (!p.enabled || !p.showIntersection) {
-      lines.visible = false;
-    } else {
-      let geom: THREE.BufferGeometry | null = null;
-      let geoOwner: THREE.Object3D | null = null;
-
-      surfaceObj.traverse((o) => {
-        if (geom) return;
-        const anyO = o as any;
-        if (anyO?.isMesh && anyO.geometry) {
-          geom = anyO.geometry as THREE.BufferGeometry;
-          geoOwner = o as THREE.Object3D;
-        }
-      });
-
-      if (!geom || !geoOwner) {
-        lines.visible = false;
-      } else {
-        const owner = geoOwner as THREE.Object3D;
-        const baseGeom = geom as THREE.BufferGeometry;
-
-        const posAttr = baseGeom.attributes.position as THREE.BufferAttribute | undefined;
-        if (!posAttr) {
-          lines.visible = false;
-        } else {
-          owner.updateMatrixWorld(true);
-
-          const worldGeom = baseGeom.clone();
-          worldGeom.applyMatrix4(owner.matrixWorld);
-
-          const allPositions: number[] = [];
-          if (p.thickness > 0) {
-            for (const cfg of baseConfigs) {
-              const planeMid = makeSlicePlane(cfg.preset, cfg.offset, cfg.normal);
-              allPositions.push(...buildSliceSegmentsPositions(worldGeom, planeMid));
-            }
-          } else {
-            for (const cfg of baseConfigs) {
-              const plane = makeSlicePlane(cfg.preset, cfg.offset, cfg.normal);
-              allPositions.push(...buildSliceSegmentsPositions(worldGeom, plane));
-            }
-          }
-
-          worldGeom.dispose();
-
-          const sliceGeom = new THREE.BufferGeometry();
-          sliceGeom.setAttribute("position", new THREE.Float32BufferAttribute(allPositions, 3));
-
-          if (p.lineColorMode !== "solid" && allPositions.length >= 6) {
-            const count = allPositions.length / 3;
-            const colors = new Float32Array(count * 3);
-
-            if (p.lineColorMode === "height") {
-              let mn = Infinity;
-              let mx = -Infinity;
-              for (let i = 0; i < count; i++) {
-                const yy = allPositions[i * 3 + 1];
-                if (yy < mn) mn = yy;
-                if (yy > mx) mx = yy;
-              }
-              const range = mx - mn || 1;
-
-              for (let i = 0; i < count; i++) {
-                const yy = allPositions[i * 3 + 1];
-                const t = (yy - mn) / range;
-                const { r, g, b } = scalarToColor01(t, p.linePalette);
-                colors[i * 3 + 0] = r;
-                colors[i * 3 + 1] = g;
-                colors[i * 3 + 2] = b;
-              }
-
-              lineMat.color.set(0xffffff);
-              lineMat.needsUpdate = true;
-            } else if (p.lineColorMode === "arclen") {
-              const tArc = computeArcTForSegmentSoup(allPositions);
-              for (let i = 0; i < count; i++) {
-                const t = tArc[i];
-                const { r, g, b } = scalarToColor01(t, p.linePalette);
-                colors[i * 3 + 0] = r;
-                colors[i * 3 + 1] = g;
-                colors[i * 3 + 2] = b;
-              }
-
-              lineMat.color.set(0xffffff);
-              lineMat.needsUpdate = true;
-            }
-
-            sliceGeom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-            lineMat.vertexColors = true;
-          } else {
-            sliceGeom.deleteAttribute("color");
-            lineMat.vertexColors = false;
-          }
-
-          lines.geometry.dispose();
-          lines.geometry = sliceGeom;
-          lines.visible = true;
-        }
-      }
-    }
-
-    const sheets = sliceSheetsRef.current;
-    if (!sheets) return;
-
-    while (sheets.children.length) {
-      const ch = sheets.children.pop() as THREE.Mesh;
-      if (ch?.geometry) ch.geometry.dispose();
-      const matAny = (ch as any).material as THREE.Material | THREE.Material[] | undefined;
-      if (matAny) {
-        if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-        else matAny.dispose();
-      }
-    }
-
-    if (!p.enabled || !p.showSheet) return;
-
-    const size = Math.max(2.0, (radiusRef.current || 3) * 2.4);
-
-    for (const cfg of baseConfigs) {
-      const plane = makeSlicePlane(cfg.preset, cfg.offset, cfg.normal);
-      const n = plane.normal.clone().normalize();
-
-      const x0 = n.clone().multiplyScalar(cfg.offset);
-
-      const geom = new THREE.PlaneGeometry(size, size, 1, 1);
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0x999999,
-        transparent: true,
-        opacity: Math.min(0.9, Math.max(0, p.sheetOpacity)),
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-      (mat as any).polygonOffset = true;
-      (mat as any).polygonOffsetFactor = -1;
-      (mat as any).polygonOffsetUnits = -1;
-
-      const mesh = new THREE.Mesh(geom, mat);
-      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-      mesh.quaternion.copy(q);
-      mesh.position.copy(x0);
-      mesh.renderOrder = 9;
-
-      sheets.add(mesh);
-    }
-  }
-
-  function computeArcTForSegmentSoup(allPositions: number[], eps = 1e-4): Float32Array {
-    const count = Math.floor(allPositions.length / 3);
-    const outT = new Float32Array(count);
-    if (count < 2) return outT;
-
-    const keyOf = (x: number, y: number, z: number) =>
-      `${Math.round(x / eps)}|${Math.round(y / eps)}|${Math.round(z / eps)}`;
-
-    const keyToId = new Map<string, number>();
-    const nodes: { p: THREE.Vector3; neigh: number[] }[] = [];
-    const vNode = new Int32Array(count);
-
-    const addNode = (x: number, y: number, z: number) => {
-      const k = keyOf(x, y, z);
-      const ex = keyToId.get(k);
-      if (ex !== undefined) return ex;
-      const id = nodes.length;
-      keyToId.set(k, id);
-      nodes.push({ p: new THREE.Vector3(x, y, z), neigh: [] });
-      return id;
-    };
-
-    for (let i = 0; i < count; i++) {
-      const x = allPositions[3 * i + 0];
-      const y = allPositions[3 * i + 1];
-      const z = allPositions[3 * i + 2];
-      vNode[i] = addNode(x, y, z);
-    }
-
-    const addNeighbor = (a: number, b: number) => {
-      const na = nodes[a].neigh;
-      if (!na.includes(b)) na.push(b);
-    };
-
-    for (let i = 0; i + 1 < count; i += 2) {
-      const a = vNode[i];
-      const b = vNode[i + 1];
-      if (a === b) continue;
-      addNeighbor(a, b);
-      addNeighbor(b, a);
-    }
-
-    const eKey = (a: number, b: number) => (a < b ? `${a},${b}` : `${b},${a}`);
-    const usedEdges = new Set<string>();
-
-    const nodeT = new Float32Array(nodes.length);
-    for (let i = 0; i < nodeT.length; i++) nodeT[i] = -1;
-
-    const visitedNode = new Uint8Array(nodes.length);
-
-    const walkComponent = (start: number) => {
-      let s = start;
-
-      if (nodes[s].neigh.length !== 1) {
-        const q: number[] = [s];
-        const seen = new Set<number>([s]);
-        while (q.length) {
-          const u = q.pop()!;
-          if (nodes[u].neigh.length === 1) {
-            s = u;
-            break;
-          }
-          for (const v of nodes[u].neigh) {
-            if (!seen.has(v)) {
-              seen.add(v);
-              q.push(v);
-            }
-          }
-        }
-      }
-
-      const path: number[] = [s];
-      let prev = -1;
-      let cur = s;
-
-      while (true) {
-        const neigh = nodes[cur].neigh;
-        let next = -1;
-
-        for (const v of neigh) {
-          if (v === prev) continue;
-          const k = eKey(cur, v);
-          if (!usedEdges.has(k)) {
-            next = v;
-            break;
-          }
-        }
-
-        if (next === -1) {
-          for (const v of neigh) {
-            const k = eKey(cur, v);
-            if (!usedEdges.has(k)) {
-              next = v;
-              break;
-            }
-          }
-        }
-
-        if (next === -1) break;
-
-        usedEdges.add(eKey(cur, next));
-        prev = cur;
-        cur = next;
-
-        if (cur === s) break;
-
-        path.push(cur);
-        if (path.length > nodes.length + 5) break;
-      }
-
-      if (path.length < 2) {
-        nodeT[path[0]] = 0;
-        visitedNode[path[0]] = 1;
-        return;
-      }
-
-      let total = 0;
-      const dist: number[] = [0];
-      for (let i = 1; i < path.length; i++) {
-        total += nodes[path[i]].p.distanceTo(nodes[path[i - 1]].p);
-        dist.push(total);
-      }
-      const inv = total > 1e-12 ? 1 / total : 1;
-
-      for (let i = 0; i < path.length; i++) {
-        const nid = path[i];
-        nodeT[nid] = dist[i] * inv;
-        visitedNode[nid] = 1;
-      }
-    };
-
-    for (let i = 0; i < nodes.length; i++) {
-      if (visitedNode[i]) continue;
-      if (nodes[i].neigh.length === 0) {
-        visitedNode[i] = 1;
-        nodeT[i] = 0;
-        continue;
-      }
-      walkComponent(i);
-    }
-
-    for (let i = 0; i < count; i++) {
-      const t = nodeT[vNode[i]];
-      outT[i] = t >= 0 ? t : 0;
-    }
-    return outT;
-  }
 function firstMeshIn(obj: THREE.Object3D): THREE.Mesh | null {
 
   
@@ -1863,27 +1450,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       fill.position.set(-4, 2, -3);
       scene.add(fill);
     }
-
-    const sheetsGroup = new THREE.Group();
-    sliceSheetsRef.current = sheetsGroup;
-    scene.add(sheetsGroup);
-
-    const sliceMat = new THREE.LineBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.95,
-      depthTest: false,
-      depthWrite: false,
-      vertexColors: false,
-    });
-    sliceMatRef.current = sliceMat;
-
-    const sliceGeom = new THREE.BufferGeometry();
-    const sliceLines = new THREE.LineSegments(sliceGeom, sliceMat);
-    sliceLines.visible = false;
-    sliceLines.renderOrder = 10;
-    sliceLinesRef.current = sliceLines;
-    scene.add(sliceLines);
 
     const sliceGroup = new THREE.Group();
     sliceGroupRef.current = sliceGroup;
@@ -2509,8 +2075,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       applyProbe(point, normalWorld, { x, y });
     }
 
-    sliceDirtyRef.current = true;
-
     const handleResize = () => {
       const { width: w, height: h } = getSize();
       camera.aspect = w / h;
@@ -2526,12 +2090,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const animate = () => {
       frameId = requestAnimationFrame(animate);
-
-      const root = surfaceObjRef.current;
-      if (sliceDirtyRef.current && root) {
-        updateSlice(root);
-        sliceDirtyRef.current = false;
-      }
 
       controls.update();
       renderer.render(scene, camera);
@@ -2556,23 +2114,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         mat.dispose();
       });
 
-      if (sliceLinesRef.current) sliceLinesRef.current.geometry.dispose();
-      if (sliceMatRef.current) sliceMatRef.current.dispose();
-
-      if (sliceSheetsRef.current) {
-        sliceSheetsRef.current.traverse((obj) => {
-          const anyO = obj as any;
-          if (anyO?.isMesh) {
-            const mesh = obj as THREE.Mesh;
-            if (mesh.geometry) mesh.geometry.dispose();
-            const matAny = (mesh as any).material as THREE.Material | THREE.Material[] | undefined;
-            if (matAny) {
-              if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-              else matAny.dispose();
-            }
-          }
-        });
-      }
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
         scene.remove(sliceGroupRef.current);
@@ -2593,9 +2134,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       }
 
-      sliceLinesRef.current = null;
-      sliceMatRef.current = null;
-      sliceSheetsRef.current = null;
       sliceGroupRef.current = null;
 
       scene.traverse((obj) => {
@@ -3005,8 +2543,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     await removeFromDb(id);
   };
 
-  const sliceUiEnabled = isGraphId(surfaceId);
-  const sliceOffsetRange = sliceUiEnabled
+  const isGraphSurface = isGraphId(surfaceId);
+  const isImplicitSurface = isImplicitId(surfaceId);
+  const sliceUiEnabled = isGraphSurface || isImplicitSurface;
+  const sliceOffsetRange = isGraphSurface
     ? Math.max(1, graphDomain?.xSpan ?? 1.5, graphDomain?.ySpan ?? 1.5)
     : Math.max(1, radiusRef.current || 3);
   const sliceSizeMax = Math.max(2, sliceOffsetRange * 2.5);
