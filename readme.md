@@ -5,6 +5,8 @@
 - Added Weierstrass minimal surface mode (g(z), phi(z)) rendered through the parametric pipeline.
 - Added Weierstrass presets (Enneper, Catenoid, Helicoid) and improved complex expression parsing for functions like exp(z).
 - Added optional recenter/rescale for Weierstrass patches and documented the feature in the renderer README.
+- Added a Gauss map (S²) inspector panel that mirrors normals as a second live visualization.
+- Added Weierstrass diagnostics (path-drift magnitude, vector, traffic-light status, optional arrow, and recompute controls) that flag period drift.
 
 ## Build the renderer into /dist
 
@@ -50,6 +52,16 @@ and editable.
   edited to control coverage and reduce self-intersection clutter.
 - Presets: Canonical examples such as torus, helicoid, catenoid, Enneper, and others.
 - Custom param: Provide X(u,v), Y(u,v), Z(u,v) expressions for custom surfaces.
+
+### Gauss map (S²)
+
+- When you toggle the Gauss map, a companion sphere renders the sampled normals side-by-side with the 3D view.
+- Normals can be colored by their components or the current palette, hover/highlight works both ways, and probe updates keep the sphere synced with the surface, turning normals into a second live visualization.
+
+### Weierstrass diagnostics
+
+- The new diagnostics card in the Weierstrass panel estimates Δ = Re ∮ Φ(z) dz around the UV rectangle, reports the path-drift magnitude, shows the dx/dy/dz vector, and color-codes a status indicator (green/yellow/red for <1e-3, 1e-3..1e-2, >1e-2).
+- Toggle “Show drift vector arrow” to overlay the vector on the surface and hit “Recompute diagnostics” whenever you change the domain or resolution; the UI also warns when the boundary hits a singularity so you can pick a safer patch.
 
 ### Surface catalog and presets
 
@@ -198,6 +210,8 @@ or disable heavy overlays (curvature or dense contours).
 ### Tips for exploration
 
 - Start with a canonical surface (sphere, torus, saddle) and enable curvature coloring.
+- Explore the Weierstrass mode diagnostics: the new sidebar shows path‑drift magnitude, drift vector, and a traffic‑light status so you can tell whether the minimal surface depends on the integration path. Toggle “Show drift vector arrow” to overlay the vector and hit “Recompute diagnostics” whenever you change the domain or resolution.
+
 - Use probe mode to locate critical points and read off curvature values.
 - Activate slicing to reveal hidden structure inside implicit surfaces.
 - Save multiple domains for a single surface to quickly switch viewpoints.

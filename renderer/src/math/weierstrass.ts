@@ -1,5 +1,6 @@
 // src/math/weierstrass.ts
 import { compileComplexExpression, type ComplexExprError } from "./complexExpr";
+import * as THREE from "three";
 import {
   C,
   add,
@@ -22,6 +23,25 @@ export type WeierstrassBuildResult = {
   error?: ComplexExprError;
   errorMessage?: string;
 };
+
+type DriftArgs = {
+  gExpr: string;
+  phiExpr: string;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+  samples: number;
+};
+
+export type WeierstrassDriftResult =
+  | {
+      driftVec: THREE.Vector3;
+      drift: number;
+      okLevel: "good" | "warn" | "bad";
+    }
+  | { errorMessage: string };
+
 
 const C0 = C(0, 0);
 const C1 = C(1, 0);
@@ -205,4 +225,108 @@ export function buildWeierstrassSurface(params: {
   };
 
   return { paramFunc, uMin, uMax, vMin, vMax };
+}
+
+function clampSamples(raw: number) {
+  const n = Math.round(raw);
+  return Math.min(200, Math.max(40, Number.isFinite(n) ? n : 80));
+}
+
+function evalPhiVector(
+  gFn: (ctx: { z: Complex; u: number; v: number }) => Complex,
+  phiFn: (ctx: { z: Complex; u: number; v: number }) => Complex,
+  u: number,
+  v: number
+): Complex3 | null {
+  const z = C(u, v);
+  const g = gFn({ z, u, v });
+  const phi = phiFn({ z, u, v });
+  if (!isFiniteC(g) || !isFiniteC(phi)) return null;
+  return makePhi(g, phi);
+}
+
+function addVec3(target: Vec3, source: Vec3) {
+  target.x += source.x;
+  target.y += source.y;
+  target.z += source.z;
+}
+
+function integrateEdge(
+  samples: number,
+  start: { u: number; v: number },
+  step: { du: number; dv: number },
+  dz: Complex,
+  psi: (u: number, v: number) => Complex3 | null
+): { ok: boolean; sum: Vec3 } {
+  const sum: Vec3 = { x: 0, y: 0, z: 0 };
+  for (let i = 0; i < samples; i++) {
+    const u0 = start.u + step.du * i;
+    const v0 = start.v + step.dv * i;
+    const u1 = start.u + step.du * (i + 1);
+    const v1 = start.v + step.dv * (i + 1);
+
+    const phi0 = psi(u0, v0);
+    const phi1 = psi(u1, v1);
+    if (!phi0 || !phi1) return { ok: false, sum };
+
+    const avg = avgPhi(phi0, phi1);
+    const contribution = realPartMul(avg, dz);
+    if (!Number.isFinite(contribution.x) || !Number.isFinite(contribution.y) || !Number.isFinite(contribution.z)) {
+      return { ok: false, sum };
+    }
+    addVec3(sum, contribution);
+  }
+  return { ok: true, sum };
+}
+
+export function computeWeierstrassDrift(args: DriftArgs): WeierstrassDriftResult {
+  const gRes = compileComplexExpression(args.gExpr);
+  if (gRes.error) return { errorMessage: gRes.error.message };
+  const phiRes = compileComplexExpression(args.phiExpr);
+  if (phiRes.error) return { errorMessage: phiRes.error.message };
+
+  const gFn = gRes.fn!;
+  const phiFn = phiRes.fn!;
+
+  let u0 = Number.isFinite(args.uMin) ? args.uMin : -1;
+  let u1 = Number.isFinite(args.uMax) ? args.uMax : 1;
+  let v0 = Number.isFinite(args.vMin) ? args.vMin : -1;
+  let v1 = Number.isFinite(args.vMax) ? args.vMax : 1;
+  if (u0 === u1) u1 = u0 + 0.1;
+  if (v0 === v1) v1 = v0 + 0.1;
+  if (u0 > u1) [u0, u1] = [u1, u0];
+  if (v0 > v1) [v0, v1] = [v1, v0];
+
+  const samples = clampSamples(args.samples);
+  const du = (u1 - u0) / samples;
+  const dv = (v1 - v0) / samples;
+
+  const psi = (u: number, v: number) => evalPhiVector(gFn, phiFn, u, v);
+
+  const e1 = integrateEdge(samples, { u: u0, v: v0 }, { du, dv: 0 }, C(du, 0), psi);
+  if (!e1.ok) return { errorMessage: "Diagnostics unavailable (singularity on boundary)." };
+  const e2 = integrateEdge(samples, { u: u1, v: v0 }, { du: 0, dv }, C(0, dv), psi);
+  if (!e2.ok) return { errorMessage: "Diagnostics unavailable (singularity on boundary)." };
+  const e3 = integrateEdge(samples, { u: u1, v: v1 }, { du: -du, dv: 0 }, C(-du, 0), psi);
+  if (!e3.ok) return { errorMessage: "Diagnostics unavailable (singularity on boundary)." };
+  const e4 = integrateEdge(samples, { u: u0, v: v1 }, { du: 0, dv: -dv }, C(0, -dv), psi);
+  if (!e4.ok) return { errorMessage: "Diagnostics unavailable (singularity on boundary)." };
+
+  const total = {
+    x: e1.sum.x + e2.sum.x + e3.sum.x + e4.sum.x,
+    y: e1.sum.y + e2.sum.y + e3.sum.y + e4.sum.y,
+    z: e1.sum.z + e2.sum.z + e3.sum.z + e4.sum.z,
+  };
+
+  if (!Number.isFinite(total.x) || !Number.isFinite(total.y) || !Number.isFinite(total.z)) {
+    return { errorMessage: "Diagnostics unavailable (singularity on boundary)." };
+  }
+
+  const driftVec = new THREE.Vector3(total.x, total.y, total.z);
+  const drift = driftVec.length();
+
+  const okLevel: "good" | "warn" | "bad" =
+    drift < 1e-3 ? "good" : drift < 1e-2 ? "warn" : "bad";
+
+  return { drift, driftVec, okLevel };
 }

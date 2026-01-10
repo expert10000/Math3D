@@ -13,11 +13,17 @@ import {
 } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 import { marchingSquares } from "../math/marchingSquares";
-import { buildWeierstrassSurface, type WeierstrassBuildResult } from "../math/weierstrass";
+import {
+  buildWeierstrassSurface,
+  type WeierstrassBuildResult,
+  type WeierstrassDriftResult,
+} from "../math/weierstrass";
 
-import type { ColorMode, ColorPalette, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceViewer";
+import type { ColorMode, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
+import type { ColorPalette } from "./colorPalette";
+import { collectGaussPoints, type GaussPoint } from "./gaussMapUtils";
 
 type ParamPreset = {
   id: string;
@@ -121,6 +127,8 @@ type Props = {
   weierstrassPhiExpr?: string;
   weierstrassResolution?: number;
   weierstrassRecenter?: boolean;
+  weierstrassDiagnostics?: WeierstrassDriftResult | null;
+  showDriftArrow?: boolean;
   onWeierstrassError?: (message: string | null) => void;
   isCameraLeader?: boolean;
   cameraSync?: CameraSyncState | null;
@@ -133,6 +141,9 @@ type Props = {
   showProbeTangentPlane?: boolean;
   showProbeTangents?: boolean;
   onProbe?: (info: ProbeInfo) => void;
+  gaussMapEnabled?: boolean;
+  onGaussPoints?: (points: GaussPoint[]) => void;
+  gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -821,6 +832,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   weierstrassPhiExpr,
   weierstrassResolution,
   weierstrassRecenter,
+  weierstrassDiagnostics,
+  showDriftArrow = false,
   onWeierstrassError,
   isCameraLeader = false,
   cameraSync = null,
@@ -832,6 +845,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   showProbeTangentPlane = true,
   showProbeTangents = true,
   onProbe,
+  gaussMapEnabled = false,
+  onGaussPoints,
+  gaussHighlightPoint = null,
   showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -943,6 +959,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
+  const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
 
   const sliceDirtyRef = useRef(true);
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
@@ -959,6 +976,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
   const sliceSheetsRef = useRef<THREE.Group | null>(null);
   const sliceGroupRef = useRef<THREE.Group | null>(null);
+  const diagnosticsGroupRef = useRef<THREE.Group | null>(null);
+  const driftArrowRef = useRef<THREE.ArrowHelper | null>(null);
 
   const sliceParamsRef = useRef({
     enabled: sliceEnabled,
@@ -1702,6 +1721,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     makeAxisLabel("+y", "#5cb85c", new THREE.Vector3(0, axesLength * 1.05, 0));
     makeAxisLabel("+z", "#5bc0de", new THREE.Vector3(0, 0, axesLength * 1.05));
 
+    const diagnosticsGroup = new THREE.Group();
+    diagnosticsGroup.name = "diagnostics";
+    diagnosticsGroupRef.current = diagnosticsGroup;
+    scene.add(diagnosticsGroup);
+
     // optional coordinate planes
     const extraGeoms: THREE.BufferGeometry[] = [];
     const extraMats: THREE.Material[] = [];
@@ -2094,6 +2118,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       t2: tangentArrow2,
     };
 
+    const gaussMarkerGeom = new THREE.SphereGeometry(0.045, 16, 16);
+    const gaussMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffd54f });
+    const gaussMarker = new THREE.Mesh(gaussMarkerGeom, gaussMarkerMat);
+    gaussMarker.visible = false;
+    scene.add(gaussMarker);
+    gaussHighlightRef.current = gaussMarker;
+
     const principalGroup = new THREE.Group();
     scene.add(principalGroup);
     principalGroupRef.current = principalGroup;
@@ -2269,6 +2300,20 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         principalGroupRef.current = null;
       }
 
+      if (diagnosticsGroupRef.current) {
+        clearGroup(diagnosticsGroupRef.current);
+        scene.remove(diagnosticsGroupRef.current);
+        diagnosticsGroupRef.current = null;
+        driftArrowRef.current = null;
+      }
+
+      if (gaussHighlightRef.current) {
+        scene.remove(gaussHighlightRef.current);
+        gaussHighlightRef.current.geometry.dispose();
+        (gaussHighlightRef.current.material as THREE.Material).dispose();
+        gaussHighlightRef.current = null;
+      }
+
       surfaceObjRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
@@ -2310,6 +2355,66 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    if (!onGaussPoints) return;
+    if (!gaussMapEnabled) {
+      onGaussPoints([]);
+      return;
+    }
+
+    const root = surfaceObjRef.current;
+    if (!root) {
+      onGaussPoints([]);
+      return;
+    }
+
+    const pts = collectGaussPoints(root, 900);
+    onGaussPoints(pts);
+  }, [sceneEpoch, gaussMapEnabled, onGaussPoints]);
+
+  useEffect(() => {
+    const marker = gaussHighlightRef.current;
+    if (!marker) return;
+    if (!gaussMapEnabled || !gaussHighlightPoint) {
+      marker.visible = false;
+      return;
+    }
+    marker.position.set(gaussHighlightPoint.x, gaussHighlightPoint.y, gaussHighlightPoint.z);
+    marker.visible = true;
+  }, [gaussHighlightPoint, gaussMapEnabled]);
+
+  useEffect(() => {
+    const group = diagnosticsGroupRef.current;
+    if (!group) return;
+
+    let arrow = driftArrowRef.current;
+    if (!arrow) {
+      arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 1, 0xff6b35, 0.24, 0.14);
+      arrow.line.material.depthTest = false;
+      arrow.renderOrder = 999;
+      group.add(arrow);
+      driftArrowRef.current = arrow;
+    }
+
+    if (surfaceId !== "weierstrass" || !showDriftArrow || !weierstrassDiagnostics) {
+      arrow.visible = false;
+      return;
+    }
+
+    const driftVec = weierstrassDiagnostics.driftVec.clone();
+    const driftLen = driftVec.length();
+    if (driftLen < 1e-8) {
+      arrow.visible = false;
+      return;
+    }
+
+    const arrowLength = Math.max(0.35, Math.min(3, driftLen * 40 + 0.2));
+    arrow.position.set(0, 0, 0);
+    arrow.setDirection(driftVec.normalize());
+    arrow.setLength(arrowLength, Math.max(0.2, arrowLength * 0.25), Math.max(0.2, arrowLength * 0.15));
+    arrow.visible = true;
+  }, [sceneEpoch, showDriftArrow, weierstrassDiagnostics, surfaceId]);
 
   useEffect(() => {
     const st = viewerRef.current;

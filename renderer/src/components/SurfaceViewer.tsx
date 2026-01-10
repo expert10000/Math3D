@@ -9,6 +9,8 @@ import { computePrincipalCurvatureAtUV, type PrincipalCurvatureResult } from "..
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 import { marchingSquares } from "../math/marchingSquares";
 
+import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
+import { collectGaussPoints, type GaussPoint } from "./gaussMapUtils";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
@@ -22,7 +24,6 @@ export type ColorMode =
   | "mean"
   | "k1"
   | "k2";
-export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
 
 export type SlicePreset = "xy" | "yz" | "xz" | "custom";
 export type SliceNormal = { x: number; y: number; z: number };
@@ -153,53 +154,6 @@ function makeGraphContourLines(
 
   return lines;
 }
-
-function scalarToColor01(
-  t: number,
-  palette: ColorPalette
-): { r: number; g: number; b: number } {
-  const x = t < 0 ? 0 : t > 1 ? 1 : t;
-
-  switch (palette) {
-    case "grayscale": {
-      const g = x;
-      return { r: g, g, b: g };
-    }
-
-    case "redYellow": {
-      // red -> yellow (increase green)
-      // x=0 => red (1,0,0), x=1 => yellow (1,1,0)
-      return { r: 1, g: x, b: 0 };
-    }
-
-    case "rainbow": {
-      const h = x * 5.0;
-      const i = Math.floor(h);
-      const f = h - i;
-      const q = 1 - f;
-
-      let r = 0, g = 0, b = 0;
-      switch (i) {
-        case 0: r = 1; g = f; b = 0; break;
-        case 1: r = q; g = 1; b = 0; break;
-        case 2: r = 0; g = 1; b = f; break;
-        case 3: r = 0; g = q; b = 1; break;
-        default: r = f; g = 0; b = 1; break;
-      }
-      return { r, g, b };
-    }
-
-    case "blueRed":
-    default: {
-      const four = 4 * x;
-      const r = Math.min(Math.max(four - 1.5, 0), 1);
-      const g = Math.min(Math.max(2 - Math.abs(four - 2), 0), 1);
-      const b = Math.min(Math.max(1.5 - four, 0), 1);
-      return { r, g, b };
-    }
-  }
-}
-
 
 function applyVertexColors(
   geometry: THREE.BufferGeometry,
@@ -473,41 +427,6 @@ function computeImplicitPrincipalAtPoint(
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
-function colorFromPalette(t: number, palette: ColorPalette, out = new THREE.Color()) {
-  const u = clamp01(t);
-
-  if (palette === "grayscale") {
-    return out.setRGB(u, u, u);
-  }
-
-  if (palette === "redYellow") {
-    // red -> yellow (increase green)
-    return out.setRGB(1, u, 0);
-  }
-
-  if (palette === "rainbow") {
-    // hue sweep: blue->red-ish
-    // (tweak if you want different sweep)
-    return out.setHSL((1 - u) * 0.7, 1.0, 0.5);
-  }
-
-  // "blueRed"
-  // smooth blue -> (purple) -> red
-  // interpolate in RGB
-  const r = u;
-  const g = 0.15 + 0.2 * (1 - Math.abs(2 * u - 1));
-  const b = 1 - u;
-  return out.setRGB(r, g, b);
-}
-const DBG_COLORS = true;
-
-function solidColorForPalette(palette: ColorPalette): number {
-  if (palette === "redYellow") return 0xffcc00;
-  if (palette === "grayscale") return 0x888888;
-  if (palette === "blueRed") return 0x4f8cff;
-  return 0x6a5cff;
-}
-
 function colorAttrStats(geom: THREE.BufferGeometry) {
   const a = geom.getAttribute("color") as THREE.BufferAttribute | null;
   if (!a) return { has: false };
@@ -725,6 +644,10 @@ type Props = {
   implicitProbeToken?: number;
   onProbe?: (info: ProbeInfo) => void;
 
+  gaussMapEnabled?: boolean;
+  onGaussPoints?: (points: GaussPoint[]) => void;
+  gaussHighlightPoint?: { x: number; y: number; z: number } | null;
+
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
 
@@ -777,6 +700,10 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     implicitProbeXYZ = null,
     implicitProbeToken,
     onProbe,
+
+    gaussMapEnabled = false,
+    onGaussPoints,
+    gaussHighlightPoint = null,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -835,6 +762,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
 
@@ -2528,6 +2456,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       t2: tangentArrow2,
     };
 
+    const gaussMarkerGeom = new THREE.SphereGeometry(0.045, 16, 16);
+    const gaussMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffd54f });
+    const gaussMarker = new THREE.Mesh(gaussMarkerGeom, gaussMarkerMat);
+    gaussMarker.visible = false;
+    scene.add(gaussMarker);
+    gaussHighlightRef.current = gaussMarker;
+
     const principalGroup = new THREE.Group();
     scene.add(principalGroup);
     principalGroupRef.current = principalGroup;
@@ -2746,6 +2681,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         principalGroupRef.current = null;
       }
 
+      if (gaussHighlightRef.current) {
+        scene.remove(gaussHighlightRef.current);
+        gaussHighlightRef.current.geometry.dispose();
+        (gaussHighlightRef.current.material as THREE.Material).dispose();
+        gaussHighlightRef.current = null;
+      }
+
       if (implicitOverlayLines) {
         implicitOverlayLines.geometry.dispose();
         const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
@@ -2804,6 +2746,23 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   ]);
 
   useEffect(() => {
+    if (!onGaussPoints) return;
+    if (!gaussMapEnabled) {
+      onGaussPoints([]);
+      return;
+    }
+
+    const root = surfaceObjRef.current;
+    if (!root) {
+      onGaussPoints([]);
+      return;
+    }
+
+    const pts = collectGaussPoints(root, 900);
+    onGaussPoints(pts);
+  }, [sceneEpoch, gaussMapEnabled, onGaussPoints]);
+
+  useEffect(() => {
     const widgets = probeWidgetsRef.current;
     if (!widgets) return;
     const hasProbe = widgets.marker.visible;
@@ -2814,6 +2773,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
+
+  useEffect(() => {
+    const marker = gaussHighlightRef.current;
+    if (!marker) return;
+    if (!gaussMapEnabled || !gaussHighlightPoint) {
+      marker.visible = false;
+      return;
+    }
+    marker.position.set(gaussHighlightPoint.x, gaussHighlightPoint.y, gaussHighlightPoint.z);
+    marker.visible = true;
+  }, [gaussHighlightPoint, gaussMapEnabled]);
 
   useEffect(() => {
     const group = principalGroupRef.current;

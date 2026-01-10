@@ -7,6 +7,7 @@ import { ChebyshevScreen } from "./screens/ChebyshevScreen";
 
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
 import TabButton from "./components/TabButton";
+import GaussMapPanel from "./components/GaussMapPanel";
 
 import {
   SurfaceViewer,
@@ -23,9 +24,12 @@ import { renderChebyshev } from "./d3/ChebyshevRenderer";
 import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer";
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
+import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
+
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
+import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
 
 /* ---------------- App modes ---------------- */
 
@@ -466,12 +470,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [weierstrassResolution, setWeierstrassResolution] = useState(WEIERSTRASS_DEFAULTS.resolution);
   const [weierstrassRecenter, setWeierstrassRecenter] = useState(WEIERSTRASS_DEFAULTS.recenter);
   const [weierstrassError, setWeierstrassError] = useState<string | null>(null);
+  const [weierstrassDiagnostics, setWeierstrassDiagnostics] = useState<WeierstrassDriftResult | null>(null);
+  const [weierstrassDiagnosticError, setWeierstrassDiagnosticError] = useState<string | null>(null);
+  const [diagnosticsToken, setDiagnosticsToken] = useState(0);
+  const [showDriftArrow, setShowDriftArrow] = useState(false);
 
   // 3D visual toggles
   const [showWireframe, setShowWireframe] = useState(false);
   const [showPlanes, setShowPlanes] = useState(false);
   const [colorMode, setColorMode] = useState<ColorMode>("solid");
   const [colorPalette, setColorPalette] = useState<ColorPalette>("blueRed");
+  const [showGaussMap, setShowGaussMap] = useState(false);
+  const [gaussColorMode, setGaussColorMode] = useState<GaussColorMode>("components");
+  const [gaussPoints, setGaussPoints] = useState<GaussPoint[]>([]);
+  const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
+  const gaussHighlightPoint =
+    gaussHoverIndex != null && gaussPoints[gaussHoverIndex]
+      ? gaussPoints[gaussHoverIndex].position
+      : null;
   const [lightPreset, setLightPreset] = useState<"studio" | "soft" | "contrast" | "neutral" | "warm">("studio");
   const [materialRoughness, setMaterialRoughness] = useState(0.3);
   const [materialMetalness, setMaterialMetalness] = useState(0.1);
@@ -975,6 +991,28 @@ case "mobius":
     }
   }, []);
 
+  const handleGaussPoints = useCallback(
+    (points: GaussPoint[]) => {
+      if (!showGaussMap) {
+        setGaussPoints([]);
+        return;
+      }
+      setGaussPoints(points);
+    },
+    [showGaussMap]
+  );
+
+  useEffect(() => {
+    if (!showGaussMap) {
+      setGaussPoints([]);
+      setGaussHoverIndex(null);
+    }
+  }, [showGaussMap]);
+
+  useEffect(() => {
+    setGaussHoverIndex(null);
+  }, [gaussPoints]);
+
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
     setWeierstrassPhiExpr(WEIERSTRASS_DEFAULTS.phiExpr);
@@ -982,6 +1020,42 @@ case "mobius":
     setWeierstrassResolution(WEIERSTRASS_DEFAULTS.resolution);
     setWeierstrassRecenter(WEIERSTRASS_DEFAULTS.recenter);
     setWeierstrassError(null);
+  }, []);
+
+  useEffect(() => {
+    const res = computeWeierstrassDrift({
+      gExpr: weierstrassGExpr,
+      phiExpr: weierstrassPhiExpr,
+      uMin: weierstrassDomain.uMin,
+      uMax: weierstrassDomain.uMax,
+      vMin: weierstrassDomain.vMin,
+      vMax: weierstrassDomain.vMax,
+      samples: weierstrassResolution,
+    });
+    if ("errorMessage" in res) {
+      setWeierstrassDiagnosticError(res.errorMessage);
+      setWeierstrassDiagnostics(null);
+    } else {
+      setWeierstrassDiagnosticError(null);
+      setWeierstrassDiagnostics(res);
+    }
+  }, [
+    diagnosticsToken,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassDomain.uMin,
+    weierstrassDomain.uMax,
+    weierstrassDomain.vMin,
+    weierstrassDomain.vMax,
+    weierstrassResolution,
+  ]);
+
+  const recomputeWeierstrassDiagnostics = useCallback(() => {
+    setDiagnosticsToken((t) => t + 1);
+  }, []);
+
+  const toggleDriftArrow = useCallback(() => {
+    setShowDriftArrow((v) => !v);
   }, []);
 
   const pushCommandResult = useCallback((cmd: string, out: string) => {
@@ -1382,6 +1456,11 @@ case "mobius":
                 onToggleWeierstrassRecenter={() => setWeierstrassRecenter((v) => !v)}
                 onResetWeierstrass={handleResetWeierstrass}
                 weierstrassError={weierstrassError}
+                weierstrassDiagnostics={weierstrassDiagnostics}
+                weierstrassDiagnosticError={weierstrassDiagnosticError}
+                showDriftArrow={showDriftArrow}
+                onToggleDriftArrow={toggleDriftArrow}
+                onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showPlanes={showPlanes}
@@ -1422,6 +1501,11 @@ case "mobius":
                 onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                showGaussMap={showGaussMap}
+                onToggleGaussMap={() => setShowGaussMap((v) => !v)}
+                gaussColorMode={gaussColorMode}
+                onChangeGaussColorMode={setGaussColorMode}
+                gaussPointsCount={gaussPoints.length}
                 onResetCamera={() => setCameraResetToken((t) => t + 1)}
                 probeInfo={probeInfo}
                 probeCurv={probeCurv}
@@ -1458,166 +1542,200 @@ case "mobius":
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: compareEnabled ? "1fr 1fr" : "1fr",
-                    gap: compareEnabled ? 10 : 0,
+                    gridTemplateColumns: showGaussMap ? "minmax(0,1fr) 320px" : "1fr",
+                    gap: showGaussMap ? 10 : 0,
                     height: "100%",
                   }}
                 >
-                  <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
-                    {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
-                      <ParamSurfaceViewer
-                        surfaceId={paramSurfaceIdForView}
-                        customX={paramXExpr}
-                        customY={paramYExpr}
-                        customZ={paramZExpr}
-                        wireframe={showWireframe}
-                        showPlanes={showPlanes}
-                        lightPreset={lightPreset}
-                        materialRoughness={materialRoughness}
-                        materialMetalness={materialMetalness}
-                        materialOpacity={materialOpacity}
-                        paramResolution={activeParamLikeResolution}
-                        colorMode={colorMode}
-                        colorPalette={colorPalette}
-                        paramDomain={activeParamLikeDomain}
-                        weierstrassGExpr={weierstrassGExpr}
-                        weierstrassPhiExpr={weierstrassPhiExpr}
-                        weierstrassResolution={weierstrassResolution}
-                        weierstrassRecenter={weierstrassRecenter}
-                        onWeierstrassError={setWeierstrassError}
-                        probeEnabled={probeEnabled}
-                        showProbeNormal={showProbeNormal}
-                        showProbeTangentPlane={showProbeTangentPlane}
-                        showProbeTangents={showProbeTangents}
-                        showPrincipalDirections={showPrincipalDirections}
-                        showPrincipalNormalPlanes={showPrincipalNormalPlanes}
-                        showPrincipalLines={showPrincipalLines}
-                        showBoundingBox={showBoundingBox}
-                        resetToken={cameraResetToken}
-                        onProbe={handleProbe}
-                        onParamCurvature={handleParamCurvature}
-                        paramProbeUV={paramProbeUV}
-                        paramProbeToken={paramProbeToken}
-                        onSetCustomX={setParamXExpr}
-                        onSetCustomY={setParamYExpr}
-                        onSetCustomZ={setParamZExpr}
-                        isCameraLeader={compareEnabled}
-                        onCameraSync={compareEnabled ? setCameraSync : undefined}
-                      />
-                    ) : (
-                      <SurfaceViewer
-                        surfaceId={activeEqSurfaceId}
-                        graphExpr={graphExpr}
-                        implicitExpr={implicitExpr}
-                        wireframe={showWireframe}
-                        showPlanes={showPlanes}
-                        lightPreset={lightPreset}
-                        materialRoughness={materialRoughness}
-                        materialMetalness={materialMetalness}
-                        materialOpacity={materialOpacity}
-                        graphResolution={graphResolution}
-                        implicitResolution={implicitResolution}
-                        implicitDomainSize={implicitDomainSizeFor(activeEqSurfaceId)}
-                        colorMode={colorMode}
-                        colorPalette={colorPalette}
-                        implicitOverlay={implicitOverlay}
-                        graphDomain={activeGraphDomain}
-                        showBoundingBox={showBoundingBox}
-                        resetToken={cameraResetToken}
-                        graphProbeXY={graphProbeXY}
-                        graphProbeToken={graphProbeToken}
-                        implicitProbeXYZ={implicitProbeXYZ}
-                        implicitProbeToken={implicitProbeToken}
-                        probeEnabled={probeEnabled}
-                        showProbeNormal={showProbeNormal}
-                        showProbeTangentPlane={showProbeTangentPlane}
-                        showProbeTangents={showProbeTangents}
-                        showPrincipalDirections={showPrincipalDirections}
-                        showPrincipalNormalPlanes={showPrincipalNormalPlanes}
-                        showPrincipalLines={showPrincipalLines}
-                        onProbe={handleProbe}
-                        onSetGraphExpr={setGraphExpr}
-                        onSetImplicitExpr={setImplicitExpr}
-                        // contours (remove if SurfaceViewer doesn't support yet)
-                        showContours={showContours}
-                        contourCount={contourCount}
-                        isCameraLeader={compareEnabled}
-                        onCameraSync={compareEnabled ? setCameraSync : undefined}
-                      />
-                    )}
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: compareEnabled ? "1fr 1fr" : "1fr",
+                        gap: compareEnabled ? 10 : 0,
+                        height: "100%",
+                      }}
+                    >
+                      <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                        {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
+                          <ParamSurfaceViewer
+                            surfaceId={paramSurfaceIdForView}
+                            customX={paramXExpr}
+                            customY={paramYExpr}
+                            customZ={paramZExpr}
+                            wireframe={showWireframe}
+                            showPlanes={showPlanes}
+                            lightPreset={lightPreset}
+                            materialRoughness={materialRoughness}
+                            materialMetalness={materialMetalness}
+                            materialOpacity={materialOpacity}
+                            paramResolution={activeParamLikeResolution}
+                            colorMode={colorMode}
+                            colorPalette={colorPalette}
+                            paramDomain={activeParamLikeDomain}
+                            weierstrassGExpr={weierstrassGExpr}
+                            weierstrassPhiExpr={weierstrassPhiExpr}
+                            weierstrassResolution={weierstrassResolution}
+                            weierstrassRecenter={weierstrassRecenter}
+                            onWeierstrassError={setWeierstrassError}
+                            probeEnabled={probeEnabled}
+                            showProbeNormal={showProbeNormal}
+                            showProbeTangentPlane={showProbeTangentPlane}
+                            showProbeTangents={showProbeTangents}
+                            showPrincipalDirections={showPrincipalDirections}
+                            showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                            showPrincipalLines={showPrincipalLines}
+                            showBoundingBox={showBoundingBox}
+                            resetToken={cameraResetToken}
+                            onProbe={handleProbe}
+                            onParamCurvature={handleParamCurvature}
+                            paramProbeUV={paramProbeUV}
+                            paramProbeToken={paramProbeToken}
+                            onSetCustomX={setParamXExpr}
+                            onSetCustomY={setParamYExpr}
+                            onSetCustomZ={setParamZExpr}
+                            isCameraLeader={compareEnabled}
+                            onCameraSync={compareEnabled ? setCameraSync : undefined}
+                            gaussMapEnabled={showGaussMap}
+                            onGaussPoints={handleGaussPoints}
+                            gaussHighlightPoint={gaussHighlightPoint}
+                            weierstrassDiagnostics={
+                              surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
+                            }
+                            showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
+                          />
+                        ) : (
+                          <SurfaceViewer
+                            surfaceId={activeEqSurfaceId}
+                            graphExpr={graphExpr}
+                            implicitExpr={implicitExpr}
+                            wireframe={showWireframe}
+                            showPlanes={showPlanes}
+                            lightPreset={lightPreset}
+                            materialRoughness={materialRoughness}
+                            materialMetalness={materialMetalness}
+                            materialOpacity={materialOpacity}
+                            graphResolution={graphResolution}
+                            implicitResolution={implicitResolution}
+                            implicitDomainSize={implicitDomainSizeFor(activeEqSurfaceId)}
+                            colorMode={colorMode}
+                            colorPalette={colorPalette}
+                            implicitOverlay={implicitOverlay}
+                            graphDomain={activeGraphDomain}
+                            showBoundingBox={showBoundingBox}
+                            resetToken={cameraResetToken}
+                            graphProbeXY={graphProbeXY}
+                            graphProbeToken={graphProbeToken}
+                            implicitProbeXYZ={implicitProbeXYZ}
+                            implicitProbeToken={implicitProbeToken}
+                            probeEnabled={probeEnabled}
+                            showProbeNormal={showProbeNormal}
+                            showProbeTangentPlane={showProbeTangentPlane}
+                            showProbeTangents={showProbeTangents}
+                            showPrincipalDirections={showPrincipalDirections}
+                            showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                            showPrincipalLines={showPrincipalLines}
+                            onProbe={handleProbe}
+                            onSetGraphExpr={setGraphExpr}
+                            onSetImplicitExpr={setImplicitExpr}
+                            // contours (remove if SurfaceViewer doesn't support yet)
+                            showContours={showContours}
+                            contourCount={contourCount}
+                            isCameraLeader={compareEnabled}
+                            onCameraSync={compareEnabled ? setCameraSync : undefined}
+                            gaussMapEnabled={showGaussMap}
+                            onGaussPoints={handleGaussPoints}
+                            gaussHighlightPoint={gaussHighlightPoint}
+                          />
+                        )}
+                      </div>
+
+                      {compareEnabled && (
+                        <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                          {surfaceViewerKind === "param" ? (
+                            <ParamSurfaceViewer
+                              surfaceId={compareParamId}
+                              customX={paramXExpr}
+                              customY={paramYExpr}
+                              customZ={paramZExpr}
+                              wireframe={showWireframe}
+                              showPlanes={showPlanes}
+                              lightPreset={lightPreset}
+                              materialRoughness={materialRoughness}
+                              materialMetalness={materialMetalness}
+                              materialOpacity={materialOpacity}
+                              paramResolution={paramResolution}
+                              colorMode={colorMode}
+                              colorPalette={colorPalette}
+                              paramDomain={activeParamDomain}
+                              probeEnabled={false}
+                              showProbeNormal={false}
+                              showProbeTangentPlane={false}
+                              showProbeTangents={false}
+                              showPrincipalDirections={false}
+                              showPrincipalNormalPlanes={false}
+                              showPrincipalLines={false}
+                              showBoundingBox={showBoundingBox}
+                              resetToken={cameraResetToken}
+                              onSetCustomX={setParamXExpr}
+                              onSetCustomY={setParamYExpr}
+                              onSetCustomZ={setParamZExpr}
+                              isCameraLeader={false}
+                              cameraSync={cameraSync}
+                            />
+                          ) : (
+                            <SurfaceViewer
+                              surfaceId={compareSurfaceId}
+                              graphExpr={graphExpr}
+                              implicitExpr={implicitExpr}
+                              wireframe={showWireframe}
+                              showPlanes={showPlanes}
+                              lightPreset={lightPreset}
+                              materialRoughness={materialRoughness}
+                              materialMetalness={materialMetalness}
+                              materialOpacity={materialOpacity}
+                              graphResolution={graphResolution}
+                              implicitResolution={implicitResolution}
+                              implicitDomainSize={implicitDomainSizeFor(compareSurfaceId)}
+                              colorMode={colorMode}
+                              colorPalette={colorPalette}
+                              implicitOverlay={implicitOverlay}
+                              graphDomain={activeGraphDomain}
+                              showBoundingBox={showBoundingBox}
+                              resetToken={cameraResetToken}
+                              graphProbeXY={null}
+                              graphProbeToken={0}
+                              implicitProbeXYZ={null}
+                              implicitProbeToken={0}
+                              probeEnabled={false}
+                              showProbeNormal={false}
+                              showProbeTangentPlane={false}
+                              showProbeTangents={false}
+                              showPrincipalDirections={false}
+                              showPrincipalNormalPlanes={false}
+                              showPrincipalLines={false}
+                              // contours (remove if SurfaceViewer doesn't support yet)
+                              showContours={showContours}
+                              contourCount={contourCount}
+                              isCameraLeader={false}
+                              cameraSync={cameraSync}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
-                  {compareEnabled && (
-                    <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
-                      {surfaceViewerKind === "param" ? (
-                        <ParamSurfaceViewer
-                          surfaceId={compareParamId}
-                          customX={paramXExpr}
-                          customY={paramYExpr}
-                          customZ={paramZExpr}
-                          wireframe={showWireframe}
-                          showPlanes={showPlanes}
-                          lightPreset={lightPreset}
-                          materialRoughness={materialRoughness}
-                          materialMetalness={materialMetalness}
-                          materialOpacity={materialOpacity}
-                          paramResolution={paramResolution}
-                          colorMode={colorMode}
-                          colorPalette={colorPalette}
-                          paramDomain={activeParamDomain}
-                          probeEnabled={false}
-                          showProbeNormal={false}
-                          showProbeTangentPlane={false}
-                          showProbeTangents={false}
-                          showPrincipalDirections={false}
-                          showPrincipalNormalPlanes={false}
-                          showPrincipalLines={false}
-                          showBoundingBox={showBoundingBox}
-                          resetToken={cameraResetToken}
-                          onSetCustomX={setParamXExpr}
-                          onSetCustomY={setParamYExpr}
-                          onSetCustomZ={setParamZExpr}
-                          isCameraLeader={false}
-                          cameraSync={cameraSync}
-                        />
-                      ) : (
-                        <SurfaceViewer
-                          surfaceId={compareSurfaceId}
-                          graphExpr={graphExpr}
-                          implicitExpr={implicitExpr}
-                          wireframe={showWireframe}
-                          showPlanes={showPlanes}
-                          lightPreset={lightPreset}
-                          materialRoughness={materialRoughness}
-                          materialMetalness={materialMetalness}
-                          materialOpacity={materialOpacity}
-                          graphResolution={graphResolution}
-                          implicitResolution={implicitResolution}
-                          implicitDomainSize={implicitDomainSizeFor(compareSurfaceId)}
-                          colorMode={colorMode}
-                          colorPalette={colorPalette}
-                          implicitOverlay={implicitOverlay}
-                          graphDomain={activeGraphDomain}
-                          showBoundingBox={showBoundingBox}
-                          resetToken={cameraResetToken}
-                          graphProbeXY={null}
-                          graphProbeToken={0}
-                          implicitProbeXYZ={null}
-                          implicitProbeToken={0}
-                          probeEnabled={false}
-                          showProbeNormal={false}
-                          showProbeTangentPlane={false}
-                          showProbeTangents={false}
-                          showPrincipalDirections={false}
-                          showPrincipalNormalPlanes={false}
-                          showPrincipalLines={false}
-                          // contours (remove if SurfaceViewer doesn't support yet)
-                          showContours={showContours}
-                          contourCount={contourCount}
-                          isCameraLeader={false}
-                          cameraSync={cameraSync}
-                        />
-                      )}
+                  {showGaussMap && (
+                    <div style={{ minWidth: 240, maxWidth: 340, display: "flex", alignItems: "stretch" }}>
+                      <GaussMapPanel
+                        points={gaussPoints}
+                        palette={colorPalette}
+                        colorMode={gaussColorMode}
+                        probeNormal={probeInfo?.normal ?? null}
+                        onPointHover={(idx) => setGaussHoverIndex(idx)}
+                        height={280}
+                      />
                     </div>
                   )}
                 </div>
@@ -1667,6 +1785,11 @@ case "mobius":
                 onRemoveGraphDomainPreset={removeGraphDomainPreset}
                 onRemoveParamDomainPreset={removeParamDomainPreset}
                 onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
+                weierstrassDiagnostics={weierstrassDiagnostics}
+                weierstrassDiagnosticError={weierstrassDiagnosticError}
+                showDriftArrow={showDriftArrow}
+                onToggleDriftArrow={toggleDriftArrow}
+                onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
               />
             </div>
           </div>
@@ -2131,6 +2254,16 @@ type SurfacesLeftPanelProps = {
   onTogglePrincipalLines: () => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
+  weierstrassDiagnostics: WeierstrassDriftResult | null;
+  weierstrassDiagnosticError: string | null;
+  showDriftArrow: boolean;
+  onToggleDriftArrow: () => void;
+  onRecomputeDiagnostics: () => void;
+  showGaussMap: boolean;
+  onToggleGaussMap: () => void;
+  gaussColorMode: GaussColorMode;
+  onChangeGaussColorMode: (mode: GaussColorMode) => void;
+  gaussPointsCount: number;
   onResetCamera: () => void;
 
   probeInfo: ProbeInfo | null;
@@ -2216,6 +2349,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onTogglePrincipalLines,
   showBoundingBox,
   onToggleBoundingBox,
+  showGaussMap,
+  onToggleGaussMap,
+  gaussColorMode,
+  onChangeGaussColorMode,
+  gaussPointsCount,
   onResetCamera,
   probeInfo,
   probeCurv,
@@ -2228,6 +2366,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeCommandInput,
   onRunCommand,
   commandHistory,
+  weierstrassDiagnostics,
+  weierstrassDiagnosticError,
+  showDriftArrow,
+  onToggleDriftArrow,
+  onRecomputeDiagnostics,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
@@ -2235,6 +2378,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isWeierstrass = viewerKind === "weierstrass";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
   const activeMeta = isWeierstrass ? WEIERSTRASS_META : isEqViewer ? eqMeta : paramMeta;
+  const diagStatusColors: Record<"good" | "warn" | "bad", string> = {
+    good: "#1f894f",
+    warn: "#e2a700",
+    bad: "#d9302f",
+  };
+  const diagStatusLabel = weierstrassDiagnostics
+    ? weierstrassDiagnostics.okLevel
+    : weierstrassDiagnosticError
+    ? "unavailable"
+    : "pending";
+  const diagStatusColor = weierstrassDiagnostics ? diagStatusColors[weierstrassDiagnostics.okLevel] : "#9e9e9e";
 
   const modeLabel =
     viewerKind === "implicit"
@@ -2395,8 +2549,37 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         {COLOR_MODE_LABELS[m]}
       </button>
     ))}
+    </div>
   </div>
-</div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gauss map</div>
+        <label style={{ display: "block", cursor: "pointer" }}>
+          <input type="checkbox" checked={showGaussMap} onChange={onToggleGaussMap} style={{ marginRight: 6 }} />
+          Show Gauss map (S²)
+        </label>
+        {showGaussMap && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Color by</div>
+            <div style={pillRow}>
+              {(["components", "palette"] as GaussColorMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onChangeGaussColorMode(m)}
+                  style={pill(gaussColorMode === m)}
+                  aria-pressed={gaussColorMode === m}
+                >
+                  {m === "components" ? "Normal RGB" : "Palette (N.z)"}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+              {gaussPointsCount > 0 ? `${gaussPointsCount} normals plotted` : "Waiting for normals..."}
+            </div>
+          </div>
+        )}
       </div>
 
       <div style={{ marginBottom: 12 }}>
@@ -2834,6 +3017,61 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               Reset defaults
             </button>
           </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              padding: 10,
+              borderRadius: 10,
+              border: "1px solid #e0e0e0",
+              background: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Diagnostics</span>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  background: diagStatusColor,
+                  display: "inline-block",
+                }}
+              />
+              <span style={{ fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>
+                Status: {diagStatusLabel}
+              </span>
+            </div>
+            {weierstrassDiagnosticError ? (
+              <div style={{ fontSize: 11, color: "#b42318", marginBottom: 6 }}>{weierstrassDiagnosticError}</div>
+            ) : (
+              <div style={{ fontSize: 11, color: "#555", marginBottom: 6 }}>
+                Path-independence is checked by integrating Φ(z) along the UV box boundary. The status
+                follows the thresholds: green &lt; 1e-3, yellow 1e-3..1e-2, red &gt; 1e-2.
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+              <span>Path drift (rectangle loop):</span>
+              <span style={{ fontFamily: "monospace" }}>
+                {weierstrassDiagnostics ? fmt(weierstrassDiagnostics.drift) : "—"}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>
+              dx, dy, dz drift vector:{" "}
+              <span style={{ fontFamily: "monospace" }}>
+                {weierstrassDiagnostics ? fmt3(weierstrassDiagnostics.driftVec) : "(—)"}
+              </span>
+            </div>
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" checked={showDriftArrow} onChange={onToggleDriftArrow} />
+                Show drift vector arrow
+              </label>
+              <button type="button" onClick={onRecomputeDiagnostics} style={{ padding: "4px 8px" }}>
+                Recompute diagnostics
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -3165,6 +3403,11 @@ type SurfacesRightPanelProps = {
   onRemoveGraphDomainPreset: (id: string) => void;
   onRemoveParamDomainPreset: (id: string) => void;
   onRemoveImplicitDomainPreset: (id: string) => void;
+  weierstrassDiagnostics: WeierstrassDriftResult | null;
+  weierstrassDiagnosticError: string | null;
+  showDriftArrow: boolean;
+  onToggleDriftArrow: () => void;
+  onRecomputeDiagnostics: () => void;
 };
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -3197,6 +3440,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onRemoveGraphDomainPreset,
   onRemoveParamDomainPreset,
   onRemoveImplicitDomainPreset,
+  weierstrassDiagnostics,
+  weierstrassDiagnosticError,
+  showDriftArrow,
+  onToggleDriftArrow,
+  onRecomputeDiagnostics,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
