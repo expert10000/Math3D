@@ -13,11 +13,11 @@ import {
   SurfaceViewer,
   type SurfaceId,
   type ColorMode,
-  type ColorPalette,
   type ProbeInfo,
 } from "./components/SurfaceViewer";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
+import type { ColorPalette } from "./components/colorPalette";
 
 import { renderMobius } from "./d3/MobiusRenderer";
 import { renderChebyshev } from "./d3/ChebyshevRenderer";
@@ -30,7 +30,7 @@ import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
-
+import { WEIERSTRASS_PRESETS, type WeierstrassPreset } from "./math/weierstrassPresets";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
@@ -78,11 +78,6 @@ const WEIERSTRASS_META = {
   formula: "X(z) = Re integral Phi(z) dz",
   note: "Minimal surface from Weierstrass data g(z), phi(z).",
 };
-const WEIERSTRASS_PRESETS = [
-  { id: "enneper", label: "Enneper", gExpr: "z", phiExpr: "1" },
-  { id: "catenoid", label: "Catenoid", gExpr: "exp(z)", phiExpr: "exp(-z)" },
-  { id: "helicoid", label: "Helicoid", gExpr: "exp(z)", phiExpr: "i*exp(-z)" },
-];
 
 /* ---------------- Surfaces meta ---------------- */
 
@@ -385,6 +380,22 @@ function saveArray(key: string, arr: unknown[]) {
   }
 }
 
+function saveRecord<T>(key: string, record: Record<string, T>) {
+  try {
+    localStorage.setItem(key, JSON.stringify(record));
+  } catch {
+    // ignore
+  }
+}
+
+type WeierstrassDiagnosticsSuccess = Extract<WeierstrassDriftResult, { drift: number }>;
+
+function isWeierstrassDiagnosticsSuccess(
+  diag: WeierstrassDriftResult | null
+): diag is WeierstrassDiagnosticsSuccess {
+  return !!diag && "drift" in diag && "driftVec" in diag && "okLevel" in diag;
+}
+
 function makeId() {
   const c: any = globalThis.crypto;
   return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
@@ -470,6 +481,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [weierstrassResolution, setWeierstrassResolution] = useState(WEIERSTRASS_DEFAULTS.resolution);
   const [weierstrassRecenter, setWeierstrassRecenter] = useState(WEIERSTRASS_DEFAULTS.recenter);
   const [weierstrassError, setWeierstrassError] = useState<string | null>(null);
+  const [activeWeierstrassPresetId, setActiveWeierstrassPresetId] = useState<string | null>(
+    WEIERSTRASS_PRESETS[0]?.id ?? null
+  );
   const [weierstrassDiagnostics, setWeierstrassDiagnostics] = useState<WeierstrassDriftResult | null>(null);
   const [weierstrassDiagnosticError, setWeierstrassDiagnosticError] = useState<string | null>(null);
   const [diagnosticsToken, setDiagnosticsToken] = useState(0);
@@ -668,15 +682,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [implicitDomainPresets]);
 
   useEffect(() => {
-    saveArray("mathapp.domainState.graph.v1", graphDomains);
+    saveRecord("mathapp.domainState.graph.v1", graphDomains);
   }, [graphDomains]);
 
   useEffect(() => {
-    saveArray("mathapp.domainState.param.v1", paramDomains);
+    saveRecord("mathapp.domainState.param.v1", paramDomains);
   }, [paramDomains]);
 
   useEffect(() => {
-    saveArray("mathapp.domainState.implicit.v1", implicitDomains);
+    saveRecord("mathapp.domainState.implicit.v1", implicitDomains);
   }, [implicitDomains]);
 
   // plane refs for 2D modes
@@ -1019,6 +1033,7 @@ case "mobius":
     setWeierstrassDomain({ ...WEIERSTRASS_DEFAULTS.domain });
     setWeierstrassResolution(WEIERSTRASS_DEFAULTS.resolution);
     setWeierstrassRecenter(WEIERSTRASS_DEFAULTS.recenter);
+    setActiveWeierstrassPresetId(WEIERSTRASS_PRESETS[0]?.id ?? null);
     setWeierstrassError(null);
   }, []);
 
@@ -1049,6 +1064,22 @@ case "mobius":
     weierstrassDomain.vMax,
     weierstrassResolution,
   ]);
+
+  const activeWeierstrassPreset =
+    WEIERSTRASS_PRESETS.find((p) => p.id === activeWeierstrassPresetId) ?? null;
+
+  const applyWeierstrassPreset = useCallback((preset: WeierstrassPreset) => {
+    setWeierstrassGExpr(preset.gExpr);
+    setWeierstrassPhiExpr(preset.phiExpr);
+    setWeierstrassResolution(preset.resolution);
+    setWeierstrassRecenter(preset.recenterRescale);
+    setWeierstrassDomain({ ...preset.defaultDomain });
+    setActiveWeierstrassPresetId(preset.id);
+  }, []);
+
+  const applySuggestedDomain = useCallback((preset: WeierstrassPreset) => {
+    setWeierstrassDomain({ ...preset.suggestedDomain });
+  }, []);
 
   const recomputeWeierstrassDiagnostics = useCallback(() => {
     setDiagnosticsToken((t) => t + 1);
@@ -1389,6 +1420,9 @@ case "mobius":
               weierstrassPhiExpr={weierstrassPhiExpr}
               onChangeWeierstrassGExpr={setWeierstrassGExpr}
               onChangeWeierstrassPhiExpr={setWeierstrassPhiExpr}
+              activeWeierstrassPreset={activeWeierstrassPreset}
+              onApplyWeierstrassPreset={applyWeierstrassPreset}
+              onApplySuggestedDomain={applySuggestedDomain}
               compareEnabled={compareEnabled}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
@@ -1461,6 +1495,9 @@ case "mobius":
                 showDriftArrow={showDriftArrow}
                 onToggleDriftArrow={toggleDriftArrow}
                 onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
+                activeWeierstrassPreset={activeWeierstrassPreset}
+                onApplyWeierstrassPreset={applyWeierstrassPreset}
+                onApplySuggestedDomain={applySuggestedDomain}
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showPlanes={showPlanes}
@@ -1965,6 +2002,9 @@ type SurfacesControlsProps = {
   weierstrassPhiExpr: string;
   onChangeWeierstrassGExpr: (v: string) => void;
   onChangeWeierstrassPhiExpr: (v: string) => void;
+  activeWeierstrassPreset: WeierstrassPreset | null;
+  onApplyWeierstrassPreset: (preset: WeierstrassPreset) => void;
+  onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
   compareEnabled: boolean;
   onToggleCompare: () => void;
   compareSurfaceId: SurfaceId;
@@ -1984,6 +2024,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   weierstrassPhiExpr,
   onChangeWeierstrassGExpr,
   onChangeWeierstrassPhiExpr,
+  activeWeierstrassPreset,
+  onApplyWeierstrassPreset,
+  onApplySuggestedDomain,
   compareEnabled,
   onToggleCompare,
   compareSurfaceId,
@@ -1993,8 +2036,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
-  const gTrim = weierstrassGExpr.trim();
-  const phiTrim = weierstrassPhiExpr.trim();
 
   return (
     <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
@@ -2066,31 +2107,75 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         {viewerKind === "graph" && <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />}
         {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
         {viewerKind === "weierstrass" && (
-          <div style={styles.presetsRow}>
-            {WEIERSTRASS_PRESETS.map((p) => {
-              const active = gTrim === p.gExpr && phiTrim === p.phiExpr;
-              return (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 13 }}>Presets</span>
+              <span
+                title="Presets avoid singularities on the boundary; adjust the domain carefully when poles are nearby."
+                style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: "50%",
+                  border: "1px solid #bbb",
+                  fontSize: 12,
+                  textAlign: "center",
+                  lineHeight: "14px",
+                  cursor: "help",
+                  userSelect: "none",
+                }}
+              >
+                ?
+              </span>
+            </div>
+            <div style={styles.presetsRow}>
+              {WEIERSTRASS_PRESETS.map((p) => {
+                const active = activeWeierstrassPreset?.id === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => onApplyWeierstrassPreset(p)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      border: "1px solid " + (active ? "#0a66c2" : "#ddd"),
+                      background: active ? "#e6f0ff" : "#fff",
+                      fontWeight: active ? 600 : 400,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            {activeWeierstrassPreset && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e0e0e0",
+                  background: "#fff",
+                }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Suggested safe domain</div>
+                <div style={{ fontSize: 12 }}>
+                  u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>
+                  {activeWeierstrassPreset.safeDomainReason}
+                </div>
                 <button
-                  key={p.id}
                   type="button"
-                  onClick={() => {
-                    onChangeWeierstrassGExpr(p.gExpr);
-                    onChangeWeierstrassPhiExpr(p.phiExpr);
-                  }}
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 6,
-                    border: "1px solid " + (active ? "#0a66c2" : "#ddd"),
-                    background: active ? "#e6f0ff" : "#fff",
-                    fontWeight: active ? 600 : 400,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
+                  onClick={() => onApplySuggestedDomain(activeWeierstrassPreset)}
+                  style={{ marginTop: 8, padding: "4px 10px" }}
                 >
-                  {p.label}
+                  Apply suggested domain
                 </button>
-              );
-            })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2211,6 +2296,9 @@ type SurfacesLeftPanelProps = {
   onToggleWeierstrassRecenter: () => void;
   onResetWeierstrass: () => void;
   weierstrassError: string | null;
+  activeWeierstrassPreset: WeierstrassPreset | null;
+  onApplyWeierstrassPreset: (preset: WeierstrassPreset) => void;
+  onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
 
   showWireframe: boolean;
   onToggleWireframe: () => void;
@@ -2309,6 +2397,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleWeierstrassRecenter,
   onResetWeierstrass,
   weierstrassError,
+  activeWeierstrassPreset,
+  onApplyWeierstrassPreset,
+  onApplySuggestedDomain,
   showWireframe,
   onToggleWireframe,
   showPlanes,
@@ -2383,12 +2474,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     warn: "#e2a700",
     bad: "#d9302f",
   };
-  const diagStatusLabel = weierstrassDiagnostics
-    ? weierstrassDiagnostics.okLevel
+  const diagSuccess = isWeierstrassDiagnosticsSuccess(weierstrassDiagnostics)
+    ? weierstrassDiagnostics
+    : null;
+  const diagStatusLabel = diagSuccess
+    ? diagSuccess.okLevel
     : weierstrassDiagnosticError
     ? "unavailable"
     : "pending";
-  const diagStatusColor = weierstrassDiagnostics ? diagStatusColors[weierstrassDiagnostics.okLevel] : "#9e9e9e";
+  const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
 
   const modeLabel =
     viewerKind === "implicit"
@@ -3053,13 +3147,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
               <span>Path drift (rectangle loop):</span>
               <span style={{ fontFamily: "monospace" }}>
-                {weierstrassDiagnostics ? fmt(weierstrassDiagnostics.drift) : "—"}
+                {diagSuccess ? fmt(diagSuccess.drift) : "-"}
               </span>
             </div>
             <div style={{ fontSize: 12, marginTop: 4 }}>
               dx, dy, dz drift vector:{" "}
               <span style={{ fontFamily: "monospace" }}>
-                {weierstrassDiagnostics ? fmt3(weierstrassDiagnostics.driftVec) : "(—)"}
+                {diagSuccess ? fmt3(diagSuccess.driftVec) : "(-)"}
               </span>
             </div>
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>

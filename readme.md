@@ -62,6 +62,7 @@ and editable.
 
 - The new diagnostics card in the Weierstrass panel estimates Δ = Re ∮ Φ(z) dz around the UV rectangle, reports the path-drift magnitude, shows the dx/dy/dz vector, and color-codes a status indicator (green/yellow/red for <1e-3, 1e-3..1e-2, >1e-2).
 - Toggle “Show drift vector arrow” to overlay the vector on the surface and hit “Recompute diagnostics” whenever you change the domain or resolution; the UI also warns when the boundary hits a singularity so you can pick a safer patch.
+- Curated Weierstrass presets (Enneper, Enneper order 2, Helicoid-like exp, Catenoid-like exp pair, trig demo) zero-load the correct g/φ pairs, safe domains, resolution, and recenter settings; each preset also explains the “Suggested safe domain” so you can reapply the conservative uv-range in one click without hunting for poles.
 
 ### Surface catalog and presets
 

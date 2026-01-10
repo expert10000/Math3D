@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
-import { GaussColorMode, type GaussPoint } from "./gaussMapUtils";
+import type { GaussColorMode, GaussPoint } from "./gaussMapUtils";
 
 type GaussMapPanelProps = {
   points: GaussPoint[];
