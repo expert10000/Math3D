@@ -1,0 +1,208 @@
+// src/math/weierstrass.ts
+import { compileComplexExpression, type ComplexExprError } from "./complexExpr";
+import {
+  C,
+  add,
+  sub,
+  mul,
+  scale,
+  isFiniteC,
+  type Complex,
+} from "./complex";
+
+type Vec3 = { x: number; y: number; z: number };
+type Complex3 = { x: Complex; y: Complex; z: Complex };
+
+export type WeierstrassBuildResult = {
+  paramFunc: (u: number, v: number, target: { set: (x: number, y: number, z: number) => void }) => void;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+  error?: ComplexExprError;
+  errorMessage?: string;
+};
+
+const C0 = C(0, 0);
+const C1 = C(1, 0);
+const CI = C(0, 1);
+
+function avgPhi(a: Complex3, b: Complex3): Complex3 {
+  return {
+    x: scale(add(a.x, b.x), 0.5),
+    y: scale(add(a.y, b.y), 0.5),
+    z: scale(add(a.z, b.z), 0.5),
+  };
+}
+
+function realPartMul(phi: Complex3, dz: Complex): Vec3 {
+  const px = mul(phi.x, dz).re;
+  const py = mul(phi.y, dz).re;
+  const pz = mul(phi.z, dz).re;
+  return { x: px, y: py, z: pz };
+}
+
+function makePhi(g: Complex, phi: Complex): Complex3 {
+  const g2 = mul(g, g);
+  const oneMinus = sub(C1, g2);
+  const onePlus = add(C1, g2);
+  return {
+    x: mul(scale(oneMinus, 0.5), phi),
+    y: mul(mul(CI, scale(onePlus, 0.5)), phi),
+    z: mul(g, phi),
+  };
+}
+
+function bilerp(p00: Vec3, p10: Vec3, p01: Vec3, p11: Vec3, tx: number, ty: number): Vec3 {
+  const a = {
+    x: p00.x + (p10.x - p00.x) * tx,
+    y: p00.y + (p10.y - p00.y) * tx,
+    z: p00.z + (p10.z - p00.z) * tx,
+  };
+  const b = {
+    x: p01.x + (p11.x - p01.x) * tx,
+    y: p01.y + (p11.y - p01.y) * tx,
+    z: p01.z + (p11.z - p01.z) * tx,
+  };
+  return {
+    x: a.x + (b.x - a.x) * ty,
+    y: a.y + (b.y - a.y) * ty,
+    z: a.z + (b.z - a.z) * ty,
+  };
+}
+
+export function buildWeierstrassSurface(params: {
+  gExpr: string;
+  phiExpr: string;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+  resolution: number;
+  recenterRescale: boolean;
+}): WeierstrassBuildResult {
+  const gRes = compileComplexExpression(params.gExpr);
+  if (gRes.error) return { uMin: params.uMin, uMax: params.uMax, vMin: params.vMin, vMax: params.vMax, error: gRes.error, errorMessage: gRes.error.message, paramFunc: () => {} };
+  const phiRes = compileComplexExpression(params.phiExpr);
+  if (phiRes.error) return { uMin: params.uMin, uMax: params.uMax, vMin: params.vMin, vMax: params.vMax, error: phiRes.error, errorMessage: phiRes.error.message, paramFunc: () => {} };
+
+  const gFn = gRes.fn!;
+  const phiFn = phiRes.fn!;
+
+  let uMin = Number.isFinite(params.uMin) ? params.uMin : -1;
+  let uMax = Number.isFinite(params.uMax) ? params.uMax : 1;
+  let vMin = Number.isFinite(params.vMin) ? params.vMin : -1;
+  let vMax = Number.isFinite(params.vMax) ? params.vMax : 1;
+  if (uMin === uMax) uMax = uMin + 0.1;
+  if (vMin === vMax) vMax = vMin + 0.1;
+  if (uMin > uMax) [uMin, uMax] = [uMax, uMin];
+  if (vMin > vMax) [vMin, vMax] = [vMax, vMin];
+
+  const res = Math.max(4, Math.round(params.resolution));
+  const du = (uMax - uMin) / (res - 1);
+  const dv = (vMax - vMin) / (res - 1);
+
+  const phiGrid: Complex3[][] = Array.from({ length: res }, () => new Array<Complex3>(res));
+  const xGrid: Vec3[][] = Array.from({ length: res }, () => new Array<Vec3>(res));
+
+  for (let j = 0; j < res; j++) {
+    const v = vMin + dv * j;
+    for (let i = 0; i < res; i++) {
+      const u = uMin + du * i;
+      const z = C(u, v);
+      const g = gFn({ z, u, v });
+      const phi = phiFn({ z, u, v });
+      if (!isFiniteC(g) || !isFiniteC(phi)) {
+        return { uMin, uMax, vMin, vMax, errorMessage: "Non-finite value in g(z) or phi(z).", paramFunc: () => {} };
+      }
+      phiGrid[j][i] = makePhi(g, phi);
+    }
+  }
+
+  xGrid[0][0] = { x: 0, y: 0, z: 0 };
+
+  for (let i = 1; i < res; i++) {
+    const mid = avgPhi(phiGrid[0][i - 1], phiGrid[0][i]);
+    const d = realPartMul(mid, C(du, 0));
+    const prev = xGrid[0][i - 1];
+    xGrid[0][i] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
+  }
+
+  for (let j = 1; j < res; j++) {
+    {
+      const mid = avgPhi(phiGrid[j - 1][0], phiGrid[j][0]);
+      const d = realPartMul(mid, C(0, dv));
+      const prev = xGrid[j - 1][0];
+      xGrid[j][0] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
+    }
+    for (let i = 1; i < res; i++) {
+      const mid = avgPhi(phiGrid[j][i - 1], phiGrid[j][i]);
+      const d = realPartMul(mid, C(du, 0));
+      const prev = xGrid[j][i - 1];
+      xGrid[j][i] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
+    }
+  }
+
+  let min = { x: Infinity, y: Infinity, z: Infinity };
+  let max = { x: -Infinity, y: -Infinity, z: -Infinity };
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      const p = xGrid[j][i];
+      if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+        return { uMin, uMax, vMin, vMax, errorMessage: "Non-finite point in surface integration.", paramFunc: () => {} };
+      }
+      if (p.x < min.x) min.x = p.x;
+      if (p.y < min.y) min.y = p.y;
+      if (p.z < min.z) min.z = p.z;
+      if (p.x > max.x) max.x = p.x;
+      if (p.y > max.y) max.y = p.y;
+      if (p.z > max.z) max.z = p.z;
+    }
+  }
+
+  if (params.recenterRescale) {
+    const cx = (min.x + max.x) * 0.5;
+    const cy = (min.y + max.y) * 0.5;
+    const cz = (min.z + max.z) * 0.5;
+    const extent = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+    const scaleTo = extent > 1e-9 ? 2.0 / extent : 1;
+    for (let j = 0; j < res; j++) {
+      for (let i = 0; i < res; i++) {
+        const p = xGrid[j][i];
+        xGrid[j][i] = {
+          x: (p.x - cx) * scaleTo,
+          y: (p.y - cy) * scaleTo,
+          z: (p.z - cz) * scaleTo,
+        };
+      }
+    }
+  }
+
+  const paramFunc = (u: number, v: number, target: { set: (x: number, y: number, z: number) => void }) => {
+    const uu = (u - uMin) / (uMax - uMin);
+    const vv = (v - vMin) / (vMax - vMin);
+    const uClamped = Math.min(1, Math.max(0, uu));
+    const vClamped = Math.min(1, Math.max(0, vv));
+
+    const gx = uClamped * (res - 1);
+    const gy = vClamped * (res - 1);
+    const i0 = Math.floor(gx);
+    const j0 = Math.floor(gy);
+    const i1 = Math.min(res - 1, i0 + 1);
+    const j1 = Math.min(res - 1, j0 + 1);
+    const tx = gx - i0;
+    const ty = gy - j0;
+
+    const p = bilerp(
+      xGrid[j0][i0],
+      xGrid[j0][i1],
+      xGrid[j1][i0],
+      xGrid[j1][i1],
+      tx,
+      ty
+    );
+    target.set(p.x, p.y, p.z);
+  };
+
+  return { paramFunc, uMin, uMax, vMin, vMax };
+}

@@ -13,6 +13,7 @@ import {
 } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 import { marchingSquares } from "../math/marchingSquares";
+import { buildWeierstrassSurface, type WeierstrassBuildResult } from "../math/weierstrass";
 
 import type { ColorMode, ColorPalette, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
@@ -98,6 +99,7 @@ export type ParamSurfaceId =
   | "expCone" // σ(u,v)=(u cos v, u sin v, ln u), u>0
   | "helicoidUV" // τ(u,v)=(u cos v, u sin v, v)
   | "boy"
+  | "weierstrass"
   | "custom";
 
 type Props = {
@@ -115,6 +117,11 @@ type Props = {
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
   paramDomain?: ParamDomain;
+  weierstrassGExpr?: string;
+  weierstrassPhiExpr?: string;
+  weierstrassResolution?: number;
+  weierstrassRecenter?: boolean;
+  onWeierstrassError?: (message: string | null) => void;
   isCameraLeader?: boolean;
   cameraSync?: CameraSyncState | null;
   onCameraSync?: (state: CameraSyncState) => void;
@@ -237,6 +244,8 @@ function getDomain(surfaceId: ParamSurfaceId) {
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
     case "boy":
       return { uMin: 0, uMax: Math.PI, vMin: 0, vMax: Math.PI };
+    case "weierstrass":
+      return { uMin: -1, uMax: 1, vMin: -1, vMax: 1 };
 
     case "custom":
     default:
@@ -808,6 +817,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   colorMode = "solid",
   colorPalette = "blueRed",
   paramDomain,
+  weierstrassGExpr,
+  weierstrassPhiExpr,
+  weierstrassResolution,
+  weierstrassRecenter,
+  onWeierstrassError,
   isCameraLeader = false,
   cameraSync = null,
   onCameraSync,
@@ -848,6 +862,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
+  const weierstrassCacheRef = useRef<WeierstrassBuildResult | null>(null);
+  const [weierstrassError, setWeierstrassError] = useState<string | null>(null);
 
   // last known probe uv in DOMAIN coords
   const [probeUV, setProbeUV] = useState<{ u: number; v: number } | null>(null);
@@ -1723,6 +1739,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     const slices = Math.max(16, Math.round(paramResolution));
     const stacks = Math.max(16, Math.round(paramResolution));
+    const buildResolution = Math.max(4, Math.round(weierstrassResolution ?? paramResolution));
 
     const rawDomain = paramDomain ?? getDomain(surfaceId);
     let uMin = Number.isFinite(rawDomain.uMin) ? rawDomain.uMin : -Math.PI;
@@ -1735,6 +1752,42 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (vMin > vMax) [vMin, vMax] = [vMax, vMin];
 
     let paramFunc: (u: number, v: number, target: THREE.Vector3) => void;
+    let weierstrassState: WeierstrassBuildResult | null = null;
+
+    if (surfaceId === "weierstrass") {
+      const built = buildWeierstrassSurface({
+        gExpr: (weierstrassGExpr ?? "z").trim() || "z",
+        phiExpr: (weierstrassPhiExpr ?? "1").trim() || "1",
+        uMin,
+        uMax,
+        vMin,
+        vMax,
+        resolution: buildResolution,
+        recenterRescale: weierstrassRecenter ?? true,
+      });
+
+      if (built.error || built.errorMessage) {
+        const message = built.errorMessage ?? built.error?.message ?? "Invalid Weierstrass data.";
+        if (message !== weierstrassError) setWeierstrassError(message);
+        onWeierstrassError?.(message);
+        weierstrassState = weierstrassCacheRef.current;
+      } else {
+        weierstrassState = built;
+        weierstrassCacheRef.current = built;
+        if (weierstrassError) setWeierstrassError(null);
+        onWeierstrassError?.(null);
+      }
+
+      if (weierstrassState) {
+        uMin = weierstrassState.uMin;
+        uMax = weierstrassState.uMax;
+        vMin = weierstrassState.vMin;
+        vMax = weierstrassState.vMax;
+      }
+    } else if (weierstrassError) {
+      setWeierstrassError(null);
+      onWeierstrassError?.(null);
+    }
 
     if (surfaceId === "custom") {
       const xFn = makeSafeParamExpr(customX, (u) => u);
@@ -1751,6 +1804,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           Number.isFinite(z) ? z : 0
         );
       };
+    } else if (surfaceId === "weierstrass") {
+      if (weierstrassState) {
+        paramFunc = (u, v, target) => {
+          weierstrassState.paramFunc(u, v, target);
+        };
+      } else {
+        paramFunc = (_u, _v, target) => target.set(0, 0, 0);
+      }
     } else {
       paramFunc = (u, v, target) => {
         let x = 0,
@@ -2224,12 +2285,18 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     showBoundingBox,
     resetToken,
     paramResolution,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassResolution,
+    weierstrassRecenter,
+    weierstrassError,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
     paramDomain?.vMax,
     isCameraLeader,
     onCameraSync,
+    onWeierstrassError,
   ]);
 
   useEffect(() => {

@@ -30,7 +30,7 @@ import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
-type SurfaceViewerKind = "implicit" | "graph" | "param";
+type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass";
 type GraphDomain = { xSpan: number; ySpan: number };
 type ImplicitDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
@@ -59,6 +59,20 @@ const splitterStyle: React.CSSProperties = {
   cursor: "col-resize",
   alignSelf: "stretch",
   background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)",
+};
+
+const WEIERSTRASS_DEFAULTS = {
+  gExpr: "z",
+  phiExpr: "1",
+  domain: { uMin: -1, uMax: 1, vMin: -1, vMax: 1 },
+  resolution: 80,
+  recenter: true,
+};
+
+const WEIERSTRASS_META = {
+  label: "Weierstrass",
+  formula: "X(z) = Re integral Phi(z) dz",
+  note: "Minimal surface from Weierstrass data g(z), phi(z).",
 };
 
 /* ---------------- Surfaces meta ---------------- */
@@ -441,6 +455,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramXExpr, setParamXExpr] = useState("u");
   const [paramYExpr, setParamYExpr] = useState("v");
   const [paramZExpr, setParamZExpr] = useState("0");
+  const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
+  const [weierstrassPhiExpr, setWeierstrassPhiExpr] = useState(WEIERSTRASS_DEFAULTS.phiExpr);
+  const [weierstrassDomain, setWeierstrassDomain] = useState<ParamDomain>(WEIERSTRASS_DEFAULTS.domain);
+  const [weierstrassResolution, setWeierstrassResolution] = useState(WEIERSTRASS_DEFAULTS.resolution);
+  const [weierstrassRecenter, setWeierstrassRecenter] = useState(WEIERSTRASS_DEFAULTS.recenter);
+  const [weierstrassError, setWeierstrassError] = useState<string | null>(null);
 
   // 3D visual toggles
   const [showWireframe, setShowWireframe] = useState(false);
@@ -541,6 +561,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     return normalizeImplicitDomain(raw, getDefaultImplicitDomain(implicitSurfaceId));
   }, [implicitSurfaceId, implicitDomains[implicitSurfaceId]?.xSpan, implicitDomains[implicitSurfaceId]?.ySpan]);
 
+  const activeWeierstrassDomain = useMemo(
+    () => normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain),
+    [
+      weierstrassDomain.uMin,
+      weierstrassDomain.uMax,
+      weierstrassDomain.vMin,
+      weierstrassDomain.vMax,
+    ]
+  );
+
   const implicitDomainSizeFor = useCallback(
     (id: SurfaceId) => {
       if (!isImplicitSurface(id)) return undefined;
@@ -564,6 +594,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       paramDomains[paramSurfaceId]?.vMax,
     ]
   );
+  const activeParamLikeDomain =
+    surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : activeParamDomain;
+  const activeParamLikeResolution =
+    surfaceViewerKind === "weierstrass" ? weierstrassResolution : paramResolution;
+  const isWeierstrassViewer = surfaceViewerKind === "weierstrass";
+  const paramSurfaceIdForView: ParamSurfaceId = isWeierstrassViewer ? "weierstrass" : paramSurfaceId;
 
   useEffect(() => {
     if (!isGraphSurface(graphSurfaceId)) return;
@@ -697,7 +733,11 @@ const mobiusEffectiveParams = useMemo(() => {
   }, [colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId]);
 
   useEffect(() => {
-    if (surfaceViewerKind !== "param" && PARAM_CURVATURE_COLOR_MODES.includes(colorMode)) {
+    if (
+      surfaceViewerKind !== "param" &&
+      surfaceViewerKind !== "weierstrass" &&
+      PARAM_CURVATURE_COLOR_MODES.includes(colorMode)
+    ) {
       setColorMode("height");
     }
   }, [surfaceViewerKind, colorMode]);
@@ -782,12 +822,16 @@ case "mobius":
 
   const handleChangeParamDomain = useCallback(
     (d: ParamDomain) => {
+      if (surfaceViewerKind === "weierstrass") {
+        setWeierstrassDomain(normalizeParamDomain(d, WEIERSTRASS_DEFAULTS.domain));
+        return;
+      }
       setParamDomains((prev) => ({
         ...prev,
         [paramSurfaceId]: normalizeParamDomain(d, getParamDomainPreviewBounds(paramSurfaceId)),
       }));
     },
-    [paramSurfaceId]
+    [paramSurfaceId, surfaceViewerKind]
   );
 
   const handleChangeImplicitDomain = useCallback(
@@ -800,6 +844,10 @@ case "mobius":
     },
     [implicitSurfaceId]
   );
+
+  const handleChangeWeierstrassDomain = useCallback((d: ParamDomain) => {
+    setWeierstrassDomain(normalizeParamDomain(d, WEIERSTRASS_DEFAULTS.domain));
+  }, []);
 
   const saveGraphDomainPreset = useCallback(
     (label: string) => {
@@ -913,6 +961,23 @@ case "mobius":
       setImplicitSurfaceId(id);
     }
   };
+
+  const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
+    setSurfaceViewerKind(kind);
+    if (kind === "weierstrass") {
+      setCompareEnabled(false);
+      setCameraSync(null);
+    }
+  }, []);
+
+  const handleResetWeierstrass = useCallback(() => {
+    setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
+    setWeierstrassPhiExpr(WEIERSTRASS_DEFAULTS.phiExpr);
+    setWeierstrassDomain({ ...WEIERSTRASS_DEFAULTS.domain });
+    setWeierstrassResolution(WEIERSTRASS_DEFAULTS.resolution);
+    setWeierstrassRecenter(WEIERSTRASS_DEFAULTS.recenter);
+    setWeierstrassError(null);
+  }, []);
 
   const pushCommandResult = useCallback((cmd: string, out: string) => {
     setCommandHistory((prev) => [{ cmd, out }, ...prev].slice(0, 12));
@@ -1236,7 +1301,7 @@ case "mobius":
           ) : mode === "surfaces" ? (
             <SurfacesControls
               viewerKind={surfaceViewerKind}
-              onChangeViewerKind={setSurfaceViewerKind}
+              onChangeViewerKind={handleChangeViewerKind}
               surfaceId={activeEqSurfaceId}
               onChangeSurface={handlePickEqSurface}
               paramId={paramSurfaceId}
@@ -1296,6 +1361,18 @@ case "mobius":
                 onChangeParamXExpr={setParamXExpr}
                 onChangeParamYExpr={setParamYExpr}
                 onChangeParamZExpr={setParamZExpr}
+                weierstrassGExpr={weierstrassGExpr}
+                weierstrassPhiExpr={weierstrassPhiExpr}
+                onChangeWeierstrassGExpr={setWeierstrassGExpr}
+                onChangeWeierstrassPhiExpr={setWeierstrassPhiExpr}
+                weierstrassDomain={weierstrassDomain}
+                onChangeWeierstrassDomain={handleChangeWeierstrassDomain}
+                weierstrassResolution={weierstrassResolution}
+                onChangeWeierstrassResolution={setWeierstrassResolution}
+                weierstrassRecenter={weierstrassRecenter}
+                onToggleWeierstrassRecenter={() => setWeierstrassRecenter((v) => !v)}
+                onResetWeierstrass={handleResetWeierstrass}
+                weierstrassError={weierstrassError}
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showPlanes={showPlanes}
@@ -1378,9 +1455,9 @@ case "mobius":
                   }}
                 >
                   <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
-                    {surfaceViewerKind === "param" ? (
+                    {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                       <ParamSurfaceViewer
-                        surfaceId={paramSurfaceId}
+                        surfaceId={paramSurfaceIdForView}
                         customX={paramXExpr}
                         customY={paramYExpr}
                         customZ={paramZExpr}
@@ -1390,10 +1467,15 @@ case "mobius":
                         materialRoughness={materialRoughness}
                         materialMetalness={materialMetalness}
                         materialOpacity={materialOpacity}
-                        paramResolution={paramResolution}
+                        paramResolution={activeParamLikeResolution}
                         colorMode={colorMode}
                         colorPalette={colorPalette}
-                        paramDomain={activeParamDomain}
+                        paramDomain={activeParamLikeDomain}
+                        weierstrassGExpr={weierstrassGExpr}
+                        weierstrassPhiExpr={weierstrassPhiExpr}
+                        weierstrassResolution={weierstrassResolution}
+                        weierstrassRecenter={weierstrassRecenter}
+                        onWeierstrassError={setWeierstrassError}
                         probeEnabled={probeEnabled}
                         showProbeNormal={showProbeNormal}
                         showProbeTangentPlane={showProbeTangentPlane}
@@ -1560,7 +1642,7 @@ case "mobius":
                 }}
                 graphDomain={activeGraphDomain}
                 onChangeGraphDomain={handleChangeGraphDomain}
-                paramDomain={activeParamDomain}
+                paramDomain={activeParamLikeDomain}
                 onChangeParamDomain={handleChangeParamDomain}
                 implicitDomain={activeImplicitDomain}
                 onChangeImplicitDomain={handleChangeImplicitDomain}
@@ -1819,6 +1901,20 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         >
           σ(u,v) viewer
         </button>
+        <button
+          type="button"
+          onClick={() => onChangeViewerKind("weierstrass")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
+            background: viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
+            fontWeight: viewerKind === "weierstrass" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Weierstrass
+        </button>
       </div>
 
       <div style={{ flex: 1 }}>
@@ -1831,7 +1927,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-          <input type="checkbox" checked={compareEnabled} onChange={onToggleCompare} />
+          <input
+            type="checkbox"
+            checked={compareEnabled}
+            onChange={onToggleCompare}
+            disabled={viewerKind === "weierstrass"}
+          />
           Compare
         </label>
       </div>
@@ -1928,6 +2029,18 @@ type SurfacesLeftPanelProps = {
   onChangeParamXExpr: (s: string) => void;
   onChangeParamYExpr: (s: string) => void;
   onChangeParamZExpr: (s: string) => void;
+  weierstrassGExpr: string;
+  weierstrassPhiExpr: string;
+  onChangeWeierstrassGExpr: (s: string) => void;
+  onChangeWeierstrassPhiExpr: (s: string) => void;
+  weierstrassDomain: ParamDomain;
+  onChangeWeierstrassDomain: (d: ParamDomain) => void;
+  weierstrassResolution: number;
+  onChangeWeierstrassResolution: (v: number) => void;
+  weierstrassRecenter: boolean;
+  onToggleWeierstrassRecenter: () => void;
+  onResetWeierstrass: () => void;
+  weierstrassError: string | null;
 
   showWireframe: boolean;
   onToggleWireframe: () => void;
@@ -2004,6 +2117,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeParamXExpr,
   onChangeParamYExpr,
   onChangeParamZExpr,
+  weierstrassGExpr,
+  weierstrassPhiExpr,
+  onChangeWeierstrassGExpr,
+  onChangeWeierstrassPhiExpr,
+  weierstrassDomain,
+  onChangeWeierstrassDomain,
+  weierstrassResolution,
+  onChangeWeierstrassResolution,
+  weierstrassRecenter,
+  onToggleWeierstrassRecenter,
+  onResetWeierstrass,
+  weierstrassError,
   showWireframe,
   onToggleWireframe,
   showPlanes,
@@ -2060,15 +2185,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
 
+  const isWeierstrass = viewerKind === "weierstrass";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
-  const activeMeta = isEqViewer ? eqMeta : paramMeta;
+  const activeMeta = isWeierstrass ? WEIERSTRASS_META : isEqViewer ? eqMeta : paramMeta;
 
   const modeLabel =
     viewerKind === "implicit"
       ? "implicit surface  f(x,y,z) = 0"
       : viewerKind === "graph"
         ? "graph (explicit)  z = f(x,y)"
-        : "parametric surface  σ(u,v)";
+        : viewerKind === "weierstrass"
+          ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
+          : "parametric surface  σ(u,v)";
 
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
@@ -2078,8 +2206,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
+  const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
   const colorModes: ColorMode[] =
-    viewerKind === "param"
+    viewerKind === "param" || viewerKind === "weierstrass"
       ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
       : viewerKind === "graph"
       ? ["solid", "height", "radius", "curvature"]
@@ -2142,7 +2271,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
             Show tangent directions
           </label>
-          {(viewerKind === "param" || viewerKind === "graph" || viewerKind === "implicit") && (
+          {(viewerKind === "param" ||
+            viewerKind === "weierstrass" ||
+            viewerKind === "graph" ||
+            viewerKind === "implicit") && (
             <div style={{ marginTop: 6 }}>
               <label style={{ display: "block", cursor: "pointer" }}>
                 <input
@@ -2398,6 +2530,32 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             />
           </div>
         )}
+        {viewerKind === "weierstrass" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ minWidth: 80 }}>Weierstrass</span>
+            <input
+              type="range"
+              min={40}
+              max={200}
+              step={1}
+              value={weierstrassResolution}
+              onChange={(e) => onChangeWeierstrassResolution(clampInt(Number(e.target.value), 40, 200))}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number"
+              min={40}
+              max={200}
+              step={1}
+              value={weierstrassResolution}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChangeWeierstrassResolution(clampInt(v, 40, 200));
+              }}
+              style={{ width: 70 }}
+            />
+          </div>
+        )}
       </div>
 
       {viewerKind === "implicit" && (
@@ -2441,6 +2599,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
       {isEqViewer && <p style={styles.hint}>{eqMeta.note}</p>}
       {viewerKind === "param" && <p style={styles.hint}>{paramMeta.note}</p>}
+      {viewerKind === "weierstrass" && <p style={styles.hint}>{WEIERSTRASS_META.note}</p>}
 
       {/* custom graph formula */}
       {isGraphCustom && (
@@ -2517,6 +2676,117 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               boxSizing: "border-box",
             }}
           />
+        </div>
+      )}
+
+      {viewerKind === "weierstrass" && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Weierstrass data</div>
+          <div style={styles.hint}>z = u + i v. Expressions use z (complex), u, v, i, pi, e.</div>
+
+          <label style={{ fontSize: 12 }}>g(z) =</label>
+          <input
+            type="text"
+            value={weierstrassGExpr}
+            onChange={(e) => onChangeWeierstrassGExpr(e.target.value)}
+            style={{
+              width: "100%",
+              marginTop: 2,
+              marginBottom: 6,
+              padding: "4px 6px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              fontFamily: "monospace",
+              fontSize: 13,
+              boxSizing: "border-box",
+            }}
+          />
+
+          <label style={{ fontSize: 12 }}>phi(z) =</label>
+          <input
+            type="text"
+            value={weierstrassPhiExpr}
+            onChange={(e) => onChangeWeierstrassPhiExpr(e.target.value)}
+            style={{
+              width: "100%",
+              marginTop: 2,
+              marginBottom: 6,
+              padding: "4px 6px",
+              borderRadius: 6,
+              border: "1px solid #ccc",
+              fontFamily: "monospace",
+              fontSize: 13,
+              boxSizing: "border-box",
+            }}
+          />
+
+          {weierstrassError && (
+            <div style={{ fontSize: 11, color: "#b42318", marginBottom: 6 }}>
+              {weierstrassError}
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 6 }}>
+            <label style={{ fontSize: 11 }}>
+              u min
+              <input
+                type="number"
+                step={0.1}
+                value={safeWeierstrassDomain.uMin}
+                onChange={(e) =>
+                  onChangeWeierstrassDomain({ ...safeWeierstrassDomain, uMin: Number(e.target.value) })
+                }
+                style={{ width: "100%", marginTop: 4 }}
+              />
+            </label>
+            <label style={{ fontSize: 11 }}>
+              u max
+              <input
+                type="number"
+                step={0.1}
+                value={safeWeierstrassDomain.uMax}
+                onChange={(e) =>
+                  onChangeWeierstrassDomain({ ...safeWeierstrassDomain, uMax: Number(e.target.value) })
+                }
+                style={{ width: "100%", marginTop: 4 }}
+              />
+            </label>
+            <label style={{ fontSize: 11 }}>
+              v min
+              <input
+                type="number"
+                step={0.1}
+                value={safeWeierstrassDomain.vMin}
+                onChange={(e) =>
+                  onChangeWeierstrassDomain({ ...safeWeierstrassDomain, vMin: Number(e.target.value) })
+                }
+                style={{ width: "100%", marginTop: 4 }}
+              />
+            </label>
+            <label style={{ fontSize: 11 }}>
+              v max
+              <input
+                type="number"
+                step={0.1}
+                value={safeWeierstrassDomain.vMax}
+                onChange={(e) =>
+                  onChangeWeierstrassDomain({ ...safeWeierstrassDomain, vMax: Number(e.target.value) })
+                }
+                style={{ width: "100%", marginTop: 4 }}
+              />
+            </label>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 8 }}>
+            <input type="checkbox" checked={weierstrassRecenter} onChange={onToggleWeierstrassRecenter} />
+            Recenter / Rescale
+          </label>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button type="button" onClick={onResetWeierstrass} style={{ padding: "4px 8px" }}>
+              Reset defaults
+            </button>
+          </div>
         </div>
       )}
 
@@ -2707,7 +2977,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   </pre>
                 </div>
               </>
-            ) : viewerKind === "param" && paramProbeCurv ? (
+            ) : (viewerKind === "param" || viewerKind === "weierstrass") && paramProbeCurv ? (
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Principal curvatures</div>
                 <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.6 }}>
@@ -2727,7 +2997,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             ) : (
               <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
-                {viewerKind === "param"
+                {viewerKind === "param" || viewerKind === "weierstrass"
                   ? "Principal curvature data unavailable for this probe."
                   : "Curvature details currently compute only for graph surfaces."}
               </div>
@@ -2885,18 +3155,22 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
 
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
+  const isWeierstrass = viewerKind === "weierstrass";
   const isGraphViewer = viewerKind === "graph";
-  const isParamViewer = viewerKind === "param";
+  const isParamViewer = viewerKind === "param" || isWeierstrass;
   const isImplicitViewer = viewerKind === "implicit";
+  const isEqViewer = isGraphViewer || isImplicitViewer;
   const showDomainPicker = isGraphViewer || isParamViewer || isImplicitViewer;
 
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
   const [paramDomainLabel, setParamDomainLabel] = useState("");
 
+  const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
-  const safeParamDomain = normalizeParamDomain(paramDomain, getParamDomainPreviewBounds(paramId));
+  const safeParamDomain = normalizeParamDomain(paramDomain, paramDefaults);
   const safeImplicitDomain = normalizeImplicitDomain(implicitDomain, getDefaultImplicitDomain(surfaceId));
+  const activeMeta = isWeierstrass ? WEIERSTRASS_META : isParamViewer ? paramMeta : eqMeta;
 
 
   return (
@@ -2906,9 +3180,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       {/* What you are looking at */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 12, opacity: 0.8 }}>Active surface</div>
-        <div style={{ fontWeight: 700, marginTop: 2 }}>{viewerKind === "param" ? paramMeta.label : eqMeta.label}</div>
+        <div style={{ fontWeight: 700, marginTop: 2 }}>{activeMeta.label}</div>
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {viewerKind === "param" ? paramMeta.formula : eqMeta.formula}
+          {activeMeta.formula}
         </div>
       </div>
 
@@ -2918,7 +3192,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {!showDomainPicker ? (
           <div style={{ fontSize: 11, opacity: 0.75 }}>
-            Domain picking is available for graph and param surfaces. Use probe mode to pick points on implicit surfaces.
+            Domain picking is available for graph, param, and Weierstrass surfaces. Use probe mode to pick points on implicit surfaces.
           </div>
         ) : isParamViewer ? (
           <>
@@ -2933,7 +3207,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               picked={probeInfo?.uv ?? null}
             />
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Click to send (u,v) into the param surface viewer.
+              Click to send (u,v) into the {isWeierstrass ? "Weierstrass" : "param"} surface viewer.
             </div>
           </>
         ) : isGraphViewer ? (
@@ -3104,52 +3378,54 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button
                   type="button"
-                  onClick={() => onChangeParamDomain(getParamDomainPreviewBounds(paramId))}
+                  onClick={() => onChangeParamDomain({ ...paramDefaults })}
                   style={{ padding: "4px 8px" }}
                 >
                   Reset
                 </button>
               </div>
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Saved domains</div>
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input
-                    type="text"
-                    placeholder="Label (optional)"
-                    value={paramDomainLabel}
-                    onChange={(e) => setParamDomainLabel(e.target.value)}
-                    style={{ flex: 1, padding: "4px 6px", fontSize: 12 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSaveParamDomainPreset(paramDomainLabel);
-                      setParamDomainLabel("");
-                    }}
-                    style={{ padding: "4px 8px" }}
-                  >
-                    Save
-                  </button>
-                </div>
-                {paramDomainPresets.filter((p) => p.surfaceId === paramId).length === 0 ? (
-                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>No saved domains yet.</div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                    {paramDomainPresets
-                      .filter((p) => p.surfaceId === paramId)
-                      .map((p) => (
-                        <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <button type="button" onClick={() => onApplyParamDomainPreset(p.id)} style={{ flex: 1, padding: "4px 8px" }}>
-                            {p.label}
-                          </button>
-                          <button type="button" onClick={() => onRemoveParamDomainPreset(p.id)} style={{ padding: "4px 8px" }}>
-                            Remove
-                          </button>
-                        </div>
-                      ))}
+              {viewerKind === "param" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Saved domains</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="text"
+                      placeholder="Label (optional)"
+                      value={paramDomainLabel}
+                      onChange={(e) => setParamDomainLabel(e.target.value)}
+                      style={{ flex: 1, padding: "4px 6px", fontSize: 12 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSaveParamDomainPreset(paramDomainLabel);
+                        setParamDomainLabel("");
+                      }}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      Save
+                    </button>
                   </div>
-                )}
-              </div>
+                  {paramDomainPresets.filter((p) => p.surfaceId === paramId).length === 0 ? (
+                    <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>No saved domains yet.</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                      {paramDomainPresets
+                        .filter((p) => p.surfaceId === paramId)
+                        .map((p) => (
+                          <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button type="button" onClick={() => onApplyParamDomainPreset(p.id)} style={{ flex: 1, padding: "4px 8px" }}>
+                              {p.label}
+                            </button>
+                            <button type="button" onClick={() => onRemoveParamDomainPreset(p.id)} style={{ padding: "4px 8px" }}>
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
           {isImplicitViewer && (
@@ -3287,8 +3563,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   style={{
                     padding: "4px 8px",
                     borderRadius: 999,
-                    border: "1px solid " + (surfaceId === s.id && viewerKind !== "param" ? "#0a66c2" : "#ddd"),
-                    background: surfaceId === s.id && viewerKind !== "param" ? "#e6f0ff" : "#fff",
+                    border: "1px solid " + (surfaceId === s.id && isEqViewer ? "#0a66c2" : "#ddd"),
+                    background: surfaceId === s.id && isEqViewer ? "#e6f0ff" : "#fff",
                     cursor: "pointer",
                     fontSize: 12,
                   }}
