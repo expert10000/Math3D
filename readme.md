@@ -1,19 +1,20 @@
-Math3D
+# Math3D
 
-
-Latest changes
+## Latest changes
 
 - Added Weierstrass minimal surface mode (g(z), phi(z)) rendered through the parametric pipeline.
 - Added Weierstrass presets (Enneper, Catenoid, Helicoid) and improved complex expression parsing for functions like exp(z).
 - Added optional recenter/rescale for Weierstrass patches and documented the feature in the renderer README.
 
-Build the renderer into /dist
+## Build the renderer into /dist
 
+```bash
 npm run build
+```
 
-Functionality
+## Functionality
 
-Overview
+### Overview
 
 Math3D is a desktop visual lab for classical geometry and modern surface theory. It combines
 three main visualization modes (implicit, explicit graph, and parametric) with a shared set of
@@ -21,9 +22,9 @@ tools for lighting, materials, probing, slicing, and comparative inspection. The
 let you explore geometry interactively with minimal friction, while keeping the math visible
 and editable.
 
-Core modes
+### Core modes
 
-1) Implicit surfaces (f(x,y,z)=0)
+#### 1) Implicit surfaces (f(x,y,z)=0)
 
 - Purpose: Explore level sets of scalar fields in 3D.
 - Rendering: A Marching Cubes grid is sampled over a finite box to extract the isosurface.
@@ -32,7 +33,7 @@ Core modes
 - Custom expression: Enter f(x,y,z)=0 using standard math syntax. The surface is updated
   in real time and errors are reported inline.
 
-2) Graph surfaces (z=f(x,y))
+#### 2) Graph surfaces (z=f(x,y))
 
 - Purpose: Study height fields and explicit graphs with curvature and contour tools.
 - Rendering: A parametric grid in the domain (x,y) is mapped to world coordinates using
@@ -42,7 +43,7 @@ Core modes
 - Curvature: The app computes local invariants (K, H, k1, k2) at the probe point and can
   color the mesh by curvature.
 
-3) Parametric surfaces (sigma(u,v))
+#### 3) Parametric surfaces (sigma(u,v))
 
 - Purpose: Work with classical parametrizations, global topology, and geodesic tools.
 - Rendering: A parametric grid in (u,v) is sampled and mapped into 3D. Domains can be
@@ -50,7 +51,7 @@ Core modes
 - Presets: Canonical examples such as torus, helicoid, catenoid, Enneper, and others.
 - Custom param: Provide X(u,v), Y(u,v), Z(u,v) expressions for custom surfaces.
 
-Surface catalog and presets
+### Surface catalog and presets
 
 Math3D ships with a curated set of presets in each category. These are grouped by mode and
 shown in the surface picker. The list includes:
@@ -64,7 +65,7 @@ Presets are intended to be simple but illustrative. They serve as a starting poi
 investigating curvature, topology, and singularities. The graph and implicit modes both
 support custom expressions, and parametric mode supports custom coordinate maps.
 
-Material and lighting controls
+### Material and lighting controls
 
 The viewer includes a unified material palette shared across modes:
 
@@ -77,7 +78,7 @@ Lighting presets are designed to emphasize shape and curvature without overwhelm
 surface with shadows. Use softer presets for smooth curvature analysis and higher contrast
 for structural forms.
 
-Color modes and palettes
+### Color modes and palettes
 
 Color is a key analytic tool in Math3D. The app offers several color modes:
 
@@ -89,7 +90,7 @@ Color is a key analytic tool in Math3D. The app offers several color modes:
 
 You can also choose from multiple palettes (blue-red, rainbow, grayscale, red-yellow).
 
-Probe and inspection tools
+### Probe and inspection tools
 
 Probe mode provides precise local inspection:
 
@@ -101,7 +102,7 @@ Probe mode provides precise local inspection:
 This enables a workflow like: pick a point, inspect derivatives, adjust parameters, compare
 with a second surface, and quickly see the geometric changes.
 
-Implicit overlays
+### Implicit overlays
 
 Implicit surfaces can be hard to read because the surface is extracted from a volume. Two
 extra overlays improve insight:
@@ -112,7 +113,7 @@ extra overlays improve insight:
 These overlays can be toggled independently, and they are useful for understanding behavior
 near singularities or asymptotic regions.
 
-Contours and slicing
+### Contours and slicing
 
 Graph mode includes contour lines that represent level sets of z in the domain. This makes
 it easy to connect geometry to 2D intuition. The number of contour levels is adjustable.
@@ -133,7 +134,7 @@ polylines. Those polylines are mapped to 3D points (x, f(x,y), y) and drawn as l
 translucent plane is a rectangle oriented to n. It updates only when slice params or the
 surface/domain change (not every frame).
 
-Domain pickers and presets
+### Domain pickers and presets
 
 Right-panel domain tools let you control where your surface is sampled:
 
@@ -149,7 +150,7 @@ Both graph and param domains support saved presets:
 Domain pickers also support direct clicking to send a domain point to the active surface
 viewer, enabling quick targeting for probes or custom evaluations.
 
-Compare mode
+### Compare mode
 
 The compare mode provides a side-by-side view with synchronized cameras. This is useful for
 studying variations between related surfaces, parameter choices, or expression tweaks.
@@ -166,7 +167,7 @@ Examples of use cases:
 - Compare two graph expressions with only one parameter changed.
 - Contrast implicit torus vs parametric torus.
 
-Command console
+### Command console
 
 An inline command interface supports quick changes without hunting through controls:
 
@@ -177,13 +178,13 @@ An inline command interface supports quick changes without hunting through contr
 
 This is intended for power users and for repeatable workshop demos.
 
-Data storage
+### Data storage
 
 Presets and domain preferences are stored locally in the browser storage environment, with
 keys scoped by surface id. This keeps the state user-specific without requiring an external
 backend.
 
-Performance notes
+### Performance notes
 
 Surface rendering is compute-heavy. To keep interaction smooth:
 
@@ -194,27 +195,27 @@ Surface rendering is compute-heavy. To keep interaction smooth:
 When compare mode is enabled, rendering cost doubles. If performance drops, lower resolution
 or disable heavy overlays (curvature or dense contours).
 
-Tips for exploration
+### Tips for exploration
 
 - Start with a canonical surface (sphere, torus, saddle) and enable curvature coloring.
 - Use probe mode to locate critical points and read off curvature values.
 - Activate slicing to reveal hidden structure inside implicit surfaces.
 - Save multiple domains for a single surface to quickly switch viewpoints.
 
-Troubleshooting
+### Troubleshooting
 
 - If a surface fails to render, check for syntax errors in custom expressions.
 - If the view looks empty, reduce the domain spans or reset them to defaults.
 - If performance drops, lower resolution or turn off overlays.
 
-Limitations and future extensions
+### Limitations and future extensions
 
 Math3D focuses on interactive clarity. Some advanced features are approximated numerically
 (e.g., curvature for implicit surfaces is estimated from local samples). The system is
 extensible and designed to support additional surface families, export options, and more
 specialized analytic tools.
 
-Summary
+### Summary
 
 Math3D provides a cohesive environment for studying surfaces across implicit, explicit, and
 parametric definitions. With probes, overlays, slicing, and compare tools, it supports both
