@@ -58,6 +58,7 @@ and editable.
 
 - When you toggle the Gauss map, a companion sphere renders the sampled normals side-by-side with the 3D view.
 - Normals can be colored by their components or the current palette, hover/highlight works both ways, and probe updates keep the sphere synced with the surface, turning normals into a second live visualization.
+- The Gauss viewer now behaves like a micro OrbitControls scene with damping, zoom/pan constraints, a reset button, toggles for depth occlusion or wireframe/axes/equator helpers, and controls to tweak point size plus sampling density so you can limit clutter without leaving the panel.
 
 ### Weierstrass diagnostics
 
