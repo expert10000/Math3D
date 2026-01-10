@@ -74,6 +74,11 @@ const WEIERSTRASS_META = {
   formula: "X(z) = Re integral Phi(z) dz",
   note: "Minimal surface from Weierstrass data g(z), phi(z).",
 };
+const WEIERSTRASS_PRESETS = [
+  { id: "enneper", label: "Enneper", gExpr: "z", phiExpr: "1" },
+  { id: "catenoid", label: "Catenoid", gExpr: "exp(z)", phiExpr: "exp(-z)" },
+  { id: "helicoid", label: "Helicoid", gExpr: "exp(z)", phiExpr: "i*exp(-z)" },
+];
 
 /* ---------------- Surfaces meta ---------------- */
 
@@ -1306,6 +1311,10 @@ case "mobius":
               onChangeSurface={handlePickEqSurface}
               paramId={paramSurfaceId}
               onChangeParamId={setParamSurfaceId}
+              weierstrassGExpr={weierstrassGExpr}
+              weierstrassPhiExpr={weierstrassPhiExpr}
+              onChangeWeierstrassGExpr={setWeierstrassGExpr}
+              onChangeWeierstrassPhiExpr={setWeierstrassPhiExpr}
               compareEnabled={compareEnabled}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
@@ -1829,6 +1838,10 @@ type SurfacesControlsProps = {
   onChangeSurface: (s: SurfaceId) => void;
   paramId: ParamSurfaceId;
   onChangeParamId: (p: ParamSurfaceId) => void;
+  weierstrassGExpr: string;
+  weierstrassPhiExpr: string;
+  onChangeWeierstrassGExpr: (v: string) => void;
+  onChangeWeierstrassPhiExpr: (v: string) => void;
   compareEnabled: boolean;
   onToggleCompare: () => void;
   compareSurfaceId: SurfaceId;
@@ -1844,6 +1857,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeSurface,
   paramId,
   onChangeParamId,
+  weierstrassGExpr,
+  weierstrassPhiExpr,
+  onChangeWeierstrassGExpr,
+  onChangeWeierstrassPhiExpr,
   compareEnabled,
   onToggleCompare,
   compareSurfaceId,
@@ -1853,6 +1870,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
+  const gTrim = weierstrassGExpr.trim();
+  const phiTrim = weierstrassPhiExpr.trim();
 
   return (
     <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
@@ -1923,6 +1942,34 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         )}
         {viewerKind === "graph" && <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />}
         {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
+        {viewerKind === "weierstrass" && (
+          <div style={styles.presetsRow}>
+            {WEIERSTRASS_PRESETS.map((p) => {
+              const active = gTrim === p.gExpr && phiTrim === p.phiExpr;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    onChangeWeierstrassGExpr(p.gExpr);
+                    onChangeWeierstrassPhiExpr(p.phiExpr);
+                  }}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "1px solid " + (active ? "#0a66c2" : "#ddd"),
+                    background: active ? "#e6f0ff" : "#fff",
+                    fontWeight: active ? 600 : 400,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

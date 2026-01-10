@@ -96,13 +96,14 @@ function insertImplicitMul(toks: Tok[]): Tok[] {
   const out: Tok[] = [];
   const isValueEnd = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "rp";
   const isValueStart = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "lp";
+  const isFuncCall = (a: Tok, b: Tok) => a.k === "id" && b.k === "lp" && a.v in FUNCS;
 
   for (let i = 0; i < toks.length; i++) {
     const a = toks[i];
     out.push(a);
     const b = toks[i + 1];
     if (!b) continue;
-    if (isValueEnd(a) && isValueStart(b)) {
+    if (isValueEnd(a) && isValueStart(b) && !isFuncCall(a, b)) {
       out.push({ k: "op", v: "*", i: b.i });
     }
   }
