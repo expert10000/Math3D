@@ -7,6 +7,7 @@
 - Added optional recenter/rescale for Weierstrass patches and documented the feature in the renderer README.
 - Added a Gauss map (S²) inspector panel that mirrors normals as a second live visualization.
 - Added Weierstrass diagnostics (path-drift magnitude, vector, traffic-light status, optional arrow, and recompute controls) that flag period drift.
+- Added dual-path averaging and avg/max path disagreement reporting to the Weierstrass builder so trimmed domains show fewer seams even when drift is low.
 
 ## Build the renderer into /dist
 

@@ -22,6 +22,7 @@ export type WeierstrassBuildResult = {
   vMax: number;
   error?: ComplexExprError;
   errorMessage?: string;
+  pathDisagreement?: { avg: number; max: number };
 };
 
 type DriftArgs = {
@@ -139,29 +140,88 @@ export function buildWeierstrassSurface(params: {
     }
   }
 
-  xGrid[0][0] = { x: 0, y: 0, z: 0 };
+  const zeroVec = (): Vec3 => ({ x: 0, y: 0, z: 0 });
+  const stepU = C(du, 0);
+  const stepV = C(0, dv);
+
+  const Ucum: Vec3[] = Array.from({ length: res }, zeroVec);
+  const VcumA: Vec3[][] = Array.from({ length: res }, () =>
+    Array.from({ length: res }, zeroVec)
+  );
+  const Vcum: Vec3[] = Array.from({ length: res }, zeroVec);
+  const UcumB: Vec3[][] = Array.from({ length: res }, () =>
+    Array.from({ length: res }, zeroVec)
+  );
 
   for (let i = 1; i < res; i++) {
     const mid = avgPhi(phiGrid[0][i - 1], phiGrid[0][i]);
-    const d = realPartMul(mid, C(du, 0));
-    const prev = xGrid[0][i - 1];
-    xGrid[0][i] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
+    const inc = realPartMul(mid, stepU);
+    const prev = Ucum[i - 1];
+    Ucum[i] = { x: prev.x + inc.x, y: prev.y + inc.y, z: prev.z + inc.z };
+  }
+
+  for (let i = 0; i < res; i++) {
+    const column = VcumA[i];
+    for (let j = 1; j < res; j++) {
+      const mid = avgPhi(phiGrid[j - 1][i], phiGrid[j][i]);
+      const inc = realPartMul(mid, stepV);
+      const prev = column[j - 1];
+      column[j] = { x: prev.x + inc.x, y: prev.y + inc.y, z: prev.z + inc.z };
+    }
   }
 
   for (let j = 1; j < res; j++) {
-    {
-      const mid = avgPhi(phiGrid[j - 1][0], phiGrid[j][0]);
-      const d = realPartMul(mid, C(0, dv));
-      const prev = xGrid[j - 1][0];
-      xGrid[j][0] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
-    }
+    const mid = avgPhi(phiGrid[j - 1][0], phiGrid[j][0]);
+    const inc = realPartMul(mid, stepV);
+    const prev = Vcum[j - 1];
+    Vcum[j] = { x: prev.x + inc.x, y: prev.y + inc.y, z: prev.z + inc.z };
+  }
+
+  for (let j = 0; j < res; j++) {
+    const row = UcumB[j];
     for (let i = 1; i < res; i++) {
       const mid = avgPhi(phiGrid[j][i - 1], phiGrid[j][i]);
-      const d = realPartMul(mid, C(du, 0));
-      const prev = xGrid[j][i - 1];
-      xGrid[j][i] = { x: prev.x + d.x, y: prev.y + d.y, z: prev.z + d.z };
+      const inc = realPartMul(mid, stepU);
+      const prev = row[i - 1];
+      row[i] = { x: prev.x + inc.x, y: prev.y + inc.y, z: prev.z + inc.z };
     }
   }
+
+  let diffSum = 0;
+  let diffMax = 0;
+  const totalPoints = res * res;
+  for (let j = 0; j < res; j++) {
+    for (let i = 0; i < res; i++) {
+      const xA = {
+        x: Ucum[i].x + VcumA[i][j].x,
+        y: Ucum[i].y + VcumA[i][j].y,
+        z: Ucum[i].z + VcumA[i][j].z,
+      };
+      const xB = {
+        x: Vcum[j].x + UcumB[j][i].x,
+        y: Vcum[j].y + UcumB[j][i].y,
+        z: Vcum[j].z + UcumB[j][i].z,
+      };
+      const avgX = 0.5 * (xA.x + xB.x);
+      const avgY = 0.5 * (xA.y + xB.y);
+      const avgZ = 0.5 * (xA.z + xB.z);
+      xGrid[j][i] = { x: avgX, y: avgY, z: avgZ };
+
+      const dx = xA.x - xB.x;
+      const dy = xA.y - xB.y;
+      const dz = xA.z - xB.z;
+      const diffLen = Math.hypot(dx, dy, dz);
+      diffSum += diffLen;
+      if (diffLen > diffMax) {
+        diffMax = diffLen;
+      }
+    }
+  }
+
+  const pathDisagreement = {
+    avg: diffSum / totalPoints,
+    max: diffMax,
+  };
 
   let min = { x: Infinity, y: Infinity, z: Infinity };
   let max = { x: -Infinity, y: -Infinity, z: -Infinity };
@@ -224,7 +284,7 @@ export function buildWeierstrassSurface(params: {
     target.set(p.x, p.y, p.z);
   };
 
-  return { paramFunc, uMin, uMax, vMin, vMax };
+  return { paramFunc, uMin, uMax, vMin, vMax, pathDisagreement };
 }
 
 function clampSamples(raw: number) {

@@ -130,6 +130,7 @@ type Props = {
   weierstrassDiagnostics?: WeierstrassDriftResult | null;
   showDriftArrow?: boolean;
   onWeierstrassError?: (message: string | null) => void;
+  onWeierstrassPathDisagreement?: (data: { avg: number; max: number } | null) => void;
   isCameraLeader?: boolean;
   cameraSync?: CameraSyncState | null;
   onCameraSync?: (state: CameraSyncState) => void;
@@ -835,6 +836,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   weierstrassDiagnostics,
   showDriftArrow = false,
   onWeierstrassError,
+  onWeierstrassPathDisagreement,
   isCameraLeader = false,
   cameraSync = null,
   onCameraSync,
@@ -1812,6 +1814,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       setWeierstrassError(null);
       onWeierstrassError?.(null);
     }
+
+    const pathDisagreementValue =
+      surfaceId === "weierstrass" ? weierstrassState?.pathDisagreement ?? null : null;
+    onWeierstrassPathDisagreement?.(pathDisagreementValue);
 
     if (surfaceId === "custom") {
       const xFn = makeSafeParamExpr(customX, (u) => u);

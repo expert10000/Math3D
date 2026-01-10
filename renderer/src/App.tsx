@@ -485,6 +485,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     WEIERSTRASS_PRESETS[0]?.id ?? null
   );
   const [weierstrassDiagnostics, setWeierstrassDiagnostics] = useState<WeierstrassDriftResult | null>(null);
+  const [weierstrassPathDisagreement, setWeierstrassPathDisagreement] = useState<{ avg: number; max: number } | null>(
+    null
+  );
   const [weierstrassDiagnosticError, setWeierstrassDiagnosticError] = useState<string | null>(null);
   const [diagnosticsToken, setDiagnosticsToken] = useState(0);
   const [showDriftArrow, setShowDriftArrow] = useState(false);
@@ -1491,6 +1494,7 @@ case "mobius":
                 onResetWeierstrass={handleResetWeierstrass}
                 weierstrassError={weierstrassError}
                 weierstrassDiagnostics={weierstrassDiagnostics}
+                weierstrassPathDisagreement={weierstrassPathDisagreement}
                 weierstrassDiagnosticError={weierstrassDiagnosticError}
                 showDriftArrow={showDriftArrow}
                 onToggleDriftArrow={toggleDriftArrow}
@@ -1615,6 +1619,7 @@ case "mobius":
                             weierstrassResolution={weierstrassResolution}
                             weierstrassRecenter={weierstrassRecenter}
                             onWeierstrassError={setWeierstrassError}
+                            onWeierstrassPathDisagreement={setWeierstrassPathDisagreement}
                             probeEnabled={probeEnabled}
                             showProbeNormal={showProbeNormal}
                             showProbeTangentPlane={showProbeTangentPlane}
@@ -2343,6 +2348,7 @@ type SurfacesLeftPanelProps = {
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   weierstrassDiagnostics: WeierstrassDriftResult | null;
+  weierstrassPathDisagreement: { avg: number; max: number } | null;
   weierstrassDiagnosticError: string | null;
   showDriftArrow: boolean;
   onToggleDriftArrow: () => void;
@@ -2458,6 +2464,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onRunCommand,
   commandHistory,
   weierstrassDiagnostics,
+  weierstrassPathDisagreement,
   weierstrassDiagnosticError,
   showDriftArrow,
   onToggleDriftArrow,
@@ -3156,6 +3163,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 {diagSuccess ? fmt3(diagSuccess.driftVec) : "(-)"}
               </span>
             </div>
+            {weierstrassPathDisagreement && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 6 }}>
+                <span>Path disagreement:</span>
+                <span style={{ fontFamily: "monospace" }}>
+                  avg {fmt(weierstrassPathDisagreement.avg)}, max {fmt(weierstrassPathDisagreement.max)}
+                </span>
+              </div>
+            )}
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
                 <input type="checkbox" checked={showDriftArrow} onChange={onToggleDriftArrow} />
