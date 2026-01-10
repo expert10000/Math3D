@@ -10,7 +10,7 @@ import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } f
 import { marchingSquares } from "../math/marchingSquares";
 
 import AxisGizmo from "./AxisGizmo";
-import { Slice2DPreview } from "./Slice2DPreview";
+import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
 
 export type ColorMode =
@@ -384,6 +384,92 @@ function buildImplicitNormalLines(
   return lines;
 }
 
+type ImplicitPrincipalResult = {
+  point: THREE.Vector3;
+  normal: THREE.Vector3;
+  dir1: THREE.Vector3;
+  dir2: THREE.Vector3;
+  k1: number;
+  k2: number;
+  H: number;
+  K: number;
+  isUmbilic: boolean;
+};
+
+function computeImplicitPrincipalAtPoint(
+  f: (x: number, y: number, z: number) => number,
+  point: THREE.Vector3,
+  h = 1e-2
+): ImplicitPrincipalResult | null {
+  const d = sampleImplicitDerivatives(f, point.x, point.y, point.z, h);
+  const gx = d.fx;
+  const gy = d.fy;
+  const gz = d.fz;
+  const g2 = gx * gx + gy * gy + gz * gz;
+  const gLen = Math.sqrt(g2);
+  if (!Number.isFinite(gLen) || gLen < 1e-8) return null;
+
+  const normal = new THREE.Vector3(gx, gy, gz).multiplyScalar(1 / gLen);
+  const { e1, e2 } = makePlaneBasis(normal);
+
+  const h11 = d.fxx;
+  const h22 = d.fyy;
+  const h33 = d.fzz;
+  const h12 = d.fxy;
+  const h13 = d.fxz;
+  const h23 = d.fyz;
+
+  const He1 = new THREE.Vector3(
+    h11 * e1.x + h12 * e1.y + h13 * e1.z,
+    h12 * e1.x + h22 * e1.y + h23 * e1.z,
+    h13 * e1.x + h23 * e1.y + h33 * e1.z
+  );
+  const He2 = new THREE.Vector3(
+    h11 * e2.x + h12 * e2.y + h13 * e2.z,
+    h12 * e2.x + h22 * e2.y + h23 * e2.z,
+    h13 * e2.x + h23 * e2.y + h33 * e2.z
+  );
+
+  const s11 = -e1.dot(He1) / gLen;
+  const s12 = -e1.dot(He2) / gLen;
+  const s22 = -e2.dot(He2) / gLen;
+
+  const tr = s11 + s22;
+  const det = s11 * s22 - s12 * s12;
+  const disc = Math.max(0, (tr * tr) * 0.25 - det);
+  const root = Math.sqrt(disc);
+  const k1 = tr * 0.5 + root;
+  const k2 = tr * 0.5 - root;
+  const isUmbilic = Math.abs(k1 - k2) < 1e-3;
+
+  const eigenVec = (k: number) => {
+    if (Math.abs(s12) < 1e-10) {
+      return Math.abs(s11 - k) <= Math.abs(s22 - k) ? { x: 1, y: 0 } : { x: 0, y: 1 };
+    }
+    const x = s12;
+    const y = k - s11;
+    const len = Math.hypot(x, y);
+    return len > 1e-12 ? { x: x / len, y: y / len } : { x: 1, y: 0 };
+  };
+
+  const v1 = eigenVec(k1);
+  const v2 = eigenVec(k2);
+  const dir1 = e1.clone().multiplyScalar(v1.x).addScaledVector(e2, v1.y).normalize();
+  const dir2 = e1.clone().multiplyScalar(v2.x).addScaledVector(e2, v2.y).normalize();
+
+  return {
+    point: point.clone(),
+    normal,
+    dir1,
+    dir2,
+    k1,
+    k2,
+    H: (k1 + k2) * 0.5,
+    K: k1 * k2,
+    isUmbilic,
+  };
+}
+
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 
@@ -613,6 +699,7 @@ type Props = {
 
   graphResolution?: number;
   implicitResolution?: number;
+  implicitDomainSize?: number;
 
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
@@ -634,6 +721,8 @@ type Props = {
   showPrincipalLines?: boolean;
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
+  implicitProbeXYZ?: { x: number; y: number; z: number } | null;
+  implicitProbeToken?: number;
   onProbe?: (info: ProbeInfo) => void;
 
   onSetGraphExpr?: (expr: string) => void;
@@ -663,6 +752,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
     graphResolution = 80,
     implicitResolution = 32,
+    implicitDomainSize,
 
     colorMode = "solid",
     colorPalette = "blueRed",
@@ -684,6 +774,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showPrincipalLines = false,
     graphProbeXY = null,
     graphProbeToken,
+    implicitProbeXYZ = null,
+    implicitProbeToken,
     onProbe,
 
     onSetGraphExpr,
@@ -706,6 +798,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     t1: THREE.ArrowHelper;
     t2: THREE.ArrowHelper;
   } | null>(null);
+  const probePointRef = useRef<THREE.Vector3 | null>(null);
+  const probeNormalRef = useRef<THREE.Vector3 | null>(null);
+  const [probePointToken, setProbePointToken] = useState(0);
   const principalGroupRef = useRef<THREE.Group | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
@@ -762,6 +857,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     if (!probeEnabled) {
       setProbeXY(null);
       prevPrincipalRef.current = null;
+      probePointRef.current = null;
+      probeNormalRef.current = null;
       if (principalGroupRef.current) clearGroup(principalGroupRef.current);
       const widgets = probeWidgetsRef.current;
       if (widgets) {
@@ -945,6 +1042,96 @@ useEffect(() => {
       setSlicePlaneTheta(Math.PI / 2);
       setSlicePlanePhi(Math.PI / 2);
     }
+  };
+
+  const formatSliceTimestamp = () => {
+    const d = new Date();
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
+  };
+
+  const downloadTextFile = (content: string, filename: string, mime: string) => {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const buildSliceCsv = () => {
+    const frame = sliceFrameRef.current ?? buildSliceFrame();
+    const { x0, e1, e2 } = frame;
+    const fmt = (v: number) => (Number.isFinite(v) ? v.toFixed(6) : "NaN");
+    const lines: string[] = ["polyline_id,index,s,t,x,y,z"];
+
+    for (let pid = 0; pid < slicePolylines2D.length; pid++) {
+      const line = slicePolylines2D[pid];
+      for (let i = 0; i < line.length; i++) {
+        const { s, t } = line[i];
+        const x = x0.x + e1.x * s + e2.x * t;
+        const y = x0.y + e1.y * s + e2.y * t;
+        const z = x0.z + e1.z * s + e2.z * t;
+        lines.push([pid, i, fmt(s), fmt(t), fmt(x), fmt(y), fmt(z)].join(","));
+      }
+    }
+    return lines.join("\n");
+  };
+
+  const handleExportCsv = () => {
+    if (!slicePlaneEnabled || slicePolylines2D.length === 0) return;
+    const csv = buildSliceCsv();
+    const filename = `slice_${surfaceId}_${formatSliceTimestamp()}.csv`;
+    downloadTextFile(csv, filename, "text/csv;charset=utf-8");
+  };
+
+  const handleExportSvg = () => {
+    if (!slicePlaneEnabled || slicePolylines2D.length === 0) return;
+    const svg = buildSliceSvgString({
+      polylines: slicePolylines2D,
+      planeSize: slicePlaneSize,
+      width: 150,
+      height: 150,
+      pad: 12,
+    });
+    const filename = `slice_${surfaceId}_${formatSliceTimestamp()}.svg`;
+    downloadTextFile(svg, filename, "image/svg+xml;charset=utf-8");
+  };
+
+  const handleCopySliceJson = async () => {
+    if (!slicePlaneEnabled || slicePolylines2D.length === 0) return;
+    const frame = sliceFrameRef.current ?? buildSliceFrame();
+    const payload = {
+      surfaceId,
+      plane: {
+        thetaDeg: toDeg(slicePlaneTheta),
+        phiDeg: toDeg(slicePlanePhi),
+        offset: slicePlaneOffset,
+        planeSize: slicePlaneSize,
+        n: [frame.n.x, frame.n.y, frame.n.z],
+        e1: [frame.e1.x, frame.e1.y, frame.e1.z],
+        e2: [frame.e2.x, frame.e2.y, frame.e2.z],
+        X0: [frame.x0.x, frame.x0.y, frame.x0.z],
+      },
+      polylinesST: slicePolylines2D,
+    };
+    const json = JSON.stringify(payload, null, 2);
+
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(json);
+        return;
+      } catch (err) {
+        console.warn("[slice] clipboard write failed", err);
+      }
+    } else {
+      console.warn("[slice] clipboard API unavailable");
+    }
+    window.alert("Clipboard unavailable. Try exporting CSV or SVG instead.");
   };
 
   const getImplicitFallback = (id: SurfaceId) => {
@@ -1149,43 +1336,148 @@ useEffect(() => {
 
   }, [surfaceId, graphExpr, colorMode, colorPalette, wireframe, materialRoughness, materialMetalness, materialOpacity]);
 
-  // --- rebuild graph contours live (no scene rebuild) ---
+  // --- rebuild contour lines (graph + implicit) ---
   useEffect(() => {
     const root = surfaceObjRef.current;
     if (!root) return;
-    if (!isGraphId(surfaceId)) return;
-
-    const group = root as THREE.Group;
 
     // remove old contours
-    for (const ch of [...group.children]) {
+    for (const ch of [...root.children]) {
       if ((ch as any)?.userData?.__contours) {
-        group.remove(ch);
-
-        const ls = ch as THREE.LineSegments;
-        const geom = ls.geometry as THREE.BufferGeometry | undefined;
-        if (geom) geom.dispose();
-
-        const matAny = (ls as any).material as THREE.Material | THREE.Material[] | undefined;
-        if (matAny) {
-          if (Array.isArray(matAny)) matAny.forEach((m) => m.dispose());
-          
-          else matAny.dispose();
-        }
+        ch.traverse(disposeObject3D);
+        root.remove(ch);
       }
     }
 
+    const isGraphSurface = isGraphId(surfaceId);
+    const isImplicitSurface = isImplicitId(surfaceId);
+    if (!isGraphSurface && !isImplicitSurface) return;
     if (!showContours || contourCount <= 0) return;
 
-    const f = getGraphF();
-    const spans = (group as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined;
-    const xSpan = spans?.xSpan ?? 1.5;
-    const ySpan = spans?.ySpan ?? 1.5;
+    if (isGraphSurface) {
+      const f = getGraphF();
+      const spans = (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined;
+      const xSpan = spans?.xSpan ?? 1.5;
+      const ySpan = spans?.ySpan ?? 1.5;
 
-    const contours = makeGraphContourLines(f, xSpan, ySpan, contourCount);
-    (contours as any).userData = { ...(contours as any).userData, __contours: true };
-    group.add(contours);
-  }, [surfaceId, graphExpr, showContours, contourCount]);
+      const contours = makeGraphContourLines(f, xSpan, ySpan, contourCount);
+      (contours as any).userData = { ...(contours as any).userData, __contours: true };
+      root.add(contours);
+      return;
+    }
+
+    if (isImplicitSurface) {
+      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+      let implicitSize: number | null = null;
+
+      root.traverse((obj) => {
+        if (implicitF) return;
+        const anyObj = obj as any;
+        if (anyObj?.isMarchingCubes) {
+          const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
+          if (meta?.f) {
+            implicitF = meta.f;
+            if (typeof meta.size === "number") implicitSize = meta.size;
+          }
+        }
+      });
+
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+
+      if (!implicitF) return;
+
+      let size = implicitSize ?? 0;
+      if (!Number.isFinite(size) || size <= 0) {
+        const box = new THREE.Box3().setFromObject(root);
+        const sizeVec = new THREE.Vector3();
+        box.getSize(sizeVec);
+        size = Math.max(sizeVec.x, sizeVec.y, sizeVec.z) * 0.5;
+        if (!Number.isFinite(size) || size <= 0) size = radiusRef.current || 2.5;
+      }
+
+      const pad = Math.max(1e-4, size * 1e-3);
+      const y0 = -size + pad;
+      const y1 = size - pad;
+      if (y1 <= y0) return;
+
+      const levels: number[] = [];
+      for (let k = 1; k <= contourCount; k++) {
+        const t = k / (contourCount + 1);
+        levels.push(y0 + t * (y1 - y0));
+      }
+
+      const gridN = Math.max(40, Math.round(implicitResolution * 1.5));
+      const xMin = -size;
+      const xMax = size;
+      const zMin = -size;
+      const zMax = size;
+      const dx = (xMax - xMin) / (gridN - 1);
+      const dz = (zMax - zMin) / (gridN - 1);
+
+      const contourGroup = new THREE.Group();
+      (contourGroup as any).userData = { ...(contourGroup as any).userData, __contours: true };
+
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.85,
+      });
+
+      const yOffset = Math.max(0.001, size * 0.0015);
+
+      for (const yLevel of levels) {
+        const polylines = marchingSquares({
+          nx: gridN,
+          ny: gridN,
+          xMin,
+          xMax,
+          yMin: zMin,
+          yMax: zMax,
+          level: 0,
+          sample: (i, j) => {
+            const x = xMin + i * dx;
+            const z = zMin + j * dz;
+            const v = implicitF!(x, yLevel, z);
+            return Number.isFinite(v) ? v : NaN;
+          },
+        });
+
+        for (const poly of polylines) {
+          if (poly.length < 2) continue;
+          const pts: THREE.Vector3[] = [];
+          for (const pt of poly) {
+            const x = pt.x;
+            const z = pt.y;
+            if (!Number.isFinite(x) || !Number.isFinite(z)) continue;
+            pts.push(new THREE.Vector3(x, yLevel + yOffset, z));
+          }
+          if (pts.length < 2) continue;
+          const geom = new THREE.BufferGeometry().setFromPoints(pts);
+          const line = new THREE.Line(geom, lineMat);
+          line.renderOrder = 10;
+          contourGroup.add(line);
+        }
+      }
+
+      if (contourGroup.children.length > 0) {
+        root.add(contourGroup);
+      } else {
+        lineMat.dispose();
+      }
+    }
+  }, [
+    surfaceId,
+    graphExpr,
+    implicitExpr,
+    showContours,
+    contourCount,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    implicitResolution,
+  ]);
 
   // --- slicing plane + intersection (graph + implicit surfaces) ---
   useEffect(() => {
@@ -1744,17 +2036,23 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
 
 
+    const resolveImplicitSize = (fallback: number) => {
+      const s = implicitDomainSize ?? fallback;
+      return Number.isFinite(s) && s > 0 ? s : fallback;
+    };
+
     const makeImplicitSurface = (f: (x: number, y: number, z: number) => number, size = 2.2) => {
+      const finalSize = resolveImplicitSize(size);
       const effect = new MarchingCubes(implicitRes, makeMaterial(), true, true);
       const field = effect.field;
 
       let idx = 0;
       for (let k = 0; k < implicitRes; k++) {
-        const z = ((k / (implicitRes - 1)) * 2 - 1) * size;
+        const z = ((k / (implicitRes - 1)) * 2 - 1) * finalSize;
         for (let j = 0; j < implicitRes; j++) {
-          const y = ((j / (implicitRes - 1)) * 2 - 1) * size;
+          const y = ((j / (implicitRes - 1)) * 2 - 1) * finalSize;
           for (let i = 0; i < implicitRes; i++) {
-            const x = ((i / (implicitRes - 1)) * 2 - 1) * size;
+            const x = ((i / (implicitRes - 1)) * 2 - 1) * finalSize;
 
             let raw = f(x, y, z);
             if (!Number.isFinite(raw)) raw = 1e3;
@@ -1767,7 +2065,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       effect.enableUvs = false;
       effect.enableColors = false;
       effect.update();
-      (effect as any).userData.__implicit = { f, size };
+      (effect as any).userData.__implicit = { f, size: finalSize };
 
       return effect;
     };
@@ -2265,6 +2563,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       tangentArrow2.setDirection(e2);
       tangentArrow2.visible = !!showProbeTangentsRef.current;
 
+      probePointRef.current = point.clone();
+      probeNormalRef.current = n.clone();
+      setProbePointToken((v) => v + 1);
       setProbeXY(xyDomain ?? null);
 
       const cb = onProbeRef.current;
@@ -2332,6 +2633,67 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const normalWorld = new THREE.Vector3(fx, -1, fy).normalize();
       applyProbe(point, normalWorld, { x, y });
+    }
+
+    // ---- programmatic probe for implicit (from domain picker) ----
+    if (implicitProbeXYZ && isImplicitId(surfaceId)) {
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+      let implicitSize: number | null = null;
+
+      if (root) {
+        root.traverse((obj) => {
+          if (implicitF) return;
+          const anyObj = obj as any;
+          if (anyObj?.isMarchingCubes) {
+            const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
+            if (meta?.f) {
+              implicitF = meta.f;
+              if (typeof meta.size === "number") implicitSize = meta.size;
+            }
+          }
+        });
+      }
+
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+
+      if (implicitF) {
+        const size = implicitDomainSize ?? implicitSize ?? radiusRef.current ?? 2.2;
+        const h = Math.max(1e-3, size * 0.01);
+        const p = new THREE.Vector3(implicitProbeXYZ.x, implicitProbeXYZ.y, implicitProbeXYZ.z);
+
+        const projectToSurface = (pt: THREE.Vector3) => {
+          for (let it = 0; it < 6; it++) {
+            const d = sampleImplicitDerivatives(implicitF!, pt.x, pt.y, pt.z, h);
+            const gx = d.fx;
+            const gy = d.fy;
+            const gz = d.fz;
+            const g2 = gx * gx + gy * gy + gz * gz;
+            if (!Number.isFinite(g2) || g2 < 1e-10) return false;
+            const v = implicitF!(pt.x, pt.y, pt.z);
+            if (!Number.isFinite(v)) return false;
+            const s = v / g2;
+            pt.x -= gx * s;
+            pt.y -= gy * s;
+            pt.z -= gz * s;
+            if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) return false;
+            if (Math.abs(v) < 1e-5) break;
+          }
+          return true;
+        };
+
+        if (projectToSurface(p)) {
+          const d = sampleImplicitDerivatives(implicitF, p.x, p.y, p.z, h);
+          const n = new THREE.Vector3(d.fx, d.fy, d.fz);
+          if (n.lengthSq() > 1e-12) {
+            n.normalize();
+            applyProbe(p, n);
+          }
+        }
+      }
     }
 
     const handleResize = () => {
@@ -2430,8 +2792,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     probeEnabled,
     graphProbeXY,
     graphProbeToken,
+    implicitProbeXYZ,
+    implicitProbeToken,
     graphResolution,
     implicitResolution,
+    implicitDomainSize,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
@@ -2456,152 +2821,337 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     clearGroup(group);
 
-    if (!isGraphId(surfaceId)) return;
-    if (!probeXY) return;
+    const isGraphSurface = isGraphId(surfaceId);
+    const isImplicitSurface = isImplicitId(surfaceId);
+    if (!isGraphSurface && !isImplicitSurface) return;
     if (!showPrincipalDirections && !showPrincipalNormalPlanes && !showPrincipalLines) return;
 
-    const f = getGraphF();
-    const root = surfaceObjRef.current as THREE.Object3D | null;
-    const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
-    const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
-    const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
+    if (isGraphSurface) {
+      if (!probeXY) return;
 
-    const uMin = -xSpan;
-    const uMax = xSpan;
-    const vMin = -ySpan;
-    const vMax = ySpan;
+      const f = getGraphF();
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      const meta = root ? (root as any).userData?.__graph as { xSpan: number; ySpan: number } | undefined : undefined;
+      const xSpan = meta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+      const ySpan = meta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
 
-    const paramFunc = (u: number, v: number, target: THREE.Vector3) => {
-      target.set(u, f(u, v), v);
-    };
+      const uMin = -xSpan;
+      const uMax = xSpan;
+      const vMin = -ySpan;
+      const vMax = ySpan;
 
-    const res = computePrincipalCurvatureAtUV({
-      paramFunc,
-      u: probeXY.x,
-      v: probeXY.y,
-      uMin,
-      uMax,
-      vMin,
-      vMax,
-    });
+      const paramFunc = (u: number, v: number, target: THREE.Vector3) => {
+        target.set(u, f(u, v), v);
+      };
 
-    if (!res) {
-      prevPrincipalRef.current = null;
+      const res = computePrincipalCurvatureAtUV({
+        paramFunc,
+        u: probeXY.x,
+        v: probeXY.y,
+        uMin,
+        uMax,
+        vMin,
+        vMax,
+      });
+
+      if (!res) {
+        prevPrincipalRef.current = null;
+        return;
+      }
+
+      const stable = stabilizePrincipalResult(res, prevPrincipalRef.current);
+      prevPrincipalRef.current = stable;
+
+      if (stable.isUmbilic) return;
+
+      const arrowLen = Math.max(0.25, Math.min(1.2, (radiusRef.current || 3) * 0.28));
+      const planeSize = arrowLen * 2.2;
+      const lineOffset = Math.max(0.002, (radiusRef.current || 3) * 0.0025);
+
+      if (showPrincipalDirections) {
+        const a1 = new THREE.ArrowHelper(stable.dir1, stable.point, arrowLen, 0x1b9e77);
+        const a2 = new THREE.ArrowHelper(stable.dir2, stable.point, arrowLen, 0xd95f02);
+        a1.renderOrder = 998;
+        a2.renderOrder = 998;
+        group.add(a1, a2);
+      }
+
+      if (showPrincipalNormalPlanes) {
+        const planeGeom1 = new THREE.PlaneGeometry(planeSize, planeSize);
+        const planeGeom2 = new THREE.PlaneGeometry(planeSize, planeSize);
+        const mat1 = new THREE.MeshBasicMaterial({
+          color: 0x3f8efc,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const mat2 = new THREE.MeshBasicMaterial({
+          color: 0xf85f73,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        const n1 = new THREE.Vector3().crossVectors(stable.dir1, stable.normal).normalize();
+        const n2 = new THREE.Vector3().crossVectors(stable.dir2, stable.normal).normalize();
+
+        const p1 = new THREE.Mesh(planeGeom1, mat1);
+        const p2 = new THREE.Mesh(planeGeom2, mat2);
+        p1.position.copy(stable.point);
+        p2.position.copy(stable.point);
+        p1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+        p2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n2);
+        p1.renderOrder = 997;
+        p2.renderOrder = 997;
+        group.add(p1, p2);
+      }
+
+      if (showPrincipalLines) {
+        const steps = 320;
+        const range = Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin));
+        const step = 0.02 * range;
+        const frameAt = (uv: { u: number; v: number }) => {
+          if (uv.u < uMin || uv.u > uMax || uv.v < vMin || uv.v > vMax) return null;
+          return computePrincipalCurvatureAtUV({
+            paramFunc,
+            u: uv.u,
+            v: uv.v,
+            uMin,
+            uMax,
+            vMin,
+            vMax,
+          });
+        };
+
+        const lineMaterial1 = new THREE.LineBasicMaterial({
+          color: 0x1b9e77,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const lineMaterial2 = new THREE.LineBasicMaterial({
+          color: 0xd95f02,
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        const startUV = { u: probeXY.x, v: probeXY.y };
+
+        const p1 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 1, {
+          steps,
+          step,
+          normalOffset: lineOffset,
+        });
+        if (p1.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p1);
+          const line = new THREE.Line(geom, lineMaterial1);
+          line.renderOrder = 996;
+          group.add(line);
+        } else {
+          lineMaterial1.dispose();
+        }
+
+        const p2 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 2, {
+          steps,
+          step,
+          normalOffset: lineOffset,
+        });
+        if (p2.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p2);
+          const line = new THREE.Line(geom, lineMaterial2);
+          line.renderOrder = 996;
+          group.add(line);
+        } else {
+          lineMaterial2.dispose();
+        }
+      }
       return;
     }
 
-    const stable = stabilizePrincipalResult(res, prevPrincipalRef.current);
-    prevPrincipalRef.current = stable;
+    if (isImplicitSurface) {
+      const start = probePointRef.current ? probePointRef.current.clone() : null;
+      if (!start) return;
 
-    if (stable.isUmbilic) return;
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+      let implicitSize: number | null = null;
 
-    const arrowLen = Math.max(0.25, Math.min(1.2, (radiusRef.current || 3) * 0.28));
-    const planeSize = arrowLen * 2.2;
-    const lineOffset = Math.max(0.002, (radiusRef.current || 3) * 0.0025);
-
-    if (showPrincipalDirections) {
-      const a1 = new THREE.ArrowHelper(stable.dir1, stable.point, arrowLen, 0x1b9e77);
-      const a2 = new THREE.ArrowHelper(stable.dir2, stable.point, arrowLen, 0xd95f02);
-      a1.renderOrder = 998;
-      a2.renderOrder = 998;
-      group.add(a1, a2);
-    }
-
-    if (showPrincipalNormalPlanes) {
-      const planeGeom1 = new THREE.PlaneGeometry(planeSize, planeSize);
-      const planeGeom2 = new THREE.PlaneGeometry(planeSize, planeSize);
-      const mat1 = new THREE.MeshBasicMaterial({
-        color: 0x3f8efc,
-        transparent: true,
-        opacity: 0.18,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-      const mat2 = new THREE.MeshBasicMaterial({
-        color: 0xf85f73,
-        transparent: true,
-        opacity: 0.18,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-
-      const n1 = new THREE.Vector3().crossVectors(stable.dir1, stable.normal).normalize();
-      const n2 = new THREE.Vector3().crossVectors(stable.dir2, stable.normal).normalize();
-
-      const p1 = new THREE.Mesh(planeGeom1, mat1);
-      const p2 = new THREE.Mesh(planeGeom2, mat2);
-      p1.position.copy(stable.point);
-      p2.position.copy(stable.point);
-      p1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
-      p2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n2);
-      p1.renderOrder = 997;
-      p2.renderOrder = 997;
-      group.add(p1, p2);
-    }
-
-    if (showPrincipalLines) {
-      const steps = 320;
-      const range = Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin));
-      const step = 0.02 * range;
-      const frameAt = (uv: { u: number; v: number }) => {
-        if (uv.u < uMin || uv.u > uMax || uv.v < vMin || uv.v > vMax) return null;
-        return computePrincipalCurvatureAtUV({
-          paramFunc,
-          u: uv.u,
-          v: uv.v,
-          uMin,
-          uMax,
-          vMin,
-          vMax,
+      if (root) {
+        root.traverse((obj) => {
+          if (implicitF) return;
+          const anyObj = obj as any;
+          if (anyObj?.isMarchingCubes) {
+            const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
+            if (meta?.f) {
+              implicitF = meta.f;
+              if (typeof meta.size === "number") implicitSize = meta.size;
+            }
+          }
         });
-      };
-
-      const lineMaterial1 = new THREE.LineBasicMaterial({
-        color: 0x1b9e77,
-        depthTest: false,
-        depthWrite: false,
-      });
-      const lineMaterial2 = new THREE.LineBasicMaterial({
-        color: 0xd95f02,
-        depthTest: false,
-        depthWrite: false,
-      });
-
-      const startUV = { u: probeXY.x, v: probeXY.y };
-
-      const p1 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 1, {
-        steps,
-        step,
-        normalOffset: lineOffset,
-      });
-      if (p1.length >= 2) {
-        const geom = new THREE.BufferGeometry().setFromPoints(p1);
-        const line = new THREE.Line(geom, lineMaterial1);
-        line.renderOrder = 996;
-        group.add(line);
-      } else {
-        lineMaterial1.dispose();
       }
 
-      const p2 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 2, {
-        steps,
-        step,
-        normalOffset: lineOffset,
-      });
-      if (p2.length >= 2) {
-        const geom = new THREE.BufferGeometry().setFromPoints(p2);
-        const line = new THREE.Line(geom, lineMaterial2);
-        line.renderOrder = 996;
-        group.add(line);
-      } else {
-        lineMaterial2.dispose();
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+
+      if (!implicitF) return;
+
+      let size = implicitSize ?? 0;
+      if (!Number.isFinite(size) || size <= 0) {
+        size = radiusRef.current || 3;
+      }
+
+      const h = Math.max(1e-3, size * 0.01);
+      const res = computeImplicitPrincipalAtPoint(implicitF, start, h);
+      if (!res) return;
+
+      const normalProbe = probeNormalRef.current;
+      if (normalProbe && res.normal.dot(normalProbe) < 0) {
+        res.normal.multiplyScalar(-1);
+      }
+
+      if (res.isUmbilic) return;
+
+      const arrowLen = Math.max(0.25, Math.min(1.2, size * 0.28));
+      const planeSize = arrowLen * 2.2;
+      const lineOffset = Math.max(0.002, size * 0.0025);
+
+      if (showPrincipalDirections) {
+        const a1 = new THREE.ArrowHelper(res.dir1, res.point, arrowLen, 0x1b9e77);
+        const a2 = new THREE.ArrowHelper(res.dir2, res.point, arrowLen, 0xd95f02);
+        a1.renderOrder = 998;
+        a2.renderOrder = 998;
+        group.add(a1, a2);
+      }
+
+      if (showPrincipalNormalPlanes) {
+        const planeGeom1 = new THREE.PlaneGeometry(planeSize, planeSize);
+        const planeGeom2 = new THREE.PlaneGeometry(planeSize, planeSize);
+        const mat1 = new THREE.MeshBasicMaterial({
+          color: 0x3f8efc,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const mat2 = new THREE.MeshBasicMaterial({
+          color: 0xf85f73,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+
+        const n1 = new THREE.Vector3().crossVectors(res.dir1, res.normal).normalize();
+        const n2 = new THREE.Vector3().crossVectors(res.dir2, res.normal).normalize();
+
+        const p1 = new THREE.Mesh(planeGeom1, mat1);
+        const p2 = new THREE.Mesh(planeGeom2, mat2);
+        p1.position.copy(res.point);
+        p2.position.copy(res.point);
+        p1.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+        p2.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n2);
+        p1.renderOrder = 997;
+        p2.renderOrder = 997;
+        group.add(p1, p2);
+      }
+
+      if (showPrincipalLines) {
+        const steps = 320;
+        const step = Math.max(1e-3, size * 0.03);
+        const maxRadius = size * 2.4;
+
+        const projectToSurface = (p: THREE.Vector3) => {
+          for (let it = 0; it < 3; it++) {
+            const d = sampleImplicitDerivatives(implicitF!, p.x, p.y, p.z, h);
+            const gx = d.fx;
+            const gy = d.fy;
+            const gz = d.fz;
+            const g2 = gx * gx + gy * gy + gz * gz;
+            if (!Number.isFinite(g2) || g2 < 1e-10) return false;
+            const v = implicitF!(p.x, p.y, p.z);
+            if (!Number.isFinite(v)) return false;
+            const s = v / g2;
+            p.x -= gx * s;
+            p.y -= gy * s;
+            p.z -= gz * s;
+            if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return false;
+          }
+          return true;
+        };
+
+        const traceDir = (which: 1 | 2, dirSign: 1 | -1) => {
+          const pts: THREE.Vector3[] = [];
+          let p = start.clone();
+          let prevDir: THREE.Vector3 | null = null;
+          for (let i = 0; i < steps; i++) {
+            const frame = computeImplicitPrincipalAtPoint(implicitF!, p, h);
+            if (!frame || frame.isUmbilic) break;
+            let dir = (which === 1 ? frame.dir1 : frame.dir2).clone();
+            if (!Number.isFinite(dir.x) || !Number.isFinite(dir.y) || !Number.isFinite(dir.z)) break;
+            if (prevDir && dir.dot(prevDir) < 0) dir.negate();
+            dir.multiplyScalar(dirSign);
+
+            const plotPt = p.clone().addScaledVector(frame.normal, lineOffset);
+            pts.push(plotPt);
+
+            p = p.clone().addScaledVector(dir, step);
+            if (!projectToSurface(p)) break;
+            if (p.length() > maxRadius) break;
+            prevDir = dir.clone();
+          }
+          return pts;
+        };
+
+        const joinBidirectional = (which: 1 | 2) => {
+          const back = traceDir(which, -1);
+          const fwd = traceDir(which, 1);
+          const backRev = back.slice().reverse();
+          if (backRev.length > 0 && fwd.length > 0) backRev.pop();
+          return [...backRev, ...fwd];
+        };
+
+        const lineMaterial1 = new THREE.LineBasicMaterial({
+          color: 0x1b9e77,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const lineMaterial2 = new THREE.LineBasicMaterial({
+          color: 0xd95f02,
+          depthTest: false,
+          depthWrite: false,
+        });
+
+        const p1 = joinBidirectional(1);
+        if (p1.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p1);
+          const line = new THREE.Line(geom, lineMaterial1);
+          line.renderOrder = 996;
+          group.add(line);
+        } else {
+          lineMaterial1.dispose();
+        }
+
+        const p2 = joinBidirectional(2);
+        if (p2.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p2);
+          const line = new THREE.Line(geom, lineMaterial2);
+          line.renderOrder = 996;
+          group.add(line);
+        } else {
+          lineMaterial2.dispose();
+        }
       }
     }
   }, [
     probeXY?.x,
     probeXY?.y,
+    probePointToken,
     surfaceId,
     graphExpr,
+    implicitExpr,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     showPrincipalDirections,
@@ -2805,6 +3355,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   const isGraphSurface = isGraphId(surfaceId);
   const isImplicitSurface = isImplicitId(surfaceId);
   const sliceUiEnabled = isGraphSurface || isImplicitSurface;
+  const sliceExportEnabled = slicePlaneEnabled && slicePolylines2D.length > 0;
   const sliceOffsetRange = isGraphSurface
     ? Math.max(1, graphDomain?.xSpan ?? 1.5, graphDomain?.ySpan ?? 1.5)
     : Math.max(1, radiusRef.current || 3);
@@ -2977,6 +3528,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                   setSlicePlaneOffset(newOffset);
                 }}
               />
+
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={handleExportCsv} disabled={!sliceExportEnabled}>
+                  Export CSV
+                </button>
+                <button type="button" onClick={handleExportSvg} disabled={!sliceExportEnabled}>
+                  Export SVG
+                </button>
+                <button type="button" onClick={handleCopySliceJson} disabled={!sliceExportEnabled}>
+                  Copy JSON
+                </button>
+              </div>
 
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
                 <input

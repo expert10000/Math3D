@@ -32,6 +32,7 @@ import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
 type SurfaceViewerKind = "implicit" | "graph" | "param";
 type GraphDomain = { xSpan: number; ySpan: number };
+type ImplicitDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 type CameraSyncState = {
   position: { x: number; y: number; z: number };
@@ -154,6 +155,19 @@ function isGraphSurface(id: SurfaceId): boolean {
   return GRAPH_SURFACE_IDS.includes(id);
 }
 
+function isImplicitSurface(id: SurfaceId): boolean {
+  return !isGraphSurface(id);
+}
+
+function normalizeImplicitDomain(d: ImplicitDomain, fallback: ImplicitDomain): ImplicitDomain {
+  const xSpan = Math.max(0.2, Number(d.xSpan));
+  const ySpan = Math.max(0.2, Number(d.ySpan));
+  return {
+    xSpan: Number.isFinite(xSpan) && xSpan > 0 ? xSpan : fallback.xSpan,
+    ySpan: Number.isFinite(ySpan) && ySpan > 0 ? ySpan : fallback.ySpan,
+  };
+}
+
 function getDefaultGraphSpan(id: SurfaceId): GraphDomain {
   switch (id) {
     case "graph_saddle":
@@ -180,6 +194,28 @@ function getDefaultGraphSpan(id: SurfaceId): GraphDomain {
       return { xSpan: 2, ySpan: 2 };
     default:
       return { xSpan: 2, ySpan: 2 };
+  }
+}
+
+function getDefaultImplicitDomain(id: SurfaceId): ImplicitDomain {
+  const toSpan = (size: number) => ({ xSpan: size, ySpan: size });
+  switch (id) {
+    case "torus_implicit":
+      return toSpan(2.1);
+    case "hyperboloid_twoSheet":
+      return toSpan(2.3);
+    case "roman":
+      return toSpan(1.8);
+    case "scherk":
+      return toSpan(1.6);
+    case "implicit_custom":
+      return toSpan(2.1);
+    case "gyroid":
+    case "superquadric":
+    case "ellipsoid":
+      return toSpan(2.2);
+    default:
+      return toSpan(2.2);
   }
 }
 
@@ -265,6 +301,15 @@ type ParamDomainPreset = {
   createdAt: number;
 };
 
+type ImplicitDomainPreset = {
+  id: string;
+  surfaceId: SurfaceId;
+  label: string;
+  xSpan: number;
+  ySpan: number;
+  createdAt: number;
+};
+
 function safeParseArray<T>(raw: string | null): T[] {
   if (!raw) return [];
   try {
@@ -324,6 +369,10 @@ function makeId() {
 
 function autoLabelGraphDomain(xSpan: number, ySpan: number) {
   return `x±${xSpan.toFixed(2)} y±${ySpan.toFixed(2)}`;
+}
+
+function autoLabelImplicitDomain(xSpan: number, ySpan: number) {
+  return `xñ${xSpan.toFixed(2)} yñ${ySpan.toFixed(2)}`;
 }
 
 function autoLabelParamDomain(p: ParamDomain) {
@@ -425,12 +474,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramProbeToken, setParamProbeToken] = useState(0);
   const [graphProbeXY, setGraphProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [graphProbeToken, setGraphProbeToken] = useState(0);
+  const [implicitProbeXYZ, setImplicitProbeXYZ] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [implicitProbeToken, setImplicitProbeToken] = useState(0);
 
   // command prompt
   const [commandInput, setCommandInput] = useState("");
   const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
 
-  // contours (graph mode)
+  // contours (graph + implicit)
   const [showContours, setShowContours] = useState(true);
   const [contourCount, setContourCount] = useState(12);
   const [implicitOverlay, setImplicitOverlay] = useState<"none" | "normals" | "curvature">("none");
@@ -440,6 +491,19 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const out: Record<string, GraphDomain> = {};
     for (const key of Object.keys(raw)) {
       out[key] = normalizeGraphDomain(raw[key], getDefaultGraphSpan(key as SurfaceId));
+    }
+    return out;
+  });
+  const [implicitDomains, setImplicitDomains] = useState<Record<string, ImplicitDomain>>(() => {
+    const raw = safeParseRecord<ImplicitDomain>(localStorage.getItem("mathapp.domainState.implicit.v1"));
+    const out: Record<string, ImplicitDomain> = {};
+    for (const key of Object.keys(raw)) {
+      const v = raw[key] as any;
+      const xSpan = Number.isFinite(v?.xSpan) ? Number(v.xSpan) : Number(v?.size ?? 0);
+      const ySpan = Number.isFinite(v?.ySpan) ? Number(v.ySpan) : Number(v?.size ?? 0);
+      if (Number.isFinite(xSpan) && Number.isFinite(ySpan) && xSpan > 0 && ySpan > 0) {
+        out[key] = { xSpan, ySpan };
+      }
     }
     return out;
   });
@@ -458,6 +522,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramDomainPresets, setParamDomainPresets] = useState<ParamDomainPreset[]>(() =>
     safeParseArray<ParamDomainPreset>(localStorage.getItem("mathapp.domainPresets.param.v1"))
   );
+  const [implicitDomainPresets, setImplicitDomainPresets] = useState<ImplicitDomainPreset[]>(() =>
+    safeParseArray<ImplicitDomainPreset>(localStorage.getItem("mathapp.domainPresets.implicit.v1"))
+  );
 
   // active equation surface id (single truth)
   const activeEqSurfaceId = surfaceViewerKind === "graph" ? graphSurfaceId : implicitSurfaceId;
@@ -468,6 +535,20 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         getDefaultGraphSpan(graphSurfaceId)
       ),
     [graphSurfaceId, graphDomains[graphSurfaceId]?.xSpan, graphDomains[graphSurfaceId]?.ySpan]
+  );
+  const activeImplicitDomain = useMemo(() => {
+    const raw = implicitDomains[implicitSurfaceId] ?? getDefaultImplicitDomain(implicitSurfaceId);
+    return normalizeImplicitDomain(raw, getDefaultImplicitDomain(implicitSurfaceId));
+  }, [implicitSurfaceId, implicitDomains[implicitSurfaceId]?.xSpan, implicitDomains[implicitSurfaceId]?.ySpan]);
+
+  const implicitDomainSizeFor = useCallback(
+    (id: SurfaceId) => {
+      if (!isImplicitSurface(id)) return undefined;
+      const raw = implicitDomains[id] ?? getDefaultImplicitDomain(id);
+      const safe = normalizeImplicitDomain(raw, getDefaultImplicitDomain(id));
+      return Math.max(safe.xSpan, safe.ySpan);
+    },
+    [implicitDomains]
   );
   const activeParamDomain = useMemo(
     () =>
@@ -491,6 +572,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return { ...prev, [graphSurfaceId]: getDefaultGraphSpan(graphSurfaceId) };
     });
   }, [graphSurfaceId]);
+
+  useEffect(() => {
+    if (!isImplicitSurface(implicitSurfaceId)) return;
+    setImplicitDomains((prev) => {
+      if (prev[implicitSurfaceId]) return prev;
+      return { ...prev, [implicitSurfaceId]: getDefaultImplicitDomain(implicitSurfaceId) };
+    });
+  }, [implicitSurfaceId]);
 
   useEffect(() => {
     setParamDomains((prev) => {
@@ -518,12 +607,20 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [paramDomainPresets]);
 
   useEffect(() => {
+    saveArray("mathapp.domainPresets.implicit.v1", implicitDomainPresets);
+  }, [implicitDomainPresets]);
+
+  useEffect(() => {
     saveArray("mathapp.domainState.graph.v1", graphDomains);
   }, [graphDomains]);
 
   useEffect(() => {
     saveArray("mathapp.domainState.param.v1", paramDomains);
   }, [paramDomains]);
+
+  useEffect(() => {
+    saveArray("mathapp.domainState.implicit.v1", implicitDomains);
+  }, [implicitDomains]);
 
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
@@ -644,6 +741,7 @@ case "mobius":
     setParamProbeCurv(null);
     setGraphProbeXY(null);
     setParamProbeUV(null);
+    setImplicitProbeXYZ(null);
   }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind, colorMode]);
 
   useEffect(() => {
@@ -692,6 +790,17 @@ case "mobius":
     [paramSurfaceId]
   );
 
+  const handleChangeImplicitDomain = useCallback(
+    (d: ImplicitDomain) => {
+      const safe = normalizeImplicitDomain(d, getDefaultImplicitDomain(implicitSurfaceId));
+      setImplicitDomains((prev) => ({
+        ...prev,
+        [implicitSurfaceId]: safe,
+      }));
+    },
+    [implicitSurfaceId]
+  );
+
   const saveGraphDomainPreset = useCallback(
     (label: string) => {
       const l = label.trim() || autoLabelGraphDomain(activeGraphDomain.xSpan, activeGraphDomain.ySpan);
@@ -706,6 +815,22 @@ case "mobius":
       setGraphDomainPresets((prev) => [preset, ...prev]);
     },
     [activeGraphDomain.xSpan, activeGraphDomain.ySpan, graphSurfaceId]
+  );
+
+  const saveImplicitDomainPreset = useCallback(
+    (label: string) => {
+      const l = label.trim() || autoLabelImplicitDomain(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
+      const preset: ImplicitDomainPreset = {
+        id: makeId(),
+        surfaceId: implicitSurfaceId,
+        label: l,
+        xSpan: activeImplicitDomain.xSpan,
+        ySpan: activeImplicitDomain.ySpan,
+        createdAt: Date.now(),
+      };
+      setImplicitDomainPresets((prev) => [preset, ...prev]);
+    },
+    [activeImplicitDomain.xSpan, activeImplicitDomain.ySpan, implicitSurfaceId]
   );
 
   const saveParamDomainPreset = useCallback(
@@ -738,6 +863,18 @@ case "mobius":
     }));
   }, [graphDomainPresets]);
 
+  const applyImplicitDomainPreset = useCallback((id: string) => {
+    const preset = implicitDomainPresets.find((p) => p.id === id);
+    if (!preset) return;
+    setImplicitDomains((prev) => ({
+      ...prev,
+      [preset.surfaceId]: normalizeImplicitDomain(
+        { xSpan: preset.xSpan, ySpan: preset.ySpan },
+        getDefaultImplicitDomain(preset.surfaceId)
+      ),
+    }));
+  }, [implicitDomainPresets]);
+
   const applyParamDomainPreset = useCallback((id: string) => {
     const preset = paramDomainPresets.find((p) => p.id === id);
     if (!preset) return;
@@ -752,6 +889,10 @@ case "mobius":
 
   const removeGraphDomainPreset = useCallback((id: string) => {
     setGraphDomainPresets((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  const removeImplicitDomainPreset = useCallback((id: string) => {
+    setImplicitDomainPresets((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
   const removeParamDomainPreset = useCallback((id: string) => {
@@ -1285,6 +1426,7 @@ case "mobius":
                         materialOpacity={materialOpacity}
                         graphResolution={graphResolution}
                         implicitResolution={implicitResolution}
+                        implicitDomainSize={implicitDomainSizeFor(activeEqSurfaceId)}
                         colorMode={colorMode}
                         colorPalette={colorPalette}
                         implicitOverlay={implicitOverlay}
@@ -1293,6 +1435,8 @@ case "mobius":
                         resetToken={cameraResetToken}
                         graphProbeXY={graphProbeXY}
                         graphProbeToken={graphProbeToken}
+                        implicitProbeXYZ={implicitProbeXYZ}
+                        implicitProbeToken={implicitProbeToken}
                         probeEnabled={probeEnabled}
                         showProbeNormal={showProbeNormal}
                         showProbeTangentPlane={showProbeTangentPlane}
@@ -1358,6 +1502,7 @@ case "mobius":
                           materialOpacity={materialOpacity}
                           graphResolution={graphResolution}
                           implicitResolution={implicitResolution}
+                          implicitDomainSize={implicitDomainSizeFor(compareSurfaceId)}
                           colorMode={colorMode}
                           colorPalette={colorPalette}
                           implicitOverlay={implicitOverlay}
@@ -1366,6 +1511,8 @@ case "mobius":
                           resetToken={cameraResetToken}
                           graphProbeXY={null}
                           graphProbeToken={0}
+                          implicitProbeXYZ={null}
+                          implicitProbeToken={0}
                           probeEnabled={false}
                           showProbeNormal={false}
                           showProbeTangentPlane={false}
@@ -1407,18 +1554,28 @@ case "mobius":
                   setGraphProbeXY(xy);
                   setGraphProbeToken((t) => t + 1);
                 }}
+                onPickDomainXYZ={(xyz) => {
+                  setImplicitProbeXYZ(xyz);
+                  setImplicitProbeToken((t) => t + 1);
+                }}
                 graphDomain={activeGraphDomain}
                 onChangeGraphDomain={handleChangeGraphDomain}
                 paramDomain={activeParamDomain}
                 onChangeParamDomain={handleChangeParamDomain}
+                implicitDomain={activeImplicitDomain}
+                onChangeImplicitDomain={handleChangeImplicitDomain}
                 graphDomainPresets={graphDomainPresets}
                 paramDomainPresets={paramDomainPresets}
+                implicitDomainPresets={implicitDomainPresets}
                 onSaveGraphDomainPreset={saveGraphDomainPreset}
                 onSaveParamDomainPreset={saveParamDomainPreset}
+                onSaveImplicitDomainPreset={saveImplicitDomainPreset}
                 onApplyGraphDomainPreset={applyGraphDomainPreset}
                 onApplyParamDomainPreset={applyParamDomainPreset}
+                onApplyImplicitDomainPreset={applyImplicitDomainPreset}
                 onRemoveGraphDomainPreset={removeGraphDomainPreset}
                 onRemoveParamDomainPreset={removeParamDomainPreset}
+                onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
               />
             </div>
           </div>
@@ -1917,6 +2074,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
+  const isImplicitAny = viewerKind === "implicit" && !isGraphSurface(surfaceId);
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
@@ -1984,7 +2142,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
             Show tangent directions
           </label>
-          {(viewerKind === "param" || viewerKind === "graph") && (
+          {(viewerKind === "param" || viewerKind === "graph" || viewerKind === "implicit") && (
             <div style={{ marginTop: 6 }}>
               <label style={{ display: "block", cursor: "pointer" }}>
                 <input
@@ -2310,10 +2468,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         </div>
       )}
 
-      {/* contours only for graph viewer */}
-      {isGraphAny && (
+      {/* contours for graph + implicit */}
+      {(isGraphAny || isImplicitAny) && (
         <div style={{ marginTop: 10 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Contours (level sets)</div>
+          {isImplicitAny && (
+            <div style={styles.hint}>Implicit contours are intersections with horizontal planes (y = const).</div>
+          )}
 
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input type="checkbox" checked={showContours} onChange={onToggleContours} />
@@ -2666,20 +2827,27 @@ type SurfacesRightPanelProps = {
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
+  onPickDomainXYZ: (xyz: { x: number; y: number; z: number }) => void;
 
   graphDomain: GraphDomain;
   onChangeGraphDomain: (d: GraphDomain) => void;
   paramDomain: ParamDomain;
   onChangeParamDomain: (d: ParamDomain) => void;
+  implicitDomain: ImplicitDomain;
+  onChangeImplicitDomain: (d: ImplicitDomain) => void;
 
   graphDomainPresets: GraphDomainPreset[];
   paramDomainPresets: ParamDomainPreset[];
+  implicitDomainPresets: ImplicitDomainPreset[];
   onSaveGraphDomainPreset: (label: string) => void;
   onSaveParamDomainPreset: (label: string) => void;
+  onSaveImplicitDomainPreset: (label: string) => void;
   onApplyGraphDomainPreset: (id: string) => void;
   onApplyParamDomainPreset: (id: string) => void;
+  onApplyImplicitDomainPreset: (id: string) => void;
   onRemoveGraphDomainPreset: (id: string) => void;
   onRemoveParamDomainPreset: (id: string) => void;
+  onRemoveImplicitDomainPreset: (id: string) => void;
 };
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -2693,18 +2861,25 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   probeInfo,
   onPickDomainUV,
   onPickDomainXY,
+  onPickDomainXYZ,
   graphDomain,
   onChangeGraphDomain,
   paramDomain,
   onChangeParamDomain,
+  implicitDomain,
+  onChangeImplicitDomain,
   graphDomainPresets,
   paramDomainPresets,
+  implicitDomainPresets,
   onSaveGraphDomainPreset,
   onSaveParamDomainPreset,
+  onSaveImplicitDomainPreset,
   onApplyGraphDomainPreset,
   onApplyParamDomainPreset,
+  onApplyImplicitDomainPreset,
   onRemoveGraphDomainPreset,
   onRemoveParamDomainPreset,
+  onRemoveImplicitDomainPreset,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
@@ -2712,13 +2887,16 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isGraphViewer = viewerKind === "graph";
   const isParamViewer = viewerKind === "param";
-  const showDomainPicker = isGraphViewer || isParamViewer;
+  const isImplicitViewer = viewerKind === "implicit";
+  const showDomainPicker = isGraphViewer || isParamViewer || isImplicitViewer;
 
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
+  const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
   const [paramDomainLabel, setParamDomainLabel] = useState("");
 
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
   const safeParamDomain = normalizeParamDomain(paramDomain, getParamDomainPreviewBounds(paramId));
+  const safeImplicitDomain = normalizeImplicitDomain(implicitDomain, getDefaultImplicitDomain(surfaceId));
 
 
   return (
@@ -2740,7 +2918,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {!showDomainPicker ? (
           <div style={{ fontSize: 11, opacity: 0.75 }}>
-            Domain picking is available for graph and param surfaces.
+            Domain picking is available for graph and param surfaces. Use probe mode to pick points on implicit surfaces.
           </div>
         ) : isParamViewer ? (
           <>
@@ -2758,7 +2936,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               Click to send (u,v) into the param surface viewer.
             </div>
           </>
-        ) : (
+        ) : isGraphViewer ? (
           <>
             <XYDomainPreview
               width={260}
@@ -2772,10 +2950,24 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               Click to send (x,y) into the graph/implicit viewer.
             </div>
           </>
+        ) : (
+          <>
+            <XYDomainPreview
+              width={260}
+              height={220}
+              xSpan={safeImplicitDomain.xSpan}
+              ySpan={safeImplicitDomain.ySpan}
+              onPick={(xy) => onPickDomainXYZ({ x: xy.x, y: xy.y, z: 0 })}
+              picked={probeInfo?.point ? { x: probeInfo.point.x, y: probeInfo.point.y } : null}
+            />
+            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+              Click to send (x,y, z=0) into the implicit viewer.
+            </div>
+          </>
         )}
       </div>
 
-      {showDomainPicker && (
+      {(showDomainPicker || isImplicitViewer) && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Domain bounds</div>
           {isGraphViewer && (
@@ -2957,6 +3149,96 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                       ))}
                   </div>
                 )}
+              </div>
+            </>
+          )}
+          {isImplicitViewer && (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                <label style={{ fontSize: 11 }}>
+                  x span
+                  <input
+                    type="number"
+                    min={0.2}
+                    step={0.1}
+                    value={safeImplicitDomain.xSpan}
+                    onChange={(e) =>
+                      onChangeImplicitDomain({
+                        ...safeImplicitDomain,
+                        xSpan: Math.max(0.2, Number(e.target.value)),
+                      })
+                    }
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  y span
+                  <input
+                    type="number"
+                    min={0.2}
+                    step={0.1}
+                    value={safeImplicitDomain.ySpan}
+                    onChange={(e) =>
+                      onChangeImplicitDomain({
+                        ...safeImplicitDomain,
+                        ySpan: Math.max(0.2, Number(e.target.value)),
+                      })
+                    }
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => onChangeImplicitDomain(getDefaultImplicitDomain(surfaceId))}
+                  style={{ padding: "4px 8px" }}
+                >
+                  Reset
+                </button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Saved domains</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <input
+                    type="text"
+                    placeholder="Label (optional)"
+                    value={implicitDomainLabel}
+                    onChange={(e) => setImplicitDomainLabel(e.target.value)}
+                    style={{ flex: 1, padding: "4px 6px", fontSize: 12 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSaveImplicitDomainPreset(implicitDomainLabel);
+                      setImplicitDomainLabel("");
+                    }}
+                    style={{ padding: "4px 8px" }}
+                  >
+                    Save
+                  </button>
+                </div>
+                {implicitDomainPresets.filter((p) => p.surfaceId === surfaceId).length === 0 ? (
+                  <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>No saved domains yet.</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                    {implicitDomainPresets
+                      .filter((p) => p.surfaceId === surfaceId)
+                      .map((p) => (
+                        <div key={p.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button type="button" onClick={() => onApplyImplicitDomainPreset(p.id)} style={{ flex: 1, padding: "4px 8px" }}>
+                            {p.label}
+                          </button>
+                          <button type="button" onClick={() => onRemoveImplicitDomainPreset(p.id)} style={{ padding: "4px 8px" }}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+                Affects the sampling box for marching-cubes implicit surfaces (z uses the larger span).
               </div>
             </>
           )}
@@ -3146,6 +3428,132 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan,
         <span style={{ fontFamily: "monospace" }}>
           {picked ? `(${fmt(picked.x)}, ${fmt(picked.y)})` : "(click)"}
         </span>
+      </div>
+    </div>
+  );
+};
+
+type ImplicitDomainPreviewProps = {
+  width: number;
+  height: number;
+  xSpan: number; // x in [-xSpan, xSpan]
+  zSpan: number; // z in [-zSpan, zSpan]
+  yValue?: number;
+  onPick: (xyz: { x: number; y: number; z: number }) => void;
+  picked?: { x: number; y: number; z: number } | null;
+};
+
+const ImplicitDomainPreview: React.FC<ImplicitDomainPreviewProps> = ({
+  width,
+  height,
+  xSpan,
+  zSpan,
+  yValue,
+  onPick,
+  picked: pickedProp,
+}) => {
+  const [picked, setPicked] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [y, setY] = useState(Number.isFinite(yValue ?? 0) ? (yValue as number) : 0);
+
+  useEffect(() => {
+    if (pickedProp) setPicked(pickedProp);
+  }, [pickedProp?.x, pickedProp?.y, pickedProp?.z]);
+
+  useEffect(() => {
+    if (Number.isFinite(yValue ?? 0)) setY(yValue as number);
+  }, [yValue]);
+
+  const safeXSpan = Number.isFinite(xSpan) && xSpan > 0 ? xSpan : 1;
+  const safeZSpan = Number.isFinite(zSpan) && zSpan > 0 ? zSpan : 1;
+
+  const pad = 12;
+  const w = width;
+  const h = height;
+
+  const toXZ = (clientX: number, clientY: number, svg: SVGSVGElement) => {
+    const r = svg.getBoundingClientRect();
+    const px = (clientX - r.left - pad) / (r.width - 2 * pad);
+    const py = (clientY - r.top - pad) / (r.height - 2 * pad);
+    const x = (px * 2 - 1) * safeXSpan;
+    const z = (1 - py * 2) * safeZSpan;
+    return { x, z };
+  };
+
+  const toPx = (x: number, z: number) => {
+    const px = pad + ((x / safeXSpan + 1) * 0.5) * (w - 2 * pad);
+    const py = pad + ((1 - (z / safeZSpan + 1) * 0.5) * (h - 2 * pad));
+    return { px, py };
+  };
+
+  const gridLines = 8;
+
+  return (
+    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+      <svg
+        width={w}
+        height={h}
+        style={{ display: "block", cursor: "crosshair" }}
+        onMouseDown={(e) => {
+          const svg = e.currentTarget;
+          const xz = toXZ(e.clientX, e.clientY, svg);
+          const next = { x: xz.x, y, z: xz.z };
+          setPicked(next);
+          onPick(next);
+        }}
+      >
+        <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
+        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#fbfbfd" stroke="#e8e8ee" />
+
+        {Array.from({ length: gridLines + 1 }).map((_, i) => {
+          const t = i / gridLines;
+          const x = pad + t * (w - 2 * pad);
+          const y0 = pad + t * (h - 2 * pad);
+          return (
+            <g key={i}>
+              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke="#eee" />
+              <line x1={pad} y1={y0} x2={w - pad} y2={y0} stroke="#eee" />
+            </g>
+          );
+        })}
+
+        {(() => {
+          const o = toPx(0, 0);
+          return (
+            <g>
+              <line x1={pad} y1={o.py} x2={w - pad} y2={o.py} stroke="#bbb" />
+              <line x1={o.px} y1={pad} x2={o.px} y2={h - pad} stroke="#bbb" />
+            </g>
+          );
+        })()}
+
+        {picked && (() => {
+          const p = toPx(picked.x, picked.z);
+          return (
+            <g>
+              <circle cx={p.px} cy={p.py} r={5} fill="#ff3b30" />
+              <circle cx={p.px} cy={p.py} r={9} fill="none" stroke="#ff3b30" opacity={0.5} />
+            </g>
+          );
+        })()}
+      </svg>
+
+      <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between" }}>
+          <span style={{ opacity: 0.75 }}>x ±{safeXSpan.toFixed(2)}  z ±{safeZSpan.toFixed(2)}</span>
+          <span style={{ fontFamily: "monospace" }}>
+            {picked ? `(${fmt(picked.x)}, ${fmt(picked.z)})` : "(click)"}
+          </span>
+        </div>
+        <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 8 }}>
+          y
+          <input
+            type="number"
+            step={0.1}
+            value={Number.isFinite(y) ? y : 0}
+            onChange={(e) => setY(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+        </label>
       </div>
     </div>
   );

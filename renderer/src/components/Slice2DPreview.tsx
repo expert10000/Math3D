@@ -14,6 +14,61 @@ type Props = {
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
+type SliceSvgOptions = {
+  polylines: SlicePolyline[];
+  planeSize: number;
+  width?: number;
+  height?: number;
+  pad?: number;
+};
+
+export function buildSliceSvgString(opts: SliceSvgOptions): string {
+  const width = Math.max(1, Math.floor(opts.width ?? 150));
+  const height = Math.max(1, Math.floor(opts.height ?? 150));
+  const pad = Math.max(0, Math.floor(opts.pad ?? 12));
+  const plotW = Math.max(1, width - pad * 2);
+  const plotH = Math.max(1, height - pad * 2);
+  const half = Math.max(1e-6, Math.abs(opts.planeSize));
+
+  const toSvg = (p: SlicePoint) => {
+    const nx = (p.s + half) / (2 * half);
+    const ny = (p.t + half) / (2 * half);
+    const x = pad + clamp(nx, 0, 1) * plotW;
+    const y = pad + (1 - clamp(ny, 0, 1)) * plotH;
+    return { x, y };
+  };
+
+  const pathFor = (line: SlicePolyline) => {
+    if (line.length === 0) return "";
+    const pts = line.map(toSvg);
+    let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+    for (let i = 1; i < pts.length; i++) {
+      d += ` L ${pts[i].x.toFixed(2)} ${pts[i].y.toFixed(2)}`;
+    }
+    return d;
+  };
+
+  const centerX = pad + plotW * 0.5;
+  const centerY = pad + plotH * 0.5;
+
+  const lines: string[] = [];
+  lines.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`);
+  lines.push(`  <rect x="${pad}" y="${pad}" width="${plotW}" height="${plotH}" fill="#fafbfc" stroke="#e6e9ef" />`);
+  lines.push(`  <line x1="${centerX.toFixed(2)}" y1="${pad}" x2="${centerX.toFixed(2)}" y2="${pad + plotH}" stroke="#c6ccd6" stroke-width="1" />`);
+  lines.push(`  <line x1="${pad}" y1="${centerY.toFixed(2)}" x2="${pad + plotW}" y2="${centerY.toFixed(2)}" stroke="#c6ccd6" stroke-width="1" />`);
+  for (const line of opts.polylines) {
+    if (line.length < 2) continue;
+    const d = pathFor(line);
+    if (!d) continue;
+    lines.push(`  <path d="${d}" fill="none" stroke="#1f3556" stroke-width="1.4" />`);
+  }
+  lines.push(`  <text x="${(pad + plotW - 4).toFixed(2)}" y="${(centerY - 4).toFixed(2)}" font-size="10" text-anchor="end" fill="#64748b">s</text>`);
+  lines.push(`  <text x="${(centerX + 4).toFixed(2)}" y="${(pad + 10).toFixed(2)}" font-size="10" fill="#64748b">t</text>`);
+  lines.push(`</svg>`);
+
+  return lines.join("\n");
+}
+
 export const Slice2DPreview: React.FC<Props> = ({ enabled, planeSize, polylines, onHover, onClickST }) => {
   if (!enabled) return null;
 
