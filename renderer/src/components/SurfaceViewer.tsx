@@ -3060,8 +3060,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (showPrincipalLines) {
         const steps = 320;
-        const step = Math.max(1e-3, size * 0.03);
-        const maxRadius = size * 2.4;
+        const stepBase = Math.max(1e-3, size * 0.02);
+        const maxRadius = size * 2.0;
+        const maxResidual = Math.max(1e-4, size * 0.002);
 
         const projectToSurface = (p: THREE.Vector3) => {
           for (let it = 0; it < 3; it++) {
@@ -3086,21 +3087,36 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const pts: THREE.Vector3[] = [];
           let p = start.clone();
           let prevDir: THREE.Vector3 | null = null;
+          let prevNormal: THREE.Vector3 | null = null;
           for (let i = 0; i < steps; i++) {
             const frame = computeImplicitPrincipalAtPoint(implicitF!, p, h);
             if (!frame || frame.isUmbilic) break;
+            if (prevNormal && frame.normal.dot(prevNormal) < 0) {
+              frame.normal.multiplyScalar(-1);
+              frame.dir1.multiplyScalar(-1);
+              frame.dir2.multiplyScalar(-1);
+            }
+
             let dir = (which === 1 ? frame.dir1 : frame.dir2).clone();
+            dir.addScaledVector(frame.normal, -dir.dot(frame.normal));
             if (!Number.isFinite(dir.x) || !Number.isFinite(dir.y) || !Number.isFinite(dir.z)) break;
+            if (dir.lengthSq() < 1e-12) break;
+            dir.normalize();
             if (prevDir && dir.dot(prevDir) < 0) dir.negate();
             dir.multiplyScalar(dirSign);
 
             const plotPt = p.clone().addScaledVector(frame.normal, lineOffset);
             pts.push(plotPt);
 
-            p = p.clone().addScaledVector(dir, step);
+            const kMax = Math.max(Math.abs(frame.k1), Math.abs(frame.k2));
+            const localStep = Math.max(1e-3, Math.min(stepBase, kMax > 1e-6 ? 0.25 / kMax : stepBase));
+            p = p.clone().addScaledVector(dir, localStep);
             if (!projectToSurface(p)) break;
+            const residual = implicitF!(p.x, p.y, p.z);
+            if (!Number.isFinite(residual) || Math.abs(residual) > maxResidual) break;
             if (p.length() > maxRadius) break;
             prevDir = dir.clone();
+            prevNormal = frame.normal.clone();
           }
           return pts;
         };
