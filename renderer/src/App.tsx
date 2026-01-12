@@ -8,6 +8,7 @@ import { ChebyshevScreen } from "./screens/ChebyshevScreen";
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
 import TabButton from "./components/TabButton";
 import GaussMapPanel from "./components/GaussMapPanel";
+import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 
 import {
   SurfaceViewer,
@@ -32,6 +33,7 @@ import {
   type RegionSelection,
   type SelectionMask,
 } from "./math/selection/selectionModel";
+import { computeSelectionStats, type SelectionMetricKey } from "./math/selection/selectionStats";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
@@ -517,6 +519,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [selectionOverlayVisible, setSelectionOverlayVisible] = useState(true);
   const [selectionOverlayOnTop, setSelectionOverlayOnTop] = useState(false);
   const [selectionSphereVisible, setSelectionSphereVisible] = useState(true);
+  const [selectedMetric, setSelectedMetric] = useState<SelectionMetricKey>("K");
   const surfaceHasUV = surfaceSampleSet?.samples.some((s) => !!s.uv) ?? false;
   useEffect(() => {
     if (!surfaceHasUV && selectionUseUV) {
@@ -1135,6 +1138,96 @@ case "mobius":
     });
     setSelectionMask(mask);
   }, [surfaceSampleSet, selection]);
+
+  const selectionIndices = useMemo(() => {
+    if (!selectionMask?.selected?.length) return [];
+    const selected = selectionMask.selected;
+    const indices: number[] = [];
+    for (let i = 0; i < selected.length; i++) {
+      if (selected[i]) indices.push(i);
+    }
+    return indices;
+  }, [selectionMask]);
+
+  const selectionBaseArrays = useMemo(() => {
+    if (!surfaceSampleSet?.samples?.length) return null;
+    const count = surfaceSampleSet.samples.length;
+    const positions = new Float32Array(count * 3);
+    const normals = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const sample = surfaceSampleSet.samples[i];
+      const base = i * 3;
+      positions[base] = sample.position.x;
+      positions[base + 1] = sample.position.y;
+      positions[base + 2] = sample.position.z;
+      normals[base] = sample.normal.x;
+      normals[base + 1] = sample.normal.y;
+      normals[base + 2] = sample.normal.z;
+    }
+    return { positions, normals };
+  }, [surfaceSampleSet]);
+
+  const selectionCurvatures = useMemo(() => {
+    if (!surfaceSampleSet?.samples?.length) return null;
+    if (surfaceViewerKind !== "graph" || !isGraphSurface(activeEqSurfaceId)) return null;
+    const count = surfaceSampleSet.samples.length;
+    const K = new Float32Array(count);
+    const H = new Float32Array(count);
+    const k1 = new Float32Array(count);
+    const k2 = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const sample = surfaceSampleSet.samples[i];
+      const curv = computeGraphInvariantsFromProbe(activeEqSurfaceId, graphExpr, sample.position);
+      if (curv) {
+        K[i] = curv.K;
+        H[i] = curv.H;
+        k1[i] = curv.k1;
+        k2[i] = curv.k2;
+      } else {
+        K[i] = NaN;
+        H[i] = NaN;
+        k1[i] = NaN;
+        k2[i] = NaN;
+      }
+    }
+    return { K, H, k1, k2 };
+  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+
+  const availableSelectionMetrics = useMemo(() => {
+    if (!selectionCurvatures) return [];
+    const list: SelectionMetricKey[] = [];
+    if (selectionCurvatures.K) list.push("K");
+    if (selectionCurvatures.H) list.push("H");
+    if (selectionCurvatures.k1) list.push("k1");
+    if (selectionCurvatures.k2) list.push("k2");
+    return list;
+  }, [selectionCurvatures]);
+
+  useEffect(() => {
+    if (!availableSelectionMetrics.length) return;
+    if (!availableSelectionMetrics.includes(selectedMetric)) {
+      setSelectedMetric(availableSelectionMetrics[0]);
+    }
+  }, [availableSelectionMetrics, selectedMetric]);
+
+  const selectionStats = useMemo(() => {
+    if (!selectionBaseArrays) {
+      return computeSelectionStats({
+        selectedIndices: [],
+        positions: new Float32Array(0),
+        normals: new Float32Array(0),
+      });
+    }
+    return computeSelectionStats({
+      selectedIndices: selectionIndices,
+      positions: selectionBaseArrays.positions,
+      normals: selectionBaseArrays.normals,
+      metrics: selectionCurvatures ?? undefined,
+      histogramMetric: selectedMetric,
+      binCount: 24,
+      normalizeMeanNormal: true,
+    });
+  }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -2857,6 +2950,19 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 Clear selection
               </button>
             </div>
+          )}
+          {selectRegionEnabled && (
+            <details style={{ marginLeft: 20, marginTop: 8 }} open>
+              <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Selection stats</summary>
+              <div style={{ marginTop: 6 }}>
+                <SelectionStatsPanel
+                  stats={selectionStats}
+                  availableMetrics={availableSelectionMetrics}
+                  selectedMetric={availableSelectionMetrics.length ? selectedMetric : null}
+                  onSelectedMetricChange={setSelectedMetric}
+                />
+              </div>
+            </details>
           )}
         </div>
 
