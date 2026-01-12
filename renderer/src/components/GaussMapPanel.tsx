@@ -1,75 +1,61 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
-import type { GaussColorMode, GaussPoint } from "./gaussMapUtils";
+import type { GaussColorMode } from "./gaussMapUtils";
+import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
+import type { SurfaceSample } from "../math/sampling/surfaceSampling";
 
 type GaussMapPanelProps = {
-  points: GaussPoint[];
+  samples: SurfaceSample[];
   palette: ColorPalette;
   colorMode: GaussColorMode;
   probeNormal?: { x: number; y: number; z: number } | null;
   onPointHover?: (index: number | null) => void;
   width?: number;
   height?: number;
+  selectionMask?: SelectionMask | null;
+  onGaussSelection?: (selection: GaussCapSelection) => void;
+};
+
+type GaussSampleEntry = {
+  sampleIndex: number;
+  normal: THREE.Vector3;
+  color: { r: number; g: number; b: number };
 };
 
 const POINT_SIZE = 0.04;
 const SPHERE_SEGMENTS = 56;
 const INITIAL_CAMERA_POSITION = new THREE.Vector3(2, 1.5, 3);
 const INITIAL_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
-
 const SLIDER_POINT_SIZE = { min: 1, max: 6, step: 0.5 };
 const SAMPLE_OPTIONS = [1, 2, 3, 5] as const;
+const GAUSS_CAP_RANGE = { min: 5, max: 45, step: 1 };
 
-const buildPointGeometry = (extras: Float32Array, colors: Float32Array) => {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(extras, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-  return geometry;
-};
-
-const buildSampledPointData = (
-  data: GaussPoint[],
+const buildSampledEntries = (
+  samples: SurfaceSample[],
   palette: ColorPalette,
   colorMode: GaussColorMode,
   samplingStep: number
-) => {
+): GaussSampleEntry[] => {
+  if (!samples.length) return [];
   const step = Math.max(1, Math.floor(samplingStep));
-  const selectedIndices: number[] = [];
-  for (let i = 0; i < data.length; i += step) {
-    selectedIndices.push(i);
-  }
+  const entries: GaussSampleEntry[] = [];
 
-  const positions = new Float32Array(selectedIndices.length * 3);
-  const colors = new Float32Array(selectedIndices.length * 3);
-
-  selectedIndices.forEach((sourceIndex, sampleIndex) => {
-    const normal = data[sourceIndex].normal;
-    const len = Math.hypot(normal.x, normal.y, normal.z);
-    const nx = len > 0 ? normal.x / len : 0;
-    const ny = len > 0 ? normal.y / len : 0;
-    const nz = len > 0 ? normal.z / len : 0;
-
-    positions[3 * sampleIndex] = nx;
-    positions[3 * sampleIndex + 1] = ny;
-    positions[3 * sampleIndex + 2] = nz;
-
+  for (let i = 0; i < samples.length; i += step) {
+    const normal = samples[i].normal.clone().normalize();
+    if (!Number.isFinite(normal.x) || !Number.isFinite(normal.y) || !Number.isFinite(normal.z)) {
+      continue;
+    }
+    const { x: nx, y: ny, z: nz } = normal;
     const color =
       colorMode === "components"
-        ? {
-            r: 0.5 * (nx + 1),
-            g: 0.5 * (ny + 1),
-            b: 0.5 * (nz + 1),
-          }
+        ? { r: 0.5 * (nx + 1), g: 0.5 * (ny + 1), b: 0.5 * (nz + 1) }
         : scalarToColor01((nz + 1) * 0.5, palette);
+    entries.push({ sampleIndex: i, normal, color });
+  }
 
-    colors[3 * sampleIndex] = color.r;
-    colors[3 * sampleIndex + 1] = color.g;
-    colors[3 * sampleIndex + 2] = color.b;
-  });
-
-  return { positions, colors, indexMap: selectedIndices };
+  return entries;
 };
 
 const createHighlightMesh = (color: number) => {
@@ -88,6 +74,13 @@ const controlRowStyle: React.CSSProperties = {
   alignItems: "center",
   marginTop: 4,
   fontSize: 11,
+};
+
+const selectionRowStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  alignItems: "center",
 };
 
 const toggleLabelStyle: React.CSSProperties = {
@@ -127,29 +120,33 @@ const resetButtonStyle: React.CSSProperties = {
 };
 
 const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
-  points,
+  samples,
   palette,
   colorMode,
   probeNormal,
   onPointHover,
   width = 280,
   height = 280,
+  selectionMask = null,
+  onGaussSelection,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
-  const pointsRef = useRef<THREE.Points | null>(null);
-  const hoverRef = useRef<THREE.Mesh | null>(null);
-  const probeRef = useRef<THREE.Mesh | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const pointsRef = useRef<THREE.Points | null>(null);
+  const selectedPointsRef = useRef<THREE.Points | null>(null);
   const sphereRef = useRef<THREE.Mesh | null>(null);
   const sphereMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const axesRef = useRef<THREE.AxesHelper | null>(null);
   const equatorRef = useRef<THREE.Line | null>(null);
-  const pointsIndexMapRef = useRef<number[] | null>(null);
-  const pointsDataRef = useRef<GaussPoint[]>(points);
-  const onPointHoverRef = useRef(onPointHover);
+  const hoverRef = useRef<THREE.Mesh | null>(null);
+  const probeRef = useRef<THREE.Mesh | null>(null);
+  const pointsIndexMapRef = useRef<number[]>([]);
+  const entriesRef = useRef<GaussSampleEntry[]>([]);
+  const pointerRef = useRef(new THREE.Vector2());
+  const raycasterRef = useRef(new THREE.Raycaster());
   const initialSizeRef = useRef({ width, height });
 
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -159,13 +156,12 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   const [showEquator, setShowEquator] = useState(false);
   const [pointSize, setPointSize] = useState(2);
   const [samplingStep, setSamplingStep] = useState(1);
+  const [selectFromGauss, setSelectFromGauss] = useState(false);
+  const [gaussCapAngleDeg, setGaussCapAngleDeg] = useState(15);
 
   const pointSizeRef = useRef(pointSize);
   const occludeBackRef = useRef(occludeBack);
-
-  useEffect(() => {
-    pointsDataRef.current = points;
-  }, [points]);
+  const onPointHoverRef = useRef(onPointHover);
 
   useEffect(() => {
     onPointHoverRef.current = onPointHover;
@@ -189,14 +185,40 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     controls.update();
   };
 
+  const handlePointSizeChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const next = Number(event.target.value);
+    console.log("[GaussMapPanel] point size slider moved to", next);
+    setPointSize(next);
+  }, []);
+
+  const handleSamplingStepChange = useCallback((event: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = Number(event.target.value);
+    console.log("[GaussMapPanel] sampling step set to", next);
+    setSamplingStep(next);
+  }, []);
+
+  const handleCapAngleChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const next = Number(event.target.value);
+    console.log("[GaussMapPanel] Gauss cap angle slider moved to", next);
+    setGaussCapAngleDeg(next);
+  }, []);
+
+  const handleOccludeToggle = useCallback(() => {
+    setOccludeBack((prev) => {
+      const next = !prev;
+      console.log("[GaussMapPanel] occlude toggled", next ? "enabling" : "disabling");
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
 
-    const initialSize = initialSizeRef.current;
+    const { width: w, height: h } = initialSizeRef.current;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.setSize(initialSize.width, initialSize.height);
+    renderer.setSize(w, h);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     renderer.domElement.style.display = "block";
@@ -207,7 +229,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     scene.background = new THREE.Color(0xf8f9fb);
     sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(40, initialSize.width / initialSize.height, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
     camera.position.copy(INITIAL_CAMERA_POSITION);
     camera.up.set(0, 1, 0);
     camera.lookAt(INITIAL_CAMERA_TARGET);
@@ -240,22 +262,22 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       new THREE.SphereGeometry(1, SPHERE_SEGMENTS, SPHERE_SEGMENTS),
       sphereMaterial
     );
+    scene.add(sphere);
     sphereRef.current = sphere;
     sphereMaterialRef.current = sphereMaterial;
-    scene.add(sphere);
 
     const hoverMesh = createHighlightMesh(0xffff66);
-    hoverRef.current = hoverMesh;
     scene.add(hoverMesh);
+    hoverRef.current = hoverMesh;
 
     const probeMesh = createHighlightMesh(0xff5d73);
-    probeRef.current = probeMesh;
     scene.add(probeMesh);
+    probeRef.current = probeMesh;
 
     const axesHelper = new THREE.AxesHelper(1.2);
     axesHelper.visible = showAxes;
-    axesRef.current = axesHelper;
     scene.add(axesHelper);
+    axesRef.current = axesHelper;
 
     const circlePoints: THREE.Vector3[] = [];
     const circleSegments = 64;
@@ -269,11 +291,11 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       new THREE.LineBasicMaterial({ color: 0x4c5674, transparent: true, opacity: 0.5 })
     );
     equatorLine.visible = showEquator;
-    equatorRef.current = equatorLine;
     scene.add(equatorLine);
+    equatorRef.current = equatorLine;
 
-    const pointer = new THREE.Vector2();
-    const raycaster = new THREE.Raycaster();
+    const pointer = pointerRef.current;
+    const raycaster = raycasterRef.current;
     raycaster.params.Points.threshold = 0.035;
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -282,32 +304,30 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(pointer, camera);
-      const pointsMesh = pointsRef.current;
-      const availablePoints = pointsDataRef.current;
-      if (!pointsMesh || !availablePoints.length) {
+      const pts = pointsRef.current;
+      if (!pts) {
         setHoverIndex(null);
         onPointHoverRef.current?.(null);
         return;
       }
 
-      const intersects = raycaster.intersectObject(pointsMesh);
+      const intersects = raycaster.intersectObject(pts);
       if (!intersects.length || typeof intersects[0].index !== "number") {
         setHoverIndex(null);
         onPointHoverRef.current?.(null);
         return;
       }
 
-      const rawIndex = intersects[0].index;
-      const mappedIndex =
-        typeof rawIndex === "number" ? pointsIndexMapRef.current?.[rawIndex] ?? rawIndex : null;
-      if (mappedIndex == null) {
+      const idx = intersects[0].index;
+      const sampleIndex = pointsIndexMapRef.current[idx];
+      if (typeof sampleIndex !== "number") {
         setHoverIndex(null);
         onPointHoverRef.current?.(null);
         return;
       }
 
-      setHoverIndex(mappedIndex);
-      onPointHoverRef.current?.(mappedIndex);
+      setHoverIndex(sampleIndex);
+      onPointHoverRef.current?.(sampleIndex);
     };
 
     const handlePointerLeave = () => {
@@ -315,8 +335,29 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       onPointHoverRef.current?.(null);
     };
 
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!selectFromGauss || !onGaussSelection || !sphereRef.current) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const intersects = raycaster.intersectObject(sphereRef.current, false);
+      if (!intersects.length) return;
+      const capNormal = intersects[0].point.clone().normalize();
+      console.log("[GaussMapPanel] gauss sphere click", {
+        angleDeg: gaussCapAngleDeg,
+        normal: capNormal.toArray(),
+      });
+      onGaussSelection({
+        kind: "gaussCap",
+        capNormal,
+        angleRad: THREE.MathUtils.degToRad(gaussCapAngleDeg),
+      });
+    };
+
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
     renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
 
     let frameId = 0;
     const animate = () => {
@@ -328,8 +369,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
 
     const resizeObserver = new ResizeObserver(() => {
       const rect = mount.getBoundingClientRect();
-      const w = rect.width || initialSize.width;
-      const h = rect.height || initialSize.height;
+      const w = rect.width || initialSizeRef.current.width;
+      const h = rect.height || initialSizeRef.current.height;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
@@ -341,47 +382,52 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
       renderer.domElement.removeEventListener("pointerleave", handlePointerLeave);
+      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       controls.dispose();
-      controlsRef.current = null;
+
       if (sphereRef.current) {
         scene.remove(sphereRef.current);
         sphereRef.current.geometry.dispose();
       }
       sphereMaterialRef.current?.dispose();
-      sphereRef.current = null;
-      sphereMaterialRef.current = null;
-      scene.remove(hoverMesh);
-      hoverMesh.geometry.dispose();
-      (hoverMesh.material as THREE.Material).dispose();
-      scene.remove(probeMesh);
-      probeMesh.geometry.dispose();
-      (probeMesh.material as THREE.Material).dispose();
-      if (axesHelper) {
-        scene.remove(axesHelper);
-        axesHelper.geometry.dispose();
-        (axesHelper.material as THREE.Material).dispose();
+      if (hoverRef.current) {
+        scene.remove(hoverRef.current);
+        hoverRef.current.geometry.dispose();
+        (hoverRef.current.material as THREE.Material).dispose();
       }
-      if (equatorLine) {
-        scene.remove(equatorLine);
-        equatorLine.geometry.dispose();
-        (equatorLine.material as THREE.Material).dispose();
+      if (probeRef.current) {
+        scene.remove(probeRef.current);
+        probeRef.current.geometry.dispose();
+        (probeRef.current.material as THREE.Material).dispose();
       }
-      pointsIndexMapRef.current = null;
+      if (axesRef.current) {
+        scene.remove(axesRef.current);
+        axesRef.current.geometry.dispose();
+        (axesRef.current.material as THREE.Material).dispose();
+      }
+      if (equatorRef.current) {
+        scene.remove(equatorRef.current);
+        equatorRef.current.geometry.dispose();
+        (equatorRef.current.material as THREE.Material).dispose();
+      }
       if (pointsRef.current) {
         scene.remove(pointsRef.current);
         pointsRef.current.geometry.dispose();
         (pointsRef.current.material as THREE.Material).dispose();
-        pointsRef.current = null;
       }
-      if (renderer.domElement.parentNode === mount) {
-        mount.removeChild(renderer.domElement);
+      if (selectedPointsRef.current) {
+        scene.remove(selectedPointsRef.current);
+        selectedPointsRef.current.geometry.dispose();
+        (selectedPointsRef.current.material as THREE.Material).dispose();
       }
+
       renderer.dispose();
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
+      controlsRef.current = null;
     };
-  }, []);
+  }, [gaussCapAngleDeg, selectFromGauss, showAxes, showEquator, wireframeSphere, occludeBack]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -393,29 +439,45 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       pointsRef.current.geometry.dispose();
       (pointsRef.current.material as THREE.Material).dispose();
       pointsRef.current = null;
-      pointsIndexMapRef.current = null;
+      pointsIndexMapRef.current = [];
+      entriesRef.current = [];
     }
 
-    if (!points.length) {
-      return;
-    }
+    if (!samples.length) return;
 
-    const { positions, colors, indexMap } = buildSampledPointData(points, palette, colorMode, samplingStep);
-    const geom = buildPointGeometry(positions, colors);
+    const entries = buildSampledEntries(samples, palette, colorMode, samplingStep);
+    if (!entries.length) return;
+
+    const positions = new Float32Array(entries.length * 3);
+    const colors = new Float32Array(entries.length * 3);
+    entries.forEach((entry, idx) => {
+      positions[3 * idx] = entry.normal.x;
+      positions[3 * idx + 1] = entry.normal.y;
+      positions[3 * idx + 2] = entry.normal.z;
+      colors[3 * idx] = entry.color.r;
+      colors[3 * idx + 1] = entry.color.g;
+      colors[3 * idx + 2] = entry.color.b;
+    });
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
     const mat = new THREE.PointsMaterial({
       size: pointSizeRef.current,
       vertexColors: true,
       sizeAttenuation: false,
-      depthTest: occludeBackRef.current,
-      depthWrite: occludeBackRef.current,
+      depthTest: occludeBack,
+      depthWrite: occludeBack,
     });
 
     const pts = new THREE.Points(geom, mat);
     pts.renderOrder = 5;
     scene.add(pts);
     pointsRef.current = pts;
-    pointsIndexMapRef.current = indexMap;
-  }, [points, palette, colorMode, samplingStep]);
+    pointsIndexMapRef.current = entries.map((entry) => entry.sampleIndex);
+    entriesRef.current = entries;
+  }, [samples, palette, colorMode, samplingStep, occludeBack]);
 
   useEffect(() => {
     const pts = pointsRef.current;
@@ -451,27 +513,69 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   }, [showEquator]);
 
   useEffect(() => {
-    const hover = hoverRef.current;
-    if (!hover) return;
-    if (hoverIndex == null || hoverIndex < 0 || hoverIndex >= points.length) {
-      hover.visible = false;
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (selectedPointsRef.current) {
+      scene.remove(selectedPointsRef.current);
+      selectedPointsRef.current.geometry.dispose();
+      (selectedPointsRef.current.material as THREE.Material).dispose();
+      selectedPointsRef.current = null;
+    }
+
+    if (!selectionMask?.count || !entriesRef.current.length) {
       return;
     }
 
-    const normal = points[hoverIndex].normal;
-    const len = Math.hypot(normal.x, normal.y, normal.z);
+    const posValues: number[] = [];
+    const colorValues: number[] = [];
+    entriesRef.current.forEach((entry) => {
+      if (!selectionMask.selected[entry.sampleIndex]) return;
+      posValues.push(entry.normal.x, entry.normal.y, entry.normal.z);
+      colorValues.push(entry.color.r, entry.color.g, entry.color.b);
+    });
+
+    if (!posValues.length) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(posValues), 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(colorValues), 3));
+
+    const mat = new THREE.PointsMaterial({
+      size: pointSizeRef.current + 1,
+      vertexColors: true,
+      sizeAttenuation: false,
+      depthTest: occludeBack,
+      depthWrite: false,
+    });
+
+    const pts = new THREE.Points(geometry, mat);
+    pts.renderOrder = 15;
+    scene.add(pts);
+    selectedPointsRef.current = pts;
+  }, [selectionMask, samplingStep, occludeBack, samples]);
+
+  useEffect(() => {
+    const hover = hoverRef.current;
+    if (!hover) return;
+    if (hoverIndex == null || hoverIndex < 0 || hoverIndex >= samples.length) {
+      hover.visible = false;
+      return;
+    }
+    const normal = samples[hoverIndex].normal;
+    const len = normal.length();
     hover.position.set(
       len > 0 ? normal.x / len : 0,
       len > 0 ? normal.y / len : 0,
       len > 0 ? normal.z / len : 0
     );
     hover.visible = true;
-  }, [hoverIndex, points]);
+  }, [hoverIndex, samples]);
 
   useEffect(() => {
     setHoverIndex(null);
     onPointHover?.(null);
-  }, [points, onPointHover]);
+  }, [samples, onPointHover]);
 
   useEffect(() => {
     const probe = probeRef.current;
@@ -480,7 +584,6 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       probe.visible = false;
       return;
     }
-
     const len = Math.hypot(probeNormal.x, probeNormal.y, probeNormal.z);
     probe.position.set(
       len > 0 ? probeNormal.x / len : 0,
@@ -489,6 +592,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     );
     probe.visible = true;
   }, [probeNormal]);
+
+  const selectionInfo = selectionMask?.count ? ` · ${selectionMask.count} selected` : "";
 
   return (
     <div
@@ -505,8 +610,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     >
       <div style={{ fontSize: 12, fontWeight: 700 }}>Gauss map (Sı)</div>
       <div style={{ fontSize: 11, color: "#555" }}>
-        {points.length
-          ? `${points.length} sampled normals plotted`
+        {samples.length
+          ? `${samples.length} sampled normals plotted${selectionInfo}`
           : "Enable Gauss map to analyze normals."}
       </div>
       <div style={controlRowStyle}>
@@ -517,7 +622,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
           <input
             type="checkbox"
             checked={occludeBack}
-            onChange={() => setOccludeBack((prev) => !prev)}
+            onChange={handleOccludeToggle}
             style={toggleInputStyle}
           />
           Occlude
@@ -557,7 +662,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
             max={SLIDER_POINT_SIZE.max}
             step={SLIDER_POINT_SIZE.step}
             value={pointSize}
-            onChange={(event) => setPointSize(Number(event.target.value))}
+            onChange={handlePointSizeChange}
             style={{ width: 120 }}
           />
         </div>
@@ -565,7 +670,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
           <span style={{ fontSize: 10, color: "#555" }}>Sample every {samplingStep}</span>
           <select
             value={samplingStep}
-            onChange={(event) => setSamplingStep(Number(event.target.value))}
+            onChange={handleSamplingStepChange}
             style={{ fontSize: 11, padding: "2px 4px" }}
           >
             {SAMPLE_OPTIONS.map((option) => (
@@ -574,6 +679,29 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
               </option>
             ))}
           </select>
+        </div>
+      </div>
+      <div style={selectionRowStyle}>
+        <label style={toggleLabelStyle} title="Click sphere caps to select normals">
+          <input
+            type="checkbox"
+            checked={selectFromGauss}
+            onChange={(event) => setSelectFromGauss(event.target.checked)}
+            style={toggleInputStyle}
+          />
+          Select from Gauss
+        </label>
+        <div style={{ minWidth: 160 }}>
+          <div style={{ fontSize: 10, color: "#555" }}>Cap angle {gaussCapAngleDeg}°</div>
+          <input
+            type="range"
+            min={GAUSS_CAP_RANGE.min}
+            max={GAUSS_CAP_RANGE.max}
+            step={GAUSS_CAP_RANGE.step}
+            value={gaussCapAngleDeg}
+            onChange={handleCapAngleChange}
+            style={{ width: 160 }}
+          />
         </div>
       </div>
       <div ref={mountRef} style={{ width: "100%", height, borderRadius: 10, overflow: "hidden" }} />

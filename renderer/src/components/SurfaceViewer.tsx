@@ -10,10 +10,12 @@ import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } f
 import { marchingSquares } from "../math/marchingSquares";
 
 import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
-import { collectGaussPoints, type GaussPoint } from "./gaussMapUtils";
+import type { GaussPoint } from "./gaussMapUtils";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
+import { buildSurfaceSampleSetFromViewer, type SurfaceSampleSet } from "../math/sampling/surfaceSampling";
+import type { SelectionMask } from "../math/selection/selectionModel";
 
 export type ColorMode =
   | "solid"
@@ -647,6 +649,16 @@ type Props = {
   gaussMapEnabled?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
+  sampleMaxPoints?: number;
+  includeSamplesUV?: boolean;
+  onSampleSet?: (set: SurfaceSampleSet | null) => void;
+  selectionMask?: SelectionMask | null;
+  selectRegionEnabled?: boolean;
+  onSelectionPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    uv?: { u: number; v: number };
+  }) => void;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -704,6 +716,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     gaussMapEnabled = false,
     onGaussPoints,
     gaussHighlightPoint = null,
+    sampleMaxPoints = 900,
+    includeSamplesUV = true,
+    onSampleSet,
+    selectionMask = null,
+    selectRegionEnabled = false,
+    onSelectionPick,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -716,6 +734,10 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
   // slice visuals
   const sliceGroupRef = useRef<THREE.Group | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+    const selectionOverlayRef = useRef<THREE.Points | null>(null);
+    const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
+    const selectRegionEnabledRef = useRef(selectRegionEnabled);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const probeWidgetsRef = useRef<{
@@ -766,10 +788,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
 
-  const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
-  useEffect(() => {
-    onProbeRef.current = onProbe;
-  }, [onProbe]);
+    const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
+    useEffect(() => {
+      onProbeRef.current = onProbe;
+    }, [onProbe]);
+
+    useEffect(() => {
+      selectRegionEnabledRef.current = selectRegionEnabled;
+    }, [selectRegionEnabled]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -1844,6 +1870,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
     camera.position.set(3, 3, 4);
@@ -2307,6 +2334,44 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(surfaceObj);
     surfaceObjRef.current = surfaceObj;
 
+    surfaceObj.updateMatrixWorld(true);
+    const meshList: THREE.Mesh[] = [];
+    surfaceObj.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) {
+        meshList.push(mesh);
+      }
+    });
+
+    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+    let nextId = 0;
+    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+    for (const mesh of meshList) {
+      if (!mesh.geometry || remainingSamples <= 0) continue;
+      mesh.updateMatrixWorld(true);
+      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+        geometry: mesh.geometry as THREE.BufferGeometry,
+        worldMatrix: mesh.matrixWorld,
+        maxSamples: remainingSamples,
+        includeUV: includeSamplesUV,
+        startId: nextId,
+      });
+      if (!chunk.length) continue;
+      aggregatedSamples.push(...chunk);
+      nextId += chunk.length;
+      remainingSamples -= chunk.length;
+    }
+
+    let nextSampleSet: SurfaceSampleSet;
+    if (aggregatedSamples.length) {
+      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+      nextSampleSet = { samples: aggregatedSamples, bbox: box, center: box.getCenter(new THREE.Vector3()) };
+    } else {
+      nextSampleSet = { samples: [] };
+    }
+    sampleSetRef.current = nextSampleSet;
+    onSampleSet?.(nextSampleSet);
+
     let implicitOverlayLines: THREE.LineSegments | null = null;
     const findImplicitObj = (): THREE.Object3D | null => {
       let found: THREE.Object3D | null = null;
@@ -2517,7 +2582,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const pointer = new THREE.Vector2();
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!probeEnabled) return;
+      if (!probeEnabled && !selectRegionEnabledRef.current) return;
+
+      console.log("[SurfaceViewer] pointer down", {
+        selectRegionEnabled: selectRegionEnabledRef.current,
+        probeEnabled,
+      });
 
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2547,7 +2617,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         xyDomain = { x: point.x, y: point.z };
       }
 
-      applyProbe(point, normalWorld, xyDomain);
+      if (probeEnabled) {
+        applyProbe(point, normalWorld, xyDomain);
+      }
+
+      if (selectRegionEnabledRef.current && onSelectionPick) {
+        console.log("[SurfaceViewer] before selection callback", {
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: normalWorld.toArray(),
+          uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+        });
+        onSelectionPick({
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+          uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+        });
+      }
     };
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
@@ -2688,6 +2773,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         gaussHighlightRef.current = null;
       }
 
+      if (selectionOverlayRef.current) {
+        scene.remove(selectionOverlayRef.current);
+        selectionOverlayRef.current.geometry.dispose();
+        (selectionOverlayRef.current.material as THREE.Material).dispose();
+        selectionOverlayRef.current = null;
+      }
+
       if (implicitOverlayLines) {
         implicitOverlayLines.geometry.dispose();
         const matAny = implicitOverlayLines.material as THREE.Material | THREE.Material[] | undefined;
@@ -2714,6 +2806,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+
+      sampleSetRef.current = null;
+      onSampleSet?.(null);
+      sceneRef.current = null;
 
       surfaceObjRef.current = null;
       cameraRef.current = null;
@@ -2752,15 +2848,82 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return;
     }
 
-    const root = surfaceObjRef.current;
-    if (!root) {
+    const sampleSet = sampleSetRef.current;
+    if (!sampleSet || !sampleSet.samples.length) {
       onGaussPoints([]);
       return;
     }
 
-    const pts = collectGaussPoints(root, 900);
+    const pts: GaussPoint[] = sampleSet.samples.map((sample) => ({
+      id: sample.id,
+      position: {
+        x: sample.position.x,
+        y: sample.position.y,
+        z: sample.position.z,
+      },
+      normal: {
+        x: sample.normal.x,
+        y: sample.normal.y,
+        z: sample.normal.z,
+      },
+    }));
+
     onGaussPoints(pts);
   }, [sceneEpoch, gaussMapEnabled, onGaussPoints]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const sampleSet = sampleSetRef.current;
+    if (!scene) return;
+
+    if (selectionOverlayRef.current) {
+      scene.remove(selectionOverlayRef.current);
+      selectionOverlayRef.current.geometry.dispose();
+      (selectionOverlayRef.current.material as THREE.Material).dispose();
+      selectionOverlayRef.current = null;
+    }
+
+    if (!selectionMask || !sampleSet || !selectionMask.count) {
+      return;
+    }
+
+    const positions = new Float32Array(selectionMask.count * 3);
+    let ptr = 0;
+    for (let i = 0; i < selectionMask.selected.length; i++) {
+      if (!selectionMask.selected[i]) continue;
+      const sample = sampleSet.samples[i];
+      if (!sample) continue;
+      positions[3 * ptr] = sample.position.x;
+      positions[3 * ptr + 1] = sample.position.y;
+      positions[3 * ptr + 2] = sample.position.z;
+      ptr++;
+    }
+
+    if (ptr === 0) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({
+      color: 0x800000,
+      size: 0.14,
+      sizeAttenuation: false,
+      depthTest: true,
+      depthWrite: false,
+    });
+    const overlay = new THREE.Points(geometry, material);
+    overlay.renderOrder = 30;
+    scene.add(overlay);
+    selectionOverlayRef.current = overlay;
+
+    return () => {
+      if (selectionOverlayRef.current === overlay) {
+        scene.remove(overlay);
+        geometry.dispose();
+        material.dispose();
+        selectionOverlayRef.current = null;
+      }
+    };
+  }, [selectionMask, sceneEpoch]);
 
   useEffect(() => {
     const widgets = probeWidgetsRef.current;

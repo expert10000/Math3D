@@ -23,7 +23,9 @@ import type { ColorMode, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceVi
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
-import { collectGaussPoints, type GaussPoint } from "./gaussMapUtils";
+import type { GaussPoint } from "./gaussMapUtils";
+import { buildSurfaceSampleSetFromViewer, type SurfaceSampleSet } from "../math/sampling/surfaceSampling";
+import type { SelectionMask } from "../math/selection/selectionModel";
 
 type ParamPreset = {
   id: string;
@@ -145,6 +147,16 @@ type Props = {
   gaussMapEnabled?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
+  sampleMaxPoints?: number;
+  includeSamplesUV?: boolean;
+  onSampleSet?: (set: SurfaceSampleSet | null) => void;
+  selectionMask?: SelectionMask | null;
+  selectRegionEnabled?: boolean;
+  onSelectionPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    uv?: { u: number; v: number };
+  }) => void;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -847,9 +859,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   showProbeTangentPlane = true,
   showProbeTangents = true,
   onProbe,
-  gaussMapEnabled = false,
-  onGaussPoints,
-  gaussHighlightPoint = null,
+    gaussMapEnabled = false,
+    onGaussPoints,
+    gaussHighlightPoint = null,
+    sampleMaxPoints = 900,
+    includeSamplesUV = true,
+    onSampleSet,
+    selectionMask = null,
+    selectRegionEnabled = false,
+    onSelectionPick,
   showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -965,6 +983,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   const sliceDirtyRef = useRef(true);
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
+  const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const probeWidgetsRef = useRef<{
     marker: THREE.Mesh;
     normal: THREE.ArrowHelper;
@@ -2044,6 +2063,20 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     scene.add(mesh);
     surfaceObjRef.current = mesh;
 
+    let sampleSet: SurfaceSampleSet | null = null;
+    if (mesh.geometry) {
+      mesh.updateMatrixWorld(true);
+      sampleSet = buildSurfaceSampleSetFromViewer({
+        geometry: mesh.geometry as THREE.BufferGeometry,
+        worldMatrix: mesh.matrixWorld,
+        maxSamples: sampleMaxPoints,
+        includeUV: includeSamplesUV,
+        startId: 0,
+      });
+    }
+    sampleSetRef.current = sampleSet;
+    onSampleSet?.(sampleSet);
+
     // bbox for camera snapping
     const bbox = new THREE.Box3().setFromObject(mesh);
     const center = new THREE.Vector3();
@@ -2192,6 +2225,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const pointer = new THREE.Vector2();
 
     const handlePointerDown = (event: PointerEvent) => {
+      console.log("[ParamSurfaceViewer] pointer down", {
+        selectRegionEnabled,
+        probeEnabled: probeEnabledRef.current,
+      });
       if (!probeEnabledRef.current) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
@@ -2225,6 +2262,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
 
       applyProbe(point, normalWorld, uvDomain);
+
+      if (selectRegionEnabled && onSelectionPick) {
+        console.log("[ParamSurfaceViewer] selection pick", {
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+          uv: uvDomain,
+        });
+        onSelectionPick({
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+          uv: uvDomain,
+        });
+      }
     };
 
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
@@ -2280,6 +2330,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }
+
+      sampleSetRef.current = null;
+      onSampleSet?.(null);
 
       if (sliceLinesRef.current) sliceLinesRef.current.geometry.dispose();
       if (sliceMatRef.current) sliceMatRef.current.dispose();
@@ -2369,15 +2422,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       return;
     }
 
-    const root = surfaceObjRef.current;
-    if (!root) {
+    const sampleSet = sampleSetRef.current;
+    if (!sampleSet || !sampleSet.samples.length) {
       onGaussPoints([]);
       return;
     }
 
-    const pts = collectGaussPoints(root, 900);
+    const pts: GaussPoint[] = sampleSet.samples.map((sample) => ({
+      id: sample.id,
+      position: { x: sample.position.x, y: sample.position.y, z: sample.position.z },
+      normal: { x: sample.normal.x, y: sample.normal.y, z: sample.normal.z },
+    }));
     onGaussPoints(pts);
-  }, [sceneEpoch, gaussMapEnabled, onGaussPoints]);
+  }, [sceneEpoch, gaussMapEnabled, onGaussPoints, surfaceId]);
 
   useEffect(() => {
     const marker = gaussHighlightRef.current;

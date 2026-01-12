@@ -25,6 +25,13 @@ import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
+import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
+import {
+  computeSelectionMask,
+  type GaussCapSelection,
+  type RegionSelection,
+  type SelectionMask,
+} from "./math/selection/selectionModel";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
@@ -501,6 +508,23 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [gaussColorMode, setGaussColorMode] = useState<GaussColorMode>("components");
   const [gaussPoints, setGaussPoints] = useState<GaussPoint[]>([]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
+  const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  const [selection, setSelection] = useState<RegionSelection | null>(null);
+  const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
+  const [selectionRadius, setSelectionRadius] = useState(0.4);
+  const [selectionUseUV, setSelectionUseUV] = useState(false);
+  const [selectRegionEnabled, setSelectRegionEnabled] = useState(false);
+  const surfaceHasUV = surfaceSampleSet?.samples.some((s) => !!s.uv) ?? false;
+  useEffect(() => {
+    if (!surfaceHasUV && selectionUseUV) {
+      setSelectionUseUV(false);
+    }
+  }, [surfaceHasUV, selectionUseUV]);
+
+  const toggleSelectionUseUV = useCallback(() => {
+    if (!surfaceHasUV) return;
+    setSelectionUseUV((prev) => !prev);
+  }, [surfaceHasUV]);
   const gaussHighlightPoint =
     gaussHoverIndex != null && gaussPoints[gaussHoverIndex]
       ? gaussPoints[gaussHoverIndex].position
@@ -1019,6 +1043,52 @@ case "mobius":
     [showGaussMap]
   );
 
+  const handleSampleSet = useCallback((set: SurfaceSampleSet | null) => {
+    setSurfaceSampleSet(set);
+  }, []);
+
+  const handleSurfaceSelectionPick = useCallback(
+    (payload: {
+      point: { x: number; y: number; z: number };
+      normal: { x: number; y: number; z: number };
+      uv?: { u: number; v: number };
+    }) => {
+      if (!selectRegionEnabled) return;
+      console.log("[App] surface selection pick", {
+        point: payload.point,
+        normal: payload.normal,
+        uv: payload.uv,
+        selectionRadius,
+        selectionUseUV,
+      });
+      const nextSelection: RegionSelection =
+        selectionUseUV && payload.uv
+          ? {
+              kind: "surfaceDisk",
+              centerUV: payload.uv,
+              radius: selectionRadius,
+              useUV: true,
+            }
+          : {
+              kind: "surfaceDisk",
+              centerWorld: { x: payload.point.x, y: payload.point.y, z: payload.point.z },
+              radius: selectionRadius,
+            };
+      setSelection(nextSelection);
+    },
+    [selectRegionEnabled, selectionRadius, selectionUseUV]
+  );
+
+  const handleClearSelection = useCallback(() => {
+    setSelection(null);
+    setSelectionMask(null);
+  }, []);
+
+  const handleGaussSelection = useCallback((selection: GaussCapSelection) => {
+    console.log("[App] gauss cap selection", selection);
+    setSelection(selection);
+  }, []);
+
   useEffect(() => {
     if (!showGaussMap) {
       setGaussPoints([]);
@@ -1029,6 +1099,25 @@ case "mobius":
   useEffect(() => {
     setGaussHoverIndex(null);
   }, [gaussPoints]);
+
+  useEffect(() => {
+    if (!surfaceSampleSet || !selection) {
+      setSelectionMask(null);
+      console.log("[App] selection cleared", {
+        samples: surfaceSampleSet?.samples.length ?? 0,
+        selection: selection ? selection.kind : "none",
+      });
+      return;
+    }
+    const mask = computeSelectionMask(surfaceSampleSet.samples, selection);
+    console.log("[App] computed selection mask", {
+      count: mask.count,
+      totalSamples: surfaceSampleSet.samples.length,
+      selection: selection.kind,
+      radius: selection.kind === "surfaceDisk" ? selection.radius : undefined,
+    });
+    setSelectionMask(mask);
+  }, [surfaceSampleSet, selection]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -1546,7 +1635,7 @@ case "mobius":
                 onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                 gaussColorMode={gaussColorMode}
                 onChangeGaussColorMode={setGaussColorMode}
-                gaussPointsCount={gaussPoints.length}
+                gaussPointsCount={surfaceSampleSet?.samples.length ?? 0}
                 onResetCamera={() => setCameraResetToken((t) => t + 1)}
                 probeInfo={probeInfo}
                 probeCurv={probeCurv}
@@ -1556,6 +1645,15 @@ case "mobius":
                 onToggleContours={() => setShowContours((v) => !v)}
                 contourCount={contourCount}
                 onSetContourCount={setContourCount}
+                selectRegionEnabled={selectRegionEnabled}
+                onToggleSelectRegion={() => setSelectRegionEnabled((v) => !v)}
+                selectionRadius={selectionRadius}
+                onSetSelectionRadius={setSelectionRadius}
+                selectionUseUV={selectionUseUV}
+                selectionHasUV={surfaceHasUV}
+                onToggleSelectionUseUV={toggleSelectionUseUV}
+                onClearSelection={handleClearSelection}
+                selectionMaskCount={selectionMask?.count ?? 0}
                 commandInput={commandInput}
                 onChangeCommandInput={setCommandInput}
                 onRunCommand={handleRunCommand}
@@ -1599,7 +1697,7 @@ case "mobius":
                     >
                       <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
-                          <ParamSurfaceViewer
+                        <ParamSurfaceViewer
                             surfaceId={paramSurfaceIdForView}
                             customX={paramXExpr}
                             customY={paramYExpr}
@@ -1638,16 +1736,20 @@ case "mobius":
                             onSetCustomZ={setParamZExpr}
                             isCameraLeader={compareEnabled}
                             onCameraSync={compareEnabled ? setCameraSync : undefined}
-                            gaussMapEnabled={showGaussMap}
-                            onGaussPoints={handleGaussPoints}
-                            gaussHighlightPoint={gaussHighlightPoint}
+                          gaussMapEnabled={showGaussMap}
+                          onGaussPoints={handleGaussPoints}
+                          gaussHighlightPoint={gaussHighlightPoint}
+                          onSampleSet={handleSampleSet}
+                          selectionMask={selectionMask}
+                          selectRegionEnabled={selectRegionEnabled}
+                          onSelectionPick={handleSurfaceSelectionPick}
                             weierstrassDiagnostics={
                               surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
                             showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
                           />
                         ) : (
-                          <SurfaceViewer
+                        <SurfaceViewer
                             surfaceId={activeEqSurfaceId}
                             graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
@@ -1685,9 +1787,13 @@ case "mobius":
                             contourCount={contourCount}
                             isCameraLeader={compareEnabled}
                             onCameraSync={compareEnabled ? setCameraSync : undefined}
-                            gaussMapEnabled={showGaussMap}
-                            onGaussPoints={handleGaussPoints}
-                            gaussHighlightPoint={gaussHighlightPoint}
+                          gaussMapEnabled={showGaussMap}
+                          onGaussPoints={handleGaussPoints}
+                          gaussHighlightPoint={gaussHighlightPoint}
+                          onSampleSet={handleSampleSet}
+                          selectionMask={selectionMask}
+                          selectRegionEnabled={selectRegionEnabled}
+                          onSelectionPick={handleSurfaceSelectionPick}
                           />
                         )}
                       </div>
@@ -1770,13 +1876,15 @@ case "mobius":
 
                   {showGaussMap && (
                     <div style={{ minWidth: 240, maxWidth: 340, display: "flex", alignItems: "stretch" }}>
-                      <GaussMapPanel
-                        points={gaussPoints}
+                    <GaussMapPanel
+                        samples={surfaceSampleSet?.samples ?? []}
                         palette={colorPalette}
                         colorMode={gaussColorMode}
                         probeNormal={probeInfo?.normal ?? null}
                         onPointHover={(idx) => setGaussHoverIndex(idx)}
                         height={280}
+                        selectionMask={selectionMask}
+                        onGaussSelection={handleGaussSelection}
                       />
                     </div>
                   )}
@@ -2363,6 +2471,15 @@ type SurfacesLeftPanelProps = {
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
   paramProbeCurv: PrincipalCurvatureScalars | null;
+  selectRegionEnabled: boolean;
+  onToggleSelectRegion: () => void;
+  selectionRadius: number;
+  onSetSelectionRadius: (value: number) => void;
+  selectionUseUV: boolean;
+  selectionHasUV: boolean;
+  onToggleSelectionUseUV: () => void;
+  onClearSelection: () => void;
+  selectionMaskCount: number;
 
   // contours (graph surfaces)
   showContours: boolean;
@@ -2455,6 +2572,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   probeInfo,
   probeCurv,
   paramProbeCurv,
+  selectRegionEnabled,
+  onToggleSelectRegion,
+  selectionRadius,
+  onSetSelectionRadius,
+  selectionUseUV,
+  selectionHasUV,
+  onToggleSelectionUseUV,
+  onClearSelection,
+  selectionMaskCount,
   showContours,
   onToggleContours,
   contourCount,
@@ -2605,6 +2731,64 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
                 Trace principal curvature lines
               </label>
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 8 }}>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={selectRegionEnabled}
+              onChange={onToggleSelectRegion}
+              style={{ marginRight: 6 }}
+            />
+            Select region {selectionMaskCount ? `(${selectionMaskCount} normals)` : ""}
+          </label>
+          {selectRegionEnabled && (
+            <div
+              style={{
+                marginLeft: 20,
+                marginTop: 6,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 11,
+              }}
+            >
+              <div style={{ minWidth: 180 }}>
+                <div style={{ fontSize: 10, color: "#555" }}>Radius {selectionRadius.toFixed(2)}</div>
+                <input
+                  type="range"
+                  min={0.05}
+                  max={2}
+                  step={0.05}
+                  value={selectionRadius}
+                  onChange={(e) => onSetSelectionRadius(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  cursor: selectionHasUV ? "pointer" : "not-allowed",
+                  color: selectionHasUV ? "#000" : "#999",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectionUseUV}
+                  onChange={onToggleSelectionUseUV}
+                  disabled={!selectionHasUV}
+                  style={{ marginRight: 6 }}
+                />
+                Use UV
+              </label>
+              <button type="button" onClick={onClearSelection} style={{ padding: "4px 8px" }}>
+                Clear selection
+              </button>
             </div>
           )}
         </div>
