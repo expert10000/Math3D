@@ -33,7 +33,11 @@ import {
   type RegionSelection,
   type SelectionMask,
 } from "./math/selection/selectionModel";
-import { computeSelectionStats, type SelectionMetricKey } from "./math/selection/selectionStats";
+import {
+  computeSelectionStats,
+  type SelectionMetricKey,
+  type SelectionStats,
+} from "./math/selection/selectionStats";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
@@ -1634,6 +1638,10 @@ case "mobius":
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
               onChangeCompareParamId={setCompareParamId}
+              selectionStats={selectionStats}
+              availableSelectionMetrics={availableSelectionMetrics}
+              selectedMetric={selectedMetric}
+              onChangeSelectedMetric={setSelectedMetric}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -2247,6 +2255,10 @@ type SurfacesControlsProps = {
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
   onChangeCompareParamId: (p: ParamSurfaceId) => void;
+  selectionStats: SelectionStats;
+  availableSelectionMetrics: SelectionMetricKey[];
+  selectedMetric: SelectionMetricKey;
+  onChangeSelectedMetric: (metric: SelectionMetricKey) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -2269,6 +2281,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeCompareSurface,
   compareParamId,
   onChangeCompareParamId,
+  selectionStats,
+  availableSelectionMetrics,
+  selectedMetric,
+  onChangeSelectedMetric,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -2959,7 +2975,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   stats={selectionStats}
                   availableMetrics={availableSelectionMetrics}
                   selectedMetric={availableSelectionMetrics.length ? selectedMetric : null}
-                  onSelectedMetricChange={setSelectedMetric}
+                  onSelectedMetricChange={onChangeSelectedMetric}
                 />
               </div>
             </details>
@@ -4881,4 +4897,3 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
     </div>
   );
 };
-
