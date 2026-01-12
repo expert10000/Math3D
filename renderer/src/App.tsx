@@ -1781,6 +1781,10 @@ case "mobius":
                 onChangeCommandInput={setCommandInput}
                 onRunCommand={handleRunCommand}
                 commandHistory={commandHistory}
+                selectionStats={selectionStats}
+                availableSelectionMetrics={availableSelectionMetrics}
+                selectedMetric={selectedMetric}
+                onChangeSelectedMetric={setSelectedMetric}
               />
             </div>
 
@@ -2635,6 +2639,10 @@ type SurfacesLeftPanelProps = {
   onChangeCommandInput: (v: string) => void;
   onRunCommand: (cmd: string) => void;
   commandHistory: { cmd: string; out: string }[];
+  selectionStats: SelectionStats;
+  availableSelectionMetrics: SelectionMetricKey[];
+  selectedMetric: SelectionMetricKey;
+  onChangeSelectedMetric: (metric: SelectionMetricKey) => void;
 
 };
 
@@ -2738,6 +2746,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeCommandInput,
   onRunCommand,
   commandHistory,
+  selectionStats,
+  availableSelectionMetrics,
+  selectedMetric,
+  onChangeSelectedMetric,
   weierstrassDiagnostics,
   weierstrassPathDisagreement,
   weierstrassDiagnosticError,
