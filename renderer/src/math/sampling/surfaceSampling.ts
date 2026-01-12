@@ -12,6 +12,12 @@ export type SurfaceSampleSet = {
   samples: SurfaceSample[];
   bbox?: THREE.Box3;
   center?: THREE.Vector3;
+  curvatures?: {
+    K: Float32Array;
+    H: Float32Array;
+    k1: Float32Array;
+    k2: Float32Array;
+  };
 };
 
 export type SurfaceSampleBuildOptions = {

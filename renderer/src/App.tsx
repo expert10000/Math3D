@@ -1173,6 +1173,7 @@ case "mobius":
 
   const selectionCurvatures = useMemo(() => {
     if (!surfaceSampleSet?.samples?.length) return null;
+    if (surfaceSampleSet.curvatures) return surfaceSampleSet.curvatures;
     if (surfaceViewerKind !== "graph" || !isGraphSurface(activeEqSurfaceId)) return null;
     const count = surfaceSampleSet.samples.length;
     const K = new Float32Array(count);

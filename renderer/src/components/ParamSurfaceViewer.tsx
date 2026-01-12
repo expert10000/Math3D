@@ -2102,6 +2102,44 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           };
         });
       }
+      if (sampleSet && includeSamplesUV) {
+        const count = sampleSet.samples.length;
+        const K = new Float32Array(count);
+        const H = new Float32Array(count);
+        const k1 = new Float32Array(count);
+        const k2 = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          const uv = sampleSet.samples[i].uv;
+          if (!uv) {
+            K[i] = NaN;
+            H[i] = NaN;
+            k1[i] = NaN;
+            k2[i] = NaN;
+            continue;
+          }
+          const curv = computePrincipalCurvatureAtUV({
+            paramFunc,
+            u: uv.u,
+            v: uv.v,
+            uMin,
+            uMax,
+            vMin,
+            vMax,
+          });
+          if (curv) {
+            K[i] = curv.K;
+            H[i] = curv.H;
+            k1[i] = curv.k1;
+            k2[i] = curv.k2;
+          } else {
+            K[i] = NaN;
+            H[i] = NaN;
+            k1[i] = NaN;
+            k2[i] = NaN;
+          }
+        }
+        sampleSet.curvatures = { K, H, k1, k2 };
+      }
     }
     sampleSetRef.current = sampleSet;
     onSampleSet?.(sampleSet);
