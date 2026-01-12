@@ -647,6 +647,7 @@ type Props = {
   onProbe?: (info: ProbeInfo) => void;
 
   gaussMapEnabled?: boolean;
+  onToggleGaussMap?: () => void;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -659,6 +660,9 @@ type Props = {
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
   }) => void;
+  selectionOverlayVisible?: boolean;
+  selectionOverlayOnTop?: boolean;
+  selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -714,6 +718,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onProbe,
 
     gaussMapEnabled = false,
+    onToggleGaussMap,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -722,6 +727,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionMask = null,
     selectRegionEnabled = false,
     onSelectionPick,
+    selectionOverlayVisible = true,
+    selectionOverlayOnTop = false,
+    selectionSphere = null,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -735,9 +743,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   // slice visuals
   const sliceGroupRef = useRef<THREE.Group | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
-    const selectionOverlayRef = useRef<THREE.Points | null>(null);
-    const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
-    const selectRegionEnabledRef = useRef(selectRegionEnabled);
+  const selectionOverlayRef = useRef<THREE.Points | null>(null);
+  const selectionSphereRef = useRef<THREE.Mesh | null>(null);
+  const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
+  const selectRegionEnabledRef = useRef(selectRegionEnabled);
+  const onSelectionPickRef = useRef(onSelectionPick);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const probeWidgetsRef = useRef<{
@@ -793,9 +803,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       onProbeRef.current = onProbe;
     }, [onProbe]);
 
-    useEffect(() => {
-      selectRegionEnabledRef.current = selectRegionEnabled;
-    }, [selectRegionEnabled]);
+  useEffect(() => {
+    selectRegionEnabledRef.current = selectRegionEnabled;
+  }, [selectRegionEnabled]);
+
+  useEffect(() => {
+    onSelectionPickRef.current = onSelectionPick;
+  }, [onSelectionPick]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -2621,13 +2635,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         applyProbe(point, normalWorld, xyDomain);
       }
 
-      if (selectRegionEnabledRef.current && onSelectionPick) {
+      const selectionCb = onSelectionPickRef.current;
+      if (selectRegionEnabledRef.current && selectionCb) {
         console.log("[SurfaceViewer] before selection callback", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: normalWorld.toArray(),
           uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
         });
-        onSelectionPick({
+        selectionCb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
@@ -2883,7 +2898,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       selectionOverlayRef.current = null;
     }
 
-    if (!selectionMask || !sampleSet || !selectionMask.count) {
+    if (selectionSphereRef.current) {
+      scene.remove(selectionSphereRef.current);
+      selectionSphereRef.current.geometry.dispose();
+      (selectionSphereRef.current.material as THREE.Material).dispose();
+      selectionSphereRef.current = null;
+    }
+
+    if (!selectionOverlayVisible || !selectionMask || !sampleSet || !selectionMask.count) {
       return;
     }
 
@@ -2903,15 +2925,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const baseSize = Math.max(0.02, (radiusRef.current || 3) * 0.01);
     const material = new THREE.PointsMaterial({
       color: 0x800000,
-      size: 0.14,
-      sizeAttenuation: false,
-      depthTest: true,
+      size: baseSize * (selectionOverlayOnTop ? 1.5 : 1),
+      sizeAttenuation: true,
+      depthTest: !selectionOverlayOnTop,
       depthWrite: false,
     });
     const overlay = new THREE.Points(geometry, material);
-    overlay.renderOrder = 30;
+    overlay.renderOrder = selectionOverlayOnTop ? 200 : 30;
     scene.add(overlay);
     selectionOverlayRef.current = overlay;
 
@@ -2923,7 +2946,43 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         selectionOverlayRef.current = null;
       }
     };
-  }, [selectionMask, sceneEpoch]);
+  }, [selectionMask, sceneEpoch, selectionOverlayVisible, selectionOverlayOnTop]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (selectionSphereRef.current) {
+      scene.remove(selectionSphereRef.current);
+      selectionSphereRef.current.geometry.dispose();
+      (selectionSphereRef.current.material as THREE.Material).dispose();
+      selectionSphereRef.current = null;
+    }
+
+    if (!selectionSphere) return;
+
+    const geometry = new THREE.SphereGeometry(selectionSphere.radius, 24, 18);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x800000,
+      transparent: true,
+      opacity: 0.14,
+      depthWrite: false,
+    });
+    const sphere = new THREE.Mesh(geometry, material);
+    sphere.position.set(selectionSphere.center.x, selectionSphere.center.y, selectionSphere.center.z);
+    sphere.renderOrder = 25;
+    scene.add(sphere);
+    selectionSphereRef.current = sphere;
+
+    return () => {
+      if (selectionSphereRef.current === sphere) {
+        scene.remove(sphere);
+        geometry.dispose();
+        material.dispose();
+        selectionSphereRef.current = null;
+      }
+    };
+  }, [selectionSphere, sceneEpoch]);
 
   useEffect(() => {
     const widgets = probeWidgetsRef.current;
@@ -3700,6 +3759,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               </label>
 
             </>
+          )}
+          {onToggleGaussMap && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input type="checkbox" checked={gaussMapEnabled} onChange={onToggleGaussMap} />
+              <span>Show Gauss map (S²)</span>
+            </label>
           )}
         </div>
       )}

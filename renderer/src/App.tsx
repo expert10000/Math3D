@@ -514,12 +514,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [selectionRadius, setSelectionRadius] = useState(0.4);
   const [selectionUseUV, setSelectionUseUV] = useState(false);
   const [selectRegionEnabled, setSelectRegionEnabled] = useState(false);
+  const [selectionOverlayVisible, setSelectionOverlayVisible] = useState(true);
+  const [selectionOverlayOnTop, setSelectionOverlayOnTop] = useState(false);
+  const [selectionSphereVisible, setSelectionSphereVisible] = useState(true);
   const surfaceHasUV = surfaceSampleSet?.samples.some((s) => !!s.uv) ?? false;
   useEffect(() => {
     if (!surfaceHasUV && selectionUseUV) {
       setSelectionUseUV(false);
     }
   }, [surfaceHasUV, selectionUseUV]);
+
+  useEffect(() => {
+    if (!selection || selection.kind !== "surfaceDisk") return;
+    if (selection.radius === selectionRadius) return;
+    setSelection({ ...selection, radius: selectionRadius });
+  }, [selection, selectionRadius]);
 
   const toggleSelectionUseUV = useCallback(() => {
     if (!surfaceHasUV) return;
@@ -1089,6 +1098,14 @@ case "mobius":
     setSelection(selection);
   }, []);
 
+  const selectionSphere =
+    selectionSphereVisible && selection?.kind === "surfaceDisk" && !selection.useUV
+      ? {
+          center: { x: selection.centerWorld.x, y: selection.centerWorld.y, z: selection.centerWorld.z },
+          radius: selection.radius,
+        }
+      : null;
+
   useEffect(() => {
     if (!showGaussMap) {
       setGaussPoints([]);
@@ -1632,7 +1649,6 @@ case "mobius":
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 showGaussMap={showGaussMap}
-                onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                 gaussColorMode={gaussColorMode}
                 onChangeGaussColorMode={setGaussColorMode}
                 gaussPointsCount={surfaceSampleSet?.samples.length ?? 0}
@@ -1654,6 +1670,12 @@ case "mobius":
                 onToggleSelectionUseUV={toggleSelectionUseUV}
                 onClearSelection={handleClearSelection}
                 selectionMaskCount={selectionMask?.count ?? 0}
+                selectionOverlayVisible={selectionOverlayVisible}
+                onToggleSelectionOverlayVisible={() => setSelectionOverlayVisible((v) => !v)}
+                selectionOverlayOnTop={selectionOverlayOnTop}
+                onToggleSelectionOverlayOnTop={() => setSelectionOverlayOnTop((v) => !v)}
+                selectionSphereVisible={selectionSphereVisible}
+                onToggleSelectionSphereVisible={() => setSelectionSphereVisible((v) => !v)}
                 commandInput={commandInput}
                 onChangeCommandInput={setCommandInput}
                 onRunCommand={handleRunCommand}
@@ -1737,12 +1759,16 @@ case "mobius":
                             isCameraLeader={compareEnabled}
                             onCameraSync={compareEnabled ? setCameraSync : undefined}
                           gaussMapEnabled={showGaussMap}
+                          onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
                           gaussHighlightPoint={gaussHighlightPoint}
                           onSampleSet={handleSampleSet}
                           selectionMask={selectionMask}
                           selectRegionEnabled={selectRegionEnabled}
                           onSelectionPick={handleSurfaceSelectionPick}
+                          selectionOverlayVisible={selectionOverlayVisible}
+                          selectionOverlayOnTop={selectionOverlayOnTop}
+                          selectionSphere={selectionSphere}
                             weierstrassDiagnostics={
                               surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
@@ -1788,12 +1814,16 @@ case "mobius":
                             isCameraLeader={compareEnabled}
                             onCameraSync={compareEnabled ? setCameraSync : undefined}
                           gaussMapEnabled={showGaussMap}
+                          onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
                           gaussHighlightPoint={gaussHighlightPoint}
                           onSampleSet={handleSampleSet}
                           selectionMask={selectionMask}
                           selectRegionEnabled={selectRegionEnabled}
                           onSelectionPick={handleSurfaceSelectionPick}
+                          selectionOverlayVisible={selectionOverlayVisible}
+                          selectionOverlayOnTop={selectionOverlayOnTop}
+                          selectionSphere={selectionSphere}
                           />
                         )}
                       </div>
@@ -2462,7 +2492,6 @@ type SurfacesLeftPanelProps = {
   onToggleDriftArrow: () => void;
   onRecomputeDiagnostics: () => void;
   showGaussMap: boolean;
-  onToggleGaussMap: () => void;
   gaussColorMode: GaussColorMode;
   onChangeGaussColorMode: (mode: GaussColorMode) => void;
   gaussPointsCount: number;
@@ -2480,6 +2509,12 @@ type SurfacesLeftPanelProps = {
   onToggleSelectionUseUV: () => void;
   onClearSelection: () => void;
   selectionMaskCount: number;
+  selectionOverlayVisible: boolean;
+  onToggleSelectionOverlayVisible: () => void;
+  selectionOverlayOnTop: boolean;
+  onToggleSelectionOverlayOnTop: () => void;
+  selectionSphereVisible: boolean;
+  onToggleSelectionSphereVisible: () => void;
 
   // contours (graph surfaces)
   showContours: boolean;
@@ -2564,7 +2599,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showBoundingBox,
   onToggleBoundingBox,
   showGaussMap,
-  onToggleGaussMap,
   gaussColorMode,
   onChangeGaussColorMode,
   gaussPointsCount,
@@ -2581,6 +2615,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSelectionUseUV,
   onClearSelection,
   selectionMaskCount,
+  selectionOverlayVisible,
+  onToggleSelectionOverlayVisible,
+  selectionOverlayOnTop,
+  onToggleSelectionOverlayOnTop,
+  selectionSphereVisible,
+  onToggleSelectionSphereVisible,
   showContours,
   onToggleContours,
   contourCount,
@@ -2786,6 +2826,33 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
                 Use UV
               </label>
+              <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={selectionOverlayVisible}
+                  onChange={onToggleSelectionOverlayVisible}
+                  style={{ marginRight: 6 }}
+                />
+                Show selection
+              </label>
+              <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={selectionOverlayOnTop}
+                  onChange={onToggleSelectionOverlayOnTop}
+                  style={{ marginRight: 6 }}
+                />
+                Overlay on top
+              </label>
+              <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={selectionSphereVisible}
+                  onChange={onToggleSelectionSphereVisible}
+                  style={{ marginRight: 6 }}
+                />
+                Show selection sphere
+              </label>
               <button type="button" onClick={onClearSelection} style={{ padding: "4px 8px" }}>
                 Clear selection
               </button>
@@ -2816,56 +2883,45 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       </div>
 
       {/* color mode */}
-      <div style={{ marginBottom: 8, fontSize: 12 }}>
-        <span style={{ marginRight: 6 }}>Coloring:</span>
-
-       <div style={{ marginBottom: 10 }}>
-  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Coloring</div>
-
-  <div style={pillRow}>
-    {colorModes.map((m) => (
-      <button
-        key={m}
-        type="button"
-        onClick={() => onChangeColorMode(m)}
-        style={pill(colorMode === m)}
-        aria-pressed={colorMode === m}
-      >
-        {COLOR_MODE_LABELS[m]}
-      </button>
-    ))}
-    </div>
-  </div>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Coloring</div>
+        <div style={pillRow}>
+          {colorModes.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onChangeColorMode(m)}
+              style={pill(colorMode === m)}
+              aria-pressed={colorMode === m}
+            >
+              {COLOR_MODE_LABELS[m]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gauss map</div>
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input type="checkbox" checked={showGaussMap} onChange={onToggleGaussMap} style={{ marginRight: 6 }} />
-          Show Gauss map (S²)
-        </label>
-        {showGaussMap && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Color by</div>
-            <div style={pillRow}>
-              {(["components", "palette"] as GaussColorMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => onChangeGaussColorMode(m)}
-                  style={pill(gaussColorMode === m)}
-                  aria-pressed={gaussColorMode === m}
-                >
-                  {m === "components" ? "Normal RGB" : "Palette (N.z)"}
-                </button>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-              {gaussPointsCount > 0 ? `${gaussPointsCount} normals plotted` : "Waiting for normals..."}
-            </div>
+      {showGaussMap && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gauss map</div>
+          <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Color by</div>
+          <div style={pillRow}>
+            {(["components", "palette"] as GaussColorMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => onChangeGaussColorMode(m)}
+                style={pill(gaussColorMode === m)}
+                aria-pressed={gaussColorMode === m}
+              >
+                {m === "components" ? "Normal RGB" : "Palette (N.z)"}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+            {gaussPointsCount > 0 ? `${gaussPointsCount} normals plotted` : "Waiting for normals..."}
+          </div>
+        </div>
+      )}
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Lighting</div>
@@ -4719,3 +4775,4 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
     </div>
   );
 };
+

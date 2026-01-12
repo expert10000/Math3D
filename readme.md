@@ -8,6 +8,8 @@
 - Added a Gauss map (S²) inspector panel that mirrors normals as a second live visualization.
 - Added Weierstrass diagnostics (path-drift magnitude, vector, traffic-light status, optional arrow, and recompute controls) that flag period drift.
 - Added dual-path averaging and avg/max path disagreement reporting to the Weierstrass builder so trimmed domains show fewer seams even when drift is low.
+- Added region selection overlays, including a translucent selection sphere, and linked the selected surface samples to the Gauss map.
+- Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 
 ## Build the renderer into /dist
 
@@ -60,6 +62,8 @@ and editable.
 - Normals can be colored by their components or the current palette, hover/highlight works both ways, and probe updates keep the sphere synced with the surface, turning normals into a second live visualization.
 - The Gauss viewer now behaves like a micro OrbitControls scene with damping, zoom/pan constraints, a reset button, toggles for depth occlusion or wireframe/axes/equator helpers, and controls to tweak point size plus sampling density so you can limit clutter without leaving the panel.
 - The "Select region" flow now links the surface and Gauss map: enable it in the left panel, pick a seed point (world or UV) and a radius, and both the surface and the sphere highlight the same normals, while an optional Gauss-cap click also selects its matching points on the surface.
+- The Gauss map toggle lives in the slice-plane overlay in the main view; color options remain in the left panel and only appear when the map is enabled.
+- You can show a translucent selection sphere at the picked point to visualize the radius used for the surface and Gauss-map selection.
 
 ### Weierstrass diagnostics
 

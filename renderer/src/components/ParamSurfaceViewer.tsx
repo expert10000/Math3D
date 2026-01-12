@@ -145,6 +145,7 @@ type Props = {
   showProbeTangents?: boolean;
   onProbe?: (info: ProbeInfo) => void;
   gaussMapEnabled?: boolean;
+  onToggleGaussMap?: () => void;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -157,6 +158,9 @@ type Props = {
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
   }) => void;
+  selectionOverlayVisible?: boolean;
+  selectionOverlayOnTop?: boolean;
+  selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -860,6 +864,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   showProbeTangents = true,
   onProbe,
     gaussMapEnabled = false,
+    onToggleGaussMap,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -868,6 +873,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     selectionMask = null,
     selectRegionEnabled = false,
     onSelectionPick,
+    selectionOverlayVisible = true,
+    selectionOverlayOnTop = false,
+    selectionSphere = null,
   showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -895,6 +903,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const viewerRef = useRef<ViewerState | null>(null);
   const onProbeRef = useRef(onProbe);
   const probeEnabledRef = useRef(probeEnabled);
+  const selectRegionEnabledRef = useRef(selectRegionEnabled);
+  const onSelectionPickRef = useRef(onSelectionPick);
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
@@ -980,6 +990,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
+  const selectionOverlayRef = useRef<THREE.Points | null>(null);
+  const selectionSphereRef = useRef<THREE.Mesh | null>(null);
 
   const sliceDirtyRef = useRef(true);
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
@@ -1137,6 +1149,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     probeEnabledRef.current = probeEnabled;
   }, [probeEnabled]);
+
+  useEffect(() => {
+    selectRegionEnabledRef.current = selectRegionEnabled;
+  }, [selectRegionEnabled]);
+
+  useEffect(() => {
+    onSelectionPickRef.current = onSelectionPick;
+  }, [onSelectionPick]);
 
   useEffect(() => {
     sliceParamsRef.current = {
@@ -2073,6 +2093,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         includeUV: includeSamplesUV,
         startId: 0,
       });
+      if (sampleSet && includeSamplesUV) {
+        sampleSet.samples.forEach((sample) => {
+          if (!sample.uv) return;
+          sample.uv = {
+            u: uMin + (uMax - uMin) * sample.uv.u,
+            v: vMin + (vMax - vMin) * sample.uv.v,
+          };
+        });
+      }
     }
     sampleSetRef.current = sampleSet;
     onSampleSet?.(sampleSet);
@@ -2226,10 +2255,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     const handlePointerDown = (event: PointerEvent) => {
       console.log("[ParamSurfaceViewer] pointer down", {
-        selectRegionEnabled,
+        selectRegionEnabled: selectRegionEnabledRef.current,
         probeEnabled: probeEnabledRef.current,
       });
-      if (!probeEnabledRef.current) return;
+      if (!probeEnabledRef.current && !selectRegionEnabledRef.current) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2261,15 +2290,18 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         uvDomain = { u, v };
       }
 
-      applyProbe(point, normalWorld, uvDomain);
+      if (probeEnabledRef.current) {
+        applyProbe(point, normalWorld, uvDomain);
+      }
 
-      if (selectRegionEnabled && onSelectionPick) {
+      const selectionCb = onSelectionPickRef.current;
+      if (selectRegionEnabledRef.current && selectionCb) {
         console.log("[ParamSurfaceViewer] selection pick", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: uvDomain,
         });
-        onSelectionPick({
+        selectionCb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: uvDomain,
@@ -2373,6 +2405,20 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         gaussHighlightRef.current = null;
       }
 
+      if (selectionOverlayRef.current) {
+        scene.remove(selectionOverlayRef.current);
+        selectionOverlayRef.current.geometry.dispose();
+        (selectionOverlayRef.current.material as THREE.Material).dispose();
+        selectionOverlayRef.current = null;
+      }
+
+      if (selectionSphereRef.current) {
+        scene.remove(selectionSphereRef.current);
+        selectionSphereRef.current.geometry.dispose();
+        (selectionSphereRef.current.material as THREE.Material).dispose();
+        selectionSphereRef.current = null;
+      }
+
       surfaceObjRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
@@ -2435,6 +2481,99 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }));
     onGaussPoints(pts);
   }, [sceneEpoch, gaussMapEnabled, onGaussPoints, surfaceId]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    const sampleSet = sampleSetRef.current;
+    if (!scene) return;
+
+    if (selectionOverlayRef.current) {
+      scene.remove(selectionOverlayRef.current);
+      selectionOverlayRef.current.geometry.dispose();
+      (selectionOverlayRef.current.material as THREE.Material).dispose();
+      selectionOverlayRef.current = null;
+    }
+
+    if (!selectionOverlayVisible || !selectionMask || !sampleSet || !selectionMask.count) {
+      return;
+    }
+
+    const positions = new Float32Array(selectionMask.count * 3);
+    let ptr = 0;
+    for (let i = 0; i < selectionMask.selected.length; i++) {
+      if (!selectionMask.selected[i]) continue;
+      const sample = sampleSet.samples[i];
+      if (!sample) continue;
+      positions[3 * ptr] = sample.position.x;
+      positions[3 * ptr + 1] = sample.position.y;
+      positions[3 * ptr + 2] = sample.position.z;
+      ptr++;
+    }
+
+    if (ptr === 0) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const baseSize = Math.max(0.02, (radiusRef.current || 3) * 0.01);
+    const material = new THREE.PointsMaterial({
+      color: 0x800000,
+      size: baseSize * (selectionOverlayOnTop ? 1.5 : 1),
+      sizeAttenuation: true,
+      depthTest: !selectionOverlayOnTop,
+      depthWrite: false,
+    });
+    const overlay = new THREE.Points(geometry, material);
+    overlay.renderOrder = selectionOverlayOnTop ? 200 : 30;
+    scene.add(overlay);
+    selectionOverlayRef.current = overlay;
+
+    return () => {
+      if (selectionOverlayRef.current === overlay) {
+        scene.remove(overlay);
+        geometry.dispose();
+        material.dispose();
+        selectionOverlayRef.current = null;
+      }
+    };
+  }, [selectionMask, sceneEpoch, selectionOverlayVisible, selectionOverlayOnTop]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    if (!scene) return;
+
+    if (selectionSphereRef.current) {
+      scene.remove(selectionSphereRef.current);
+      selectionSphereRef.current.geometry.dispose();
+      (selectionSphereRef.current.material as THREE.Material).dispose();
+      selectionSphereRef.current = null;
+    }
+
+    if (!selectionSphere) return;
+
+    const geometry = new THREE.SphereGeometry(selectionSphere.radius, 24, 18);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x800000,
+      transparent: true,
+      opacity: 0.14,
+      depthWrite: false,
+    });
+    const sphere = new THREE.Mesh(geometry, material);
+    sphere.position.set(selectionSphere.center.x, selectionSphere.center.y, selectionSphere.center.z);
+    sphere.renderOrder = 25;
+    scene.add(sphere);
+    selectionSphereRef.current = sphere;
+
+    return () => {
+      if (selectionSphereRef.current === sphere) {
+        scene.remove(sphere);
+        geometry.dispose();
+        material.dispose();
+        selectionSphereRef.current = null;
+      }
+    };
+  }, [selectionSphere, sceneEpoch]);
 
   useEffect(() => {
     const marker = gaussHighlightRef.current;
@@ -3092,7 +3231,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
               <span>Snap hover to curve</span>
             </label>
 
-          </>
+            </>
+        )}
+        {onToggleGaussMap && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input type="checkbox" checked={gaussMapEnabled} onChange={onToggleGaussMap} />
+            <span>Show Gauss map (S²)</span>
+          </label>
         )}
       </div>
 

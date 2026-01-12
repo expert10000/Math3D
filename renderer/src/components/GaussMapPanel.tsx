@@ -162,10 +162,17 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   const pointSizeRef = useRef(pointSize);
   const occludeBackRef = useRef(occludeBack);
   const onPointHoverRef = useRef(onPointHover);
+  const selectFromGaussRef = useRef(selectFromGauss);
+  const gaussCapAngleRef = useRef(gaussCapAngleDeg);
+  const onGaussSelectionRef = useRef(onGaussSelection);
 
   useEffect(() => {
     onPointHoverRef.current = onPointHover;
   }, [onPointHover]);
+
+  useEffect(() => {
+    onGaussSelectionRef.current = onGaussSelection;
+  }, [onGaussSelection]);
 
   useEffect(() => {
     pointSizeRef.current = pointSize;
@@ -174,6 +181,14 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   useEffect(() => {
     occludeBackRef.current = occludeBack;
   }, [occludeBack]);
+
+  useEffect(() => {
+    selectFromGaussRef.current = selectFromGauss;
+  }, [selectFromGauss]);
+
+  useEffect(() => {
+    gaussCapAngleRef.current = gaussCapAngleDeg;
+  }, [gaussCapAngleDeg]);
 
   const handleResetView = () => {
     const camera = cameraRef.current;
@@ -336,7 +351,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!selectFromGauss || !onGaussSelection || !sphereRef.current) return;
+      if (!selectFromGaussRef.current || !onGaussSelectionRef.current || !sphereRef.current) return;
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -345,13 +360,13 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       if (!intersects.length) return;
       const capNormal = intersects[0].point.clone().normalize();
       console.log("[GaussMapPanel] gauss sphere click", {
-        angleDeg: gaussCapAngleDeg,
+        angleDeg: gaussCapAngleRef.current,
         normal: capNormal.toArray(),
       });
-      onGaussSelection({
+      onGaussSelectionRef.current({
         kind: "gaussCap",
         capNormal,
-        angleRad: THREE.MathUtils.degToRad(gaussCapAngleDeg),
+        angleRad: THREE.MathUtils.degToRad(gaussCapAngleRef.current),
       });
     };
 
@@ -427,7 +442,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
       cameraRef.current = null;
       controlsRef.current = null;
     };
-  }, [gaussCapAngleDeg, selectFromGauss, showAxes, showEquator, wireframeSphere, occludeBack]);
+  }, []);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -528,24 +543,21 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     }
 
     const posValues: number[] = [];
-    const colorValues: number[] = [];
     entriesRef.current.forEach((entry) => {
       if (!selectionMask.selected[entry.sampleIndex]) return;
       posValues.push(entry.normal.x, entry.normal.y, entry.normal.z);
-      colorValues.push(entry.color.r, entry.color.g, entry.color.b);
     });
 
     if (!posValues.length) return;
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(posValues), 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(colorValues), 3));
 
     const mat = new THREE.PointsMaterial({
-      size: pointSizeRef.current + 1,
-      vertexColors: true,
+      color: 0x8b0000,
+      size: pointSizeRef.current + 2.5,
       sizeAttenuation: false,
-      depthTest: occludeBack,
+      depthTest: false,
       depthWrite: false,
     });
 
