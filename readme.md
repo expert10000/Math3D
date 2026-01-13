@@ -30,6 +30,18 @@ cd ..
 npm run build
 ```
 
+## Build
+
+```bash
+npm run build:main
+npm --prefix renderer run build
+```
+
+```bash
+npm run build
+npm run dist
+```
+
 ## Functionality
 
 ### Overview
