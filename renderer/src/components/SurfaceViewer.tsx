@@ -660,6 +660,13 @@ type Props = {
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
   }) => void;
+  inspectEnabled?: boolean;
+  onInspectPick?: (info: {
+    index: number;
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+  }) => void;
+  inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
@@ -727,6 +734,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionMask = null,
     selectRegionEnabled = false,
     onSelectionPick,
+    inspectEnabled = false,
+    onInspectPick,
+    inspectPoint = null,
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
     selectionSphere = null,
@@ -745,9 +755,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const selectionOverlayRef = useRef<THREE.Points | null>(null);
   const selectionSphereRef = useRef<THREE.Mesh | null>(null);
+  const inspectMarkerRef = useRef<THREE.Mesh | null>(null);
   const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
+  const inspectEnabledRef = useRef(inspectEnabled);
+  const onInspectPickRef = useRef(onInspectPick);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const probeWidgetsRef = useRef<{
@@ -810,6 +823,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onSelectionPickRef.current = onSelectionPick;
   }, [onSelectionPick]);
+  useEffect(() => {
+    inspectEnabledRef.current = inspectEnabled;
+  }, [inspectEnabled]);
+  useEffect(() => {
+    onInspectPickRef.current = onInspectPick;
+  }, [onInspectPick]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -2623,6 +2642,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
+    const findNearestSample = (point: THREE.Vector3) => {
+      const sampleSet = sampleSetRef.current;
+      if (!sampleSet || !sampleSet.samples.length) return null;
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < sampleSet.samples.length; i++) {
+        const sample = sampleSet.samples[i];
+        const d2 = sample.position.distanceToSquared(point);
+        if (d2 < bestDist) {
+          bestDist = d2;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx < 0) return null;
+      return { index: bestIdx, sample: sampleSet.samples[bestIdx] };
+    };
 
     const handlePointerDown = (event: PointerEvent) => {
       if (!probeEnabled && !selectRegionEnabledRef.current) return;
@@ -2658,6 +2693,26 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       let xyDomain: { x: number; y: number } | undefined;
       if (isGraphId(surfaceId)) {
         xyDomain = { x: point.x, y: point.z };
+      }
+
+      if (inspectEnabledRef.current) {
+        const inspectCb = onInspectPickRef.current;
+        if (inspectCb) {
+          const nearest = findNearestSample(point);
+          if (nearest) {
+            const inspectNormal = nearest.sample.normal.clone().normalize();
+            inspectCb({
+              index: nearest.index,
+              point: {
+                x: nearest.sample.position.x,
+                y: nearest.sample.position.y,
+                z: nearest.sample.position.z,
+              },
+              normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+            });
+          }
+        }
+        return;
       }
 
       if (probeEnabled) {
@@ -3012,6 +3067,37 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
   }, [selectionSphere, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (inspectMarkerRef.current) {
+      scene.remove(inspectMarkerRef.current);
+      inspectMarkerRef.current.geometry.dispose();
+      (inspectMarkerRef.current.material as THREE.Material).dispose();
+      inspectMarkerRef.current = null;
+    }
+
+    if (!inspectPoint) return;
+
+    const geometry = new THREE.SphereGeometry(0.035, 16, 12);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffd54f });
+    const marker = new THREE.Mesh(geometry, material);
+    marker.position.set(inspectPoint.x, inspectPoint.y, inspectPoint.z);
+    marker.renderOrder = 210;
+    scene.add(marker);
+    inspectMarkerRef.current = marker;
+
+    return () => {
+      if (inspectMarkerRef.current === marker) {
+        scene.remove(marker);
+        geometry.dispose();
+        material.dispose();
+        inspectMarkerRef.current = null;
+      }
+    };
+  }, [inspectPoint, sceneEpoch]);
 
   useEffect(() => {
     const widgets = probeWidgetsRef.current;
