@@ -593,6 +593,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showPrincipalDirections, setShowPrincipalDirections] = useState(false);
   const [showPrincipalNormalPlanes, setShowPrincipalNormalPlanes] = useState(false);
   const [showPrincipalLines, setShowPrincipalLines] = useState(false);
+  const [showPrincipalGlyphs, setShowPrincipalGlyphs] = useState(false);
+  const [principalGlyphDensity, setPrincipalGlyphDensity] = useState(100);
+  const [principalGlyphLength, setPrincipalGlyphLength] = useState(0.4);
+  const [principalGlyphMode, setPrincipalGlyphMode] = useState<"both" | "d1">("both");
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
@@ -1799,6 +1803,14 @@ case "mobius":
                 onTogglePrincipalNormalPlanes={() => setShowPrincipalNormalPlanes((v) => !v)}
                 showPrincipalLines={showPrincipalLines}
                 onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
+                showPrincipalGlyphs={showPrincipalGlyphs}
+                onTogglePrincipalGlyphs={() => setShowPrincipalGlyphs((v) => !v)}
+                principalGlyphDensity={principalGlyphDensity}
+                onChangePrincipalGlyphDensity={setPrincipalGlyphDensity}
+                principalGlyphLength={principalGlyphLength}
+                onChangePrincipalGlyphLength={setPrincipalGlyphLength}
+                principalGlyphMode={principalGlyphMode}
+                onChangePrincipalGlyphMode={setPrincipalGlyphMode}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 showGaussMap={showGaussMap}
@@ -1911,6 +1923,10 @@ case "mobius":
                             showPrincipalDirections={showPrincipalDirections}
                             showPrincipalNormalPlanes={showPrincipalNormalPlanes}
                             showPrincipalLines={showPrincipalLines}
+                            showPrincipalGlyphs={showPrincipalGlyphs}
+                            principalGlyphDensity={principalGlyphDensity}
+                            principalGlyphLength={principalGlyphLength}
+                            principalGlyphMode={principalGlyphMode}
                             showBoundingBox={showBoundingBox}
                             resetToken={cameraResetToken}
                             onProbe={handleProbe}
@@ -1972,6 +1988,10 @@ case "mobius":
                             showPrincipalDirections={showPrincipalDirections}
                             showPrincipalNormalPlanes={showPrincipalNormalPlanes}
                             showPrincipalLines={showPrincipalLines}
+                            showPrincipalGlyphs={showPrincipalGlyphs}
+                            principalGlyphDensity={principalGlyphDensity}
+                            principalGlyphLength={principalGlyphLength}
+                            principalGlyphMode={principalGlyphMode}
                             onProbe={handleProbe}
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
@@ -2023,7 +2043,8 @@ case "mobius":
                               showPrincipalDirections={false}
                               showPrincipalNormalPlanes={false}
                               showPrincipalLines={false}
-                              showBoundingBox={showBoundingBox}
+                              showPrincipalGlyphs={false}
+                            showBoundingBox={showBoundingBox}
                               resetToken={cameraResetToken}
                               onSetCustomX={setParamXExpr}
                               onSetCustomY={setParamYExpr}
@@ -2062,6 +2083,7 @@ case "mobius":
                               showPrincipalDirections={false}
                               showPrincipalNormalPlanes={false}
                               showPrincipalLines={false}
+                              showPrincipalGlyphs={false}
                               // contours (remove if SurfaceViewer doesn't support yet)
                               showContours={showContours}
                               contourCount={contourCount}
@@ -2664,6 +2686,14 @@ type SurfacesLeftPanelProps = {
   onTogglePrincipalNormalPlanes: () => void;
   showPrincipalLines: boolean;
   onTogglePrincipalLines: () => void;
+  showPrincipalGlyphs: boolean;
+  onTogglePrincipalGlyphs: () => void;
+  principalGlyphDensity: number;
+  onChangePrincipalGlyphDensity: (value: number) => void;
+  principalGlyphLength: number;
+  onChangePrincipalGlyphLength: (value: number) => void;
+  principalGlyphMode: "both" | "d1";
+  onChangePrincipalGlyphMode: (mode: "both" | "d1") => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   weierstrassDiagnostics: WeierstrassDriftResult | null;
@@ -2788,6 +2818,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onTogglePrincipalNormalPlanes,
   showPrincipalLines,
   onTogglePrincipalLines,
+  showPrincipalGlyphs,
+  onTogglePrincipalGlyphs,
+  principalGlyphDensity,
+  onChangePrincipalGlyphDensity,
+  principalGlyphLength,
+  onChangePrincipalGlyphLength,
+  principalGlyphMode,
+  onChangePrincipalGlyphMode,
   showBoundingBox,
   onToggleBoundingBox,
   showGaussMap,
@@ -2974,6 +3012,67 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
                 Trace principal curvature lines
               </label>
+              <label style={{ display: "block", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalGlyphs}
+                  onChange={onTogglePrincipalGlyphs}
+                  style={{ marginRight: 6 }}
+                />
+                Show principal direction glyphs
+              </label>
+              {showPrincipalGlyphs && (
+                <div
+                  style={{
+                    marginLeft: 20,
+                    marginTop: 6,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    alignItems: "center",
+                    fontSize: 11,
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Density</span>
+                    <select
+                      value={principalGlyphDensity}
+                      onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
+                      style={{ fontSize: 11, padding: "2px 4px" }}
+                    >
+                      <option value={50}>1/50</option>
+                      <option value={100}>1/100</option>
+                      <option value={200}>1/200</option>
+                      <option value={400}>1/400</option>
+                    </select>
+                  </label>
+                  <div style={{ minWidth: 160 }}>
+                    <div style={{ fontSize: 10, color: "#555" }}>
+                      Length {principalGlyphLength.toFixed(2)}
+                    </div>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={1.2}
+                      step={0.05}
+                      value={principalGlyphLength}
+                      onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
+                      style={{ width: 160 }}
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Mode</span>
+                    <select
+                      value={principalGlyphMode}
+                      onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
+                      style={{ fontSize: 11, padding: "2px 4px" }}
+                    >
+                      <option value="both">d1 + d2</option>
+                      <option value="d1">d1 only</option>
+                    </select>
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>

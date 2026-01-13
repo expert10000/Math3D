@@ -7,6 +7,7 @@ import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { buildGraphContours } from "../math/contours";
 import { computePrincipalCurvatureAtUV, type PrincipalCurvatureResult } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
+import { stabilizeTangentDirection } from "../math/curvatureDirections";
 import { marchingSquares } from "../math/marchingSquares";
 
 import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
@@ -640,6 +641,10 @@ type Props = {
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
+  showPrincipalGlyphs?: boolean;
+  principalGlyphDensity?: number;
+  principalGlyphLength?: number;
+  principalGlyphMode?: "both" | "d1";
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
   implicitProbeXYZ?: { x: number; y: number; z: number } | null;
@@ -718,6 +723,10 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showPrincipalDirections = false,
     showPrincipalNormalPlanes = false,
     showPrincipalLines = false,
+    showPrincipalGlyphs = false,
+    principalGlyphDensity = 100,
+    principalGlyphLength = 0,
+    principalGlyphMode = "both",
     graphProbeXY = null,
     graphProbeToken,
     implicitProbeXYZ = null,
@@ -774,6 +783,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const probeNormalRef = useRef<THREE.Vector3 | null>(null);
   const [probePointToken, setProbePointToken] = useState(0);
   const principalGroupRef = useRef<THREE.Group | null>(null);
+  const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
+    null
+  );
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [sceneEpoch, setSceneEpoch] = useState(0);
@@ -2870,6 +2882,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         scene.remove(principalGroupRef.current);
         principalGroupRef.current = null;
       }
+      if (principalGlyphsRef.current) {
+        if (principalGlyphsRef.current.d1) {
+          scene.remove(principalGlyphsRef.current.d1);
+          principalGlyphsRef.current.d1.geometry.dispose();
+          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+        }
+        if (principalGlyphsRef.current.d2) {
+          scene.remove(principalGlyphsRef.current.d2);
+          principalGlyphsRef.current.d2.geometry.dispose();
+          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+        }
+        principalGlyphsRef.current = null;
+      }
 
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
@@ -3104,6 +3129,188 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
   }, [inspectPoint, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (principalGlyphsRef.current) {
+      if (principalGlyphsRef.current.d1) {
+        scene.remove(principalGlyphsRef.current.d1);
+        principalGlyphsRef.current.d1.geometry.dispose();
+        (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+      }
+      if (principalGlyphsRef.current.d2) {
+        scene.remove(principalGlyphsRef.current.d2);
+        principalGlyphsRef.current.d2.geometry.dispose();
+        (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+      }
+      principalGlyphsRef.current = null;
+    }
+
+    if (!showPrincipalGlyphs) return;
+
+    const sampleSet = sampleSetRef.current;
+    if (!sampleSet || !sampleSet.samples.length) return;
+
+    const isGraphSurface = isGraphId(surfaceId);
+    const isImplicitSurface = isImplicitId(surfaceId);
+    if (!isGraphSurface && !isImplicitSurface) return;
+
+    const stride = Math.max(1, Math.floor(principalGlyphDensity));
+    const baseLength =
+      principalGlyphLength > 0
+        ? principalGlyphLength
+        : Math.max(0.03, (radiusRef.current || 3) * 0.12);
+    const includeDir2 = principalGlyphMode !== "d1";
+    const offset = Math.max(0.001, (radiusRef.current || 3) * 0.0015);
+
+    let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+    let implicitSize: number | null = null;
+    if (isImplicitSurface) {
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      if (root) {
+        root.traverse((obj) => {
+          if (implicitF) return;
+          const anyObj = obj as any;
+          if (anyObj?.isMarchingCubes) {
+            const meta = anyObj.userData?.__implicit as
+              | { f: (x: number, y: number, z: number) => number; size?: number }
+              | undefined;
+            if (meta?.f) {
+              implicitF = meta.f;
+              if (typeof meta.size === "number") implicitSize = meta.size;
+            }
+          }
+        });
+      }
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+      if (!implicitF) return;
+    }
+
+    const graphF = isGraphSurface ? getGraphF() : null;
+    const graphMeta = isGraphSurface
+      ? ((surfaceObjRef.current as any)?.userData?.__graph as { xSpan: number; ySpan: number } | undefined)
+      : undefined;
+    const xSpan = graphMeta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+    const ySpan = graphMeta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
+    const uMin = -xSpan;
+    const uMax = xSpan;
+    const vMin = -ySpan;
+    const vMax = ySpan;
+    const paramFunc =
+      isGraphSurface && graphF
+        ? (u: number, v: number, target: THREE.Vector3) => {
+            target.set(u, graphF(u, v), v);
+          }
+        : null;
+
+    let implicitH = 0.02;
+    if (isImplicitSurface) {
+      const size = implicitSize ?? radiusRef.current ?? 3;
+      implicitH = Math.max(1e-4, size / Math.max(12, implicitResolution));
+    }
+
+    const positions1: number[] = [];
+    const positions2: number[] = [];
+    const tmpDir = new THREE.Vector3();
+    const tmpA = new THREE.Vector3();
+    const tmpB = new THREE.Vector3();
+    const tmpBase = new THREE.Vector3();
+    const refAxis = new THREE.Vector3();
+    const n = new THREE.Vector3();
+
+    const addSegment = (target: number[], p: THREE.Vector3, dir: THREE.Vector3, normal: THREE.Vector3, scale: number) => {
+      tmpDir.copy(dir);
+      tmpDir.addScaledVector(normal, -tmpDir.dot(normal));
+      if (tmpDir.lengthSq() < 1e-12) return;
+      tmpDir.normalize();
+      stabilizeTangentDirection(tmpDir, normal, refAxis);
+      const half = 0.5 * baseLength * scale;
+      tmpBase.copy(p).addScaledVector(normal, offset);
+      tmpA.copy(tmpBase).addScaledVector(tmpDir, -half);
+      tmpB.copy(tmpBase).addScaledVector(tmpDir, half);
+      target.push(tmpA.x, tmpA.y, tmpA.z, tmpB.x, tmpB.y, tmpB.z);
+    };
+
+    for (let i = 0; i < sampleSet.samples.length; i += stride) {
+      const sample = sampleSet.samples[i];
+      if (!sample) continue;
+
+      if (isGraphSurface && paramFunc && graphF) {
+        const res = computePrincipalCurvatureAtUV({
+          paramFunc,
+          u: sample.position.x,
+          v: sample.position.z,
+          uMin,
+          uMax,
+          vMin,
+          vMax,
+        });
+        if (!res || res.isUmbilic) continue;
+        n.copy(res.normal);
+        if (n.dot(sample.normal) < 0) {
+          n.negate();
+          res.dir1.negate();
+          res.dir2.negate();
+        }
+        addSegment(positions1, res.point, res.dir1, n, 1);
+        if (includeDir2) addSegment(positions2, res.point, res.dir2, n, 0.8);
+      } else if (isImplicitSurface && implicitF) {
+        const res = computeImplicitPrincipalAtPoint(implicitF, sample.position, implicitH);
+        if (!res || res.isUmbilic) continue;
+        n.copy(res.normal);
+        if (n.dot(sample.normal) < 0) {
+          n.negate();
+          res.dir1.negate();
+          res.dir2.negate();
+        }
+        addSegment(positions1, res.point, res.dir1, n, 1);
+        if (includeDir2) addSegment(positions2, res.point, res.dir2, n, 0.8);
+      }
+    }
+
+    if (!positions1.length && !positions2.length) return;
+
+    const glyphs: { d1?: THREE.LineSegments; d2?: THREE.LineSegments } = {};
+
+    if (positions1.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions1, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0x1b9e77, depthTest: true, depthWrite: false });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 120;
+      scene.add(lines);
+      glyphs.d1 = lines;
+    }
+
+    if (positions2.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions2, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xd95f02, depthTest: true, depthWrite: false });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 120;
+      scene.add(lines);
+      glyphs.d2 = lines;
+    }
+
+    principalGlyphsRef.current = glyphs;
+  }, [
+    showPrincipalGlyphs,
+    principalGlyphDensity,
+    principalGlyphLength,
+    principalGlyphMode,
+    surfaceId,
+    graphExpr,
+    implicitExpr,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    implicitResolution,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     const widgets = probeWidgetsRef.current;

@@ -12,6 +12,7 @@ import {
   type PrincipalCurvatureScalars,
 } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
+import { stabilizeTangentDirection } from "../math/curvatureDirections";
 import { marchingSquares } from "../math/marchingSquares";
 import {
   buildWeierstrassSurface,
@@ -171,6 +172,10 @@ type Props = {
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
+  showPrincipalGlyphs?: boolean;
+  principalGlyphDensity?: number;
+  principalGlyphLength?: number;
+  principalGlyphMode?: "both" | "d1";
   onParamCurvature?: (data: PrincipalCurvatureScalars | null) => void;
 
   paramProbeUV?: { u: number; v: number } | null;
@@ -889,6 +894,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
+  showPrincipalGlyphs = false,
+  principalGlyphDensity = 100,
+  principalGlyphLength = 0,
+  principalGlyphMode = "both",
   onParamCurvature,
   paramProbeUV = null,
   paramProbeToken,
@@ -1017,6 +1026,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     t2: THREE.ArrowHelper;
   } | null>(null);
   const principalGroupRef = useRef<THREE.Group | null>(null);
+  const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
+    null
+  );
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
@@ -2476,6 +2488,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         scene.remove(principalGroupRef.current);
         principalGroupRef.current = null;
       }
+      if (principalGlyphsRef.current) {
+        if (principalGlyphsRef.current.d1) {
+          scene.remove(principalGlyphsRef.current.d1);
+          principalGlyphsRef.current.d1.geometry.dispose();
+          (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+        }
+        if (principalGlyphsRef.current.d2) {
+          scene.remove(principalGlyphsRef.current.d2);
+          principalGlyphsRef.current.d2.geometry.dispose();
+          (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+        }
+        principalGlyphsRef.current = null;
+      }
 
       if (diagnosticsGroupRef.current) {
         clearGroup(diagnosticsGroupRef.current);
@@ -2698,6 +2723,120 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
   }, [inspectPoint, sceneEpoch]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    if (!scene) return;
+
+    if (principalGlyphsRef.current) {
+      if (principalGlyphsRef.current.d1) {
+        scene.remove(principalGlyphsRef.current.d1);
+        principalGlyphsRef.current.d1.geometry.dispose();
+        (principalGlyphsRef.current.d1.material as THREE.Material).dispose();
+      }
+      if (principalGlyphsRef.current.d2) {
+        scene.remove(principalGlyphsRef.current.d2);
+        principalGlyphsRef.current.d2.geometry.dispose();
+        (principalGlyphsRef.current.d2.material as THREE.Material).dispose();
+      }
+      principalGlyphsRef.current = null;
+    }
+
+    if (!showPrincipalGlyphs) return;
+
+    const sampleSet = sampleSetRef.current;
+    if (!sampleSet || !sampleSet.samples.length) return;
+
+    const { paramFunc, uMin, uMax, vMin, vMax } = st;
+    const stride = Math.max(1, Math.floor(principalGlyphDensity));
+    const baseLength =
+      principalGlyphLength > 0
+        ? principalGlyphLength
+        : Math.max(0.03, (radiusRef.current || 3) * 0.12);
+    const includeDir2 = principalGlyphMode !== "d1";
+    const offset = Math.max(0.001, (radiusRef.current || 3) * 0.0015);
+
+    const positions1: number[] = [];
+    const positions2: number[] = [];
+    const tmpDir = new THREE.Vector3();
+    const tmpA = new THREE.Vector3();
+    const tmpB = new THREE.Vector3();
+    const tmpBase = new THREE.Vector3();
+    const refAxis = new THREE.Vector3();
+    const n = new THREE.Vector3();
+
+    const addSegment = (target: number[], p: THREE.Vector3, dir: THREE.Vector3, normal: THREE.Vector3, scale: number) => {
+      tmpDir.copy(dir);
+      tmpDir.addScaledVector(normal, -tmpDir.dot(normal));
+      if (tmpDir.lengthSq() < 1e-12) return;
+      tmpDir.normalize();
+      stabilizeTangentDirection(tmpDir, normal, refAxis);
+      const half = 0.5 * baseLength * scale;
+      tmpBase.copy(p).addScaledVector(normal, offset);
+      tmpA.copy(tmpBase).addScaledVector(tmpDir, -half);
+      tmpB.copy(tmpBase).addScaledVector(tmpDir, half);
+      target.push(tmpA.x, tmpA.y, tmpA.z, tmpB.x, tmpB.y, tmpB.z);
+    };
+
+    for (let i = 0; i < sampleSet.samples.length; i += stride) {
+      const sample = sampleSet.samples[i];
+      if (!sample?.uv) continue;
+
+      const res = computePrincipalCurvatureAtUV({
+        paramFunc,
+        u: sample.uv.u,
+        v: sample.uv.v,
+        uMin,
+        uMax,
+        vMin,
+        vMax,
+      });
+      if (!res || res.isUmbilic) continue;
+
+      n.copy(res.normal);
+      if (n.dot(sample.normal) < 0) {
+        n.negate();
+        res.dir1.negate();
+        res.dir2.negate();
+      }
+
+      addSegment(positions1, res.point, res.dir1, n, 1);
+      if (includeDir2) addSegment(positions2, res.point, res.dir2, n, 0.8);
+    }
+
+    if (!positions1.length && !positions2.length) return;
+
+    const glyphs: { d1?: THREE.LineSegments; d2?: THREE.LineSegments } = {};
+
+    if (positions1.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions1, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0x1b9e77, depthTest: true, depthWrite: false });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 120;
+      scene.add(lines);
+      glyphs.d1 = lines;
+    }
+
+    if (positions2.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions2, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0xd95f02, depthTest: true, depthWrite: false });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 120;
+      scene.add(lines);
+      glyphs.d2 = lines;
+    }
+
+    principalGlyphsRef.current = glyphs;
+  }, [
+    showPrincipalGlyphs,
+    principalGlyphDensity,
+    principalGlyphLength,
+    principalGlyphMode,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     const marker = gaussHighlightRef.current;
