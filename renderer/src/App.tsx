@@ -523,6 +523,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [selectionOverlayVisible, setSelectionOverlayVisible] = useState(true);
   const [selectionOverlayOnTop, setSelectionOverlayOnTop] = useState(false);
   const [selectionSphereVisible, setSelectionSphereVisible] = useState(true);
+  const [inspectEnabled, setInspectEnabled] = useState(false);
+  const [inspectIdx, setInspectIdx] = useState<number | null>(null);
+  const [inspectPos, setInspectPos] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [inspectNormal, setInspectNormal] = useState<{ x: number; y: number; z: number } | null>(null);
   const [selectedMetric, setSelectedMetric] = useState<SelectionMetricKey>("K");
   const surfaceHasUV = surfaceSampleSet?.samples.some((s) => !!s.uv) ?? false;
   useEffect(() => {
@@ -531,11 +535,37 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
   }, [surfaceHasUV, selectionUseUV]);
 
+  const clearInspect = useCallback(() => {
+    setInspectIdx(null);
+    setInspectPos(null);
+    setInspectNormal(null);
+  }, []);
+
+  useEffect(() => {
+    clearInspect();
+  }, [surfaceSampleSet, clearInspect]);
+
   useEffect(() => {
     if (!selection || selection.kind !== "surfaceDisk") return;
     if (selection.radius === selectionRadius) return;
     setSelection({ ...selection, radius: selectionRadius });
   }, [selection, selectionRadius]);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      if (event.key === "i" || event.key === "I") {
+        setInspectEnabled((prev) => !prev);
+      } else if (event.key === "Escape") {
+        clearInspect();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [clearInspect]);
 
   const toggleSelectionUseUV = useCallback(() => {
     if (!surfaceHasUV) return;
@@ -1198,6 +1228,27 @@ case "mobius":
     return { K, H, k1, k2 };
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
 
+  const inspectMetrics = useMemo(() => {
+    if (inspectIdx == null || !selectionCurvatures) return null;
+    const out: { K?: number; H?: number; k1?: number; k2?: number } = {};
+    const read = (arr: Float32Array | undefined, key: "K" | "H" | "k1" | "k2") => {
+      if (!arr || inspectIdx < 0 || inspectIdx >= arr.length) return;
+      const v = arr[inspectIdx];
+      if (Number.isFinite(v)) out[key] = v;
+    };
+    read(selectionCurvatures.K, "K");
+    read(selectionCurvatures.H, "H");
+    read(selectionCurvatures.k1, "k1");
+    read(selectionCurvatures.k2, "k2");
+    return Object.keys(out).length ? out : null;
+  }, [inspectIdx, selectionCurvatures]);
+
+  const handleInspectPick = useCallback((info: { index: number; point: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }) => {
+    setInspectIdx(info.index);
+    setInspectPos(info.point);
+    setInspectNormal(info.normal);
+  }, []);
+
   const availableSelectionMetrics = useMemo(() => {
     if (!selectionCurvatures) return [];
     const list: SelectionMetricKey[] = [];
@@ -1778,6 +1829,13 @@ case "mobius":
                 onToggleSelectionOverlayOnTop={() => setSelectionOverlayOnTop((v) => !v)}
                 selectionSphereVisible={selectionSphereVisible}
                 onToggleSelectionSphereVisible={() => setSelectionSphereVisible((v) => !v)}
+                inspectEnabled={inspectEnabled}
+                onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                onClearInspect={clearInspect}
+                inspectIdx={inspectIdx}
+                inspectPos={inspectPos}
+                inspectNormal={inspectNormal}
+                inspectMetrics={inspectMetrics}
                 commandInput={commandInput}
                 onChangeCommandInput={setCommandInput}
                 onRunCommand={handleRunCommand}
@@ -1921,16 +1979,19 @@ case "mobius":
                             onCameraSync={compareEnabled ? setCameraSync : undefined}
                           gaussMapEnabled={showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
-                          onGaussPoints={handleGaussPoints}
-                          gaussHighlightPoint={gaussHighlightPoint}
-                          onSampleSet={handleSampleSet}
-                          selectionMask={selectionMask}
-                          selectRegionEnabled={selectRegionEnabled}
-                          onSelectionPick={handleSurfaceSelectionPick}
-                          selectionOverlayVisible={selectionOverlayVisible}
-                          selectionOverlayOnTop={selectionOverlayOnTop}
-                          selectionSphere={selectionSphere}
-                          />
+                        onGaussPoints={handleGaussPoints}
+                        gaussHighlightPoint={gaussHighlightPoint}
+                        onSampleSet={handleSampleSet}
+                        selectionMask={selectionMask}
+                        selectRegionEnabled={selectRegionEnabled}
+                        onSelectionPick={handleSurfaceSelectionPick}
+                        inspectEnabled={inspectEnabled}
+                        onInspectPick={handleInspectPick}
+                        inspectPoint={inspectPos}
+                        selectionOverlayVisible={selectionOverlayVisible}
+                        selectionOverlayOnTop={selectionOverlayOnTop}
+                        selectionSphere={selectionSphere}
+                      />
                         )}
                       </div>
 
@@ -2017,6 +2078,7 @@ case "mobius":
                         palette={colorPalette}
                         colorMode={gaussColorMode}
                         probeNormal={probeInfo?.normal ?? null}
+                        inspectDir={inspectNormal}
                         onPointHover={(idx) => setGaussHoverIndex(idx)}
                         height={280}
                         selectionMask={selectionMask}
@@ -2629,6 +2691,13 @@ type SurfacesLeftPanelProps = {
   onToggleSelectionOverlayOnTop: () => void;
   selectionSphereVisible: boolean;
   onToggleSelectionSphereVisible: () => void;
+  inspectEnabled: boolean;
+  onToggleInspectEnabled: () => void;
+  onClearInspect: () => void;
+  inspectIdx: number | null;
+  inspectPos: { x: number; y: number; z: number } | null;
+  inspectNormal: { x: number; y: number; z: number } | null;
+  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
 
   // contours (graph surfaces)
   showContours: boolean;
@@ -2739,6 +2808,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSelectionOverlayOnTop,
   selectionSphereVisible,
   onToggleSelectionSphereVisible,
+  inspectEnabled,
+  onToggleInspectEnabled,
+  onClearInspect,
+  inspectIdx,
+  inspectPos,
+  inspectNormal,
+  inspectMetrics,
   showContours,
   onToggleContours,
   contourCount,
@@ -2993,6 +3069,69 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             </details>
           )}
+          <div style={{ marginLeft: 20, marginTop: 10, fontSize: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={inspectEnabled}
+                onChange={onToggleInspectEnabled}
+                style={{ marginRight: 6 }}
+              />
+              Inspect mode
+            </label>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+              <button type="button" onClick={onClearInspect} style={{ padding: "4px 8px" }}>
+                Clear inspect
+              </button>
+              <span style={{ fontSize: 11, color: "#666" }}>Shortcut: I / Esc</span>
+            </div>
+            {inspectIdx != null && inspectPos && inspectNormal && (
+              <div
+                style={{
+                  marginTop: 8,
+                  border: "1px solid #d9dde7",
+                  borderRadius: 10,
+                  padding: "8px 10px",
+                  background: "#f7f8fb",
+                  fontSize: 11,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Inspect</div>
+                <div style={{ display: "grid", gridTemplateColumns: "70px 1fr", gap: "4px 8px" }}>
+                  <div style={{ color: "#556" }}>Idx</div>
+                  <div>{inspectIdx}</div>
+                  <div style={{ color: "#556" }}>Pos</div>
+                  <div>{fmt3(inspectPos)}</div>
+                  <div style={{ color: "#556" }}>Normal</div>
+                  <div>{fmt3(inspectNormal)}</div>
+                  {inspectMetrics?.K != null && (
+                    <>
+                      <div style={{ color: "#556" }}>K</div>
+                      <div>{fmt(inspectMetrics.K)}</div>
+                    </>
+                  )}
+                  {inspectMetrics?.H != null && (
+                    <>
+                      <div style={{ color: "#556" }}>H</div>
+                      <div>{fmt(inspectMetrics.H)}</div>
+                    </>
+                  )}
+                  {inspectMetrics?.k1 != null && (
+                    <>
+                      <div style={{ color: "#556" }}>k1</div>
+                      <div>{fmt(inspectMetrics.k1)}</div>
+                    </>
+                  )}
+                  {inspectMetrics?.k2 != null && (
+                    <>
+                      <div style={{ color: "#556" }}>k2</div>
+                      <div>{fmt(inspectMetrics.k2)}</div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
