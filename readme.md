@@ -14,6 +14,7 @@
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 - Added a Gauss-map density heatmap (S²) for selected or all normals, rendered as a compact equirectangular inset with optional smoothing.
 - Inspect picks now place the marker at the clicked surface point even when sampling stats from the nearest vertex.
+- Added curvature line streamlines that follow principal direction fields (d1/d2) with controls for field, seeding, and step limits.
 
 ## Build the renderer into /dist
 
@@ -96,6 +97,11 @@ and editable.
 - Enable "Select region" and click the surface to seed a spherical selection.
 - The Selection stats panel reports count, mean normal, bbox size/diag, and curvature stats (K/H/k1/k2) when available.
 - A mini histogram summarizes a chosen metric for the selected points and updates live with radius changes.
+
+### Curvature lines
+
+- Enable "Curvature lines" to draw streamline overlays that follow the principal direction field (d1 or d2).
+- Seeds can come from a global grid or the active selection region, and density/step/length caps keep the overlay stable.
 
 ### Inspect tool
 
