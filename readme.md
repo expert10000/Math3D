@@ -10,6 +10,7 @@
 - Added dual-path averaging and avg/max path disagreement reporting to the Weierstrass builder so trimmed domains show fewer seams even when drift is low.
 - Added region selection overlays, including a translucent selection sphere, and linked the selected surface samples to the Gauss map.
 - Added a Selection stats panel with count/mean normal/bbox plus K/H/k1/k2 stats and a mini histogram for selected points (graph, param, implicit, and Weierstrass).
+- Added an Inspect mode: click-to-probe point selection with a surface marker, linked Gauss marker, and a persistent readout (no hover).
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 
 ## Build the renderer into /dist
@@ -71,6 +72,12 @@ and editable.
 - Enable "Select region" and click the surface to seed a spherical selection.
 - The Selection stats panel reports count, mean normal, bbox size/diag, and curvature stats (K/H/k1/k2) when available.
 - A mini histogram summarizes a chosen metric for the selected points and updates live with radius changes.
+
+### Inspect tool
+
+- Toggle "Inspect mode" and click on the surface to lock an inspect point.
+- The UI shows idx, position, normal, and curvature scalars (K/H/k1/k2 when available).
+- The Gauss map highlights the inspect normal direction, and the inspect marker stays until cleared.
 
 ### Weierstrass diagnostics
 
