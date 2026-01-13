@@ -2393,7 +2393,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
     const implicitObj = findImplicitObj();
     const implicitMeta = (implicitObj as any)?.userData?.__implicit as
-      | { f: (x: number, y: number, z: number) => number }
+      | { f: (x: number, y: number, z: number) => number; size?: number }
       | undefined;
     if (implicitObj && implicitMeta?.f) {
       if (implicitOverlay === "curvature" && (implicitObj as any).geometry) {
@@ -2403,17 +2403,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         implicitOverlayLines = buildImplicitNormalLines((implicitObj as any).geometry, implicitMeta.f, 0.22);
         if (implicitOverlayLines) scene.add(implicitOverlayLines);
       }
-      if (nextSampleSet.samples.length) {
+    }
+
+    const implicitFForStats = implicitMeta?.f ?? getImplicitFallback(surfaceId);
+    if (implicitFForStats && nextSampleSet.samples.length) {
         const count = nextSampleSet.samples.length;
         const K = new Float32Array(count);
         const H = new Float32Array(count);
         const k1 = new Float32Array(count);
         const k2 = new Float32Array(count);
-        const sizeHint = implicitDomainSize ?? (implicitMeta as any).size ?? radiusRef.current ?? 2.2;
+        let sizeHint =
+          implicitDomainSize ?? implicitMeta?.size ?? (nextSampleSet.bbox ? nextSampleSet.bbox.getSize(new THREE.Vector3()).length() * 0.5 : 0);
+        if (!sizeHint) sizeHint = radiusRef.current ?? 2.2;
         const h = Math.max(1e-4, sizeHint / Math.max(12, implicitResolution));
         for (let i = 0; i < count; i++) {
           const sample = nextSampleSet.samples[i];
-          const curv = computeImplicitPrincipalAtPoint(implicitMeta.f, sample.position, h);
+          const curv = computeImplicitPrincipalAtPoint(implicitFForStats, sample.position, h);
           if (curv) {
             K[i] = curv.K;
             H[i] = curv.H;
@@ -2427,7 +2432,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           }
         }
         nextSampleSet.curvatures = { K, H, k1, k2 };
-      }
     }
 
     sampleSetRef.current = nextSampleSet;
