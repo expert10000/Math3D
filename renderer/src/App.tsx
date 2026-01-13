@@ -1926,13 +1926,16 @@ case "mobius":
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
                           gaussHighlightPoint={gaussHighlightPoint}
-                          onSampleSet={handleSampleSet}
-                          selectionMask={selectionMask}
-                          selectRegionEnabled={selectRegionEnabled}
-                          onSelectionPick={handleSurfaceSelectionPick}
-                          selectionOverlayVisible={selectionOverlayVisible}
-                          selectionOverlayOnTop={selectionOverlayOnTop}
-                          selectionSphere={selectionSphere}
+                            onSampleSet={handleSampleSet}
+                            selectionMask={selectionMask}
+                            selectRegionEnabled={selectRegionEnabled}
+                            onSelectionPick={handleSurfaceSelectionPick}
+                            inspectEnabled={inspectEnabled}
+                            onInspectPick={handleInspectPick}
+                            inspectPoint={inspectPos}
+                            selectionOverlayVisible={selectionOverlayVisible}
+                            selectionOverlayOnTop={selectionOverlayOnTop}
+                            selectionSphere={selectionSphere}
                             weierstrassDiagnostics={
                               surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
