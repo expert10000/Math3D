@@ -2403,7 +2403,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         implicitOverlayLines = buildImplicitNormalLines((implicitObj as any).geometry, implicitMeta.f, 0.22);
         if (implicitOverlayLines) scene.add(implicitOverlayLines);
       }
-      if (isImplicitId(surfaceId) && nextSampleSet.samples.length) {
+      if (nextSampleSet.samples.length) {
         const count = nextSampleSet.samples.length;
         const K = new Float32Array(count);
         const H = new Float32Array(count);
