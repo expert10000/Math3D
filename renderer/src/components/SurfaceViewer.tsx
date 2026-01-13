@@ -10,6 +10,7 @@ import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } f
 import { stabilizeTangentDirection } from "../math/curvatureDirections";
 import { marchingSquares } from "../math/marchingSquares";
 import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirectional } from "../math/curvatureLines";
+import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
 
 import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -654,6 +655,14 @@ type Props = {
   curvatureMaxSteps?: number;
   curvatureMaxLines?: number;
   curvatureRebuildToken?: number;
+  showRidges?: boolean;
+  showValleys?: boolean;
+  ridgeValleySelectionOnly?: boolean;
+  ridgeValleyMagMin?: number;
+  ridgeValleyContrast?: number;
+  ridgeValleyMinCos?: number;
+  ridgeValleySegmentScale?: number;
+  ridgeValleySampleMode?: "high" | "medium" | "low";
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
   implicitProbeXYZ?: { x: number; y: number; z: number } | null;
@@ -690,6 +699,17 @@ type Props = {
 
   showContours?: boolean;
   contourCount?: number;
+};
+
+type PrincipalField = {
+  positions: Float32Array;
+  normals: Float32Array;
+  k1: Float32Array;
+  k2: Float32Array;
+  d1: Float32Array;
+  d2: Float32Array;
+  vertexCount: number;
+  index: ArrayLike<number> | null;
 };
 
 
@@ -744,6 +764,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     curvatureMaxSteps = 400,
     curvatureMaxLines = 200,
     curvatureRebuildToken = 0,
+    showRidges = false,
+    showValleys = false,
+    ridgeValleySelectionOnly = false,
+    ridgeValleyMagMin = 0.05,
+    ridgeValleyContrast = 0.01,
+    ridgeValleyMinCos = 0.25,
+    ridgeValleySegmentScale = 0.005,
+    ridgeValleySampleMode = "medium",
     graphProbeXY = null,
     graphProbeToken,
     implicitProbeXYZ = null,
@@ -804,6 +832,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     null
   );
   const curvatureLinesRef = useRef<THREE.LineSegments | null>(null);
+  const ridgeLinesRef = useRef<THREE.LineSegments | null>(null);
+  const valleyLinesRef = useRef<THREE.LineSegments | null>(null);
+  const principalFieldRef = useRef<{ key: string; data: PrincipalField | null } | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [sceneEpoch, setSceneEpoch] = useState(0);
@@ -2921,6 +2952,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         curvatureLinesRef.current = null;
       }
 
+      if (ridgeLinesRef.current) {
+        scene.remove(ridgeLinesRef.current);
+        ridgeLinesRef.current.geometry.dispose();
+        (ridgeLinesRef.current.material as THREE.Material).dispose();
+        ridgeLinesRef.current = null;
+      }
+
+      if (valleyLinesRef.current) {
+        scene.remove(valleyLinesRef.current);
+        valleyLinesRef.current.geometry.dispose();
+        (valleyLinesRef.current.material as THREE.Material).dispose();
+        valleyLinesRef.current = null;
+      }
+
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
         gaussHighlightRef.current.geometry.dispose();
@@ -3337,25 +3382,28 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     sceneEpoch,
   ]);
 
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    if (curvatureLinesRef.current) {
-      scene.remove(curvatureLinesRef.current);
-      curvatureLinesRef.current.geometry.dispose();
-      (curvatureLinesRef.current.material as THREE.Material).dispose();
-      curvatureLinesRef.current = null;
-    }
-
-    if (!showCurvatureLines) return;
+  const getPrincipalField = () => {
+    const key = [
+      surfaceId,
+      graphExpr ?? "",
+      implicitExpr ?? "",
+      graphDomain?.xSpan ?? "",
+      graphDomain?.ySpan ?? "",
+      implicitResolution,
+      sceneEpoch,
+    ].join("|");
+    const cached = principalFieldRef.current;
+    if (cached && cached.key === key) return cached.data;
 
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
-    if (!isGraphSurface && !isImplicitSurface) return;
+    if (!isGraphSurface && !isImplicitSurface) {
+      principalFieldRef.current = { key, data: null };
+      return null;
+    }
 
     const root = surfaceObjRef.current;
-    if (!root) return;
+    if (!root) return null;
 
     let geometry: THREE.BufferGeometry | null = null;
     let implicitF: ((x: number, y: number, z: number) => number) | null = null;
@@ -3388,10 +3436,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       });
     }
 
-    if (!geometry) return;
+    if (!geometry) {
+      principalFieldRef.current = { key, data: null };
+      return null;
+    }
 
     const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
-    if (!posAttr) return;
+    if (!posAttr) {
+      principalFieldRef.current = { key, data: null };
+      return null;
+    }
     const positions = posAttr.array as Float32Array;
 
     let normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
@@ -3399,16 +3453,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       geometry.computeVertexNormals();
       normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
     }
-    if (!normalAttr) return;
+    if (!normalAttr) {
+      principalFieldRef.current = { key, data: null };
+      return null;
+    }
     const normals = normalAttr.array as Float32Array;
 
     const vertexCount = posAttr.count;
-    const dir1 = new Float32Array(vertexCount * 3);
-    const dir2 = new Float32Array(vertexCount * 3);
+    const k1 = new Float32Array(vertexCount);
+    const k2 = new Float32Array(vertexCount);
+    const d1 = new Float32Array(vertexCount * 3);
+    const d2 = new Float32Array(vertexCount * 3);
 
     if (isGraphSurface) {
       const uvAttr = geometry.getAttribute("uv") as THREE.BufferAttribute | null;
-      if (!uvAttr) return;
+      if (!uvAttr) {
+        principalFieldRef.current = { key, data: null };
+        return null;
+      }
       const graphF = getGraphF();
       const graphMeta = (surfaceObjRef.current as any)?.userData?.__graph as { xSpan: number; ySpan: number } | undefined;
       const xSpan = graphMeta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
@@ -3425,21 +3487,37 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const u = (uvAttr.getX(i) - 0.5) * 2 * xSpan;
         const v = (uvAttr.getY(i) - 0.5) * 2 * ySpan;
         const res = computePrincipalCurvatureAtUV({ paramFunc, u, v, uMin, uMax, vMin, vMax });
-        if (!res || res.isUmbilic) continue;
         const nIdx = i * 3;
+        if (!res || res.isUmbilic) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[nIdx] = NaN;
+          d1[nIdx + 1] = NaN;
+          d1[nIdx + 2] = NaN;
+          d2[nIdx] = NaN;
+          d2[nIdx + 1] = NaN;
+          d2[nIdx + 2] = NaN;
+          continue;
+        }
         const nx = normals[nIdx];
         const ny = normals[nIdx + 1];
         const nz = normals[nIdx + 2];
+        let k1v = res.k1;
+        let k2v = res.k2;
         if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
           res.dir1.negate();
           res.dir2.negate();
+          k1v = -k1v;
+          k2v = -k2v;
         }
-        dir1[nIdx] = res.dir1.x;
-        dir1[nIdx + 1] = res.dir1.y;
-        dir1[nIdx + 2] = res.dir1.z;
-        dir2[nIdx] = res.dir2.x;
-        dir2[nIdx + 1] = res.dir2.y;
-        dir2[nIdx + 2] = res.dir2.z;
+        k1[i] = k1v;
+        k2[i] = k2v;
+        d1[nIdx] = res.dir1.x;
+        d1[nIdx + 1] = res.dir1.y;
+        d1[nIdx + 2] = res.dir1.z;
+        d2[nIdx] = res.dir2.x;
+        d2[nIdx + 1] = res.dir2.y;
+        d2[nIdx + 2] = res.dir2.z;
       }
     } else if (isImplicitSurface && implicitF) {
       const size = implicitSize ?? radiusRef.current ?? 3;
@@ -3451,28 +3529,67 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const py = positions[idx + 1];
         const pz = positions[idx + 2];
         const res = computeImplicitPrincipalAtPoint(implicitF, tmpPoint.set(px, py, pz), implicitH);
-        if (!res || res.isUmbilic) continue;
+        if (!res || res.isUmbilic) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          continue;
+        }
         const nx = normals[idx];
         const ny = normals[idx + 1];
         const nz = normals[idx + 2];
+        let k1v = res.k1;
+        let k2v = res.k2;
         if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
           res.dir1.negate();
           res.dir2.negate();
+          k1v = -k1v;
+          k2v = -k2v;
         }
-        dir1[idx] = res.dir1.x;
-        dir1[idx + 1] = res.dir1.y;
-        dir1[idx + 2] = res.dir1.z;
-        dir2[idx] = res.dir2.x;
-        dir2[idx + 1] = res.dir2.y;
-        dir2[idx + 2] = res.dir2.z;
+        k1[i] = k1v;
+        k2[i] = k2v;
+        d1[idx] = res.dir1.x;
+        d1[idx + 1] = res.dir1.y;
+        d1[idx + 2] = res.dir1.z;
+        d2[idx] = res.dir2.x;
+        d2[idx + 1] = res.dir2.y;
+        d2[idx + 2] = res.dir2.z;
       }
     } else {
-      return;
+      principalFieldRef.current = { key, data: null };
+      return null;
     }
 
-    const indexAttr = geometry.getIndex();
-    const neighbors = buildVertexAdjacency(indexAttr ? indexAttr.array : null, vertexCount);
-    const dirField = curvatureLineField === "d2" ? dir2 : dir1;
+    const index = geometry.getIndex() ? geometry.getIndex()!.array : null;
+    const data: PrincipalField = { positions, normals, k1, k2, d1, d2, vertexCount, index };
+    principalFieldRef.current = { key, data };
+    return data;
+  };
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (curvatureLinesRef.current) {
+      scene.remove(curvatureLinesRef.current);
+      curvatureLinesRef.current.geometry.dispose();
+      (curvatureLinesRef.current.material as THREE.Material).dispose();
+      curvatureLinesRef.current = null;
+    }
+
+    if (!showCurvatureLines) return;
+
+    const field = getPrincipalField();
+    if (!field) return;
+
+    const { positions, normals, d1, d2, vertexCount, index } = field;
+    const neighbors = buildVertexAdjacency(index, vertexCount);
+    const dirField = curvatureLineField === "d2" ? d2 : d1;
     const maxSteps = Math.max(10, Math.floor(curvatureMaxSteps));
     const maxLines = Math.max(1, Math.floor(curvatureMaxLines));
     const stride = Math.max(1, Math.floor(curvatureSeedDensity));
@@ -3562,6 +3679,136 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     curvatureMaxSteps,
     curvatureMaxLines,
     curvatureRebuildToken,
+    selectionMask,
+    surfaceId,
+    graphExpr,
+    implicitExpr,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    implicitResolution,
+    sceneEpoch,
+  ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const clearLines = (ref: React.MutableRefObject<THREE.LineSegments | null>) => {
+      if (!ref.current) return;
+      scene.remove(ref.current);
+      ref.current.geometry.dispose();
+      (ref.current.material as THREE.Material).dispose();
+      ref.current = null;
+    };
+
+    clearLines(ridgeLinesRef);
+    clearLines(valleyLinesRef);
+
+    if (!showRidges && !showValleys) return;
+
+    const field = getPrincipalField();
+    if (!field) return;
+
+    const { positions, k1, k2, d1, d2, vertexCount, index } = field;
+    const neighbors = buildRidgeAdjacency(index, vertexCount);
+    const bboxDiag = (radiusRef.current || 3) * 2;
+    const segmentLength = Math.max(1e-6, ridgeValleySegmentScale * bboxDiag);
+    const sampleConfig =
+      ridgeValleySampleMode === "high"
+        ? { stride: 1, maxSegments: 12000 }
+        : ridgeValleySampleMode === "low"
+          ? { stride: 4, maxSegments: 4000 }
+          : { stride: 2, maxSegments: 8000 };
+
+    let allowedMask: Uint8Array | null = null;
+    if (ridgeValleySelectionOnly && selectionMask?.count && sampleSetRef.current?.samples.length) {
+      const sampleSet = sampleSetRef.current;
+      const selected = selectionMask.selected;
+      allowedMask = new Uint8Array(vertexCount);
+      const findNearestVertex = (px: number, py: number, pz: number) => {
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < vertexCount; i++) {
+          const idx = i * 3;
+          const dx = positions[idx] - px;
+          const dy = positions[idx + 1] - py;
+          const dz = positions[idx + 2] - pz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < bestDist) {
+            bestDist = d2;
+            bestIdx = i;
+          }
+        }
+        return bestIdx;
+      };
+
+      const stride = Math.max(1, Math.floor(sampleConfig.stride));
+      for (let i = 0; i < selected.length && i < sampleSet.samples.length; i += stride) {
+        if (!selected[i]) continue;
+        const sample = sampleSet.samples[i];
+        if (!sample) continue;
+        const seed = findNearestVertex(sample.position.x, sample.position.y, sample.position.z);
+        allowedMask[seed] = 1;
+      }
+    }
+
+    const result = detectRidgeValleySegments({
+      positions,
+      k1,
+      k2,
+      d1,
+      d2,
+      neighbors,
+      minCos: ridgeValleyMinCos,
+      epsK: ridgeValleyContrast,
+      kMagMin: ridgeValleyMagMin,
+      segmentLength,
+      stride: sampleConfig.stride,
+      maxSegments: sampleConfig.maxSegments,
+      skipUmbilic: true,
+      allowedMask,
+    });
+
+    if (showRidges && result.ridgeSegments.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.BufferAttribute(result.ridgeSegments, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x1b9e77,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 140;
+      scene.add(lines);
+      ridgeLinesRef.current = lines;
+    }
+
+    if (showValleys && result.valleySegments.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.BufferAttribute(result.valleySegments, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: 0xd95f02,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 140;
+      scene.add(lines);
+      valleyLinesRef.current = lines;
+    }
+  }, [
+    showRidges,
+    showValleys,
+    ridgeValleySelectionOnly,
+    ridgeValleyMagMin,
+    ridgeValleyContrast,
+    ridgeValleyMinCos,
+    ridgeValleySegmentScale,
+    ridgeValleySampleMode,
     selectionMask,
     surfaceId,
     graphExpr,

@@ -605,6 +605,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [curvatureMaxSteps, setCurvatureMaxSteps] = useState(400);
   const [curvatureMaxLines, setCurvatureMaxLines] = useState(200);
   const [curvatureRebuildToken, setCurvatureRebuildToken] = useState(0);
+  const [showRidges, setShowRidges] = useState(false);
+  const [showValleys, setShowValleys] = useState(false);
+  const [ridgeValleySelectionOnly, setRidgeValleySelectionOnly] = useState(false);
+  const [ridgeValleyMagMin, setRidgeValleyMagMin] = useState(0.05);
+  const [ridgeValleyContrast, setRidgeValleyContrast] = useState(0.01);
+  const [ridgeValleyMinCos, setRidgeValleyMinCos] = useState(0.25);
+  const [ridgeValleySegmentScale, setRidgeValleySegmentScale] = useState(0.005);
+  const [ridgeValleySampleMode, setRidgeValleySampleMode] = useState<"high" | "medium" | "low">(
+    "medium"
+  );
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
@@ -1834,6 +1844,22 @@ case "mobius":
                 curvatureMaxLines={curvatureMaxLines}
                 onChangeCurvatureMaxLines={setCurvatureMaxLines}
                 onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
+                showRidges={showRidges}
+                onToggleRidges={() => setShowRidges((v) => !v)}
+                showValleys={showValleys}
+                onToggleValleys={() => setShowValleys((v) => !v)}
+                ridgeValleySelectionOnly={ridgeValleySelectionOnly}
+                onToggleRidgeValleySelectionOnly={() => setRidgeValleySelectionOnly((v) => !v)}
+                ridgeValleyMagMin={ridgeValleyMagMin}
+                onChangeRidgeValleyMagMin={setRidgeValleyMagMin}
+                ridgeValleyContrast={ridgeValleyContrast}
+                onChangeRidgeValleyContrast={setRidgeValleyContrast}
+                ridgeValleyMinCos={ridgeValleyMinCos}
+                onChangeRidgeValleyMinCos={setRidgeValleyMinCos}
+                ridgeValleySegmentScale={ridgeValleySegmentScale}
+                onChangeRidgeValleySegmentScale={setRidgeValleySegmentScale}
+                ridgeValleySampleMode={ridgeValleySampleMode}
+                onChangeRidgeValleySampleMode={setRidgeValleySampleMode}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 showGaussMap={showGaussMap}
@@ -1958,6 +1984,14 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
+                            showRidges={showRidges}
+                            showValleys={showValleys}
+                            ridgeValleySelectionOnly={ridgeValleySelectionOnly}
+                            ridgeValleyMagMin={ridgeValleyMagMin}
+                            ridgeValleyContrast={ridgeValleyContrast}
+                            ridgeValleyMinCos={ridgeValleyMinCos}
+                            ridgeValleySegmentScale={ridgeValleySegmentScale}
+                            ridgeValleySampleMode={ridgeValleySampleMode}
                             showBoundingBox={showBoundingBox}
                             resetToken={cameraResetToken}
                             onProbe={handleProbe}
@@ -2031,6 +2065,14 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
+                            showRidges={showRidges}
+                            showValleys={showValleys}
+                            ridgeValleySelectionOnly={ridgeValleySelectionOnly}
+                            ridgeValleyMagMin={ridgeValleyMagMin}
+                            ridgeValleyContrast={ridgeValleyContrast}
+                            ridgeValleyMinCos={ridgeValleyMinCos}
+                            ridgeValleySegmentScale={ridgeValleySegmentScale}
+                            ridgeValleySampleMode={ridgeValleySampleMode}
                             onProbe={handleProbe}
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
@@ -2750,6 +2792,22 @@ type SurfacesLeftPanelProps = {
   curvatureMaxLines: number;
   onChangeCurvatureMaxLines: (value: number) => void;
   onRebuildCurvatureLines: () => void;
+  showRidges: boolean;
+  onToggleRidges: () => void;
+  showValleys: boolean;
+  onToggleValleys: () => void;
+  ridgeValleySelectionOnly: boolean;
+  onToggleRidgeValleySelectionOnly: () => void;
+  ridgeValleyMagMin: number;
+  onChangeRidgeValleyMagMin: (value: number) => void;
+  ridgeValleyContrast: number;
+  onChangeRidgeValleyContrast: (value: number) => void;
+  ridgeValleyMinCos: number;
+  onChangeRidgeValleyMinCos: (value: number) => void;
+  ridgeValleySegmentScale: number;
+  onChangeRidgeValleySegmentScale: (value: number) => void;
+  ridgeValleySampleMode: "high" | "medium" | "low";
+  onChangeRidgeValleySampleMode: (value: "high" | "medium" | "low") => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   weierstrassDiagnostics: WeierstrassDriftResult | null;
@@ -2897,6 +2955,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   curvatureMaxLines,
   onChangeCurvatureMaxLines,
   onRebuildCurvatureLines,
+  showRidges,
+  onToggleRidges,
+  showValleys,
+  onToggleValleys,
+  ridgeValleySelectionOnly,
+  onToggleRidgeValleySelectionOnly,
+  ridgeValleyMagMin,
+  onChangeRidgeValleyMagMin,
+  ridgeValleyContrast,
+  onChangeRidgeValleyContrast,
+  ridgeValleyMinCos,
+  onChangeRidgeValleyMinCos,
+  ridgeValleySegmentScale,
+  onChangeRidgeValleySegmentScale,
+  ridgeValleySampleMode,
+  onChangeRidgeValleySampleMode,
   showBoundingBox,
   onToggleBoundingBox,
   showGaussMap,
@@ -3293,6 +3367,168 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 Rebuild
               </button>
             </div>
+          </div>
+        </details>
+
+        <details style={{ marginTop: 8 }} open={showRidges || showValleys}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Ridges / Valleys</summary>
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            {(() => {
+              const ridgeValleyAvailable =
+                viewerKind === "graph" ||
+                viewerKind === "implicit" ||
+                viewerKind === "param" ||
+                viewerKind === "weierstrass";
+              if (!ridgeValleyAvailable) {
+                return (
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>
+                    Ridge/valley detection unavailable (principal curvatures/directions not computed).
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {(() => {
+              const ridgeValleyAvailable =
+                viewerKind === "graph" ||
+                viewerKind === "implicit" ||
+                viewerKind === "param" ||
+                viewerKind === "weierstrass";
+              const ridgeValleyEnabled = ridgeValleyAvailable && (showRidges || showValleys);
+              return (
+                <>
+                  <label style={{ display: "block", cursor: ridgeValleyAvailable ? "pointer" : "not-allowed" }}>
+                    <input
+                      type="checkbox"
+                      checked={showRidges}
+                      onChange={onToggleRidges}
+                      disabled={!ridgeValleyAvailable}
+                      style={{ marginRight: 6 }}
+                    />
+                    Show ridges
+                  </label>
+                  <label style={{ display: "block", cursor: ridgeValleyAvailable ? "pointer" : "not-allowed" }}>
+                    <input
+                      type="checkbox"
+                      checked={showValleys}
+                      onChange={onToggleValleys}
+                      disabled={!ridgeValleyAvailable}
+                      style={{ marginRight: 6 }}
+                    />
+                    Show valleys
+                  </label>
+
+                  <label
+                    style={{
+                      display: "block",
+                      cursor: ridgeValleyAvailable && selectionMaskCount ? "pointer" : "not-allowed",
+                      color: ridgeValleyAvailable && selectionMaskCount ? "#000" : "#999",
+                      marginTop: 4,
+                    }}
+                    title={selectionMaskCount ? "" : "No selection available"}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={ridgeValleySelectionOnly}
+                      onChange={onToggleRidgeValleySelectionOnly}
+                      disabled={!ridgeValleyAvailable || selectionMaskCount === 0}
+                      style={{ marginRight: 6 }}
+                    />
+                    Only inside selection
+                  </label>
+
+                  <div
+                    style={{
+                      marginLeft: 18,
+                      marginTop: 6,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      opacity: ridgeValleyEnabled ? 1 : 0.6,
+                    }}
+                  >
+                    <div style={{ minWidth: 180 }}>
+                      <div style={{ fontSize: 11, color: "#555" }}>
+                        Magnitude threshold {ridgeValleyMagMin.toFixed(3)}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1.5}
+                        step={0.005}
+                        value={ridgeValleyMagMin}
+                        onChange={(e) => onChangeRidgeValleyMagMin(Number(e.target.value))}
+                        disabled={!ridgeValleyEnabled}
+                        style={{ width: 180 }}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 180 }}>
+                      <div style={{ fontSize: 11, color: "#555" }}>
+                        Contrast threshold {ridgeValleyContrast.toFixed(3)}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={0.5}
+                        step={0.005}
+                        value={ridgeValleyContrast}
+                        onChange={(e) => onChangeRidgeValleyContrast(Number(e.target.value))}
+                        disabled={!ridgeValleyEnabled}
+                        style={{ width: 180 }}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 180 }}>
+                      <div style={{ fontSize: 11, color: "#555" }}>
+                        Direction minCos {ridgeValleyMinCos.toFixed(2)}
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={0.7}
+                        step={0.02}
+                        value={ridgeValleyMinCos}
+                        onChange={(e) => onChangeRidgeValleyMinCos(Number(e.target.value))}
+                        disabled={!ridgeValleyEnabled}
+                        style={{ width: 180 }}
+                      />
+                    </div>
+
+                    <div style={{ minWidth: 180 }}>
+                      <div style={{ fontSize: 11, color: "#555" }}>
+                        Segment length {ridgeValleySegmentScale.toFixed(4)}
+                      </div>
+                      <input
+                        type="range"
+                        min={0.001}
+                        max={0.02}
+                        step={0.001}
+                        value={ridgeValleySegmentScale}
+                        onChange={(e) => onChangeRidgeValleySegmentScale(Number(e.target.value))}
+                        disabled={!ridgeValleyEnabled}
+                        style={{ width: 180 }}
+                      />
+                    </div>
+
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span>Sample density</span>
+                      <select
+                        value={ridgeValleySampleMode}
+                        onChange={(e) => onChangeRidgeValleySampleMode(e.target.value as "high" | "medium" | "low")}
+                        disabled={!ridgeValleyEnabled}
+                        style={{ fontSize: 11, padding: "2px 4px" }}
+                      >
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </label>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </details>
 
