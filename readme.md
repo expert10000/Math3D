@@ -12,6 +12,7 @@
 - Added a Selection stats panel with count/mean normal/bbox plus K/H/k1/k2 stats and a mini histogram for selected points (graph, param, implicit, and Weierstrass).
 - Added an Inspect mode: click-to-probe point selection with a surface marker, linked Gauss marker, and a persistent readout (no hover).
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
+- Added a Gauss-map density heatmap (S²) for selected or all normals, rendered as a compact equirectangular inset with optional smoothing.
 
 ## Build the renderer into /dist
 
@@ -66,6 +67,7 @@ and editable.
 - The "Select region" flow now links the surface and Gauss map: enable it in the left panel, pick a seed point (world or UV) and a radius, and both the surface and the sphere highlight the same normals, while an optional Gauss-cap click also selects its matching points on the surface.
 - The Gauss map toggle lives in the slice-plane overlay in the main view; color options remain in the left panel and only appear when the map is enabled.
 - You can show a translucent selection sphere at the picked point to visualize the radius used for the surface and Gauss-map selection.
+- The density inset bins normals on S² (theta/phi) for selected or all points, normalizes by the max bin, and shows a quick heatmap of normal concentration.
 
 ### Selection analysis
 
