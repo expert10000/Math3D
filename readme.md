@@ -13,8 +13,18 @@
 - Added an Inspect mode: click-to-probe point selection with a surface marker, linked Gauss marker, and a persistent readout (no hover).
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 - Added a Gauss-map density heatmap (S²) for selected or all normals, rendered as a compact equirectangular inset with optional smoothing.
+- Inspect picks now place the marker at the clicked surface point even when sampling stats from the nearest vertex.
 
 ## Build the renderer into /dist
+
+```bash
+git clone https://github.com/expert10000/Math3D.git
+cd Math3D
+npm install
+cd renderer
+npm install
+cd ..
+```
 
 ```bash
 npm run build
@@ -80,6 +90,7 @@ and editable.
 - Toggle "Inspect mode" and click on the surface to lock an inspect point.
 - The UI shows idx, position, normal, and curvature scalars (K/H/k1/k2 when available).
 - The Gauss map highlights the inspect normal direction, and the inspect marker stays until cleared.
+- Inspect markers are placed at the exact click location while stats are sampled from the nearest mesh sample.
 
 ### Weierstrass diagnostics
 

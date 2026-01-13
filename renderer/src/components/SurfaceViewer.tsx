@@ -2704,11 +2704,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             inspectCb({
               index: nearest.index,
               point: {
-                x: nearest.sample.position.x,
-                y: nearest.sample.position.y,
-                z: nearest.sample.position.z,
+                x: point.x,
+                y: point.y,
+                z: point.z,
               },
               normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+            });
+          } else {
+            inspectCb({
+              index: -1,
+              point: { x: point.x, y: point.y, z: point.z },
+              normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
             });
           }
         }
