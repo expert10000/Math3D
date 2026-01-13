@@ -158,6 +158,13 @@ type Props = {
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
   }) => void;
+  inspectEnabled?: boolean;
+  onInspectPick?: (info: {
+    index: number;
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+  }) => void;
+  inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
@@ -870,12 +877,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     sampleMaxPoints = 900,
     includeSamplesUV = true,
     onSampleSet,
-    selectionMask = null,
-    selectRegionEnabled = false,
-    onSelectionPick,
-    selectionOverlayVisible = true,
-    selectionOverlayOnTop = false,
-    selectionSphere = null,
+  selectionMask = null,
+  selectRegionEnabled = false,
+  onSelectionPick,
+  inspectEnabled = false,
+  onInspectPick,
+  inspectPoint = null,
+  selectionOverlayVisible = true,
+  selectionOverlayOnTop = false,
+  selectionSphere = null,
   showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -905,6 +915,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const probeEnabledRef = useRef(probeEnabled);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
+  const inspectEnabledRef = useRef(inspectEnabled);
+  const onInspectPickRef = useRef(onInspectPick);
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
@@ -992,6 +1004,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const selectionOverlayRef = useRef<THREE.Points | null>(null);
   const selectionSphereRef = useRef<THREE.Mesh | null>(null);
+  const inspectMarkerRef = useRef<THREE.Mesh | null>(null);
 
   const sliceDirtyRef = useRef(true);
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
@@ -1157,6 +1170,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     onSelectionPickRef.current = onSelectionPick;
   }, [onSelectionPick]);
+  useEffect(() => {
+    inspectEnabledRef.current = inspectEnabled;
+  }, [inspectEnabled]);
+  useEffect(() => {
+    onInspectPickRef.current = onInspectPick;
+  }, [onInspectPick]);
 
   useEffect(() => {
     sliceParamsRef.current = {
@@ -2296,7 +2315,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         selectRegionEnabled: selectRegionEnabledRef.current,
         probeEnabled: probeEnabledRef.current,
       });
-      if (!probeEnabledRef.current && !selectRegionEnabledRef.current) return;
+      if (!probeEnabledRef.current && !selectRegionEnabledRef.current && !inspectEnabledRef.current) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2326,6 +2345,35 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         const u = uMin + (uMax - uMin) * uu;
         const v = vMin + (vMax - vMin) * vv;
         uvDomain = { u, v };
+      }
+
+      if (inspectEnabledRef.current) {
+        const inspectCb = onInspectPickRef.current;
+        if (inspectCb) {
+          const sampleSet = sampleSetRef.current;
+          if (sampleSet?.samples.length) {
+            let bestIdx = -1;
+            let bestDist = Infinity;
+            for (let i = 0; i < sampleSet.samples.length; i++) {
+              const sample = sampleSet.samples[i];
+              const d2 = sample.position.distanceToSquared(point);
+              if (d2 < bestDist) {
+                bestDist = d2;
+                bestIdx = i;
+              }
+            }
+            if (bestIdx >= 0) {
+              const sample = sampleSet.samples[bestIdx];
+              const inspectNormal = sample.normal.clone().normalize();
+              inspectCb({
+                index: bestIdx,
+                point: { x: sample.position.x, y: sample.position.y, z: sample.position.z },
+                normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+              });
+            }
+          }
+        }
+        return;
       }
 
       if (probeEnabledRef.current) {
@@ -2455,6 +2503,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         selectionSphereRef.current.geometry.dispose();
         (selectionSphereRef.current.material as THREE.Material).dispose();
         selectionSphereRef.current = null;
+      }
+      if (inspectMarkerRef.current) {
+        scene.remove(inspectMarkerRef.current);
+        inspectMarkerRef.current.geometry.dispose();
+        (inspectMarkerRef.current.material as THREE.Material).dispose();
+        inspectMarkerRef.current = null;
       }
 
       surfaceObjRef.current = null;
@@ -2612,6 +2666,38 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
   }, [selectionSphere, sceneEpoch]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    if (!scene) return;
+
+    if (inspectMarkerRef.current) {
+      scene.remove(inspectMarkerRef.current);
+      inspectMarkerRef.current.geometry.dispose();
+      (inspectMarkerRef.current.material as THREE.Material).dispose();
+      inspectMarkerRef.current = null;
+    }
+
+    if (!inspectPoint) return;
+
+    const geometry = new THREE.SphereGeometry(0.035, 16, 12);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffd54f });
+    const marker = new THREE.Mesh(geometry, material);
+    marker.position.set(inspectPoint.x, inspectPoint.y, inspectPoint.z);
+    marker.renderOrder = 210;
+    scene.add(marker);
+    inspectMarkerRef.current = marker;
+
+    return () => {
+      if (inspectMarkerRef.current === marker) {
+        scene.remove(marker);
+        geometry.dispose();
+        material.dispose();
+        inspectMarkerRef.current = null;
+      }
+    };
+  }, [inspectPoint, sceneEpoch]);
 
   useEffect(() => {
     const marker = gaussHighlightRef.current;

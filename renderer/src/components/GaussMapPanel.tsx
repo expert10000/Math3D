@@ -11,6 +11,7 @@ type GaussMapPanelProps = {
   palette: ColorPalette;
   colorMode: GaussColorMode;
   probeNormal?: { x: number; y: number; z: number } | null;
+  inspectDir?: { x: number; y: number; z: number } | null;
   onPointHover?: (index: number | null) => void;
   width?: number;
   height?: number;
@@ -124,6 +125,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   palette,
   colorMode,
   probeNormal,
+  inspectDir,
   onPointHover,
   width = 280,
   height = 280,
@@ -143,6 +145,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   const equatorRef = useRef<THREE.Line | null>(null);
   const hoverRef = useRef<THREE.Mesh | null>(null);
   const probeRef = useRef<THREE.Mesh | null>(null);
+  const inspectRef = useRef<THREE.Mesh | null>(null);
   const pointsIndexMapRef = useRef<number[]>([]);
   const entriesRef = useRef<GaussSampleEntry[]>([]);
   const pointerRef = useRef(new THREE.Vector2());
@@ -289,6 +292,10 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     scene.add(probeMesh);
     probeRef.current = probeMesh;
 
+    const inspectMesh = createHighlightMesh(0xffd54f);
+    scene.add(inspectMesh);
+    inspectRef.current = inspectMesh;
+
     const axesHelper = new THREE.AxesHelper(1.2);
     axesHelper.visible = showAxes;
     scene.add(axesHelper);
@@ -414,6 +421,11 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
         scene.remove(probeRef.current);
         probeRef.current.geometry.dispose();
         (probeRef.current.material as THREE.Material).dispose();
+      }
+      if (inspectRef.current) {
+        scene.remove(inspectRef.current);
+        inspectRef.current.geometry.dispose();
+        (inspectRef.current.material as THREE.Material).dispose();
       }
       if (axesRef.current) {
         scene.remove(axesRef.current);
@@ -604,6 +616,22 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
     );
     probe.visible = true;
   }, [probeNormal]);
+
+  useEffect(() => {
+    const inspect = inspectRef.current;
+    if (!inspect) return;
+    if (!inspectDir) {
+      inspect.visible = false;
+      return;
+    }
+    const len = Math.hypot(inspectDir.x, inspectDir.y, inspectDir.z);
+    inspect.position.set(
+      len > 0 ? inspectDir.x / len : 0,
+      len > 0 ? inspectDir.y / len : 0,
+      len > 0 ? inspectDir.z / len : 0
+    );
+    inspect.visible = true;
+  }, [inspectDir]);
 
   const selectionInfo = selectionMask?.count ? ` · ${selectionMask.count} selected` : "";
 
