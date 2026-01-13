@@ -9,6 +9,7 @@
 - Added Weierstrass diagnostics (path-drift magnitude, vector, traffic-light status, optional arrow, and recompute controls) that flag period drift.
 - Added dual-path averaging and avg/max path disagreement reporting to the Weierstrass builder so trimmed domains show fewer seams even when drift is low.
 - Added region selection overlays, including a translucent selection sphere, and linked the selected surface samples to the Gauss map.
+- Added a Selection stats panel with count/mean normal/bbox plus K/H/k1/k2 stats and a mini histogram for selected points (graph, param, implicit, and Weierstrass).
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 
 ## Build the renderer into /dist
@@ -64,6 +65,12 @@ and editable.
 - The "Select region" flow now links the surface and Gauss map: enable it in the left panel, pick a seed point (world or UV) and a radius, and both the surface and the sphere highlight the same normals, while an optional Gauss-cap click also selects its matching points on the surface.
 - The Gauss map toggle lives in the slice-plane overlay in the main view; color options remain in the left panel and only appear when the map is enabled.
 - You can show a translucent selection sphere at the picked point to visualize the radius used for the surface and Gauss-map selection.
+
+### Selection analysis
+
+- Enable "Select region" and click the surface to seed a spherical selection.
+- The Selection stats panel reports count, mean normal, bbox size/diag, and curvature stats (K/H/k1/k2) when available.
+- A mini histogram summarizes a chosen metric for the selected points and updates live with radius changes.
 
 ### Weierstrass diagnostics
 
