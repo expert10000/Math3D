@@ -597,6 +597,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [principalGlyphDensity, setPrincipalGlyphDensity] = useState(100);
   const [principalGlyphLength, setPrincipalGlyphLength] = useState(0.4);
   const [principalGlyphMode, setPrincipalGlyphMode] = useState<"both" | "d1">("both");
+  const [showCurvatureLines, setShowCurvatureLines] = useState(false);
+  const [curvatureLineField, setCurvatureLineField] = useState<"d1" | "d2">("d1");
+  const [curvatureSeedSource, setCurvatureSeedSource] = useState<"global" | "selection">("global");
+  const [curvatureSeedDensity, setCurvatureSeedDensity] = useState(100);
+  const [curvatureStepSize, setCurvatureStepSize] = useState(0);
+  const [curvatureMaxSteps, setCurvatureMaxSteps] = useState(400);
+  const [curvatureMaxLines, setCurvatureMaxLines] = useState(200);
+  const [curvatureRebuildToken, setCurvatureRebuildToken] = useState(0);
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
@@ -1811,6 +1819,21 @@ case "mobius":
                 onChangePrincipalGlyphLength={setPrincipalGlyphLength}
                 principalGlyphMode={principalGlyphMode}
                 onChangePrincipalGlyphMode={setPrincipalGlyphMode}
+                showCurvatureLines={showCurvatureLines}
+                onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
+                curvatureLineField={curvatureLineField}
+                onChangeCurvatureLineField={setCurvatureLineField}
+                curvatureSeedSource={curvatureSeedSource}
+                onChangeCurvatureSeedSource={setCurvatureSeedSource}
+                curvatureSeedDensity={curvatureSeedDensity}
+                onChangeCurvatureSeedDensity={setCurvatureSeedDensity}
+                curvatureStepSize={curvatureStepSize}
+                onChangeCurvatureStepSize={setCurvatureStepSize}
+                curvatureMaxSteps={curvatureMaxSteps}
+                onChangeCurvatureMaxSteps={setCurvatureMaxSteps}
+                curvatureMaxLines={curvatureMaxLines}
+                onChangeCurvatureMaxLines={setCurvatureMaxLines}
+                onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 showGaussMap={showGaussMap}
@@ -1927,6 +1950,14 @@ case "mobius":
                             principalGlyphDensity={principalGlyphDensity}
                             principalGlyphLength={principalGlyphLength}
                             principalGlyphMode={principalGlyphMode}
+                            showCurvatureLines={showCurvatureLines}
+                            curvatureLineField={curvatureLineField}
+                            curvatureSeedSource={curvatureSeedSource}
+                            curvatureSeedDensity={curvatureSeedDensity}
+                            curvatureStepSize={curvatureStepSize}
+                            curvatureMaxSteps={curvatureMaxSteps}
+                            curvatureMaxLines={curvatureMaxLines}
+                            curvatureRebuildToken={curvatureRebuildToken}
                             showBoundingBox={showBoundingBox}
                             resetToken={cameraResetToken}
                             onProbe={handleProbe}
@@ -1992,6 +2023,14 @@ case "mobius":
                             principalGlyphDensity={principalGlyphDensity}
                             principalGlyphLength={principalGlyphLength}
                             principalGlyphMode={principalGlyphMode}
+                            showCurvatureLines={showCurvatureLines}
+                            curvatureLineField={curvatureLineField}
+                            curvatureSeedSource={curvatureSeedSource}
+                            curvatureSeedDensity={curvatureSeedDensity}
+                            curvatureStepSize={curvatureStepSize}
+                            curvatureMaxSteps={curvatureMaxSteps}
+                            curvatureMaxLines={curvatureMaxLines}
+                            curvatureRebuildToken={curvatureRebuildToken}
                             onProbe={handleProbe}
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
@@ -2044,6 +2083,7 @@ case "mobius":
                               showPrincipalNormalPlanes={false}
                               showPrincipalLines={false}
                               showPrincipalGlyphs={false}
+                              showCurvatureLines={false}
                             showBoundingBox={showBoundingBox}
                               resetToken={cameraResetToken}
                               onSetCustomX={setParamXExpr}
@@ -2084,6 +2124,7 @@ case "mobius":
                               showPrincipalNormalPlanes={false}
                               showPrincipalLines={false}
                               showPrincipalGlyphs={false}
+                              showCurvatureLines={false}
                               // contours (remove if SurfaceViewer doesn't support yet)
                               showContours={showContours}
                               contourCount={contourCount}
@@ -2694,6 +2735,21 @@ type SurfacesLeftPanelProps = {
   onChangePrincipalGlyphLength: (value: number) => void;
   principalGlyphMode: "both" | "d1";
   onChangePrincipalGlyphMode: (mode: "both" | "d1") => void;
+  showCurvatureLines: boolean;
+  onToggleCurvatureLines: () => void;
+  curvatureLineField: "d1" | "d2";
+  onChangeCurvatureLineField: (field: "d1" | "d2") => void;
+  curvatureSeedSource: "global" | "selection";
+  onChangeCurvatureSeedSource: (source: "global" | "selection") => void;
+  curvatureSeedDensity: number;
+  onChangeCurvatureSeedDensity: (value: number) => void;
+  curvatureStepSize: number;
+  onChangeCurvatureStepSize: (value: number) => void;
+  curvatureMaxSteps: number;
+  onChangeCurvatureMaxSteps: (value: number) => void;
+  curvatureMaxLines: number;
+  onChangeCurvatureMaxLines: (value: number) => void;
+  onRebuildCurvatureLines: () => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   weierstrassDiagnostics: WeierstrassDriftResult | null;
@@ -2826,6 +2882,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangePrincipalGlyphLength,
   principalGlyphMode,
   onChangePrincipalGlyphMode,
+  showCurvatureLines,
+  onToggleCurvatureLines,
+  curvatureLineField,
+  onChangeCurvatureLineField,
+  curvatureSeedSource,
+  onChangeCurvatureSeedSource,
+  curvatureSeedDensity,
+  onChangeCurvatureSeedDensity,
+  curvatureStepSize,
+  onChangeCurvatureStepSize,
+  curvatureMaxSteps,
+  onChangeCurvatureMaxSteps,
+  curvatureMaxLines,
+  onChangeCurvatureMaxLines,
+  onRebuildCurvatureLines,
   showBoundingBox,
   onToggleBoundingBox,
   showGaussMap,
@@ -3076,6 +3147,154 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
           )}
         </div>
+
+        <details style={{ marginTop: 8 }} open={showCurvatureLines}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Curvature lines</summary>
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            <label style={{ display: "block", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showCurvatureLines}
+                onChange={onToggleCurvatureLines}
+                style={{ marginRight: 6 }}
+              />
+              Show curvature lines
+            </label>
+            <div
+              style={{
+                marginLeft: 18,
+                marginTop: 6,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                opacity: showCurvatureLines ? 1 : 0.6,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 11, color: "#555" }}>Field</div>
+                <label style={{ marginRight: 10 }}>
+                  <input
+                    type="radio"
+                    name="curvature-field"
+                    value="d1"
+                    checked={curvatureLineField === "d1"}
+                    onChange={() => onChangeCurvatureLineField("d1")}
+                    disabled={!showCurvatureLines}
+                    style={{ marginRight: 4 }}
+                  />
+                  along d1 (k1)
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="curvature-field"
+                    value="d2"
+                    checked={curvatureLineField === "d2"}
+                    onChange={() => onChangeCurvatureLineField("d2")}
+                    disabled={!showCurvatureLines}
+                    style={{ marginRight: 4 }}
+                  />
+                  along d2 (k2)
+                </label>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 11, color: "#555" }}>Seed source</div>
+                <label style={{ marginRight: 10 }}>
+                  <input
+                    type="radio"
+                    name="curvature-seed-source"
+                    value="global"
+                    checked={curvatureSeedSource === "global"}
+                    onChange={() => onChangeCurvatureSeedSource("global")}
+                    disabled={!showCurvatureLines}
+                    style={{ marginRight: 4 }}
+                  />
+                  Global grid
+                </label>
+                <label title={selectionMaskCount ? "" : "No selection available"}>
+                  <input
+                    type="radio"
+                    name="curvature-seed-source"
+                    value="selection"
+                    checked={curvatureSeedSource === "selection"}
+                    onChange={() => onChangeCurvatureSeedSource("selection")}
+                    disabled={!showCurvatureLines || selectionMaskCount === 0}
+                    style={{ marginRight: 4 }}
+                  />
+                  Selection region
+                </label>
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Seed density</span>
+                <select
+                  value={curvatureSeedDensity}
+                  onChange={(e) => onChangeCurvatureSeedDensity(Number(e.target.value))}
+                  disabled={!showCurvatureLines}
+                  style={{ fontSize: 11, padding: "2px 4px" }}
+                >
+                  <option value={50}>High</option>
+                  <option value={100}>Medium</option>
+                  <option value={200}>Low</option>
+                </select>
+              </label>
+
+              <div style={{ minWidth: 180 }}>
+                <div style={{ fontSize: 11, color: "#555" }}>
+                  Step size h {curvatureStepSize > 0 ? curvatureStepSize.toFixed(3) : "(auto)"}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.005}
+                  value={curvatureStepSize}
+                  onChange={(e) => onChangeCurvatureStepSize(Number(e.target.value))}
+                  disabled={!showCurvatureLines}
+                  style={{ width: 180 }}
+                />
+              </div>
+
+              <div style={{ minWidth: 180 }}>
+                <div style={{ fontSize: 11, color: "#555" }}>Max steps {curvatureMaxSteps}</div>
+                <input
+                  type="range"
+                  min={80}
+                  max={800}
+                  step={20}
+                  value={curvatureMaxSteps}
+                  onChange={(e) => onChangeCurvatureMaxSteps(Number(e.target.value))}
+                  disabled={!showCurvatureLines}
+                  style={{ width: 180 }}
+                />
+              </div>
+
+              <div style={{ minWidth: 180 }}>
+                <div style={{ fontSize: 11, color: "#555" }}>Max lines {curvatureMaxLines}</div>
+                <input
+                  type="range"
+                  min={40}
+                  max={400}
+                  step={20}
+                  value={curvatureMaxLines}
+                  onChange={(e) => onChangeCurvatureMaxLines(Number(e.target.value))}
+                  disabled={!showCurvatureLines}
+                  style={{ width: 180 }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={onRebuildCurvatureLines}
+                disabled={!showCurvatureLines}
+                style={{ alignSelf: "flex-start", fontSize: 11, padding: "3px 6px" }}
+              >
+                Rebuild
+              </button>
+            </div>
+          </div>
+        </details>
 
         <div style={{ marginTop: 8 }}>
           <label style={{ display: "block", cursor: "pointer" }}>

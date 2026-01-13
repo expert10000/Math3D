@@ -13,6 +13,7 @@ import {
 } from "../math/principalCurvature";
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 import { stabilizeTangentDirection } from "../math/curvatureDirections";
+import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirectional } from "../math/curvatureLines";
 import { marchingSquares } from "../math/marchingSquares";
 import {
   buildWeierstrassSurface,
@@ -176,6 +177,14 @@ type Props = {
   principalGlyphDensity?: number;
   principalGlyphLength?: number;
   principalGlyphMode?: "both" | "d1";
+  showCurvatureLines?: boolean;
+  curvatureLineField?: "d1" | "d2";
+  curvatureSeedSource?: "global" | "selection";
+  curvatureSeedDensity?: number;
+  curvatureStepSize?: number;
+  curvatureMaxSteps?: number;
+  curvatureMaxLines?: number;
+  curvatureRebuildToken?: number;
   onParamCurvature?: (data: PrincipalCurvatureScalars | null) => void;
 
   paramProbeUV?: { u: number; v: number } | null;
@@ -898,6 +907,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   principalGlyphDensity = 100,
   principalGlyphLength = 0,
   principalGlyphMode = "both",
+  showCurvatureLines = false,
+  curvatureLineField = "d1",
+  curvatureSeedSource = "global",
+  curvatureSeedDensity = 100,
+  curvatureStepSize = 0,
+  curvatureMaxSteps = 400,
+  curvatureMaxLines = 200,
+  curvatureRebuildToken = 0,
   onParamCurvature,
   paramProbeUV = null,
   paramProbeToken,
@@ -1029,6 +1046,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
     null
   );
+  const curvatureLinesRef = useRef<THREE.LineSegments | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
   const sliceMatRef = useRef<THREE.LineBasicMaterial | null>(null);
@@ -2502,6 +2520,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         principalGlyphsRef.current = null;
       }
 
+      if (curvatureLinesRef.current) {
+        scene.remove(curvatureLinesRef.current);
+        curvatureLinesRef.current.geometry.dispose();
+        (curvatureLinesRef.current.material as THREE.Material).dispose();
+        curvatureLinesRef.current = null;
+      }
+
       if (diagnosticsGroupRef.current) {
         clearGroup(diagnosticsGroupRef.current);
         scene.remove(diagnosticsGroupRef.current);
@@ -2835,6 +2860,161 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     principalGlyphDensity,
     principalGlyphLength,
     principalGlyphMode,
+    sceneEpoch,
+  ]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    if (!scene) return;
+
+    if (curvatureLinesRef.current) {
+      scene.remove(curvatureLinesRef.current);
+      curvatureLinesRef.current.geometry.dispose();
+      (curvatureLinesRef.current.material as THREE.Material).dispose();
+      curvatureLinesRef.current = null;
+    }
+
+    if (!showCurvatureLines) return;
+    const obj = surfaceObjRef.current;
+    const mesh = obj as THREE.Mesh | null;
+    const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
+    if (!geometry || !st) return;
+
+    const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    const uvAttr = geometry.getAttribute("uv") as THREE.BufferAttribute | null;
+    if (!posAttr || !uvAttr) return;
+    const positions = posAttr.array as Float32Array;
+
+    let normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
+    if (!normalAttr) {
+      geometry.computeVertexNormals();
+      normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
+    }
+    if (!normalAttr) return;
+    const normals = normalAttr.array as Float32Array;
+
+    const { paramFunc, uMin, uMax, vMin, vMax } = st;
+    const vertexCount = posAttr.count;
+    const dir1 = new Float32Array(vertexCount * 3);
+    const dir2 = new Float32Array(vertexCount * 3);
+    const uRange = uMax - uMin || 1;
+    const vRange = vMax - vMin || 1;
+
+    for (let i = 0; i < vertexCount; i++) {
+      const u = uMin + uvAttr.getX(i) * uRange;
+      const v = vMin + uvAttr.getY(i) * vRange;
+      const res = computePrincipalCurvatureAtUV({ paramFunc, u, v, uMin, uMax, vMin, vMax });
+      if (!res || res.isUmbilic) continue;
+      const nIdx = i * 3;
+      const nx = normals[nIdx];
+      const ny = normals[nIdx + 1];
+      const nz = normals[nIdx + 2];
+      if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
+        res.dir1.negate();
+        res.dir2.negate();
+      }
+      dir1[nIdx] = res.dir1.x;
+      dir1[nIdx + 1] = res.dir1.y;
+      dir1[nIdx + 2] = res.dir1.z;
+      dir2[nIdx] = res.dir2.x;
+      dir2[nIdx + 1] = res.dir2.y;
+      dir2[nIdx + 2] = res.dir2.z;
+    }
+
+    const indexAttr = geometry.getIndex();
+    const neighbors = buildVertexAdjacency(indexAttr ? indexAttr.array : null, vertexCount);
+    const dirField = curvatureLineField === "d2" ? dir2 : dir1;
+    const maxSteps = Math.max(10, Math.floor(curvatureMaxSteps));
+    const maxLines = Math.max(1, Math.floor(curvatureMaxLines));
+    const stride = Math.max(1, Math.floor(curvatureSeedDensity));
+    const bboxDiag = (radiusRef.current || 3) * 2;
+    const stepSize = curvatureStepSize > 0 ? curvatureStepSize : Math.max(1e-4, bboxDiag / 200);
+
+    const seeds: number[] = [];
+    const visited = new Set<number>();
+    const sampleSet = sampleSetRef.current;
+    const canUseSelection = curvatureSeedSource === "selection" && selectionMask?.count && sampleSet?.samples.length;
+
+    if (canUseSelection && sampleSet && selectionMask) {
+      const selected = selectionMask.selected;
+      const findNearestVertex = (px: number, py: number, pz: number) => {
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < vertexCount; i++) {
+          const idx = i * 3;
+          const dx = positions[idx] - px;
+          const dy = positions[idx + 1] - py;
+          const dz = positions[idx + 2] - pz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < bestDist) {
+            bestDist = d2;
+            bestIdx = i;
+          }
+        }
+        return bestIdx;
+      };
+
+      for (let i = 0; i < selected.length && seeds.length < maxLines; i += stride) {
+        if (!selected[i]) continue;
+        const sample = sampleSet.samples[i];
+        if (!sample) continue;
+        const seed = findNearestVertex(sample.position.x, sample.position.y, sample.position.z);
+        seeds.push(seed);
+      }
+    }
+
+    if (!seeds.length) {
+      for (let i = 0; i < vertexCount && seeds.length < maxLines; i += stride) {
+        seeds.push(i);
+      }
+    }
+
+    const paths: number[][] = [];
+    for (let i = 0; i < seeds.length && paths.length < maxLines; i++) {
+      const seed = seeds[i];
+      if (visited.has(seed)) continue;
+      const path = traceStreamlineBidirectional({
+        seedIndex: seed,
+        positions,
+        normals,
+        dirField,
+        neighbors,
+        maxSteps,
+        stepSize,
+      });
+      if (path.length < 2) continue;
+      paths.push(path);
+      path.forEach((idx) => visited.add(idx));
+    }
+
+    if (!paths.length) return;
+
+    const segments = buildStreamlineSegments(paths, positions);
+    if (!segments.length) return;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(segments, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x7a1d14,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const lines = new THREE.LineSegments(geom, mat);
+    lines.renderOrder = 130;
+    scene.add(lines);
+    curvatureLinesRef.current = lines;
+  }, [
+    showCurvatureLines,
+    curvatureLineField,
+    curvatureSeedSource,
+    curvatureSeedDensity,
+    curvatureStepSize,
+    curvatureMaxSteps,
+    curvatureMaxLines,
+    curvatureRebuildToken,
+    selectionMask,
     sceneEpoch,
   ]);
 

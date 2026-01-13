@@ -9,6 +9,7 @@ import { computePrincipalCurvatureAtUV, type PrincipalCurvatureResult } from "..
 import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } from "../math/principalStreamlines";
 import { stabilizeTangentDirection } from "../math/curvatureDirections";
 import { marchingSquares } from "../math/marchingSquares";
+import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirectional } from "../math/curvatureLines";
 
 import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -645,6 +646,14 @@ type Props = {
   principalGlyphDensity?: number;
   principalGlyphLength?: number;
   principalGlyphMode?: "both" | "d1";
+  showCurvatureLines?: boolean;
+  curvatureLineField?: "d1" | "d2";
+  curvatureSeedSource?: "global" | "selection";
+  curvatureSeedDensity?: number;
+  curvatureStepSize?: number;
+  curvatureMaxSteps?: number;
+  curvatureMaxLines?: number;
+  curvatureRebuildToken?: number;
   graphProbeXY?: { x: number; y: number } | null;
   graphProbeToken?: number;
   implicitProbeXYZ?: { x: number; y: number; z: number } | null;
@@ -727,6 +736,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     principalGlyphDensity = 100,
     principalGlyphLength = 0,
     principalGlyphMode = "both",
+    showCurvatureLines = false,
+    curvatureLineField = "d1",
+    curvatureSeedSource = "global",
+    curvatureSeedDensity = 100,
+    curvatureStepSize = 0,
+    curvatureMaxSteps = 400,
+    curvatureMaxLines = 200,
+    curvatureRebuildToken = 0,
     graphProbeXY = null,
     graphProbeToken,
     implicitProbeXYZ = null,
@@ -786,6 +803,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
     null
   );
+  const curvatureLinesRef = useRef<THREE.LineSegments | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
   const [sceneEpoch, setSceneEpoch] = useState(0);
@@ -2896,6 +2914,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         principalGlyphsRef.current = null;
       }
 
+      if (curvatureLinesRef.current) {
+        scene.remove(curvatureLinesRef.current);
+        curvatureLinesRef.current.geometry.dispose();
+        (curvatureLinesRef.current.material as THREE.Material).dispose();
+        curvatureLinesRef.current = null;
+      }
+
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
         gaussHighlightRef.current.geometry.dispose();
@@ -3303,6 +3328,241 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     principalGlyphDensity,
     principalGlyphLength,
     principalGlyphMode,
+    surfaceId,
+    graphExpr,
+    implicitExpr,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    implicitResolution,
+    sceneEpoch,
+  ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (curvatureLinesRef.current) {
+      scene.remove(curvatureLinesRef.current);
+      curvatureLinesRef.current.geometry.dispose();
+      (curvatureLinesRef.current.material as THREE.Material).dispose();
+      curvatureLinesRef.current = null;
+    }
+
+    if (!showCurvatureLines) return;
+
+    const isGraphSurface = isGraphId(surfaceId);
+    const isImplicitSurface = isImplicitId(surfaceId);
+    if (!isGraphSurface && !isImplicitSurface) return;
+
+    const root = surfaceObjRef.current;
+    if (!root) return;
+
+    let geometry: THREE.BufferGeometry | null = null;
+    let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+    let implicitSize: number | null = null;
+
+    if (isImplicitSurface) {
+      root.traverse((obj) => {
+        if (geometry) return;
+        const anyObj = obj as any;
+        if (anyObj?.isMarchingCubes) {
+          geometry = anyObj.geometry as THREE.BufferGeometry;
+          const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
+          if (meta?.f) {
+            implicitF = meta.f;
+            if (typeof meta.size === "number") implicitSize = meta.size;
+          }
+        }
+      });
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+    } else {
+      root.traverse((obj) => {
+        if (geometry) return;
+        const mesh = obj as THREE.Mesh;
+        if (mesh?.isMesh && mesh.geometry) {
+          geometry = mesh.geometry as THREE.BufferGeometry;
+        }
+      });
+    }
+
+    if (!geometry) return;
+
+    const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    if (!posAttr) return;
+    const positions = posAttr.array as Float32Array;
+
+    let normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
+    if (!normalAttr) {
+      geometry.computeVertexNormals();
+      normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
+    }
+    if (!normalAttr) return;
+    const normals = normalAttr.array as Float32Array;
+
+    const vertexCount = posAttr.count;
+    const dir1 = new Float32Array(vertexCount * 3);
+    const dir2 = new Float32Array(vertexCount * 3);
+
+    if (isGraphSurface) {
+      const uvAttr = geometry.getAttribute("uv") as THREE.BufferAttribute | null;
+      if (!uvAttr) return;
+      const graphF = getGraphF();
+      const graphMeta = (surfaceObjRef.current as any)?.userData?.__graph as { xSpan: number; ySpan: number } | undefined;
+      const xSpan = graphMeta?.xSpan ?? graphDomain?.xSpan ?? 1.5;
+      const ySpan = graphMeta?.ySpan ?? graphDomain?.ySpan ?? 1.5;
+      const uMin = -xSpan;
+      const uMax = xSpan;
+      const vMin = -ySpan;
+      const vMax = ySpan;
+      const paramFunc = (u: number, v: number, target: THREE.Vector3) => {
+        target.set(u, graphF(u, v), v);
+      };
+
+      for (let i = 0; i < vertexCount; i++) {
+        const u = (uvAttr.getX(i) - 0.5) * 2 * xSpan;
+        const v = (uvAttr.getY(i) - 0.5) * 2 * ySpan;
+        const res = computePrincipalCurvatureAtUV({ paramFunc, u, v, uMin, uMax, vMin, vMax });
+        if (!res || res.isUmbilic) continue;
+        const nIdx = i * 3;
+        const nx = normals[nIdx];
+        const ny = normals[nIdx + 1];
+        const nz = normals[nIdx + 2];
+        if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
+          res.dir1.negate();
+          res.dir2.negate();
+        }
+        dir1[nIdx] = res.dir1.x;
+        dir1[nIdx + 1] = res.dir1.y;
+        dir1[nIdx + 2] = res.dir1.z;
+        dir2[nIdx] = res.dir2.x;
+        dir2[nIdx + 1] = res.dir2.y;
+        dir2[nIdx + 2] = res.dir2.z;
+      }
+    } else if (isImplicitSurface && implicitF) {
+      const size = implicitSize ?? radiusRef.current ?? 3;
+      const implicitH = Math.max(1e-4, size / Math.max(12, implicitResolution));
+      const tmpPoint = new THREE.Vector3();
+      for (let i = 0; i < vertexCount; i++) {
+        const idx = i * 3;
+        const px = positions[idx];
+        const py = positions[idx + 1];
+        const pz = positions[idx + 2];
+        const res = computeImplicitPrincipalAtPoint(implicitF, tmpPoint.set(px, py, pz), implicitH);
+        if (!res || res.isUmbilic) continue;
+        const nx = normals[idx];
+        const ny = normals[idx + 1];
+        const nz = normals[idx + 2];
+        if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
+          res.dir1.negate();
+          res.dir2.negate();
+        }
+        dir1[idx] = res.dir1.x;
+        dir1[idx + 1] = res.dir1.y;
+        dir1[idx + 2] = res.dir1.z;
+        dir2[idx] = res.dir2.x;
+        dir2[idx + 1] = res.dir2.y;
+        dir2[idx + 2] = res.dir2.z;
+      }
+    } else {
+      return;
+    }
+
+    const indexAttr = geometry.getIndex();
+    const neighbors = buildVertexAdjacency(indexAttr ? indexAttr.array : null, vertexCount);
+    const dirField = curvatureLineField === "d2" ? dir2 : dir1;
+    const maxSteps = Math.max(10, Math.floor(curvatureMaxSteps));
+    const maxLines = Math.max(1, Math.floor(curvatureMaxLines));
+    const stride = Math.max(1, Math.floor(curvatureSeedDensity));
+    const bboxDiag = (radiusRef.current || 3) * 2;
+    const stepSize = curvatureStepSize > 0 ? curvatureStepSize : Math.max(1e-4, bboxDiag / 200);
+
+    const seeds: number[] = [];
+    const visited = new Set<number>();
+    const sampleSet = sampleSetRef.current;
+    const canUseSelection = curvatureSeedSource === "selection" && selectionMask?.count && sampleSet?.samples.length;
+
+    if (canUseSelection && sampleSet && selectionMask) {
+      const selected = selectionMask.selected;
+      const findNearestVertex = (px: number, py: number, pz: number) => {
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        for (let i = 0; i < vertexCount; i++) {
+          const idx = i * 3;
+          const dx = positions[idx] - px;
+          const dy = positions[idx + 1] - py;
+          const dz = positions[idx + 2] - pz;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (d2 < bestDist) {
+            bestDist = d2;
+            bestIdx = i;
+          }
+        }
+        return bestIdx;
+      };
+
+      for (let i = 0; i < selected.length && seeds.length < maxLines; i += stride) {
+        if (!selected[i]) continue;
+        const sample = sampleSet.samples[i];
+        if (!sample) continue;
+        const seed = findNearestVertex(sample.position.x, sample.position.y, sample.position.z);
+        seeds.push(seed);
+      }
+    }
+
+    if (!seeds.length) {
+      for (let i = 0; i < vertexCount && seeds.length < maxLines; i += stride) {
+        seeds.push(i);
+      }
+    }
+
+    const paths: number[][] = [];
+    for (let i = 0; i < seeds.length && paths.length < maxLines; i++) {
+      const seed = seeds[i];
+      if (visited.has(seed)) continue;
+      const path = traceStreamlineBidirectional({
+        seedIndex: seed,
+        positions,
+        normals,
+        dirField,
+        neighbors,
+        maxSteps,
+        stepSize,
+      });
+      if (path.length < 2) continue;
+      paths.push(path);
+      path.forEach((idx) => visited.add(idx));
+    }
+
+    if (!paths.length) return;
+
+    const segments = buildStreamlineSegments(paths, positions);
+    if (!segments.length) return;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.BufferAttribute(segments, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x7a1d14,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const lines = new THREE.LineSegments(geom, mat);
+    lines.renderOrder = 130;
+    scene.add(lines);
+    curvatureLinesRef.current = lines;
+  }, [
+    showCurvatureLines,
+    curvatureLineField,
+    curvatureSeedSource,
+    curvatureSeedDensity,
+    curvatureStepSize,
+    curvatureMaxSteps,
+    curvatureMaxLines,
+    curvatureRebuildToken,
+    selectionMask,
     surfaceId,
     graphExpr,
     implicitExpr,
