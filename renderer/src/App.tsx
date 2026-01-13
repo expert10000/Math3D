@@ -2086,6 +2086,8 @@ case "mobius":
                         height={280}
                         selectionMask={selectionMask}
                         onGaussSelection={handleGaussSelection}
+                        densityNormals={selectionBaseArrays?.normals ?? null}
+                        densitySelectionIndices={selectionIndices}
                       />
                     </div>
                   )}

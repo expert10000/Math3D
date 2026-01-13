@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { scalarToColor01, type ColorPalette } from "./colorPalette";
 import type { GaussColorMode } from "./gaussMapUtils";
 import type { GaussCapSelection, SelectionMask } from "../math/selection/selectionModel";
 import type { SurfaceSample } from "../math/sampling/surfaceSampling";
+import { computeGaussDensityGrid } from "../math/selection/gaussDensity";
 
 type GaussMapPanelProps = {
   samples: SurfaceSample[];
@@ -17,6 +18,8 @@ type GaussMapPanelProps = {
   height?: number;
   selectionMask?: SelectionMask | null;
   onGaussSelection?: (selection: GaussCapSelection) => void;
+  densityNormals?: Float32Array | null;
+  densitySelectionIndices?: number[] | null;
 };
 
 type GaussSampleEntry = {
@@ -32,6 +35,14 @@ const INITIAL_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
 const SLIDER_POINT_SIZE = { min: 1, max: 6, step: 0.5 };
 const SAMPLE_OPTIONS = [1, 2, 3, 5] as const;
 const GAUSS_CAP_RANGE = { min: 5, max: 45, step: 1 };
+const DENSITY_CANVAS_SIZE = { width: 220, height: 110 };
+const DENSITY_MAX_SAMPLES = 20000;
+const DENSITY_RES_OPTIONS = [
+  { id: "low", label: "Low (32x16)", nPhi: 32, nTheta: 16 },
+  { id: "med", label: "Med (64x32)", nPhi: 64, nTheta: 32 },
+  { id: "high", label: "High (128x64)", nPhi: 128, nTheta: 64 },
+] as const;
+type DensityResId = (typeof DENSITY_RES_OPTIONS)[number]["id"];
 
 const buildSampledEntries = (
   samples: SurfaceSample[],
@@ -111,6 +122,13 @@ const samplingContainerStyle: React.CSSProperties = {
   minWidth: 110,
 };
 
+const densityRowStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  alignItems: "center",
+};
+
 const resetButtonStyle: React.CSSProperties = {
   padding: "4px 10px",
   borderRadius: 999,
@@ -131,6 +149,8 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   height = 280,
   selectionMask = null,
   onGaussSelection,
+  densityNormals = null,
+  densitySelectionIndices = null,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -151,6 +171,7 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   const pointerRef = useRef(new THREE.Vector2());
   const raycasterRef = useRef(new THREE.Raycaster());
   const initialSizeRef = useRef({ width, height });
+  const densityCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [occludeBack, setOccludeBack] = useState(true);
@@ -161,6 +182,9 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   const [samplingStep, setSamplingStep] = useState(1);
   const [selectFromGauss, setSelectFromGauss] = useState(false);
   const [gaussCapAngleDeg, setGaussCapAngleDeg] = useState(15);
+  const [showDensity, setShowDensity] = useState(false);
+  const [densitySource, setDensitySource] = useState<"selected" | "all">("selected");
+  const [densityResId, setDensityResId] = useState<DensityResId>("med");
 
   const pointSizeRef = useRef(pointSize);
   const occludeBackRef = useRef(occludeBack);
@@ -192,6 +216,64 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
   useEffect(() => {
     gaussCapAngleRef.current = gaussCapAngleDeg;
   }, [gaussCapAngleDeg]);
+
+  const densityGrid = useMemo(() => {
+    if (!showDensity || !densityNormals || densityNormals.length === 0) return null;
+    const res = DENSITY_RES_OPTIONS.find((option) => option.id === densityResId) ?? DENSITY_RES_OPTIONS[1];
+    const indices =
+      densitySource === "selected"
+        ? densitySelectionIndices?.length
+          ? densitySelectionIndices
+          : []
+        : undefined;
+    if (densitySource === "selected" && !indices?.length) {
+      return {
+        nTheta: res.nTheta,
+        nPhi: res.nPhi,
+        values: new Float32Array(res.nTheta * res.nPhi),
+        maxCount: 0,
+        total: 0,
+      };
+    }
+    return computeGaussDensityGrid(densityNormals, {
+      nTheta: res.nTheta,
+      nPhi: res.nPhi,
+      smooth: true,
+      indices,
+      maxSamples: DENSITY_MAX_SAMPLES,
+    });
+  }, [showDensity, densityNormals, densitySelectionIndices, densitySource, densityResId]);
+
+  useEffect(() => {
+    const canvas = densityCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    if (!densityGrid) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    const { nPhi, nTheta, values } = densityGrid;
+    if (canvas.width !== nPhi) canvas.width = nPhi;
+    if (canvas.height !== nTheta) canvas.height = nTheta;
+
+    const image = ctx.createImageData(nPhi, nTheta);
+    for (let t = 0; t < nTheta; t++) {
+      for (let p = 0; p < nPhi; p++) {
+        const idx = t * nPhi + p;
+        const val = values[idx];
+        const { r, g, b } = scalarToColor01(val, palette);
+        const base = idx * 4;
+        image.data[base] = Math.round(r * 255);
+        image.data[base + 1] = Math.round(g * 255);
+        image.data[base + 2] = Math.round(b * 255);
+        image.data[base + 3] = 255;
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  }, [densityGrid, palette]);
 
   const handleResetView = () => {
     const camera = cameraRef.current;
@@ -744,6 +826,73 @@ const GaussMapPanel: React.FC<GaussMapPanelProps> = ({
           />
         </div>
       </div>
+      <div style={densityRowStyle}>
+        <label style={toggleLabelStyle} title="Show density of normals on the sphere">
+          <input
+            type="checkbox"
+            checked={showDensity}
+            onChange={(event) => setShowDensity(event.target.checked)}
+            style={toggleInputStyle}
+          />
+          Density
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <span style={{ color: "#555" }}>Source</span>
+          <select
+            value={densitySource}
+            onChange={(event) => setDensitySource(event.target.value as "selected" | "all")}
+            style={{ fontSize: 11, padding: "2px 4px" }}
+            disabled={!showDensity}
+          >
+            <option value="selected">Selected</option>
+            <option value="all">All points</option>
+          </select>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <span style={{ color: "#555" }}>Res</span>
+          <select
+            value={densityResId}
+            onChange={(event) => setDensityResId(event.target.value as DensityResId)}
+            style={{ fontSize: 11, padding: "2px 4px" }}
+            disabled={!showDensity}
+          >
+            {DENSITY_RES_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {showDensity && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: "#555",
+              writingMode: "vertical-rl",
+              transform: "rotate(180deg)",
+            }}
+          >
+            theta 0..pi
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+            <canvas
+              ref={densityCanvasRef}
+              width={DENSITY_CANVAS_SIZE.width}
+              height={DENSITY_CANVAS_SIZE.height}
+              style={{
+                width: DENSITY_CANVAS_SIZE.width,
+                height: DENSITY_CANVAS_SIZE.height,
+                borderRadius: 6,
+                border: "1px solid #e1e1e6",
+                background: "#f3f4f8",
+              }}
+            />
+            <div style={{ fontSize: 10, color: "#555" }}>phi 0..2pi</div>
+          </div>
+        </div>
+      )}
       <div ref={mountRef} style={{ width: "100%", height, borderRadius: 10, overflow: "hidden" }} />
     </div>
   );
