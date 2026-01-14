@@ -57,26 +57,81 @@ export function buildAdjacencyFromTriangles(
     }
 
     // Non-indexed geometry often duplicates vertices per triangle.
-    // Stitch identical positions so paths can move across triangle boundaries.
-    const eps = 1e-6;
+    // Stitch near-identical positions so paths can move across triangle boundaries.
+    const triSamples = Math.max(1, Math.floor(triCount / 2000));
+    let edgeSum = 0;
+    let edgeCount = 0;
+    for (let t = 0; t < triCount; t += triSamples) {
+      const a = t * 3;
+      const b = a + 1;
+      const c = a + 2;
+      const ax = positions[a * 3];
+      const ay = positions[a * 3 + 1];
+      const az = positions[a * 3 + 2];
+      const bx = positions[b * 3];
+      const by = positions[b * 3 + 1];
+      const bz = positions[b * 3 + 2];
+      const cx = positions[c * 3];
+      const cy = positions[c * 3 + 1];
+      const cz = positions[c * 3 + 2];
+      const ab = Math.hypot(bx - ax, by - ay, bz - az);
+      const bc = Math.hypot(cx - bx, cy - by, cz - bz);
+      const ca = Math.hypot(ax - cx, ay - cy, az - cz);
+      if (Number.isFinite(ab)) {
+        edgeSum += ab;
+        edgeCount++;
+      }
+      if (Number.isFinite(bc)) {
+        edgeSum += bc;
+        edgeCount++;
+      }
+      if (Number.isFinite(ca)) {
+        edgeSum += ca;
+        edgeCount++;
+      }
+    }
+    const avgEdge = edgeCount ? edgeSum / edgeCount : 0;
+    const eps = Math.max(1e-6, avgEdge * 1e-2);
+    const eps2 = eps * eps;
     const buckets = new Map<string, number[]>();
+    const keyFor = (qx: number, qy: number, qz: number) => `${qx}|${qy}|${qz}`;
     for (let i = 0; i < vertexCount; i++) {
       const x = positions[i * 3];
       const y = positions[i * 3 + 1];
       const z = positions[i * 3 + 2];
-      const key =
-        Math.round(x / eps) + "|" + Math.round(y / eps) + "|" + Math.round(z / eps);
+      const qx = Math.round(x / eps);
+      const qy = Math.round(y / eps);
+      const qz = Math.round(z / eps);
+      let matched = -1;
+      for (let dx = -1; dx <= 1 && matched < 0; dx++) {
+        for (let dy = -1; dy <= 1 && matched < 0; dy++) {
+          for (let dz = -1; dz <= 1 && matched < 0; dz++) {
+            const list = buckets.get(keyFor(qx + dx, qy + dy, qz + dz));
+            if (!list) continue;
+            for (let j = 0; j < list.length; j++) {
+              const idx = list[j];
+              const px = positions[idx * 3];
+              const py = positions[idx * 3 + 1];
+              const pz = positions[idx * 3 + 2];
+              const dxp = x - px;
+              const dyp = y - py;
+              const dzp = z - pz;
+              if (dxp * dxp + dyp * dyp + dzp * dzp <= eps2) {
+                matched = idx;
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (matched >= 0) {
+        addEdge(matched, i);
+        addEdge(i, matched);
+      }
+      const key = keyFor(qx, qy, qz);
       const list = buckets.get(key);
       if (list) list.push(i);
       else buckets.set(key, [i]);
-    }
-    for (const list of buckets.values()) {
-      if (list.length < 2) continue;
-      const root = list[0];
-      for (let i = 1; i < list.length; i++) {
-        addEdge(root, list[i]);
-        addEdge(list[i], root);
-      }
     }
   }
 
