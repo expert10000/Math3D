@@ -55,6 +55,29 @@ export function buildAdjacencyFromTriangles(
       addEdge(c, a);
       addEdge(a, c);
     }
+
+    // Non-indexed geometry often duplicates vertices per triangle.
+    // Stitch identical positions so paths can move across triangle boundaries.
+    const eps = 1e-6;
+    const buckets = new Map<string, number[]>();
+    for (let i = 0; i < vertexCount; i++) {
+      const x = positions[i * 3];
+      const y = positions[i * 3 + 1];
+      const z = positions[i * 3 + 2];
+      const key =
+        Math.round(x / eps) + "|" + Math.round(y / eps) + "|" + Math.round(z / eps);
+      const list = buckets.get(key);
+      if (list) list.push(i);
+      else buckets.set(key, [i]);
+    }
+    for (const list of buckets.values()) {
+      if (list.length < 2) continue;
+      const root = list[0];
+      for (let i = 1; i < list.length; i++) {
+        addEdge(root, list[i]);
+        addEdge(list[i], root);
+      }
+    }
   }
 
   const outNeighbors: number[][] = new Array(vertexCount);
