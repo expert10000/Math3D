@@ -399,7 +399,7 @@ function computeImplicitPrincipalAtPoint(
   const root = Math.sqrt(disc);
   const k1 = tr * 0.5 + root;
   const k2 = tr * 0.5 - root;
-  const isUmbilic = Math.abs(k1 - k2) < 1e-3;
+  const isUmbilic = Math.abs(k1 - k2) < 1e-5;
 
   const eigenVec = (k: number) => {
     if (Math.abs(s12) < 1e-10) {
@@ -878,6 +878,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
+  const zoomRestoreRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3 } | null>(null);
+  const zoomedToRegionRef = useRef(false);
+  const zoomTogglePrevRef = useRef(zoomToRegion);
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
@@ -1411,6 +1414,12 @@ useEffect(() => {
     const isImplicitSurface = isImplicitId(surfaceId);
     if (!isGraphSurface && !isImplicitSurface) return;
     if (!showContours || contourCount <= 0) return;
+
+    const maxImplicitVertices = 60000;
+    if (isImplicitSurface && vertexCount > maxImplicitVertices) {
+      principalFieldRef.current = { key, data: null };
+      return null;
+    }
 
     if (isGraphSurface) {
       const f = getGraphF();
@@ -1987,6 +1996,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     cameraRef.current = camera;
     controlsRef.current = controls;
+    zoomRestoreRef.current = null;
+    zoomedToRegionRef.current = false;
+    zoomTogglePrevRef.current = zoomToRegion;
 
     const emitCameraSync = () => {
       if (!isCameraLeader || !onCameraSync) return;
@@ -3208,6 +3220,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const isImmediate = zoomToRegionToken !== zoomNowRef.current;
     if (isImmediate) {
       zoomNowRef.current = zoomToRegionToken;
+      if (zoomedToRegionRef.current && zoomRestoreRef.current) {
+        if (zoomDebounceRef.current) {
+          window.clearTimeout(zoomDebounceRef.current);
+          zoomDebounceRef.current = null;
+        }
+        if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+        const restore = zoomRestoreRef.current;
+        const startPos = cam.position.clone();
+        const startTarget = controls
+          ? controls.target.clone()
+          : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+        const startUp = cam.up.clone();
+        const endPos = restore.position.clone();
+        const endTarget = restore.target.clone();
+        const endUp = restore.up.clone();
+        const startTime = performance.now();
+        const duration = 280;
+        const animate = () => {
+          const now = performance.now();
+          const t = Math.min(1, (now - startTime) / duration);
+          const k = t * (2 - t);
+          cam.position.lerpVectors(startPos, endPos, k);
+          cam.up.lerpVectors(startUp, endUp, k);
+          if (controls) {
+            controls.target.lerpVectors(startTarget, endTarget, k);
+            controls.update();
+          } else {
+            cam.lookAt(endTarget);
+          }
+          cam.updateProjectionMatrix();
+          if (t < 1) {
+            zoomAnimRef.current = requestAnimationFrame(animate);
+          }
+        };
+        zoomAnimRef.current = requestAnimationFrame(animate);
+        zoomRestoreRef.current = null;
+        zoomedToRegionRef.current = false;
+        return;
+      }
     } else if (!zoomToRegion) {
       return;
     }
@@ -3239,12 +3290,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const dist = (radius * padding) / Math.sin(Math.max(1e-3, fov * 0.5));
 
       const startPos = cam.position.clone();
-      const startTarget = controls ? controls.target.clone() : center.clone();
+      const startTarget = controls
+        ? controls.target.clone()
+        : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+      if (!zoomedToRegionRef.current) {
+        zoomRestoreRef.current = {
+          position: cam.position.clone(),
+          target: startTarget.clone(),
+          up: cam.up.clone(),
+        };
+        zoomedToRegionRef.current = true;
+      }
       const viewDir = startPos.clone().sub(startTarget);
       if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
       viewDir.normalize();
       const endPos = center.clone().addScaledVector(viewDir, dist);
 
+      const startUp = cam.up.clone();
+      const endUp = cam.up.clone();
       const startTime = performance.now();
       const duration = 280;
       const animate = () => {
@@ -3252,6 +3315,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const t = Math.min(1, (now - startTime) / duration);
         const k = t * (2 - t);
         cam.position.lerpVectors(startPos, endPos, k);
+        cam.up.lerpVectors(startUp, endUp, k);
         if (controls) {
           controls.target.lerpVectors(startTarget, center, k);
           controls.update();
@@ -3275,6 +3339,55 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
   }, [selectionMask, zoomToRegion, zoomToRegionToken]);
+
+  useEffect(() => {
+    const prev = zoomTogglePrevRef.current;
+    if (prev && !zoomToRegion) {
+      const cam = cameraRef.current;
+      const controls = controlsRef.current;
+      const restore = zoomRestoreRef.current;
+      if (zoomDebounceRef.current) {
+        window.clearTimeout(zoomDebounceRef.current);
+        zoomDebounceRef.current = null;
+      }
+      if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+      if (cam && restore) {
+        const startPos = cam.position.clone();
+        const startTarget = controls
+          ? controls.target.clone()
+          : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+        const startUp = cam.up.clone();
+
+        const endPos = restore.position.clone();
+        const endTarget = restore.target.clone();
+        const endUp = restore.up.clone();
+
+        const startTime = performance.now();
+        const duration = 280;
+        const animate = () => {
+          const now = performance.now();
+          const t = Math.min(1, (now - startTime) / duration);
+          const k = t * (2 - t);
+          cam.position.lerpVectors(startPos, endPos, k);
+          cam.up.lerpVectors(startUp, endUp, k);
+          if (controls) {
+            controls.target.lerpVectors(startTarget, endTarget, k);
+            controls.update();
+          } else {
+            cam.lookAt(endTarget);
+          }
+          cam.updateProjectionMatrix();
+          if (t < 1) {
+            zoomAnimRef.current = requestAnimationFrame(animate);
+          }
+        };
+        zoomAnimRef.current = requestAnimationFrame(animate);
+      }
+      zoomRestoreRef.current = null;
+      zoomedToRegionRef.current = false;
+    }
+    zoomTogglePrevRef.current = zoomToRegion;
+  }, [zoomToRegion]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -3344,6 +3457,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     let implicitF: ((x: number, y: number, z: number) => number) | null = null;
     let implicitSize: number | null = null;
+    let implicitFromMeta = false;
     if (isImplicitSurface) {
       const root = surfaceObjRef.current as THREE.Object3D | null;
       if (root) {
@@ -3515,18 +3629,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     let geometry: THREE.BufferGeometry | null = null;
     let implicitF: ((x: number, y: number, z: number) => number) | null = null;
     let implicitSize: number | null = null;
+    let implicitFromMeta = false;
 
     if (isImplicitSurface) {
       root.traverse((obj) => {
-        if (geometry) return;
         const anyObj = obj as any;
-        if (anyObj?.isMarchingCubes) {
+        const meta = anyObj?.userData?.__implicit as
+          | { f: (x: number, y: number, z: number) => number; size?: number }
+          | undefined;
+        if (!geometry && anyObj?.isMesh && anyObj.geometry) {
           geometry = anyObj.geometry as THREE.BufferGeometry;
-          const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
-          if (meta?.f) {
-            implicitF = meta.f;
-            if (typeof meta.size === "number") implicitSize = meta.size;
-          }
+        }
+        if (meta?.f) {
+          implicitF = meta.f;
+          if (typeof meta.size === "number") implicitSize = meta.size;
+          implicitFromMeta = true;
         }
       });
       if (!implicitF) {
@@ -3553,7 +3670,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       principalFieldRef.current = { key, data: null };
       return null;
     }
-    const positions = posAttr.array as Float32Array;
+    let positions = posAttr.array as Float32Array;
+    let vertexCount = posAttr.count;
 
     let normalAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
     if (!normalAttr) {
@@ -3566,7 +3684,34 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     const normals = normalAttr.array as Float32Array;
 
-    const vertexCount = posAttr.count;
+    let decimatedImplicit = false;
+    if (isImplicitSurface) {
+      const maxImplicitVertices = 200000;
+      const targetImplicitVertices = 20000;
+      if (vertexCount > maxImplicitVertices) {
+        principalFieldRef.current = { key, data: null };
+        return null;
+      }
+      if (vertexCount > targetImplicitVertices) {
+        const stride = Math.max(1, Math.ceil(vertexCount / targetImplicitVertices));
+        const indices: number[] = [];
+        for (let i = 0; i < vertexCount; i += stride) indices.push(i);
+        const newCount = indices.length;
+        const positionsSub = new Float32Array(newCount * 3);
+        for (let i = 0; i < newCount; i++) {
+          const srcIdx = indices[i] * 3;
+          const dstIdx = i * 3;
+          positionsSub[dstIdx] = positions[srcIdx];
+          positionsSub[dstIdx + 1] = positions[srcIdx + 1];
+          positionsSub[dstIdx + 2] = positions[srcIdx + 2];
+        }
+        positions = positionsSub;
+        vertexCount = newCount;
+        decimatedImplicit = true;
+      }
+    }
+
+    const normalsOut = isImplicitSurface ? new Float32Array(vertexCount * 3) : normals;
     const k1 = new Float32Array(vertexCount);
     const k2 = new Float32Array(vertexCount);
     const d1 = new Float32Array(vertexCount * 3);
@@ -3627,15 +3772,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         d2[nIdx + 2] = res.dir2.z;
       }
     } else if (isImplicitSurface && implicitF) {
-      const size = implicitSize ?? radiusRef.current ?? 3;
-      const implicitH = Math.max(1e-4, size / Math.max(12, implicitResolution));
+      const baseSize = implicitSize ?? radiusRef.current ?? 3;
+      const sizeForDeriv = implicitFromMeta ? 1 : baseSize;
+      const implicitH = Math.max(
+        1e-4,
+        Math.min(sizeForDeriv / Math.max(80, implicitResolution * 2), sizeForDeriv * 0.05)
+      );
+      const fEval = implicitFromMeta && implicitSize
+        ? (x: number, y: number, z: number) => implicitF!(x * implicitSize!, y * implicitSize!, z * implicitSize!)
+        : implicitF;
+      const timeStart = performance.now();
+      const timeBudget = 140;
       const tmpPoint = new THREE.Vector3();
       for (let i = 0; i < vertexCount; i++) {
+        if (i % 200 === 0 && performance.now() - timeStart > timeBudget) {
+          principalFieldRef.current = { key, data: null };
+          return null;
+        }
         const idx = i * 3;
         const px = positions[idx];
         const py = positions[idx + 1];
         const pz = positions[idx + 2];
-        const res = computeImplicitPrincipalAtPoint(implicitF, tmpPoint.set(px, py, pz), implicitH);
+        const v = fEval(px, py, pz);
+        const voxel = 2 / Math.max(2, implicitResolution - 1);
+        const tol = implicitFromMeta ? Math.max(1e-3, voxel * 2.5) : Math.max(1e-3, implicitH * 3);
+        if (!Number.isFinite(v) || Math.abs(v) > tol) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          normalsOut[idx] = NaN;
+          normalsOut[idx + 1] = NaN;
+          normalsOut[idx + 2] = NaN;
+          continue;
+        }
+        const res = computeImplicitPrincipalAtPoint(fEval, tmpPoint.set(px, py, pz), implicitH);
         if (!res || res.isUmbilic) {
           k1[i] = NaN;
           k2[i] = NaN;
@@ -3647,19 +3822,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           d2[idx + 2] = NaN;
           continue;
         }
-        const nx = normals[idx];
-        const ny = normals[idx + 1];
-        const nz = normals[idx + 2];
-        let k1v = res.k1;
-        let k2v = res.k2;
-        if (res.normal.x * nx + res.normal.y * ny + res.normal.z * nz < 0) {
-          res.dir1.negate();
-          res.dir2.negate();
-          k1v = -k1v;
-          k2v = -k2v;
-        }
-        k1[i] = k1v;
-        k2[i] = k2v;
+        normalsOut[idx] = res.normal.x;
+        normalsOut[idx + 1] = res.normal.y;
+        normalsOut[idx + 2] = res.normal.z;
+        k1[i] = res.k1;
+        k2[i] = res.k2;
         d1[idx] = res.dir1.x;
         d1[idx + 1] = res.dir1.y;
         d1[idx + 2] = res.dir1.z;
@@ -3672,8 +3839,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return null;
     }
 
-    const index = geometry.getIndex() ? geometry.getIndex()!.array : null;
-    const data: PrincipalField = { positions, normals, k1, k2, d1, d2, vertexCount, index };
+    const index = decimatedImplicit ? null : geometry.getIndex() ? geometry.getIndex()!.array : null;
+    const data: PrincipalField = { positions, normals: normalsOut, k1, k2, d1, d2, vertexCount, index };
     principalFieldRef.current = { key, data };
     return data;
   };
@@ -3691,19 +3858,235 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!showCurvatureLines) return;
 
-    const field = getPrincipalField();
+    const isImplicitSurface = isImplicitId(surfaceId);
+    let field = getPrincipalField();
+    if (isImplicitSurface) {
+      const sampleSet = sampleSetRef.current;
+      if (sampleSet?.samples.length) {
+        let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+        let implicitSize: number | null = null;
+        let implicitFromMeta = false;
+        const root = surfaceObjRef.current as THREE.Object3D | null;
+        if (root) {
+          root.traverse((obj) => {
+            if (implicitF) return;
+            const meta = (obj as any)?.userData?.__implicit as
+              | { f: (x: number, y: number, z: number) => number; size?: number }
+              | undefined;
+            if (meta?.f) {
+              implicitF = meta.f;
+              if (typeof meta.size === "number") implicitSize = meta.size;
+              implicitFromMeta = true;
+            }
+          });
+        }
+        if (!implicitF) {
+          const fallback = getImplicitFallback(surfaceId);
+          if (fallback) implicitF = fallback;
+        }
+        if (implicitF) {
+          const count = sampleSet.samples.length;
+          const positions = new Float32Array(count * 3);
+          const normals = new Float32Array(count * 3);
+          const d1 = new Float32Array(count * 3);
+          const d2 = new Float32Array(count * 3);
+          const baseSize = implicitSize ?? radiusRef.current ?? 3;
+          const sizeForDeriv = implicitFromMeta ? 1 : baseSize;
+          const implicitH = Math.max(
+            1e-4,
+            Math.min(sizeForDeriv / Math.max(80, implicitResolution * 2), sizeForDeriv * 0.05)
+          );
+          const fEval = implicitFromMeta && implicitSize
+            ? (x: number, y: number, z: number) => implicitF!(x * implicitSize!, y * implicitSize!, z * implicitSize!)
+            : implicitF!;
+          const voxel = 2 / Math.max(2, implicitResolution - 1);
+          let tol = Math.max(1e-3, implicitH * 3);
+          if (implicitFromMeta) {
+            tol = Math.max(tol, voxel * 2.5);
+          } else {
+            tol = Math.max(tol, implicitH * 6);
+          }
+          const tmpPoint = new THREE.Vector3();
+          for (let i = 0; i < count; i++) {
+            const sample = sampleSet.samples[i];
+            const idx = i * 3;
+            positions[idx] = sample.position.x;
+            positions[idx + 1] = sample.position.y;
+            positions[idx + 2] = sample.position.z;
+            const v = fEval(sample.position.x, sample.position.y, sample.position.z);
+            if (!Number.isFinite(v) || Math.abs(v) > tol) {
+              normals[idx] = NaN;
+              normals[idx + 1] = NaN;
+              normals[idx + 2] = NaN;
+              d1[idx] = NaN;
+              d1[idx + 1] = NaN;
+              d1[idx + 2] = NaN;
+              d2[idx] = NaN;
+              d2[idx + 1] = NaN;
+              d2[idx + 2] = NaN;
+              continue;
+            }
+            const res = computeImplicitPrincipalAtPoint(fEval, tmpPoint.copy(sample.position), implicitH);
+            if (!res || res.isUmbilic) {
+              normals[idx] = NaN;
+              normals[idx + 1] = NaN;
+              normals[idx + 2] = NaN;
+              d1[idx] = NaN;
+              d1[idx + 1] = NaN;
+              d1[idx + 2] = NaN;
+              d2[idx] = NaN;
+              d2[idx + 1] = NaN;
+              d2[idx + 2] = NaN;
+              continue;
+            }
+            normals[idx] = res.normal.x;
+            normals[idx + 1] = res.normal.y;
+            normals[idx + 2] = res.normal.z;
+            d1[idx] = res.dir1.x;
+            d1[idx + 1] = res.dir1.y;
+            d1[idx + 2] = res.dir1.z;
+            d2[idx] = res.dir2.x;
+            d2[idx + 1] = res.dir2.y;
+            d2[idx + 2] = res.dir2.z;
+          }
+          field = {
+            positions,
+            normals,
+            d1,
+            d2,
+            k1: new Float32Array(count),
+            k2: new Float32Array(count),
+            vertexCount: count,
+            index: null,
+          };
+        }
+      }
+    }
     if (!field) return;
 
     const { positions, normals, d1, d2, vertexCount, index } = field;
-    const neighbors = buildVertexAdjacency(index, vertexCount);
+    const buildSpatialAdjacency = (pos: Float32Array, count: number) => {
+      const neighbors: Set<number>[] = Array.from({ length: count }, () => new Set<number>());
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        const x = pos[idx];
+        const y = pos[idx + 1];
+        const z = pos[idx + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (z < minZ) minZ = z;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+        if (z > maxZ) maxZ = z;
+      }
+      const dx = maxX - minX;
+      const dy = maxY - minY;
+      const dz = maxZ - minZ;
+      const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      let spacing = Number.isFinite(diag) && diag > 0 ? diag / Math.sqrt(count) : 0;
+      if (!Number.isFinite(spacing) || spacing <= 0) spacing = 0.05;
+      const cellSize = Math.max(1e-6, spacing * 1.6);
+      const radius = Math.max(1e-6, spacing * 2.6);
+      const radius2 = radius * radius;
+      const buckets = new Map<string, number[]>();
+      const keyOf = (x: number, y: number, z: number) => {
+        const ix = Math.floor((x - minX) / cellSize);
+        const iy = Math.floor((y - minY) / cellSize);
+        const iz = Math.floor((z - minZ) / cellSize);
+        return `${ix},${iy},${iz}`;
+      };
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        const x = pos[idx];
+        const y = pos[idx + 1];
+        const z = pos[idx + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        const key = keyOf(x, y, z);
+        const list = buckets.get(key);
+        if (list) list.push(i);
+        else buckets.set(key, [i]);
+      }
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        const x = pos[idx];
+        const y = pos[idx + 1];
+        const z = pos[idx + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        const ix = Math.floor((x - minX) / cellSize);
+        const iy = Math.floor((y - minY) / cellSize);
+        const iz = Math.floor((z - minZ) / cellSize);
+        for (let gx = -1; gx <= 1; gx++) {
+          for (let gy = -1; gy <= 1; gy++) {
+            for (let gz = -1; gz <= 1; gz++) {
+              const key = `${ix + gx},${iy + gy},${iz + gz}`;
+              const list = buckets.get(key);
+              if (!list) continue;
+              for (let k = 0; k < list.length; k++) {
+                const j = list[k];
+                if (j === i) continue;
+                const jIdx = j * 3;
+                const dx = pos[jIdx] - x;
+                const dy = pos[jIdx + 1] - y;
+                const dz = pos[jIdx + 2] - z;
+                const d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 <= radius2) {
+                  neighbors[i].add(j);
+                  neighbors[j].add(i);
+                }
+              }
+            }
+          }
+        }
+      }
+      return { neighbors: neighbors.map((s) => Array.from(s)), spacing };
+    };
+    let neighbors: number[][];
+    let neighborSpacing = 0;
+    if (isImplicitSurface && !index) {
+      const built = buildSpatialAdjacency(positions, vertexCount);
+      neighbors = built.neighbors;
+      neighborSpacing = built.spacing;
+    } else {
+      neighbors = buildVertexAdjacency(index, vertexCount, positions);
+    }
     const dirField = curvatureLineField === "d2" ? d2 : d1;
-    const maxSteps = Math.max(10, Math.floor(curvatureMaxSteps));
-    const maxLines = Math.max(1, Math.floor(curvatureMaxLines));
-    const stride = Math.max(1, Math.floor(curvatureSeedDensity));
+    const maxStepsRaw = Math.max(10, Math.floor(curvatureMaxSteps));
+    const maxLinesRaw = Math.max(1, Math.floor(curvatureMaxLines));
+    const maxSteps = isImplicitSurface ? Math.min(maxStepsRaw, 320) : maxStepsRaw;
+    const maxLines = isImplicitSurface ? Math.min(maxLinesRaw, 220) : maxLinesRaw;
+    const baseStride = Math.max(1, Math.floor(curvatureSeedDensity));
+    const stride = isImplicitSurface && neighborSpacing > 0 ? Math.max(1, Math.floor(baseStride * 0.4)) : baseStride;
     const bboxDiag = (radiusRef.current || 3) * 2;
-    const stepSize = curvatureStepSize > 0 ? curvatureStepSize : Math.max(1e-4, bboxDiag / 200);
+    let stepSize = curvatureStepSize > 0 ? curvatureStepSize : Math.max(1e-4, bboxDiag / 200);
+    if (neighborSpacing > 0) {
+      stepSize = Math.max(stepSize, neighborSpacing * 0.8);
+    }
 
     const seeds: number[] = [];
+    const isValidDir = (idx: number) => {
+      const nIdx = idx * 3;
+      const nx = normals[nIdx];
+      const ny = normals[nIdx + 1];
+      const nz = normals[nIdx + 2];
+      const dx = dirField[nIdx];
+      const dy = dirField[nIdx + 1];
+      const dz = dirField[nIdx + 2];
+      return (
+        Number.isFinite(nx) &&
+        Number.isFinite(ny) &&
+        Number.isFinite(nz) &&
+        Number.isFinite(dx) &&
+        Number.isFinite(dy) &&
+        Number.isFinite(dz)
+      );
+    };
     const visited = new Set<number>();
     const sampleSet = sampleSetRef.current;
     const canUseSelection = curvatureSeedSource === "selection" && selectionMask?.count && sampleSet?.samples.length;
@@ -3732,18 +4115,32 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const sample = sampleSet.samples[i];
         if (!sample) continue;
         const seed = findNearestVertex(sample.position.x, sample.position.y, sample.position.z);
-        seeds.push(seed);
+        if (isValidDir(seed)) {
+          seeds.push(seed);
+        }
       }
     }
 
     if (!seeds.length) {
       for (let i = 0; i < vertexCount && seeds.length < maxLines; i += stride) {
-        seeds.push(i);
+        if (isValidDir(i)) {
+          seeds.push(i);
+        }
+      }
+    }
+    if (!seeds.length) {
+      for (let i = 0; i < vertexCount && seeds.length < maxLines; i++) {
+        if (isValidDir(i)) {
+          seeds.push(i);
+        }
       }
     }
 
     const paths: number[][] = [];
+    const timeStart = performance.now();
+    const timeBudget = isImplicitSurface ? 200 : 180;
     for (let i = 0; i < seeds.length && paths.length < maxLines; i++) {
+      if (performance.now() - timeStart > timeBudget) break;
       const seed = seeds[i];
       if (visited.has(seed)) continue;
       const path = traceStreamlineBidirectional({
@@ -3754,6 +4151,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         neighbors,
         maxSteps,
         stepSize,
+        minCos: isImplicitSurface ? 0.05 : undefined,
       });
       if (path.length < 2) continue;
       paths.push(path);

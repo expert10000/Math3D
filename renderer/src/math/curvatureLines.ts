@@ -107,7 +107,11 @@ export function traceStreamlineBidirectional(params: TraceStreamlineParams): num
   return [...backRev, ...fwd];
 }
 
-export function buildVertexAdjacency(index: ArrayLike<number> | null, vertexCount: number): number[][] {
+export function buildVertexAdjacency(
+  index: ArrayLike<number> | null,
+  vertexCount: number,
+  positions?: Float32Array
+): number[][] {
   const neighbors: Set<number>[] = Array.from({ length: vertexCount }, () => new Set<number>());
   const addEdge = (a: number, b: number) => {
     if (a === b) return;
@@ -124,6 +128,125 @@ export function buildVertexAdjacency(index: ArrayLike<number> | null, vertexCoun
       addEdge(a, b);
       addEdge(b, c);
       addEdge(c, a);
+    }
+  } else if (positions && positions.length >= vertexCount * 3) {
+    const triCount = Math.floor(vertexCount / 3);
+    for (let t = 0; t < triCount; t++) {
+      const a = t * 3;
+      const b = t * 3 + 1;
+      const c = t * 3 + 2;
+      addEdge(a, b);
+      addEdge(b, c);
+      addEdge(c, a);
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+
+    for (let i = 0; i < vertexCount; i++) {
+      const idx = i * 3;
+      const x = positions[idx];
+      const y = positions[idx + 1];
+      const z = positions[idx + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+
+    let spacing = 0;
+    if (triCount > 0) {
+      const sampleCount = Math.min(triCount, 5000);
+      let sum = 0;
+      let edges = 0;
+      for (let t = 0; t < sampleCount; t++) {
+        const a = t * 3;
+        const b = t * 3 + 1;
+        const c = t * 3 + 2;
+        const ax = positions[a * 3], ay = positions[a * 3 + 1], az = positions[a * 3 + 2];
+        const bx = positions[b * 3], by = positions[b * 3 + 1], bz = positions[b * 3 + 2];
+        const cx = positions[c * 3], cy = positions[c * 3 + 1], cz = positions[c * 3 + 2];
+        const ab = Math.hypot(ax - bx, ay - by, az - bz);
+        const bc = Math.hypot(bx - cx, by - cy, bz - cz);
+        const ca = Math.hypot(cx - ax, cy - ay, cz - az);
+        if (Number.isFinite(ab)) { sum += ab; edges++; }
+        if (Number.isFinite(bc)) { sum += bc; edges++; }
+        if (Number.isFinite(ca)) { sum += ca; edges++; }
+      }
+      if (edges > 0) spacing = Math.max(1e-6, sum / edges);
+    }
+
+    if (spacing <= 0) {
+      const dx = maxX - minX;
+      const dy = maxY - minY;
+      const dz = maxZ - minZ;
+      const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      spacing =
+        Number.isFinite(diag) && diag > 0 ? Math.max(1e-6, diag / Math.sqrt(vertexCount)) : 0;
+    }
+    const cellSize = Math.max(1e-6, spacing * 1.6);
+    const radius = Math.max(1e-6, spacing * 2.6);
+    const radius2 = radius * radius;
+
+    if (spacing <= 0 || !Number.isFinite(spacing)) {
+      // fall back to only triangle-local adjacency
+    } else {
+      const buckets = new Map<string, number[]>();
+      const keyOf = (x: number, y: number, z: number) => {
+        const ix = Math.floor((x - minX) / cellSize);
+        const iy = Math.floor((y - minY) / cellSize);
+        const iz = Math.floor((z - minZ) / cellSize);
+        return `${ix},${iy},${iz}`;
+      };
+
+      for (let i = 0; i < vertexCount; i++) {
+        const idx = i * 3;
+        const x = positions[idx];
+        const y = positions[idx + 1];
+        const z = positions[idx + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        const key = keyOf(x, y, z);
+        const list = buckets.get(key);
+        if (list) list.push(i);
+        else buckets.set(key, [i]);
+      }
+
+      for (let i = 0; i < vertexCount; i++) {
+        const idx = i * 3;
+        const x = positions[idx];
+        const y = positions[idx + 1];
+        const z = positions[idx + 2];
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+        const ix = Math.floor((x - minX) / cellSize);
+        const iy = Math.floor((y - minY) / cellSize);
+        const iz = Math.floor((z - minZ) / cellSize);
+        for (let gx = -1; gx <= 1; gx++) {
+          for (let gy = -1; gy <= 1; gy++) {
+            for (let gz = -1; gz <= 1; gz++) {
+              const key = `${ix + gx},${iy + gy},${iz + gz}`;
+              const list = buckets.get(key);
+              if (!list) continue;
+              for (let k = 0; k < list.length; k++) {
+                const j = list[k];
+                if (j === i) continue;
+                const jIdx = j * 3;
+                const dx = positions[jIdx] - x;
+                const dy = positions[jIdx + 1] - y;
+                const dz = positions[jIdx + 2] - z;
+                const d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 <= radius2) addEdge(i, j);
+              }
+            }
+          }
+        }
+      }
     }
   } else {
     const triCount = Math.floor(vertexCount / 3);

@@ -1062,6 +1062,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
+  const zoomRestoreRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3 } | null>(null);
+  const zoomedToRegionRef = useRef(false);
+  const zoomTogglePrevRef = useRef(zoomToRegion);
   const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
@@ -1714,6 +1717,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     cameraRef.current = camera;
     controlsRef.current = controls;
+    zoomRestoreRef.current = null;
+    zoomedToRegionRef.current = false;
+    zoomTogglePrevRef.current = zoomToRegion;
 
     const emitCameraSync = () => {
       if (!isCameraLeader || !onCameraSync) return;
@@ -2813,6 +2819,45 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const isImmediate = zoomToRegionToken !== zoomNowRef.current;
     if (isImmediate) {
       zoomNowRef.current = zoomToRegionToken;
+      if (zoomedToRegionRef.current && zoomRestoreRef.current) {
+        if (zoomDebounceRef.current) {
+          window.clearTimeout(zoomDebounceRef.current);
+          zoomDebounceRef.current = null;
+        }
+        if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+        const restore = zoomRestoreRef.current;
+        const startPos = cam.position.clone();
+        const startTarget = controls
+          ? controls.target.clone()
+          : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+        const startUp = cam.up.clone();
+        const endPos = restore.position.clone();
+        const endTarget = restore.target.clone();
+        const endUp = restore.up.clone();
+        const startTime = performance.now();
+        const duration = 280;
+        const animate = () => {
+          const now = performance.now();
+          const t = Math.min(1, (now - startTime) / duration);
+          const k = t * (2 - t);
+          cam.position.lerpVectors(startPos, endPos, k);
+          cam.up.lerpVectors(startUp, endUp, k);
+          if (controls) {
+            controls.target.lerpVectors(startTarget, endTarget, k);
+            controls.update();
+          } else {
+            cam.lookAt(endTarget);
+          }
+          cam.updateProjectionMatrix();
+          if (t < 1) {
+            zoomAnimRef.current = requestAnimationFrame(animate);
+          }
+        };
+        zoomAnimRef.current = requestAnimationFrame(animate);
+        zoomRestoreRef.current = null;
+        zoomedToRegionRef.current = false;
+        return;
+      }
     } else if (!zoomToRegion) {
       return;
     }
@@ -2844,12 +2889,24 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const dist = (radius * padding) / Math.sin(Math.max(1e-3, fov * 0.5));
 
       const startPos = cam.position.clone();
-      const startTarget = controls ? controls.target.clone() : center.clone();
+      const startTarget = controls
+        ? controls.target.clone()
+        : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+      if (!zoomedToRegionRef.current) {
+        zoomRestoreRef.current = {
+          position: cam.position.clone(),
+          target: startTarget.clone(),
+          up: cam.up.clone(),
+        };
+        zoomedToRegionRef.current = true;
+      }
       const viewDir = startPos.clone().sub(startTarget);
       if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
       viewDir.normalize();
       const endPos = center.clone().addScaledVector(viewDir, dist);
 
+      const startUp = cam.up.clone();
+      const endUp = cam.up.clone();
       const startTime = performance.now();
       const duration = 280;
       const animate = () => {
@@ -2857,6 +2914,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         const t = Math.min(1, (now - startTime) / duration);
         const k = t * (2 - t);
         cam.position.lerpVectors(startPos, endPos, k);
+        cam.up.lerpVectors(startUp, endUp, k);
         if (controls) {
           controls.target.lerpVectors(startTarget, center, k);
           controls.update();
@@ -2880,6 +2938,55 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
   }, [selectionMask, zoomToRegion, zoomToRegionToken]);
+
+  useEffect(() => {
+    const prev = zoomTogglePrevRef.current;
+    if (prev && !zoomToRegion) {
+      const cam = cameraRef.current;
+      const controls = controlsRef.current;
+      const restore = zoomRestoreRef.current;
+      if (zoomDebounceRef.current) {
+        window.clearTimeout(zoomDebounceRef.current);
+        zoomDebounceRef.current = null;
+      }
+      if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+      if (cam && restore) {
+        const startPos = cam.position.clone();
+        const startTarget = controls
+          ? controls.target.clone()
+          : cam.position.clone().add(cam.getWorldDirection(new THREE.Vector3()));
+        const startUp = cam.up.clone();
+
+        const endPos = restore.position.clone();
+        const endTarget = restore.target.clone();
+        const endUp = restore.up.clone();
+
+        const startTime = performance.now();
+        const duration = 280;
+        const animate = () => {
+          const now = performance.now();
+          const t = Math.min(1, (now - startTime) / duration);
+          const k = t * (2 - t);
+          cam.position.lerpVectors(startPos, endPos, k);
+          cam.up.lerpVectors(startUp, endUp, k);
+          if (controls) {
+            controls.target.lerpVectors(startTarget, endTarget, k);
+            controls.update();
+          } else {
+            cam.lookAt(endTarget);
+          }
+          cam.updateProjectionMatrix();
+          if (t < 1) {
+            zoomAnimRef.current = requestAnimationFrame(animate);
+          }
+        };
+        zoomAnimRef.current = requestAnimationFrame(animate);
+      }
+      zoomRestoreRef.current = null;
+      zoomedToRegionRef.current = false;
+    }
+    zoomTogglePrevRef.current = zoomToRegion;
+  }, [zoomToRegion]);
 
   useEffect(() => {
     const st = viewerRef.current;
@@ -3030,9 +3137,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const getPrincipalField = () => {
     const key = [
       surfaceId,
-      paramXExpr ?? "",
-      paramYExpr ?? "",
-      paramZExpr ?? "",
+      customX ?? "",
+      customY ?? "",
+      customZ ?? "",
       paramDomain?.uMin ?? "",
       paramDomain?.uMax ?? "",
       paramDomain?.vMin ?? "",
@@ -3139,7 +3246,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (!field) return;
 
     const { positions, normals, d1, d2, vertexCount, index } = field;
-    const neighbors = buildVertexAdjacency(index, vertexCount);
+    const neighbors = buildVertexAdjacency(index, vertexCount, positions);
     const dirField = curvatureLineField === "d2" ? d2 : d1;
     const maxSteps = Math.max(10, Math.floor(curvatureMaxSteps));
     const maxLines = Math.max(1, Math.floor(curvatureMaxLines));
@@ -3232,9 +3339,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     curvatureRebuildToken,
     selectionMask,
     surfaceId,
-    paramXExpr,
-    paramYExpr,
-    paramZExpr,
+    customX,
+    customY,
+    customZ,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -3365,9 +3472,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     ridgeValleySampleMode,
     selectionMask,
     surfaceId,
-    paramXExpr,
-    paramYExpr,
-    paramZExpr,
+    customX,
+    customY,
+    customZ,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
