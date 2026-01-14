@@ -16,6 +16,7 @@
 - Inspect picks now place the marker at the clicked surface point even when sampling stats from the nearest vertex.
 - Added curvature line streamlines that follow principal direction fields (d1/d2) with controls for field, seeding, and step limits.
 - Added ridge/valley overlays (local extrema of k1/k2 along d1/d2) with thresholds for magnitude, contrast, and direction alignment.
+- Added geodesic disk selection (intrinsic radius) plus zoom-to-region controls in the selection panel.
 
 ## Build the renderer into /dist
 
@@ -108,6 +109,11 @@ and editable.
 
 - Enable "Ridges / Valleys" to draw short segments at vertices where k1 is locally maximal along d1 (ridges) or k2 is locally minimal along d2 (valleys).
 - Controls include magnitude/contrast thresholds, direction alignment (minCos), segment length, sampling density, and optional selection-only filtering.
+
+### Geodesic disk selection
+
+- Selection mode now supports Euclidean ball or geodesic disk (intrinsic shortest-path radius on the mesh).
+- When enabled, "Zoom to region" smoothly frames the current selection with a debounced camera fit.
 
 ### Inspect tool
 
