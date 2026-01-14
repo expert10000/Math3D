@@ -15,6 +15,7 @@
 - Added a Gauss-map density heatmap (S²) for selected or all normals, rendered as a compact equirectangular inset with optional smoothing.
 - Inspect picks now place the marker at the clicked surface point even when sampling stats from the nearest vertex.
 - Added curvature line streamlines that follow principal direction fields (d1/d2) with controls for field, seeding, and step limits.
+- Added ridge/valley overlays (local extrema of k1/k2 along d1/d2) with thresholds for magnitude, contrast, and direction alignment.
 
 ## Build the renderer into /dist
 
@@ -102,6 +103,11 @@ and editable.
 
 - Enable "Curvature lines" to draw streamline overlays that follow the principal direction field (d1 or d2).
 - Seeds can come from a global grid or the active selection region, and density/step/length caps keep the overlay stable.
+
+### Ridges / valleys
+
+- Enable "Ridges / Valleys" to draw short segments at vertices where k1 is locally maximal along d1 (ridges) or k2 is locally minimal along d2 (valleys).
+- Controls include magnitude/contrast thresholds, direction alignment (minCos), segment length, sampling density, and optional selection-only filtering.
 
 ### Inspect tool
 
