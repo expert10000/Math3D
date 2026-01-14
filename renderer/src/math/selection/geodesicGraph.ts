@@ -91,47 +91,88 @@ export function buildAdjacencyFromTriangles(
       }
     }
     const avgEdge = edgeCount ? edgeSum / edgeCount : 0;
-    const eps = Math.max(1e-6, avgEdge * 1e-2);
-    const eps2 = eps * eps;
-    const buckets = new Map<string, number[]>();
-    const keyFor = (qx: number, qy: number, qz: number) => `${qx}|${qy}|${qz}`;
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
     for (let i = 0; i < vertexCount; i++) {
       const x = positions[i * 3];
       const y = positions[i * 3 + 1];
       const z = positions[i * 3 + 2];
-      const qx = Math.round(x / eps);
-      const qy = Math.round(y / eps);
-      const qz = Math.round(z / eps);
-      let matched = -1;
-      for (let dx = -1; dx <= 1 && matched < 0; dx++) {
-        for (let dy = -1; dy <= 1 && matched < 0; dy++) {
-          for (let dz = -1; dz <= 1 && matched < 0; dz++) {
-            const list = buckets.get(keyFor(qx + dx, qy + dy, qz + dz));
-            if (!list) continue;
-            for (let j = 0; j < list.length; j++) {
-              const idx = list[j];
-              const px = positions[idx * 3];
-              const py = positions[idx * 3 + 1];
-              const pz = positions[idx * 3 + 2];
-              const dxp = x - px;
-              const dyp = y - py;
-              const dzp = z - pz;
-              if (dxp * dxp + dyp * dyp + dzp * dzp <= eps2) {
-                matched = idx;
-                break;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+    const diag = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
+    const baseEps = Math.max(1e-6, avgEdge * 1e-2, diag * 1e-4);
+    const maxEps = Math.max(baseEps, avgEdge * 0.25, diag * 1e-3);
+
+    const countLowDegree = () => {
+      let low = 0;
+      for (let i = 0; i < vertexCount; i++) {
+        if (neighbors[i].size <= 2) low++;
+      }
+      return low;
+    };
+
+    const stitchWithEps = (eps: number) => {
+      const eps2 = eps * eps;
+      const buckets = new Map<string, number[]>();
+      const keyFor = (qx: number, qy: number, qz: number) => `${qx}|${qy}|${qz}`;
+      for (let i = 0; i < vertexCount; i++) {
+        const x = positions[i * 3];
+        const y = positions[i * 3 + 1];
+        const z = positions[i * 3 + 2];
+        const qx = Math.round(x / eps);
+        const qy = Math.round(y / eps);
+        const qz = Math.round(z / eps);
+        let matched = -1;
+        for (let dx = -1; dx <= 1 && matched < 0; dx++) {
+          for (let dy = -1; dy <= 1 && matched < 0; dy++) {
+            for (let dz = -1; dz <= 1 && matched < 0; dz++) {
+              const list = buckets.get(keyFor(qx + dx, qy + dy, qz + dz));
+              if (!list) continue;
+              for (let j = 0; j < list.length; j++) {
+                const idx = list[j];
+                const px = positions[idx * 3];
+                const py = positions[idx * 3 + 1];
+                const pz = positions[idx * 3 + 2];
+                const dxp = x - px;
+                const dyp = y - py;
+                const dzp = z - pz;
+                if (dxp * dxp + dyp * dyp + dzp * dzp <= eps2) {
+                  matched = idx;
+                  break;
+                }
               }
             }
           }
         }
+        if (matched >= 0) {
+          addEdge(matched, i);
+          addEdge(i, matched);
+        }
+        const key = keyFor(qx, qy, qz);
+        const list = buckets.get(key);
+        if (list) list.push(i);
+        else buckets.set(key, [i]);
       }
-      if (matched >= 0) {
-        addEdge(matched, i);
-        addEdge(i, matched);
-      }
-      const key = keyFor(qx, qy, qz);
-      const list = buckets.get(key);
-      if (list) list.push(i);
-      else buckets.set(key, [i]);
+    };
+
+    const epsSteps = [baseEps, baseEps * 5, baseEps * 20];
+    let lastEps = 0;
+    for (let i = 0; i < epsSteps.length; i++) {
+      const eps = Math.min(epsSteps[i], maxEps);
+      if (eps <= lastEps) continue;
+      stitchWithEps(eps);
+      lastEps = eps;
+      const lowFraction = countLowDegree() / vertexCount;
+      if (lowFraction < 0.4) break;
     }
   }
 
