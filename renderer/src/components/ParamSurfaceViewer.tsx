@@ -2810,9 +2810,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const sampleSet = sampleSetRef.current;
     if (!cam || !sampleSet || !selectionMask?.count) return;
 
-    const isImmediate = zoomNowToken !== zoomNowRef.current;
+    const isImmediate = zoomToRegionToken !== zoomNowRef.current;
     if (isImmediate) {
-      zoomNowRef.current = zoomNowToken;
+      zoomNowRef.current = zoomToRegionToken;
     } else if (!zoomToRegion) {
       return;
     }
@@ -2879,7 +2879,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         zoomDebounceRef.current = null;
       }
     };
-  }, [selectionMask, zoomToRegion, zoomNowToken]);
+  }, [selectionMask, zoomToRegion, zoomToRegionToken]);
 
   useEffect(() => {
     const st = viewerRef.current;

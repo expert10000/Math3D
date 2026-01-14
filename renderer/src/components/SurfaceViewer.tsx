@@ -3205,9 +3205,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const sampleSet = sampleSetRef.current;
     if (!cam || !sampleSet || !selectionMask?.count) return;
 
-    const isImmediate = zoomNowToken !== zoomNowRef.current;
+    const isImmediate = zoomToRegionToken !== zoomNowRef.current;
     if (isImmediate) {
-      zoomNowRef.current = zoomNowToken;
+      zoomNowRef.current = zoomToRegionToken;
     } else if (!zoomToRegion) {
       return;
     }
@@ -3274,7 +3274,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         zoomDebounceRef.current = null;
       }
     };
-  }, [selectionMask, zoomToRegion, zoomNowToken]);
+  }, [selectionMask, zoomToRegion, zoomToRegionToken]);
 
   useEffect(() => {
     const scene = sceneRef.current;
