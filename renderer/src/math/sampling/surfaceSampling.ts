@@ -5,6 +5,8 @@ export type SurfaceSample = {
   position: THREE.Vector3;
   normal: THREE.Vector3;
   uv?: { u: number; v: number };
+  vertexIndex?: number;
+  meshKey?: string;
   meta?: { surfaceKind?: "graph" | "implicit" | "param" | "weierstrass" };
 };
 
@@ -12,6 +14,7 @@ export type SurfaceSampleSet = {
   samples: SurfaceSample[];
   bbox?: THREE.Box3;
   center?: THREE.Vector3;
+  meshData?: { key: string; positions: Float32Array; indices: ArrayLike<number> | null }[];
   curvatures?: {
     K: Float32Array;
     H: Float32Array;
@@ -26,10 +29,11 @@ export type SurfaceSampleBuildOptions = {
   maxSamples: number;
   includeUV: boolean;
   startId?: number;
+  meshKey?: string;
 };
 
 export function buildSurfaceSampleSetFromViewer(opts: SurfaceSampleBuildOptions): SurfaceSampleSet {
-  const { geometry, worldMatrix, maxSamples, includeUV, startId = 0 } = opts;
+  const { geometry, worldMatrix, maxSamples, includeUV, startId = 0, meshKey } = opts;
   const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
   const normAttr = geometry.getAttribute("normal") as THREE.BufferAttribute | null;
   if (!posAttr || !normAttr) {
@@ -69,6 +73,10 @@ export function buildSurfaceSampleSetFromViewer(opts: SurfaceSampleBuildOptions)
 
     if (uvAttr) {
       sample.uv = { u: uvAttr.getX(i), v: uvAttr.getY(i) };
+    }
+    if (typeof meshKey === "string") {
+      sample.meshKey = meshKey;
+      sample.vertexIndex = i;
     }
 
     samples.push(sample);
