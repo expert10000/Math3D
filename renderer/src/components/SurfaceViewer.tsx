@@ -682,6 +682,9 @@ type Props = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
+    sampleIndex?: number;
+    meshKey?: string;
+    vertexIndex?: number;
   }) => void;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
@@ -693,6 +696,8 @@ type Props = {
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
+  zoomToRegion?: boolean;
+  zoomToRegionToken?: number;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -794,6 +799,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
     selectionSphere = null,
+    zoomToRegion = false,
+    zoomToRegionToken = 0,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -868,6 +875,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const zoomDebounceRef = useRef<number | null>(null);
+  const zoomAnimRef = useRef<number | null>(null);
+  const zoomNowRef = useRef(0);
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
@@ -2438,17 +2448,28 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     });
 
     const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+    const meshData: SurfaceSampleSet["meshData"] = [];
     let nextId = 0;
     let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
     for (const mesh of meshList) {
       if (!mesh.geometry || remainingSamples <= 0) continue;
       mesh.updateMatrixWorld(true);
+      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (posAttr) {
+        const indexAttr = mesh.geometry.getIndex();
+        meshData.push({
+          key: mesh.uuid,
+          positions: posAttr.array as Float32Array,
+          indices: indexAttr ? indexAttr.array : null,
+        });
+      }
       const { samples: chunk } = buildSurfaceSampleSetFromViewer({
         geometry: mesh.geometry as THREE.BufferGeometry,
         worldMatrix: mesh.matrixWorld,
         maxSamples: remainingSamples,
         includeUV: includeSamplesUV,
         startId: nextId,
+        meshKey: mesh.uuid,
       });
       if (!chunk.length) continue;
       aggregatedSamples.push(...chunk);
@@ -2459,9 +2480,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     let nextSampleSet: SurfaceSampleSet;
     if (aggregatedSamples.length) {
       const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
-      nextSampleSet = { samples: aggregatedSamples, bbox: box, center: box.getCenter(new THREE.Vector3()) };
+      nextSampleSet = {
+        samples: aggregatedSamples,
+        bbox: box,
+        center: box.getCenter(new THREE.Vector3()),
+        meshData,
+      };
     } else {
-      nextSampleSet = { samples: [] };
+      nextSampleSet = { samples: [], meshData };
     }
     let implicitOverlayLines: THREE.LineSegments | null = null;
     const findImplicitObj = (): THREE.Object3D | null => {
@@ -2788,6 +2814,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const selectionCb = onSelectionPickRef.current;
       if (selectRegionEnabledRef.current && selectionCb) {
+        const nearest = findNearestSample(point);
         console.log("[SurfaceViewer] before selection callback", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: normalWorld.toArray(),
@@ -2797,6 +2824,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+          sampleIndex: nearest?.index,
+          meshKey: nearest?.sample.meshKey,
+          vertexIndex: nearest?.sample.vertexIndex,
         });
       }
     };
@@ -3168,6 +3198,83 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
   }, [selectionSphere, sceneEpoch]);
+
+  useEffect(() => {
+    const cam = cameraRef.current;
+    const controls = controlsRef.current;
+    const sampleSet = sampleSetRef.current;
+    if (!cam || !sampleSet || !selectionMask?.count) return;
+
+    const isImmediate = zoomNowToken !== zoomNowRef.current;
+    if (isImmediate) {
+      zoomNowRef.current = zoomNowToken;
+    } else if (!zoomToRegion) {
+      return;
+    }
+
+    const scheduleMs = isImmediate ? 0 : 220;
+    if (zoomDebounceRef.current) {
+      window.clearTimeout(zoomDebounceRef.current);
+      zoomDebounceRef.current = null;
+    }
+
+    zoomDebounceRef.current = window.setTimeout(() => {
+      const box = new THREE.Box3();
+      let hasPoint = false;
+      const selected = selectionMask.selected;
+      for (let i = 0; i < selected.length; i++) {
+        if (!selected[i]) continue;
+        const sample = sampleSet.samples[i];
+        if (!sample) continue;
+        box.expandByPoint(sample.position);
+        hasPoint = true;
+      }
+      if (!hasPoint) return;
+
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const radius = Math.max(1e-6, size.length() * 0.5);
+      const padding = 1.2;
+      const fov = THREE.MathUtils.degToRad(cam.fov);
+      const dist = (radius * padding) / Math.sin(Math.max(1e-3, fov * 0.5));
+
+      const startPos = cam.position.clone();
+      const startTarget = controls ? controls.target.clone() : center.clone();
+      const viewDir = startPos.clone().sub(startTarget);
+      if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
+      viewDir.normalize();
+      const endPos = center.clone().addScaledVector(viewDir, dist);
+
+      const startTime = performance.now();
+      const duration = 280;
+      const animate = () => {
+        const now = performance.now();
+        const t = Math.min(1, (now - startTime) / duration);
+        const k = t * (2 - t);
+        cam.position.lerpVectors(startPos, endPos, k);
+        if (controls) {
+          controls.target.lerpVectors(startTarget, center, k);
+          controls.update();
+        } else {
+          cam.lookAt(center);
+        }
+        cam.updateProjectionMatrix();
+        if (t < 1) {
+          zoomAnimRef.current = requestAnimationFrame(animate);
+        }
+      };
+
+      if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+      zoomAnimRef.current = requestAnimationFrame(animate);
+    }, scheduleMs);
+
+    return () => {
+      if (zoomDebounceRef.current) {
+        window.clearTimeout(zoomDebounceRef.current);
+        zoomDebounceRef.current = null;
+      }
+    };
+  }, [selectionMask, zoomToRegion, zoomNowToken]);
 
   useEffect(() => {
     const scene = sceneRef.current;

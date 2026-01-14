@@ -160,6 +160,9 @@ type Props = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     uv?: { u: number; v: number };
+    sampleIndex?: number;
+    meshKey?: string;
+    vertexIndex?: number;
   }) => void;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
@@ -171,6 +174,8 @@ type Props = {
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
+  zoomToRegion?: boolean;
+  zoomToRegionToken?: number;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -917,10 +922,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   inspectEnabled = false,
   onInspectPick,
   inspectPoint = null,
-  selectionOverlayVisible = true,
-  selectionOverlayOnTop = false,
-  selectionSphere = null,
-  showPrincipalDirections = false,
+    selectionOverlayVisible = true,
+    selectionOverlayOnTop = false,
+    selectionSphere = null,
+    zoomToRegion = false,
+    zoomToRegionToken = 0,
+    showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
   showPrincipalGlyphs = false,
@@ -1052,6 +1059,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const zoomDebounceRef = useRef<number | null>(null);
+  const zoomAnimRef = useRef<number | null>(null);
+  const zoomNowRef = useRef(0);
   const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
@@ -2172,7 +2182,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         maxSamples: sampleMaxPoints,
         includeUV: includeSamplesUV,
         startId: 0,
+        meshKey: mesh.uuid,
       });
+      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (sampleSet && posAttr) {
+        const indexAttr = mesh.geometry.getIndex();
+        sampleSet.meshData = [
+          {
+            key: mesh.uuid,
+            positions: posAttr.array as Float32Array,
+            indices: indexAttr ? indexAttr.array : null,
+          },
+        ];
+      }
       if (sampleSet && includeSamplesUV) {
         sampleSet.samples.forEach((sample) => {
           if (!sample.uv) return;
@@ -2443,6 +2465,23 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       const selectionCb = onSelectionPickRef.current;
       if (selectRegionEnabledRef.current && selectionCb) {
+        let nearest: { index: number; sample: SurfaceSampleSet["samples"][number] } | null = null;
+        const sampleSet = sampleSetRef.current;
+        if (sampleSet?.samples.length) {
+          let bestIdx = -1;
+          let bestDist = Infinity;
+          for (let i = 0; i < sampleSet.samples.length; i++) {
+            const sample = sampleSet.samples[i];
+            const d2 = sample.position.distanceToSquared(point);
+            if (d2 < bestDist) {
+              bestDist = d2;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0) {
+            nearest = { index: bestIdx, sample: sampleSet.samples[bestIdx] };
+          }
+        }
         console.log("[ParamSurfaceViewer] selection pick", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
@@ -2452,6 +2491,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           uv: uvDomain,
+          sampleIndex: nearest?.index,
+          meshKey: nearest?.sample.meshKey,
+          vertexIndex: nearest?.sample.vertexIndex,
         });
       }
     };
@@ -2761,6 +2803,83 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
   }, [selectionSphere, sceneEpoch]);
+
+  useEffect(() => {
+    const cam = cameraRef.current;
+    const controls = controlsRef.current;
+    const sampleSet = sampleSetRef.current;
+    if (!cam || !sampleSet || !selectionMask?.count) return;
+
+    const isImmediate = zoomNowToken !== zoomNowRef.current;
+    if (isImmediate) {
+      zoomNowRef.current = zoomNowToken;
+    } else if (!zoomToRegion) {
+      return;
+    }
+
+    const scheduleMs = isImmediate ? 0 : 220;
+    if (zoomDebounceRef.current) {
+      window.clearTimeout(zoomDebounceRef.current);
+      zoomDebounceRef.current = null;
+    }
+
+    zoomDebounceRef.current = window.setTimeout(() => {
+      const box = new THREE.Box3();
+      let hasPoint = false;
+      const selected = selectionMask.selected;
+      for (let i = 0; i < selected.length; i++) {
+        if (!selected[i]) continue;
+        const sample = sampleSet.samples[i];
+        if (!sample) continue;
+        box.expandByPoint(sample.position);
+        hasPoint = true;
+      }
+      if (!hasPoint) return;
+
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const radius = Math.max(1e-6, size.length() * 0.5);
+      const padding = 1.2;
+      const fov = THREE.MathUtils.degToRad(cam.fov);
+      const dist = (radius * padding) / Math.sin(Math.max(1e-3, fov * 0.5));
+
+      const startPos = cam.position.clone();
+      const startTarget = controls ? controls.target.clone() : center.clone();
+      const viewDir = startPos.clone().sub(startTarget);
+      if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
+      viewDir.normalize();
+      const endPos = center.clone().addScaledVector(viewDir, dist);
+
+      const startTime = performance.now();
+      const duration = 280;
+      const animate = () => {
+        const now = performance.now();
+        const t = Math.min(1, (now - startTime) / duration);
+        const k = t * (2 - t);
+        cam.position.lerpVectors(startPos, endPos, k);
+        if (controls) {
+          controls.target.lerpVectors(startTarget, center, k);
+          controls.update();
+        } else {
+          cam.lookAt(center);
+        }
+        cam.updateProjectionMatrix();
+        if (t < 1) {
+          zoomAnimRef.current = requestAnimationFrame(animate);
+        }
+      };
+
+      if (zoomAnimRef.current) cancelAnimationFrame(zoomAnimRef.current);
+      zoomAnimRef.current = requestAnimationFrame(animate);
+    }, scheduleMs);
+
+    return () => {
+      if (zoomDebounceRef.current) {
+        window.clearTimeout(zoomDebounceRef.current);
+        zoomDebounceRef.current = null;
+      }
+    };
+  }, [selectionMask, zoomToRegion, zoomNowToken]);
 
   useEffect(() => {
     const st = viewerRef.current;

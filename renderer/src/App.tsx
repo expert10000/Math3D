@@ -33,6 +33,7 @@ import {
   type RegionSelection,
   type SelectionMask,
 } from "./math/selection/selectionModel";
+import { buildMeshAdjacency, computeGeodesicDistances } from "./math/selection/geodesicSelection";
 import {
   computeSelectionStats,
   type SelectionMetricKey,
@@ -519,10 +520,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
   const [selectionRadius, setSelectionRadius] = useState(0.4);
   const [selectionUseUV, setSelectionUseUV] = useState(false);
+  const [selectionMode, setSelectionMode] = useState<"euclidean" | "geodesic">("euclidean");
   const [selectRegionEnabled, setSelectRegionEnabled] = useState(false);
   const [selectionOverlayVisible, setSelectionOverlayVisible] = useState(true);
   const [selectionOverlayOnTop, setSelectionOverlayOnTop] = useState(false);
   const [selectionSphereVisible, setSelectionSphereVisible] = useState(true);
+  const [zoomToRegion, setZoomToRegion] = useState(false);
+  const [zoomNowToken, setZoomNowToken] = useState(0);
+  const [selectionSeed, setSelectionSeed] = useState<{
+    sampleIndex: number;
+    meshKey: string;
+    vertexIndex: number;
+  } | null>(null);
+  const adjacencyCacheRef = useRef(
+    new Map<
+      string,
+      { positions: Float32Array; indices: ArrayLike<number> | null; neighbors: number[][]; weights: number[][] }
+    >()
+  );
   const [inspectEnabled, setInspectEnabled] = useState(false);
   const [inspectIdx, setInspectIdx] = useState<number | null>(null);
   const [inspectPos, setInspectPos] = useState<{ x: number; y: number; z: number } | null>(null);
@@ -534,6 +549,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       setSelectionUseUV(false);
     }
   }, [surfaceHasUV, selectionUseUV]);
+
+  useEffect(() => {
+    if (selectionMode === "geodesic" && selectionUseUV) {
+      setSelectionUseUV(false);
+    }
+  }, [selectionMode, selectionUseUV]);
 
   const clearInspect = useCallback(() => {
     setInspectIdx(null);
@@ -550,6 +571,29 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (selection.radius === selectionRadius) return;
     setSelection({ ...selection, radius: selectionRadius });
   }, [selection, selectionRadius]);
+
+  useEffect(() => {
+    if (selectionMode !== "geodesic") return;
+    if (!selection || selection.kind !== "surfaceDisk" || selection.useUV) return;
+    if (selectionSeed || !surfaceSampleSet?.samples.length) return;
+    const center = selection.centerWorld;
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < surfaceSampleSet.samples.length; i++) {
+      const sample = surfaceSampleSet.samples[i];
+      const d2 = sample.position.distanceToSquared(center);
+      if (d2 < bestDist) {
+        bestDist = d2;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0) {
+      const sample = surfaceSampleSet.samples[bestIdx];
+      if (sample.meshKey && sample.vertexIndex != null) {
+        setSelectionSeed({ sampleIndex: bestIdx, meshKey: sample.meshKey, vertexIndex: sample.vertexIndex });
+      }
+    }
+  }, [selectionMode, selection, selectionSeed, surfaceSampleSet]);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -1115,11 +1159,36 @@ case "mobius":
     setSurfaceSampleSet(set);
   }, []);
 
+  const geodesicAdjacency = useMemo(() => {
+    const map = new Map<string, { neighbors: number[][]; weights: number[][] }>();
+    const meshData = surfaceSampleSet?.meshData ?? [];
+    const cache = adjacencyCacheRef.current;
+    for (const mesh of meshData) {
+      const cached = cache.get(mesh.key);
+      if (cached && cached.positions === mesh.positions && cached.indices === mesh.indices) {
+        map.set(mesh.key, { neighbors: cached.neighbors, weights: cached.weights });
+        continue;
+      }
+      const adj = buildMeshAdjacency(mesh.indices, mesh.positions);
+      cache.set(mesh.key, {
+        positions: mesh.positions,
+        indices: mesh.indices,
+        neighbors: adj.neighbors,
+        weights: adj.weights,
+      });
+      map.set(mesh.key, adj);
+    }
+    return map;
+  }, [surfaceSampleSet]);
+
   const handleSurfaceSelectionPick = useCallback(
     (payload: {
       point: { x: number; y: number; z: number };
       normal: { x: number; y: number; z: number };
       uv?: { u: number; v: number };
+      sampleIndex?: number;
+      meshKey?: string;
+      vertexIndex?: number;
     }) => {
       if (!selectRegionEnabled) return;
       console.log("[App] surface selection pick", {
@@ -1129,8 +1198,17 @@ case "mobius":
         selectionRadius,
         selectionUseUV,
       });
+      if (payload.sampleIndex != null && payload.meshKey && payload.vertexIndex != null) {
+        setSelectionSeed({
+          sampleIndex: payload.sampleIndex,
+          meshKey: payload.meshKey,
+          vertexIndex: payload.vertexIndex,
+        });
+      } else {
+        setSelectionSeed(null);
+      }
       const nextSelection: RegionSelection =
-        selectionUseUV && payload.uv
+        selectionMode === "euclidean" && selectionUseUV && payload.uv
           ? {
               kind: "surfaceDisk",
               centerUV: payload.uv,
@@ -1144,12 +1222,13 @@ case "mobius":
             };
       setSelection(nextSelection);
     },
-    [selectRegionEnabled, selectionRadius, selectionUseUV]
+    [selectRegionEnabled, selectionRadius, selectionUseUV, selectionMode]
   );
 
   const handleClearSelection = useCallback(() => {
     setSelection(null);
     setSelectionMask(null);
+    setSelectionSeed(null);
   }, []);
 
   const handleGaussSelection = useCallback((selection: GaussCapSelection) => {
@@ -1185,7 +1264,34 @@ case "mobius":
       });
       return;
     }
-    const mask = computeSelectionMask(surfaceSampleSet.samples, selection);
+    let mask: SelectionMask;
+    if (selectionMode === "geodesic" && selection.kind === "surfaceDisk" && !selection.useUV) {
+      const seed = selectionSeed;
+      const meshAdj = seed ? geodesicAdjacency.get(seed.meshKey) : null;
+      if (seed && meshAdj && surfaceSampleSet.meshData?.length) {
+        const dist = computeGeodesicDistances({
+          seedIndex: seed.vertexIndex,
+          neighbors: meshAdj.neighbors,
+          weights: meshAdj.weights,
+          maxDist: selection.radius,
+        });
+        const selected = new Uint8Array(surfaceSampleSet.samples.length);
+        let hits = 0;
+        for (let i = 0; i < surfaceSampleSet.samples.length; i++) {
+          const sample = surfaceSampleSet.samples[i];
+          if (sample.meshKey !== seed.meshKey || sample.vertexIndex == null) continue;
+          if (dist[sample.vertexIndex] <= selection.radius) {
+            selected[i] = 1;
+            hits++;
+          }
+        }
+        mask = { selected, count: hits };
+      } else {
+        mask = { selected: new Uint8Array(surfaceSampleSet.samples.length), count: 0 };
+      }
+    } else {
+      mask = computeSelectionMask(surfaceSampleSet.samples, selection);
+    }
     console.log("[App] computed selection mask", {
       count: mask.count,
       totalSamples: surfaceSampleSet.samples.length,
@@ -1193,7 +1299,7 @@ case "mobius":
       radius: selection.kind === "surfaceDisk" ? selection.radius : undefined,
     });
     setSelectionMask(mask);
-  }, [surfaceSampleSet, selection]);
+  }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency]);
 
   const selectionIndices = useMemo(() => {
     if (!selectionMask?.selected?.length) return [];
@@ -1877,11 +1983,16 @@ case "mobius":
                 onSetContourCount={setContourCount}
                 selectRegionEnabled={selectRegionEnabled}
                 onToggleSelectRegion={() => setSelectRegionEnabled((v) => !v)}
+                selectionMode={selectionMode}
+                onChangeSelectionMode={setSelectionMode}
                 selectionRadius={selectionRadius}
                 onSetSelectionRadius={setSelectionRadius}
                 selectionUseUV={selectionUseUV}
                 selectionHasUV={surfaceHasUV}
                 onToggleSelectionUseUV={toggleSelectionUseUV}
+                zoomToRegion={zoomToRegion}
+                onToggleZoomToRegion={() => setZoomToRegion((v) => !v)}
+                onZoomNow={() => setZoomNowToken((v) => v + 1)}
                 onClearSelection={handleClearSelection}
                 selectionMaskCount={selectionMask?.count ?? 0}
                 selectionOverlayVisible={selectionOverlayVisible}
@@ -2017,6 +2128,8 @@ case "mobius":
                             selectionOverlayVisible={selectionOverlayVisible}
                             selectionOverlayOnTop={selectionOverlayOnTop}
                             selectionSphere={selectionSphere}
+                            zoomToRegion={zoomToRegion}
+                            zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
                               surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
@@ -2095,6 +2208,8 @@ case "mobius":
                         selectionOverlayVisible={selectionOverlayVisible}
                         selectionOverlayOnTop={selectionOverlayOnTop}
                         selectionSphere={selectionSphere}
+                        zoomToRegion={zoomToRegion}
+                        zoomToRegionToken={zoomNowToken}
                       />
                         )}
                       </div>
@@ -2827,11 +2942,16 @@ type SurfacesLeftPanelProps = {
   paramProbeCurv: PrincipalCurvatureScalars | null;
   selectRegionEnabled: boolean;
   onToggleSelectRegion: () => void;
+  selectionMode: "euclidean" | "geodesic";
+  onChangeSelectionMode: (mode: "euclidean" | "geodesic") => void;
   selectionRadius: number;
   onSetSelectionRadius: (value: number) => void;
   selectionUseUV: boolean;
   selectionHasUV: boolean;
   onToggleSelectionUseUV: () => void;
+  zoomToRegion: boolean;
+  onToggleZoomToRegion: () => void;
+  onZoomNow: () => void;
   onClearSelection: () => void;
   selectionMaskCount: number;
   selectionOverlayVisible: boolean;
@@ -2983,11 +3103,16 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramProbeCurv,
   selectRegionEnabled,
   onToggleSelectRegion,
+  selectionMode,
+  onChangeSelectionMode,
   selectionRadius,
   onSetSelectionRadius,
   selectionUseUV,
   selectionHasUV,
   onToggleSelectionUseUV,
+  zoomToRegion,
+  onToggleZoomToRegion,
+  onZoomNow,
   onClearSelection,
   selectionMaskCount,
   selectionOverlayVisible,
@@ -3554,6 +3679,29 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 fontSize: 11,
               }}
             >
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>
+                <div style={{ fontSize: 10, color: "#555" }}>Selection mode</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="radio"
+                    name="selection-mode"
+                    value="euclidean"
+                    checked={selectionMode === "euclidean"}
+                    onChange={() => onChangeSelectionMode("euclidean")}
+                  />
+                  Euclidean ball
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="radio"
+                    name="selection-mode"
+                    value="geodesic"
+                    checked={selectionMode === "geodesic"}
+                    onChange={() => onChangeSelectionMode("geodesic")}
+                  />
+                  Geodesic disk
+                </label>
+              </div>
               <div style={{ minWidth: 180 }}>
                 <div style={{ fontSize: 10, color: "#555" }}>Radius {selectionRadius.toFixed(2)}</div>
                 <input
@@ -3570,19 +3718,31 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  cursor: selectionHasUV ? "pointer" : "not-allowed",
-                  color: selectionHasUV ? "#000" : "#999",
+                  cursor: selectionHasUV && selectionMode === "euclidean" ? "pointer" : "not-allowed",
+                  color: selectionHasUV && selectionMode === "euclidean" ? "#000" : "#999",
                 }}
               >
                 <input
                   type="checkbox"
                   checked={selectionUseUV}
                   onChange={onToggleSelectionUseUV}
-                  disabled={!selectionHasUV}
+                  disabled={!selectionHasUV || selectionMode === "geodesic"}
                   style={{ marginRight: 6 }}
                 />
                 Use UV
               </label>
+              <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={zoomToRegion}
+                  onChange={onToggleZoomToRegion}
+                  style={{ marginRight: 6 }}
+                />
+                Zoom to region
+              </label>
+              <button type="button" onClick={onZoomNow} style={{ padding: "4px 8px" }}>
+                Zoom now
+              </button>
               <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
                 <input
                   type="checkbox"
