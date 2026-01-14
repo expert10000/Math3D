@@ -27,7 +27,7 @@ import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
-import { buildSurfaceSampleSetFromViewer, type SurfaceSampleSet } from "../math/sampling/surfaceSampling";
+import { buildSurfaceSampleSetFromViewer, type SurfaceSample, type SurfaceSampleSet } from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
 
 type ParamPreset = {
@@ -164,6 +164,18 @@ type Props = {
     meshKey?: string;
     vertexIndex?: number;
   }) => void;
+  geodesicPathEnabled?: boolean;
+  onGeodesicPathPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    uv?: { u: number; v: number };
+    sampleIndex?: number;
+    meshKey?: string;
+    vertexIndex?: number;
+  }) => void;
+  geodesicPathStart?: { meshKey: string; vertexIndex: number } | null;
+  geodesicPathEnd?: { meshKey: string; vertexIndex: number } | null;
+  geodesicPathIndices?: number[] | null;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -916,12 +928,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     sampleMaxPoints = 900,
     includeSamplesUV = true,
     onSampleSet,
-  selectionMask = null,
-  selectRegionEnabled = false,
-  onSelectionPick,
-  inspectEnabled = false,
-  onInspectPick,
-  inspectPoint = null,
+    selectionMask = null,
+    selectRegionEnabled = false,
+    onSelectionPick,
+    geodesicPathEnabled = false,
+    onGeodesicPathPick,
+    geodesicPathStart = null,
+    geodesicPathEnd = null,
+    geodesicPathIndices = null,
+    inspectEnabled = false,
+    onInspectPick,
+    inspectPoint = null,
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
     selectionSphere = null,
@@ -978,6 +995,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const onSelectionPickRef = useRef(onSelectionPick);
   const inspectEnabledRef = useRef(inspectEnabled);
   const onInspectPickRef = useRef(onInspectPick);
+  const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
+  const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
@@ -993,6 +1012,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   // direction stored in NORMALIZED uv-space (unit-ish, for the picker)
   const [geoDir, setGeoDir] = useState<{ du: number; dv: number }>({ du: 1, dv: 0 });
   const geodesicLineRef = useRef<THREE.Line | null>(null);
+  const geodesicPathLineRef = useRef<THREE.Line | null>(null);
+  const geodesicPathMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
+    start: null,
+    end: null,
+  });
 
   type GizmoView = "xy" | "xz" | "yz";
   type ViewMode = "free" | GizmoView;
@@ -1244,6 +1268,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     onSelectionPickRef.current = onSelectionPick;
   }, [onSelectionPick]);
+  useEffect(() => {
+    geodesicPathEnabledRef.current = geodesicPathEnabled;
+  }, [geodesicPathEnabled]);
+  useEffect(() => {
+    onGeodesicPathPickRef.current = onGeodesicPathPick;
+  }, [onGeodesicPathPick]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
@@ -2399,12 +2429,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    const handlePointerDown = (event: PointerEvent) => {
-      console.log("[ParamSurfaceViewer] pointer down", {
-        selectRegionEnabled: selectRegionEnabledRef.current,
-        probeEnabled: probeEnabledRef.current,
-      });
-      if (!probeEnabledRef.current && !selectRegionEnabledRef.current && !inspectEnabledRef.current) return;
+      const handlePointerDown = (event: PointerEvent) => {
+        console.log("[ParamSurfaceViewer] pointer down", {
+          selectRegionEnabled: selectRegionEnabledRef.current,
+          probeEnabled: probeEnabledRef.current,
+          geodesicPathEnabled: geodesicPathEnabledRef.current,
+        });
+        if (
+          !probeEnabledRef.current &&
+          !selectRegionEnabledRef.current &&
+          !inspectEnabledRef.current &&
+          !geodesicPathEnabledRef.current
+        )
+          return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2436,10 +2473,40 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         uvDomain = { u, v };
       }
 
-      if (inspectEnabledRef.current) {
-        const inspectCb = onInspectPickRef.current;
-        if (inspectCb) {
-          const sampleSet = sampleSetRef.current;
+        if (geodesicPathEnabledRef.current) {
+          const pathCb = onGeodesicPathPickRef.current;
+          if (pathCb) {
+            const sampleSet = sampleSetRef.current;
+            let nearest: { index: number; sample: SurfaceSample } | null = null;
+            if (sampleSet?.samples.length) {
+              let bestIdx = -1;
+              let bestDist = Infinity;
+              for (let i = 0; i < sampleSet.samples.length; i++) {
+                const sample = sampleSet.samples[i];
+                const d2 = sample.position.distanceToSquared(point);
+                if (d2 < bestDist) {
+                  bestDist = d2;
+                  bestIdx = i;
+                }
+              }
+              if (bestIdx >= 0) nearest = { index: bestIdx, sample: sampleSet.samples[bestIdx] };
+            }
+            pathCb({
+              point: { x: point.x, y: point.y, z: point.z },
+              normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+              uv: uvDomain,
+              sampleIndex: nearest?.index,
+              meshKey: nearest?.sample.meshKey,
+              vertexIndex: nearest?.sample.vertexIndex,
+            });
+          }
+          return;
+        }
+
+        if (inspectEnabledRef.current) {
+          const inspectCb = onInspectPickRef.current;
+          if (inspectCb) {
+            const sampleSet = sampleSetRef.current;
           if (sampleSet?.samples.length) {
             let bestIdx = -1;
             let bestDist = Infinity;
@@ -2526,18 +2593,36 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     window.addEventListener("resize", onResize);
 
-    return () => {
-      // dispose geodesic line if present
-      if (geodesicLineRef.current) {
-        scene.remove(geodesicLineRef.current);
-        geodesicLineRef.current.geometry.dispose();
-        (geodesicLineRef.current.material as THREE.Material).dispose();
-        geodesicLineRef.current = null;
-      }
+      return () => {
+        // dispose geodesic line if present
+        if (geodesicLineRef.current) {
+          scene.remove(geodesicLineRef.current);
+          geodesicLineRef.current.geometry.dispose();
+          (geodesicLineRef.current.material as THREE.Material).dispose();
+          geodesicLineRef.current = null;
+        }
+        if (geodesicPathLineRef.current) {
+          scene.remove(geodesicPathLineRef.current);
+          geodesicPathLineRef.current.geometry.dispose();
+          (geodesicPathLineRef.current.material as THREE.Material).dispose();
+          geodesicPathLineRef.current = null;
+        }
+        if (geodesicPathMarkersRef.current.start) {
+          scene.remove(geodesicPathMarkersRef.current.start);
+          geodesicPathMarkersRef.current.start.geometry.dispose();
+          (geodesicPathMarkersRef.current.start.material as THREE.Material).dispose();
+          geodesicPathMarkersRef.current.start = null;
+        }
+        if (geodesicPathMarkersRef.current.end) {
+          scene.remove(geodesicPathMarkersRef.current.end);
+          geodesicPathMarkersRef.current.end.geometry.dispose();
+          (geodesicPathMarkersRef.current.end.material as THREE.Material).dispose();
+          geodesicPathMarkersRef.current.end = null;
+        }
 
-      viewerRef.current = null;
-      window.removeEventListener("resize", onResize);
-      renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+        viewerRef.current = null;
+        window.removeEventListener("resize", onResize);
+        renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       if (isCameraLeader && onCameraSync) {
         controls.removeEventListener("change", emitCameraSync);
       }
@@ -3019,6 +3104,105 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
     };
   }, [inspectPoint, sceneEpoch]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    const surfaceObj = surfaceObjRef.current;
+    if (!scene || !surfaceObj) return;
+
+    const clearMarker = (marker: THREE.Mesh | null) => {
+      if (!marker) return;
+      scene.remove(marker);
+      marker.geometry.dispose();
+      (marker.material as THREE.Material).dispose();
+    };
+
+    if (geodesicPathLineRef.current) {
+      scene.remove(geodesicPathLineRef.current);
+      geodesicPathLineRef.current.geometry.dispose();
+      (geodesicPathLineRef.current.material as THREE.Material).dispose();
+      geodesicPathLineRef.current = null;
+    }
+    if (geodesicPathMarkersRef.current.start) {
+      clearMarker(geodesicPathMarkersRef.current.start);
+      geodesicPathMarkersRef.current.start = null;
+    }
+    if (geodesicPathMarkersRef.current.end) {
+      clearMarker(geodesicPathMarkersRef.current.end);
+      geodesicPathMarkersRef.current.end = null;
+    }
+
+    const pathMeshKey = geodesicPathStart?.meshKey ?? geodesicPathEnd?.meshKey;
+    if (!pathMeshKey) return;
+
+    const findMeshByKey = (meshKey: string) => {
+      let found: THREE.Mesh | null = null;
+      surfaceObj.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (mesh.isMesh && mesh.uuid === meshKey) found = mesh;
+      });
+      return found;
+    };
+
+    const placeMarker = (endpoint: { meshKey: string; vertexIndex: number }, color: number) => {
+      const mesh = findMeshByKey(endpoint.meshKey);
+      const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
+      const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
+      if (!mesh || !posAttr) return null;
+      if (endpoint.vertexIndex < 0 || endpoint.vertexIndex >= posAttr.count) return null;
+
+      const pos = new THREE.Vector3(
+        posAttr.getX(endpoint.vertexIndex),
+        posAttr.getY(endpoint.vertexIndex),
+        posAttr.getZ(endpoint.vertexIndex)
+      );
+      pos.applyMatrix4(mesh.matrixWorld);
+
+      const markerGeom = new THREE.SphereGeometry(0.035, 16, 12);
+      const markerMat = new THREE.MeshBasicMaterial({ color });
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      marker.position.copy(pos);
+      marker.renderOrder = 220;
+      scene.add(marker);
+      return marker;
+    };
+
+    if (geodesicPathStart) {
+      geodesicPathMarkersRef.current.start = placeMarker(geodesicPathStart, 0x33cc66);
+    }
+    if (geodesicPathEnd) {
+      geodesicPathMarkersRef.current.end = placeMarker(geodesicPathEnd, 0xff6633);
+    }
+
+    if (!geodesicPathIndices?.length) return;
+
+    const mesh = findMeshByKey(pathMeshKey);
+    const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
+    const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
+    if (!mesh || !posAttr) return;
+
+    const positions = new Float32Array(geodesicPathIndices.length * 3);
+    const tmp = new THREE.Vector3();
+    for (let i = 0; i < geodesicPathIndices.length; i++) {
+      const idx = geodesicPathIndices[i];
+      if (idx < 0 || idx >= posAttr.count) continue;
+      tmp.set(posAttr.getX(idx), posAttr.getY(idx), posAttr.getZ(idx));
+      tmp.applyMatrix4(mesh.matrixWorld);
+      positions[i * 3] = tmp.x;
+      positions[i * 3 + 1] = tmp.y;
+      positions[i * 3 + 2] = tmp.z;
+    }
+
+    const lineGeom = new THREE.BufferGeometry();
+    lineGeom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xff6b00, transparent: true, opacity: 0.9 });
+    const line = new THREE.Line(lineGeom, lineMat);
+    line.renderOrder = 215;
+    line.frustumCulled = false;
+    scene.add(line);
+    geodesicPathLineRef.current = line;
+  }, [geodesicPathEnd, geodesicPathIndices, geodesicPathStart, sceneEpoch]);
 
   useEffect(() => {
     const st = viewerRef.current;

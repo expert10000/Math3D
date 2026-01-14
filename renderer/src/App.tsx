@@ -34,6 +34,7 @@ import {
   type SelectionMask,
 } from "./math/selection/selectionModel";
 import { buildMeshAdjacency, computeGeodesicDistances } from "./math/selection/geodesicSelection";
+import { dijkstraDistancesAndPrev, reconstructPath } from "./math/selection/geodesicGraph";
 import {
   computeSelectionStats,
   type SelectionMetricKey,
@@ -342,6 +343,11 @@ type ImplicitDomainPreset = {
   createdAt: number;
 };
 
+type GeodesicPathEndpoint = {
+  meshKey: string;
+  vertexIndex: number;
+};
+
 function safeParseArray<T>(raw: string | null): T[] {
   if (!raw) return [];
   try {
@@ -532,6 +538,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     meshKey: string;
     vertexIndex: number;
   } | null>(null);
+  const [geodesicPathEnabled, setGeodesicPathEnabled] = useState(false);
+  const [geodesicPathConstrain, setGeodesicPathConstrain] = useState(false);
+  const [geodesicPathStart, setGeodesicPathStart] = useState<GeodesicPathEndpoint | null>(null);
+  const [geodesicPathEnd, setGeodesicPathEnd] = useState<GeodesicPathEndpoint | null>(null);
+  const [geodesicPathIndices, setGeodesicPathIndices] = useState<number[] | null>(null);
+  const [geodesicPathLength, setGeodesicPathLength] = useState<number | null>(null);
+  const [geodesicPathMessage, setGeodesicPathMessage] = useState<string | null>(null);
   const adjacencyCacheRef = useRef(
     new Map<
       string,
@@ -1181,6 +1194,95 @@ case "mobius":
     return map;
   }, [surfaceSampleSet]);
 
+  const buildAllowedVertexMask = useCallback(
+    (meshKey: string, vertexCount: number) => {
+      if (!geodesicPathConstrain) return null;
+      if (!selectionMask?.count || !surfaceSampleSet?.samples.length) return null;
+      const allowed = new Uint8Array(vertexCount);
+      const selected = selectionMask.selected;
+      const samples = surfaceSampleSet.samples;
+      const limit = Math.min(selected.length, samples.length);
+      for (let i = 0; i < limit; i++) {
+        if (!selected[i]) continue;
+        const sample = samples[i];
+        if (sample.meshKey !== meshKey || sample.vertexIndex == null) continue;
+        if (sample.vertexIndex >= 0 && sample.vertexIndex < vertexCount) {
+          allowed[sample.vertexIndex] = 1;
+        }
+      }
+      return allowed;
+    },
+    [geodesicPathConstrain, selectionMask, surfaceSampleSet]
+  );
+
+  const computeGeodesicPath = useCallback(
+    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
+      setGeodesicPathIndices(null);
+      setGeodesicPathLength(null);
+      setGeodesicPathMessage(null);
+
+      if (start.meshKey !== end.meshKey) {
+        setGeodesicPathMessage("Start/End on different meshes.");
+        return;
+      }
+      const adj = geodesicAdjacency.get(start.meshKey);
+      if (!adj) {
+        setGeodesicPathMessage("No mesh adjacency available.");
+        return;
+      }
+      if (
+        start.vertexIndex < 0 ||
+        end.vertexIndex < 0 ||
+        start.vertexIndex >= adj.neighbors.length ||
+        end.vertexIndex >= adj.neighbors.length
+      ) {
+        setGeodesicPathMessage("Start/End outside mesh bounds.");
+        return;
+      }
+
+      const allowed = buildAllowedVertexMask(start.meshKey, adj.neighbors.length);
+      if (geodesicPathConstrain) {
+        if (!allowed || !allowed[start.vertexIndex] || !allowed[end.vertexIndex]) {
+          setGeodesicPathMessage("Start/End not in selection.");
+          return;
+        }
+      }
+
+      const { dist, prev } = dijkstraDistancesAndPrev({
+        seedIndex: start.vertexIndex,
+        neighbors: adj.neighbors,
+        weights: adj.weights,
+        allowed,
+        targetIndex: end.vertexIndex,
+      });
+      const length = dist[end.vertexIndex];
+      const path = reconstructPath(prev, start.vertexIndex, end.vertexIndex);
+      if (!path.length || !Number.isFinite(length)) {
+        setGeodesicPathMessage("No path found.");
+        return;
+      }
+
+      setGeodesicPathIndices(path);
+      setGeodesicPathLength(length);
+    },
+    [buildAllowedVertexMask, geodesicAdjacency, geodesicPathConstrain]
+  );
+
+  useEffect(() => {
+    if (geodesicPathConstrain && !selectionMask?.count) {
+      setGeodesicPathConstrain(false);
+    }
+  }, [geodesicPathConstrain, selectionMask?.count]);
+
+  useEffect(() => {
+    if (!geodesicPathStart || !geodesicPathEnd) {
+      setGeodesicPathIndices(null);
+      setGeodesicPathLength(null);
+      return;
+    }
+    computeGeodesicPath(geodesicPathStart, geodesicPathEnd);
+  }, [computeGeodesicPath, geodesicPathConstrain, geodesicPathEnd, geodesicPathStart, selectionMask, surfaceSampleSet]);
+
   const handleSurfaceSelectionPick = useCallback(
     (payload: {
       point: { x: number; y: number; z: number };
@@ -1224,6 +1326,61 @@ case "mobius":
     },
     [selectRegionEnabled, selectionRadius, selectionUseUV, selectionMode]
   );
+
+  const handleGeodesicPathPick = useCallback(
+    (payload: {
+      point: { x: number; y: number; z: number };
+      normal: { x: number; y: number; z: number };
+      uv?: { u: number; v: number };
+      sampleIndex?: number;
+      meshKey?: string;
+      vertexIndex?: number;
+    }) => {
+      if (!geodesicPathEnabled) return;
+      if (!payload.meshKey || payload.vertexIndex == null) {
+        setGeodesicPathMessage("No vertex picked.");
+        return;
+      }
+
+      const picked: GeodesicPathEndpoint = {
+        meshKey: payload.meshKey,
+        vertexIndex: payload.vertexIndex,
+      };
+
+      if (!geodesicPathStart) {
+        setGeodesicPathStart(picked);
+        setGeodesicPathEnd(null);
+        setGeodesicPathIndices(null);
+        setGeodesicPathLength(null);
+        setGeodesicPathMessage(null);
+        return;
+      }
+
+      if (!geodesicPathEnd) {
+        setGeodesicPathEnd(picked);
+        return;
+      }
+
+      setGeodesicPathStart(picked);
+      setGeodesicPathEnd(null);
+      setGeodesicPathIndices(null);
+      setGeodesicPathLength(null);
+      setGeodesicPathMessage(null);
+    },
+    [geodesicPathEnabled, geodesicPathEnd, geodesicPathStart]
+  );
+
+  const handleClearGeodesicPath = useCallback(() => {
+    setGeodesicPathStart(null);
+    setGeodesicPathEnd(null);
+    setGeodesicPathIndices(null);
+    setGeodesicPathLength(null);
+    setGeodesicPathMessage(null);
+  }, []);
+
+  useEffect(() => {
+    handleClearGeodesicPath();
+  }, [handleClearGeodesicPath, surfaceSampleSet]);
 
   const handleClearSelection = useCallback(() => {
     setSelection(null);
@@ -2001,6 +2158,15 @@ case "mobius":
                 onToggleSelectionOverlayOnTop={() => setSelectionOverlayOnTop((v) => !v)}
                 selectionSphereVisible={selectionSphereVisible}
                 onToggleSelectionSphereVisible={() => setSelectionSphereVisible((v) => !v)}
+                geodesicPathEnabled={geodesicPathEnabled}
+                onToggleGeodesicPathEnabled={() => setGeodesicPathEnabled((v) => !v)}
+                onClearGeodesicPath={handleClearGeodesicPath}
+                geodesicPathStart={geodesicPathStart}
+                geodesicPathEnd={geodesicPathEnd}
+                geodesicPathLength={geodesicPathLength}
+                geodesicPathMessage={geodesicPathMessage}
+                geodesicPathConstrain={geodesicPathConstrain}
+                onToggleGeodesicPathConstrain={() => setGeodesicPathConstrain((v) => !v)}
                 inspectEnabled={inspectEnabled}
                 onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
                 onClearInspect={clearInspect}
@@ -2128,6 +2294,11 @@ case "mobius":
                             selectionOverlayVisible={selectionOverlayVisible}
                             selectionOverlayOnTop={selectionOverlayOnTop}
                             selectionSphere={selectionSphere}
+                            geodesicPathEnabled={geodesicPathEnabled}
+                            onGeodesicPathPick={handleGeodesicPathPick}
+                            geodesicPathStart={geodesicPathStart}
+                            geodesicPathEnd={geodesicPathEnd}
+                            geodesicPathIndices={geodesicPathIndices}
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
@@ -2208,6 +2379,11 @@ case "mobius":
                         selectionOverlayVisible={selectionOverlayVisible}
                         selectionOverlayOnTop={selectionOverlayOnTop}
                         selectionSphere={selectionSphere}
+                        geodesicPathEnabled={geodesicPathEnabled}
+                        onGeodesicPathPick={handleGeodesicPathPick}
+                        geodesicPathStart={geodesicPathStart}
+                        geodesicPathEnd={geodesicPathEnd}
+                        geodesicPathIndices={geodesicPathIndices}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
                       />
@@ -2960,6 +3136,15 @@ type SurfacesLeftPanelProps = {
   onToggleSelectionOverlayOnTop: () => void;
   selectionSphereVisible: boolean;
   onToggleSelectionSphereVisible: () => void;
+  geodesicPathEnabled: boolean;
+  onToggleGeodesicPathEnabled: () => void;
+  onClearGeodesicPath: () => void;
+  geodesicPathStart: GeodesicPathEndpoint | null;
+  geodesicPathEnd: GeodesicPathEndpoint | null;
+  geodesicPathLength: number | null;
+  geodesicPathMessage: string | null;
+  geodesicPathConstrain: boolean;
+  onToggleGeodesicPathConstrain: () => void;
   inspectEnabled: boolean;
   onToggleInspectEnabled: () => void;
   onClearInspect: () => void;
@@ -3121,6 +3306,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSelectionOverlayOnTop,
   selectionSphereVisible,
   onToggleSelectionSphereVisible,
+  geodesicPathEnabled,
+  onToggleGeodesicPathEnabled,
+  onClearGeodesicPath,
+  geodesicPathStart,
+  geodesicPathEnd,
+  geodesicPathLength,
+  geodesicPathMessage,
+  geodesicPathConstrain,
+  onToggleGeodesicPathConstrain,
   inspectEnabled,
   onToggleInspectEnabled,
   onClearInspect,
@@ -3788,6 +3982,54 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             </details>
           )}
+          <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicPathEnabled}>
+            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic path</summary>
+            <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={geodesicPathEnabled}
+                  onChange={onToggleGeodesicPathEnabled}
+                  style={{ marginRight: 6 }}
+                />
+                Enable geodesic path tool
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button type="button" onClick={onClearGeodesicPath} style={{ padding: "3px 8px" }}>
+                  Clear path
+                </button>
+                {geodesicPathLength != null && Number.isFinite(geodesicPathLength) && (
+                  <span style={{ fontWeight: 600 }}>Length: {geodesicPathLength.toFixed(3)}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <span>Start: {geodesicPathStart ? geodesicPathStart.vertexIndex : "-"}</span>
+                <span>End: {geodesicPathEnd ? geodesicPathEnd.vertexIndex : "-"}</span>
+              </div>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: selectionMaskCount ? "pointer" : "not-allowed",
+                  color: selectionMaskCount ? "#000" : "#999",
+                }}
+                title={selectionMaskCount ? "" : "No selection available"}
+              >
+                <input
+                  type="checkbox"
+                  checked={geodesicPathConstrain}
+                  onChange={onToggleGeodesicPathConstrain}
+                  disabled={!selectionMaskCount}
+                  style={{ marginRight: 6 }}
+                />
+                Constrain path to selection
+              </label>
+              {geodesicPathMessage && (
+                <div style={{ color: "#b23b1a" }}>{geodesicPathMessage}</div>
+              )}
+            </div>
+          </details>
           <div style={{ marginLeft: 20, marginTop: 10, fontSize: 12 }}>
             <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
               <input
