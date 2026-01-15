@@ -545,10 +545,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicPathIndices, setGeodesicPathIndices] = useState<number[] | null>(null);
   const [geodesicPathLength, setGeodesicPathLength] = useState<number | null>(null);
   const [geodesicPathMessage, setGeodesicPathMessage] = useState<string | null>(null);
+  const [geodesicPathDebug, setGeodesicPathDebug] = useState(false);
+  const [geodesicPathDebugInfo, setGeodesicPathDebugInfo] = useState<string | null>(null);
   const adjacencyCacheRef = useRef(
     new Map<
       string,
-      { positions: Float32Array; indices: ArrayLike<number> | null; neighbors: number[][]; weights: number[][] }
+      {
+        positions: Float32Array;
+        indices: ArrayLike<number> | null;
+        neighbors: number[][];
+        weights: number[][];
+        vertexToMerged?: Int32Array;
+        mergedToVertex?: Int32Array;
+        edgeSources?: number[][];
+        edgeTargets?: number[][];
+      }
     >()
   );
   const [inspectEnabled, setInspectEnabled] = useState(false);
@@ -667,11 +678,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [ridgeValleySelectionOnly, setRidgeValleySelectionOnly] = useState(false);
   const [ridgeValleyMagMin, setRidgeValleyMagMin] = useState(0.05);
   const [ridgeValleyContrast, setRidgeValleyContrast] = useState(0.01);
-  const [ridgeValleyMinCos, setRidgeValleyMinCos] = useState(0.25);
+  const [ridgeValleyMinCos, setRidgeValleyMinCos] = useState(0.3);
   const [ridgeValleySegmentScale, setRidgeValleySegmentScale] = useState(0.005);
   const [ridgeValleySampleMode, setRidgeValleySampleMode] = useState<"high" | "medium" | "low">(
     "medium"
   );
+  const [ridgeValleyStitch, setRidgeValleyStitch] = useState(false);
+  const [ridgeValleyDecimate, setRidgeValleyDecimate] = useState(0.002);
+  const [ridgeValleyMaxCurves, setRidgeValleyMaxCurves] = useState(200);
+  const [ridgeValleyMinConf, setRidgeValleyMinConf] = useState(0);
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
@@ -1173,13 +1188,37 @@ case "mobius":
   }, []);
 
   const geodesicAdjacency = useMemo(() => {
-    const map = new Map<string, { neighbors: number[][]; weights: number[][] }>();
+    const map = new Map<
+      string,
+      {
+        neighbors: number[][];
+        weights: number[][];
+        vertexToMerged?: Int32Array;
+        mergedToVertex?: Int32Array;
+        edgeSources?: number[][];
+        edgeTargets?: number[][];
+      }
+    >();
     const meshData = surfaceSampleSet?.meshData ?? [];
     const cache = adjacencyCacheRef.current;
     for (const mesh of meshData) {
       const cached = cache.get(mesh.key);
-      if (cached && cached.positions === mesh.positions && cached.indices === mesh.indices) {
-        map.set(mesh.key, { neighbors: cached.neighbors, weights: cached.weights });
+      if (
+        cached &&
+        cached.positions === mesh.positions &&
+        cached.indices === mesh.indices &&
+        cached.vertexToMerged &&
+        cached.edgeSources &&
+        cached.edgeTargets
+      ) {
+        map.set(mesh.key, {
+          neighbors: cached.neighbors,
+          weights: cached.weights,
+          vertexToMerged: cached.vertexToMerged,
+          mergedToVertex: cached.mergedToVertex,
+          edgeSources: cached.edgeSources,
+          edgeTargets: cached.edgeTargets,
+        });
         continue;
       }
       const adj = buildMeshAdjacency(mesh.indices, mesh.positions);
@@ -1188,6 +1227,10 @@ case "mobius":
         indices: mesh.indices,
         neighbors: adj.neighbors,
         weights: adj.weights,
+        vertexToMerged: adj.vertexToMerged,
+        mergedToVertex: adj.mergedToVertex,
+        edgeSources: adj.edgeSources,
+        edgeTargets: adj.edgeTargets,
       });
       map.set(mesh.key, adj);
     }
@@ -1195,7 +1238,7 @@ case "mobius":
   }, [surfaceSampleSet]);
 
   const buildAllowedVertexMask = useCallback(
-    (meshKey: string, vertexCount: number) => {
+    (meshKey: string, vertexCount: number, vertexToMerged?: Int32Array) => {
       if (!geodesicPathConstrain) return null;
       if (!selectionMask?.count || !surfaceSampleSet?.samples.length) return null;
       const allowed = new Uint8Array(vertexCount);
@@ -1206,8 +1249,10 @@ case "mobius":
         if (!selected[i]) continue;
         const sample = samples[i];
         if (sample.meshKey !== meshKey || sample.vertexIndex == null) continue;
-        if (sample.vertexIndex >= 0 && sample.vertexIndex < vertexCount) {
-          allowed[sample.vertexIndex] = 1;
+        const rawIndex = sample.vertexIndex;
+        const mappedIndex = vertexToMerged ? vertexToMerged[rawIndex] : rawIndex;
+        if (mappedIndex >= 0 && mappedIndex < vertexCount) {
+          allowed[mappedIndex] = 1;
         }
       }
       return allowed;
@@ -1215,11 +1260,67 @@ case "mobius":
     [geodesicPathConstrain, selectionMask, surfaceSampleSet]
   );
 
+  const formatGeodesicDebugInfo = useCallback(
+    (payload: {
+      neighbors: number[][];
+      weights: number[][];
+      dist: Float64Array;
+      startIndex: number;
+      endIndex: number;
+      vertexToMerged?: Int32Array;
+    }) => {
+      const { neighbors, weights, dist, startIndex, endIndex, vertexToMerged } = payload;
+      const vertexCount = neighbors.length;
+      let edgeCount = 0;
+      let lowDegree = 0;
+      let nanWeights = 0;
+      let mismatched = 0;
+      let minW = Infinity;
+      let maxW = -Infinity;
+      for (let i = 0; i < neighbors.length; i++) {
+        const degree = neighbors[i].length;
+        edgeCount += degree;
+        if (degree <= 2) lowDegree++;
+        const ws = weights[i];
+        if (!ws || ws.length !== degree) {
+          mismatched++;
+          continue;
+        }
+        for (let j = 0; j < ws.length; j++) {
+          const w = ws[j];
+          if (!Number.isFinite(w)) {
+            nanWeights++;
+            continue;
+          }
+          if (w < minW) minW = w;
+          if (w > maxW) maxW = w;
+        }
+      }
+      let reachable = 0;
+      for (let i = 0; i < dist.length; i++) {
+        if (Number.isFinite(dist[i])) reachable++;
+      }
+      const avgDegree = vertexCount ? edgeCount / vertexCount : 0;
+      const startDegree = neighbors[startIndex]?.length ?? 0;
+      const endDegree = neighbors[endIndex]?.length ?? 0;
+      const mergedFrom = vertexToMerged ? vertexToMerged.length : vertexCount;
+      const mergedNote = vertexToMerged ? ` merged=${vertexCount}/${mergedFrom}` : "";
+      const weightNote = Number.isFinite(minW)
+        ? ` w=${minW.toFixed(4)}..${maxW.toFixed(4)}`
+        : "";
+      const mismatchNote = mismatched ? ` mismatch=${mismatched}` : "";
+      const nanNote = nanWeights ? ` nanW=${nanWeights}` : "";
+      return `v=${vertexCount}${mergedNote} avgDeg=${avgDegree.toFixed(2)} lowDeg=${lowDegree} reachable=${reachable} startDeg=${startDegree} endDeg=${endDegree}${nanNote}${mismatchNote}${weightNote}`;
+    },
+    []
+  );
+
   const computeGeodesicPath = useCallback(
     (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
       setGeodesicPathIndices(null);
       setGeodesicPathLength(null);
       setGeodesicPathMessage(null);
+      setGeodesicPathDebugInfo(null);
 
       if (start.meshKey !== end.meshKey) {
         setGeodesicPathMessage("Start/End on different meshes.");
@@ -1230,42 +1331,101 @@ case "mobius":
         setGeodesicPathMessage("No mesh adjacency available.");
         return;
       }
+      const vertexToMerged = adj.vertexToMerged;
+      const mergedToVertex = adj.mergedToVertex;
+      const edgeSources = adj.edgeSources;
+      const edgeTargets = adj.edgeTargets;
+      const startIndex = vertexToMerged ? vertexToMerged[start.vertexIndex] : start.vertexIndex;
+      const endIndex = vertexToMerged ? vertexToMerged[end.vertexIndex] : end.vertexIndex;
+      if (startIndex == null || endIndex == null) {
+        setGeodesicPathMessage("Start/End outside mesh bounds.");
+        return;
+      }
       if (
-        start.vertexIndex < 0 ||
-        end.vertexIndex < 0 ||
-        start.vertexIndex >= adj.neighbors.length ||
-        end.vertexIndex >= adj.neighbors.length
+        startIndex < 0 ||
+        endIndex < 0 ||
+        startIndex >= adj.neighbors.length ||
+        endIndex >= adj.neighbors.length
       ) {
         setGeodesicPathMessage("Start/End outside mesh bounds.");
         return;
       }
 
-      const allowed = buildAllowedVertexMask(start.meshKey, adj.neighbors.length);
+      const allowed = buildAllowedVertexMask(start.meshKey, adj.neighbors.length, vertexToMerged);
       if (geodesicPathConstrain) {
-        if (!allowed || !allowed[start.vertexIndex] || !allowed[end.vertexIndex]) {
+        if (!allowed || !allowed[startIndex] || !allowed[endIndex]) {
           setGeodesicPathMessage("Start/End not in selection.");
           return;
         }
       }
 
       const { dist, prev } = dijkstraDistancesAndPrev({
-        seedIndex: start.vertexIndex,
+        seedIndex: startIndex,
         neighbors: adj.neighbors,
         weights: adj.weights,
         allowed,
-        targetIndex: end.vertexIndex,
+        targetIndex: endIndex,
       });
-      const length = dist[end.vertexIndex];
-      const path = reconstructPath(prev, start.vertexIndex, end.vertexIndex);
+      const length = dist[endIndex];
+      const path = reconstructPath(prev, startIndex, endIndex);
       if (!path.length || !Number.isFinite(length)) {
         setGeodesicPathMessage("No path found.");
+        if (geodesicPathDebug) {
+          const debugInfo = formatGeodesicDebugInfo({
+            neighbors: adj.neighbors,
+            weights: adj.weights,
+            dist,
+            startIndex,
+            endIndex,
+            vertexToMerged,
+          });
+          setGeodesicPathDebugInfo(debugInfo);
+          console.log("[geodesic] no path", {
+            meshKey: start.meshKey,
+            startIndex,
+            endIndex,
+            debugInfo,
+          });
+        }
         return;
       }
 
-      setGeodesicPathIndices(path);
+      let mappedPath = mergedToVertex ? path.map((idx) => mergedToVertex[idx]) : path;
+      if (vertexToMerged && edgeSources && edgeTargets) {
+        const expanded: number[] = [];
+        const startRaw = start.vertexIndex;
+        const endRaw = end.vertexIndex;
+        expanded.push(startRaw);
+        for (let i = 0; i + 1 < path.length; i++) {
+          const from = path[i];
+          const to = path[i + 1];
+          const neighbors = adj.neighbors[from];
+          const edgeIdx = neighbors ? neighbors.indexOf(to) : -1;
+          if (edgeIdx < 0) continue;
+          const a = edgeSources[from]?.[edgeIdx];
+          const b = edgeTargets[from]?.[edgeIdx];
+          if (a == null || b == null) continue;
+          if (expanded[expanded.length - 1] !== a) expanded.push(a);
+          if (expanded[expanded.length - 1] !== b) expanded.push(b);
+        }
+        if (expanded[expanded.length - 1] !== endRaw) expanded.push(endRaw);
+        mappedPath = expanded;
+      }
+      setGeodesicPathIndices(mappedPath);
       setGeodesicPathLength(length);
+      if (geodesicPathDebug) {
+        const debugInfo = formatGeodesicDebugInfo({
+          neighbors: adj.neighbors,
+          weights: adj.weights,
+          dist,
+          startIndex,
+          endIndex,
+          vertexToMerged,
+        });
+        setGeodesicPathDebugInfo(debugInfo);
+      }
     },
-    [buildAllowedVertexMask, geodesicAdjacency, geodesicPathConstrain]
+    [buildAllowedVertexMask, formatGeodesicDebugInfo, geodesicAdjacency, geodesicPathConstrain, geodesicPathDebug]
   );
 
   useEffect(() => {
@@ -1376,6 +1536,7 @@ case "mobius":
     setGeodesicPathIndices(null);
     setGeodesicPathLength(null);
     setGeodesicPathMessage(null);
+    setGeodesicPathDebugInfo(null);
   }, []);
 
   useEffect(() => {
@@ -1426,8 +1587,15 @@ case "mobius":
       const seed = selectionSeed;
       const meshAdj = seed ? geodesicAdjacency.get(seed.meshKey) : null;
       if (seed && meshAdj && surfaceSampleSet.meshData?.length) {
+        const vertexToMerged = meshAdj.vertexToMerged;
+        const seedIndex = vertexToMerged ? vertexToMerged[seed.vertexIndex] : seed.vertexIndex;
+        if (seedIndex == null || seedIndex < 0 || seedIndex >= meshAdj.neighbors.length) {
+          mask = { selected: new Uint8Array(surfaceSampleSet.samples.length), count: 0 };
+          setSelectionMask(mask);
+          return;
+        }
         const dist = computeGeodesicDistances({
-          seedIndex: seed.vertexIndex,
+          seedIndex,
           neighbors: meshAdj.neighbors,
           weights: meshAdj.weights,
           maxDist: selection.radius,
@@ -1437,7 +1605,9 @@ case "mobius":
         for (let i = 0; i < surfaceSampleSet.samples.length; i++) {
           const sample = surfaceSampleSet.samples[i];
           if (sample.meshKey !== seed.meshKey || sample.vertexIndex == null) continue;
-          if (dist[sample.vertexIndex] <= selection.radius) {
+          const rawIndex = sample.vertexIndex;
+          const mappedIndex = vertexToMerged ? vertexToMerged[rawIndex] : rawIndex;
+          if (mappedIndex != null && mappedIndex >= 0 && mappedIndex < dist.length && dist[mappedIndex] <= selection.radius) {
             selected[i] = 1;
             hits++;
           }
@@ -2123,6 +2293,14 @@ case "mobius":
                 onChangeRidgeValleySegmentScale={setRidgeValleySegmentScale}
                 ridgeValleySampleMode={ridgeValleySampleMode}
                 onChangeRidgeValleySampleMode={setRidgeValleySampleMode}
+                ridgeValleyStitch={ridgeValleyStitch}
+                onToggleRidgeValleyStitch={() => setRidgeValleyStitch((v) => !v)}
+                ridgeValleyDecimate={ridgeValleyDecimate}
+                onChangeRidgeValleyDecimate={setRidgeValleyDecimate}
+                ridgeValleyMaxCurves={ridgeValleyMaxCurves}
+                onChangeRidgeValleyMaxCurves={setRidgeValleyMaxCurves}
+                ridgeValleyMinConf={ridgeValleyMinConf}
+                onChangeRidgeValleyMinConf={setRidgeValleyMinConf}
                 showBoundingBox={showBoundingBox}
                 onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                 showGaussMap={showGaussMap}
@@ -2167,6 +2345,9 @@ case "mobius":
                 geodesicPathMessage={geodesicPathMessage}
                 geodesicPathConstrain={geodesicPathConstrain}
                 onToggleGeodesicPathConstrain={() => setGeodesicPathConstrain((v) => !v)}
+                geodesicPathDebug={geodesicPathDebug}
+                geodesicPathDebugInfo={geodesicPathDebugInfo}
+                onToggleGeodesicPathDebug={() => setGeodesicPathDebug((v) => !v)}
                 inspectEnabled={inspectEnabled}
                 onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
                 onClearInspect={clearInspect}
@@ -2269,6 +2450,10 @@ case "mobius":
                             ridgeValleyMinCos={ridgeValleyMinCos}
                             ridgeValleySegmentScale={ridgeValleySegmentScale}
                             ridgeValleySampleMode={ridgeValleySampleMode}
+                            ridgeValleyStitch={ridgeValleyStitch}
+                            ridgeValleyDecimate={ridgeValleyDecimate}
+                            ridgeValleyMaxCurves={ridgeValleyMaxCurves}
+                            ridgeValleyMinConf={ridgeValleyMinConf}
                             showBoundingBox={showBoundingBox}
                             resetToken={cameraResetToken}
                             onProbe={handleProbe}
@@ -2357,6 +2542,10 @@ case "mobius":
                             ridgeValleyMinCos={ridgeValleyMinCos}
                             ridgeValleySegmentScale={ridgeValleySegmentScale}
                             ridgeValleySampleMode={ridgeValleySampleMode}
+                            ridgeValleyStitch={ridgeValleyStitch}
+                            ridgeValleyDecimate={ridgeValleyDecimate}
+                            ridgeValleyMaxCurves={ridgeValleyMaxCurves}
+                            ridgeValleyMinConf={ridgeValleyMinConf}
                             onProbe={handleProbe}
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
@@ -3099,6 +3288,14 @@ type SurfacesLeftPanelProps = {
   onChangeRidgeValleySegmentScale: (value: number) => void;
   ridgeValleySampleMode: "high" | "medium" | "low";
   onChangeRidgeValleySampleMode: (value: "high" | "medium" | "low") => void;
+  ridgeValleyStitch: boolean;
+  onToggleRidgeValleyStitch: () => void;
+  ridgeValleyDecimate: number;
+  onChangeRidgeValleyDecimate: (value: number) => void;
+  ridgeValleyMaxCurves: number;
+  onChangeRidgeValleyMaxCurves: (value: number) => void;
+  ridgeValleyMinConf: number;
+  onChangeRidgeValleyMinConf: (value: number) => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
   weierstrassDiagnostics: WeierstrassDriftResult | null;
@@ -3145,6 +3342,9 @@ type SurfacesLeftPanelProps = {
   geodesicPathMessage: string | null;
   geodesicPathConstrain: boolean;
   onToggleGeodesicPathConstrain: () => void;
+  geodesicPathDebug: boolean;
+  geodesicPathDebugInfo: string | null;
+  onToggleGeodesicPathDebug: () => void;
   inspectEnabled: boolean;
   onToggleInspectEnabled: () => void;
   onClearInspect: () => void;
@@ -3276,6 +3476,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeRidgeValleySegmentScale,
   ridgeValleySampleMode,
   onChangeRidgeValleySampleMode,
+  ridgeValleyStitch,
+  onToggleRidgeValleyStitch,
+  ridgeValleyDecimate,
+  onChangeRidgeValleyDecimate,
+  ridgeValleyMaxCurves,
+  onChangeRidgeValleyMaxCurves,
+  ridgeValleyMinConf,
+  onChangeRidgeValleyMinConf,
   showBoundingBox,
   onToggleBoundingBox,
   showGaussMap,
@@ -3315,6 +3523,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   geodesicPathMessage,
   geodesicPathConstrain,
   onToggleGeodesicPathConstrain,
+  geodesicPathDebug,
+  geodesicPathDebugInfo,
+  onToggleGeodesicPathDebug,
   inspectEnabled,
   onToggleInspectEnabled,
   onClearInspect,
@@ -3715,6 +3926,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 viewerKind === "param" ||
                 viewerKind === "weierstrass";
               const ridgeValleyEnabled = ridgeValleyAvailable && (showRidges || showValleys);
+              const ridgeValleyStitchEnabled = ridgeValleyEnabled && ridgeValleyStitch;
               return (
                 <>
                   <label style={{ display: "block", cursor: ridgeValleyAvailable ? "pointer" : "not-allowed" }}>
@@ -3755,6 +3967,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                       style={{ marginRight: 6 }}
                     />
                     Only inside selection
+                  </label>
+
+                  <label
+                    style={{
+                      display: "block",
+                      cursor: ridgeValleyAvailable ? "pointer" : "not-allowed",
+                      marginTop: 4,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={ridgeValleyStitch}
+                      onChange={onToggleRidgeValleyStitch}
+                      disabled={!ridgeValleyAvailable}
+                      style={{ marginRight: 6 }}
+                    />
+                    Stitch into curves (v2)
                   </label>
 
                   <div
@@ -3801,7 +4030,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
                     <div style={{ minWidth: 180 }}>
                       <div style={{ fontSize: 11, color: "#555" }}>
-                        Direction minCos {ridgeValleyMinCos.toFixed(2)}
+                        Link minCos {ridgeValleyMinCos.toFixed(2)}
                       </div>
                       <input
                         type="range"
@@ -3815,21 +4044,75 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                       />
                     </div>
 
-                    <div style={{ minWidth: 180 }}>
-                      <div style={{ fontSize: 11, color: "#555" }}>
-                        Segment length {ridgeValleySegmentScale.toFixed(4)}
+                    {!ridgeValleyStitch && (
+                      <div style={{ minWidth: 180 }}>
+                        <div style={{ fontSize: 11, color: "#555" }}>
+                          Segment length {ridgeValleySegmentScale.toFixed(4)}
+                        </div>
+                        <input
+                          type="range"
+                          min={0.001}
+                          max={0.02}
+                          step={0.001}
+                          value={ridgeValleySegmentScale}
+                          onChange={(e) => onChangeRidgeValleySegmentScale(Number(e.target.value))}
+                          disabled={!ridgeValleyEnabled}
+                          style={{ width: 180 }}
+                        />
                       </div>
-                      <input
-                        type="range"
-                        min={0.001}
-                        max={0.02}
-                        step={0.001}
-                        value={ridgeValleySegmentScale}
-                        onChange={(e) => onChangeRidgeValleySegmentScale(Number(e.target.value))}
-                        disabled={!ridgeValleyEnabled}
-                        style={{ width: 180 }}
-                      />
-                    </div>
+                    )}
+
+                    {ridgeValleyStitch && (
+                      <>
+                        <div style={{ minWidth: 180 }}>
+                          <div style={{ fontSize: 11, color: "#555" }}>
+                            Decimate spacing {ridgeValleyDecimate.toFixed(4)}
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={0.02}
+                            step={0.0005}
+                            value={ridgeValleyDecimate}
+                            onChange={(e) => onChangeRidgeValleyDecimate(Number(e.target.value))}
+                            disabled={!ridgeValleyStitchEnabled}
+                            style={{ width: 180 }}
+                          />
+                        </div>
+
+                        <div style={{ minWidth: 180 }}>
+                          <div style={{ fontSize: 11, color: "#555" }}>
+                            Max curves {ridgeValleyMaxCurves}
+                          </div>
+                          <input
+                            type="range"
+                            min={20}
+                            max={400}
+                            step={10}
+                            value={ridgeValleyMaxCurves}
+                            onChange={(e) => onChangeRidgeValleyMaxCurves(Number(e.target.value))}
+                            disabled={!ridgeValleyStitchEnabled}
+                            style={{ width: 180 }}
+                          />
+                        </div>
+
+                        <div style={{ minWidth: 180 }}>
+                          <div style={{ fontSize: 11, color: "#555" }}>
+                            Min confidence {ridgeValleyMinConf.toFixed(3)}
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1.5}
+                            step={0.01}
+                            value={ridgeValleyMinConf}
+                            onChange={(e) => onChangeRidgeValleyMinConf(Number(e.target.value))}
+                            disabled={!ridgeValleyStitchEnabled}
+                            style={{ width: 180 }}
+                          />
+                        </div>
+                      </>
+                    )}
 
                     <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span>Sample density</span>
@@ -4025,8 +4308,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
                 Constrain path to selection
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={geodesicPathDebug}
+                  onChange={onToggleGeodesicPathDebug}
+                  style={{ marginRight: 6 }}
+                />
+                Debug geodesic
+              </label>
               {geodesicPathMessage && (
                 <div style={{ color: "#b23b1a" }}>{geodesicPathMessage}</div>
+              )}
+              {geodesicPathDebug && geodesicPathDebugInfo && (
+                <div style={{ fontFamily: "monospace", fontSize: 10, color: "#445" }}>
+                  {geodesicPathDebugInfo}
+                </div>
               )}
             </div>
           </details>

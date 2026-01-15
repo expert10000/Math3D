@@ -21,6 +21,10 @@ export type RidgeValleyResult = {
   valleySegments: Float32Array;
   ridgeCount: number;
   valleyCount: number;
+  ridgeMask: Uint8Array;
+  valleyMask: Uint8Array;
+  ridgeConfidence: Float32Array;
+  valleyConfidence: Float32Array;
 };
 
 export function buildVertexAdjacency(index: ArrayLike<number> | null, vertexCount: number): number[][] {
@@ -136,6 +140,10 @@ export function detectRidgeValleySegments(params: RidgeValleyParams): RidgeValle
   const ridgePositions: number[] = [];
   const valleyPositions: number[] = [];
   const vertexCount = Math.floor(positions.length / 3);
+  const ridgeMask = new Uint8Array(vertexCount);
+  const valleyMask = new Uint8Array(vertexCount);
+  const ridgeConfidence = new Float32Array(vertexCount);
+  const valleyConfidence = new Float32Array(vertexCount);
   const safeStride = Math.max(1, Math.floor(stride));
   const maxPerType = Math.max(0, Math.floor(maxSegments));
   const halfLen = segmentLength * 0.5;
@@ -162,7 +170,8 @@ export function detectRidgeValleySegments(params: RidgeValleyParams): RidgeValle
     const d2z = d2[i3 + 2];
     if (!isFiniteDir(d1x, d1y, d1z) || !isFiniteDir(d2x, d2y, d2z)) continue;
 
-    if (useLen && ridgePositions.length / 6 < maxPerType && Math.abs(k1i) >= kMagMin) {
+    let ridgeFeature = false;
+    if (Math.abs(k1i) >= kMagMin) {
       const d1len = Math.hypot(d1x, d1y, d1z);
       if (d1len > 1e-10) {
         const inv = 1 / d1len;
@@ -179,20 +188,24 @@ export function detectRidgeValleySegments(params: RidgeValleyParams): RidgeValle
             k1i >= k1p + epsK &&
             k1i >= k1m + epsK
           ) {
-            ridgePositions.push(
-              px - dx * halfLen,
-              py - dy * halfLen,
-              pz - dz * halfLen,
-              px + dx * halfLen,
-              py + dy * halfLen,
-              pz + dz * halfLen
-            );
+            ridgeFeature = true;
+            if (useLen && ridgePositions.length / 6 < maxPerType) {
+              ridgePositions.push(
+                px - dx * halfLen,
+                py - dy * halfLen,
+                pz - dz * halfLen,
+                px + dx * halfLen,
+                py + dy * halfLen,
+                pz + dz * halfLen
+              );
+            }
           }
         }
       }
     }
 
-    if (useLen && valleyPositions.length / 6 < maxPerType && Math.abs(k2i) >= kMagMin) {
+    let valleyFeature = false;
+    if (Math.abs(k2i) >= kMagMin) {
       const d2len = Math.hypot(d2x, d2y, d2z);
       if (d2len > 1e-10) {
         const inv = 1 / d2len;
@@ -209,17 +222,29 @@ export function detectRidgeValleySegments(params: RidgeValleyParams): RidgeValle
             k2i <= k2p - epsK &&
             k2i <= k2m - epsK
           ) {
-            valleyPositions.push(
-              px - dx * halfLen,
-              py - dy * halfLen,
-              pz - dz * halfLen,
-              px + dx * halfLen,
-              py + dy * halfLen,
-              pz + dz * halfLen
-            );
+            valleyFeature = true;
+            if (useLen && valleyPositions.length / 6 < maxPerType) {
+              valleyPositions.push(
+                px - dx * halfLen,
+                py - dy * halfLen,
+                pz - dz * halfLen,
+                px + dx * halfLen,
+                py + dy * halfLen,
+                pz + dz * halfLen
+              );
+            }
           }
         }
       }
+    }
+
+    if (ridgeFeature) {
+      ridgeMask[i] = 1;
+      ridgeConfidence[i] = Math.abs(k1i);
+    }
+    if (valleyFeature) {
+      valleyMask[i] = 1;
+      valleyConfidence[i] = Math.abs(k2i);
     }
   }
 
@@ -228,5 +253,9 @@ export function detectRidgeValleySegments(params: RidgeValleyParams): RidgeValle
     valleySegments: new Float32Array(valleyPositions),
     ridgeCount: ridgePositions.length / 6,
     valleyCount: valleyPositions.length / 6,
+    ridgeMask,
+    valleyMask,
+    ridgeConfidence,
+    valleyConfidence,
   };
 }

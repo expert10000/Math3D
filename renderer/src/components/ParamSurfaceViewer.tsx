@@ -15,6 +15,7 @@ import { integratePrincipalStreamlineBidirectional, stabilizePrincipalResult } f
 import { stabilizeTangentDirection } from "../math/curvatureDirections";
 import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirectional } from "../math/curvatureLines";
 import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
+import { stitchRidgeValleyCurves } from "../math/ridgeValleyStitch";
 import { marchingSquares } from "../math/marchingSquares";
 import {
   buildWeierstrassSurface,
@@ -27,7 +28,12 @@ import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
-import { buildSurfaceSampleSetFromViewer, type SurfaceSample, type SurfaceSampleSet } from "../math/sampling/surfaceSampling";
+import {
+  buildSurfaceSampleSetFromViewer,
+  getNonIndexedDrawCount,
+  type SurfaceSample,
+  type SurfaceSampleSet,
+} from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
 
 type ParamPreset = {
@@ -211,6 +217,10 @@ type Props = {
   ridgeValleyMinCos?: number;
   ridgeValleySegmentScale?: number;
   ridgeValleySampleMode?: "high" | "medium" | "low";
+  ridgeValleyStitch?: boolean;
+  ridgeValleyDecimate?: number;
+  ridgeValleyMaxCurves?: number;
+  ridgeValleyMinConf?: number;
   onParamCurvature?: (data: PrincipalCurvatureScalars | null) => void;
 
   paramProbeUV?: { u: number; v: number } | null;
@@ -964,9 +974,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     ridgeValleySelectionOnly = false,
     ridgeValleyMagMin = 0.05,
     ridgeValleyContrast = 0.01,
-    ridgeValleyMinCos = 0.25,
+    ridgeValleyMinCos = 0.3,
     ridgeValleySegmentScale = 0.005,
     ridgeValleySampleMode = "medium",
+    ridgeValleyStitch = false,
+    ridgeValleyDecimate = 0.002,
+    ridgeValleyMaxCurves = 200,
+    ridgeValleyMinConf = 0,
   onParamCurvature,
   paramProbeUV = null,
   paramProbeToken,
@@ -1112,8 +1126,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     null
   );
   const curvatureLinesRef = useRef<THREE.LineSegments | null>(null);
-  const ridgeLinesRef = useRef<THREE.LineSegments | null>(null);
-  const valleyLinesRef = useRef<THREE.LineSegments | null>(null);
+  const ridgeLinesRef = useRef<THREE.Object3D | null>(null);
+  const valleyLinesRef = useRef<THREE.Object3D | null>(null);
   const principalFieldRef = useRef<{ key: string; data: PrincipalField | null } | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
@@ -2223,10 +2237,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
       if (sampleSet && posAttr) {
         const indexAttr = mesh.geometry.getIndex();
+        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+        const positions =
+          drawCount != null
+            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+            : (posAttr.array as Float32Array);
         sampleSet.meshData = [
           {
             key: mesh.uuid,
-            positions: posAttr.array as Float32Array,
+            positions,
             indices: indexAttr ? indexAttr.array : null,
           },
         ];
@@ -3538,11 +3557,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const scene = st?.scene;
     if (!scene) return;
 
-    const clearLines = (ref: React.MutableRefObject<THREE.LineSegments | null>) => {
+    const clearLines = (ref: React.MutableRefObject<THREE.Object3D | null>) => {
       if (!ref.current) return;
+      ref.current.traverse(disposeObject3D);
       scene.remove(ref.current);
-      ref.current.geometry.dispose();
-      (ref.current.material as THREE.Material).dispose();
       ref.current = null;
     };
 
@@ -3557,7 +3575,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const { positions, k1, k2, d1, d2, vertexCount, index } = field;
     const neighbors = buildRidgeAdjacency(index, vertexCount);
     const bboxDiag = (radiusRef.current || 3) * 2;
-    const segmentLength = Math.max(1e-6, ridgeValleySegmentScale * bboxDiag);
+    const segmentLength = ridgeValleyStitch
+      ? 0
+      : Math.max(1e-6, ridgeValleySegmentScale * bboxDiag);
     const sampleConfig =
       ridgeValleySampleMode === "high"
         ? { stride: 1, maxSegments: 12000 }
@@ -3614,36 +3634,103 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       allowedMask,
     });
 
-    if (showRidges && result.ridgeSegments.length) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.BufferAttribute(result.ridgeSegments, 3));
-      const mat = new THREE.LineBasicMaterial({
-        color: 0x1b9e77,
-        transparent: true,
-        opacity: 0.9,
-        depthTest: false,
-        depthWrite: false,
-      });
-      const lines = new THREE.LineSegments(geom, mat);
-      lines.renderOrder = 140;
-      scene.add(lines);
-      ridgeLinesRef.current = lines;
-    }
+    const buildPolylineGroup = (polylines: Float32Array[], color: number) => {
+      if (!polylines.length) return null;
+      const group = new THREE.Group();
+      for (const points of polylines) {
+        if (points.length < 6) continue;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(points, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const line = new THREE.Line(geom, mat);
+        line.renderOrder = 140;
+        line.frustumCulled = false;
+        group.add(line);
+      }
+      return group.children.length ? group : null;
+    };
 
-    if (showValleys && result.valleySegments.length) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.BufferAttribute(result.valleySegments, 3));
-      const mat = new THREE.LineBasicMaterial({
-        color: 0xd95f02,
-        transparent: true,
-        opacity: 0.9,
-        depthTest: false,
-        depthWrite: false,
-      });
-      const lines = new THREE.LineSegments(geom, mat);
-      lines.renderOrder = 140;
-      scene.add(lines);
-      valleyLinesRef.current = lines;
+    if (ridgeValleyStitch) {
+      const decimateEps = Math.max(0, ridgeValleyDecimate * bboxDiag);
+      const maxCurves = Math.max(1, Math.floor(ridgeValleyMaxCurves));
+      const minConf = Math.max(0, ridgeValleyMinConf);
+      const stitchBase = {
+        positions,
+        normals: field.normals,
+        neighbors,
+        minCosLink: ridgeValleyMinCos,
+        minConf,
+        maxChainLen: 2000,
+        maxCurves,
+        maxTotalPoints: 200000,
+        decimateEps,
+      };
+
+      if (showRidges) {
+        const ridgeCurves = stitchRidgeValleyCurves({
+          ...stitchBase,
+          featureMask: result.ridgeMask,
+          confidence: result.ridgeConfidence,
+          dirField: d1,
+        });
+        const group = buildPolylineGroup(ridgeCurves.polylines, 0x1b9e77);
+        if (group) {
+          scene.add(group);
+          ridgeLinesRef.current = group;
+        }
+      }
+
+      if (showValleys) {
+        const valleyCurves = stitchRidgeValleyCurves({
+          ...stitchBase,
+          featureMask: result.valleyMask,
+          confidence: result.valleyConfidence,
+          dirField: d2,
+        });
+        const group = buildPolylineGroup(valleyCurves.polylines, 0xd95f02);
+        if (group) {
+          scene.add(group);
+          valleyLinesRef.current = group;
+        }
+      }
+    } else {
+      if (showRidges && result.ridgeSegments.length) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(result.ridgeSegments, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color: 0x1b9e77,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const lines = new THREE.LineSegments(geom, mat);
+        lines.renderOrder = 140;
+        scene.add(lines);
+        ridgeLinesRef.current = lines;
+      }
+
+      if (showValleys && result.valleySegments.length) {
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.BufferAttribute(result.valleySegments, 3));
+        const mat = new THREE.LineBasicMaterial({
+          color: 0xd95f02,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const lines = new THREE.LineSegments(geom, mat);
+        lines.renderOrder = 140;
+        scene.add(lines);
+        valleyLinesRef.current = lines;
+      }
     }
   }, [
     showRidges,
@@ -3654,6 +3741,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     ridgeValleyMinCos,
     ridgeValleySegmentScale,
     ridgeValleySampleMode,
+    ridgeValleyStitch,
+    ridgeValleyDecimate,
+    ridgeValleyMaxCurves,
+    ridgeValleyMinConf,
     selectionMask,
     surfaceId,
     customX,
