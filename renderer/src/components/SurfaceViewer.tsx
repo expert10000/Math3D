@@ -13,7 +13,7 @@ import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirecti
 import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
 import { stitchRidgeValleyCurves } from "../math/ridgeValleyStitch";
 
-import { scalarToColor01, colorFromPalette, type ColorPalette, solidColorForPalette } from "./colorPalette";
+import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
@@ -43,6 +43,8 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+
+const DBG_COLORS = false;
 
 function disposeObject3D(obj: THREE.Object3D) {
   const anyObj = obj as any;
@@ -1243,7 +1245,7 @@ useEffect(() => {
       case "sphere":
         return (x: number, y: number, z: number) => x * x + y * y + z * z - 1;
       case "cylinder":
-        return (x: number, y: number, z: number) => x * x + z * z - 1;
+        return (x: number, y: number, z: number) => x * x + z * z - 1 + y * 0;
       case "cone": {
         const r = 1.2;
         const h = 2.4;
@@ -1457,12 +1459,6 @@ useEffect(() => {
     const isImplicitSurface = isImplicitId(surfaceId);
     if (!isGraphSurface && !isImplicitSurface) return;
     if (!showContours || contourCount <= 0) return;
-
-    const maxImplicitVertices = 60000;
-    if (isImplicitSurface && vertexCount > maxImplicitVertices) {
-      principalFieldRef.current = { key, data: null };
-      return null;
-    }
 
     if (isGraphSurface) {
       const f = getGraphF();
@@ -2123,18 +2119,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const opacity = clamp01(materialOpacity);
     const graphRes = Math.max(20, Math.round(graphResolution));
     const implicitRes = Math.max(18, Math.round(implicitResolution));
-
-    const makeMaterial2 = () =>
-      new THREE.MeshStandardMaterial({
-        color: 0x0b5ed7,
-        metalness: materialMetalness,
-        roughness: materialRoughness,
-        side: THREE.DoubleSide,
-        wireframe: !!wireframe,
-        vertexColors: colorMode !== "solid",
-        transparent: opacity < 1,
-        opacity,
-      });
 
     const makeMaterial = () =>
       new THREE.MeshStandardMaterial({
@@ -3068,48 +3052,41 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       if (ridgeLinesRef.current) {
         scene.remove(ridgeLinesRef.current);
-        ridgeLinesRef.current.geometry.dispose();
-        (ridgeLinesRef.current.material as THREE.Material).dispose();
+        ridgeLinesRef.current.traverse(disposeObject3D);
         ridgeLinesRef.current = null;
       }
 
       if (valleyLinesRef.current) {
         scene.remove(valleyLinesRef.current);
-        valleyLinesRef.current.geometry.dispose();
-        (valleyLinesRef.current.material as THREE.Material).dispose();
+        valleyLinesRef.current.traverse(disposeObject3D);
         valleyLinesRef.current = null;
       }
 
       if (gaussHighlightRef.current) {
         scene.remove(gaussHighlightRef.current);
-        gaussHighlightRef.current.geometry.dispose();
-        (gaussHighlightRef.current.material as THREE.Material).dispose();
+        gaussHighlightRef.current.traverse(disposeObject3D);
         gaussHighlightRef.current = null;
       }
 
       if (selectionOverlayRef.current) {
         scene.remove(selectionOverlayRef.current);
-        selectionOverlayRef.current.geometry.dispose();
-        (selectionOverlayRef.current.material as THREE.Material).dispose();
+        selectionOverlayRef.current.traverse(disposeObject3D);
         selectionOverlayRef.current = null;
       }
 
       if (geodesicPathLineRef.current) {
         scene.remove(geodesicPathLineRef.current);
-        geodesicPathLineRef.current.geometry.dispose();
-        (geodesicPathLineRef.current.material as THREE.Material).dispose();
+        geodesicPathLineRef.current.traverse(disposeObject3D);
         geodesicPathLineRef.current = null;
       }
       if (geodesicPathMarkersRef.current.start) {
         scene.remove(geodesicPathMarkersRef.current.start);
-        geodesicPathMarkersRef.current.start.geometry.dispose();
-        (geodesicPathMarkersRef.current.start.material as THREE.Material).dispose();
+        geodesicPathMarkersRef.current.start.traverse(disposeObject3D);
         geodesicPathMarkersRef.current.start = null;
       }
       if (geodesicPathMarkersRef.current.end) {
         scene.remove(geodesicPathMarkersRef.current.end);
-        geodesicPathMarkersRef.current.end.geometry.dispose();
-        (geodesicPathMarkersRef.current.end.material as THREE.Material).dispose();
+        geodesicPathMarkersRef.current.end.traverse(disposeObject3D);
         geodesicPathMarkersRef.current.end = null;
       }
 
@@ -3211,15 +3188,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (selectionOverlayRef.current) {
       scene.remove(selectionOverlayRef.current);
-      selectionOverlayRef.current.geometry.dispose();
-      (selectionOverlayRef.current.material as THREE.Material).dispose();
+      selectionOverlayRef.current.traverse(disposeObject3D);
       selectionOverlayRef.current = null;
     }
 
     if (selectionSphereRef.current) {
       scene.remove(selectionSphereRef.current);
-      selectionSphereRef.current.geometry.dispose();
-      (selectionSphereRef.current.material as THREE.Material).dispose();
+      selectionSphereRef.current.traverse(disposeObject3D);
       selectionSphereRef.current = null;
     }
 
@@ -3272,8 +3247,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (selectionSphereRef.current) {
       scene.remove(selectionSphereRef.current);
-      selectionSphereRef.current.geometry.dispose();
-      (selectionSphereRef.current.material as THREE.Material).dispose();
+      selectionSphereRef.current.traverse(disposeObject3D);
       selectionSphereRef.current = null;
     }
 
@@ -3295,8 +3269,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     return () => {
       if (selectionSphereRef.current === sphere) {
         scene.remove(sphere);
-        geometry.dispose();
-        material.dispose();
+        sphere.traverse(disposeObject3D);
         selectionSphereRef.current = null;
       }
     };
@@ -3486,8 +3459,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (inspectMarkerRef.current) {
       scene.remove(inspectMarkerRef.current);
-      inspectMarkerRef.current.geometry.dispose();
-      (inspectMarkerRef.current.material as THREE.Material).dispose();
+      inspectMarkerRef.current.traverse(disposeObject3D);
       inspectMarkerRef.current = null;
     }
 
@@ -3504,12 +3476,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     return () => {
       if (inspectMarkerRef.current === marker) {
         scene.remove(marker);
-        geometry.dispose();
-        material.dispose();
+        marker.traverse(disposeObject3D);
         inspectMarkerRef.current = null;
       }
-      };
-    }, [inspectPoint, sceneEpoch]);
+    };
+  }, [inspectPoint, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -3519,14 +3490,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const clearMarker = (marker: THREE.Mesh | null) => {
       if (!marker) return;
       scene.remove(marker);
-      marker.geometry.dispose();
-      (marker.material as THREE.Material).dispose();
+      marker.traverse(disposeObject3D);
     };
 
     if (geodesicPathLineRef.current) {
       scene.remove(geodesicPathLineRef.current);
-      geodesicPathLineRef.current.geometry.dispose();
-      (geodesicPathLineRef.current.material as THREE.Material).dispose();
+      geodesicPathLineRef.current.traverse(disposeObject3D);
       geodesicPathLineRef.current = null;
     }
     if (geodesicPathMarkersRef.current.start) {
@@ -3541,7 +3510,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const pathMeshKey = geodesicPathStart?.meshKey ?? geodesicPathEnd?.meshKey;
     if (!pathMeshKey) return;
 
-    const findMeshByKey = (meshKey: string) => {
+    const findMeshByKey = (meshKey: string): THREE.Mesh | null => {
       let found: THREE.Mesh | null = null;
       surfaceObj.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -3552,9 +3521,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const placeMarker = (endpoint: { meshKey: string; vertexIndex: number }, color: number) => {
       const mesh = findMeshByKey(endpoint.meshKey);
-      const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
-      const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
-      if (!mesh || !posAttr) return null;
+      if (!mesh) return null;
+      const geometry = mesh.geometry as THREE.BufferGeometry;
+      const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (!posAttr) return null;
       if (endpoint.vertexIndex < 0 || endpoint.vertexIndex >= posAttr.count) return null;
 
       const pos = new THREE.Vector3(
@@ -3583,9 +3553,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!geodesicPathIndices?.length) return;
 
     const mesh = findMeshByKey(pathMeshKey);
-    const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
-    const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
-    if (!mesh || !posAttr) return;
+    if (!mesh) return;
+    const geometry = mesh.geometry as THREE.BufferGeometry;
+    const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    if (!posAttr) return;
 
     const positions = new Float32Array(geodesicPathIndices.length * 3);
     const tmp = new THREE.Vector3();
@@ -3646,7 +3617,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     let implicitF: ((x: number, y: number, z: number) => number) | null = null;
     let implicitSize: number | null = null;
-    let implicitFromMeta = false;
     if (isImplicitSurface) {
       const root = surfaceObjRef.current as THREE.Object3D | null;
       if (root) {
@@ -3815,38 +3785,65 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const root = surfaceObjRef.current;
     if (!root) return null;
 
+    const scanImplicitSurface = (rootObj: THREE.Object3D) => {
+      let scanGeometry: THREE.BufferGeometry | null = null;
+      let scanImplicitF: ((x: number, y: number, z: number) => number) | null = null;
+      let scanImplicitSize: number | null = null;
+      let scanImplicitFromMeta = false;
+
+      rootObj.traverse((obj) => {
+        const anyObj = obj as any;
+        const meta = anyObj?.userData?.__implicit as
+          | { f: (x: number, y: number, z: number) => number; size?: number }
+          | undefined;
+        if (!scanGeometry && anyObj?.isMesh && anyObj.geometry) {
+          scanGeometry = anyObj.geometry as THREE.BufferGeometry;
+        }
+        if (meta?.f) {
+          scanImplicitF = meta.f;
+          if (typeof meta.size === "number") scanImplicitSize = meta.size;
+          scanImplicitFromMeta = true;
+        }
+      });
+
+      return {
+        geometry: scanGeometry,
+        implicitF: scanImplicitF,
+        implicitSize: scanImplicitSize,
+        implicitFromMeta: scanImplicitFromMeta,
+      };
+    };
+
+    const findMeshGeometry = (rootObj: THREE.Object3D): THREE.BufferGeometry | null => {
+      let found: THREE.BufferGeometry | null = null;
+      rootObj.traverse((obj) => {
+        if (found) return;
+        const mesh = obj as THREE.Mesh;
+        if (mesh?.isMesh && mesh.geometry) {
+          found = mesh.geometry as THREE.BufferGeometry;
+        }
+      });
+      return found;
+    };
+
     let geometry: THREE.BufferGeometry | null = null;
     let implicitF: ((x: number, y: number, z: number) => number) | null = null;
     let implicitSize: number | null = null;
     let implicitFromMeta = false;
 
     if (isImplicitSurface) {
-      root.traverse((obj) => {
-        const anyObj = obj as any;
-        const meta = anyObj?.userData?.__implicit as
-          | { f: (x: number, y: number, z: number) => number; size?: number }
-          | undefined;
-        if (!geometry && anyObj?.isMesh && anyObj.geometry) {
-          geometry = anyObj.geometry as THREE.BufferGeometry;
-        }
-        if (meta?.f) {
-          implicitF = meta.f;
-          if (typeof meta.size === "number") implicitSize = meta.size;
-          implicitFromMeta = true;
-        }
-      });
+      const scan = scanImplicitSurface(root);
+      geometry = scan.geometry;
+      implicitF = scan.implicitF;
+      implicitSize = scan.implicitSize;
+      implicitFromMeta = scan.implicitFromMeta;
+
       if (!implicitF) {
         const fallback = getImplicitFallback(surfaceId);
         if (fallback) implicitF = fallback;
       }
     } else {
-      root.traverse((obj) => {
-        if (geometry) return;
-        const mesh = obj as THREE.Mesh;
-        if (mesh?.isMesh && mesh.geometry) {
-          geometry = mesh.geometry as THREE.BufferGeometry;
-        }
-      });
+      geometry = findMeshGeometry(root);
     }
 
     if (!geometry) {
@@ -4702,9 +4699,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (showPrincipalLines) {
-        const steps = 320;
+        const maxSteps = 320;
         const range = Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin));
         const step = 0.02 * range;
+        const bounds = { uMin, uMax, vMin, vMax };
         const frameAt = (uv: { u: number; v: number }) => {
           if (uv.u < uMin || uv.u > uMax || uv.v < vMin || uv.v > vMax) return null;
           return computePrincipalCurvatureAtUV({
@@ -4732,12 +4730,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         const startUV = { u: probeXY.x, v: probeXY.y };
 
         const p1 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 1, {
-          steps,
+          bounds,
           step,
+          maxSteps,
           normalOffset: lineOffset,
         });
-        if (p1.length >= 2) {
-          const geom = new THREE.BufferGeometry().setFromPoints(p1);
+        if (p1.xyz.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p1.xyz);
           const line = new THREE.Line(geom, lineMaterial1);
           line.renderOrder = 996;
           group.add(line);
@@ -4746,12 +4745,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
 
         const p2 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 2, {
-          steps,
+          bounds,
           step,
+          maxSteps,
           normalOffset: lineOffset,
         });
-        if (p2.length >= 2) {
-          const geom = new THREE.BufferGeometry().setFromPoints(p2);
+        if (p2.xyz.length >= 2) {
+          const geom = new THREE.BufferGeometry().setFromPoints(p2.xyz);
           const line = new THREE.Line(geom, lineMaterial2);
           line.renderOrder = 996;
           group.add(line);

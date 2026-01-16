@@ -2713,15 +2713,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       if (ridgeLinesRef.current) {
         scene.remove(ridgeLinesRef.current);
-        ridgeLinesRef.current.geometry.dispose();
-        (ridgeLinesRef.current.material as THREE.Material).dispose();
+        ridgeLinesRef.current.traverse(disposeObject3D);
         ridgeLinesRef.current = null;
       }
 
       if (valleyLinesRef.current) {
         scene.remove(valleyLinesRef.current);
-        valleyLinesRef.current.geometry.dispose();
-        (valleyLinesRef.current.material as THREE.Material).dispose();
+        valleyLinesRef.current.traverse(disposeObject3D);
         valleyLinesRef.current = null;
       }
 
@@ -3156,7 +3154,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const pathMeshKey = geodesicPathStart?.meshKey ?? geodesicPathEnd?.meshKey;
     if (!pathMeshKey) return;
 
-    const findMeshByKey = (meshKey: string) => {
+    const findMeshByKey = (meshKey: string): THREE.Mesh | null => {
       let found: THREE.Mesh | null = null;
       surfaceObj.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
@@ -3167,9 +3165,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     const placeMarker = (endpoint: { meshKey: string; vertexIndex: number }, color: number) => {
       const mesh = findMeshByKey(endpoint.meshKey);
-      const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
-      const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
-      if (!mesh || !posAttr) return null;
+      if (!mesh) return null;
+      const geometry = mesh.geometry as THREE.BufferGeometry;
+      const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (!posAttr) return null;
       if (endpoint.vertexIndex < 0 || endpoint.vertexIndex >= posAttr.count) return null;
 
       const pos = new THREE.Vector3(
@@ -3198,9 +3197,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (!geodesicPathIndices?.length) return;
 
     const mesh = findMeshByKey(pathMeshKey);
-    const geometry = mesh?.geometry as THREE.BufferGeometry | undefined;
-    const posAttr = geometry?.getAttribute("position") as THREE.BufferAttribute | undefined;
-    if (!mesh || !posAttr) return;
+    if (!mesh) return;
+    const geometry = mesh.geometry as THREE.BufferGeometry;
+    const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    if (!posAttr) return;
 
     const positions = new Float32Array(geodesicPathIndices.length * 3);
     const tmp = new THREE.Vector3();
@@ -3776,13 +3776,20 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     let arrow = driftArrowRef.current;
     if (!arrow) {
       arrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 1, 0xff6b35, 0.24, 0.14);
-      arrow.line.material.depthTest = false;
+      const lineMat = arrow.line.material;
+      if (Array.isArray(lineMat)) lineMat.forEach((mat) => { mat.depthTest = false; });
+      else lineMat.depthTest = false;
       arrow.renderOrder = 999;
       group.add(arrow);
       driftArrowRef.current = arrow;
     }
 
-    if (surfaceId !== "weierstrass" || !showDriftArrow || !weierstrassDiagnostics) {
+    if (
+      surfaceId !== "weierstrass" ||
+      !showDriftArrow ||
+      !weierstrassDiagnostics ||
+      "errorMessage" in weierstrassDiagnostics
+    ) {
       arrow.visible = false;
       return;
     }
@@ -3893,10 +3900,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
 
     if (showPrincipalLines) {
-      const steps = 280;
+      const maxSteps = 280;
       const uRange = uMax - uMin || 1;
       const vRange = vMax - vMin || 1;
       const step = 0.02 * Math.min(Math.abs(uRange), Math.abs(vRange));
+      const bounds = { uMin, uMax, vMin, vMax };
       const frameAt = (uv: { u: number; v: number }) => {
         if (uv.u < uMin || uv.u > uMax || uv.v < vMin || uv.v > vMax) return null;
         return computePrincipalCurvatureAtUV({
@@ -3924,12 +3932,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const startUV = { u: probeUV.u, v: probeUV.v };
 
       const p1 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 1, {
-        steps,
+        bounds,
         step,
+        maxSteps,
         normalOffset: lineOffset,
       });
-      if (p1.length >= 2) {
-        const geom = new THREE.BufferGeometry().setFromPoints(p1);
+      if (p1.xyz.length >= 2) {
+        const geom = new THREE.BufferGeometry().setFromPoints(p1.xyz);
         const line = new THREE.Line(geom, lineMaterial1);
         line.renderOrder = 996;
         group.add(line);
@@ -3938,12 +3947,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       }
 
       const p2 = integratePrincipalStreamlineBidirectional(frameAt, startUV, 2, {
-        steps,
+        bounds,
         step,
+        maxSteps,
         normalOffset: lineOffset,
       });
-      if (p2.length >= 2) {
-        const geom = new THREE.BufferGeometry().setFromPoints(p2);
+      if (p2.xyz.length >= 2) {
+        const geom = new THREE.BufferGeometry().setFromPoints(p2.xyz);
         const line = new THREE.Line(geom, lineMaterial2);
         line.renderOrder = 996;
         group.add(line);
@@ -4206,7 +4216,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     );
   })();
 
-  const canLoad = !!(onSetCustomX || onSetCustomY || onSetCustomZ);
+  const canLoad = !!(onSetCustomX && onSetCustomY && onSetCustomZ);
   const sliceOffsetRange = Math.max(1, radiusRef.current || 3);
   const sliceSizeMax = Math.max(2, sliceOffsetRange * 2.5);
   const sliceThetaDeg = toDeg(slicePlaneTheta);
@@ -4585,7 +4595,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
                   </div>
 
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <button onClick={() => loadParamPreset(p)} disabled={!onSetCustomX || !onSetCustomY || !onSetCustomZ}>
+                    <button onClick={() => loadParamPreset(p)} disabled={!canLoad}>
                       Load
                     </button>
                     <button onClick={() => duplicateParamPreset(p)}>Duplicate</button>

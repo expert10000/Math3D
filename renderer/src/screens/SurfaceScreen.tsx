@@ -90,8 +90,7 @@ const SurfacesScreen: React.FC<SurfacesScreenProps> = ({ surfaceId }) => {
 
       <div >
         <Canvas /* camera + lights etc. */>
-          {/* pass customExpr into your surface mesh when isCustom */}
-          {/* <SurfaceMesh surfaceId={surfaceId} customExpr={customExpr} /> */}
+          <SurfaceMesh surfaceId={surfaceId} />
           <OrbitControls />
         </Canvas>
       </div>

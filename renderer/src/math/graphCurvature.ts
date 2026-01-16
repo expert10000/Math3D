@@ -166,23 +166,11 @@ export function applyCurvatureColorsToGraph(
 
     const EG_F2 = E * G - F * F;
     let K = 0;
-    let H = 0;
-    let k1 = 0;
-    let k2 = 0;
 
     if (Math.abs(EG_F2) > 1e-10) {
       K = (e * g - fcoef * fcoef) / EG_F2;
-      H = (E * g + G * e - 2 * F * fcoef) / (2 * EG_F2);
-
-      const disc = Math.max(0, H * H - K);
-      const sqrtDisc = Math.sqrt(disc);
-      k1 = H + sqrtDisc;
-      k2 = H - sqrtDisc;
     } else {
       K = 0;
-      H = 0;
-      k1 = 0;
-      k2 = 0;
     }
 
     Kvals[i] = K;

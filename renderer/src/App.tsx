@@ -1,5 +1,6 @@
 // src/App.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
@@ -1479,7 +1480,7 @@ case "mobius":
             }
           : {
               kind: "surfaceDisk",
-              centerWorld: { x: payload.point.x, y: payload.point.y, z: payload.point.z },
+              centerWorld: new THREE.Vector3(payload.point.x, payload.point.y, payload.point.z),
               radius: selectionRadius,
             };
       setSelection(nextSelection);
@@ -2129,10 +2130,6 @@ case "mobius":
               onChangeSurface={handlePickEqSurface}
               paramId={paramSurfaceId}
               onChangeParamId={setParamSurfaceId}
-              weierstrassGExpr={weierstrassGExpr}
-              weierstrassPhiExpr={weierstrassPhiExpr}
-              onChangeWeierstrassGExpr={setWeierstrassGExpr}
-              onChangeWeierstrassPhiExpr={setWeierstrassPhiExpr}
               activeWeierstrassPreset={activeWeierstrassPreset}
               onApplyWeierstrassPreset={applyWeierstrassPreset}
               onApplySuggestedDomain={applySuggestedDomain}
@@ -2145,10 +2142,6 @@ case "mobius":
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
               onChangeCompareParamId={setCompareParamId}
-              selectionStats={selectionStats}
-              availableSelectionMetrics={availableSelectionMetrics}
-              selectedMetric={selectedMetric}
-              onChangeSelectedMetric={setSelectedMetric}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -2213,9 +2206,6 @@ case "mobius":
                 showDriftArrow={showDriftArrow}
                 onToggleDriftArrow={toggleDriftArrow}
                 onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
-                activeWeierstrassPreset={activeWeierstrassPreset}
-                onApplyWeierstrassPreset={applyWeierstrassPreset}
-                onApplySuggestedDomain={applySuggestedDomain}
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showPlanes={showPlanes}
@@ -2723,11 +2713,6 @@ case "mobius":
                 onRemoveGraphDomainPreset={removeGraphDomainPreset}
                 onRemoveParamDomainPreset={removeParamDomainPreset}
                 onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
-                weierstrassDiagnostics={weierstrassDiagnostics}
-                weierstrassDiagnosticError={weierstrassDiagnosticError}
-                showDriftArrow={showDriftArrow}
-                onToggleDriftArrow={toggleDriftArrow}
-                onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
               />
             </div>
           </div>
@@ -2899,10 +2884,6 @@ type SurfacesControlsProps = {
   onChangeSurface: (s: SurfaceId) => void;
   paramId: ParamSurfaceId;
   onChangeParamId: (p: ParamSurfaceId) => void;
-  weierstrassGExpr: string;
-  weierstrassPhiExpr: string;
-  onChangeWeierstrassGExpr: (v: string) => void;
-  onChangeWeierstrassPhiExpr: (v: string) => void;
   activeWeierstrassPreset: WeierstrassPreset | null;
   onApplyWeierstrassPreset: (preset: WeierstrassPreset) => void;
   onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
@@ -2912,10 +2893,6 @@ type SurfacesControlsProps = {
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
   onChangeCompareParamId: (p: ParamSurfaceId) => void;
-  selectionStats: SelectionStats;
-  availableSelectionMetrics: SelectionMetricKey[];
-  selectedMetric: SelectionMetricKey;
-  onChangeSelectedMetric: (metric: SelectionMetricKey) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -2925,10 +2902,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeSurface,
   paramId,
   onChangeParamId,
-  weierstrassGExpr,
-  weierstrassPhiExpr,
-  onChangeWeierstrassGExpr,
-  onChangeWeierstrassPhiExpr,
   activeWeierstrassPreset,
   onApplyWeierstrassPreset,
   onApplySuggestedDomain,
@@ -2938,10 +2911,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeCompareSurface,
   compareParamId,
   onChangeCompareParamId,
-  selectionStats,
-  availableSelectionMetrics,
-  selectedMetric,
-  onChangeSelectedMetric,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -3205,9 +3174,6 @@ type SurfacesLeftPanelProps = {
   onToggleWeierstrassRecenter: () => void;
   onResetWeierstrass: () => void;
   weierstrassError: string | null;
-  activeWeierstrassPreset: WeierstrassPreset | null;
-  onApplyWeierstrassPreset: (preset: WeierstrassPreset) => void;
-  onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
 
   showWireframe: boolean;
   onToggleWireframe: () => void;
@@ -3396,9 +3362,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleWeierstrassRecenter,
   onResetWeierstrass,
   weierstrassError,
-  activeWeierstrassPreset,
-  onApplyWeierstrassPreset,
-  onApplySuggestedDomain,
   showWireframe,
   onToggleWireframe,
   showPlanes,
@@ -5284,11 +5247,6 @@ type SurfacesRightPanelProps = {
   onRemoveGraphDomainPreset: (id: string) => void;
   onRemoveParamDomainPreset: (id: string) => void;
   onRemoveImplicitDomainPreset: (id: string) => void;
-  weierstrassDiagnostics: WeierstrassDriftResult | null;
-  weierstrassDiagnosticError: string | null;
-  showDriftArrow: boolean;
-  onToggleDriftArrow: () => void;
-  onRecomputeDiagnostics: () => void;
 };
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -5321,11 +5279,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onRemoveGraphDomainPreset,
   onRemoveParamDomainPreset,
   onRemoveImplicitDomainPreset,
-  weierstrassDiagnostics,
-  weierstrassDiagnosticError,
-  showDriftArrow,
-  onToggleDriftArrow,
-  onRecomputeDiagnostics,
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
@@ -5885,132 +5838,6 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan,
   );
 };
 
-type ImplicitDomainPreviewProps = {
-  width: number;
-  height: number;
-  xSpan: number; // x in [-xSpan, xSpan]
-  zSpan: number; // z in [-zSpan, zSpan]
-  yValue?: number;
-  onPick: (xyz: { x: number; y: number; z: number }) => void;
-  picked?: { x: number; y: number; z: number } | null;
-};
-
-const ImplicitDomainPreview: React.FC<ImplicitDomainPreviewProps> = ({
-  width,
-  height,
-  xSpan,
-  zSpan,
-  yValue,
-  onPick,
-  picked: pickedProp,
-}) => {
-  const [picked, setPicked] = useState<{ x: number; y: number; z: number } | null>(null);
-  const [y, setY] = useState(Number.isFinite(yValue ?? 0) ? (yValue as number) : 0);
-
-  useEffect(() => {
-    if (pickedProp) setPicked(pickedProp);
-  }, [pickedProp?.x, pickedProp?.y, pickedProp?.z]);
-
-  useEffect(() => {
-    if (Number.isFinite(yValue ?? 0)) setY(yValue as number);
-  }, [yValue]);
-
-  const safeXSpan = Number.isFinite(xSpan) && xSpan > 0 ? xSpan : 1;
-  const safeZSpan = Number.isFinite(zSpan) && zSpan > 0 ? zSpan : 1;
-
-  const pad = 12;
-  const w = width;
-  const h = height;
-
-  const toXZ = (clientX: number, clientY: number, svg: SVGSVGElement) => {
-    const r = svg.getBoundingClientRect();
-    const px = (clientX - r.left - pad) / (r.width - 2 * pad);
-    const py = (clientY - r.top - pad) / (r.height - 2 * pad);
-    const x = (px * 2 - 1) * safeXSpan;
-    const z = (1 - py * 2) * safeZSpan;
-    return { x, z };
-  };
-
-  const toPx = (x: number, z: number) => {
-    const px = pad + ((x / safeXSpan + 1) * 0.5) * (w - 2 * pad);
-    const py = pad + ((1 - (z / safeZSpan + 1) * 0.5) * (h - 2 * pad));
-    return { px, py };
-  };
-
-  const gridLines = 8;
-
-  return (
-    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
-      <svg
-        width={w}
-        height={h}
-        style={{ display: "block", cursor: "crosshair" }}
-        onMouseDown={(e) => {
-          const svg = e.currentTarget;
-          const xz = toXZ(e.clientX, e.clientY, svg);
-          const next = { x: xz.x, y, z: xz.z };
-          setPicked(next);
-          onPick(next);
-        }}
-      >
-        <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
-        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#fbfbfd" stroke="#e8e8ee" />
-
-        {Array.from({ length: gridLines + 1 }).map((_, i) => {
-          const t = i / gridLines;
-          const x = pad + t * (w - 2 * pad);
-          const y0 = pad + t * (h - 2 * pad);
-          return (
-            <g key={i}>
-              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke="#eee" />
-              <line x1={pad} y1={y0} x2={w - pad} y2={y0} stroke="#eee" />
-            </g>
-          );
-        })}
-
-        {(() => {
-          const o = toPx(0, 0);
-          return (
-            <g>
-              <line x1={pad} y1={o.py} x2={w - pad} y2={o.py} stroke="#bbb" />
-              <line x1={o.px} y1={pad} x2={o.px} y2={h - pad} stroke="#bbb" />
-            </g>
-          );
-        })()}
-
-        {picked && (() => {
-          const p = toPx(picked.x, picked.z);
-          return (
-            <g>
-              <circle cx={p.px} cy={p.py} r={5} fill="#ff3b30" />
-              <circle cx={p.px} cy={p.py} r={9} fill="none" stroke="#ff3b30" opacity={0.5} />
-            </g>
-          );
-        })()}
-      </svg>
-
-      <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span style={{ opacity: 0.75 }}>x ±{safeXSpan.toFixed(2)}  z ±{safeZSpan.toFixed(2)}</span>
-          <span style={{ fontFamily: "monospace" }}>
-            {picked ? `(${fmt(picked.x)}, ${fmt(picked.z)})` : "(click)"}
-          </span>
-        </div>
-        <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 8 }}>
-          y
-          <input
-            type="number"
-            step={0.1}
-            value={Number.isFinite(y) ? y : 0}
-            onChange={(e) => setY(Number(e.target.value))}
-            style={{ flex: 1 }}
-          />
-        </label>
-      </div>
-    </div>
-  );
-};
-
 type ParamDomainPreviewProps = {
   width: number;
   height: number;
@@ -6147,7 +5974,6 @@ const mT = (t: C): M2 => ({ a: c1, b: t, c: c0, d: c1 });        // z -> z + t
 const mS = (k: C): M2 => ({ a: k, b: c0, c: c0, d: c1 });        // z -> k z
 const mJ = (): M2 => ({ a: c0, b: c1, c: c1, d: c0 });           // z -> 1/z
 
-const paramsToM = (p: MobiusParams): M2 => ({ a: p.a, b: p.b, c: p.c, d: p.d });
 const mToParams = (M: M2): MobiusParams => ({ a: M.a, b: M.b, c: M.c, d: M.d });
 
 function mobiusParamsAtDecomposeStep(p: MobiusParams, step: number, eps = 1e-12): MobiusParams | null {

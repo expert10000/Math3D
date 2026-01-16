@@ -1,5 +1,5 @@
 // src/components/DomainDirectionPicker.tsx
-import React, { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 type Props = {
   u: number; v: number; // probe uv in [0,1]

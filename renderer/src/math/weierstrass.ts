@@ -44,7 +44,6 @@ export type WeierstrassDriftResult =
   | { errorMessage: string };
 
 
-const C0 = C(0, 0);
 const C1 = C(1, 0);
 const CI = C(0, 1);
 

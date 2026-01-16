@@ -1,5 +1,4 @@
 // src/components/LegendBar.tsx
-import React from "react";
 import type { PaletteId, ValueRange } from "../math/colorMaps";
 import { colorFromPalette } from "../math/colorMaps";
 

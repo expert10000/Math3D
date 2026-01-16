@@ -11,9 +11,6 @@ const add = (z: Cpx, w: Cpx): Cpx =>
 const sub = (z: Cpx, w: Cpx): Cpx =>
   c(z.re - w.re, z.im - w.im);
 
-const mul = (z: Cpx, w: Cpx): Cpx =>
-  c(z.re * w.re - z.im * w.im, z.re * w.im + z.im * w.re);
-
 const div = (z: Cpx, w: Cpx): Cpx => {
   const denom = w.re * w.re + w.im * w.im || 1e-16;
   return c(

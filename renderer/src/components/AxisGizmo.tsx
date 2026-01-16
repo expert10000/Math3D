@@ -1,5 +1,5 @@
 // src/components/AxisGizmo.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 export type CameraView = "xy" | "xz" | "yz";
