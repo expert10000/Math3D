@@ -9,6 +9,12 @@ import * as fs from "node:fs";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
+// Guard against running this entrypoint under plain Node (Electron APIs unavailable).
+if (!(app && typeof app.whenReady === "function")) {
+  console.error("Electron app is not available. Run via the Electron runtime.");
+  process.exit(0);
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1100,
