@@ -32,6 +32,20 @@ export type SurfaceSampleBuildOptions = {
   meshKey?: string;
 };
 
+export function getNonIndexedDrawCount(
+  geometry: THREE.BufferGeometry,
+  posAttr: THREE.BufferAttribute
+): number | null {
+  if (geometry.getIndex()) return null;
+  const drawRange = geometry.drawRange;
+  if (!drawRange || drawRange.start !== 0) return null;
+  const count = Math.floor(drawRange.count);
+  if (!Number.isFinite(count)) return null;
+  if (count <= 0) return 0;
+  if (count >= posAttr.count) return null;
+  return count - (count % 3);
+}
+
 export function buildSurfaceSampleSetFromViewer(opts: SurfaceSampleBuildOptions): SurfaceSampleSet {
   const { geometry, worldMatrix, maxSamples, includeUV, startId = 0, meshKey } = opts;
   const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
@@ -41,7 +55,8 @@ export function buildSurfaceSampleSetFromViewer(opts: SurfaceSampleBuildOptions)
   }
 
   const uvAttr = includeUV ? (geometry.getAttribute("uv") as THREE.BufferAttribute | null) : null;
-  const count = posAttr.count;
+  const drawCount = getNonIndexedDrawCount(geometry, posAttr);
+  const count = drawCount ?? posAttr.count;
   if (!count) return { samples: [] };
 
   const safeMax = Number.isFinite(maxSamples) && maxSamples > 0 ? Math.floor(maxSamples) : count;

@@ -296,6 +296,77 @@ Math3D focuses on interactive clarity. Some advanced features are approximated n
 extensible and designed to support additional surface families, export options, and more
 specialized analytic tools.
 
+### Code map (surface pipelines)
+
+This section is duplicated in `CODE_MAP.md` with the same references for quick PR review.
+It describes where each surface type is built, when it re-renders, and the core algorithms.
+
+#### 1) Implicit surfaces (f(x,y,z)=0)
+
+- Render lifecycle: `renderer/src/components/SurfaceViewer.tsx` main `useEffect` rebuilds the
+  scene and implicit mesh when `surfaceId`, `implicitExpr`, `implicitResolution`,
+  `implicitDomainSize`, or material options change (see the dependency list at the end of
+  the effect).
+- Geometry build: `makeImplicitSurface` in `renderer/src/components/SurfaceViewer.tsx` uses
+  `MarchingCubes`, samples `f(x,y,z)` on an `implicitRes^3` grid, sets `effect.isolation = 0`,
+  and calls `effect.update()`.
+- Preset/custom expressions: `getImplicitFallback` and `implicitFnRef` in
+  `renderer/src/components/SurfaceViewer.tsx`, parsed by `compileExpression` in
+  `renderer/src/math/expression.ts`.
+- Normals and curvature: `sampleImplicitDerivatives`, `buildImplicitNormalLines`,
+  `applyImplicitCurvatureColors`, and `computeImplicitPrincipalAtPoint` in
+  `renderer/src/components/SurfaceViewer.tsx` (finite differences on the gradient/Hessian).
+- Contours and slicing: `marchingSquares` in `renderer/src/math/marchingSquares.ts` is used
+  to intersect implicit slices and planes in `renderer/src/components/SurfaceViewer.tsx`.
+
+#### 2) Graph surfaces (z=f(x,y))
+
+- Render lifecycle: built in the same `SurfaceViewer` `useEffect` as implicit surfaces, with
+  updates triggered by `surfaceId`, `graphExpr`, `graphResolution`, or graph domain changes.
+- Geometry build: `makeGraphGeometry` in `renderer/src/components/SurfaceViewer.tsx` creates
+  a `ParametricGeometry` mapping `(u,v)` to `(x, z=f(x,y), y)` so the graph domain is stored
+  in world z.
+- Preset/custom expressions: graph presets are inline functions in
+  `renderer/src/components/SurfaceViewer.tsx`; custom graphs compile via `compileExpression`
+  in `renderer/src/math/expression.ts` into `graphFnRef`.
+- Curvature coloring and probes: `applyCurvatureHeatToGraph` in
+  `renderer/src/components/SurfaceViewer.tsx` computes Gaussian curvature with finite
+  differences; `renderer/src/math/surfaceInvariants.ts` provides probe invariants.
+- Contours and slicing: `buildGraphContours` in `renderer/src/math/contours.ts` and
+  `marchingSquares` in `renderer/src/math/marchingSquares.ts` are called from
+  `renderer/src/components/SurfaceViewer.tsx`.
+
+#### 3) Parametric surfaces (sigma(u,v))
+
+- Render lifecycle: `renderer/src/components/ParamSurfaceViewer.tsx` main `useEffect`
+  rebuilds geometry when `surfaceId`, domain bounds, `paramResolution`, or custom
+  expressions change (dependency list at end of the effect).
+- Geometry build: `paramFunc` is selected in the surface switch, wrapped to map `u,v` from
+  [0,1] into domain bounds, and passed into `ParametricGeometry`, followed by
+  `geometry.computeVertexNormals()`.
+- Custom parameter expressions: `makeSafeParamExpr` in
+  `renderer/src/components/ParamSurfaceViewer.tsx` uses a safe `new Function` wrapper.
+- Curvature and principal directions: `computePrincipalCurvatureAtUV` in
+  `renderer/src/math/principalCurvature.ts` plus streamline helpers in
+  `renderer/src/math/principalStreamlines.ts`.
+- Slicing and sampling: `marchingSquares` is used for slice plane intersections in
+  `renderer/src/components/ParamSurfaceViewer.tsx`; samples come from
+  `renderer/src/math/sampling/surfaceSampling.ts`.
+
+#### 4) Weierstrass minimal surfaces (g(z), phi(z))
+
+- Render lifecycle: `renderer/src/components/ParamSurfaceViewer.tsx` calls
+  `buildWeierstrassSurface` when `surfaceId === "weierstrass"`; rebuilds are triggered by
+  `weierstrassGExpr`, `weierstrassPhiExpr`, `weierstrassResolution`, and domain changes.
+- Build and integrate: `renderer/src/math/weierstrass.ts` builds a grid of complex data,
+  integrates along u-first and v-first paths, averages them to reduce drift, and stores
+  `pathDisagreement` (avg/max).
+- Recenter/rescale: optional `recenterRescale` recenters and scales the grid to a ~unit
+  extent in `renderer/src/math/weierstrass.ts`.
+- Complex expression parsing: `renderer/src/math/complexExpr.ts`.
+- Path drift diagnostics: `computeWeierstrassDrift` in `renderer/src/math/weierstrass.ts`
+  and the drift arrow setup in `renderer/src/components/ParamSurfaceViewer.tsx`.
+
 ### Summary
 
 Math3D provides a cohesive environment for studying surfaces across implicit, explicit, and

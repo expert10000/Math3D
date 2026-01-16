@@ -20,7 +20,7 @@ export type GeodesicParams = {
   maxDist: number;
 };
 
-export function computeGeodesicDistances(params: GeodesicParams): Float32Array {
+export function computeGeodesicDistances(params: GeodesicParams): Float64Array {
   const { seedIndex, neighbors, weights, maxDist } = params;
   const { dist } = dijkstraDistancesAndPrev({
     seedIndex,

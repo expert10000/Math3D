@@ -2155,6 +2155,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return Number.isFinite(s) && s > 0 ? s : fallback;
     };
 
+    // Build an implicit surface by sampling f on a cubic grid and extracting the 0-isosurface.
     const makeImplicitSurface = (f: (x: number, y: number, z: number) => number, size = 2.2) => {
       const finalSize = resolveImplicitSize(size);
       const effect = new MarchingCubes(implicitRes, makeMaterial(), true, true);

@@ -92,6 +92,7 @@ function bilerp(p00: Vec3, p10: Vec3, p01: Vec3, p11: Vec3, tx: number, ty: numb
   };
 }
 
+// Build a parametric surface by integrating Re(Phi(z) dz) on a grid and averaging two path orders.
 export function buildWeierstrassSurface(params: {
   gExpr: string;
   phiExpr: string;
@@ -339,6 +340,7 @@ function integrateEdge(
   return { ok: true, sum };
 }
 
+// Estimate period drift by integrating Phi around the domain boundary.
 export function computeWeierstrassDrift(args: DriftArgs): WeierstrassDriftResult {
   const gRes = compileComplexExpression(args.gExpr);
   if (gRes.error) return { errorMessage: gRes.error.message };

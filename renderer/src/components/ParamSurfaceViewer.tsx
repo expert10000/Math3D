@@ -1944,6 +1944,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
     const slices = Math.max(16, Math.round(paramResolution));
     const stacks = Math.max(16, Math.round(paramResolution));
+    // Weierstrass integration grid can differ from render resolution.
     const buildResolution = Math.max(4, Math.round(weierstrassResolution ?? paramResolution));
 
     const rawDomain = paramDomain ?? getDomain(surfaceId);
