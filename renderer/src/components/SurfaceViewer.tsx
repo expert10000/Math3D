@@ -12,6 +12,7 @@ import { marchingSquares } from "../math/marchingSquares";
 import { buildStreamlineSegments, buildVertexAdjacency, traceStreamlineBidirectional } from "../math/curvatureLines";
 import { buildVertexAdjacency as buildRidgeAdjacency, detectRidgeValleySegments } from "../math/ridgeValley";
 import { stitchRidgeValleyCurves } from "../math/ridgeValleyStitch";
+import { integrateGeodesic } from "../math/geodesic";
 
 import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
@@ -249,6 +250,37 @@ function sampleImplicitDerivatives(
   const fyz = (f(x, y + h, z + h) - f(x, y + h, z - h) - f(x, y - h, z + h) + f(x, y - h, z - h)) / (4 * h * h);
 
   return { fx, fy, fz, fxx, fyy, fzz, fxy, fxz, fyz };
+}
+
+function projectPointToImplicitSurface(
+  f: (x: number, y: number, z: number) => number,
+  point: THREE.Vector3,
+  opts?: { iterations?: number; tol?: number; h?: number; maxStep?: number }
+) {
+  const iterations = Math.max(1, Math.floor(opts?.iterations ?? 5));
+  const tol = Math.max(1e-8, opts?.tol ?? 1e-4);
+  const h = Math.max(1e-6, opts?.h ?? 1e-3);
+  const maxStep = Math.max(1e-4, opts?.maxStep ?? 0.2);
+
+  for (let i = 0; i < iterations; i++) {
+    const v = f(point.x, point.y, point.z);
+    if (!Number.isFinite(v)) break;
+    if (Math.abs(v) <= tol) break;
+
+    const d = sampleImplicitDerivatives(f, point.x, point.y, point.z, h);
+    const g2 = d.fx * d.fx + d.fy * d.fy + d.fz * d.fz;
+    if (!Number.isFinite(g2) || g2 < 1e-12) break;
+
+    let step = v / g2;
+    if (step > maxStep) step = maxStep;
+    else if (step < -maxStep) step = -maxStep;
+
+    point.x -= step * d.fx;
+    point.y -= step * d.fy;
+    point.z -= step * d.fz;
+  }
+
+  return point;
 }
 
 function applyImplicitCurvatureColors(
@@ -3556,29 +3588,390 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!mesh) return;
     const geometry = mesh.geometry as THREE.BufferGeometry;
     const posAttr = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    const uvAttr = geometry.getAttribute("uv") as THREE.BufferAttribute | null;
     if (!posAttr) return;
 
-    const positions = new Float32Array(geodesicPathIndices.length * 3);
+    const rawPoints: THREE.Vector3[] = [];
+    const rawUVs: { u: number; v: number }[] = [];
     const tmp = new THREE.Vector3();
     for (let i = 0; i < geodesicPathIndices.length; i++) {
       const idx = geodesicPathIndices[i];
       if (idx < 0 || idx >= posAttr.count) continue;
       tmp.set(posAttr.getX(idx), posAttr.getY(idx), posAttr.getZ(idx));
       tmp.applyMatrix4(mesh.matrixWorld);
-      positions[i * 3] = tmp.x;
-      positions[i * 3 + 1] = tmp.y;
-      positions[i * 3 + 2] = tmp.z;
+      rawPoints.push(tmp.clone());
+      if (uvAttr) {
+        rawUVs.push({ u: uvAttr.getX(idx), v: uvAttr.getY(idx) });
+      }
+    }
+    if (rawPoints.length < 2) return;
+
+    let drawPoints = rawPoints;
+    let sphereApplied = false;
+    if (surfaceId === "sphere" && rawPoints.length >= 2) {
+      const center = centerRef.current ?? new THREE.Vector3(0, 0, 0);
+      const start = rawPoints[0].clone().sub(center);
+      const end = rawPoints[rawPoints.length - 1].clone().sub(center);
+      const aLen = start.length();
+      const bLen = end.length();
+      const r = (aLen + bLen) * 0.5;
+      if (r > 1e-8 && aLen > 1e-8 && bLen > 1e-8) {
+        const n0 = start.clone().multiplyScalar(1 / aLen);
+        const n1 = end.clone().multiplyScalar(1 / bLen);
+        const dot = Math.min(1, Math.max(-1, n0.dot(n1)));
+        const angle = Math.acos(dot);
+        if (Number.isFinite(angle)) {
+          const maxSegment = Math.max(0.008, r / 160);
+          const arcLen = r * angle;
+          const segments = Math.min(720, Math.max(12, Math.ceil(arcLen / maxSegment)));
+          const points: THREE.Vector3[] = [];
+          if (angle < 1e-6) {
+            points.push(rawPoints[0].clone(), rawPoints[rawPoints.length - 1].clone());
+          } else if (Math.abs(Math.PI - angle) < 1e-4) {
+            let axis = new THREE.Vector3(1, 0, 0);
+            if (Math.abs(n0.dot(axis)) > 0.9) axis.set(0, 1, 0);
+            axis = axis.cross(n0).normalize();
+            const q = new THREE.Quaternion();
+            for (let i = 0; i <= segments; i++) {
+              const t = i / segments;
+              q.setFromAxisAngle(axis, angle * t);
+              points.push(n0.clone().applyQuaternion(q).multiplyScalar(r).add(center));
+            }
+          } else {
+            const sinAngle = Math.sin(angle);
+            for (let i = 0; i <= segments; i++) {
+              const t = i / segments;
+              const s0 = Math.sin((1 - t) * angle) / sinAngle;
+              const s1 = Math.sin(t * angle) / sinAngle;
+              points.push(n0.clone().multiplyScalar(s0).addScaledVector(n1, s1).multiplyScalar(r).add(center));
+            }
+          }
+          if (points.length >= 2) {
+            drawPoints = points;
+            sphereApplied = true;
+          }
+        }
+      }
+    }
+    let paramApplied = false;
+    if (
+      !sphereApplied &&
+      (surfaceId === "paraboloid" || surfaceId === "hyperboloid") &&
+      uvAttr &&
+      rawUVs.length === rawPoints.length &&
+      rawPoints.length >= 2
+    ) {
+      const uMin = 0;
+      const uMax = 1;
+      const vMin = 0;
+      const vMax = 1;
+      const uRange = uMax - uMin;
+      const vRange = vMax - vMin;
+      const wrapU = false;
+      const wrapV = true;
+
+      const paramFunc = (u: number, v: number, target: THREE.Vector3) => {
+        if (surfaceId === "paraboloid") {
+          const r = u * 1.4;
+          const theta = v * Math.PI * 2;
+          const x = r * Math.cos(theta);
+          const z = r * Math.sin(theta);
+          const y = r * r;
+          target.set(x, y, z);
+        } else {
+          const t = (u - 0.5) * 2;
+          const theta = v * Math.PI * 2;
+          const a = 0.8;
+          const c = 0.6;
+          const cosh = Math.cosh(t);
+          const sinh = Math.sinh(t);
+          target.set(a * cosh * Math.cos(theta), c * sinh, a * cosh * Math.sin(theta));
+        }
+        return target;
+      };
+
+      const unwrapDelta = (a: number, b: number, range: number, wrap: boolean) => {
+        let d = b - a;
+        if (wrap && Number.isFinite(range) && range > 0) {
+          if (d > 0.5 * range) d -= range;
+          else if (d < -0.5 * range) d += range;
+        }
+        return d;
+      };
+
+      const smoothFromUVs = (): THREE.Vector3[] | null => {
+        const minSep = 1e-6;
+        const dedupPoints: THREE.Vector3[] = [];
+        const dedupUVs: { u: number; v: number }[] = [];
+        for (let i = 0; i < rawPoints.length; i++) {
+          const p = rawPoints[i];
+          const last = dedupPoints[dedupPoints.length - 1];
+          if (!last || last.distanceToSquared(p) > minSep * minSep) {
+            dedupPoints.push(p.clone());
+            dedupUVs.push({ u: rawUVs[i].u, v: rawUVs[i].v });
+          }
+        }
+        if (dedupUVs.length < 2) return null;
+
+        const unwrapped: { u: number; v: number }[] = [];
+        let prev = dedupUVs[0];
+        unwrapped.push({ u: prev.u, v: prev.v });
+        for (let i = 1; i < dedupUVs.length; i++) {
+          let u = dedupUVs[i].u;
+          let v = dedupUVs[i].v;
+          const du = unwrapDelta(prev.u, u, uRange, wrapU);
+          const dv = unwrapDelta(prev.v, v, vRange, wrapV);
+          u = prev.u + du;
+          v = prev.v + dv;
+          const next = { u, v };
+          unwrapped.push(next);
+          prev = next;
+        }
+
+        const sizeHint = radiusRef.current || 3;
+        const maxSegment = Math.max(0.008, sizeHint / 160);
+        let totalLen = 0;
+        for (let i = 0; i + 1 < dedupPoints.length; i++) {
+          totalLen += dedupPoints[i].distanceTo(dedupPoints[i + 1]);
+        }
+
+        let control = unwrapped;
+        const smoothIters = control.length >= 3 ? Math.min(4, Math.max(2, Math.floor(control.length / 8))) : 0;
+        for (let iter = 0; iter < smoothIters; iter++) {
+          if (control.length < 3) break;
+          const next: { u: number; v: number }[] = [];
+          next.push(control[0]);
+          for (let i = 0; i + 1 < control.length; i++) {
+            const a = control[i];
+            const b = control[i + 1];
+            next.push({ u: a.u * 0.75 + b.u * 0.25, v: a.v * 0.75 + b.v * 0.25 });
+            next.push({ u: a.u * 0.25 + b.u * 0.75, v: a.v * 0.25 + b.v * 0.75 });
+          }
+          next.push(control[control.length - 1]);
+          control = next;
+        }
+
+        const baseSamples = Math.min(1200, Math.max(24, Math.ceil(totalLen / maxSegment)));
+        const minSamples = Math.min(1200, Math.max(24, control.length * 4));
+        const sampleCount = Math.max(baseSamples, minSamples);
+
+        const controlPoints = control.map((uv) => new THREE.Vector3(uv.u, uv.v, 0));
+        let smoothed = control;
+        if (controlPoints.length >= 2) {
+          const curve = new THREE.CatmullRomCurve3(controlPoints, false, "centripetal", 0.5);
+          smoothed = curve.getPoints(sampleCount).map((p) => ({ u: p.x, v: p.y }));
+        }
+
+        const clamp = (val: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, val));
+        const wrapCoord = (val: number, lo: number, hi: number) => {
+          const range = hi - lo;
+          if (!Number.isFinite(range) || range <= 0) return lo;
+          let t = (val - lo) % range;
+          if (t < 0) t += range;
+          return lo + t;
+        };
+
+        const smoothedPoints: THREE.Vector3[] = [];
+        const tmpP = new THREE.Vector3();
+        for (const uv of smoothed) {
+          const u = wrapU ? wrapCoord(uv.u, uMin, uMax) : clamp(uv.u, uMin, uMax);
+          const v = wrapV ? wrapCoord(uv.v, vMin, vMax) : clamp(uv.v, vMin, vMax);
+          paramFunc(u, v, tmpP);
+          tmpP.applyMatrix4(mesh.matrixWorld);
+          smoothedPoints.push(tmpP.clone());
+        }
+        return smoothedPoints.length >= 2 ? smoothedPoints : null;
+      };
+
+      const tryGeodesicShooting = (): THREE.Vector3[] | null => {
+        const segCount = Math.min(rawUVs.length - 1, 4);
+        let du = 0;
+        let dv = 0;
+        for (let i = 0; i < segCount; i++) {
+          du += unwrapDelta(rawUVs[i].u, rawUVs[i + 1].u, uRange, wrapU);
+          dv += unwrapDelta(rawUVs[i].v, rawUVs[i + 1].v, vRange, wrapV);
+        }
+        if (Math.hypot(du, dv) < 1e-6 && rawUVs.length > 2) {
+          du = unwrapDelta(rawUVs[0].u, rawUVs[2].u, uRange, wrapU) * 0.5;
+          dv = unwrapDelta(rawUVs[0].v, rawUVs[2].v, vRange, wrapV) * 0.5;
+        }
+        if (Math.hypot(du, dv) < 1e-6) {
+          du = unwrapDelta(rawUVs[0].u, rawUVs[rawUVs.length - 1].u, uRange, wrapU);
+          dv = unwrapDelta(rawUVs[0].v, rawUVs[rawUVs.length - 1].v, vRange, wrapV);
+        }
+        const dirLen = Math.hypot(du, dv);
+        if (dirLen <= 1e-8) return null;
+
+        const d0 = { du: du / dirLen, dv: dv / dirLen };
+        const d1 = { du: -d0.dv, dv: d0.du };
+
+        let rawLen = 0;
+        for (let i = 1; i < rawPoints.length; i++) {
+          rawLen += rawPoints[i - 1].distanceTo(rawPoints[i]);
+        }
+        const sizeHint = radiusRef.current || 3;
+        const maxSegment = Math.max(0.008, sizeHint / 160);
+        const stepScale = 0.35;
+        const steps = Math.min(1800, Math.max(320, Math.ceil(rawLen / Math.max(1e-5, maxSegment * stepScale))));
+        const maxArcLength = rawLen * 1.05;
+
+        const sigmaWorld = (u: number, v: number, target?: THREE.Vector3) => {
+          const t = target ?? new THREE.Vector3();
+          paramFunc(u, v, t);
+          t.applyMatrix4(mesh.matrixWorld);
+          return t;
+        };
+
+        const shoot = (theta: number) => {
+          const c = Math.cos(theta);
+          const s = Math.sin(theta);
+          const dir = { du: d0.du * c + d1.du * s, dv: d0.dv * c + d1.dv * s };
+          const pts = integrateGeodesic({
+            sigma: sigmaWorld,
+            startUV: rawUVs[0],
+            dirUV: dir,
+            domain: { uMin, uMax, vMin, vMax },
+            wrap: { wrapU, wrapV },
+            steps,
+            h: maxArcLength / steps,
+            maxArcLength,
+            maxStepLength3D: maxSegment * 2,
+          });
+          const endPoint = pts.length ? pts[pts.length - 1] : null;
+          const err = endPoint ? endPoint.distanceTo(rawPoints[rawPoints.length - 1]) : Number.POSITIVE_INFINITY;
+          return { pts, err, theta };
+        };
+
+        const span = Math.PI;
+        const samples = 17;
+        let best = { pts: [] as THREE.Vector3[], err: Number.POSITIVE_INFINITY, theta: 0 };
+        for (let i = 0; i < samples; i++) {
+          const t = -span + (2 * span * i) / (samples - 1);
+          const candidate = shoot(t);
+          if (candidate.err < best.err) best = candidate;
+        }
+
+        let step = span / Math.max(1, samples - 1);
+        for (let iter = 0; iter < 6; iter++) {
+          const left = shoot(best.theta - step);
+          const right = shoot(best.theta + step);
+          if (left.err < best.err) best = left;
+          if (right.err < best.err) best = right;
+          step *= 0.5;
+        }
+
+        const acceptErr = Math.max(rawLen * 0.4, maxSegment * 6);
+        if (best.pts.length >= 2 && best.err < acceptErr) {
+          best.pts[0] = rawPoints[0].clone();
+          best.pts[best.pts.length - 1] = rawPoints[rawPoints.length - 1].clone();
+          return best.pts;
+        }
+        return null;
+      };
+
+      const shot = tryGeodesicShooting();
+      if (shot) {
+        drawPoints = shot;
+        paramApplied = true;
+      } else {
+        const fallback = smoothFromUVs();
+        if (fallback) {
+          drawPoints = fallback;
+          paramApplied = true;
+        }
+      }
     }
 
-    const lineGeom = new THREE.BufferGeometry();
-    lineGeom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xff6b00, transparent: true, opacity: 0.9 });
+    if (!sphereApplied && !paramApplied && isImplicitId(surfaceId) && rawPoints.length >= 2) {
+      const implicitMeta = (surfaceObj as any)?.userData?.__implicit as
+        | { f: (x: number, y: number, z: number) => number; size?: number }
+        | undefined;
+      const implicitF = implicitMeta?.f ?? getImplicitFallback(surfaceId);
+      if (implicitF) {
+        const deduped: THREE.Vector3[] = [];
+        const minSep = 1e-5;
+        for (const p of rawPoints) {
+          const last = deduped[deduped.length - 1];
+          if (!last || last.distanceToSquared(p) > minSep * minSep) {
+            deduped.push(p.clone());
+          }
+        }
+        if (deduped.length >= 2) {
+          const sizeHint = implicitMeta?.size ?? 2;
+          const maxSegment = Math.max(0.012, sizeHint / 85);
+          const densified: THREE.Vector3[] = [deduped[0].clone()];
+          for (let i = 0; i + 1 < deduped.length; i++) {
+            const a = deduped[i];
+            const b = deduped[i + 1];
+            const segLen = a.distanceTo(b);
+            const steps = Math.max(1, Math.ceil(segLen / maxSegment));
+            for (let s = 1; s <= steps; s++) {
+              densified.push(a.clone().lerp(b, s / steps));
+            }
+          }
+
+          const projH = Math.max(1e-4, sizeHint / 1000);
+          const maxStep = Math.max(0.02, sizeHint / 80);
+          const projected = densified.map((p) =>
+            projectPointToImplicitSurface(implicitF, p.clone(), { h: projH, maxStep })
+          );
+
+          let smoothed = projected;
+          const chaikinIters = Math.min(4, Math.max(1, Math.floor(projected.length / 80)));
+          for (let iter = 0; iter < chaikinIters; iter++) {
+            if (smoothed.length < 2) break;
+            const next: THREE.Vector3[] = [];
+            next.push(rawPoints[0].clone());
+            for (let i = 0; i + 1 < smoothed.length; i++) {
+              const a = smoothed[i];
+              const b = smoothed[i + 1];
+              const q = projectPointToImplicitSurface(implicitF, a.clone().lerp(b, 0.25), { h: projH, maxStep });
+              const r = projectPointToImplicitSurface(implicitF, a.clone().lerp(b, 0.75), { h: projH, maxStep });
+              next.push(q, r);
+            }
+            next.push(rawPoints[rawPoints.length - 1].clone());
+            smoothed = next;
+          }
+
+          if (smoothed.length >= 4) {
+            const start = smoothed[0];
+            const end = smoothed[smoothed.length - 1];
+            const startDir = smoothed[2].clone().sub(smoothed[1]);
+            if (startDir.lengthSq() > 1e-12) {
+              startDir.normalize();
+              const len = start.distanceTo(smoothed[1]);
+              const adjusted = start.clone().addScaledVector(startDir, len);
+              smoothed[1] = projectPointToImplicitSurface(implicitF, adjusted, { h: projH, maxStep });
+            }
+
+            const endDir = smoothed[smoothed.length - 2].clone().sub(smoothed[smoothed.length - 3]);
+            if (endDir.lengthSq() > 1e-12) {
+              endDir.normalize();
+              const len = end.distanceTo(smoothed[smoothed.length - 2]);
+              const adjusted = end.clone().addScaledVector(endDir, -len);
+              smoothed[smoothed.length - 2] = projectPointToImplicitSurface(implicitF, adjusted, { h: projH, maxStep });
+            }
+          }
+
+          drawPoints = smoothed;
+        }
+      }
+    }
+
+    const lineGeom = new THREE.BufferGeometry().setFromPoints(drawPoints);
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0xff6b00,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+    });
     const line = new THREE.Line(lineGeom, lineMat);
     line.renderOrder = 215;
     line.frustumCulled = false;
     scene.add(line);
     geodesicPathLineRef.current = line;
-  }, [geodesicPathEnd, geodesicPathIndices, geodesicPathStart, sceneEpoch]);
+  }, [geodesicPathEnd, geodesicPathIndices, geodesicPathStart, sceneEpoch, surfaceId]);
 
   useEffect(() => {
     const scene = sceneRef.current;

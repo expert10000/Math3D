@@ -548,6 +548,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicPathMessage, setGeodesicPathMessage] = useState<string | null>(null);
   const [geodesicPathDebug, setGeodesicPathDebug] = useState(false);
   const [geodesicPathDebugInfo, setGeodesicPathDebugInfo] = useState<string | null>(null);
+  const [geodesicPathSmooth, setGeodesicPathSmooth] = useState(true);
   const adjacencyCacheRef = useRef(
     new Map<
       string,
@@ -650,7 +651,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [materialOpacity, setMaterialOpacity] = useState(1);
   const [graphResolution, setGraphResolution] = useState(80);
   const [implicitResolution, setImplicitResolution] = useState(32);
-  const [paramResolution, setParamResolution] = useState(64);
+  const [paramResolution, setParamResolution] = useState(160);
   const [showBoundingBox, setShowBoundingBox] = useState(false);
   const [cameraResetToken, setCameraResetToken] = useState(0);
 
@@ -1412,8 +1413,73 @@ case "mobius":
         if (expanded[expanded.length - 1] !== endRaw) expanded.push(endRaw);
         mappedPath = expanded;
       }
+      let resolvedLength = length;
+      const mesh = surfaceSampleSet?.meshData?.find((m) => m.key === start.meshKey);
+      const positions = mesh?.positions;
+      if (positions && positions.length >= 3) {
+        const last = Math.floor(positions.length / 3);
+        const startRaw = start.vertexIndex;
+        const endRaw = end.vertexIndex;
+        const isParamSphere =
+          geodesicPathSmooth && surfaceViewerKind === "param" && paramSurfaceIdForView === "sphere";
+        const isImplicitSphere = surfaceViewerKind === "implicit" && activeEqSurfaceId === "sphere";
+        const canSphere =
+          (isParamSphere || isImplicitSphere) &&
+          startRaw >= 0 &&
+          endRaw >= 0 &&
+          startRaw < last &&
+          endRaw < last;
+        if (canSphere) {
+          const ax = positions[startRaw * 3];
+          const ay = positions[startRaw * 3 + 1];
+          const az = positions[startRaw * 3 + 2];
+          const bx = positions[endRaw * 3];
+          const by = positions[endRaw * 3 + 1];
+          const bz = positions[endRaw * 3 + 2];
+          const aLen = Math.hypot(ax, ay, az);
+          const bLen = Math.hypot(bx, by, bz);
+          const r = (aLen + bLen) * 0.5;
+          if (r > 1e-8) {
+            const dot = (ax * bx + ay * by + az * bz) / (r * r);
+            const cos = Math.min(1, Math.max(-1, dot));
+            const angle = Math.acos(cos);
+            if (Number.isFinite(angle)) {
+              resolvedLength = r * angle;
+            }
+          }
+        } else if (mappedPath.length >= 2) {
+          let acc = 0;
+          let ok = true;
+          for (let i = 1; i < mappedPath.length; i++) {
+            const a = mappedPath[i - 1];
+            const b = mappedPath[i];
+            if (a < 0 || b < 0 || a >= last || b >= last) {
+              ok = false;
+              break;
+            }
+            const ax = positions[a * 3];
+            const ay = positions[a * 3 + 1];
+            const az = positions[a * 3 + 2];
+            const bx = positions[b * 3];
+            const by = positions[b * 3 + 1];
+            const bz = positions[b * 3 + 2];
+            const dx = bx - ax;
+            const dy = by - ay;
+            const dz = bz - az;
+            const seg = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (!Number.isFinite(seg)) {
+              ok = false;
+              break;
+            }
+            acc += seg;
+          }
+          if (ok && Number.isFinite(acc)) {
+            resolvedLength = acc;
+          }
+        }
+      }
       setGeodesicPathIndices(mappedPath);
-      setGeodesicPathLength(length);
+      setGeodesicPathLength(resolvedLength);
       if (geodesicPathDebug) {
         const debugInfo = formatGeodesicDebugInfo({
           neighbors: adj.neighbors,
@@ -1426,7 +1492,18 @@ case "mobius":
         setGeodesicPathDebugInfo(debugInfo);
       }
     },
-    [buildAllowedVertexMask, formatGeodesicDebugInfo, geodesicAdjacency, geodesicPathConstrain, geodesicPathDebug]
+    [
+      buildAllowedVertexMask,
+      formatGeodesicDebugInfo,
+      geodesicAdjacency,
+      geodesicPathConstrain,
+      geodesicPathDebug,
+      geodesicPathSmooth,
+      paramSurfaceIdForView,
+      activeEqSurfaceId,
+      surfaceViewerKind,
+      surfaceSampleSet,
+    ]
   );
 
   useEffect(() => {
@@ -1442,7 +1519,15 @@ case "mobius":
       return;
     }
     computeGeodesicPath(geodesicPathStart, geodesicPathEnd);
-  }, [computeGeodesicPath, geodesicPathConstrain, geodesicPathEnd, geodesicPathStart, selectionMask, surfaceSampleSet]);
+  }, [
+    computeGeodesicPath,
+    geodesicPathConstrain,
+    geodesicPathEnd,
+    geodesicPathSmooth,
+    geodesicPathStart,
+    selectionMask,
+    surfaceSampleSet,
+  ]);
 
   const handleSurfaceSelectionPick = useCallback(
     (payload: {
@@ -2335,6 +2420,8 @@ case "mobius":
                 geodesicPathMessage={geodesicPathMessage}
                 geodesicPathConstrain={geodesicPathConstrain}
                 onToggleGeodesicPathConstrain={() => setGeodesicPathConstrain((v) => !v)}
+                geodesicPathSmooth={geodesicPathSmooth}
+                onToggleGeodesicPathSmooth={() => setGeodesicPathSmooth((v) => !v)}
                 geodesicPathDebug={geodesicPathDebug}
                 geodesicPathDebugInfo={geodesicPathDebugInfo}
                 onToggleGeodesicPathDebug={() => setGeodesicPathDebug((v) => !v)}
@@ -2474,6 +2561,8 @@ case "mobius":
                             geodesicPathStart={geodesicPathStart}
                             geodesicPathEnd={geodesicPathEnd}
                             geodesicPathIndices={geodesicPathIndices}
+                            geodesicPathSmooth={geodesicPathSmooth}
+                            geodesicPathDebug={geodesicPathDebug}
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
@@ -3308,6 +3397,8 @@ type SurfacesLeftPanelProps = {
   geodesicPathMessage: string | null;
   geodesicPathConstrain: boolean;
   onToggleGeodesicPathConstrain: () => void;
+  geodesicPathSmooth: boolean;
+  onToggleGeodesicPathSmooth: () => void;
   geodesicPathDebug: boolean;
   geodesicPathDebugInfo: string | null;
   onToggleGeodesicPathDebug: () => void;
@@ -3486,6 +3577,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   geodesicPathMessage,
   geodesicPathConstrain,
   onToggleGeodesicPathConstrain,
+  geodesicPathSmooth,
+  onToggleGeodesicPathSmooth,
   geodesicPathDebug,
   geodesicPathDebugInfo,
   onToggleGeodesicPathDebug,
@@ -3517,6 +3610,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 }) => {
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
+  const geodesicSmoothEnabled = viewerKind === "param" || viewerKind === "weierstrass";
 
   const isWeierstrass = viewerKind === "weierstrass";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
@@ -4271,6 +4365,25 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
                 Constrain path to selection
               </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: geodesicSmoothEnabled ? "pointer" : "not-allowed",
+                  color: geodesicSmoothEnabled ? "#000" : "#999",
+                }}
+                title={geodesicSmoothEnabled ? "" : "Smooth path only applies to param surfaces"}
+              >
+                <input
+                  type="checkbox"
+                  checked={geodesicPathSmooth}
+                  onChange={onToggleGeodesicPathSmooth}
+                  disabled={!geodesicSmoothEnabled}
+                  style={{ marginRight: 6 }}
+                />
+                Smooth path (param)
+              </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
                   type="checkbox"
@@ -4576,21 +4689,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <input
               type="range"
               min={20}
-              max={160}
+              max={240}
               step={1}
               value={paramResolution}
-              onChange={(e) => onSetParamResolution(clampInt(Number(e.target.value), 20, 160))}
+              onChange={(e) => onSetParamResolution(clampInt(Number(e.target.value), 20, 240))}
               style={{ flex: 1 }}
             />
             <input
               type="number"
               min={20}
-              max={200}
+              max={240}
               step={1}
               value={paramResolution}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                if (Number.isFinite(v)) onSetParamResolution(clampInt(v, 20, 200));
+                if (Number.isFinite(v)) onSetParamResolution(clampInt(v, 20, 240));
               }}
               style={{ width: 70 }}
             />
