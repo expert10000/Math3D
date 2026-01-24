@@ -372,3 +372,17 @@ It describes where each surface type is built, when it re-renders, and the core 
 Math3D provides a cohesive environment for studying surfaces across implicit, explicit, and
 parametric definitions. With probes, overlays, slicing, and compare tools, it supports both
 intuitive exploration and mathematically precise inspection.
+
+
+$env:MATH3D_PYTHON="C:\Users\janko\anaconda3\envs\math3d-cgal\python.exe"
+conda run -n math3d-cgal npm run build
+
+
+
+
+
+
+
+$env:MATH3D_PYTHON="C:\Users\janko\anaconda3\envs\math3d-cgal\python.exe"
+npm run build:main
+npm run dev

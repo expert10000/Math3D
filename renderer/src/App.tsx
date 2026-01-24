@@ -41,6 +41,7 @@ import {
   type SelectionMetricKey,
   type SelectionStats,
 } from "./math/selection/selectionStats";
+import { cgalHealth, runCgalMesh } from "./services/cgalMeshClient";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
@@ -59,6 +60,14 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+type CgalMeshState = {
+  surfaceId: SurfaceId;
+  expr: string;
+  positions: number[];
+  indices: number[];
+  createdAt: number;
+};
+type CgalHealthState = { ok: boolean; error?: string };
 
 /* ---------------- constants ---------------- */
 
@@ -491,6 +500,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
   const [implicitExpr, setImplicitExpr] = useState("x*x + y*y + z*z - 1"); // f=0
+  const [cgalTargetEdge, setCgalTargetEdge] = useState(0.1);
+  const [cgalBusy, setCgalBusy] = useState(false);
+  const [cgalError, setCgalError] = useState<string | null>(null);
+  const [cgalHealthState, setCgalHealthState] = useState<CgalHealthState | null>(null);
+  const [cgalMeshState, setCgalMeshState] = useState<CgalMeshState | null>(null);
+  const [cgalMeshToken, setCgalMeshToken] = useState(0);
 
   // custom parametric σ(u,v)
   const [paramXExpr, setParamXExpr] = useState("u");
@@ -1826,6 +1841,97 @@ case "mobius":
     });
   }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric]);
 
+  const implicitDomainBBox = useCallback((domain: ImplicitDomain) => {
+    const size = Math.max(Number(domain.xSpan), Number(domain.ySpan));
+    const half = Number.isFinite(size) && size > 0 ? size : 1;
+    return {
+      min: [-half, -half, -half] as [number, number, number],
+      max: [half, half, half] as [number, number, number],
+    };
+  }, []);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "implicit") return;
+    let alive = true;
+    (async () => {
+      const res = await cgalHealth();
+      if (!alive) return;
+      setCgalHealthState(res);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [surfaceViewerKind]);
+
+  const activeCgalMesh = useMemo(() => {
+    if (!cgalMeshState) return null;
+    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
+    if (cgalMeshState.expr !== implicitExpr) return null;
+    return cgalMeshState;
+  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
+
+  const cgalMeshInfo = useMemo(() => {
+    if (!activeCgalMesh) return null;
+    return {
+      vertexCount: Math.floor(activeCgalMesh.positions.length / 3),
+      triCount: Math.floor(activeCgalMesh.indices.length / 3),
+    };
+  }, [activeCgalMesh]);
+
+  const handleRunCgalMesh = useCallback(async () => {
+    setCgalError(null);
+
+    if (surfaceViewerKind !== "implicit") {
+      setCgalError("CGAL meshing is available only in the implicit viewer.");
+      return;
+    }
+
+    const expr = (implicitExpr ?? "").trim();
+    if (!expr) {
+      setCgalError("Implicit expression is empty.");
+      return;
+    }
+
+    setCgalBusy(true);
+    try {
+      const domain =
+        selectionStats.count > 0 ? selectionStats.bbox : implicitDomainBBox(activeImplicitDomain);
+
+      const res = await runCgalMesh({
+        f: expr,
+        iso: 0,
+        domain,
+        quality: { target_edge: cgalTargetEdge },
+      });
+
+      if (!res.ok) {
+        setCgalError(res.error);
+        return;
+      }
+
+      setCgalMeshState({
+        surfaceId: activeEqSurfaceId,
+        expr,
+        positions: res.positions,
+        indices: res.indices,
+        createdAt: Date.now(),
+      });
+      setCgalMeshToken((t) => t + 1);
+    } catch (e: any) {
+      setCgalError(e?.message ?? String(e));
+    } finally {
+      setCgalBusy(false);
+    }
+  }, [
+    surfaceViewerKind,
+    implicitExpr,
+    selectionStats,
+    implicitDomainBBox,
+    activeImplicitDomain,
+    cgalTargetEdge,
+    activeEqSurfaceId,
+  ]);
+
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
     setWeierstrassPhiExpr(WEIERSTRASS_DEFAULTS.phiExpr);
@@ -2259,12 +2365,12 @@ case "mobius":
           <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 400 }}>
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
-              <SurfacesLeftPanel
-                viewerKind={surfaceViewerKind}
-                surfaceId={activeEqSurfaceId}
-                paramId={paramSurfaceId}
-                graphExpr={graphExpr}
-                implicitExpr={implicitExpr}
+                <SurfacesLeftPanel
+                  viewerKind={surfaceViewerKind}
+                  surfaceId={activeEqSurfaceId}
+                  paramId={paramSurfaceId}
+                  graphExpr={graphExpr}
+                  implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
                 onChangeImplicitExpr={setImplicitExpr}
                 paramXExpr={paramXExpr}
@@ -2281,14 +2387,14 @@ case "mobius":
                 onChangeWeierstrassDomain={handleChangeWeierstrassDomain}
                 weierstrassResolution={weierstrassResolution}
                 onChangeWeierstrassResolution={setWeierstrassResolution}
-                weierstrassRecenter={weierstrassRecenter}
-                onToggleWeierstrassRecenter={() => setWeierstrassRecenter((v) => !v)}
-                onResetWeierstrass={handleResetWeierstrass}
-                weierstrassError={weierstrassError}
-                weierstrassDiagnostics={weierstrassDiagnostics}
-                weierstrassPathDisagreement={weierstrassPathDisagreement}
-                weierstrassDiagnosticError={weierstrassDiagnosticError}
-                showDriftArrow={showDriftArrow}
+                  weierstrassRecenter={weierstrassRecenter}
+                  onToggleWeierstrassRecenter={() => setWeierstrassRecenter((v) => !v)}
+                  onResetWeierstrass={handleResetWeierstrass}
+                  weierstrassError={weierstrassError}
+                  weierstrassDiagnostics={weierstrassDiagnostics}
+                  weierstrassPathDisagreement={weierstrassPathDisagreement}
+                  weierstrassDiagnosticError={weierstrassDiagnosticError}
+                  showDriftArrow={showDriftArrow}
                 onToggleDriftArrow={toggleDriftArrow}
                 onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
                 showWireframe={showWireframe}
@@ -2572,11 +2678,13 @@ case "mobius":
                           />
                         ) : (
                         <SurfaceViewer
-                            surfaceId={activeEqSurfaceId}
-                            graphExpr={graphExpr}
-                            implicitExpr={implicitExpr}
-                            wireframe={showWireframe}
-                            showPlanes={showPlanes}
+                              surfaceId={activeEqSurfaceId}
+                              graphExpr={graphExpr}
+                              implicitExpr={implicitExpr}
+                              implicitMeshOverride={activeCgalMesh}
+                              implicitMeshToken={cgalMeshToken}
+                              wireframe={showWireframe}
+                              showPlanes={showPlanes}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
@@ -2771,6 +2879,13 @@ case "mobius":
                 onPickParamSurface={handlePickParamSurface}
                 implicitExpr={implicitExpr}
                 onChangeImplicitExpr={setImplicitExpr}
+                cgalHealthState={cgalHealthState}
+                cgalBusy={cgalBusy}
+                cgalError={cgalError}
+                cgalTargetEdge={cgalTargetEdge}
+                onChangeCgalTargetEdge={setCgalTargetEdge}
+                onRunCgalMesh={handleRunCgalMesh}
+                cgalMeshInfo={cgalMeshInfo}
                 probeInfo={probeInfo}
                 onPickDomainUV={(uv) => {
                   setParamProbeUV(uv);
@@ -5334,6 +5449,13 @@ type SurfacesRightPanelProps = {
 
   implicitExpr: string;
   onChangeImplicitExpr: (s: string) => void;
+  cgalHealthState: CgalHealthState | null;
+  cgalBusy: boolean;
+  cgalError: string | null;
+  cgalTargetEdge: number;
+  onChangeCgalTargetEdge: (v: number) => void;
+  onRunCgalMesh: () => void;
+  cgalMeshInfo: { vertexCount: number; triCount: number } | null;
 
   probeInfo: ProbeInfo | null;
 
@@ -5370,6 +5492,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onPickParamSurface,
   implicitExpr,
   onChangeImplicitExpr,
+  cgalHealthState,
+  cgalBusy,
+  cgalError,
+  cgalTargetEdge,
+  onChangeCgalTargetEdge,
+  onRunCgalMesh,
+  cgalMeshInfo,
   probeInfo,
   onPickDomainUV,
   onPickDomainXY,
@@ -5403,6 +5532,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const isImplicitViewer = viewerKind === "implicit";
   const isEqViewer = isGraphViewer || isImplicitViewer;
   const showDomainPicker = isGraphViewer || isParamViewer || isImplicitViewer;
+  const cgalReady = !!cgalHealthState?.ok;
+  const cgalStatusText = cgalHealthState ? (cgalHealthState.ok ? "available" : "unavailable") : "checking...";
+  const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
+  const cgalDisabled = cgalBusy || cgalHealthState?.ok === false;
 
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
@@ -5781,11 +5914,55 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               boxSizing: "border-box",
             }}
           />
-          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-            Use <code>x</code>, <code>y</code>, <code>z</code> and <code>Math.*</code>.
+            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+              Use <code>x</code>, <code>y</code>, <code>z</code> and <code>Math.*</code>.
+            </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
+                <div style={{ fontSize: 11, color: cgalStatusColor }}>{cgalStatusText}</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label style={{ fontSize: 11, color: "#556" }}>target edge</label>
+                <input
+                  type="number"
+                  min={0.001}
+                  step={0.01}
+                  value={cgalTargetEdge}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.001, v));
+                  }}
+                  style={{ width: 90 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void onRunCgalMesh()}
+                  disabled={cgalDisabled}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: "1px solid #d0d5dd",
+                    background: cgalDisabled ? "#f3f4f6" : "#fff",
+                    cursor: cgalDisabled ? "not-allowed" : "pointer",
+                  }}
+                  title={cgalReady ? "" : cgalHealthState?.error ?? "CGAL not available"}
+                >
+                  {cgalBusy ? "meshing..." : "gcalc (CGAL)"}
+                </button>
+              </div>
+              {cgalMeshInfo && (
+                <div style={{ fontSize: 11, color: "#556" }}>
+                  {cgalMeshInfo.vertexCount} verts · {cgalMeshInfo.triCount} tris
+                </div>
+              )}
+              {cgalError && <div style={{ fontSize: 11, color: "#b42318" }}>{cgalError}</div>}
+              {!cgalReady && cgalHealthState?.error && (
+                <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.error}</div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div style={{ marginBottom: 12, fontSize: 11, opacity: 0.75 }}>
         Probe details, gradients, and curvature live in the left panel (Theory tab).

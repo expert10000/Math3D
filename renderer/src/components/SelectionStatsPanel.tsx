@@ -16,6 +16,7 @@ const metricLabels: Record<SelectionMetricKey, string> = {
   k2: "k2",
 };
 
+
 function fmt(v: number, digits = 3) {
   return Number.isFinite(v) ? v.toFixed(digits) : "—";
 }
@@ -26,6 +27,9 @@ function fmtVec3(v: [number, number, number]) {
 
 function renderHistogram(histogram: SelectionHistogram) {
   const { bins } = histogram;
+  
+
+
   if (!bins.length) return null;
   const maxBin = Math.max(1, ...bins);
   const width = 240;

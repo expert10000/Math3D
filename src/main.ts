@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
+import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
 
 import * as fs from "node:fs";
 
@@ -47,6 +48,8 @@ app.whenReady().then(() => {
   ipcMain.handle("surfacePresets:remove", (_evt, id: string) => {
     removePreset(id);
   });
+
+  registerCgalMeshIpc();
 
 try {
     listPresets("graph");

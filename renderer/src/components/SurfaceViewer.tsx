@@ -44,6 +44,10 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+type ImplicitMeshOverride = {
+  positions: number[];
+  indices: number[];
+};
 
 const DBG_COLORS = false;
 
@@ -65,6 +69,13 @@ function clearGroup(group: THREE.Group) {
     child.traverse(disposeObject3D);
     group.remove(child);
   });
+}
+
+function isImplicitMeshObj(obj: THREE.Object3D) {
+  const anyObj = obj as any;
+  if (anyObj?.isMarchingCubes) return true;
+  if (anyObj?.isMesh && anyObj.userData?.__implicit) return true;
+  return false;
 }
 
 export type SurfaceId =
@@ -651,6 +662,8 @@ type Props = {
   surfaceId: SurfaceId;
   graphExpr?: string;
   implicitExpr?: string;
+  implicitMeshOverride?: ImplicitMeshOverride | null;
+  implicitMeshToken?: number;
 
   wireframe?: boolean;
   showPlanes?: boolean;
@@ -781,6 +794,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     surfaceId,
     graphExpr,
     implicitExpr,
+    implicitMeshOverride = null,
+    implicitMeshToken,
 
     wireframe,
     showPlanes,
@@ -1395,7 +1410,7 @@ useEffect(() => {
 
     root.traverse((o) => {
       const anyO = o as any;
-      if (anyO?.isMarchingCubes) {
+      if (isImplicitMeshObj(anyO)) {
         const implicitMeta = (anyO as any).userData?.__implicit as
           | { f: (x: number, y: number, z: number) => number }
           | undefined;
@@ -1472,7 +1487,17 @@ useEffect(() => {
       }
     });
 
-  }, [surfaceId, graphExpr, colorMode, colorPalette, wireframe, materialRoughness, materialMetalness, materialOpacity]);
+  }, [
+    surfaceId,
+    graphExpr,
+    colorMode,
+    colorPalette,
+    wireframe,
+    materialRoughness,
+    materialMetalness,
+    materialOpacity,
+    implicitMeshToken,
+  ]);
 
   // --- rebuild contour lines (graph + implicit) ---
   useEffect(() => {
@@ -1511,7 +1536,7 @@ useEffect(() => {
       root.traverse((obj) => {
         if (implicitF) return;
         const anyObj = obj as any;
-        if (anyObj?.isMarchingCubes) {
+        if (isImplicitMeshObj(anyObj)) {
           const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
           if (meta?.f) {
             implicitF = meta.f;
@@ -1610,12 +1635,13 @@ useEffect(() => {
     surfaceId,
     graphExpr,
     implicitExpr,
-    showContours,
-    contourCount,
-    graphDomain?.xSpan,
-    graphDomain?.ySpan,
-    implicitResolution,
-  ]);
+      showContours,
+      contourCount,
+      graphDomain?.xSpan,
+      graphDomain?.ySpan,
+      implicitResolution,
+      implicitMeshToken,
+    ]);
 
   // --- slicing plane + intersection (graph + implicit surfaces) ---
   useEffect(() => {
@@ -1743,7 +1769,7 @@ useEffect(() => {
         root.traverse((obj) => {
           if (implicitF) return;
           const anyObj = obj as any;
-          if (anyObj?.isMarchingCubes) {
+          if (isImplicitMeshObj(anyObj)) {
             const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number } | undefined;
             if (meta?.f) implicitF = meta.f;
           }
@@ -1968,7 +1994,7 @@ useEffect(() => {
   if (!obj) return;
 
   // MarchingCubes: update material color only (no vertex colors)
-  if ((obj as any).isMarchingCubes) {
+  if (isImplicitMeshObj(obj)) {
     const mat = (obj as any).material as THREE.Material | undefined;
     if (mat && (mat as any).color) {
       if (colorMode === "solid") {
@@ -2028,7 +2054,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   geom.attributes.color && (geom.attributes.color.needsUpdate = true);
 
   console.log("[SurfaceViewer] recolor OK", { surfaceId, colorMode, colorPalette });
-}, [surfaceId, graphExpr, implicitExpr, colorMode, colorPalette, implicitOverlay]);
+}, [surfaceId, graphExpr, implicitExpr, colorMode, colorPalette, implicitOverlay, implicitMeshToken]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -2151,6 +2177,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const opacity = clamp01(materialOpacity);
     const graphRes = Math.max(20, Math.round(graphResolution));
     const implicitRes = Math.max(18, Math.round(implicitResolution));
+    const useImplicitOverride =
+      !!implicitMeshOverride?.positions?.length && !!implicitMeshOverride?.indices?.length;
 
     const makeMaterial = () =>
       new THREE.MeshStandardMaterial({
@@ -2169,6 +2197,31 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const resolveImplicitSize = (fallback: number) => {
       const s = implicitDomainSize ?? fallback;
       return Number.isFinite(s) && s > 0 ? s : fallback;
+    };
+
+    const makeImplicitOverrideMesh = (
+      f: (x: number, y: number, z: number) => number,
+      fallbackSize: number
+    ) => {
+      const positions = implicitMeshOverride?.positions ?? [];
+      const indices = implicitMeshOverride?.indices ?? [];
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+      geom.computeBoundingBox();
+      geom.computeBoundingSphere();
+
+      const mesh = new THREE.Mesh(geom, makeMaterial());
+      let sizeHint = resolveImplicitSize(fallbackSize);
+      if (geom.boundingBox) {
+        const sizeVec = new THREE.Vector3();
+        geom.boundingBox.getSize(sizeVec);
+        const span = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
+        if (Number.isFinite(span) && span > 0) sizeHint = span * 0.5;
+      }
+      (mesh as any).userData.__implicit = { f, size: sizeHint, source: "cgal" };
+      return mesh;
     };
 
     // Build an implicit surface by sampling f on a cubic grid and extracting the 0-isosurface.
@@ -2201,27 +2254,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return effect;
     };
 
-    const makeSurface = (id: SurfaceId): THREE.Object3D => {
-      switch (id) {
-        case "sphere": {
-          const geo = new THREE.SphereGeometry(1, 64, 64);
-          if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
-          return new THREE.Mesh(geo, makeMaterial());
-        }
-        case "cylinder": {
-          const geo = new THREE.CylinderGeometry(1, 1, 2.4, 64, 1, false);
-          if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
-          return new THREE.Mesh(geo, makeMaterial());
-        }
-        case "cone": {
-          const geo = new THREE.ConeGeometry(1.2, 2.4, 64, 1, false);
-          if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
-          return new THREE.Mesh(geo, makeMaterial());
-        }
-        case "paraboloid": {
-          const geo = new ParametricGeometry(
-            (u, v, target) => {
-              const r = u * 1.4;
+    const makeImplicitMesh = (f: (x: number, y: number, z: number) => number, size = 2.2) => {
+      if (useImplicitOverride) return makeImplicitOverrideMesh(f, size);
+      return makeImplicitSurface(f, size);
+    };
+
+      const makeSurface = (id: SurfaceId): THREE.Object3D => {
+        switch (id) {
+          case "sphere": {
+            const f = (x: number, y: number, z: number) => x * x + y * y + z * z - 1;
+            if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
+            const geo = new THREE.SphereGeometry(1, 64, 64);
+            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+            return new THREE.Mesh(geo, makeMaterial());
+          }
+          case "cylinder": {
+            const f = (x: number, y: number, z: number) => x * x + z * z - 1 + y * 0;
+            if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
+            const geo = new THREE.CylinderGeometry(1, 1, 2.4, 64, 1, false);
+            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+            return new THREE.Mesh(geo, makeMaterial());
+          }
+          case "cone": {
+            const r = 1.2;
+            const h = 2.4;
+            const f = (x: number, y: number, z: number) => {
+              const ry = (r / h) * (h * 0.5 - y);
+              return x * x + z * z - ry * ry;
+            };
+            if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
+            const geo = new THREE.ConeGeometry(1.2, 2.4, 64, 1, false);
+            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+            return new THREE.Mesh(geo, makeMaterial());
+          }
+          case "paraboloid": {
+            const f = (x: number, y: number, z: number) => y - (x * x + z * z);
+            if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
+            const geo = new ParametricGeometry(
+              (u, v, target) => {
+                const r = u * 1.4;
               const theta = v * 2 * Math.PI;
               const x = r * Math.cos(theta);
               const z = r * Math.sin(theta);
@@ -2231,20 +2302,23 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             64,
             64
           );
-          if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
-          return new THREE.Mesh(geo, makeMaterial());
-        }
-        case "hyperboloid": {
-          const geo = new ParametricGeometry(
-            (u, v, target) => {
-              const t = (u - 0.5) * 2;
-              const theta = v * 2 * Math.PI;
-              const a = 0.8;
-              const c = 0.6;
-              const cosh = Math.cosh(t);
-              const sinh = Math.sinh(t);
-              const x = a * cosh * Math.cos(theta);
-              const z = a * cosh * Math.sin(theta);
+            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+            return new THREE.Mesh(geo, makeMaterial());
+          }
+          case "hyperboloid": {
+            const a = 0.8;
+            const c = 0.6;
+            const f = (x: number, y: number, z: number) =>
+              (x * x) / (a * a) + (z * z) / (a * a) - (y * y) / (c * c) - 1;
+            if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
+            const geo = new ParametricGeometry(
+              (u, v, target) => {
+                const t = (u - 0.5) * 2;
+                const theta = v * 2 * Math.PI;
+                const cosh = Math.cosh(t);
+                const sinh = Math.sinh(t);
+                const x = a * cosh * Math.cos(theta);
+                const z = a * cosh * Math.sin(theta);
               const y = c * sinh;
               target.set(x, y, z);
             },
@@ -2254,48 +2328,48 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
           return new THREE.Mesh(geo, makeMaterial());
         }
-        case "hyperboloid_twoSheet": {
-          const a = 0.7;
-          const b = 0.7;
-          const c = 0.9;
-          return makeImplicitSurface(
-            (x, y, z) => (z * z) / (c * c) - (x * x) / (a * a) - (y * y) / (b * b) - 1,
-            2.3
-          );
-        }
-        case "ellipsoid": {
-          const a = 1.3;
-          const b = 0.9;
-          const c = 0.7;
-          return makeImplicitSurface((x, y, z) => (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c) - 1);
-        }
-        case "torus_implicit": {
-          const R = 1.05;
-          const r = 0.45;
-          return makeImplicitSurface((x, y, z) => {
-            const q = Math.sqrt(x * x + y * y) - R;
-            return q * q + z * z - r * r;
-          }, 2.1);
-        }
+          case "hyperboloid_twoSheet": {
+            const a = 0.7;
+            const b = 0.7;
+            const c = 0.9;
+            return makeImplicitMesh(
+              (x, y, z) => (z * z) / (c * c) - (x * x) / (a * a) - (y * y) / (b * b) - 1,
+              2.3
+            );
+          }
+          case "ellipsoid": {
+            const a = 1.3;
+            const b = 0.9;
+            const c = 0.7;
+            return makeImplicitMesh((x, y, z) => (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c) - 1);
+          }
+          case "torus_implicit": {
+            const R = 1.05;
+            const r = 0.45;
+            return makeImplicitMesh((x, y, z) => {
+              const q = Math.sqrt(x * x + y * y) - R;
+              return q * q + z * z - r * r;
+            }, 2.1);
+          }
         case "gyroid": {
           const s = 1.4;
-          return makeImplicitSurface(
+          return makeImplicitMesh(
             (x, y, z) => Math.sin(x * s) * Math.cos(y * s) + Math.sin(y * s) * Math.cos(z * s) + Math.sin(z * s) * Math.cos(x * s),
             2.2
           );
         }
         case "superquadric": {
           const n = 4;
-          return makeImplicitSurface((x, y, z) => Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n) + Math.pow(Math.abs(z), n) - 1.2);
+          return makeImplicitMesh((x, y, z) => Math.pow(Math.abs(x), n) + Math.pow(Math.abs(y), n) + Math.pow(Math.abs(z), n) - 1.2);
         }
         case "roman": {
-          return makeImplicitSurface(
+          return makeImplicitMesh(
             (x, y, z) => x * x * y * y + y * y * z * z + z * z * x * x - 2 * x * y * z,
             1.8
           );
         }
         case "scherk": {
-          return makeImplicitSurface((x, y, z) => Math.sin(z) - Math.sinh(x) * Math.sinh(y), 1.6);
+          return makeImplicitMesh((x, y, z) => Math.sin(z) - Math.sinh(x) * Math.sinh(y), 1.6);
         }
 
         // graphs z=f(x,y): ALWAYS return a Group and store spans
@@ -2495,7 +2569,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const f =
             implicitFnRef.current ??
             ((x: number, y: number, z: number) => x * x + y * y + z * z - 1);
-          return makeImplicitSurface(f, 2.1);
+          return makeImplicitMesh(f, 2.1);
         }
 
         default: {
@@ -2570,7 +2644,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const findImplicitObj = (): THREE.Object3D | null => {
       let found: THREE.Object3D | null = null;
       surfaceObj.traverse((obj) => {
-        if ((obj as any)?.isMarchingCubes) found = obj;
+        if (isImplicitMeshObj(obj as any)) found = obj;
       });
       return found;
     };
@@ -2961,7 +3035,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         root.traverse((obj) => {
           if (implicitF) return;
           const anyObj = obj as any;
-          if (anyObj?.isMarchingCubes) {
+          if (isImplicitMeshObj(anyObj)) {
             const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
             if (meta?.f) {
               implicitF = meta.f;
@@ -3174,10 +3248,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphProbeToken,
     implicitProbeXYZ,
     implicitProbeToken,
-    graphResolution,
-    implicitResolution,
-    implicitDomainSize,
-    graphDomain?.xSpan,
+      graphResolution,
+      implicitResolution,
+      implicitMeshToken,
+      implicitDomainSize,
+      graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
@@ -4016,7 +4091,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         root.traverse((obj) => {
           if (implicitF) return;
           const anyObj = obj as any;
-          if (anyObj?.isMarchingCubes) {
+          if (isImplicitMeshObj(anyObj)) {
             const meta = anyObj.userData?.__implicit as
               | { f: (x: number, y: number, z: number) => number; size?: number }
               | undefined;
@@ -5167,7 +5242,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         root.traverse((obj) => {
           if (implicitF) return;
           const anyObj = obj as any;
-          if (anyObj?.isMarchingCubes) {
+          if (isImplicitMeshObj(anyObj)) {
             const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
             if (meta?.f) {
               implicitF = meta.f;
