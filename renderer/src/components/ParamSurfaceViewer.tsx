@@ -6,6 +6,7 @@ import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeom
 
 import DomainDirectionPicker from "./DomainDirectionPicker";
 import { integrateGeodesic } from "../math/geodesic";
+import type { ParamGeodesicState } from "../math/paramGeodesicContinuous";
 import {
   computePrincipalCurvatureAtUV,
   type PrincipalCurvatureResult,
@@ -184,6 +185,18 @@ type Props = {
   geodesicPathIndices?: number[] | null;
   geodesicPathSmooth?: boolean;
   geodesicPathDebug?: boolean;
+  geodesicHeatEnabled?: boolean;
+  onGeodesicHeatPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+    faceIndex?: number;
+    bary?: [number, number, number];
+    uv?: { u: number; v: number };
+  }) => void;
+  geodesicHeatStart?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
+  geodesicHeatEnd?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
+  geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -243,6 +256,7 @@ type Props = {
   onSetCustomX?: (expr: string) => void;
   onSetCustomY?: (expr: string) => void;
   onSetCustomZ?: (expr: string) => void;
+  onParamGeodesicState?: (state: ParamGeodesicState | null) => void;
 };
 
 type PrincipalField = {
@@ -950,6 +964,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     geodesicPathIndices = null,
     geodesicPathSmooth = true,
     geodesicPathDebug = false,
+    geodesicHeatEnabled = false,
+    onGeodesicHeatPick,
+    geodesicHeatStart = null,
+    geodesicHeatEnd = null,
+    geodesicHeatPolyline = null,
     inspectEnabled = false,
     onInspectPick,
     inspectPoint = null,
@@ -1002,6 +1021,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onSetCustomX,
   onSetCustomY,
   onSetCustomZ,
+  onParamGeodesicState,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -1015,6 +1035,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const onInspectPickRef = useRef(onInspectPick);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
+  const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
+  const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
@@ -1033,6 +1055,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const geodesicPathLineRef = useRef<THREE.Line | null>(null);
   const geodesicPathRawLineRef = useRef<THREE.Line | null>(null);
   const geodesicPathMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
+    start: null,
+    end: null,
+  });
+  const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
+  const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
   });
@@ -1293,6 +1320,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   useEffect(() => {
     onGeodesicPathPickRef.current = onGeodesicPathPick;
   }, [onGeodesicPathPick]);
+  useEffect(() => {
+    geodesicHeatEnabledRef.current = geodesicHeatEnabled;
+  }, [geodesicHeatEnabled]);
+  useEffect(() => {
+    onGeodesicHeatPickRef.current = onGeodesicHeatPick;
+  }, [onGeodesicHeatPick]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
@@ -2306,6 +2339,21 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
     sampleSetRef.current = sampleSet;
     onSampleSet?.(sampleSet);
+    if (onParamGeodesicState && mesh) {
+      const wrap = wrapFlagsFor(surfaceId);
+      const paramWorld = (u: number, v: number, target?: THREE.Vector3) => {
+        const t = target ?? new THREE.Vector3();
+        paramFunc(u, v, t);
+        t.applyMatrix4(mesh.matrixWorld);
+        return t;
+      };
+      onParamGeodesicState({
+        paramFunc: paramWorld,
+        domain: { uMin, uMax, vMin, vMax },
+        wrap,
+        meshKey: mesh.uuid,
+      });
+    }
 
     // bbox for camera snapping
     const bbox = new THREE.Box3().setFromObject(mesh);
@@ -2459,12 +2507,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           selectRegionEnabled: selectRegionEnabledRef.current,
           probeEnabled: probeEnabledRef.current,
           geodesicPathEnabled: geodesicPathEnabledRef.current,
+          geodesicHeatEnabled: geodesicHeatEnabledRef.current,
         });
         if (
           !probeEnabledRef.current &&
           !selectRegionEnabledRef.current &&
           !inspectEnabledRef.current &&
-          !geodesicPathEnabledRef.current
+          !geodesicPathEnabledRef.current &&
+          !geodesicHeatEnabledRef.current
         )
           return;
 
@@ -2497,6 +2547,50 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         const v = vMin + (vMax - vMin) * vv;
         uvDomain = { u, v };
       }
+
+        if (geodesicHeatEnabledRef.current) {
+          const heatCb = onGeodesicHeatPickRef.current;
+          if (heatCb) {
+            const geom = mesh.geometry as THREE.BufferGeometry;
+            const faceIndex = (hit as any).faceIndex;
+            if (geom && typeof faceIndex === "number") {
+              const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+              const idxAttr = geom.getIndex();
+              if (posAttr) {
+                const triBase = faceIndex * 3;
+                const i0 = idxAttr ? idxAttr.getX(triBase) : triBase;
+                const i1 = idxAttr ? idxAttr.getX(triBase + 1) : triBase + 1;
+                const i2 = idxAttr ? idxAttr.getX(triBase + 2) : triBase + 2;
+
+                if (
+                  i0 < 0 || i1 < 0 || i2 < 0 ||
+                  i0 >= posAttr.count || i1 >= posAttr.count || i2 >= posAttr.count
+                ) {
+                  return;
+                }
+
+                const a = new THREE.Vector3(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
+                const b = new THREE.Vector3(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
+                const c = new THREE.Vector3(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
+                const localPoint = point.clone();
+                mesh.worldToLocal(localPoint);
+                const bary = new THREE.Vector3();
+                new THREE.Triangle(a, b, c).getBarycoord(localPoint, bary);
+                if (Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
+                  heatCb({
+                    point: { x: point.x, y: point.y, z: point.z },
+                    normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+                    meshKey: mesh.uuid,
+                    faceIndex,
+                    bary: [bary.x, bary.y, bary.z],
+                    uv: uvDomain,
+                  });
+                }
+              }
+            }
+          }
+          return;
+        }
 
         if (geodesicPathEnabledRef.current) {
           const pathCb = onGeodesicPathPickRef.current;
@@ -2650,6 +2744,23 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           (geodesicPathMarkersRef.current.end.material as THREE.Material).dispose();
           geodesicPathMarkersRef.current.end = null;
         }
+        if (geodesicHeatLineRef.current) {
+          scene.remove(geodesicHeatLineRef.current);
+          geodesicHeatLineRef.current.traverse(disposeObject3D);
+          geodesicHeatLineRef.current = null;
+        }
+        if (geodesicHeatMarkersRef.current.start) {
+          scene.remove(geodesicHeatMarkersRef.current.start);
+          geodesicHeatMarkersRef.current.start.geometry.dispose();
+          (geodesicHeatMarkersRef.current.start.material as THREE.Material).dispose();
+          geodesicHeatMarkersRef.current.start = null;
+        }
+        if (geodesicHeatMarkersRef.current.end) {
+          scene.remove(geodesicHeatMarkersRef.current.end);
+          geodesicHeatMarkersRef.current.end.geometry.dispose();
+          (geodesicHeatMarkersRef.current.end.material as THREE.Material).dispose();
+          geodesicHeatMarkersRef.current.end = null;
+        }
 
         viewerRef.current = null;
         window.removeEventListener("resize", onResize);
@@ -2676,6 +2787,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       sampleSetRef.current = null;
       onSampleSet?.(null);
+      onParamGeodesicState?.(null);
 
       if (sliceLinesRef.current) sliceLinesRef.current.geometry.dispose();
       if (sliceMatRef.current) sliceMatRef.current.dispose();
@@ -2796,6 +2908,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     isCameraLeader,
     onCameraSync,
     onWeierstrassError,
+    onParamGeodesicState,
   ]);
 
   useEffect(() => {
@@ -3565,6 +3678,74 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     sceneEpoch,
     surfaceId,
   ]);
+
+  useEffect(() => {
+    const st = viewerRef.current;
+    const scene = st?.scene;
+    if (!scene) return;
+
+    const clearMarker = (marker: THREE.Mesh | null) => {
+      if (!marker) return;
+      scene.remove(marker);
+      marker.traverse(disposeObject3D);
+    };
+
+    if (geodesicHeatLineRef.current) {
+      scene.remove(geodesicHeatLineRef.current);
+      geodesicHeatLineRef.current.traverse(disposeObject3D);
+      geodesicHeatLineRef.current = null;
+    }
+    if (geodesicHeatMarkersRef.current.start) {
+      clearMarker(geodesicHeatMarkersRef.current.start);
+      geodesicHeatMarkersRef.current.start = null;
+    }
+    if (geodesicHeatMarkersRef.current.end) {
+      clearMarker(geodesicHeatMarkersRef.current.end);
+      geodesicHeatMarkersRef.current.end = null;
+    }
+
+    const placeMarker = (point: { x: number; y: number; z: number }, color: number) => {
+      const markerGeom = new THREE.SphereGeometry(0.035, 16, 12);
+      const markerMat = new THREE.MeshBasicMaterial({ color });
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      marker.position.set(point.x, point.y, point.z);
+      marker.renderOrder = 220;
+      scene.add(marker);
+      return marker;
+    };
+
+    if (geodesicHeatStart?.point) {
+      geodesicHeatMarkersRef.current.start = placeMarker(geodesicHeatStart.point, 0x33cc66);
+    }
+    if (geodesicHeatEnd?.point) {
+      geodesicHeatMarkersRef.current.end = placeMarker(geodesicHeatEnd.point, 0xff6633);
+    }
+
+    if (!geodesicHeatPolyline?.length || geodesicHeatPolyline.length < 2) return;
+
+    const points = geodesicHeatPolyline.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+    const path = new THREE.CurvePath<THREE.Vector3>();
+    for (let i = 0; i + 1 < points.length; i++) {
+      path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+    }
+    const sizeHint = radiusRef.current || 3;
+    const tubeRadius = Math.max(0.00175, (sizeHint / 220) * 0.5);
+    const tubularSegments = Math.min(2000, Math.max(120, points.length * 3));
+    const radialSegments = 10;
+    const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x8a5cff,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const tube = new THREE.Mesh(geom, mat);
+    tube.renderOrder = 215;
+    tube.frustumCulled = false;
+    scene.add(tube);
+    geodesicHeatLineRef.current = tube;
+  }, [geodesicHeatEnd, geodesicHeatPolyline, geodesicHeatStart, sceneEpoch]);
 
   useEffect(() => {
     const st = viewerRef.current;

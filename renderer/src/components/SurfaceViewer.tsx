@@ -241,6 +241,44 @@ function applyVertexColors(
 
 }
 
+function applyHeatmapColors(
+  geometry: THREE.BufferGeometry,
+  values: number[] | Float32Array,
+  palette: ColorPalette
+) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+  const count = pos.count;
+  if (!count) return;
+  if (!values || values.length !== count) return;
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const v = values[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let t = (values[i] - min) / range;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
+    const { r, g, b } = scalarToColor01(t, palette);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+
+  stampGeom(geometry, `heatmap palette=${palette} min=${min.toFixed(3)} max=${max.toFixed(3)}`);
+}
+
 function sampleImplicitDerivatives(
   f: (x: number, y: number, z: number) => number,
   x: number,
@@ -754,6 +792,20 @@ type Props = {
   geodesicPathStart?: { meshKey: string; vertexIndex: number } | null;
   geodesicPathEnd?: { meshKey: string; vertexIndex: number } | null;
   geodesicPathIndices?: number[] | null;
+  geodesicHeatEnabled?: boolean;
+  onGeodesicHeatPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+    faceIndex?: number;
+    bary?: [number, number, number];
+    uv?: { u: number; v: number };
+  }) => void;
+  geodesicHeatStart?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
+  geodesicHeatEnd?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
+  geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
+  implicitHeatmapValues?: number[] | null;
+  implicitHeatmapEnabled?: boolean;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -872,6 +924,13 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicPathStart = null,
     geodesicPathEnd = null,
     geodesicPathIndices = null,
+    geodesicHeatEnabled = false,
+    onGeodesicHeatPick,
+    geodesicHeatStart = null,
+    geodesicHeatEnd = null,
+    geodesicHeatPolyline = null,
+    implicitHeatmapValues = null,
+    implicitHeatmapEnabled = false,
     inspectEnabled = false,
     onInspectPick,
     inspectPoint = null,
@@ -901,13 +960,20 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     start: null,
     end: null,
   });
+  const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
+  const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
+    start: null,
+    end: null,
+  });
   const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
   const inspectEnabledRef = useRef(inspectEnabled);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
+  const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
   const onInspectPickRef = useRef(onInspectPick);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
+  const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const probeWidgetsRef = useRef<{
@@ -989,6 +1055,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onGeodesicPathPickRef.current = onGeodesicPathPick;
   }, [onGeodesicPathPick]);
+  useEffect(() => {
+    geodesicHeatEnabledRef.current = geodesicHeatEnabled;
+  }, [geodesicHeatEnabled]);
+  useEffect(() => {
+    onGeodesicHeatPickRef.current = onGeodesicHeatPick;
+  }, [onGeodesicHeatPick]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
@@ -1414,18 +1486,20 @@ useEffect(() => {
         const implicitMeta = (anyO as any).userData?.__implicit as
           | { f: (x: number, y: number, z: number) => number }
           | undefined;
-        const useImplicitCurv = implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+        const useHeatmap = !!implicitHeatmapEnabled && !!implicitHeatmapValues?.length;
+        const useImplicitCurv =
+          !useHeatmap && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
 
         const mats = Array.isArray(anyO.material) ? anyO.material : [anyO.material];
         for (const m of mats) {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
-          (m as any).vertexColors = useImplicitCurv;
+          (m as any).vertexColors = useImplicitCurv || useHeatmap;
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
           (m as any).transparent = clamp01(materialOpacity) < 1;
           (m as any).opacity = clamp01(materialOpacity);
-          if (useImplicitCurv) {
+          if (useHeatmap || useImplicitCurv) {
             (m as any).color?.set(0xffffff);
           } else if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
@@ -1435,7 +1509,9 @@ useEffect(() => {
           m.needsUpdate = true;
         }
         if (anyO.geometry) {
-          if (useImplicitCurv && implicitMeta?.f) {
+          if (useHeatmap) {
+            applyHeatmapColors(anyO.geometry, implicitHeatmapValues!, colorPalette);
+          } else if (useImplicitCurv && implicitMeta?.f) {
             applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
           } else if (anyO.geometry.getAttribute("color")) {
             anyO.geometry.deleteAttribute("color");
@@ -2054,7 +2130,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   geom.attributes.color && (geom.attributes.color.needsUpdate = true);
 
   console.log("[SurfaceViewer] recolor OK", { surfaceId, colorMode, colorPalette });
-}, [surfaceId, graphExpr, implicitExpr, colorMode, colorPalette, implicitOverlay, implicitMeshToken]);
+}, [
+  surfaceId,
+  graphExpr,
+  implicitExpr,
+  colorMode,
+  colorPalette,
+  implicitOverlay,
+  implicitMeshToken,
+  implicitHeatmapEnabled,
+  implicitHeatmapValues,
+]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -2902,6 +2988,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           !probeEnabled &&
           !selectRegionEnabledRef.current &&
           !geodesicPathEnabledRef.current &&
+          !geodesicHeatEnabledRef.current &&
           !inspectEnabledRef.current
         )
           return;
@@ -2910,6 +2997,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           selectRegionEnabled: selectRegionEnabledRef.current,
           probeEnabled,
           geodesicPathEnabled: geodesicPathEnabledRef.current,
+          geodesicHeatEnabled: geodesicHeatEnabledRef.current,
         });
 
       const rect = renderer.domElement.getBoundingClientRect();
@@ -2921,7 +3009,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       if (!intersects.length) return;
 
-      const hit = intersects[0];
+      const isGraphSurface = isGraphId(surfaceId);
+      let hit = intersects[0];
+      if (geodesicHeatEnabledRef.current) {
+        const heatHit = isGraphSurface
+          ? intersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
+          : intersects.find((candidate) => {
+            const obj = candidate.object as any;
+            const implicitMeta = obj?.userData?.__implicit as { source?: string } | undefined;
+            return implicitMeta?.source === "cgal" && typeof (candidate as any).faceIndex === "number";
+          });
+        if (!heatHit) return;
+        hit = heatHit;
+      }
       const point = hit.point.clone();
 
       let normalWorld = new THREE.Vector3(0, 1, 0);
@@ -2936,9 +3036,55 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       let xyDomain: { x: number; y: number } | undefined;
-      if (isGraphId(surfaceId)) {
+      if (isGraphSurface) {
         xyDomain = { x: point.x, y: point.z };
       }
+
+        if (geodesicHeatEnabledRef.current) {
+          const heatCb = onGeodesicHeatPickRef.current;
+          if (heatCb) {
+            const mesh = hit.object as THREE.Mesh;
+            const geom = mesh.geometry as THREE.BufferGeometry;
+            const faceIndex = (hit as any).faceIndex;
+            const implicitMeta = (mesh as any)?.userData?.__implicit as { source?: string } | undefined;
+            const allowHeatPick = isGraphSurface || implicitMeta?.source === "cgal";
+            if (geom && typeof faceIndex === "number" && allowHeatPick) {
+              const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+              const idxAttr = geom.getIndex();
+              if (posAttr) {
+                const triBase = faceIndex * 3;
+                const i0 = idxAttr ? idxAttr.getX(triBase) : triBase;
+                const i1 = idxAttr ? idxAttr.getX(triBase + 1) : triBase + 1;
+                const i2 = idxAttr ? idxAttr.getX(triBase + 2) : triBase + 2;
+
+                if (
+                  i0 < 0 || i1 < 0 || i2 < 0 ||
+                  i0 >= posAttr.count || i1 >= posAttr.count || i2 >= posAttr.count
+                ) {
+                  return;
+                }
+
+                const a = new THREE.Vector3(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
+                const b = new THREE.Vector3(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
+                const c = new THREE.Vector3(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
+                const localPoint = point.clone();
+                mesh.worldToLocal(localPoint);
+                const bary = new THREE.Vector3();
+                new THREE.Triangle(a, b, c).getBarycoord(localPoint, bary);
+                if (Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
+                  heatCb({
+                    point: { x: point.x, y: point.y, z: point.z },
+                    normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+                    meshKey: mesh.uuid,
+                    faceIndex,
+                    bary: [bary.x, bary.y, bary.z],
+                  });
+                }
+              }
+            }
+          }
+          return;
+        }
 
         if (geodesicPathEnabledRef.current) {
           const pathCb = onGeodesicPathPickRef.current;
@@ -3290,17 +3436,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const scene = sceneRef.current;
+    const surfaceObj = surfaceObjRef.current;
     const sampleSet = sampleSetRef.current;
     if (!scene) return;
 
     if (selectionOverlayRef.current) {
-      scene.remove(selectionOverlayRef.current);
+      selectionOverlayRef.current.parent?.remove(selectionOverlayRef.current);
       selectionOverlayRef.current.traverse(disposeObject3D);
       selectionOverlayRef.current = null;
     }
 
     if (selectionSphereRef.current) {
-      scene.remove(selectionSphereRef.current);
+      selectionSphereRef.current.parent?.remove(selectionSphereRef.current);
       selectionSphereRef.current.traverse(disposeObject3D);
       selectionSphereRef.current = null;
     }
@@ -3310,14 +3457,25 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     const positions = new Float32Array(selectionMask.count * 3);
+    const parent = surfaceObj ?? scene;
+    parent.updateMatrixWorld(true);
+    const tmp = new THREE.Vector3();
     let ptr = 0;
     for (let i = 0; i < selectionMask.selected.length; i++) {
       if (!selectionMask.selected[i]) continue;
       const sample = sampleSet.samples[i];
       if (!sample) continue;
-      positions[3 * ptr] = sample.position.x;
-      positions[3 * ptr + 1] = sample.position.y;
-      positions[3 * ptr + 2] = sample.position.z;
+      if (parent !== scene) {
+        tmp.copy(sample.position);
+        parent.worldToLocal(tmp);
+        positions[3 * ptr] = tmp.x;
+        positions[3 * ptr + 1] = tmp.y;
+        positions[3 * ptr + 2] = tmp.z;
+      } else {
+        positions[3 * ptr] = sample.position.x;
+        positions[3 * ptr + 1] = sample.position.y;
+        positions[3 * ptr + 2] = sample.position.z;
+      }
       ptr++;
     }
 
@@ -3335,12 +3493,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     });
     const overlay = new THREE.Points(geometry, material);
     overlay.renderOrder = selectionOverlayOnTop ? 200 : 30;
-    scene.add(overlay);
+    parent.add(overlay);
     selectionOverlayRef.current = overlay;
 
     return () => {
       if (selectionOverlayRef.current === overlay) {
-        scene.remove(overlay);
+        overlay.parent?.remove(overlay);
         geometry.dispose();
         material.dispose();
         selectionOverlayRef.current = null;
@@ -3350,16 +3508,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const scene = sceneRef.current;
+    const surfaceObj = surfaceObjRef.current;
     if (!scene) return;
 
     if (selectionSphereRef.current) {
-      scene.remove(selectionSphereRef.current);
+      selectionSphereRef.current.parent?.remove(selectionSphereRef.current);
       selectionSphereRef.current.traverse(disposeObject3D);
       selectionSphereRef.current = null;
     }
 
     if (!selectionSphere) return;
 
+    const parent = surfaceObj ?? scene;
+    parent.updateMatrixWorld(true);
     const geometry = new THREE.SphereGeometry(selectionSphere.radius, 24, 18);
     const material = new THREE.MeshBasicMaterial({
       color: 0x800000,
@@ -3368,14 +3529,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       depthWrite: false,
     });
     const sphere = new THREE.Mesh(geometry, material);
-    sphere.position.set(selectionSphere.center.x, selectionSphere.center.y, selectionSphere.center.z);
+    if (parent !== scene) {
+      const center = new THREE.Vector3(
+        selectionSphere.center.x,
+        selectionSphere.center.y,
+        selectionSphere.center.z
+      );
+      parent.worldToLocal(center);
+      sphere.position.copy(center);
+    } else {
+      sphere.position.set(selectionSphere.center.x, selectionSphere.center.y, selectionSphere.center.z);
+    }
     sphere.renderOrder = 25;
-    scene.add(sphere);
+    parent.add(sphere);
     selectionSphereRef.current = sphere;
 
     return () => {
       if (selectionSphereRef.current === sphere) {
-        scene.remove(sphere);
+        sphere.parent?.remove(sphere);
         sphere.traverse(disposeObject3D);
         selectionSphereRef.current = null;
       }
@@ -4047,6 +4218,76 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(line);
     geodesicPathLineRef.current = line;
   }, [geodesicPathEnd, geodesicPathIndices, geodesicPathStart, sceneEpoch, surfaceId]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const clearMarker = (marker: THREE.Mesh | null) => {
+      if (!marker) return;
+      scene.remove(marker);
+      marker.traverse(disposeObject3D);
+    };
+
+    if (geodesicHeatLineRef.current) {
+      scene.remove(geodesicHeatLineRef.current);
+      geodesicHeatLineRef.current.traverse(disposeObject3D);
+      geodesicHeatLineRef.current = null;
+    }
+    if (geodesicHeatMarkersRef.current.start) {
+      clearMarker(geodesicHeatMarkersRef.current.start);
+      geodesicHeatMarkersRef.current.start = null;
+    }
+    if (geodesicHeatMarkersRef.current.end) {
+      clearMarker(geodesicHeatMarkersRef.current.end);
+      geodesicHeatMarkersRef.current.end = null;
+    }
+
+    const placeMarker = (point: { x: number; y: number; z: number }, color: number) => {
+      const markerGeom = new THREE.SphereGeometry(0.035, 16, 12);
+      const markerMat = new THREE.MeshBasicMaterial({ color });
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      marker.position.set(point.x, point.y, point.z);
+      marker.renderOrder = 220;
+      scene.add(marker);
+      return marker;
+    };
+
+    if (geodesicHeatStart?.point) {
+      geodesicHeatMarkersRef.current.start = placeMarker(geodesicHeatStart.point, 0x33cc66);
+    }
+    if (geodesicHeatEnd?.point) {
+      geodesicHeatMarkersRef.current.end = placeMarker(geodesicHeatEnd.point, 0xff6633);
+    }
+
+    if (!geodesicHeatPolyline?.length || geodesicHeatPolyline.length < 2) return;
+
+    const points = geodesicHeatPolyline.map(
+      (p) => new THREE.Vector3(p.x, p.y, p.z)
+    );
+
+    const path = new THREE.CurvePath<THREE.Vector3>();
+    for (let i = 0; i + 1 < points.length; i++) {
+      path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+    }
+    const sizeHint = radiusRef.current || 3;
+    const tubeRadius = Math.max(0.00175, (sizeHint / 220) * 0.5);
+    const tubularSegments = Math.min(2000, Math.max(120, points.length * 3));
+    const radialSegments = 10;
+    const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x8a5cff,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const tube = new THREE.Mesh(geom, mat);
+    tube.renderOrder = 215;
+    tube.frustumCulled = false;
+    scene.add(tube);
+    geodesicHeatLineRef.current = tube;
+  }, [geodesicHeatEnd, geodesicHeatPolyline, geodesicHeatStart, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

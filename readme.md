@@ -2,6 +2,7 @@
 
 ## Latest changes
 
+- Added parametric geodesic heat paths (mesh heat + continuous ODE in UV).
 - Added Weierstrass minimal surface mode (g(z), phi(z)) rendered through the parametric pipeline.
 - Added Weierstrass presets (Enneper, Catenoid, Helicoid) and improved complex expression parsing for functions like exp(z).
 - Added optional recenter/rescale for Weierstrass patches and documented the feature in the renderer README.
@@ -84,6 +85,7 @@ and editable.
   edited to control coverage and reduce self-intersection clutter.
 - Presets: Canonical examples such as torus, helicoid, catenoid, Enneper, and others.
 - Custom param: Provide X(u,v), Y(u,v), Z(u,v) expressions for custom surfaces.
+- Geodesics: Heat-method paths on the parametric mesh, plus a continuous ODE solver in UV when enabled.
 
 ### Gauss map (S²)
 
@@ -116,6 +118,46 @@ and editable.
 
 - Selection mode now supports Euclidean ball or geodesic disk (intrinsic shortest-path radius on the mesh).
 - When enabled, "Zoom to region" smoothly frames the current selection with a debounced camera fit.
+
+### Geodesics on explicit surfaces (z=f(x,y))
+
+If you want geodesics on a custom graph surface (e.g., a saddle z=f(x,y)), there are two practical approaches.
+
+1) Mesh-based explicit geodesics (same as implicit) ✅
+2) Continuous parametric explicit geodesics (ODE/PDE on (x,y)) ✅
+
+Use the left-panel “Heat method (mesh)” section and toggle “Use continuous ODE (graph)” when in graph mode.
+
+**A) Continuous formulation on z=f(x,y) (math-first)**
+
+- Parametrization: r(x,y) = (x, y, f(x,y)).
+- Partials: rx = (1, 0, fx), ry = (0, 1, fy).
+- First fundamental form (metric):
+  - E = 1 + fx^2
+  - F = fx * fy
+  - G = 1 + fy^2
+  - ds^2 = E dx^2 + 2F dx dy + G dy^2
+- Geodesic ODE on (x,y):
+  - u^k'' + Gamma^k_ij(u) u'^i u'^j = 0, k=1,2
+  - Gamma^k_ij are the Christoffel symbols of the metric (need fx, fy, fxx, fxy, fyy).
+  - Useful metric derivatives:
+    - Ex = 2 fx fxx, Ey = 2 fx fxy
+    - Fx = fxx fy + fx fxy, Fy = fxy fy + fx fyy
+    - Gx = 2 fy fxy, Gy = 2 fy fyy
+  - Inverse metric:
+    - Delta = E G - F^2
+    - g^{-1} = (1 / Delta) [[G, -F], [-F, E]]
+- Boundary-value solvers (two endpoints):
+  - Shooting method: solve for the initial direction, integrate the ODE (RK4/5) until you hit the target.
+  - Distance field + backtrace: solve for distance d(x,y) on the domain and step along -g^{-1} grad d; lift to 3D via r(x,y).
+    - You can compute d via a heat method or an Eikonal/FMM variant adapted to the metric.
+
+**B) Mesh-based (recommended in Math3D)**
+
+- Sample a regular grid in the (x,y) domain, triangulate it (two tris per quad).
+- Lift vertices to 3D: p_ij = (x_i, y_j, f(x_i, y_j)).
+- Run the same heat solve + Poisson solve + face-walk backtrace pipeline already used for CGAL meshes.
+- This gives geodesics on explicit graphs with almost no new math or code.
 
 ### Inspect tool
 
@@ -372,17 +414,20 @@ It describes where each surface type is built, when it re-renders, and the core 
 Math3D provides a cohesive environment for studying surfaces across implicit, explicit, and
 parametric definitions. With probes, overlays, slicing, and compare tools, it supports both
 intuitive exploration and mathematically precise inspection.
+### CGAL worker (Windows / conda)
 
+Run the app from a shell where the CGAL-enabled Python environment is active:
 
-$env:MATH3D_PYTHON="C:\Users\janko\anaconda3\envs\math3d-cgal\python.exe"
-conda run -n math3d-cgal npm run build
-
-
-
-
-
-
-
-$env:MATH3D_PYTHON="C:\Users\janko\anaconda3\envs\math3d-cgal\python.exe"
-npm run build:main
+```powershell
+conda deactivate
+conda activate math3d-cgal
+$env:MATH3D_PYTHON = (Get-Command python).Source
+npm run build
 npm run dev
+```
+
+To exit the environment:
+
+```powershell
+conda deactivate
+```

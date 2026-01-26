@@ -41,7 +41,13 @@ import {
   type SelectionMetricKey,
   type SelectionStats,
 } from "./math/selection/selectionStats";
-import { cgalHealth, runCgalMesh } from "./services/cgalMeshClient";
+import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { runGeodesicHeat } from "./services/geodesicHeatClient";
+import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
+import {
+  solveContinuousParamGeodesic,
+  type ParamGeodesicState,
+} from "./math/paramGeodesicContinuous";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
@@ -158,6 +164,21 @@ const GRAPH_SURFACE_IDS: SurfaceId[] = [
   "graph_sinc",
   "graph_sinc2",
   "graph_custom",
+];
+
+const IMPLICIT_EXPR_PRESETS: { id: SurfaceId; label: string; expr: string }[] = [
+  { id: "sphere", label: "Sphere", expr: "x*x + y*y + z*z - 1" },
+  { id: "hyperboloid", label: "Hyperboloid", expr: "x*x/(0.8^2) + z*z/(0.8^2) - y*y/(0.6^2) - 1" },
+  { id: "paraboloid", label: "Paraboloid", expr: "y - (x*x + z*z)" },
+  { id: "cone", label: "Cone", expr: "x*x + z*z - (0.5*(1.2 - y))^2" },
+  { id: "cylinder", label: "Cylinder", expr: "x*x + z*z - 1" },
+  { id: "hyperboloid_twoSheet", label: "Two-sheet hyperboloid", expr: "z*z/(0.9^2) - x*x/(0.7^2) - y*y/(0.7^2) - 1" },
+  { id: "ellipsoid", label: "Ellipsoid", expr: "x*x/(1.3^2) + y*y/(0.9^2) + z*z/(0.7^2) - 1" },
+  { id: "torus_implicit", label: "Torus", expr: "(sqrt(x*x + y*y) - 1.05)^2 + z*z - 0.45^2" },
+  { id: "gyroid", label: "Gyroid", expr: "sin(x*1.4)*cos(y*1.4) + sin(y*1.4)*cos(z*1.4) + sin(z*1.4)*cos(x*1.4)" },
+  { id: "superquadric", label: "Superquadric", expr: "abs(x)^4 + abs(y)^4 + abs(z)^4 - 1.2" },
+  { id: "roman", label: "Roman surface", expr: "x*x*y*y + y*y*z*z + z*z*x*x - 2*x*y*z" },
+  { id: "scherk", label: "Scherk surface", expr: "sin(z) - (0.5*(exp(x) - exp(-x)))*(0.5*(exp(y) - exp(-y)))" },
 ];
 
 const pillRow: React.CSSProperties = {
@@ -357,6 +378,15 @@ type GeodesicPathEndpoint = {
   meshKey: string;
   vertexIndex: number;
 };
+type GeodesicHeatEndpoint = {
+  meshKey: string;
+  faceIndex: number;
+  bary: [number, number, number];
+  point: { x: number; y: number; z: number };
+  uv?: { u: number; v: number };
+};
+
+type BBox3 = { min: [number, number, number]; max: [number, number, number] };
 
 function safeParseArray<T>(raw: string | null): T[] {
   if (!raw) return [];
@@ -400,6 +430,77 @@ function normalizeParamDomain(d: ParamDomain, fallback: ParamDomain): ParamDomai
   if (u0 > u1) [u0, u1] = [u1, u0];
   if (v0 > v1) [v0, v1] = [v1, v0];
   return { uMin: u0, uMax: u1, vMin: v0, vMax: v1 };
+}
+
+function bboxDiag(b: BBox3) {
+  const dx = b.max[0] - b.min[0];
+  const dy = b.max[1] - b.min[1];
+  const dz = b.max[2] - b.min[2];
+  return Math.hypot(dx, dy, dz);
+}
+
+function inflateBBox(b: BBox3, padFrac = 0.05): BBox3 {
+  const diag = bboxDiag(b);
+  const pad = Math.max(1e-6, padFrac * diag);
+  return {
+    min: [b.min[0] - pad, b.min[1] - pad, b.min[2] - pad],
+    max: [b.max[0] + pad, b.max[1] + pad, b.max[2] + pad],
+  };
+}
+
+function clampBBox(b: BBox3, c: BBox3): BBox3 {
+  return {
+    min: [
+      Math.max(b.min[0], c.min[0]),
+      Math.max(b.min[1], c.min[1]),
+      Math.max(b.min[2], c.min[2]),
+    ],
+    max: [
+      Math.min(b.max[0], c.max[0]),
+      Math.min(b.max[1], c.max[1]),
+      Math.min(b.max[2], c.max[2]),
+    ],
+  };
+}
+
+function estimateTargetEdgeFromBudget(diag: number, triBudget: number) {
+  const budget = Math.max(200, triBudget);
+  const edge = diag * Math.sqrt(6.25 / budget);
+  return Math.max(1e-6, Math.min(diag, edge));
+}
+
+function estimateTrianglesFromDiag(diag: number, targetEdge: number) {
+  if (!Number.isFinite(diag) || !Number.isFinite(targetEdge) || targetEdge <= 0) return 0;
+  const r = 0.5 * diag;
+  const area = 4 * Math.PI * r * r;
+  const triArea = (Math.sqrt(3) / 4) * (targetEdge * targetEdge);
+  return Math.max(0, Math.floor(area / Math.max(1e-12, triArea)));
+}
+
+function getCgalDomainBBox(args: {
+  selectionBBox?: BBox3 | null;
+  implicitDomainBBox: BBox3;
+  padFrac?: number;
+}): BBox3 {
+  const padFrac = args.padFrac ?? 0.05;
+
+  // priority: selection -> implicit domain
+  let b = args.selectionBBox ?? args.implicitDomainBBox;
+
+  b = inflateBBox(b, padFrac);
+
+  // clamp inflated selection back into global domain
+  if (args.selectionBBox) {
+    b = clampBBox(b, args.implicitDomainBBox);
+  }
+
+  // validate
+  for (let i = 0; i < 3; i++) {
+    if (!(b.min[i] < b.max[i])) return inflateBBox(args.implicitDomainBBox, 0.0);
+  }
+  if (bboxDiag(b) < 1e-6) return inflateBBox(args.implicitDomainBBox, 0.0);
+
+  return b;
 }
 
 function saveArray(key: string, arr: unknown[]) {
@@ -501,6 +602,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
   const [implicitExpr, setImplicitExpr] = useState("x*x + y*y + z*z - 1"); // f=0
   const [cgalTargetEdge, setCgalTargetEdge] = useState(0.1);
+  const [cgalAutoTargetEdge, setCgalAutoTargetEdge] = useState(false);
+  const [cgalPadFrac, setCgalPadFrac] = useState(0.05);
+  const [cgalTriBudgetEnabled, setCgalTriBudgetEnabled] = useState(false);
+  const [cgalTriBudget, setCgalTriBudget] = useState(12000);
+  const [cgalRadiusBound, setCgalRadiusBound] = useState(0.1);
+  const [cgalMinTrisEnabled, setCgalMinTrisEnabled] = useState(false);
+  const [cgalMinTris, setCgalMinTris] = useState(5000);
+  const [cgalVerbose, setCgalVerbose] = useState(false);
+  const [cgalPreflightSamples, setCgalPreflightSamples] = useState(10);
   const [cgalBusy, setCgalBusy] = useState(false);
   const [cgalError, setCgalError] = useState<string | null>(null);
   const [cgalHealthState, setCgalHealthState] = useState<CgalHealthState | null>(null);
@@ -549,6 +659,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [selectionSphereVisible, setSelectionSphereVisible] = useState(true);
   const [zoomToRegion, setZoomToRegion] = useState(false);
   const [zoomNowToken, setZoomNowToken] = useState(0);
+  const [selectionStatsToken, setSelectionStatsToken] = useState(0);
   const [selectionSeed, setSelectionSeed] = useState<{
     sampleIndex: number;
     meshKey: string;
@@ -564,6 +675,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicPathDebug, setGeodesicPathDebug] = useState(false);
   const [geodesicPathDebugInfo, setGeodesicPathDebugInfo] = useState<string | null>(null);
   const [geodesicPathSmooth, setGeodesicPathSmooth] = useState(true);
+  const [geodesicHeatEnabled, setGeodesicHeatEnabled] = useState(false);
+  const [geodesicHeatBusy, setGeodesicHeatBusy] = useState(false);
+  const [geodesicHeatStart, setGeodesicHeatStart] = useState<GeodesicHeatEndpoint | null>(null);
+  const [geodesicHeatEnd, setGeodesicHeatEnd] = useState<GeodesicHeatEndpoint | null>(null);
+  const [geodesicHeatPolyline, setGeodesicHeatPolyline] = useState<{ x: number; y: number; z: number }[] | null>(null);
+  const [geodesicHeatLength, setGeodesicHeatLength] = useState<number | null>(null);
+  const [geodesicHeatMessage, setGeodesicHeatMessage] = useState<string | null>(null);
+  const [geodesicHeatPhi, setGeodesicHeatPhi] = useState<number[] | null>(null);
+  const [geodesicHeatShowHeatmap, setGeodesicHeatShowHeatmap] = useState(false);
+  const [geodesicHeatUseContinuous, setGeodesicHeatUseContinuous] = useState(false);
+  const [geodesicHeatMeshToken, setGeodesicHeatMeshToken] = useState<number | null>(null);
+  const paramGeodesicStateRef = useRef<ParamGeodesicState | null>(null);
   const adjacencyCacheRef = useRef(
     new Map<
       string,
@@ -779,6 +902,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const raw = implicitDomains[implicitSurfaceId] ?? getDefaultImplicitDomain(implicitSurfaceId);
     return normalizeImplicitDomain(raw, getDefaultImplicitDomain(implicitSurfaceId));
   }, [implicitSurfaceId, implicitDomains[implicitSurfaceId]?.xSpan, implicitDomains[implicitSurfaceId]?.ySpan]);
+  const graphSampleMaxPoints = useMemo(
+    () => Math.min(40000, Math.max(900, Math.round(graphResolution * graphResolution))),
+    [graphResolution]
+  );
 
   const activeWeierstrassDomain = useMemo(
     () => normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain),
@@ -1204,6 +1331,10 @@ case "mobius":
     setSurfaceSampleSet(set);
   }, []);
 
+  const handleParamGeodesicState = useCallback((state: ParamGeodesicState | null) => {
+    paramGeodesicStateRef.current = state;
+  }, []);
+
   const geodesicAdjacency = useMemo(() => {
     const map = new Map<
       string,
@@ -1528,6 +1659,14 @@ case "mobius":
   }, [geodesicPathConstrain, selectionMask?.count]);
 
   useEffect(() => {
+    if (geodesicHeatEnabled) setGeodesicPathEnabled(false);
+  }, [geodesicHeatEnabled]);
+
+  useEffect(() => {
+    if (geodesicPathEnabled) setGeodesicHeatEnabled(false);
+  }, [geodesicPathEnabled]);
+
+  useEffect(() => {
     if (!geodesicPathStart || !geodesicPathEnd) {
       setGeodesicPathIndices(null);
       setGeodesicPathLength(null);
@@ -1631,6 +1770,49 @@ case "mobius":
     [geodesicPathEnabled, geodesicPathEnd, geodesicPathStart]
   );
 
+  const handleGeodesicHeatPick = useCallback(
+    (payload: {
+      point: { x: number; y: number; z: number };
+      normal: { x: number; y: number; z: number };
+      meshKey?: string;
+      faceIndex?: number;
+      bary?: [number, number, number];
+      uv?: { u: number; v: number };
+    }) => {
+      if (!geodesicHeatEnabled) return;
+      if (!payload.meshKey || payload.faceIndex == null || !payload.bary) {
+        setGeodesicHeatMessage("No face picked (mesh required).");
+        return;
+      }
+      const picked: GeodesicHeatEndpoint = {
+        meshKey: payload.meshKey,
+        faceIndex: payload.faceIndex,
+        bary: payload.bary,
+        point: payload.point,
+        uv: payload.uv,
+      };
+      if (!geodesicHeatStart) {
+        setGeodesicHeatStart(picked);
+        setGeodesicHeatEnd(null);
+        setGeodesicHeatPolyline(null);
+        setGeodesicHeatLength(null);
+        setGeodesicHeatMessage(null);
+        return;
+      }
+      if (!geodesicHeatEnd) {
+        setGeodesicHeatEnd(picked);
+        setGeodesicHeatMessage(null);
+        return;
+      }
+      setGeodesicHeatStart(picked);
+      setGeodesicHeatEnd(null);
+      setGeodesicHeatPolyline(null);
+      setGeodesicHeatLength(null);
+      setGeodesicHeatMessage(null);
+    },
+    [geodesicHeatEnabled, geodesicHeatEnd, geodesicHeatStart]
+  );
+
   const handleClearGeodesicPath = useCallback(() => {
     setGeodesicPathStart(null);
     setGeodesicPathEnd(null);
@@ -1640,14 +1822,68 @@ case "mobius":
     setGeodesicPathDebugInfo(null);
   }, []);
 
+  const handleClearGeodesicHeat = useCallback(() => {
+    setGeodesicHeatStart(null);
+    setGeodesicHeatEnd(null);
+    setGeodesicHeatPolyline(null);
+    setGeodesicHeatLength(null);
+    setGeodesicHeatMessage(null);
+    setGeodesicHeatPhi(null);
+    setGeodesicHeatMeshToken(null);
+  }, []);
+
   useEffect(() => {
     handleClearGeodesicPath();
   }, [handleClearGeodesicPath, surfaceSampleSet]);
+
+  useEffect(() => {
+    handleClearGeodesicHeat();
+  }, [handleClearGeodesicHeat, cgalMeshToken, activeEqSurfaceId, implicitExpr]);
+  useEffect(() => {
+    handleClearGeodesicHeat();
+  }, [handleClearGeodesicHeat, surfaceViewerKind]);
+  useEffect(() => {
+    if (surfaceViewerKind !== "graph") return;
+    handleClearGeodesicHeat();
+  }, [
+    handleClearGeodesicHeat,
+    surfaceViewerKind,
+    activeEqSurfaceId,
+    graphExpr,
+    graphResolution,
+    activeGraphDomain?.xSpan,
+    activeGraphDomain?.ySpan,
+  ]);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "param" && surfaceViewerKind !== "weierstrass") return;
+    handleClearGeodesicHeat();
+  }, [
+    handleClearGeodesicHeat,
+    surfaceViewerKind,
+    paramSurfaceIdForView,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    activeParamLikeResolution,
+    activeParamLikeDomain?.uMin,
+    activeParamLikeDomain?.uMax,
+    activeParamLikeDomain?.vMin,
+    activeParamLikeDomain?.vMax,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassResolution,
+    weierstrassRecenter,
+  ]);
 
   const handleClearSelection = useCallback(() => {
     setSelection(null);
     setSelectionMask(null);
     setSelectionSeed(null);
+  }, []);
+
+  const handleRefreshSelectionStats = useCallback(() => {
+    setSelectionStatsToken((v) => v + 1);
   }, []);
 
   const handleGaussSelection = useCallback((selection: GaussCapSelection) => {
@@ -1727,7 +1963,7 @@ case "mobius":
       radius: selection.kind === "surfaceDisk" ? selection.radius : undefined,
     });
     setSelectionMask(mask);
-  }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency]);
+  }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency, selectionStatsToken]);
 
   const selectionIndices = useMemo(() => {
     if (!selectionMask?.selected?.length) return [];
@@ -1839,7 +2075,7 @@ case "mobius":
       binCount: 24,
       normalizeMeanNormal: true,
     });
-  }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric]);
+  }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric, selectionStatsToken]);
 
   const implicitDomainBBox = useCallback((domain: ImplicitDomain) => {
     const size = Math.max(Number(domain.xSpan), Number(domain.ySpan));
@@ -1877,6 +2113,310 @@ case "mobius":
       triCount: Math.floor(activeCgalMesh.indices.length / 3),
     };
   }, [activeCgalMesh]);
+  const geodesicHeatGraphAvailable =
+    surfaceViewerKind === "graph" &&
+    isGraphSurface(activeEqSurfaceId) &&
+    !!surfaceSampleSet?.meshData?.length;
+  const geodesicHeatParamAvailable =
+    (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") &&
+    !!surfaceSampleSet?.meshData?.length;
+  const geodesicHeatAvailable =
+    (surfaceViewerKind === "implicit" && !!activeCgalMesh) ||
+    geodesicHeatGraphAvailable ||
+    geodesicHeatParamAvailable;
+  const geodesicHeatHeatmapActive =
+    surfaceViewerKind === "implicit" &&
+    geodesicHeatShowHeatmap &&
+    !!geodesicHeatPhi &&
+    geodesicHeatMeshToken === cgalMeshToken;
+  const geodesicHeatHeatmapValues = geodesicHeatHeatmapActive ? geodesicHeatPhi : null;
+  const geodesicHeatUnavailableReason = useMemo(() => {
+    if (geodesicHeatAvailable) return "";
+    if (surfaceViewerKind === "implicit") return "Run CGAL mesh first";
+    if (surfaceViewerKind === "graph") {
+      return "Graph mesh not ready";
+    }
+    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      return "Param mesh not ready";
+    }
+    return "Heat path only available in implicit, graph, or param";
+  }, [activeEqSurfaceId, geodesicHeatAvailable, surfaceViewerKind]);
+
+  useEffect(() => {
+    if (!geodesicHeatAvailable) setGeodesicHeatEnabled(false);
+  }, [geodesicHeatAvailable]);
+  useEffect(() => {
+    if (surfaceViewerKind !== "implicit" && geodesicHeatShowHeatmap) {
+      setGeodesicHeatShowHeatmap(false);
+    }
+  }, [surfaceViewerKind, geodesicHeatShowHeatmap]);
+  useEffect(() => {
+    const allowed =
+      surfaceViewerKind === "graph" ||
+      surfaceViewerKind === "param" ||
+      surfaceViewerKind === "weierstrass";
+    if (!allowed && geodesicHeatUseContinuous) {
+      setGeodesicHeatUseContinuous(false);
+    }
+  }, [surfaceViewerKind, geodesicHeatUseContinuous]);
+
+  const handleRunGeodesicHeat = useCallback(async () => {
+    setGeodesicHeatMessage(null);
+    setGeodesicHeatPolyline(null);
+    setGeodesicHeatLength(null);
+    setGeodesicHeatPhi(null);
+    setGeodesicHeatMeshToken(null);
+
+    const isImplicitHeat = surfaceViewerKind === "implicit";
+    const isGraphHeat = surfaceViewerKind === "graph" && isGraphSurface(activeEqSurfaceId);
+    const isParamHeat = surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass";
+    if (!isImplicitHeat && !isGraphHeat && !isParamHeat) {
+      setGeodesicHeatMessage("Heat path is available only in implicit, graph, or param mode.");
+      return;
+    }
+
+    if (isImplicitHeat && !activeCgalMesh) {
+      setGeodesicHeatMessage("Run CGAL mesh first.");
+      return;
+    }
+    if (isGraphHeat && !surfaceSampleSet?.meshData?.length) {
+      setGeodesicHeatMessage("Graph mesh not ready.");
+      return;
+    }
+    if (isParamHeat && !surfaceSampleSet?.meshData?.length) {
+      setGeodesicHeatMessage("Param mesh not ready.");
+      return;
+    }
+
+    if (!geodesicHeatStart || !geodesicHeatEnd) {
+      const msg = isImplicitHeat
+        ? "Pick two points on the CGAL mesh."
+        : isGraphHeat
+          ? "Pick two points on the graph mesh."
+          : "Pick two points on the param mesh.";
+      setGeodesicHeatMessage(msg);
+      return;
+    }
+
+    if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
+      setGeodesicHeatMessage("Pick both points on the same mesh.");
+      return;
+    }
+
+    if (isGraphHeat && geodesicHeatUseContinuous) {
+      const domain = activeGraphDomain ?? getDefaultGraphSpan(activeEqSurfaceId);
+      const start2D = { x: geodesicHeatStart.point.x, y: geodesicHeatStart.point.z };
+      const end2D = { x: geodesicHeatEnd.point.x, y: geodesicHeatEnd.point.z };
+      setGeodesicHeatBusy(true);
+      try {
+        const res = solveContinuousGraphGeodesic({
+          surfaceId: activeEqSurfaceId,
+          graphExpr,
+          start: start2D,
+          end: end2D,
+          domain,
+          maxSteps: 2400,
+        });
+        if (!res.ok) {
+          setGeodesicHeatMessage(res.error);
+          return;
+        }
+        setGeodesicHeatPolyline(res.polyline);
+        setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
+      } catch (e: any) {
+        setGeodesicHeatMessage(e?.message ?? String(e));
+      } finally {
+        setGeodesicHeatBusy(false);
+      }
+      return;
+    }
+
+    if (isParamHeat && geodesicHeatUseContinuous) {
+      const paramState = paramGeodesicStateRef.current;
+      if (!paramState) {
+        setGeodesicHeatMessage("Param geodesic state not ready.");
+        return;
+      }
+      if (!geodesicHeatStart.uv || !geodesicHeatEnd.uv) {
+        setGeodesicHeatMessage("Pick two points on the param mesh (UV required).");
+        return;
+      }
+      if (paramState.meshKey && paramState.meshKey !== geodesicHeatStart.meshKey) {
+        setGeodesicHeatMessage("Param mesh changed; repick the endpoints.");
+        return;
+      }
+      setGeodesicHeatBusy(true);
+      try {
+        const res = solveContinuousParamGeodesic({
+          paramFunc: paramState.paramFunc,
+          startUV: geodesicHeatStart.uv,
+          endUV: geodesicHeatEnd.uv,
+          domain: paramState.domain,
+          wrap: paramState.wrap,
+          startPoint: geodesicHeatStart.point,
+          endPoint: geodesicHeatEnd.point,
+          maxSteps: 2400,
+        });
+        if (!res.ok) {
+          setGeodesicHeatMessage(res.error);
+          return;
+        }
+        setGeodesicHeatPolyline(res.polyline);
+        setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
+      } catch (e: any) {
+        setGeodesicHeatMessage(e?.message ?? String(e));
+      } finally {
+        setGeodesicHeatBusy(false);
+      }
+      return;
+    }
+
+    let V: number[][] = [];
+    let F: number[][] = [];
+    if (isImplicitHeat) {
+      const positions = activeCgalMesh?.positions ?? [];
+      const indices = activeCgalMesh?.indices ?? [];
+      if (positions.length < 3 || indices.length < 3) {
+        setGeodesicHeatMessage("CGAL mesh data missing.");
+        return;
+      }
+      for (let i = 0; i + 2 < positions.length; i += 3) {
+        V.push([positions[i], positions[i + 1], positions[i + 2]]);
+      }
+      for (let i = 0; i + 2 < indices.length; i += 3) {
+        F.push([indices[i], indices[i + 1], indices[i + 2]]);
+      }
+    } else {
+      const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicHeatStart.meshKey)
+        ?? surfaceSampleSet?.meshData?.[0];
+      const positions = meshData?.positions;
+      const indices = meshData?.indices ?? null;
+      if (!positions || positions.length < 3) {
+        setGeodesicHeatMessage(isGraphHeat ? "Graph mesh data missing." : "Param mesh data missing.");
+        return;
+      }
+      for (let i = 0; i + 2 < positions.length; i += 3) {
+        V.push([positions[i], positions[i + 1], positions[i + 2]]);
+      }
+      if (indices && indices.length >= 3) {
+        for (let i = 0; i + 2 < indices.length; i += 3) {
+          F.push([Number(indices[i]), Number(indices[i + 1]), Number(indices[i + 2])]);
+        }
+      } else {
+        const vertCount = Math.floor(positions.length / 3);
+        for (let i = 0; i + 2 < vertCount; i += 3) {
+          F.push([i, i + 1, i + 2]);
+        }
+      }
+    }
+
+    setGeodesicHeatBusy(true);
+    try {
+      const res = await runGeodesicHeat({
+        mesh: { V, F },
+        source: { face: geodesicHeatStart.faceIndex, bary: geodesicHeatStart.bary },
+        target: { face: geodesicHeatEnd.faceIndex, bary: geodesicHeatEnd.bary },
+        options: {
+          t_factor: 1.0,
+          step_factor: 0.25,
+          max_steps: 8000,
+          stop_eps: 1e-4,
+          return_phi: isImplicitHeat,
+        },
+      });
+
+      if (!res.ok) {
+        setGeodesicHeatMessage(res.error ?? "Heat path failed.");
+        return;
+      }
+
+      const pts = res.polyline.map((p) => ({ x: p[0], y: p[1], z: p[2] }));
+      setGeodesicHeatPolyline(pts);
+      setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
+      if (isImplicitHeat && res.phi_vertex?.length) {
+        setGeodesicHeatPhi(res.phi_vertex);
+        setGeodesicHeatMeshToken(cgalMeshToken);
+      }
+    } catch (e: any) {
+      setGeodesicHeatMessage(e?.message ?? String(e));
+    } finally {
+      setGeodesicHeatBusy(false);
+    }
+  }, [
+    activeCgalMesh,
+    activeEqSurfaceId,
+    activeGraphDomain,
+    cgalMeshToken,
+    geodesicHeatUseContinuous,
+    geodesicHeatEnd,
+    geodesicHeatStart,
+    graphExpr,
+    surfaceSampleSet,
+    surfaceViewerKind,
+  ]);
+
+  const selectionBBoxForCgal = useMemo(() => {
+    if (selectionStats.count <= 0) return null;
+    return {
+      min: [
+        selectionStats.bbox.min[0],
+        selectionStats.bbox.min[1],
+        selectionStats.bbox.min[2],
+      ],
+      max: [
+        selectionStats.bbox.max[0],
+        selectionStats.bbox.max[1],
+        selectionStats.bbox.max[2],
+      ],
+    } as BBox3;
+  }, [selectionStats]);
+
+  const cgalDomainPreview = useMemo(
+    () =>
+      getCgalDomainBBox({
+        selectionBBox: selectionBBoxForCgal,
+        implicitDomainBBox: implicitDomainBBox(activeImplicitDomain),
+        padFrac: cgalPadFrac,
+      }),
+    [selectionBBoxForCgal, implicitDomainBBox, activeImplicitDomain, cgalPadFrac]
+  );
+  const cgalDomainDiag = useMemo(() => bboxDiag(cgalDomainPreview), [cgalDomainPreview]);
+  const cgalAutoEdge = useMemo(() => Math.max(1e-6, 0.02 * cgalDomainDiag), [cgalDomainDiag]);
+  const cgalTriBudgetEdge = useMemo(
+    () => estimateTargetEdgeFromBudget(cgalDomainDiag, cgalTriBudget),
+    [cgalDomainDiag, cgalTriBudget]
+  );
+  const cgalEffectiveEdge = useMemo(() => {
+    const baseTargetEdge = cgalTriBudgetEnabled
+      ? cgalTriBudgetEdge
+      : cgalAutoTargetEdge
+        ? cgalAutoEdge
+        : cgalTargetEdge;
+    const minTrisEdge = cgalMinTrisEnabled
+      ? estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris)
+      : null;
+    if (minTrisEdge != null && Number.isFinite(minTrisEdge)) {
+      return Math.min(baseTargetEdge, minTrisEdge);
+    }
+    return baseTargetEdge;
+  }, [
+    cgalTriBudgetEnabled,
+    cgalTriBudgetEdge,
+    cgalAutoTargetEdge,
+    cgalAutoEdge,
+    cgalTargetEdge,
+    cgalMinTrisEnabled,
+    cgalMinTris,
+    cgalDomainDiag,
+  ]);
+  const cgalEstimatedTris = useMemo(
+    () => estimateTrianglesFromDiag(cgalDomainDiag, cgalEffectiveEdge),
+    [cgalDomainDiag, cgalEffectiveEdge]
+  );
+  const cgalTooHeavy = useMemo(
+    () => cgalEstimatedTris > 1_000_000 && !cgalTriBudgetEnabled && !cgalAutoTargetEdge,
+    [cgalEstimatedTris, cgalTriBudgetEnabled, cgalAutoTargetEdge]
+  );
 
   const handleRunCgalMesh = useCallback(async () => {
     setCgalError(null);
@@ -1892,16 +2432,58 @@ case "mobius":
       return;
     }
 
+    if (cgalTooHeavy) {
+      setCgalError(
+        `Estimated ~${cgalEstimatedTris.toLocaleString()} triangles. Increase target edge or enable auto/tri budget.`
+      );
+    }
+
     setCgalBusy(true);
     try {
-      const domain =
-        selectionStats.count > 0 ? selectionStats.bbox : implicitDomainBBox(activeImplicitDomain);
+      const domain = cgalDomainPreview;
+      const diag = cgalDomainDiag;
+      const targetEdge = cgalEffectiveEdge;
+      const baseTargetEdge = cgalTriBudgetEnabled
+        ? cgalTriBudgetEdge
+        : cgalAutoTargetEdge
+          ? cgalAutoEdge
+          : cgalTargetEdge;
+      const minTrisEdge = cgalMinTrisEnabled
+        ? estimateTargetEdgeFromBudget(diag, cgalMinTris)
+        : null;
+      console.log("[CGAL] mesh request", {
+        selectionCount: selectionStats.count,
+        selectionBBox: selectionBBoxForCgal,
+        domain,
+        targetEdge,
+        baseTargetEdge,
+        minTrisEdge,
+        autoTargetEdge: cgalAutoTargetEdge,
+        padFrac: cgalPadFrac,
+        triBudgetEnabled: cgalTriBudgetEnabled,
+        triBudget: cgalTriBudget,
+        minTrisEnabled: cgalMinTrisEnabled,
+        minTris: cgalMinTris,
+        radiusBound: cgalRadiusBound,
+        verbose: cgalVerbose,
+        preflightSamples: cgalPreflightSamples,
+        domainDiag: diag,
+      });
 
       const res = await runCgalMesh({
         f: expr,
         iso: 0,
         domain,
-        quality: { target_edge: cgalTargetEdge },
+        quality: { target_edge: targetEdge, radiusBound: cgalRadiusBound },
+        verbose: cgalVerbose,
+        preflightSamples: cgalPreflightSamples,
+      });
+
+      console.log("[CGAL] mesh response", {
+        ok: res.ok,
+        positions: res.ok ? res.positions.length : undefined,
+        indices: res.ok ? res.indices.length : undefined,
+        error: res.ok ? undefined : res.error,
       });
 
       if (!res.ok) {
@@ -1929,8 +2511,40 @@ case "mobius":
     implicitDomainBBox,
     activeImplicitDomain,
     cgalTargetEdge,
+    cgalAutoTargetEdge,
+    cgalPadFrac,
+    cgalTriBudgetEnabled,
+    cgalTriBudget,
+    cgalRadiusBound,
+    cgalMinTrisEnabled,
+    cgalMinTris,
+    cgalVerbose,
+    cgalPreflightSamples,
+    cgalDomainPreview,
+    cgalDomainDiag,
+    cgalAutoEdge,
+    cgalTriBudgetEdge,
+    cgalEffectiveEdge,
+    cgalEstimatedTris,
+    cgalTooHeavy,
+    selectionBBoxForCgal,
     activeEqSurfaceId,
   ]);
+
+  const handleStopCgalWorker = useCallback(async () => {
+    try {
+      const res = await stopCgalWorker();
+      if (!res.ok) {
+        setCgalError(res.error ?? "Failed to stop CGAL worker.");
+        return;
+      }
+      setCgalBusy(false);
+      setCgalHealthState(null);
+      setCgalError("CGAL worker stopped.");
+    } catch (e: any) {
+      setCgalError(e?.message ?? String(e));
+    }
+  }, []);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -2531,6 +3145,21 @@ case "mobius":
                 geodesicPathDebug={geodesicPathDebug}
                 geodesicPathDebugInfo={geodesicPathDebugInfo}
                 onToggleGeodesicPathDebug={() => setGeodesicPathDebug((v) => !v)}
+                geodesicHeatEnabled={geodesicHeatEnabled}
+                geodesicHeatAvailable={geodesicHeatAvailable}
+                geodesicHeatBusy={geodesicHeatBusy}
+                geodesicHeatStart={geodesicHeatStart}
+                geodesicHeatEnd={geodesicHeatEnd}
+                geodesicHeatLength={geodesicHeatLength}
+                geodesicHeatMessage={geodesicHeatMessage}
+                geodesicHeatShowHeatmap={geodesicHeatShowHeatmap}
+                geodesicHeatUseContinuous={geodesicHeatUseContinuous}
+                geodesicHeatUnavailableReason={geodesicHeatUnavailableReason}
+                onToggleGeodesicHeatEnabled={() => setGeodesicHeatEnabled((v) => !v)}
+                onToggleGeodesicHeatShowHeatmap={() => setGeodesicHeatShowHeatmap((v) => !v)}
+                onToggleGeodesicHeatUseContinuous={() => setGeodesicHeatUseContinuous((v) => !v)}
+                onRunGeodesicHeat={handleRunGeodesicHeat}
+                onClearGeodesicHeat={handleClearGeodesicHeat}
                 inspectEnabled={inspectEnabled}
                 onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
                 onClearInspect={clearInspect}
@@ -2546,6 +3175,7 @@ case "mobius":
                 availableSelectionMetrics={availableSelectionMetrics}
                 selectedMetric={selectedMetric}
                 onChangeSelectedMetric={setSelectedMetric}
+                onRefreshSelectionStats={handleRefreshSelectionStats}
               />
             </div>
 
@@ -2669,22 +3299,37 @@ case "mobius":
                             geodesicPathIndices={geodesicPathIndices}
                             geodesicPathSmooth={geodesicPathSmooth}
                             geodesicPathDebug={geodesicPathDebug}
+                            geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
+                            onGeodesicHeatPick={handleGeodesicHeatPick}
+                            geodesicHeatStart={
+                              geodesicHeatStart
+                                ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey }
+                                : null
+                            }
+                            geodesicHeatEnd={
+                              geodesicHeatEnd
+                                ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
+                                : null
+                            }
+                            geodesicHeatPolyline={geodesicHeatPolyline}
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
                               surfaceViewerKind === "weierstrass" ? weierstrassDiagnostics : null
                             }
                             showDriftArrow={surfaceViewerKind === "weierstrass" ? showDriftArrow : false}
+                            onParamGeodesicState={handleParamGeodesicState}
                           />
                         ) : (
                         <SurfaceViewer
                               surfaceId={activeEqSurfaceId}
                               graphExpr={graphExpr}
-                              implicitExpr={implicitExpr}
-                              implicitMeshOverride={activeCgalMesh}
-                              implicitMeshToken={cgalMeshToken}
-                              wireframe={showWireframe}
-                              showPlanes={showPlanes}
+                            implicitExpr={implicitExpr}
+                            implicitMeshOverride={activeCgalMesh}
+                            implicitMeshToken={cgalMeshToken}
+                            sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
+                            wireframe={showWireframe}
+                            showPlanes={showPlanes}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
@@ -2760,6 +3405,13 @@ case "mobius":
                         geodesicPathStart={geodesicPathStart}
                         geodesicPathEnd={geodesicPathEnd}
                         geodesicPathIndices={geodesicPathIndices}
+                        geodesicHeatEnabled={geodesicHeatEnabled && geodesicHeatAvailable}
+                        onGeodesicHeatPick={handleGeodesicHeatPick}
+                        geodesicHeatStart={geodesicHeatStart ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey } : null}
+                        geodesicHeatEnd={geodesicHeatEnd ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey } : null}
+                        geodesicHeatPolyline={geodesicHeatPolyline}
+                        implicitHeatmapValues={geodesicHeatHeatmapValues}
+                        implicitHeatmapEnabled={geodesicHeatHeatmapActive}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
                       />
@@ -2806,6 +3458,7 @@ case "mobius":
                               surfaceId={compareSurfaceId}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
+                              sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={showWireframe}
                               showPlanes={showPlanes}
                               lightPreset={lightPreset}
@@ -2883,8 +3536,33 @@ case "mobius":
                 cgalBusy={cgalBusy}
                 cgalError={cgalError}
                 cgalTargetEdge={cgalTargetEdge}
+                cgalAutoTargetEdge={cgalAutoTargetEdge}
                 onChangeCgalTargetEdge={setCgalTargetEdge}
+                onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
+                cgalPadFrac={cgalPadFrac}
+                onChangeCgalPadFrac={setCgalPadFrac}
+                cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+                onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
+                cgalTriBudget={cgalTriBudget}
+                onChangeCgalTriBudget={setCgalTriBudget}
+                cgalAutoEdge={cgalAutoEdge}
+                cgalTriBudgetEdge={cgalTriBudgetEdge}
+                cgalRadiusBound={cgalRadiusBound}
+                onChangeCgalRadiusBound={setCgalRadiusBound}
+                cgalMinTrisEnabled={cgalMinTrisEnabled}
+                onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
+                cgalMinTris={cgalMinTris}
+                onChangeCgalMinTris={setCgalMinTris}
+                cgalDomainDiag={cgalDomainDiag}
+                cgalEffectiveEdge={cgalEffectiveEdge}
+                cgalEstimatedTris={cgalEstimatedTris}
+                cgalTooHeavy={cgalTooHeavy}
+                cgalVerbose={cgalVerbose}
+                onChangeCgalVerbose={setCgalVerbose}
+                cgalPreflightSamples={cgalPreflightSamples}
+                onChangeCgalPreflightSamples={setCgalPreflightSamples}
                 onRunCgalMesh={handleRunCgalMesh}
+                onStopCgalWorker={handleStopCgalWorker}
                 cgalMeshInfo={cgalMeshInfo}
                 probeInfo={probeInfo}
                 onPickDomainUV={(uv) => {
@@ -3517,6 +4195,21 @@ type SurfacesLeftPanelProps = {
   geodesicPathDebug: boolean;
   geodesicPathDebugInfo: string | null;
   onToggleGeodesicPathDebug: () => void;
+  geodesicHeatEnabled: boolean;
+  geodesicHeatAvailable: boolean;
+  geodesicHeatBusy: boolean;
+  geodesicHeatStart: GeodesicHeatEndpoint | null;
+  geodesicHeatEnd: GeodesicHeatEndpoint | null;
+  geodesicHeatLength: number | null;
+  geodesicHeatMessage: string | null;
+  geodesicHeatShowHeatmap: boolean;
+  geodesicHeatUseContinuous: boolean;
+  geodesicHeatUnavailableReason: string;
+  onToggleGeodesicHeatEnabled: () => void;
+  onToggleGeodesicHeatShowHeatmap: () => void;
+  onToggleGeodesicHeatUseContinuous: () => void;
+  onRunGeodesicHeat: () => void;
+  onClearGeodesicHeat: () => void;
   inspectEnabled: boolean;
   onToggleInspectEnabled: () => void;
   onClearInspect: () => void;
@@ -3539,6 +4232,7 @@ type SurfacesLeftPanelProps = {
   availableSelectionMetrics: SelectionMetricKey[];
   selectedMetric: SelectionMetricKey;
   onChangeSelectedMetric: (metric: SelectionMetricKey) => void;
+  onRefreshSelectionStats: () => void;
 
 };
 
@@ -3697,6 +4391,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   geodesicPathDebug,
   geodesicPathDebugInfo,
   onToggleGeodesicPathDebug,
+  geodesicHeatEnabled,
+  geodesicHeatAvailable,
+  geodesicHeatBusy,
+  geodesicHeatStart,
+  geodesicHeatEnd,
+  geodesicHeatLength,
+  geodesicHeatMessage,
+  geodesicHeatShowHeatmap,
+  geodesicHeatUseContinuous,
+  geodesicHeatUnavailableReason,
+  onToggleGeodesicHeatEnabled,
+  onToggleGeodesicHeatShowHeatmap,
+  onToggleGeodesicHeatUseContinuous,
+  onRunGeodesicHeat,
+  onClearGeodesicHeat,
   inspectEnabled,
   onToggleInspectEnabled,
   onClearInspect,
@@ -3716,6 +4425,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   availableSelectionMetrics,
   selectedMetric,
   onChangeSelectedMetric,
+  onRefreshSelectionStats,
   weierstrassDiagnostics,
   weierstrassPathDisagreement,
   weierstrassDiagnosticError,
@@ -3759,6 +4469,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isParamCustom = viewerKind === "param" && paramId === "custom";
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
   const isImplicitAny = viewerKind === "implicit" && !isGraphSurface(surfaceId);
+  const implicitExprTrimmed = (implicitExpr ?? "").trim();
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
@@ -4428,6 +5139,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             <details style={{ marginLeft: 20, marginTop: 8 }} open>
               <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Selection stats</summary>
               <div style={{ marginTop: 6 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    onClick={onRefreshSelectionStats}
+                    style={{ padding: "3px 8px", fontSize: 11 }}
+                  >
+                    Refresh stats
+                  </button>
+                </div>
                 <SelectionStatsPanel
                   stats={selectionStats}
                   availableMetrics={availableSelectionMetrics}
@@ -4516,6 +5236,94 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   {geodesicPathDebugInfo}
                 </div>
               )}
+
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #ddd" }}>
+                <div style={{ fontWeight: 700, fontSize: 11, marginBottom: 4 }}>Heat method (mesh)</div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    cursor: geodesicHeatAvailable ? "pointer" : "not-allowed",
+                    color: geodesicHeatAvailable ? "#000" : "#999",
+                  }}
+                  title={geodesicHeatAvailable ? "" : geodesicHeatUnavailableReason}
+                >
+                  <input
+                    type="checkbox"
+                    checked={geodesicHeatEnabled}
+                    onChange={onToggleGeodesicHeatEnabled}
+                    disabled={!geodesicHeatAvailable}
+                    style={{ marginRight: 6 }}
+                  />
+                  Enable heat path tool
+                </label>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <span>Start: {geodesicHeatStart ? geodesicHeatStart.faceIndex : "-"}</span>
+                  <span>End: {geodesicHeatEnd ? geodesicHeatEnd.faceIndex : "-"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={onRunGeodesicHeat}
+                    disabled={!geodesicHeatAvailable || geodesicHeatBusy}
+                    style={{ padding: "3px 8px" }}
+                  >
+                    {geodesicHeatBusy ? "Running..." : "Run heat path"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClearGeodesicHeat}
+                    style={{ padding: "3px 8px" }}
+                  >
+                    Clear heat
+                  </button>
+                  {geodesicHeatLength != null && Number.isFinite(geodesicHeatLength) && (
+                    <span style={{ fontWeight: 600 }}>Length: {geodesicHeatLength.toFixed(3)}</span>
+                  )}
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    cursor: viewerKind === "implicit" ? "pointer" : "not-allowed",
+                    color: viewerKind === "implicit" ? "#000" : "#999",
+                  }}
+                  title={viewerKind === "implicit" ? "" : "Heatmap only available for implicit surfaces"}
+                >
+                  <input
+                    type="checkbox"
+                    checked={geodesicHeatShowHeatmap}
+                    onChange={onToggleGeodesicHeatShowHeatmap}
+                    disabled={viewerKind !== "implicit"}
+                    style={{ marginRight: 6 }}
+                  />
+                  Show distance heatmap
+                </label>
+                {(viewerKind === "graph" || viewerKind === "param" || viewerKind === "weierstrass") && (
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 4,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={geodesicHeatUseContinuous}
+                      onChange={onToggleGeodesicHeatUseContinuous}
+                      style={{ marginRight: 6 }}
+                    />
+                    Use continuous ODE (graph/param)
+                  </label>
+                )}
+                {geodesicHeatMessage && (
+                  <div style={{ color: "#b23b1a" }}>{geodesicHeatMessage}</div>
+                )}
+              </div>
             </div>
           </details>
           <div style={{ marginLeft: 20, marginTop: 10, fontSize: 12 }}>
@@ -4970,6 +5778,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               boxSizing: "border-box",
             }}
           />
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Load implicit preset</div>
+            <div style={pillRow}>
+              {IMPLICIT_EXPR_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onChangeImplicitExpr(p.expr)}
+                  style={pill(implicitExprTrimmed === p.expr)}
+                  aria-pressed={implicitExprTrimmed === p.expr}
+                  title={p.expr}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -5454,7 +6279,32 @@ type SurfacesRightPanelProps = {
   cgalError: string | null;
   cgalTargetEdge: number;
   onChangeCgalTargetEdge: (v: number) => void;
+  cgalAutoTargetEdge: boolean;
+  onChangeCgalAutoTargetEdge: (v: boolean) => void;
+  cgalPadFrac: number;
+  onChangeCgalPadFrac: (v: number) => void;
+  cgalTriBudgetEnabled: boolean;
+  onChangeCgalTriBudgetEnabled: (v: boolean) => void;
+  cgalTriBudget: number;
+  onChangeCgalTriBudget: (v: number) => void;
+  cgalAutoEdge: number;
+  cgalTriBudgetEdge: number;
+  cgalRadiusBound: number;
+  onChangeCgalRadiusBound: (v: number) => void;
+  cgalMinTrisEnabled: boolean;
+  onChangeCgalMinTrisEnabled: (v: boolean) => void;
+  cgalMinTris: number;
+  onChangeCgalMinTris: (v: number) => void;
+  cgalDomainDiag: number;
+  cgalEffectiveEdge: number;
+  cgalEstimatedTris: number;
+  cgalTooHeavy: boolean;
+  cgalVerbose: boolean;
+  onChangeCgalVerbose: (v: boolean) => void;
+  cgalPreflightSamples: number;
+  onChangeCgalPreflightSamples: (v: number) => void;
   onRunCgalMesh: () => void;
+  onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
 
   probeInfo: ProbeInfo | null;
@@ -5497,7 +6347,32 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   cgalError,
   cgalTargetEdge,
   onChangeCgalTargetEdge,
+  cgalAutoTargetEdge,
+  onChangeCgalAutoTargetEdge,
+  cgalPadFrac,
+  onChangeCgalPadFrac,
+  cgalTriBudgetEnabled,
+  onChangeCgalTriBudgetEnabled,
+  cgalTriBudget,
+  onChangeCgalTriBudget,
+  cgalAutoEdge,
+  cgalTriBudgetEdge,
+  cgalRadiusBound,
+  onChangeCgalRadiusBound,
+  cgalMinTrisEnabled,
+  onChangeCgalMinTrisEnabled,
+  cgalMinTris,
+  onChangeCgalMinTris,
+  cgalDomainDiag,
+  cgalEffectiveEdge,
+  cgalEstimatedTris,
+  cgalTooHeavy,
+  cgalVerbose,
+  onChangeCgalVerbose,
+  cgalPreflightSamples,
+  onChangeCgalPreflightSamples,
   onRunCgalMesh,
+  onStopCgalWorker,
   cgalMeshInfo,
   probeInfo,
   onPickDomainUV,
@@ -5536,6 +6411,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const cgalStatusText = cgalHealthState ? (cgalHealthState.ok ? "available" : "unavailable") : "checking...";
   const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
   const cgalDisabled = cgalBusy || cgalHealthState?.ok === false;
+  const cgalStopDisabled = !cgalHealthState && !cgalBusy;
+  const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
+  const fmtTriEstimate = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return "0";
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+    return `${Math.round(value)}`;
+  };
 
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
@@ -5926,14 +6809,45 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <label style={{ fontSize: 11, color: "#556" }}>target edge</label>
                 <input
                   type="number"
-                  min={0.001}
+                  min={0.0001}
                   step={0.01}
                   value={cgalTargetEdge}
+                  disabled={cgalTargetEdgeLocked}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.001, v));
+                    if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.0001, v));
                   }}
                   style={{ width: 90 }}
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
+                  <input
+                    type="checkbox"
+                    checked={cgalAutoTargetEdge}
+                    disabled={cgalDisabled || cgalTriBudgetEnabled}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      onChangeCgalAutoTargetEdge(checked);
+                      if (checked) onChangeCgalTriBudgetEnabled(false);
+                    }}
+                  />
+                  auto (2% diag)
+                </label>
+                {cgalAutoTargetEdge && (
+                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(cgalAutoEdge)}</span>
+                )}
+                <label style={{ fontSize: 11, color: "#556" }}>pad %</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={0.5}
+                  value={Number.isFinite(cgalPadFrac) ? (cgalPadFrac * 100).toFixed(1) : "5.0"}
+                  disabled={cgalDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalPadFrac(Math.min(0.5, Math.max(0, v / 100)));
+                  }}
+                  style={{ width: 70 }}
                 />
                 <button
                   type="button"
@@ -5946,10 +6860,182 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     background: cgalDisabled ? "#f3f4f6" : "#fff",
                     cursor: cgalDisabled ? "not-allowed" : "pointer",
                   }}
-                  title={cgalReady ? "" : cgalHealthState?.error ?? "CGAL not available"}
+                  title={
+                    cgalTooHeavy
+                      ? "Estimated mesh too heavy. Increase target edge or enable auto/tri budget."
+                      : cgalReady
+                        ? ""
+                        : cgalHealthState?.error ?? "CGAL not available"
+                  }
                 >
                   {cgalBusy ? "meshing..." : "gcalc (CGAL)"}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void onStopCgalWorker()}
+                  disabled={cgalStopDisabled}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: "1px solid #f04438",
+                    background: cgalStopDisabled ? "#f3f4f6" : "#fff",
+                    color: cgalStopDisabled ? "#999" : "#b42318",
+                    cursor: cgalStopDisabled ? "not-allowed" : "pointer",
+                  }}
+                  title={cgalStopDisabled ? "CGAL worker not running" : "Stop CGAL worker"}
+                >
+                  stop
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: cgalTooHeavy ? "#b42318" : "#556" }}>
+                est tris ~{fmtTriEstimate(cgalEstimatedTris)} @ edge {fmt(cgalEffectiveEdge)}
+              </div>
+              {cgalTooHeavy && (
+                <div style={{ fontSize: 11, color: "#b42318" }}>
+                  Estimated mesh is huge. Increase target edge or enable auto/tri budget.
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
+                  <input
+                    type="checkbox"
+                    checked={cgalVerbose}
+                    disabled={cgalDisabled}
+                    onChange={(e) => onChangeCgalVerbose(e.target.checked)}
+                  />
+                  verbose (CGAL)
+                </label>
+                <label style={{ fontSize: 11, color: "#556" }}>preflight samples</label>
+                <input
+                  type="number"
+                  min={3}
+                  max={40}
+                  step={1}
+                  value={Math.max(3, Math.min(40, Math.round(cgalPreflightSamples)))}
+                  disabled={cgalDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalPreflightSamples(Math.max(3, Math.min(40, Math.round(v))));
+                  }}
+                  style={{ width: 80 }}
+                />
+                <span style={{ fontSize: 11, color: "#556" }}>per axis</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
+                  <input
+                    type="checkbox"
+                    checked={cgalTriBudgetEnabled}
+                    disabled={cgalDisabled}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      onChangeCgalTriBudgetEnabled(checked);
+                      if (checked) onChangeCgalAutoTargetEdge(false);
+                    }}
+                  />
+                  tri budget
+                </label>
+                <input
+                  type="range"
+                  min={200}
+                  max={1000000}
+                  step={200}
+                  value={Math.min(1000000, Math.max(200, Math.round(cgalTriBudget)))}
+                  disabled={cgalDisabled || !cgalTriBudgetEnabled}
+                  onChange={(e) => onChangeCgalTriBudget(Math.min(1000000, Math.max(200, Number(e.target.value))))}
+                  style={{ width: 160 }}
+                />
+                <input
+                  type="number"
+                  min={200}
+                  max={1000000}
+                  step={200}
+                  value={Math.min(1000000, Math.max(200, Math.round(cgalTriBudget)))}
+                  disabled={cgalDisabled || !cgalTriBudgetEnabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalTriBudget(Math.min(1000000, Math.max(200, v)));
+                  }}
+                  style={{ width: 90 }}
+                />
+                {cgalTriBudgetEnabled && (
+                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(cgalTriBudgetEdge)}</span>
+                )}
+                <label style={{ fontSize: 11, color: "#556" }}>radius bound</label>
+                <input
+                  type="range"
+                  min={0.001}
+                  max={1}
+                  step={0.001}
+                  value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
+                  disabled={cgalDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
+                  }}
+                  style={{ width: 140 }}
+                />
+                <input
+                  type="number"
+                  min={0.001}
+                  max={1}
+                  step={0.001}
+                  value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
+                  disabled={cgalDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
+                  }}
+                  style={{ width: 80 }}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
+                  <input
+                    type="checkbox"
+                    checked={cgalMinTrisEnabled}
+                    disabled={cgalDisabled}
+                    onChange={(e) => onChangeCgalMinTrisEnabled(e.target.checked)}
+                  />
+                  min tris (domain)
+                </label>
+                <input
+                  type="number"
+                  min={200}
+                  max={1000000}
+                  step={200}
+                  value={Math.min(1000000, Math.max(200, Math.round(cgalMinTris)))}
+                  disabled={cgalDisabled || !cgalMinTrisEnabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeCgalMinTris(Math.min(1000000, Math.max(200, v)));
+                  }}
+                  style={{ width: 110 }}
+                />
+                {cgalMinTrisEnabled && (
+                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris))}</span>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button
+                  type="button"
+                  disabled={cgalDisabled}
+                  onClick={() => {
+                    onChangeCgalMinTrisEnabled(true);
+                    onChangeCgalMinTris(100000);
+                  }}
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 8,
+                    border: "1px solid #d0d5dd",
+                    background: cgalDisabled ? "#f3f4f6" : "#fff",
+                    cursor: cgalDisabled ? "not-allowed" : "pointer",
+                    fontSize: 11,
+                  }}
+                >
+                  100k tris
+                </button>
+                <span style={{ fontSize: 11, color: "#556" }}>preset</span>
               </div>
               {cgalMeshInfo && (
                 <div style={{ fontSize: 11, color: "#556" }}>
