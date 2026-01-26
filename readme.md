@@ -19,6 +19,7 @@
 - Added ridge/valley overlays (local extrema of k1/k2 along d1/d2) with thresholds for magnitude, contrast, and direction alignment.
 - Added ridge/valley curve stitching (v2) that turns feature vertices into readable polylines with decimation and cap controls.
 - Added geodesic disk selection (intrinsic radius) plus zoom-to-region controls in the selection panel.
+- Added geodesic distance heatmaps for mesh-based heat paths on graph, parametric, and Weierstrass surfaces.
 
 ## Build the renderer into /dist
 
@@ -118,6 +119,11 @@ and editable.
 
 - Selection mode now supports Euclidean ball or geodesic disk (intrinsic shortest-path radius on the mesh).
 - When enabled, "Zoom to region" smoothly frames the current selection with a debounced camera fit.
+
+### Geodesic distance heatmaps (mesh)
+
+- The "Show distance heatmap" toggle now works for graph, parametric, and Weierstrass meshes as well as implicit surfaces.
+- Heatmaps visualize the mesh-based heat-method distance field and are disabled when "Use continuous ODE" is active.
 
 ### Geodesics on explicit surfaces (z=f(x,y))
 

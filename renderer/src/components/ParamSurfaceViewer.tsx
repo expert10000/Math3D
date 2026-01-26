@@ -197,6 +197,8 @@ type Props = {
   geodesicHeatStart?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
   geodesicHeatEnd?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
   geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
+  geodesicHeatmapValues?: number[] | null;
+  geodesicHeatmapEnabled?: boolean;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -449,6 +451,42 @@ function applyVertexColors(
 
   for (let i = 0; i < count; i++) {
     const t = (values[i] - min) / range;
+    const { r, g, b } = scalarToColor01(t, palette);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.attributes.color.needsUpdate = true;
+}
+
+function applyHeatmapColors(
+  geometry: THREE.BufferGeometry,
+  values: number[] | Float32Array,
+  palette: ColorPalette
+) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+  const count = pos.count;
+  if (!count) return;
+  if (!values || values.length !== count) return;
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < count; i++) {
+    const v = values[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let t = (values[i] - min) / range;
+    if (t < 0) t = 0;
+    else if (t > 1) t = 1;
     const { r, g, b } = scalarToColor01(t, palette);
     colors[3 * i] = r;
     colors[3 * i + 1] = g;
@@ -969,6 +1007,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     geodesicHeatStart = null,
     geodesicHeatEnd = null,
     geodesicHeatPolyline = null,
+    geodesicHeatmapValues = null,
+    geodesicHeatmapEnabled = false,
     inspectEnabled = false,
     onInspectPick,
     inspectPoint = null,
@@ -4546,8 +4586,18 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const geom = mesh.geometry as THREE.BufferGeometry;
     const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
     const opacity = Math.min(1, Math.max(0, materialOpacity));
+    const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+    const heatmapOk =
+      !!geodesicHeatmapEnabled &&
+      !!geodesicHeatmapValues?.length &&
+      !!posAttr &&
+      posAttr.count === geodesicHeatmapValues.length;
 
-    if (colorMode === "solid") {
+    if (heatmapOk) {
+      applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+      mat.vertexColors = true;
+      mat.color.set("#ffffff");
+    } else if (colorMode === "solid") {
       geom.deleteAttribute("color");
       mat.vertexColors = false;
 
@@ -4568,7 +4618,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     mat.transparent = opacity < 1;
     mat.opacity = opacity;
     mat.needsUpdate = true;
-  }, [colorMode, colorPalette, surfaceId, materialRoughness, materialMetalness, materialOpacity]);
+  }, [
+    colorMode,
+    colorPalette,
+    surfaceId,
+    materialRoughness,
+    materialMetalness,
+    materialOpacity,
+    geodesicHeatmapEnabled,
+    geodesicHeatmapValues,
+  ]);
 
   // --- reverse probe: (u,v) click on param map → 3D marker/normal ---
   useEffect(() => {

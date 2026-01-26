@@ -804,8 +804,8 @@ type Props = {
   geodesicHeatStart?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
   geodesicHeatEnd?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
   geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
-  implicitHeatmapValues?: number[] | null;
-  implicitHeatmapEnabled?: boolean;
+  geodesicHeatmapValues?: number[] | null;
+  geodesicHeatmapEnabled?: boolean;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -929,8 +929,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicHeatStart = null,
     geodesicHeatEnd = null,
     geodesicHeatPolyline = null,
-    implicitHeatmapValues = null,
-    implicitHeatmapEnabled = false,
+    geodesicHeatmapValues = null,
+    geodesicHeatmapEnabled = false,
     inspectEnabled = false,
     onInspectPick,
     inspectPoint = null,
@@ -1486,20 +1486,23 @@ useEffect(() => {
         const implicitMeta = (anyO as any).userData?.__implicit as
           | { f: (x: number, y: number, z: number) => number }
           | undefined;
-        const useHeatmap = !!implicitHeatmapEnabled && !!implicitHeatmapValues?.length;
+        const useHeatmap = !!geodesicHeatmapEnabled && !!geodesicHeatmapValues?.length;
+        const posAttr = anyO.geometry?.getAttribute("position") as THREE.BufferAttribute | null;
+        const heatmapOk =
+          useHeatmap && !!posAttr && posAttr.count === geodesicHeatmapValues!.length;
         const useImplicitCurv =
-          !useHeatmap && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+          !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
 
         const mats = Array.isArray(anyO.material) ? anyO.material : [anyO.material];
         for (const m of mats) {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
-          (m as any).vertexColors = useImplicitCurv || useHeatmap;
+          (m as any).vertexColors = useImplicitCurv || heatmapOk;
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
           (m as any).transparent = clamp01(materialOpacity) < 1;
           (m as any).opacity = clamp01(materialOpacity);
-          if (useHeatmap || useImplicitCurv) {
+          if (heatmapOk || useImplicitCurv) {
             (m as any).color?.set(0xffffff);
           } else if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
@@ -1509,8 +1512,8 @@ useEffect(() => {
           m.needsUpdate = true;
         }
         if (anyO.geometry) {
-          if (useHeatmap) {
-            applyHeatmapColors(anyO.geometry, implicitHeatmapValues!, colorPalette);
+          if (heatmapOk) {
+            applyHeatmapColors(anyO.geometry, geodesicHeatmapValues!, colorPalette);
           } else if (useImplicitCurv && implicitMeta?.f) {
             applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
           } else if (anyO.geometry.getAttribute("color")) {
@@ -1523,10 +1526,18 @@ useEffect(() => {
       if (anyO?.isMesh && anyO.geometry) {
         const mesh = anyO as THREE.Mesh;
         const geom = mesh.geometry as THREE.BufferGeometry;
+        const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+        const heatmapOk =
+          !!geodesicHeatmapEnabled &&
+          !!geodesicHeatmapValues?.length &&
+          !!posAttr &&
+          posAttr.count === geodesicHeatmapValues.length;
 
         debugMesh("[recolorTraverse] BEFORE", mesh, { surfaceId, colorMode, colorPalette });
 
-        if (colorMode === "solid") {
+        if (heatmapOk) {
+          applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+        } else if (colorMode === "solid") {
           geom.deleteAttribute("color");
         } else if (colorMode === "curvature" && f) {
           applyCurvatureHeatToGraph(geom, f, colorPalette);
@@ -1540,12 +1551,14 @@ useEffect(() => {
         for (const m of mats) {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
-          (m as any).vertexColors = colorMode !== "solid";
+          (m as any).vertexColors = heatmapOk || colorMode !== "solid";
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
           (m as any).transparent = clamp01(materialOpacity) < 1;
           (m as any).opacity = clamp01(materialOpacity);
-          if (colorMode === "solid") {
+          if (heatmapOk) {
+            (m as any).color?.set(0xffffff);
+          } else if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
           } else {
             (m as any).color?.set(0xffffff);
@@ -2071,14 +2084,25 @@ useEffect(() => {
 
   // MarchingCubes: update material color only (no vertex colors)
   if (isImplicitMeshObj(obj)) {
-    const mat = (obj as any).material as THREE.Material | undefined;
+    const mesh = obj as THREE.Mesh;
+    const geom = mesh.geometry as THREE.BufferGeometry | null;
+    const posAttr = geom?.getAttribute("position") as THREE.BufferAttribute | null;
+    const heatmapOk =
+      !!geodesicHeatmapEnabled &&
+      !!geodesicHeatmapValues?.length &&
+      !!posAttr &&
+      posAttr.count === geodesicHeatmapValues.length;
+    const mat = (mesh as any).material as THREE.Material | undefined;
+    if (geom && heatmapOk) {
+      applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+    }
     if (mat && (mat as any).color) {
-      if (colorMode === "solid") {
-        (mat as any).color.set(solidColorForPalette(colorPalette));
-      } else {
+      if (heatmapOk || colorMode !== "solid") {
         (mat as any).color.set(0xffffff);
+      } else {
+        (mat as any).color.set(solidColorForPalette(colorPalette));
       }
-      (mat as any).vertexColors = false;
+      (mat as any).vertexColors = heatmapOk;
       mat.needsUpdate = true;
     }
     return;
@@ -2095,18 +2119,26 @@ debugMesh("[recolorFirstMesh] BEFORE", mesh, { surfaceId, colorMode, colorPalett
 
   // ensure vertex colors are actually used
   const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+  const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  const heatmapOk =
+    !!geodesicHeatmapEnabled &&
+    !!geodesicHeatmapValues?.length &&
+    !!posAttr &&
+    posAttr.count === geodesicHeatmapValues.length;
   if (mat) {
-    mat.vertexColors = colorMode !== "solid";
-    if (colorMode === "solid") {
-      mat.color.set(solidColorForPalette(colorPalette));
-    } else {
+    mat.vertexColors = heatmapOk || colorMode !== "solid";
+    if (heatmapOk || colorMode !== "solid") {
       mat.color.set(0xffffff);
+    } else {
+      mat.color.set(solidColorForPalette(colorPalette));
     }
     mat.needsUpdate = true;
   }
 
   // repaint
-  if (colorMode === "curvature") {
+  if (heatmapOk) {
+    applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+  } else if (colorMode === "curvature") {
     const g = (obj as any).userData?.__graph;
     const f = g?.f as ((x: number, y: number) => number) | undefined;
 
@@ -2138,8 +2170,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   colorPalette,
   implicitOverlay,
   implicitMeshToken,
-  implicitHeatmapEnabled,
-  implicitHeatmapValues,
+  geodesicHeatmapEnabled,
+  geodesicHeatmapValues,
 ]);
 
   useEffect(() => {

@@ -686,6 +686,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicHeatShowHeatmap, setGeodesicHeatShowHeatmap] = useState(false);
   const [geodesicHeatUseContinuous, setGeodesicHeatUseContinuous] = useState(false);
   const [geodesicHeatMeshToken, setGeodesicHeatMeshToken] = useState<number | null>(null);
+  const [geodesicHeatMeshKey, setGeodesicHeatMeshKey] = useState<string | null>(null);
   const paramGeodesicStateRef = useRef<ParamGeodesicState | null>(null);
   const adjacencyCacheRef = useRef(
     new Map<
@@ -1830,6 +1831,7 @@ case "mobius":
     setGeodesicHeatMessage(null);
     setGeodesicHeatPhi(null);
     setGeodesicHeatMeshToken(null);
+    setGeodesicHeatMeshKey(null);
   }, []);
 
   useEffect(() => {
@@ -2124,11 +2126,34 @@ case "mobius":
     (surfaceViewerKind === "implicit" && !!activeCgalMesh) ||
     geodesicHeatGraphAvailable ||
     geodesicHeatParamAvailable;
-  const geodesicHeatHeatmapActive =
-    surfaceViewerKind === "implicit" &&
-    geodesicHeatShowHeatmap &&
-    !!geodesicHeatPhi &&
-    geodesicHeatMeshToken === cgalMeshToken;
+  const geodesicHeatHeatmapAllowed =
+    (surfaceViewerKind === "implicit" ||
+      surfaceViewerKind === "graph" ||
+      surfaceViewerKind === "param" ||
+      surfaceViewerKind === "weierstrass") &&
+    !geodesicHeatUseContinuous;
+  const geodesicHeatHeatmapActive = useMemo(() => {
+    if (!geodesicHeatHeatmapAllowed) return false;
+    if (!geodesicHeatShowHeatmap || !geodesicHeatPhi?.length) return false;
+    if (surfaceViewerKind === "implicit") {
+      return geodesicHeatMeshToken === cgalMeshToken;
+    }
+    if (surfaceViewerKind === "graph" || surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      if (!geodesicHeatMeshKey) return false;
+      const meshes = surfaceSampleSet?.meshData;
+      return !!meshes?.some((m) => m.key === geodesicHeatMeshKey);
+    }
+    return false;
+  }, [
+    geodesicHeatShowHeatmap,
+    geodesicHeatPhi,
+    geodesicHeatMeshToken,
+    geodesicHeatMeshKey,
+    geodesicHeatHeatmapAllowed,
+    cgalMeshToken,
+    surfaceViewerKind,
+    surfaceSampleSet?.meshData,
+  ]);
   const geodesicHeatHeatmapValues = geodesicHeatHeatmapActive ? geodesicHeatPhi : null;
   const geodesicHeatUnavailableReason = useMemo(() => {
     if (geodesicHeatAvailable) return "";
@@ -2139,17 +2164,22 @@ case "mobius":
     if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
       return "Param mesh not ready";
     }
-    return "Heat path only available in implicit, graph, or param";
+    return "Heat path only available in implicit, graph, or param/weierstrass";
   }, [activeEqSurfaceId, geodesicHeatAvailable, surfaceViewerKind]);
+  const geodesicHeatHeatmapReason = useMemo(() => {
+    if (geodesicHeatHeatmapAllowed) return "";
+    if (geodesicHeatUseContinuous) return "Heatmap requires mesh heat (disable continuous ODE)";
+    return "Heatmap only available in implicit, graph, or param/weierstrass";
+  }, [geodesicHeatHeatmapAllowed, geodesicHeatUseContinuous]);
 
   useEffect(() => {
     if (!geodesicHeatAvailable) setGeodesicHeatEnabled(false);
   }, [geodesicHeatAvailable]);
   useEffect(() => {
-    if (surfaceViewerKind !== "implicit" && geodesicHeatShowHeatmap) {
+    if (!geodesicHeatHeatmapAllowed && geodesicHeatShowHeatmap) {
       setGeodesicHeatShowHeatmap(false);
     }
-  }, [surfaceViewerKind, geodesicHeatShowHeatmap]);
+  }, [geodesicHeatHeatmapAllowed, geodesicHeatShowHeatmap]);
   useEffect(() => {
     const allowed =
       surfaceViewerKind === "graph" ||
@@ -2166,10 +2196,12 @@ case "mobius":
     setGeodesicHeatLength(null);
     setGeodesicHeatPhi(null);
     setGeodesicHeatMeshToken(null);
+    setGeodesicHeatMeshKey(null);
 
     const isImplicitHeat = surfaceViewerKind === "implicit";
     const isGraphHeat = surfaceViewerKind === "graph" && isGraphSurface(activeEqSurfaceId);
     const isParamHeat = surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass";
+    const wantPhi = geodesicHeatShowHeatmap && !geodesicHeatUseContinuous;
     if (!isImplicitHeat && !isGraphHeat && !isParamHeat) {
       setGeodesicHeatMessage("Heat path is available only in implicit, graph, or param mode.");
       return;
@@ -2273,6 +2305,7 @@ case "mobius":
 
     let V: number[][] = [];
     let F: number[][] = [];
+    let heatMeshKey: string | null = null;
     if (isImplicitHeat) {
       const positions = activeCgalMesh?.positions ?? [];
       const indices = activeCgalMesh?.indices ?? [];
@@ -2289,6 +2322,7 @@ case "mobius":
     } else {
       const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicHeatStart.meshKey)
         ?? surfaceSampleSet?.meshData?.[0];
+      heatMeshKey = meshData?.key ?? null;
       const positions = meshData?.positions;
       const indices = meshData?.indices ?? null;
       if (!positions || positions.length < 3) {
@@ -2321,7 +2355,7 @@ case "mobius":
           step_factor: 0.25,
           max_steps: 8000,
           stop_eps: 1e-4,
-          return_phi: isImplicitHeat,
+          return_phi: wantPhi,
         },
       });
 
@@ -2333,9 +2367,13 @@ case "mobius":
       const pts = res.polyline.map((p) => ({ x: p[0], y: p[1], z: p[2] }));
       setGeodesicHeatPolyline(pts);
       setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
-      if (isImplicitHeat && res.phi_vertex?.length) {
+      if (wantPhi && res.phi_vertex?.length) {
         setGeodesicHeatPhi(res.phi_vertex);
-        setGeodesicHeatMeshToken(cgalMeshToken);
+        if (isImplicitHeat) {
+          setGeodesicHeatMeshToken(cgalMeshToken);
+        } else {
+          setGeodesicHeatMeshKey(heatMeshKey);
+        }
       }
     } catch (e: any) {
       setGeodesicHeatMessage(e?.message ?? String(e));
@@ -2347,6 +2385,7 @@ case "mobius":
     activeEqSurfaceId,
     activeGraphDomain,
     cgalMeshToken,
+    geodesicHeatShowHeatmap,
     geodesicHeatUseContinuous,
     geodesicHeatEnd,
     geodesicHeatStart,
@@ -2947,6 +2986,8 @@ case "mobius":
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
               onChangeCompareParamId={setCompareParamId}
+              geodesicHeatHeatmapAllowed={geodesicHeatHeatmapAllowed}
+              geodesicHeatHeatmapReason={geodesicHeatHeatmapReason}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -3155,6 +3196,8 @@ case "mobius":
                 geodesicHeatShowHeatmap={geodesicHeatShowHeatmap}
                 geodesicHeatUseContinuous={geodesicHeatUseContinuous}
                 geodesicHeatUnavailableReason={geodesicHeatUnavailableReason}
+                geodesicHeatHeatmapAllowed={geodesicHeatHeatmapAllowed}
+                geodesicHeatHeatmapReason={geodesicHeatHeatmapReason}
                 onToggleGeodesicHeatEnabled={() => setGeodesicHeatEnabled((v) => !v)}
                 onToggleGeodesicHeatShowHeatmap={() => setGeodesicHeatShowHeatmap((v) => !v)}
                 onToggleGeodesicHeatUseContinuous={() => setGeodesicHeatUseContinuous((v) => !v)}
@@ -3312,6 +3355,8 @@ case "mobius":
                                 : null
                             }
                             geodesicHeatPolyline={geodesicHeatPolyline}
+                            geodesicHeatmapValues={geodesicHeatHeatmapValues}
+                            geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
@@ -3410,8 +3455,8 @@ case "mobius":
                         geodesicHeatStart={geodesicHeatStart ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey } : null}
                         geodesicHeatEnd={geodesicHeatEnd ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey } : null}
                         geodesicHeatPolyline={geodesicHeatPolyline}
-                        implicitHeatmapValues={geodesicHeatHeatmapValues}
-                        implicitHeatmapEnabled={geodesicHeatHeatmapActive}
+                        geodesicHeatmapValues={geodesicHeatHeatmapValues}
+                        geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
                       />
@@ -3775,6 +3820,8 @@ type SurfacesControlsProps = {
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
   onChangeCompareParamId: (p: ParamSurfaceId) => void;
+  geodesicHeatHeatmapAllowed: boolean;
+  geodesicHeatHeatmapReason: string;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -3793,6 +3840,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeCompareSurface,
   compareParamId,
   onChangeCompareParamId,
+  geodesicHeatHeatmapAllowed,
+  geodesicHeatHeatmapReason,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -4205,6 +4254,8 @@ type SurfacesLeftPanelProps = {
   geodesicHeatShowHeatmap: boolean;
   geodesicHeatUseContinuous: boolean;
   geodesicHeatUnavailableReason: string;
+  geodesicHeatHeatmapAllowed: boolean;
+  geodesicHeatHeatmapReason: string;
   onToggleGeodesicHeatEnabled: () => void;
   onToggleGeodesicHeatShowHeatmap: () => void;
   onToggleGeodesicHeatUseContinuous: () => void;
@@ -4401,6 +4452,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   geodesicHeatShowHeatmap,
   geodesicHeatUseContinuous,
   geodesicHeatUnavailableReason,
+  geodesicHeatHeatmapAllowed,
+  geodesicHeatHeatmapReason,
   onToggleGeodesicHeatEnabled,
   onToggleGeodesicHeatShowHeatmap,
   onToggleGeodesicHeatUseContinuous,
@@ -5287,16 +5340,16 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    cursor: viewerKind === "implicit" ? "pointer" : "not-allowed",
-                    color: viewerKind === "implicit" ? "#000" : "#999",
+                    cursor: geodesicHeatHeatmapAllowed ? "pointer" : "not-allowed",
+                    color: geodesicHeatHeatmapAllowed ? "#000" : "#999",
                   }}
-                  title={viewerKind === "implicit" ? "" : "Heatmap only available for implicit surfaces"}
+                  title={geodesicHeatHeatmapAllowed ? "" : geodesicHeatHeatmapReason}
                 >
                   <input
                     type="checkbox"
                     checked={geodesicHeatShowHeatmap}
                     onChange={onToggleGeodesicHeatShowHeatmap}
-                    disabled={viewerKind !== "implicit"}
+                    disabled={!geodesicHeatHeatmapAllowed}
                     style={{ marginRight: 6 }}
                   />
                   Show distance heatmap
