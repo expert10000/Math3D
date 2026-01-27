@@ -10,6 +10,7 @@ import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
 import TabButton from "./components/TabButton";
 import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
+import { DiskStatsPanel } from "./components/DiskStatsPanel";
 
 import {
   SurfaceViewer,
@@ -41,6 +42,7 @@ import {
   type SelectionMetricKey,
   type SelectionStats,
 } from "./math/selection/selectionStats";
+import { buildGeodesicDisk } from "./math/geodesicDisk";
 import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
@@ -385,6 +387,14 @@ type GeodesicHeatEndpoint = {
   point: { x: number; y: number; z: number };
   uv?: { u: number; v: number };
 };
+type GeodesicDiskCenter = {
+  meshKey: string;
+  faceIndex: number;
+  bary: [number, number, number];
+  point: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  uv?: { u: number; v: number };
+};
 
 type BBox3 = { min: [number, number, number]; max: [number, number, number] };
 
@@ -687,6 +697,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicHeatUseContinuous, setGeodesicHeatUseContinuous] = useState(false);
   const [geodesicHeatMeshToken, setGeodesicHeatMeshToken] = useState<number | null>(null);
   const [geodesicHeatMeshKey, setGeodesicHeatMeshKey] = useState<string | null>(null);
+  const [geodesicDiskEnabled, setGeodesicDiskEnabled] = useState(false);
+  const [geodesicDiskBusy, setGeodesicDiskBusy] = useState(false);
+  const [geodesicDiskPickMode, setGeodesicDiskPickMode] = useState(false);
+  const [geodesicDiskCenter, setGeodesicDiskCenter] = useState<GeodesicDiskCenter | null>(null);
+  const [geodesicDiskRadius, setGeodesicDiskRadius] = useState(0.4);
+  const [geodesicDiskRadiusApplied, setGeodesicDiskRadiusApplied] = useState(0.4);
+  const [geodesicDiskAutoUpdate, setGeodesicDiskAutoUpdate] = useState(true);
+  const [geodesicDiskShowBoundary, setGeodesicDiskShowBoundary] = useState(true);
+  const [geodesicDiskMethod, setGeodesicDiskMethod] = useState<"heat" | "dijkstra">("heat");
+  const [geodesicDiskMessage, setGeodesicDiskMessage] = useState<string | null>(null);
+  const [geodesicDiskPhi, setGeodesicDiskPhi] = useState<Float64Array | null>(null);
+  const [geodesicDiskPhiMeshKey, setGeodesicDiskPhiMeshKey] = useState<string | null>(null);
+  const [geodesicDiskPhiMeshToken, setGeodesicDiskPhiMeshToken] = useState<number | null>(null);
+  const [geodesicDiskPhiMethod, setGeodesicDiskPhiMethod] = useState<"heat" | "dijkstra" | null>(null);
+  const [geodesicDiskPhiKey, setGeodesicDiskPhiKey] = useState<string | null>(null);
+  const geodesicDiskPhiCacheRef = useRef(new Map<string, Float64Array>());
+  const geodesicDiskRequestIdRef = useRef(0);
+  const geodesicDiskRadiusTouchedRef = useRef(false);
   const paramGeodesicStateRef = useRef<ParamGeodesicState | null>(null);
   const adjacencyCacheRef = useRef(
     new Map<
@@ -1386,6 +1414,76 @@ case "mobius":
     return map;
   }, [surfaceSampleSet]);
 
+  const buildHeatMesh = useCallback(
+    (params: {
+      positions: ArrayLike<number>;
+      indices: ArrayLike<number> | null;
+      meshKey: string | null;
+    }) => {
+      const { positions, indices, meshKey } = params;
+      const vertCount = Math.floor(positions.length / 3);
+      const hasIndices = !!(indices && indices.length >= 3);
+      const triCount = hasIndices ? Math.floor((indices as ArrayLike<number>).length / 3) : Math.floor(vertCount / 3);
+      const meshAdj = meshKey ? geodesicAdjacency.get(meshKey) : null;
+      const vertexToMerged = meshAdj?.vertexToMerged ?? null;
+      const mergedToVertex = meshAdj?.mergedToVertex ?? null;
+      const useMerge =
+        !!vertexToMerged &&
+        !!mergedToVertex &&
+        mergedToVertex.length > 0 &&
+        mergedToVertex.length < vertCount;
+
+      const V: number[][] = [];
+      if (useMerge && mergedToVertex) {
+        for (let i = 0; i < mergedToVertex.length; i++) {
+          const src = mergedToVertex[i];
+          V.push([positions[src * 3], positions[src * 3 + 1], positions[src * 3 + 2]]);
+        }
+      } else {
+        for (let i = 0; i + 2 < positions.length; i += 3) {
+          V.push([positions[i], positions[i + 1], positions[i + 2]]);
+        }
+      }
+
+      const F: number[][] = [];
+      for (let t = 0; t < triCount; t++) {
+        const base = t * 3;
+        const a = hasIndices ? Number((indices as ArrayLike<number>)[base]) : base;
+        const b = hasIndices ? Number((indices as ArrayLike<number>)[base + 1]) : base + 1;
+        const c = hasIndices ? Number((indices as ArrayLike<number>)[base + 2]) : base + 2;
+        const ma = useMerge && vertexToMerged ? vertexToMerged[a] : a;
+        const mb = useMerge && vertexToMerged ? vertexToMerged[b] : b;
+        const mc = useMerge && vertexToMerged ? vertexToMerged[c] : c;
+        F.push([ma, mb, mc]);
+      }
+
+      const expandPhi = (phi: ArrayLike<number>) => {
+        const out = new Float64Array(vertCount);
+        if (useMerge && vertexToMerged) {
+          for (let i = 0; i < vertCount; i++) {
+            const mapped = vertexToMerged[i];
+            out[i] =
+              mapped != null && mapped >= 0 && mapped < phi.length
+                ? Number(phi[mapped])
+                : Number.NaN;
+          }
+        } else {
+          const limit = Math.min(phi.length, out.length);
+          for (let i = 0; i < limit; i++) {
+            out[i] = Number(phi[i]);
+          }
+          for (let i = limit; i < out.length; i++) {
+            out[i] = Number.NaN;
+          }
+        }
+        return out;
+      };
+
+      return { V, F, expandPhi };
+    },
+    [geodesicAdjacency]
+  );
+
   const buildAllowedVertexMask = useCallback(
     (meshKey: string, vertexCount: number, vertexToMerged?: Int32Array) => {
       if (!geodesicPathConstrain) return null;
@@ -1814,6 +1912,62 @@ case "mobius":
     [geodesicHeatEnabled, geodesicHeatEnd, geodesicHeatStart]
   );
 
+  const handleGeodesicDiskPick = useCallback(
+    (payload: {
+      point: { x: number; y: number; z: number };
+      normal: { x: number; y: number; z: number };
+      meshKey?: string;
+      faceIndex?: number;
+      bary?: [number, number, number];
+      uv?: { u: number; v: number };
+    }) => {
+      if (!geodesicDiskEnabled) return;
+      if (!payload.meshKey || payload.faceIndex == null || !payload.bary) {
+        setGeodesicDiskMessage("No face picked (mesh required).");
+        return;
+      }
+      geodesicDiskRequestIdRef.current += 1;
+      const clampBary = (raw: [number, number, number]) => {
+        const c0 = Math.max(0, raw[0]);
+        const c1 = Math.max(0, raw[1]);
+        const c2 = Math.max(0, raw[2]);
+        const sum = c0 + c1 + c2;
+        if (!Number.isFinite(sum) || Math.abs(sum) <= 1e-12) return raw;
+        return [c0 / sum, c1 / sum, c2 / sum] as [number, number, number];
+      };
+      const barySum = payload.bary[0] + payload.bary[1] + payload.bary[2];
+      const bary = clampBary(
+        Number.isFinite(barySum) && Math.abs(barySum) > 1e-12
+          ? ([
+              payload.bary[0] / barySum,
+              payload.bary[1] / barySum,
+              payload.bary[2] / barySum,
+            ] as [number, number, number])
+          : payload.bary
+      );
+      const picked: GeodesicDiskCenter = {
+        meshKey: payload.meshKey,
+        faceIndex: payload.faceIndex,
+        bary,
+        point: payload.point,
+        normal: payload.normal,
+        uv: payload.uv,
+      };
+      setGeodesicDiskCenter(picked);
+      setGeodesicDiskPhi(null);
+      setGeodesicDiskPhiMethod(null);
+      setGeodesicDiskPhiKey(null);
+      setGeodesicDiskPickMode(false);
+      setGeodesicDiskMessage(null);
+    },
+    [geodesicDiskEnabled]
+  );
+
+  const handleChangeGeodesicDiskRadius = useCallback((value: number) => {
+    geodesicDiskRadiusTouchedRef.current = true;
+    setGeodesicDiskRadius(value);
+  }, []);
+
   const handleClearGeodesicPath = useCallback(() => {
     setGeodesicPathStart(null);
     setGeodesicPathEnd(null);
@@ -1832,6 +1986,18 @@ case "mobius":
     setGeodesicHeatPhi(null);
     setGeodesicHeatMeshToken(null);
     setGeodesicHeatMeshKey(null);
+  }, []);
+
+  const handleClearGeodesicDisk = useCallback(() => {
+    geodesicDiskRequestIdRef.current += 1;
+    setGeodesicDiskCenter(null);
+    setGeodesicDiskMessage(null);
+    setGeodesicDiskPhi(null);
+    setGeodesicDiskPhiMeshKey(null);
+    setGeodesicDiskPhiMeshToken(null);
+    setGeodesicDiskPhiMethod(null);
+    setGeodesicDiskPhiKey(null);
+    setGeodesicDiskPickMode(false);
   }, []);
 
   useEffect(() => {
@@ -1862,6 +2028,46 @@ case "mobius":
     handleClearGeodesicHeat();
   }, [
     handleClearGeodesicHeat,
+    surfaceViewerKind,
+    paramSurfaceIdForView,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    activeParamLikeResolution,
+    activeParamLikeDomain?.uMin,
+    activeParamLikeDomain?.uMax,
+    activeParamLikeDomain?.vMin,
+    activeParamLikeDomain?.vMax,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassResolution,
+    weierstrassRecenter,
+  ]);
+
+  useEffect(() => {
+    handleClearGeodesicDisk();
+  }, [handleClearGeodesicDisk, cgalMeshToken, activeEqSurfaceId, implicitExpr]);
+  useEffect(() => {
+    handleClearGeodesicDisk();
+  }, [handleClearGeodesicDisk, surfaceViewerKind]);
+  useEffect(() => {
+    if (surfaceViewerKind !== "graph") return;
+    handleClearGeodesicDisk();
+  }, [
+    handleClearGeodesicDisk,
+    surfaceViewerKind,
+    activeEqSurfaceId,
+    graphExpr,
+    graphResolution,
+    activeGraphDomain?.xSpan,
+    activeGraphDomain?.ySpan,
+  ]);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "param" && surfaceViewerKind !== "weierstrass") return;
+    handleClearGeodesicDisk();
+  }, [
+    handleClearGeodesicDisk,
     surfaceViewerKind,
     paramSurfaceIdForView,
     paramXExpr,
@@ -2079,6 +2285,115 @@ case "mobius":
     });
   }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric, selectionStatsToken]);
 
+  const activeCgalMesh = useMemo(() => {
+    if (!cgalMeshState) return null;
+    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
+    if (cgalMeshState.expr !== implicitExpr) return null;
+    return cgalMeshState;
+  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
+
+  const cgalMeshInfo = useMemo(() => {
+    if (!activeCgalMesh) return null;
+    return {
+      vertexCount: Math.floor(activeCgalMesh.positions.length / 3),
+      triCount: Math.floor(activeCgalMesh.indices.length / 3),
+    };
+  }, [activeCgalMesh]);
+
+  const geodesicDiskPhiActive = useMemo(() => {
+    if (!geodesicDiskPhi || !geodesicDiskPhiMethod) return false;
+    if (geodesicDiskPhiMethod !== geodesicDiskMethod) return false;
+    if (surfaceViewerKind === "implicit") {
+      return geodesicDiskPhiMeshToken === cgalMeshToken;
+    }
+    if (!geodesicDiskPhiMeshKey) return false;
+    return !!surfaceSampleSet?.meshData?.some((m) => m.key === geodesicDiskPhiMeshKey);
+  }, [
+    geodesicDiskPhi,
+    geodesicDiskPhiMethod,
+    geodesicDiskMethod,
+    geodesicDiskPhiMeshKey,
+    geodesicDiskPhiMeshToken,
+    cgalMeshToken,
+    surfaceViewerKind,
+    surfaceSampleSet?.meshData,
+  ]);
+
+  const geodesicDiskMeshData = useMemo(() => {
+    if (!geodesicDiskCenter) return null;
+    if (surfaceViewerKind === "implicit") {
+      const positions = activeCgalMesh?.positions ?? null;
+      const indices = activeCgalMesh?.indices ?? null;
+      if (!positions || positions.length < 3 || !indices || indices.length < 3) return null;
+      return { positions, indices };
+    }
+    const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicDiskCenter.meshKey);
+    if (!meshData) return null;
+    return { positions: meshData.positions, indices: meshData.indices ?? null };
+  }, [geodesicDiskCenter, surfaceViewerKind, activeCgalMesh, surfaceSampleSet?.meshData]);
+
+  const geodesicDiskResult = useMemo(() => {
+    if (!geodesicDiskEnabled || !geodesicDiskPhiActive || !geodesicDiskMeshData || !geodesicDiskPhi) {
+      return null;
+    }
+    return buildGeodesicDisk({
+      positions: geodesicDiskMeshData.positions,
+      indices: geodesicDiskMeshData.indices,
+      phi: geodesicDiskPhi,
+      radius: geodesicDiskRadiusApplied,
+    });
+  }, [
+    geodesicDiskEnabled,
+    geodesicDiskPhiActive,
+    geodesicDiskMeshData,
+    geodesicDiskPhi,
+    geodesicDiskRadiusApplied,
+  ]);
+
+  const geodesicDiskSelectionIndices = useMemo(() => {
+    if (!geodesicDiskEnabled || !geodesicDiskPhiActive || !geodesicDiskPhi) return [];
+    if (!surfaceSampleSet?.samples?.length) return [];
+    const meshKey = geodesicDiskPhiMeshKey ?? geodesicDiskCenter?.meshKey;
+    if (!meshKey) return [];
+    const selected: number[] = [];
+    const samples = surfaceSampleSet.samples;
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+      if (sample.meshKey !== meshKey || sample.vertexIndex == null) continue;
+      const idx = sample.vertexIndex;
+      if (idx < 0 || idx >= geodesicDiskPhi.length) continue;
+      if (geodesicDiskPhi[idx] <= geodesicDiskRadiusApplied) {
+        selected.push(i);
+      }
+    }
+    return selected;
+  }, [
+    geodesicDiskEnabled,
+    geodesicDiskPhiActive,
+    geodesicDiskPhi,
+    geodesicDiskRadiusApplied,
+    geodesicDiskPhiMeshKey,
+    geodesicDiskCenter,
+    surfaceSampleSet,
+  ]);
+
+  const geodesicDiskSelectionStats = useMemo(() => {
+    if (!selectionBaseArrays) {
+      return computeSelectionStats({
+        selectedIndices: [],
+        positions: new Float32Array(0),
+        normals: new Float32Array(0),
+      });
+    }
+    return computeSelectionStats({
+      selectedIndices: geodesicDiskSelectionIndices,
+      positions: selectionBaseArrays.positions,
+      normals: selectionBaseArrays.normals,
+      metrics: selectionCurvatures ?? undefined,
+      normalizeMeanNormal: true,
+    });
+  }, [selectionBaseArrays, selectionCurvatures, geodesicDiskSelectionIndices]);
+
   const implicitDomainBBox = useCallback((domain: ImplicitDomain) => {
     const size = Math.max(Number(domain.xSpan), Number(domain.ySpan));
     const half = Number.isFinite(size) && size > 0 ? size : 1;
@@ -2100,21 +2415,6 @@ case "mobius":
       alive = false;
     };
   }, [surfaceViewerKind]);
-
-  const activeCgalMesh = useMemo(() => {
-    if (!cgalMeshState) return null;
-    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
-    if (cgalMeshState.expr !== implicitExpr) return null;
-    return cgalMeshState;
-  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
-
-  const cgalMeshInfo = useMemo(() => {
-    if (!activeCgalMesh) return null;
-    return {
-      vertexCount: Math.floor(activeCgalMesh.positions.length / 3),
-      triCount: Math.floor(activeCgalMesh.indices.length / 3),
-    };
-  }, [activeCgalMesh]);
   const geodesicHeatGraphAvailable =
     surfaceViewerKind === "graph" &&
     isGraphSurface(activeEqSurfaceId) &&
@@ -2171,10 +2471,26 @@ case "mobius":
     if (geodesicHeatUseContinuous) return "Heatmap requires mesh heat (disable continuous ODE)";
     return "Heatmap only available in implicit, graph, or param/weierstrass";
   }, [geodesicHeatHeatmapAllowed, geodesicHeatUseContinuous]);
+  const geodesicDiskAvailable = geodesicHeatAvailable;
+  const geodesicDiskUnavailableReason = useMemo(() => {
+    if (geodesicDiskAvailable) return "";
+    if (surfaceViewerKind === "implicit") return "Run CGAL mesh first";
+    if (surfaceViewerKind === "graph") return "Graph mesh not ready";
+    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      return "Param mesh not ready";
+    }
+    return "Disk only available in implicit, graph, or param/weierstrass";
+  }, [geodesicDiskAvailable, surfaceViewerKind]);
 
   useEffect(() => {
     if (!geodesicHeatAvailable) setGeodesicHeatEnabled(false);
   }, [geodesicHeatAvailable]);
+  useEffect(() => {
+    if (!geodesicDiskAvailable) {
+      setGeodesicDiskEnabled(false);
+      setGeodesicDiskPickMode(false);
+    }
+  }, [geodesicDiskAvailable]);
   useEffect(() => {
     if (!geodesicHeatHeatmapAllowed && geodesicHeatShowHeatmap) {
       setGeodesicHeatShowHeatmap(false);
@@ -2189,6 +2505,15 @@ case "mobius":
       setGeodesicHeatUseContinuous(false);
     }
   }, [surfaceViewerKind, geodesicHeatUseContinuous]);
+  useEffect(() => {
+    if (!geodesicDiskAutoUpdate) return;
+    setGeodesicDiskRadiusApplied(geodesicDiskRadius);
+  }, [geodesicDiskAutoUpdate, geodesicDiskRadius]);
+  useEffect(() => {
+    setGeodesicDiskPhi(null);
+    setGeodesicDiskPhiMethod(null);
+    setGeodesicDiskPhiKey(null);
+  }, [geodesicDiskMethod]);
 
   const handleRunGeodesicHeat = useCallback(async () => {
     setGeodesicHeatMessage(null);
@@ -2303,51 +2628,45 @@ case "mobius":
       return;
     }
 
-    let V: number[][] = [];
-    let F: number[][] = [];
+    let positions: ArrayLike<number> | null = null;
+    let indices: ArrayLike<number> | null = null;
     let heatMeshKey: string | null = null;
     if (isImplicitHeat) {
-      const positions = activeCgalMesh?.positions ?? [];
-      const indices = activeCgalMesh?.indices ?? [];
-      if (positions.length < 3 || indices.length < 3) {
+      const pos = activeCgalMesh?.positions ?? null;
+      const idx = activeCgalMesh?.indices ?? null;
+      if (!pos || pos.length < 3 || !idx || idx.length < 3) {
         setGeodesicHeatMessage("CGAL mesh data missing.");
         return;
       }
-      for (let i = 0; i + 2 < positions.length; i += 3) {
-        V.push([positions[i], positions[i + 1], positions[i + 2]]);
-      }
-      for (let i = 0; i + 2 < indices.length; i += 3) {
-        F.push([indices[i], indices[i + 1], indices[i + 2]]);
-      }
+      positions = pos;
+      indices = idx;
     } else {
       const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicHeatStart.meshKey)
         ?? surfaceSampleSet?.meshData?.[0];
       heatMeshKey = meshData?.key ?? null;
-      const positions = meshData?.positions;
-      const indices = meshData?.indices ?? null;
-      if (!positions || positions.length < 3) {
+      const pos = meshData?.positions;
+      const idx = meshData?.indices ?? null;
+      if (!pos || pos.length < 3) {
         setGeodesicHeatMessage(isGraphHeat ? "Graph mesh data missing." : "Param mesh data missing.");
         return;
       }
-      for (let i = 0; i + 2 < positions.length; i += 3) {
-        V.push([positions[i], positions[i + 1], positions[i + 2]]);
-      }
-      if (indices && indices.length >= 3) {
-        for (let i = 0; i + 2 < indices.length; i += 3) {
-          F.push([Number(indices[i]), Number(indices[i + 1]), Number(indices[i + 2])]);
-        }
-      } else {
-        const vertCount = Math.floor(positions.length / 3);
-        for (let i = 0; i + 2 < vertCount; i += 3) {
-          F.push([i, i + 1, i + 2]);
-        }
-      }
+      positions = pos;
+      indices = idx;
     }
 
     setGeodesicHeatBusy(true);
     try {
+      if (!positions) {
+        setGeodesicHeatMessage("Mesh data missing.");
+        return;
+      }
+      const heatMesh = buildHeatMesh({
+        positions,
+        indices,
+        meshKey: isImplicitHeat ? null : heatMeshKey,
+      });
       const res = await runGeodesicHeat({
-        mesh: { V, F },
+        mesh: { V: heatMesh.V, F: heatMesh.F },
         source: { face: geodesicHeatStart.faceIndex, bary: geodesicHeatStart.bary },
         target: { face: geodesicHeatEnd.faceIndex, bary: geodesicHeatEnd.bary },
         options: {
@@ -2368,7 +2687,8 @@ case "mobius":
       setGeodesicHeatPolyline(pts);
       setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
       if (wantPhi && res.phi_vertex?.length) {
-        setGeodesicHeatPhi(res.phi_vertex);
+        const expanded = heatMesh.expandPhi(res.phi_vertex);
+        setGeodesicHeatPhi(Array.from(expanded));
         if (isImplicitHeat) {
           setGeodesicHeatMeshToken(cgalMeshToken);
         } else {
@@ -2384,6 +2704,7 @@ case "mobius":
     activeCgalMesh,
     activeEqSurfaceId,
     activeGraphDomain,
+    buildHeatMesh,
     cgalMeshToken,
     geodesicHeatShowHeatmap,
     geodesicHeatUseContinuous,
@@ -2393,6 +2714,289 @@ case "mobius":
     surfaceSampleSet,
     surfaceViewerKind,
   ]);
+
+  const handleRecomputeGeodesicDisk = useCallback(
+    async (centerOverride?: GeodesicDiskCenter | null) => {
+      setGeodesicDiskMessage(null);
+
+      const center = centerOverride ?? geodesicDiskCenter;
+      if (!center) {
+        setGeodesicDiskMessage("Pick a center on the mesh.");
+        return;
+      }
+      if (!geodesicDiskAvailable) {
+        setGeodesicDiskMessage(geodesicDiskUnavailableReason || "Disk not available.");
+        return;
+      }
+
+      const isImplicitDisk = surfaceViewerKind === "implicit";
+      let positions: ArrayLike<number> | null = null;
+      let indices: ArrayLike<number> | null = null;
+      let meshKey = center.meshKey;
+
+      if (isImplicitDisk) {
+        const pos = activeCgalMesh?.positions ?? null;
+        const idx = activeCgalMesh?.indices ?? null;
+        if (!pos || pos.length < 3 || !idx || idx.length < 3) {
+          setGeodesicDiskMessage("CGAL mesh data missing.");
+          return;
+        }
+        positions = pos;
+        indices = idx;
+      } else {
+        const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === center.meshKey);
+        if (!meshData || !meshData.positions || meshData.positions.length < 3) {
+          setGeodesicDiskMessage(
+            surfaceViewerKind === "graph" ? "Graph mesh data missing." : "Param mesh data missing."
+          );
+          return;
+        }
+        positions = meshData.positions;
+        indices = meshData.indices ?? null;
+        meshKey = meshData.key;
+      }
+
+      const clampBary = (raw: [number, number, number]) => {
+        const c0 = Math.max(0, raw[0]);
+        const c1 = Math.max(0, raw[1]);
+        const c2 = Math.max(0, raw[2]);
+        const sum = c0 + c1 + c2;
+        if (!Number.isFinite(sum) || Math.abs(sum) <= 1e-12) return raw;
+        return [c0 / sum, c1 / sum, c2 / sum] as [number, number, number];
+      };
+      const barySum = center.bary[0] + center.bary[1] + center.bary[2];
+      const bary = clampBary(
+        Number.isFinite(barySum) && Math.abs(barySum) > 1e-12
+          ? ([
+              center.bary[0] / barySum,
+              center.bary[1] / barySum,
+              center.bary[2] / barySum,
+            ] as [number, number, number])
+          : center.bary
+      );
+      const baryKey = bary.map((v) => v.toFixed(6)).join(",");
+      const meshTokenKey = isImplicitDisk ? String(cgalMeshToken) : "mesh";
+      const cacheKey = [
+        geodesicDiskMethod,
+        meshKey,
+        meshTokenKey,
+        center.faceIndex,
+        baryKey,
+      ].join("|");
+
+      if (geodesicDiskPhiKey && geodesicDiskPhiKey === cacheKey && geodesicDiskPhi) {
+        if (!geodesicDiskAutoUpdate) {
+          setGeodesicDiskRadiusApplied(geodesicDiskRadius);
+        }
+        return;
+      }
+
+      const cached = geodesicDiskPhiCacheRef.current.get(cacheKey);
+      if (cached) {
+        setGeodesicDiskPhi(cached);
+        setGeodesicDiskPhiMethod(geodesicDiskMethod);
+        setGeodesicDiskPhiMeshKey(meshKey);
+        setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+        setGeodesicDiskPhiKey(cacheKey);
+        if (!geodesicDiskAutoUpdate) {
+          setGeodesicDiskRadiusApplied(geodesicDiskRadius);
+        }
+        return;
+      }
+
+      const vertCount = Math.floor((positions?.length ?? 0) / 3);
+      if (!vertCount) {
+        setGeodesicDiskMessage("Mesh data missing.");
+        return;
+      }
+      if (!positions) {
+        setGeodesicDiskMessage("Mesh data missing.");
+        return;
+      }
+
+      const faceBase = center.faceIndex * 3;
+      const triIndices =
+        indices && indices.length >= faceBase + 3
+          ? [
+              Number(indices[faceBase]),
+              Number(indices[faceBase + 1]),
+              Number(indices[faceBase + 2]),
+            ]
+          : [faceBase, faceBase + 1, faceBase + 2];
+
+      if (triIndices.some((idx) => idx < 0 || idx >= vertCount)) {
+        setGeodesicDiskMessage("Picked face is out of range.");
+        return;
+      }
+
+      const requestId = ++geodesicDiskRequestIdRef.current;
+      setGeodesicDiskBusy(true);
+      try {
+        if (geodesicDiskMethod === "heat") {
+          const heatMesh = buildHeatMesh({
+            positions,
+            indices,
+            meshKey: isImplicitDisk ? null : meshKey,
+          });
+          const res = await runGeodesicHeat({
+            mesh: { V: heatMesh.V, F: heatMesh.F },
+            source: { face: center.faceIndex, bary },
+            target: { face: center.faceIndex, bary },
+            options: {
+              t_factor: 1.0,
+              step_factor: 0.25,
+              max_steps: 8000,
+              stop_eps: 1e-4,
+              return_phi: true,
+            },
+          });
+
+          if (!res.ok || !res.phi_vertex?.length) {
+            setGeodesicDiskMessage(res?.error ?? "Geodesic heat failed.");
+            return;
+          }
+          if (geodesicDiskRequestIdRef.current !== requestId) return;
+
+          const phi = heatMesh.expandPhi(res.phi_vertex);
+          if (phi.length !== vertCount) {
+            setGeodesicDiskMessage("Heat distances did not match mesh vertex count.");
+            return;
+          }
+          const phiCenter =
+            bary[0] * phi[triIndices[0]] +
+            bary[1] * phi[triIndices[1]] +
+            bary[2] * phi[triIndices[2]];
+          let phiMin = Infinity;
+          let phiMax = -Infinity;
+          let posCount = 0;
+          let negCount = 0;
+          if (Number.isFinite(phiCenter)) {
+            for (let i = 0; i < phi.length; i++) {
+              const v = phi[i] - phiCenter;
+              phi[i] = v;
+              if (!Number.isFinite(v)) continue;
+              if (v >= 0) posCount++;
+              else negCount++;
+              if (v < phiMin) phiMin = v;
+              if (v > phiMax) phiMax = v;
+            }
+          }
+          const needsInvert =
+            (Number.isFinite(phiMax) && Number.isFinite(phiMin) && phiMax <= 0 && phiMin < 0) ||
+            (posCount < negCount && Number.isFinite(phiMin) && Number.isFinite(phiMax) && phiMax < -phiMin * 0.3);
+          if (needsInvert) {
+            phiMin = Infinity;
+            phiMax = -Infinity;
+            posCount = 0;
+            negCount = 0;
+            for (let i = 0; i < phi.length; i++) {
+              const v = -phi[i];
+              phi[i] = v;
+              if (!Number.isFinite(v)) continue;
+              if (v >= 0) posCount++;
+              else negCount++;
+              if (v < phiMin) phiMin = v;
+              if (v > phiMax) phiMax = v;
+            }
+          }
+          if (Number.isFinite(phiMax) && phiMax > 0) {
+            for (let i = 0; i < phi.length; i++) {
+              const v = phi[i];
+              if (!Number.isFinite(v)) continue;
+              if (v < 0) phi[i] = 0;
+            }
+          }
+          if (!Number.isFinite(phiMax) || phiMax <= 1e-9) {
+            setGeodesicDiskMessage("Heat distances collapsed; try Dijkstra.");
+            return;
+          }
+          if (!geodesicDiskRadiusTouchedRef.current && Number.isFinite(phiMax) && phiMax > 0) {
+            const nextRadius = Math.max(0.001, Math.min(geodesicDiskRadius, phiMax * 0.25));
+            if (nextRadius !== geodesicDiskRadius) {
+              setGeodesicDiskRadius(nextRadius);
+              if (geodesicDiskAutoUpdate) {
+                setGeodesicDiskRadiusApplied(nextRadius);
+              }
+            }
+          }
+
+          geodesicDiskPhiCacheRef.current.set(cacheKey, phi);
+          setGeodesicDiskPhi(phi);
+          setGeodesicDiskPhiMethod("heat");
+          setGeodesicDiskPhiMeshKey(meshKey);
+          setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+          setGeodesicDiskPhiKey(cacheKey);
+        } else {
+          const meshAdj = geodesicAdjacency.get(meshKey) ?? geodesicAdjacency.get(center.meshKey);
+          if (!meshAdj) {
+            setGeodesicDiskMessage("Geodesic graph not ready.");
+            return;
+          }
+          const seedIndexRaw =
+            center.bary[1] > center.bary[0] && center.bary[1] >= center.bary[2]
+              ? triIndices[1]
+              : center.bary[2] > center.bary[0] && center.bary[2] > center.bary[1]
+                ? triIndices[2]
+                : triIndices[0];
+          const vertexToMerged = meshAdj.vertexToMerged;
+          const seedIndex = vertexToMerged ? vertexToMerged[seedIndexRaw] : seedIndexRaw;
+          if (seedIndex == null || seedIndex < 0 || seedIndex >= meshAdj.neighbors.length) {
+            setGeodesicDiskMessage("Seed vertex out of range.");
+            return;
+          }
+          const { dist } = dijkstraDistancesAndPrev({
+            seedIndex,
+            neighbors: meshAdj.neighbors,
+            weights: meshAdj.weights,
+            maxDist: Number.POSITIVE_INFINITY,
+          });
+          const phi = new Float64Array(vertCount);
+          for (let i = 0; i < vertCount; i++) {
+            const mapped = vertexToMerged ? vertexToMerged[i] : i;
+            phi[i] =
+              mapped != null && mapped >= 0 && mapped < dist.length
+                ? dist[mapped]
+                : Number.POSITIVE_INFINITY;
+          }
+          if (geodesicDiskRequestIdRef.current !== requestId) return;
+          geodesicDiskPhiCacheRef.current.set(cacheKey, phi);
+          setGeodesicDiskPhi(phi);
+          setGeodesicDiskPhiMethod("dijkstra");
+          setGeodesicDiskPhiMeshKey(meshKey);
+          setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+          setGeodesicDiskPhiKey(cacheKey);
+        }
+        if (!geodesicDiskAutoUpdate) {
+          setGeodesicDiskRadiusApplied(geodesicDiskRadius);
+        }
+      } catch (e: any) {
+        setGeodesicDiskMessage(e?.message ?? String(e));
+      } finally {
+        setGeodesicDiskBusy(false);
+      }
+    },
+    [
+      activeCgalMesh,
+      buildHeatMesh,
+      cgalMeshToken,
+      geodesicAdjacency,
+      geodesicDiskAutoUpdate,
+      geodesicDiskAvailable,
+      geodesicDiskCenter,
+      geodesicDiskMethod,
+      geodesicDiskPhi,
+      geodesicDiskPhiKey,
+      geodesicDiskRadius,
+      geodesicDiskUnavailableReason,
+      surfaceSampleSet?.meshData,
+      surfaceViewerKind,
+    ]
+  );
+
+  useEffect(() => {
+    if (!geodesicDiskEnabled || !geodesicDiskCenter) return;
+    handleRecomputeGeodesicDisk(geodesicDiskCenter);
+  }, [geodesicDiskCenter, geodesicDiskEnabled, geodesicDiskMethod, handleRecomputeGeodesicDisk]);
 
   const selectionBBoxForCgal = useMemo(() => {
     if (selectionStats.count <= 0) return null;
@@ -3203,6 +3807,34 @@ case "mobius":
                 onToggleGeodesicHeatUseContinuous={() => setGeodesicHeatUseContinuous((v) => !v)}
                 onRunGeodesicHeat={handleRunGeodesicHeat}
                 onClearGeodesicHeat={handleClearGeodesicHeat}
+                geodesicDiskEnabled={geodesicDiskEnabled}
+                geodesicDiskAvailable={geodesicDiskAvailable}
+                geodesicDiskBusy={geodesicDiskBusy}
+                geodesicDiskPickMode={geodesicDiskPickMode}
+                geodesicDiskCenter={geodesicDiskCenter}
+                geodesicDiskRadius={geodesicDiskRadius}
+                geodesicDiskAutoUpdate={geodesicDiskAutoUpdate}
+                geodesicDiskShowBoundary={geodesicDiskShowBoundary}
+                geodesicDiskMethod={geodesicDiskMethod}
+                geodesicDiskUnavailableReason={geodesicDiskUnavailableReason}
+                geodesicDiskMessage={geodesicDiskMessage}
+                geodesicDiskStats={geodesicDiskResult?.stats ?? null}
+                geodesicDiskSelectionStats={geodesicDiskSelectionStats}
+                onToggleGeodesicDiskEnabled={() =>
+                  setGeodesicDiskEnabled((v) => {
+                    const next = !v;
+                    if (!next) setGeodesicDiskPickMode(false);
+                    return next;
+                  })
+                }
+                onPickGeodesicDiskCenter={() => setGeodesicDiskPickMode((v) => !v)}
+                onChangeGeodesicDiskRadius={handleChangeGeodesicDiskRadius}
+                onApplyGeodesicDiskRadius={() => setGeodesicDiskRadiusApplied(geodesicDiskRadius)}
+                onToggleGeodesicDiskAutoUpdate={() => setGeodesicDiskAutoUpdate((v) => !v)}
+                onToggleGeodesicDiskShowBoundary={() => setGeodesicDiskShowBoundary((v) => !v)}
+                onChangeGeodesicDiskMethod={setGeodesicDiskMethod}
+                onRecomputeGeodesicDisk={() => handleRecomputeGeodesicDisk()}
+                onClearGeodesicDisk={handleClearGeodesicDisk}
                 inspectEnabled={inspectEnabled}
                 onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
                 onClearInspect={clearInspect}
@@ -3357,6 +3989,15 @@ case "mobius":
                             geodesicHeatPolyline={geodesicHeatPolyline}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                            geodesicDiskEnabled={geodesicDiskEnabled}
+                            geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
+                            onGeodesicDiskPick={handleGeodesicDiskPick}
+                            geodesicDiskCenter={
+                              geodesicDiskCenter ? { point: geodesicDiskCenter.point } : null
+                            }
+                            geodesicDiskMesh={geodesicDiskResult?.mesh ?? null}
+                            geodesicDiskBoundary={geodesicDiskResult?.boundary ?? null}
+                            geodesicDiskShowBoundary={geodesicDiskShowBoundary}
                             zoomToRegion={zoomToRegion}
                             zoomToRegionToken={zoomNowToken}
                             weierstrassDiagnostics={
@@ -3457,6 +4098,13 @@ case "mobius":
                         geodesicHeatPolyline={geodesicHeatPolyline}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                        geodesicDiskEnabled={geodesicDiskEnabled}
+                        geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
+                        onGeodesicDiskPick={handleGeodesicDiskPick}
+                        geodesicDiskCenter={geodesicDiskCenter ? { point: geodesicDiskCenter.point } : null}
+                        geodesicDiskMesh={geodesicDiskResult?.mesh ?? null}
+                        geodesicDiskBoundary={geodesicDiskResult?.boundary ?? null}
+                        geodesicDiskShowBoundary={geodesicDiskShowBoundary}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
                       />
@@ -4261,6 +4909,28 @@ type SurfacesLeftPanelProps = {
   onToggleGeodesicHeatUseContinuous: () => void;
   onRunGeodesicHeat: () => void;
   onClearGeodesicHeat: () => void;
+  geodesicDiskEnabled: boolean;
+  geodesicDiskAvailable: boolean;
+  geodesicDiskBusy: boolean;
+  geodesicDiskPickMode: boolean;
+  geodesicDiskCenter: GeodesicDiskCenter | null;
+  geodesicDiskRadius: number;
+  geodesicDiskAutoUpdate: boolean;
+  geodesicDiskShowBoundary: boolean;
+  geodesicDiskMethod: "heat" | "dijkstra";
+  geodesicDiskUnavailableReason: string;
+  geodesicDiskMessage: string | null;
+  geodesicDiskStats: { area: number; perimeter: number; vertexCount: number; triangleCount: number; phi: { min: number; max: number; mean: number } } | null;
+  geodesicDiskSelectionStats: SelectionStats;
+  onToggleGeodesicDiskEnabled: () => void;
+  onPickGeodesicDiskCenter: () => void;
+  onChangeGeodesicDiskRadius: (value: number) => void;
+  onApplyGeodesicDiskRadius: () => void;
+  onToggleGeodesicDiskAutoUpdate: () => void;
+  onToggleGeodesicDiskShowBoundary: () => void;
+  onChangeGeodesicDiskMethod: (method: "heat" | "dijkstra") => void;
+  onRecomputeGeodesicDisk: () => void;
+  onClearGeodesicDisk: () => void;
   inspectEnabled: boolean;
   onToggleInspectEnabled: () => void;
   onClearInspect: () => void;
@@ -4459,6 +5129,28 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleGeodesicHeatUseContinuous,
   onRunGeodesicHeat,
   onClearGeodesicHeat,
+  geodesicDiskEnabled,
+  geodesicDiskAvailable,
+  geodesicDiskBusy,
+  geodesicDiskPickMode,
+  geodesicDiskCenter,
+  geodesicDiskRadius,
+  geodesicDiskAutoUpdate,
+  geodesicDiskShowBoundary,
+  geodesicDiskMethod,
+  geodesicDiskUnavailableReason,
+  geodesicDiskMessage,
+  geodesicDiskStats,
+  geodesicDiskSelectionStats,
+  onToggleGeodesicDiskEnabled,
+  onPickGeodesicDiskCenter,
+  onChangeGeodesicDiskRadius,
+  onApplyGeodesicDiskRadius,
+  onToggleGeodesicDiskAutoUpdate,
+  onToggleGeodesicDiskShowBoundary,
+  onChangeGeodesicDiskMethod,
+  onRecomputeGeodesicDisk,
+  onClearGeodesicDisk,
   inspectEnabled,
   onToggleInspectEnabled,
   onClearInspect,
@@ -5210,6 +5902,130 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             </details>
           )}
+          <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicDiskEnabled}>
+            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic disk</summary>
+            <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 8 }}>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  cursor: geodesicDiskAvailable ? "pointer" : "not-allowed",
+                  color: geodesicDiskAvailable ? "#000" : "#999",
+                }}
+                title={geodesicDiskAvailable ? "" : geodesicDiskUnavailableReason}
+              >
+                <input
+                  type="checkbox"
+                  checked={geodesicDiskEnabled}
+                  onChange={onToggleGeodesicDiskEnabled}
+                  disabled={!geodesicDiskAvailable}
+                  style={{ marginRight: 6 }}
+                />
+                Enable disk
+              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={onPickGeodesicDiskCenter}
+                  disabled={!geodesicDiskAvailable || !geodesicDiskEnabled}
+                  style={{ padding: "3px 8px" }}
+                >
+                  {geodesicDiskPickMode ? "Click surface..." : "Pick center"}
+                </button>
+                <span>Center: {geodesicDiskCenter ? geodesicDiskCenter.faceIndex : "-"}</span>
+                {geodesicDiskBusy && <span style={{ color: "#666" }}>Computing...</span>}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ minWidth: 180 }}>
+                  <div style={{ fontSize: 10, color: "#555" }}>
+                    Radius {geodesicDiskRadius.toFixed(2)}
+                  </div>
+                  <input
+                    type="range"
+                    min={0.001}
+                    max={5}
+                    step={0.01}
+                    value={geodesicDiskRadius}
+                    onChange={(e) => onChangeGeodesicDiskRadius(Number(e.target.value))}
+                    disabled={!geodesicDiskEnabled}
+                    style={{ width: "100%" }}
+                  />
+                </div>
+                <input
+                  type="number"
+                  min={0.001}
+                  step={0.01}
+                  value={Number.isFinite(geodesicDiskRadius) ? geodesicDiskRadius : 0}
+                  onChange={(e) => onChangeGeodesicDiskRadius(Number(e.target.value))}
+                  disabled={!geodesicDiskEnabled}
+                  style={{ width: 80, padding: "2px 4px", fontSize: 11 }}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={geodesicDiskAutoUpdate}
+                    onChange={onToggleGeodesicDiskAutoUpdate}
+                    disabled={!geodesicDiskEnabled}
+                  />
+                  Auto-update radius
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={geodesicDiskShowBoundary}
+                    onChange={onToggleGeodesicDiskShowBoundary}
+                    disabled={!geodesicDiskEnabled}
+                  />
+                  Show boundary
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Method</span>
+                  <select
+                    value={geodesicDiskMethod}
+                    onChange={(e) => onChangeGeodesicDiskMethod(e.target.value as "heat" | "dijkstra")}
+                    disabled={!geodesicDiskEnabled}
+                    style={{ fontSize: 11, padding: "2px 6px" }}
+                  >
+                    <option value="heat">Heat</option>
+                    <option value="dijkstra">Dijkstra (approx)</option>
+                  </select>
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={onRecomputeGeodesicDisk}
+                  disabled={!geodesicDiskEnabled || !geodesicDiskCenter || geodesicDiskBusy}
+                  style={{ padding: "3px 8px" }}
+                >
+                  {geodesicDiskBusy ? "Running..." : "Recompute distances"}
+                </button>
+                {!geodesicDiskAutoUpdate && (
+                  <button
+                    type="button"
+                    onClick={onApplyGeodesicDiskRadius}
+                    disabled={!geodesicDiskEnabled}
+                    style={{ padding: "3px 8px" }}
+                  >
+                    Apply radius
+                  </button>
+                )}
+                <button type="button" onClick={onClearGeodesicDisk} style={{ padding: "3px 8px" }}>
+                  Clear disk
+                </button>
+              </div>
+              {geodesicDiskMessage && <div style={{ color: "#b23b1a" }}>{geodesicDiskMessage}</div>}
+              <DiskStatsPanel
+                stats={geodesicDiskStats}
+                curvatureStats={geodesicDiskSelectionStats.metrics}
+                sampleCount={geodesicDiskSelectionStats.count}
+                compact
+              />
+            </div>
+          </details>
           <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicPathEnabled}>
             <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic path</summary>
             <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>

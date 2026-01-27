@@ -2,6 +2,7 @@
 
 ## Latest changes
 
+- Added geodesic disk selection (heat-method + Dijkstra) with boundary extraction and disk stats (area/perimeter/phi).
 - Added parametric geodesic heat paths (mesh heat + continuous ODE in UV).
 - Added Weierstrass minimal surface mode (g(z), phi(z)) rendered through the parametric pipeline.
 - Added Weierstrass presets (Enneper, Catenoid, Helicoid) and improved complex expression parsing for functions like exp(z).
@@ -118,6 +119,9 @@ and editable.
 ### Geodesic disk selection
 
 - Selection mode now supports Euclidean ball or geodesic disk (intrinsic shortest-path radius on the mesh).
+- Disk mode computes a geodesic distance field once per center pick; radius updates are instant.
+- Optional disk boundary extraction draws a discrete geodesic circle on the mesh.
+- Disk stats report vertex/triangle counts, area, perimeter, and phi min/max/mean.
 - When enabled, "Zoom to region" smoothly frames the current selection with a debounced camera fit.
 
 ### Geodesic distance heatmaps (mesh)

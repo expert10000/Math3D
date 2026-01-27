@@ -21,8 +21,24 @@ export type CgalMeshRequest = {
   f: string;
   iso: number;
   domain: { min: [number, number, number]; max: [number, number, number] };
-  quality: { target_edge: number };
+  quality: { target_edge: number; radiusBound?: number };
   scalars?: string[];
+  verbose?: boolean;
+  preflightSamples?: number;
+};
+
+export type GeodesicHeatRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  source: { face: number; bary: [number, number, number] };
+  target: { face: number; bary: [number, number, number] };
+  options?: {
+    t_factor?: number;
+    step_factor?: number;
+    max_steps?: number;
+    stop_eps?: number;
+    return_phi?: boolean;
+  };
 };
 
 contextBridge.exposeInMainWorld("surfacePresets", {
@@ -41,4 +57,8 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:cgal:health"),
   mesh: (req: CgalMeshRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:cgal", req),
+  geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:geodesic:heat", req),
+  stop: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:stop"),
 });

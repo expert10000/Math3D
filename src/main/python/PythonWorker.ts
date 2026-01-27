@@ -3,7 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
-import type { CgalMeshRequest, CgalMeshResponse } from "../ipc/cgalMeshIpc";
+import type {
+  CgalMeshRequest,
+  CgalMeshResponse,
+  GeodesicHeatRequest,
+  GeodesicHeatResponse,
+} from "../ipc/cgalMeshIpc";
 
 type Pending = {
   resolve: (value: any) => void;
@@ -27,9 +32,19 @@ class PythonWorker {
   private proc: ChildProcessWithoutNullStreams;
   private pending = new Map<string, Pending>();
   private stderrTail = "";
+  private logStderr = false;
+  private envLogStderr = false;
+  private stderrLastLog = 0;
+  private stderrDropped = 0;
+  private stderrLastLine = "";
 
   constructor(proc: ChildProcessWithoutNullStreams) {
     this.proc = proc;
+    const envVerbose = String(process.env.MATH3D_CGAL_VERBOSE || "").toLowerCase();
+    const envLog = String(process.env.MATH3D_CGAL_LOG_STDERR || "").toLowerCase();
+    const truthy = (v: string) => ["1", "true", "yes", "on", "y"].includes(v);
+    this.envLogStderr = truthy(envVerbose) || truthy(envLog);
+    this.logStderr = this.envLogStderr;
 
     const rl = readline.createInterface({ input: proc.stdout });
     rl.on("line", (line) => {
@@ -45,6 +60,10 @@ class PythonWorker {
       if (!jobId) return;
 
       if (msg.type === "progress") {
+        const phase = msg.phase ? ` ${msg.phase}` : "";
+        const pct = typeof msg.pct === "number" ? ` ${msg.pct}%` : "";
+        const detail = msg.msg ? ` - ${msg.msg}` : "";
+        console.log(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
         return;
       }
 
@@ -66,12 +85,27 @@ class PythonWorker {
       const text = buf.toString();
       if (!text) return;
       this.stderrTail = (this.stderrTail + text).slice(-2000);
+      if (!this.logStderr) return;
+
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (!lines.length) return;
+      this.stderrLastLine = lines[lines.length - 1];
+      this.stderrDropped += lines.length;
+      const now = Date.now();
+      if (now - this.stderrLastLog < 1000) return;
+      this.stderrLastLog = now;
+      const dropped = this.stderrDropped;
+      this.stderrDropped = 0;
+      console.error(
+        `[CGAL worker:stderr] ${dropped} lines (latest): ${this.stderrLastLine}`
+      );
     });
 
     proc.on("exit", (code) => {
       const details = this.stderrTail.trim();
       const suffix = details ? `: ${details}` : "";
       const err = new Error(`Python worker exited with code ${code ?? "unknown"}${suffix}`);
+      console.error("[CGAL worker] exit", { code, details });
       for (const [, p] of this.pending) {
         clearTimeout(p.timeout);
         p.reject(err);
@@ -105,6 +139,17 @@ class PythonWorker {
   }
 
   async meshCgal(req: CgalMeshRequest): Promise<CgalMeshResponse> {
+    this.logStderr = this.envLogStderr || !!req.verbose;
+    console.log("[CGAL worker] mesh request", {
+      jobId: req.jobId,
+      iso: req.iso,
+      domain: req.domain,
+      quality: req.quality,
+      scalars: req.scalars,
+      verbose: req.verbose,
+      preflightSamples: req.preflightSamples,
+      exprLength: req.f?.length ?? 0,
+    });
     const msg = {
       type: "mesh_job",
       jobId: req.jobId,
@@ -113,16 +158,31 @@ class PythonWorker {
       bbox: req.domain,
       quality: {
         target_edge: req.quality?.target_edge,
+        radiusBound: req.quality?.radiusBound,
       },
       scalar: req.scalars?.[0],
+      verbose: req.verbose,
+      preflightSamples: req.preflightSamples,
     };
 
+    const t0 = Date.now();
     const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+      positions_b64_len: res?.positions_b64?.length,
+      indices_b64_len: res?.indices_b64?.length,
+    });
 
     if (!res || res.type !== "result") {
       throw new Error(res?.message || res?.error || "Unknown CGAL worker response");
     }
 
+    const t2 = Date.now();
     const positions = Array.isArray(res.positions)
       ? res.positions
       : res.positions_b64
@@ -133,6 +193,13 @@ class PythonWorker {
       : res.indices_b64
         ? decodeUint32(res.indices_b64)
         : [];
+    const t3 = Date.now();
+    console.log("[CGAL worker] decode complete", {
+      jobId: req.jobId,
+      ms: t3 - t2,
+      positions: positions.length,
+      indices: indices.length,
+    });
 
     if (!positions.length || !indices.length) {
       return { ok: false, error: "CGAL worker returned empty mesh" };
@@ -148,6 +215,50 @@ class PythonWorker {
       positions,
       indices,
       scalars,
+    };
+  }
+
+  async geodesicHeat(req: GeodesicHeatRequest): Promise<GeodesicHeatResponse> {
+    console.log("[CGAL worker] geodesic heat request", {
+      jobId: req.jobId,
+      faces: req.mesh?.F?.length ?? 0,
+      vertices: req.mesh?.V?.length ?? 0,
+      options: req.options,
+    });
+
+    const msg = {
+      type: "geodesic_heat",
+      jobId: req.jobId,
+      mesh: req.mesh,
+      source: req.source,
+      target: req.target,
+      options: req.options ?? {},
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] geodesic heat response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      points: res?.polyline?.length ?? 0,
+      hasPhi: !!res?.phi_vertex,
+    });
+
+    if (!res || res.ok === false) {
+      return { ok: false, error: res?.error || res?.message || "Unknown geodesic heat response" };
+    }
+
+    if (!Array.isArray(res.polyline)) {
+      return { ok: false, error: "Geodesic heat returned empty polyline" };
+    }
+
+    return {
+      ok: true,
+      polyline: res.polyline,
+      length: typeof res.length === "number" ? res.length : 0,
+      phi_vertex: Array.isArray(res.phi_vertex) ? res.phi_vertex : undefined,
     };
   }
 
@@ -216,5 +327,15 @@ export async function getPythonWorker(): Promise<PythonWorker> {
     return await spawnPromise;
   } finally {
     spawnPromise = null;
+  }
+}
+
+export function stopPythonWorker() {
+  if (singleton) {
+    try {
+      singleton.kill();
+    } finally {
+      singleton = null;
+    }
   }
 }

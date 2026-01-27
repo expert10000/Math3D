@@ -3,8 +3,10 @@ export type CgalMeshRequest = {
   f: string;
   iso: number;
   domain: { min: [number, number, number]; max: [number, number, number] };
-  quality: { target_edge: number };
+  quality: { target_edge: number; radiusBound?: number };
   scalars?: string[];
+  verbose?: boolean;
+  preflightSamples?: number;
 };
 
 export type CgalMeshResponse =
@@ -20,6 +22,12 @@ export async function cgalHealth(): Promise<{ ok: boolean; error?: string }> {
   const api = (window as any).cgalMesh;
   if (!api?.health) return { ok: false, error: "CGAL IPC unavailable" };
   return api.health();
+}
+
+export async function stopCgalWorker(): Promise<{ ok: boolean; error?: string }> {
+  const api = (window as any).cgalMesh;
+  if (!api?.stop) return { ok: false, error: "CGAL IPC unavailable" };
+  return api.stop();
 }
 
 export async function runCgalMesh(req: Omit<CgalMeshRequest, "jobId">): Promise<CgalMeshResponse> {

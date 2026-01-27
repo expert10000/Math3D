@@ -806,6 +806,20 @@ type Props = {
   geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
+  geodesicDiskEnabled?: boolean;
+  geodesicDiskPickEnabled?: boolean;
+  onGeodesicDiskPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+    faceIndex?: number;
+    bary?: [number, number, number];
+    uv?: { u: number; v: number };
+  }) => void;
+  geodesicDiskCenter?: { point: { x: number; y: number; z: number } } | null;
+  geodesicDiskMesh?: { positions: Float32Array } | null;
+  geodesicDiskBoundary?: { x: number; y: number; z: number }[][] | null;
+  geodesicDiskShowBoundary?: boolean;
   inspectEnabled?: boolean;
   onInspectPick?: (info: {
     index: number;
@@ -926,11 +940,18 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicPathIndices = null,
     geodesicHeatEnabled = false,
     onGeodesicHeatPick,
+    onGeodesicDiskPick,
     geodesicHeatStart = null,
     geodesicHeatEnd = null,
     geodesicHeatPolyline = null,
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
+    geodesicDiskEnabled = false,
+    geodesicDiskPickEnabled = false,
+    geodesicDiskCenter = null,
+    geodesicDiskMesh = null,
+    geodesicDiskBoundary = null,
+    geodesicDiskShowBoundary = true,
     inspectEnabled = false,
     onInspectPick,
     inspectPoint = null,
@@ -965,15 +986,18 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     start: null,
     end: null,
   });
+  const geodesicDiskGroupRef = useRef<THREE.Group | null>(null);
   const sampleSetRef = useRef<SurfaceSampleSet | null>(null);
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
   const inspectEnabledRef = useRef(inspectEnabled);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
   const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
+  const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
   const onInspectPickRef = useRef(onInspectPick);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
+  const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
 
   const surfaceObjRef = useRef<THREE.Object3D | null>(null);
   const probeWidgetsRef = useRef<{
@@ -1061,6 +1085,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onGeodesicHeatPickRef.current = onGeodesicHeatPick;
   }, [onGeodesicHeatPick]);
+  useEffect(() => {
+    geodesicDiskPickEnabledRef.current = geodesicDiskPickEnabled;
+  }, [geodesicDiskPickEnabled]);
+  useEffect(() => {
+    onGeodesicDiskPickRef.current = onGeodesicDiskPick;
+  }, [onGeodesicDiskPick]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
@@ -3021,6 +3051,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           !selectRegionEnabledRef.current &&
           !geodesicPathEnabledRef.current &&
           !geodesicHeatEnabledRef.current &&
+          !geodesicDiskPickEnabledRef.current &&
           !inspectEnabledRef.current
         )
           return;
@@ -3030,6 +3061,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           probeEnabled,
           geodesicPathEnabled: geodesicPathEnabledRef.current,
           geodesicHeatEnabled: geodesicHeatEnabledRef.current,
+          geodesicDiskPickEnabled: geodesicDiskPickEnabledRef.current,
         });
 
       const rect = renderer.domElement.getBoundingClientRect();
@@ -3043,7 +3075,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const isGraphSurface = isGraphId(surfaceId);
       let hit = intersects[0];
-      if (geodesicHeatEnabledRef.current) {
+      if (geodesicHeatEnabledRef.current || geodesicDiskPickEnabledRef.current) {
         const heatHit = isGraphSurface
           ? intersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
           : intersects.find((candidate) => {
@@ -3071,6 +3103,52 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (isGraphSurface) {
         xyDomain = { x: point.x, y: point.z };
       }
+
+        if (geodesicDiskPickEnabledRef.current) {
+          const diskCb = onGeodesicDiskPickRef.current;
+          if (diskCb) {
+            const mesh = hit.object as THREE.Mesh;
+            const geom = mesh.geometry as THREE.BufferGeometry;
+            const faceIndex = (hit as any).faceIndex;
+            const implicitMeta = (mesh as any)?.userData?.__implicit as { source?: string } | undefined;
+            const allowDiskPick = isGraphSurface || implicitMeta?.source === "cgal";
+            if (geom && typeof faceIndex === "number" && allowDiskPick) {
+              const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+              const idxAttr = geom.getIndex();
+              if (posAttr) {
+                const triBase = faceIndex * 3;
+                const i0 = idxAttr ? idxAttr.getX(triBase) : triBase;
+                const i1 = idxAttr ? idxAttr.getX(triBase + 1) : triBase + 1;
+                const i2 = idxAttr ? idxAttr.getX(triBase + 2) : triBase + 2;
+
+                if (
+                  i0 < 0 || i1 < 0 || i2 < 0 ||
+                  i0 >= posAttr.count || i1 >= posAttr.count || i2 >= posAttr.count
+                ) {
+                  return;
+                }
+
+                const a = new THREE.Vector3(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0));
+                const b = new THREE.Vector3(posAttr.getX(i1), posAttr.getY(i1), posAttr.getZ(i1));
+                const c = new THREE.Vector3(posAttr.getX(i2), posAttr.getY(i2), posAttr.getZ(i2));
+                const localPoint = point.clone();
+                mesh.worldToLocal(localPoint);
+                const bary = new THREE.Vector3();
+                new THREE.Triangle(a, b, c).getBarycoord(localPoint, bary);
+                if (Number.isFinite(bary.x) && Number.isFinite(bary.y) && Number.isFinite(bary.z)) {
+                  diskCb({
+                    point: { x: point.x, y: point.y, z: point.z },
+                    normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+                    meshKey: mesh.uuid,
+                    faceIndex,
+                    bary: [bary.x, bary.y, bary.z],
+                  });
+                }
+              }
+            }
+          }
+          return;
+        }
 
         if (geodesicHeatEnabledRef.current) {
           const heatCb = onGeodesicHeatPickRef.current;
@@ -4320,6 +4398,94 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(tube);
     geodesicHeatLineRef.current = tube;
   }, [geodesicHeatEnd, geodesicHeatPolyline, geodesicHeatStart, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (geodesicDiskGroupRef.current) {
+      scene.remove(geodesicDiskGroupRef.current);
+      geodesicDiskGroupRef.current.traverse(disposeObject3D);
+      geodesicDiskGroupRef.current = null;
+    }
+
+    if (!geodesicDiskEnabled) return;
+
+    const group = new THREE.Group();
+    group.renderOrder = 210;
+
+    if (geodesicDiskMesh?.positions?.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(geodesicDiskMesh.positions, 3)
+      );
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x4c8bf5,
+        transparent: true,
+        opacity: 0.28,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 210;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
+
+    if (geodesicDiskShowBoundary && geodesicDiskBoundary?.length) {
+      for (const line of geodesicDiskBoundary) {
+        if (line.length < 2) continue;
+        const geom = new THREE.BufferGeometry().setFromPoints(
+          line.map((p) => new THREE.Vector3(p.x, p.y, p.z))
+        );
+        const mat = new THREE.LineBasicMaterial({
+          color: 0xffa24a,
+          transparent: true,
+          opacity: 0.95,
+          depthTest: true,
+        });
+        const mesh = new THREE.Line(geom, mat);
+        mesh.renderOrder = 215;
+        mesh.frustumCulled = false;
+        group.add(mesh);
+      }
+    }
+
+    if (geodesicDiskCenter?.point) {
+      const markerGeom = new THREE.SphereGeometry(0.03, 16, 12);
+      const markerMat = new THREE.MeshBasicMaterial({ color: 0xff4d4d });
+      const marker = new THREE.Mesh(markerGeom, markerMat);
+      marker.position.set(
+        geodesicDiskCenter.point.x,
+        geodesicDiskCenter.point.y,
+        geodesicDiskCenter.point.z
+      );
+      marker.renderOrder = 220;
+      group.add(marker);
+    }
+
+    scene.add(group);
+    geodesicDiskGroupRef.current = group;
+
+    return () => {
+      if (geodesicDiskGroupRef.current === group) {
+        scene.remove(group);
+        group.traverse(disposeObject3D);
+        geodesicDiskGroupRef.current = null;
+      }
+    };
+  }, [
+    geodesicDiskEnabled,
+    geodesicDiskMesh,
+    geodesicDiskBoundary,
+    geodesicDiskShowBoundary,
+    geodesicDiskCenter,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     const scene = sceneRef.current;

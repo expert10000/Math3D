@@ -25,12 +25,32 @@ declare global {
     f: string;
     iso: number;
     domain: { min: [number, number, number]; max: [number, number, number] };
-    quality: { target_edge: number };
+    quality: { target_edge: number; radiusBound?: number };
     scalars?: string[];
+    verbose?: boolean;
+    preflightSamples?: number;
   };
 
   type CgalMeshResponse =
     | { ok: true; positions: number[]; indices: number[]; scalars?: { name: string; values: number[] }[] }
+    | { ok: false; error: string };
+
+  type GeodesicHeatRequest = {
+    jobId: string;
+    mesh: { V: number[][]; F: number[][] };
+    source: { face: number; bary: [number, number, number] };
+    target: { face: number; bary: [number, number, number] };
+    options?: {
+      t_factor?: number;
+      step_factor?: number;
+      max_steps?: number;
+      stop_eps?: number;
+      return_phi?: boolean;
+    };
+  };
+
+  type GeodesicHeatResponse =
+    | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
     | { ok: false; error: string };
 
   interface Window {
@@ -42,6 +62,8 @@ declare global {
     cgalMesh?: {
       health: () => Promise<{ ok: boolean; error?: string }>;
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
+      stop: () => Promise<{ ok: boolean; error?: string }>;
+      geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
     };
   }
 }
