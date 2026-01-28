@@ -26,6 +26,7 @@ import {
   type SurfaceSampleSet,
 } from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
+import type { PolylineSet } from "../scene/renderPrimitives";
 
 export type ColorMode =
   | "solid"
@@ -816,7 +817,7 @@ type Props = {
   }) => void;
   geodesicHeatStart?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
   geodesicHeatEnd?: { point: { x: number; y: number; z: number }; meshKey?: string } | null;
-  geodesicHeatPolyline?: { x: number; y: number; z: number }[] | null;
+  geodesicHeatPolylines?: PolylineSet | null;
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
   geodesicDiskEnabled?: boolean;
@@ -957,7 +958,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onGeodesicDiskPick,
     geodesicHeatStart = null,
     geodesicHeatEnd = null,
-    geodesicHeatPolyline = null,
+    geodesicHeatPolylines = null,
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
     geodesicDiskEnabled = false,
@@ -4429,34 +4430,39 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       geodesicHeatMarkersRef.current.end = placeMarker(geodesicHeatEnd.point, 0xff6633);
     }
 
-    if (!geodesicHeatPolyline?.length || geodesicHeatPolyline.length < 2) return;
+    if (!geodesicHeatPolylines?.length) return;
 
-    const points = geodesicHeatPolyline.map(
-      (p) => new THREE.Vector3(p.x, p.y, p.z)
-    );
-
-    const path = new THREE.CurvePath<THREE.Vector3>();
-    for (let i = 0; i + 1 < points.length; i++) {
-      path.add(new THREE.LineCurve3(points[i], points[i + 1]));
-    }
     const sizeHint = radiusRef.current || 3;
     const tubeRadius = Math.max(0.00175, (sizeHint / 220) * 0.5);
-    const tubularSegments = Math.min(2000, Math.max(120, points.length * 3));
     const radialSegments = 10;
-    const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x8a5cff,
-      transparent: true,
-      opacity: 0.9,
-      depthTest: false,
-      depthWrite: false,
-    });
-    const tube = new THREE.Mesh(geom, mat);
-    tube.renderOrder = 215;
-    tube.frustumCulled = false;
-    scene.add(tube);
-    geodesicHeatLineRef.current = tube;
-  }, [geodesicHeatEnd, geodesicHeatPolyline, geodesicHeatStart, sceneEpoch]);
+    const group = new THREE.Group();
+
+    for (const line of geodesicHeatPolylines) {
+      if (!line || line.length < 2) continue;
+      const points = line.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+      const path = new THREE.CurvePath<THREE.Vector3>();
+      for (let i = 0; i + 1 < points.length; i++) {
+        path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+      }
+      const tubularSegments = Math.min(2000, Math.max(120, points.length * 3));
+      const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x8a5cff,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const tube = new THREE.Mesh(geom, mat);
+      tube.renderOrder = 215;
+      tube.frustumCulled = false;
+      group.add(tube);
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    geodesicHeatLineRef.current = group;
+  }, [geodesicHeatEnd, geodesicHeatPolylines, geodesicHeatStart, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

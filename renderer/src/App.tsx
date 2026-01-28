@@ -18,6 +18,7 @@ import {
   type ColorMode,
   type ProbeInfo,
 } from "./components/SurfaceViewer";
+import { VolumeViewer } from "./components/VolumeViewer";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import type { ColorPalette } from "./components/colorPalette";
@@ -71,6 +72,10 @@ import {
   computeVertexNormals,
   validateMesh,
 } from "./mesh/meshOps";
+import type { DatasetKind, SurfaceDataset } from "./scene/datasets";
+import type { PolylineSet } from "./scene/renderPrimitives";
+import { buildToyVolumeGrid } from "./scene/volume/toyVolume";
+import type { SliceAxis } from "./scene/volume/sliceVolume";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
@@ -102,6 +107,9 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   next = validateMesh(next);
   return next;
 };
+
+const toSurfaceDataset = (mesh: SurfaceMeshData | null): SurfaceDataset | null =>
+  mesh ? { kind: "surface", mesh } : null;
 
 /* ---------------- constants ---------------- */
 
@@ -695,15 +703,36 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
-  const [surfaceMeshData, setSurfaceMeshData] = useState<SurfaceMeshData | null>(() => {
+  const [datasetKind, setDatasetKind] = useState<DatasetKind>("surface");
+  const [surfaceDataset, setSurfaceDatasetState] = useState<SurfaceDataset | null>(() => {
     const preset = SURFACE_MESH_PRESETS[0];
     try {
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
-      return applySurfaceMeshOps(base);
+      return toSurfaceDataset(applySurfaceMeshOps(base));
     } catch {
       return null;
     }
   });
+  const volumeDataset = useMemo(
+    () => ({ kind: "volume", grid: buildToyVolumeGrid([64, 64, 64]) }),
+    []
+  );
+  const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
+  const surfaceMeshData = surfaceDataset?.mesh ?? null;
+  const [volumeSliceAxis, setVolumeSliceAxis] = useState<SliceAxis>("z");
+  const [volumeSliceIndex, setVolumeSliceIndex] = useState(() =>
+    Math.floor(volumeDataset.grid.dims[2] / 2)
+  );
+  const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
+  const volumeSliceMax = useMemo(() => {
+    const [nx, ny, nz] = volumeDataset.grid.dims;
+    if (volumeSliceAxis === "x") return Math.max(0, nx - 1);
+    if (volumeSliceAxis === "y") return Math.max(0, ny - 1);
+    return Math.max(0, nz - 1);
+  }, [volumeDataset, volumeSliceAxis]);
+  useEffect(() => {
+    setVolumeSliceIndex((value) => Math.max(0, Math.min(volumeSliceMax, value)));
+  }, [volumeSliceMax]);
   const [surfaceMeshImportBusy, setSurfaceMeshImportBusy] = useState(false);
   const [surfaceMeshImportError, setSurfaceMeshImportError] = useState<string | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
@@ -718,6 +747,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
+  const setSurfaceDataset = useCallback((mesh: SurfaceMeshData | null) => {
+    setSurfaceDatasetState(toSurfaceDataset(mesh));
+    setDatasetKind("surface");
+  }, []);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -778,6 +811,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showGaussMap, setShowGaussMap] = useState(false);
   const [gaussColorMode, setGaussColorMode] = useState<GaussColorMode>("components");
   const [gaussPoints, setGaussPoints] = useState<GaussPoint[]>([]);
+  useEffect(() => {
+    if (datasetKind !== "volume") return;
+    setCompareEnabled(false);
+    setShowGaussMap(false);
+  }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
   const [selection, setSelection] = useState<RegionSelection | null>(null);
@@ -811,7 +849,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [geodesicHeatBusy, setGeodesicHeatBusy] = useState(false);
   const [geodesicHeatStart, setGeodesicHeatStart] = useState<GeodesicHeatEndpoint | null>(null);
   const [geodesicHeatEnd, setGeodesicHeatEnd] = useState<GeodesicHeatEndpoint | null>(null);
-  const [geodesicHeatPolyline, setGeodesicHeatPolyline] = useState<{ x: number; y: number; z: number }[] | null>(null);
+  const [geodesicHeatPolylines, setGeodesicHeatPolylines] = useState<PolylineSet | null>(null);
   const [geodesicHeatLength, setGeodesicHeatLength] = useState<number | null>(null);
   const [geodesicHeatMessage, setGeodesicHeatMessage] = useState<string | null>(null);
   const [geodesicHeatPhi, setGeodesicHeatPhi] = useState<number[] | null>(null);
@@ -1511,7 +1549,7 @@ case "mobius":
     if (!preset) return;
     try {
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
-      setSurfaceMeshData(applySurfaceMeshOps(base));
+      setSurfaceDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
       setSurfaceViewerKind("mesh");
     } catch (err) {
@@ -1527,7 +1565,7 @@ case "mobius":
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
-        setSurfaceMeshData(applySurfaceMeshOps(base));
+        setSurfaceDataset(applySurfaceMeshOps(base));
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
@@ -1580,7 +1618,7 @@ case "mobius":
         normals: res.normals ?? null,
         source: "surface",
       };
-      setSurfaceMeshData(applySurfaceMeshOps(next));
+      setSurfaceDataset(applySurfaceMeshOps(next));
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
     },
@@ -1700,7 +1738,7 @@ case "mobius":
       indices: merged.indices,
       source: "surface",
     };
-    setSurfaceMeshData(applySurfaceMeshOps(next));
+    setSurfaceDataset(applySurfaceMeshOps(next));
     setSurfaceViewerKind("mesh");
     setSurfaceMeshImportError(null);
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh]);
@@ -2238,7 +2276,7 @@ case "mobius":
       if (!geodesicHeatStart) {
         setGeodesicHeatStart(picked);
         setGeodesicHeatEnd(null);
-        setGeodesicHeatPolyline(null);
+        setGeodesicHeatPolylines(null);
         setGeodesicHeatLength(null);
         setGeodesicHeatMessage(null);
         return;
@@ -2250,7 +2288,7 @@ case "mobius":
       }
       setGeodesicHeatStart(picked);
       setGeodesicHeatEnd(null);
-      setGeodesicHeatPolyline(null);
+      setGeodesicHeatPolylines(null);
       setGeodesicHeatLength(null);
       setGeodesicHeatMessage(null);
     },
@@ -2325,7 +2363,7 @@ case "mobius":
   const handleClearGeodesicHeat = useCallback(() => {
     setGeodesicHeatStart(null);
     setGeodesicHeatEnd(null);
-    setGeodesicHeatPolyline(null);
+    setGeodesicHeatPolylines(null);
     setGeodesicHeatLength(null);
     setGeodesicHeatMessage(null);
     setGeodesicHeatPhi(null);
@@ -2874,7 +2912,7 @@ case "mobius":
 
   const handleRunGeodesicHeat = useCallback(async () => {
     setGeodesicHeatMessage(null);
-    setGeodesicHeatPolyline(null);
+    setGeodesicHeatPolylines(null);
     setGeodesicHeatLength(null);
     setGeodesicHeatPhi(null);
     setGeodesicHeatMeshToken(null);
@@ -2935,7 +2973,7 @@ case "mobius":
           setGeodesicHeatMessage(res.error);
           return;
         }
-        setGeodesicHeatPolyline(res.polyline);
+        setGeodesicHeatPolylines(res.polyline?.length ? [res.polyline] : null);
         setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
       } catch (e: any) {
         setGeodesicHeatMessage(e?.message ?? String(e));
@@ -2975,7 +3013,7 @@ case "mobius":
           setGeodesicHeatMessage(res.error);
           return;
         }
-        setGeodesicHeatPolyline(res.polyline);
+        setGeodesicHeatPolylines(res.polyline?.length ? [res.polyline] : null);
         setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
       } catch (e: any) {
         setGeodesicHeatMessage(e?.message ?? String(e));
@@ -3041,7 +3079,7 @@ case "mobius":
       }
 
       const pts = res.polyline.map((p) => ({ x: p[0], y: p[1], z: p[2] }));
-      setGeodesicHeatPolyline(pts);
+      setGeodesicHeatPolylines(pts.length ? [pts] : null);
       setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
       if (wantPhi && res.phi_vertex?.length) {
         const expanded = heatMesh.expandPhi(res.phi_vertex);
@@ -4038,6 +4076,15 @@ case "mobius":
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
+                  datasetKind={datasetKind}
+                  onChangeDatasetKind={setDatasetKind}
+                  volumeAxis={volumeSliceAxis}
+                  volumeIndex={volumeSliceIndex}
+                  volumeIndexMax={volumeSliceMax}
+                  volumeOpacity={volumeSliceOpacity}
+                  onChangeVolumeAxis={setVolumeSliceAxis}
+                  onChangeVolumeIndex={setVolumeSliceIndex}
+                  onChangeVolumeOpacity={setVolumeSliceOpacity}
                   surfaceMeshLabel={surfaceMeshLabel}
                   surfaceMeshStats={surfaceMeshStats}
                   surfaceMeshSource={surfaceMeshData?.source ?? null}
@@ -4309,14 +4356,24 @@ case "mobius":
                   boxSizing: "border-box",
                 }}
               >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: showGaussMap ? "minmax(0,1fr) 320px" : "1fr",
-                    gap: showGaussMap ? 10 : 0,
-                    height: "100%",
-                  }}
-                >
+                {datasetKind === "volume" ? (
+                  <div style={{ width: "100%", height: "100%" }}>
+                    <VolumeViewer
+                      dataset={activeDataset?.kind === "volume" ? activeDataset : null}
+                      axis={volumeSliceAxis}
+                      index={volumeSliceIndex}
+                      opacity={volumeSliceOpacity}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: showGaussMap ? "minmax(0,1fr) 320px" : "1fr",
+                      gap: showGaussMap ? 10 : 0,
+                      height: "100%",
+                    }}
+                  >
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
@@ -4424,7 +4481,7 @@ case "mobius":
                                 ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey }
                                 : null
                             }
-                            geodesicHeatPolyline={geodesicHeatPolyline}
+                            geodesicHeatPolylines={geodesicHeatPolylines}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                             geodesicDiskEnabled={geodesicDiskEnabled}
@@ -4534,7 +4591,7 @@ case "mobius":
                         onGeodesicHeatPick={handleGeodesicHeatPick}
                         geodesicHeatStart={geodesicHeatStart ? { point: geodesicHeatStart.point, meshKey: geodesicHeatStart.meshKey } : null}
                         geodesicHeatEnd={geodesicHeatEnd ? { point: geodesicHeatEnd.point, meshKey: geodesicHeatEnd.meshKey } : null}
-                        geodesicHeatPolyline={geodesicHeatPolyline}
+                        geodesicHeatPolylines={geodesicHeatPolylines}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                         geodesicDiskEnabled={geodesicDiskEnabled}
@@ -4650,6 +4707,7 @@ case "mobius":
                     </div>
                   )}
                 </div>
+                )}
               </div>
             </div>
 
@@ -5194,6 +5252,15 @@ type SurfacesLeftPanelProps = {
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
+  datasetKind: DatasetKind;
+  onChangeDatasetKind: (kind: DatasetKind) => void;
+  volumeAxis: SliceAxis;
+  volumeIndex: number;
+  volumeIndexMax: number;
+  volumeOpacity: number;
+  onChangeVolumeAxis: (axis: SliceAxis) => void;
+  onChangeVolumeIndex: (value: number) => void;
+  onChangeVolumeOpacity: (value: number) => void;
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshSource: SurfaceMeshSource | null;
@@ -5454,6 +5521,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   viewerKind,
   surfaceId,
   paramId,
+  datasetKind,
+  onChangeDatasetKind,
+  volumeAxis,
+  volumeIndex,
+  volumeIndexMax,
+  volumeOpacity,
+  onChangeVolumeAxis,
+  onChangeVolumeIndex,
+  onChangeVolumeOpacity,
   surfaceMeshLabel,
   surfaceMeshStats,
   surfaceMeshSource,
@@ -5703,6 +5779,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
   const geodesicSmoothEnabled = viewerKind === "param" || viewerKind === "weierstrass";
 
+  const isVolume = datasetKind === "volume";
   const isWeierstrass = viewerKind === "weierstrass";
   const isMeshViewer = viewerKind === "mesh";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
@@ -5711,7 +5788,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     formula: "Triangle surface mesh",
     note: "Imported or generated triangle mesh.",
   };
-  const activeMeta = isMeshViewer ? meshMeta : isWeierstrass ? WEIERSTRASS_META : isEqViewer ? eqMeta : paramMeta;
+  const volumeMeta = {
+    label: "Volume grid",
+    formula: "Scalar field on a voxel grid",
+    note: "Toy volume generated client-side.",
+  };
+  const activeMeta = isVolume
+    ? volumeMeta
+    : isMeshViewer
+      ? meshMeta
+      : isWeierstrass
+        ? WEIERSTRASS_META
+        : isEqViewer
+          ? eqMeta
+          : paramMeta;
   const diagStatusColors: Record<"good" | "warn" | "bad", string> = {
     good: "#1f894f",
     warn: "#e2a700",
@@ -5728,15 +5818,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
 
   const modeLabel =
-    viewerKind === "implicit"
-      ? "implicit surface  f(x,y,z) = 0"
-      : viewerKind === "graph"
-        ? "graph (explicit)  z = f(x,y)"
-        : viewerKind === "weierstrass"
-          ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
-          : viewerKind === "mesh"
-            ? "surface mesh (triangles)"
-            : "parametric surface  σ(u,v)";
+    isVolume
+      ? "volume grid (voxels)"
+      : viewerKind === "implicit"
+        ? "implicit surface  f(x,y,z) = 0"
+        : viewerKind === "graph"
+          ? "graph (explicit)  z = f(x,y)"
+          : viewerKind === "weierstrass"
+            ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
+            : viewerKind === "mesh"
+              ? "surface mesh (triangles)"
+              : "parametric surface  σ(u,v)";
 
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
@@ -5758,7 +5850,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
   return (
     <section>
-      <h2 style={styles.h2}>Surface viewer (three.js)</h2>
+      <h2 style={styles.h2}>{isVolume ? "Volume viewer (three.js)" : "Surface viewer (three.js)"}</h2>
       <p style={styles.hint}>
         Rotate with mouse, scroll to zoom. In <strong>probe mode</strong> click the surface to read point p and unit normal n.
       </p>
@@ -5782,6 +5874,79 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       <p style={styles.hint}>
         Mode: <strong>{modeLabel}</strong>
       </p>
+
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Dataset mode</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => onChangeDatasetKind("surface")}
+            style={pill(datasetKind === "surface")}
+            aria-pressed={datasetKind === "surface"}
+          >
+            Surface
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeDatasetKind("volume")}
+            style={pill(datasetKind === "volume")}
+            aria-pressed={datasetKind === "volume"}
+          >
+            Volume
+          </button>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+          Surface datasets render triangle meshes. Volume datasets will use voxel grids.
+        </div>
+      </div>
+
+      {datasetKind === "volume" && (
+        <div style={{ ...cardStyle, marginTop: 10 }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume slice</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Axis</span>
+              <select
+                value={volumeAxis}
+                onChange={(e) => onChangeVolumeAxis(e.target.value as SliceAxis)}
+                style={{ fontSize: 11, padding: "2px 4px", width: 80 }}
+              >
+                <option value="x">X</option>
+                <option value="y">Y</option>
+                <option value="z">Z</option>
+              </select>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Index</span>
+              <input
+                type="number"
+                min={0}
+                max={volumeIndexMax}
+                value={volumeIndex}
+                onChange={(e) => onChangeVolumeIndex(Number(e.target.value))}
+                style={{ width: 90 }}
+              />
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
+              <span>Opacity {volumeOpacity.toFixed(2)}</span>
+              <input
+                type="range"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={volumeOpacity}
+                onChange={(e) => onChangeVolumeOpacity(Number(e.target.value))}
+                style={{ width: 160 }}
+              />
+            </label>
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
+            Source: toy scalar grid (client-side).
+          </div>
+        </div>
+      )}
 
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>SurfaceMesh</div>
