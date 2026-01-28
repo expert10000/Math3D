@@ -2,4 +2,11 @@
 *.ts text eol=lf
 *.tsx text eol=lf
 *.md text eol=lf
+data/**/*.zip filter=lfs diff=lfs merge=lfs -text
+data/**/*.obj filter=lfs diff=lfs merge=lfs -text
+data/**/*.bin filter=lfs diff=lfs merge=lfs -text
+data/**/*.png filter=lfs diff=lfs merge=lfs -text
+data/**/*.stl filter=lfs diff=lfs merge=lfs -text
+data/**/*.3mf filter=lfs diff=lfs merge=lfs -text
+data/**/*.gltf filter=lfs diff=lfs merge=lfs -text
 data/** filter=lfs diff=lfs merge=lfs -text
