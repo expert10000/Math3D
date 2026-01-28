@@ -41,6 +41,30 @@ export type GeodesicHeatRequest = {
   };
 };
 
+export type VtkMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    targetReduction?: number;
+    targetFaces?: number;
+    iterations?: number;
+    passband?: number;
+    computeNormals?: boolean;
+  };
+};
+
+export type VtkMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -61,4 +85,13 @@ contextBridge.exposeInMainWorld("cgalMesh", {
     ipcRenderer.invoke("mesh:geodesic:heat", req),
   stop: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("mesh:cgal:stop"),
+});
+
+contextBridge.exposeInMainWorld("vtkMesh", {
+  cleanNormals: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:clean", req),
+  decimate: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:decimate", req),
+  smooth: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:smooth", req),
 });

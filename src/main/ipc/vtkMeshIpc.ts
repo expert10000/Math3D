@@ -1,0 +1,27 @@
+import { ipcMain } from "electron";
+import { getPythonWorker, type VtkMeshRequest, type VtkMeshResponse, type VtkMeshOp } from "../python/PythonWorker";
+
+export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
+
+async function runVtkJob(op: VtkMeshOp, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> {
+  try {
+    const worker = await getPythonWorker();
+    return await worker.vtkMesh(op, req);
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? String(e) };
+  }
+}
+
+export function registerVtkMeshIpc() {
+  ipcMain.handle("mesh:vtk:clean", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_clean_normals", req);
+  });
+
+  ipcMain.handle("mesh:vtk:decimate", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_decimate", req);
+  });
+
+  ipcMain.handle("mesh:vtk:smooth", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_smooth", req);
+  });
+}

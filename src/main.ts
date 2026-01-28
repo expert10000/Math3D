@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
 import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
+import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 
 import * as fs from "node:fs";
 
@@ -50,6 +51,7 @@ app.whenReady().then(() => {
   });
 
   registerCgalMeshIpc();
+  registerVtkMeshIpc();
 
 try {
     listPresets("graph");

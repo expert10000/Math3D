@@ -45,6 +45,7 @@ import {
 import { buildGeodesicDisk } from "./math/geodesicDisk";
 import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
+import { vtkCleanNormals, vtkDecimate, vtkSmooth } from "./services/vtkMeshClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import {
   solveContinuousParamGeodesic,
@@ -56,10 +57,24 @@ import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surf
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
 import { WEIERSTRASS_PRESETS, type WeierstrassPreset } from "./math/weierstrassPresets";
+import {
+  buildSurfaceMeshFromGeometry,
+  loadSurfaceMeshFromFile,
+  mergeMeshData,
+  type SurfaceMeshData,
+  type SurfaceMeshSource,
+  type SurfaceMeshPreset,
+} from "./mesh/surfaceMesh";
+import {
+  computeAdjacency,
+  computeMeanEdgeLength,
+  computeVertexNormals,
+  validateMesh,
+} from "./mesh/meshOps";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
-type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass";
+type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh";
 type GraphDomain = { xSpan: number; ySpan: number };
 type ImplicitDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
@@ -76,6 +91,17 @@ type CgalMeshState = {
   createdAt: number;
 };
 type CgalHealthState = { ok: boolean; error?: string };
+
+const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
+  let next = mesh;
+  if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
+    next = computeVertexNormals(next);
+  }
+  next = computeAdjacency(next);
+  next = computeMeanEdgeLength(next);
+  next = validateMesh(next);
+  return next;
+};
 
 /* ---------------- constants ---------------- */
 
@@ -111,6 +137,75 @@ const WEIERSTRASS_META = {
   formula: "X(z) = Re integral Phi(z) dz",
   note: "Minimal surface from Weierstrass data g(z), phi(z).",
 };
+
+const buildEllipsoidGeometry = () => {
+  const geom = new THREE.SphereGeometry(1, 96, 64);
+  geom.scale(1.6, 1.15, 0.85);
+  return geom;
+};
+
+const buildBumpySphereGeometry = () => {
+  const geom = new THREE.SphereGeometry(1, 120, 80);
+  const pos = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  if (!pos) return geom;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const r = Math.hypot(x, y, z) || 1;
+    const nx = x / r;
+    const ny = y / r;
+    const nz = z / r;
+    const theta = Math.atan2(z, x);
+    const phi = Math.acos(Math.max(-1, Math.min(1, ny)));
+    const bump = 0.18 * Math.sin(3 * theta) * Math.sin(2 * phi);
+    const nr = r * (1 + bump);
+    pos.setXYZ(i, nx * nr, ny * nr, nz * nr);
+  }
+  geom.computeVertexNormals();
+  return geom;
+};
+
+const buildWavyTorusGeometry = () => {
+  const major = 1.05;
+  const minor = 0.32;
+  const geom = new THREE.TorusGeometry(major, minor, 64, 220);
+  const pos = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  if (!pos) return geom;
+  const amp = 0.35;
+  const freq = 5;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const u = Math.atan2(y, x);
+    const cx = major * Math.cos(u);
+    const cy = major * Math.sin(u);
+    const vx = x - cx;
+    const vy = y - cy;
+    const vz = z;
+    const vlen = Math.hypot(vx, vy, vz) || 1;
+    const scale = 1 + amp * Math.sin(freq * u);
+    const nx = vx / vlen;
+    const ny = vy / vlen;
+    const nz = vz / vlen;
+    const newLen = minor * scale;
+    pos.setXYZ(i, cx + nx * newLen, cy + ny * newLen, nz * newLen);
+  }
+  geom.computeVertexNormals();
+  return geom;
+};
+
+const SURFACE_MESH_PRESETS: SurfaceMeshPreset[] = [
+  { id: "mesh_box", label: "Box", build: () => new THREE.BoxGeometry(1.8, 1.8, 1.8, 10, 10, 10) },
+  { id: "mesh_icosphere", label: "Icosphere", build: () => new THREE.IcosahedronGeometry(1.3, 3) },
+  { id: "mesh_torus", label: "Torus", build: () => new THREE.TorusGeometry(1.1, 0.35, 48, 120) },
+  { id: "mesh_knot", label: "Torus knot", build: () => new THREE.TorusKnotGeometry(0.9, 0.25, 220, 32) },
+  { id: "mesh_dodeca", label: "Dodecahedron", build: () => new THREE.DodecahedronGeometry(1.2, 1) },
+  { id: "mesh_ellipsoid", label: "Ellipsoid", build: buildEllipsoidGeometry },
+  { id: "mesh_bumpy", label: "Bumpy sphere", build: buildBumpySphereGeometry },
+  { id: "mesh_wavy_torus", label: "Wavy torus", build: buildWavyTorusGeometry },
+];
 
 /* ---------------- Surfaces meta ---------------- */
 
@@ -221,8 +316,12 @@ function isGraphSurface(id: SurfaceId): boolean {
   return GRAPH_SURFACE_IDS.includes(id);
 }
 
+function isMeshSurface(id: SurfaceId): boolean {
+  return id === "surface_mesh";
+}
+
 function isImplicitSurface(id: SurfaceId): boolean {
-  return !isGraphSurface(id);
+  return !isGraphSurface(id) && !isMeshSurface(id);
 }
 
 function normalizeImplicitDomain(d: ImplicitDomain, fallback: ImplicitDomain): ImplicitDomain {
@@ -596,6 +695,25 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
+  const [surfaceMeshData, setSurfaceMeshData] = useState<SurfaceMeshData | null>(() => {
+    const preset = SURFACE_MESH_PRESETS[0];
+    try {
+      const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
+      return applySurfaceMeshOps(base);
+    } catch {
+      return null;
+    }
+  });
+  const [surfaceMeshImportBusy, setSurfaceMeshImportBusy] = useState(false);
+  const [surfaceMeshImportError, setSurfaceMeshImportError] = useState<string | null>(null);
+  const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
+  const [vtkBusy, setVtkBusy] = useState(false);
+  const [vtkError, setVtkError] = useState<string | null>(null);
+  const [vtkDecimateReduction, setVtkDecimateReduction] = useState(0.5);
+  const [vtkDecimateTargetFaces, setVtkDecimateTargetFaces] = useState(12000);
+  const [vtkUseTargetFaces, setVtkUseTargetFaces] = useState(false);
+  const [vtkSmoothIterations, setVtkSmoothIterations] = useState(20);
+  const [vtkSmoothPassband, setVtkSmoothPassband] = useState(0.1);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -918,7 +1036,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
 
   // active equation surface id (single truth)
-  const activeEqSurfaceId = surfaceViewerKind === "graph" ? graphSurfaceId : implicitSurfaceId;
+  const activeEqSurfaceId =
+    surfaceViewerKind === "graph"
+      ? graphSurfaceId
+      : surfaceViewerKind === "mesh"
+        ? "surface_mesh"
+        : implicitSurfaceId;
+  const surfaceMeshLabel = surfaceMeshData?.label ?? "SurfaceMesh";
+  const surfaceMeshStats = useMemo(() => {
+    if (!surfaceMeshData?.positions?.length) return null;
+    const vertCount = Math.floor(surfaceMeshData.positions.length / 3);
+    const triCount = surfaceMeshData.indices
+      ? Math.floor(surfaceMeshData.indices.length / 3)
+      : Math.floor(vertCount / 3);
+    return { vertCount, triCount };
+  }, [surfaceMeshData]);
   const activeGraphDomain = useMemo(
     () =>
       normalizeGraphDomain(
@@ -1001,6 +1133,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   useEffect(() => {
     if (!compareEnabled) return;
+    if (surfaceViewerKind === "mesh") {
+      setCompareEnabled(false);
+      return;
+    }
     if (surfaceViewerKind === "graph" && !isGraphSurface(compareSurfaceId)) {
       setCompareSurfaceId("graph_saddle");
     }
@@ -1339,7 +1475,7 @@ case "mobius":
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
-    if (kind === "weierstrass") {
+    if (kind === "weierstrass" || kind === "mesh") {
       setCompareEnabled(false);
       setCameraSync(null);
     }
@@ -1359,6 +1495,205 @@ case "mobius":
   const handleSampleSet = useCallback((set: SurfaceSampleSet | null) => {
     setSurfaceSampleSet(set);
   }, []);
+
+  const handleGenerateSurfaceMeshPreset = useCallback((presetId: string) => {
+    const preset = SURFACE_MESH_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    try {
+      const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
+      setSurfaceMeshData(applySurfaceMeshOps(base));
+      setSurfaceMeshImportError(null);
+      setSurfaceViewerKind("mesh");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
+      setSurfaceMeshImportError(msg);
+    }
+  }, []);
+
+  const handleLoadSurfaceMeshFile = useCallback(
+    async (files: FileList | File[] | null) => {
+      if (!files || (files as FileList).length === 0) return;
+      setSurfaceMeshImportBusy(true);
+      setSurfaceMeshImportError(null);
+      try {
+        const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
+        setSurfaceMeshData(applySurfaceMeshOps(base));
+        setSurfaceViewerKind("mesh");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
+        setSurfaceMeshImportError(msg);
+      } finally {
+        setSurfaceMeshImportBusy(false);
+      }
+    },
+    [surfaceMeshMergeVertices]
+  );
+
+  const activeCgalMesh = useMemo(() => {
+    if (!cgalMeshState) return null;
+    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
+    if (cgalMeshState.expr !== implicitExpr) return null;
+    return cgalMeshState;
+  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
+
+  const buildActiveMeshLabel = useCallback(() => {
+    const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
+    const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramSurfaceId);
+    return surfaceViewerKind === "graph"
+      ? `Graph: ${eqMeta?.label ?? activeEqSurfaceId}`
+      : surfaceViewerKind === "implicit"
+        ? `Implicit: ${eqMeta?.label ?? activeEqSurfaceId}`
+        : surfaceViewerKind === "weierstrass"
+          ? "Weierstrass surface"
+          : surfaceViewerKind === "param"
+            ? `Param: ${paramMeta?.label ?? paramSurfaceId}`
+            : surfaceViewerKind === "mesh"
+              ? surfaceMeshData?.label ?? "Surface mesh"
+              : "Surface mesh";
+  }, [surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, surfaceMeshData?.label]);
+
+  const getMeshForVtk = useCallback(() => {
+    const meshData = surfaceSampleSet?.meshData ?? [];
+    if (!meshData.length) return null;
+    const merged = mergeMeshData(meshData);
+    if (!merged.positions.length || !merged.indices.length) return null;
+    return { positions: merged.positions, indices: merged.indices, label: buildActiveMeshLabel() };
+  }, [surfaceSampleSet, buildActiveMeshLabel]);
+
+  const applyVtkResultToSurfaceMesh = useCallback(
+    (labelSuffix: string, res: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array }) => {
+      const label = `${buildActiveMeshLabel()} (${labelSuffix})`;
+      const next: SurfaceMeshData = {
+        label,
+        positions: res.positions,
+        indices: res.indices,
+        normals: res.normals ?? null,
+        source: "surface",
+      };
+      setSurfaceMeshData(applySurfaceMeshOps(next));
+      setSurfaceViewerKind("mesh");
+      setSurfaceMeshImportError(null);
+    },
+    [buildActiveMeshLabel]
+  );
+
+  const handleVtkCleanNormals = useCallback(async () => {
+    if (vtkBusy) return;
+    const mesh = getMeshForVtk();
+    if (!mesh) {
+      setVtkError("Surface mesh not ready yet.");
+      return;
+    }
+    setVtkBusy(true);
+    setVtkError(null);
+    try {
+      const res = await vtkCleanNormals(mesh.positions, mesh.indices, { computeNormals: true });
+      if (!res.ok) {
+        setVtkError(res.error);
+        return;
+      }
+      applyVtkResultToSurfaceMesh("VTK clean", res);
+    } catch (err: any) {
+      setVtkError(err?.message ?? "VTK clean failed.");
+    } finally {
+      setVtkBusy(false);
+    }
+  }, [vtkBusy, getMeshForVtk, applyVtkResultToSurfaceMesh]);
+
+  const handleVtkDecimate = useCallback(async () => {
+    if (vtkBusy) return;
+    const mesh = getMeshForVtk();
+    if (!mesh) {
+      setVtkError("Surface mesh not ready yet.");
+      return;
+    }
+    setVtkBusy(true);
+    setVtkError(null);
+    try {
+      const options = vtkUseTargetFaces
+        ? { targetFaces: vtkDecimateTargetFaces, computeNormals: true }
+        : { targetReduction: vtkDecimateReduction, computeNormals: true };
+      const res = await vtkDecimate(mesh.positions, mesh.indices, options);
+      if (!res.ok) {
+        setVtkError(res.error);
+        return;
+      }
+      applyVtkResultToSurfaceMesh("VTK decimate", res);
+    } catch (err: any) {
+      setVtkError(err?.message ?? "VTK decimate failed.");
+    } finally {
+      setVtkBusy(false);
+    }
+  }, [
+    vtkBusy,
+    getMeshForVtk,
+    vtkUseTargetFaces,
+    vtkDecimateTargetFaces,
+    vtkDecimateReduction,
+    applyVtkResultToSurfaceMesh,
+  ]);
+
+  const handleVtkSmooth = useCallback(async () => {
+    if (vtkBusy) return;
+    const mesh = getMeshForVtk();
+    if (!mesh) {
+      setVtkError("Surface mesh not ready yet.");
+      return;
+    }
+    setVtkBusy(true);
+    setVtkError(null);
+    try {
+      const res = await vtkSmooth(mesh.positions, mesh.indices, {
+        iterations: vtkSmoothIterations,
+        passband: vtkSmoothPassband,
+        computeNormals: true,
+      });
+      if (!res.ok) {
+        setVtkError(res.error);
+        return;
+      }
+      applyVtkResultToSurfaceMesh("VTK smooth", res);
+    } catch (err: any) {
+      setVtkError(err?.message ?? "VTK smooth failed.");
+    } finally {
+      setVtkBusy(false);
+    }
+  }, [vtkBusy, getMeshForVtk, vtkSmoothIterations, vtkSmoothPassband, applyVtkResultToSurfaceMesh]);
+
+  const handleExportToSurfaceMesh = useCallback(() => {
+    if (surfaceViewerKind === "implicit" && !activeCgalMesh) {
+      setSurfaceMeshImportError("Run CGAL mesh first.");
+      return;
+    }
+    const meshData = surfaceSampleSet?.meshData ?? [];
+    if (!meshData.length) {
+      setSurfaceMeshImportError("Surface mesh not ready yet.");
+      return;
+    }
+    const merged = mergeMeshData(meshData);
+    const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
+    const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramSurfaceId);
+    const label =
+      surfaceViewerKind === "graph"
+        ? `Graph: ${eqMeta?.label ?? activeEqSurfaceId}`
+        : surfaceViewerKind === "implicit"
+          ? `Implicit: ${eqMeta?.label ?? activeEqSurfaceId}`
+          : surfaceViewerKind === "weierstrass"
+            ? "Weierstrass surface"
+            : surfaceViewerKind === "param"
+              ? `Param: ${paramMeta?.label ?? paramSurfaceId}`
+              : "Surface mesh";
+
+    const next: SurfaceMeshData = {
+      label,
+      positions: merged.positions,
+      indices: merged.indices,
+      source: "surface",
+    };
+    setSurfaceMeshData(applySurfaceMeshOps(next));
+    setSurfaceViewerKind("mesh");
+    setSurfaceMeshImportError(null);
+  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh]);
 
   const handleParamGeodesicState = useCallback((state: ParamGeodesicState | null) => {
     paramGeodesicStateRef.current = state;
@@ -2285,12 +2620,10 @@ case "mobius":
     });
   }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric, selectionStatsToken]);
 
-  const activeCgalMesh = useMemo(() => {
-    if (!cgalMeshState) return null;
-    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
-    if (cgalMeshState.expr !== implicitExpr) return null;
-    return cgalMeshState;
-  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
+  const surfaceMeshExportable =
+    surfaceViewerKind !== "mesh" &&
+    (surfaceViewerKind === "implicit" ? !!activeCgalMesh : !!surfaceSampleSet?.meshData?.length);
+  const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
     if (!activeCgalMesh) return null;
@@ -2422,15 +2755,18 @@ case "mobius":
   const geodesicHeatParamAvailable =
     (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") &&
     !!surfaceSampleSet?.meshData?.length;
+  const geodesicHeatMeshAvailable = surfaceViewerKind === "mesh" && !!surfaceSampleSet?.meshData?.length;
   const geodesicHeatAvailable =
     (surfaceViewerKind === "implicit" && !!activeCgalMesh) ||
     geodesicHeatGraphAvailable ||
-    geodesicHeatParamAvailable;
+    geodesicHeatParamAvailable ||
+    geodesicHeatMeshAvailable;
   const geodesicHeatHeatmapAllowed =
     (surfaceViewerKind === "implicit" ||
       surfaceViewerKind === "graph" ||
       surfaceViewerKind === "param" ||
-      surfaceViewerKind === "weierstrass") &&
+      surfaceViewerKind === "weierstrass" ||
+      surfaceViewerKind === "mesh") &&
     !geodesicHeatUseContinuous;
   const geodesicHeatHeatmapActive = useMemo(() => {
     if (!geodesicHeatHeatmapAllowed) return false;
@@ -2438,7 +2774,12 @@ case "mobius":
     if (surfaceViewerKind === "implicit") {
       return geodesicHeatMeshToken === cgalMeshToken;
     }
-    if (surfaceViewerKind === "graph" || surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+    if (
+      surfaceViewerKind === "graph" ||
+      surfaceViewerKind === "param" ||
+      surfaceViewerKind === "weierstrass" ||
+      surfaceViewerKind === "mesh"
+    ) {
       if (!geodesicHeatMeshKey) return false;
       const meshes = surfaceSampleSet?.meshData;
       return !!meshes?.some((m) => m.key === geodesicHeatMeshKey);
@@ -2464,12 +2805,15 @@ case "mobius":
     if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
       return "Param mesh not ready";
     }
-    return "Heat path only available in implicit, graph, or param/weierstrass";
+    if (surfaceViewerKind === "mesh") {
+      return "Surface mesh not ready";
+    }
+    return "Heat path only available in implicit, graph, param/weierstrass, or mesh";
   }, [activeEqSurfaceId, geodesicHeatAvailable, surfaceViewerKind]);
   const geodesicHeatHeatmapReason = useMemo(() => {
     if (geodesicHeatHeatmapAllowed) return "";
     if (geodesicHeatUseContinuous) return "Heatmap requires mesh heat (disable continuous ODE)";
-    return "Heatmap only available in implicit, graph, or param/weierstrass";
+    return "Heatmap only available in implicit, graph, param/weierstrass, or mesh";
   }, [geodesicHeatHeatmapAllowed, geodesicHeatUseContinuous]);
   const geodesicDiskAvailable = geodesicHeatAvailable;
   const geodesicDiskUnavailableReason = useMemo(() => {
@@ -2479,7 +2823,10 @@ case "mobius":
     if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
       return "Param mesh not ready";
     }
-    return "Disk only available in implicit, graph, or param/weierstrass";
+    if (surfaceViewerKind === "mesh") {
+      return "Surface mesh not ready";
+    }
+    return "Disk only available in implicit, graph, param/weierstrass, or mesh";
   }, [geodesicDiskAvailable, surfaceViewerKind]);
 
   useEffect(() => {
@@ -3279,6 +3626,7 @@ case "mobius":
         return say(
           [
             "surface implicit|graph|param <id>",
+            "surface mesh",
             "colorMode <solid|height|radius|curvature|gaussian|mean|k1|k2>",
             "palette <blueRed|rainbow|grayscale|redYellow>",
             "wireframe on|off  |  planes on|off  |  probe on|off",
@@ -3296,6 +3644,10 @@ case "mobius":
       if (head === "surface") {
         const kind = (tokens[1] ?? "").toLowerCase();
         const id = tokens[2] as SurfaceId | ParamSurfaceId | undefined;
+        if (kind === "mesh") {
+          setSurfaceViewerKind("mesh");
+          return say("surface viewer = mesh");
+        }
         if (!id) return say("Missing surface id.");
         if (kind === "graph") {
           if (!isGraphSurface(id as SurfaceId)) return say(`Not a graph surface: ${id}`);
@@ -3314,7 +3666,7 @@ case "mobius":
           setParamSurfaceId(id as ParamSurfaceId);
           return say(`param surface = ${id}`);
         }
-        return say("Usage: surface implicit|graph|param <id>");
+        return say("Usage: surface implicit|graph|param <id> | surface mesh");
       }
 
       if (head === "colormode") {
@@ -3628,6 +3980,34 @@ case "mobius":
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
+                  surfaceMeshLabel={surfaceMeshLabel}
+                  surfaceMeshStats={surfaceMeshStats}
+                  surfaceMeshSource={surfaceMeshData?.source ?? null}
+                  surfaceMeshImportBusy={surfaceMeshImportBusy}
+                  surfaceMeshImportError={surfaceMeshImportError}
+                  surfaceMeshMergeVertices={surfaceMeshMergeVertices}
+                  surfaceMeshPresets={SURFACE_MESH_PRESETS}
+                  surfaceMeshExportable={surfaceMeshExportable}
+                  onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
+                  onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
+                  onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
+                  onExportSurfaceMesh={handleExportToSurfaceMesh}
+                  vtkAvailable={vtkMeshAvailable}
+                  vtkBusy={vtkBusy}
+                  vtkError={vtkError}
+                  vtkDecimateReduction={vtkDecimateReduction}
+                  onChangeVtkDecimateReduction={setVtkDecimateReduction}
+                  vtkDecimateTargetFaces={vtkDecimateTargetFaces}
+                  onChangeVtkDecimateTargetFaces={setVtkDecimateTargetFaces}
+                  vtkUseTargetFaces={vtkUseTargetFaces}
+                  onToggleVtkUseTargetFaces={setVtkUseTargetFaces}
+                  vtkSmoothIterations={vtkSmoothIterations}
+                  onChangeVtkSmoothIterations={setVtkSmoothIterations}
+                  vtkSmoothPassband={vtkSmoothPassband}
+                  onChangeVtkSmoothPassband={setVtkSmoothPassband}
+                  onVtkCleanNormals={handleVtkCleanNormals}
+                  onVtkDecimate={handleVtkDecimate}
+                  onVtkSmooth={handleVtkSmooth}
                   graphExpr={graphExpr}
                   implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
@@ -4012,6 +4392,7 @@ case "mobius":
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
                             implicitMeshOverride={activeCgalMesh}
+                            surfaceMeshOverride={surfaceViewerKind === "mesh" ? surfaceMeshData : null}
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                             wireframe={showWireframe}
@@ -4151,6 +4532,7 @@ case "mobius":
                               surfaceId={compareSurfaceId}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
+                              surfaceMeshOverride={surfaceViewerKind === "mesh" ? surfaceMeshData : null}
                               sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={showWireframe}
                               showPlanes={showPlanes}
@@ -4221,6 +4603,9 @@ case "mobius":
                 viewerKind={surfaceViewerKind}
                 surfaceId={activeEqSurfaceId}
                 paramId={paramSurfaceId}
+                surfaceMeshLabel={surfaceMeshLabel}
+                surfaceMeshStats={surfaceMeshStats}
+                surfaceMeshSource={surfaceMeshData?.source ?? null}
                 onPickEqSurface={handlePickEqSurface}
                 onPickParamSurface={handlePickParamSurface}
                 implicitExpr={implicitExpr}
@@ -4555,6 +4940,20 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         >
           Weierstrass
         </button>
+        <button
+          type="button"
+          onClick={() => onChangeViewerKind("mesh")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
+            background: viewerKind === "mesh" ? "#e6f0ff" : "#fff",
+            fontWeight: viewerKind === "mesh" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          SurfaceMesh
+        </button>
       </div>
 
       <div style={{ flex: 1 }}>
@@ -4643,13 +5042,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             type="checkbox"
             checked={compareEnabled}
             onChange={onToggleCompare}
-            disabled={viewerKind === "weierstrass"}
+            disabled={viewerKind === "weierstrass" || viewerKind === "mesh"}
           />
           Compare
         </label>
       </div>
 
-      {compareEnabled && (
+      {compareEnabled && viewerKind !== "mesh" && (
         <div style={{ flex: 1 }}>
           {viewerKind === "implicit" && (
             <SurfacesButtons surfaceId={compareSurfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeCompareSurface} />
@@ -4729,6 +5128,34 @@ type SurfacesLeftPanelProps = {
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
+  surfaceMeshLabel: string;
+  surfaceMeshStats: { vertCount: number; triCount: number } | null;
+  surfaceMeshSource: SurfaceMeshSource | null;
+  surfaceMeshImportBusy: boolean;
+  surfaceMeshImportError: string | null;
+  surfaceMeshMergeVertices: boolean;
+  surfaceMeshPresets: SurfaceMeshPreset[];
+  surfaceMeshExportable: boolean;
+  onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
+  onGenerateSurfaceMeshPreset: (id: string) => void;
+  onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
+  onExportSurfaceMesh: () => void;
+  vtkAvailable: boolean;
+  vtkBusy: boolean;
+  vtkError: string | null;
+  vtkDecimateReduction: number;
+  onChangeVtkDecimateReduction: (v: number) => void;
+  vtkDecimateTargetFaces: number;
+  onChangeVtkDecimateTargetFaces: (v: number) => void;
+  vtkUseTargetFaces: boolean;
+  onToggleVtkUseTargetFaces: (v: boolean) => void;
+  vtkSmoothIterations: number;
+  onChangeVtkSmoothIterations: (v: number) => void;
+  vtkSmoothPassband: number;
+  onChangeVtkSmoothPassband: (v: number) => void;
+  onVtkCleanNormals: () => void;
+  onVtkDecimate: () => void;
+  onVtkSmooth: () => void;
 
   graphExpr: string;
   implicitExpr: string;
@@ -4961,6 +5388,34 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   viewerKind,
   surfaceId,
   paramId,
+  surfaceMeshLabel,
+  surfaceMeshStats,
+  surfaceMeshSource,
+  surfaceMeshImportBusy,
+  surfaceMeshImportError,
+  surfaceMeshMergeVertices,
+  surfaceMeshPresets,
+  surfaceMeshExportable,
+  onToggleSurfaceMeshMergeVertices,
+  onGenerateSurfaceMeshPreset,
+  onLoadSurfaceMeshFile,
+  onExportSurfaceMesh,
+  vtkAvailable,
+  vtkBusy,
+  vtkError,
+  vtkDecimateReduction,
+  onChangeVtkDecimateReduction,
+  vtkDecimateTargetFaces,
+  onChangeVtkDecimateTargetFaces,
+  vtkUseTargetFaces,
+  onToggleVtkUseTargetFaces,
+  vtkSmoothIterations,
+  onChangeVtkSmoothIterations,
+  vtkSmoothPassband,
+  onChangeVtkSmoothPassband,
+  onVtkCleanNormals,
+  onVtkDecimate,
+  onVtkSmooth,
   graphExpr,
   implicitExpr,
   onChangeGraphExpr,
@@ -5183,8 +5638,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const geodesicSmoothEnabled = viewerKind === "param" || viewerKind === "weierstrass";
 
   const isWeierstrass = viewerKind === "weierstrass";
+  const isMeshViewer = viewerKind === "mesh";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
-  const activeMeta = isWeierstrass ? WEIERSTRASS_META : isEqViewer ? eqMeta : paramMeta;
+  const meshMeta = {
+    label: surfaceMeshLabel,
+    formula: "Triangle surface mesh",
+    note: "Imported or generated triangle mesh.",
+  };
+  const activeMeta = isMeshViewer ? meshMeta : isWeierstrass ? WEIERSTRASS_META : isEqViewer ? eqMeta : paramMeta;
   const diagStatusColors: Record<"good" | "warn" | "bad", string> = {
     good: "#1f894f",
     warn: "#e2a700",
@@ -5207,15 +5668,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         ? "graph (explicit)  z = f(x,y)"
         : viewerKind === "weierstrass"
           ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
-          : "parametric surface  σ(u,v)";
+          : viewerKind === "mesh"
+            ? "surface mesh (triangles)"
+            : "parametric surface  σ(u,v)";
 
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
-  const isImplicitAny = viewerKind === "implicit" && !isGraphSurface(surfaceId);
+  const isImplicitAny = viewerKind === "implicit" && isImplicitSurface(surfaceId);
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
+  const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
@@ -5252,6 +5716,178 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       <p style={styles.hint}>
         Mode: <strong>{modeLabel}</strong>
       </p>
+
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>SurfaceMesh</div>
+        {viewerKind !== "mesh" ? (
+          <>
+            <button
+              type="button"
+              onClick={onExportSurfaceMesh}
+              disabled={!surfaceMeshExportable}
+              style={{ padding: "4px 10px" }}
+            >
+              Export to SurfaceMesh
+            </button>
+            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+              {surfaceMeshExportable
+                ? "Convert the current surface triangles into SurfaceMesh mode."
+                : viewerKind === "implicit"
+                  ? "Run CGAL mesh first to export an implicit surface mesh."
+                  : "Mesh export will enable once the surface is ready."}
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 12, opacity: 0.85 }}>{surfaceMeshLabel}</div>
+            {surfaceMeshStats && (
+              <div style={{ fontSize: 11, opacity: 0.75, marginTop: 4 }}>
+                {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
+              </div>
+            )}
+            {surfaceMeshSource && (
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>Source: {surfaceMeshSource}</div>
+            )}
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Generate</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {surfaceMeshPresets.map((p) => (
+                <button key={p.id} type="button" onClick={() => onGenerateSurfaceMeshPreset(p.id)}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Load file</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => meshFileInputRef.current?.click()}
+                disabled={surfaceMeshImportBusy}
+              >
+                {surfaceMeshImportBusy ? "Loading..." : "Load STL/OBJ/PLY/GLTF"}
+              </button>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={surfaceMeshMergeVertices}
+                  onChange={(e) => onToggleSurfaceMeshMergeVertices(e.target.checked)}
+                />
+                merge vertices
+              </label>
+              <input
+                ref={meshFileInputRef}
+                type="file"
+                multiple
+                accept=".stl,.obj,.ply,.gltf,.glb"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const files = e.currentTarget.files ?? null;
+                  onLoadSurfaceMeshFile(files);
+                  e.currentTarget.value = "";
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+              For .gltf with external .bin/textures, select all related files together.
+            </div>
+            {surfaceMeshImportError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshImportError}</div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Python mesh ops (VTK)</div>
+        {!vtkAvailable ? (
+          <div style={{ fontSize: 11, color: "#666" }}>Mesh data not ready yet.</div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              <button type="button" onClick={onVtkCleanNormals} disabled={vtkBusy}>
+                {vtkBusy ? "Working..." : "Clean + normals"}
+              </button>
+              <button type="button" onClick={onVtkDecimate} disabled={vtkBusy}>
+                {vtkBusy ? "Working..." : "Decimate"}
+              </button>
+              <button type="button" onClick={onVtkSmooth} disabled={vtkBusy}>
+                {vtkBusy ? "Working..." : "Smooth"}
+              </button>
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Decimate</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={vtkUseTargetFaces}
+                onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
+                disabled={vtkBusy}
+              />
+              Use target faces
+            </label>
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 10, color: "#555" }}>
+                Reduction {vtkDecimateReduction.toFixed(2)}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={0.95}
+                step={0.01}
+                value={vtkDecimateReduction}
+                onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
+                disabled={vtkUseTargetFaces || vtkBusy}
+                style={{ width: 180 }}
+              />
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <div style={{ fontSize: 10, color: "#555" }}>Target faces</div>
+              <input
+                type="number"
+                min={100}
+                max={1000000}
+                step={100}
+                value={vtkDecimateTargetFaces}
+                onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
+                disabled={!vtkUseTargetFaces || vtkBusy}
+                style={{ width: 120 }}
+              />
+            </div>
+
+            <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Smooth</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Iterations
+                <input
+                  type="number"
+                  min={1}
+                  max={200}
+                  step={1}
+                  value={vtkSmoothIterations}
+                  onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
+                  disabled={vtkBusy}
+                  style={{ width: 60 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Passband
+                <input
+                  type="number"
+                  min={0.001}
+                  max={1}
+                  step={0.01}
+                  value={vtkSmoothPassband}
+                  onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
+                  disabled={vtkBusy}
+                  style={{ width: 70 }}
+                />
+              </label>
+            </div>
+          </>
+        )}
+        {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
+      </div>
 
       {/* toggles */}
       <div style={{ marginTop: 6, marginBottom: 8, fontSize: 12 }}>
@@ -5536,7 +6172,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 viewerKind === "graph" ||
                 viewerKind === "implicit" ||
                 viewerKind === "param" ||
-                viewerKind === "weierstrass";
+                viewerKind === "weierstrass" ||
+                viewerKind === "mesh";
               if (!ridgeValleyAvailable) {
                 return (
                   <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>
@@ -5552,7 +6189,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 viewerKind === "graph" ||
                 viewerKind === "implicit" ||
                 viewerKind === "param" ||
-                viewerKind === "weierstrass";
+                viewerKind === "weierstrass" ||
+                viewerKind === "mesh";
               const ridgeValleyEnabled = ridgeValleyAvailable && (showRidges || showValleys);
               const ridgeValleyStitchEnabled = ridgeValleyEnabled && ridgeValleyStitch;
               return (
@@ -6253,11 +6891,16 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                       <div style={{ color: "#556" }}>k2</div>
                       <div>{fmt(inspectMetrics.k2)}</div>
                     </>
-                  )}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+        )}
+        {viewerKind === "mesh" && (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            SurfaceMesh presets and import live in the left panel.
+          </div>
+        )}
+      </div>
         </div>
 
         <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
@@ -7137,6 +7780,9 @@ type SurfacesRightPanelProps = {
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
+  surfaceMeshLabel: string;
+  surfaceMeshStats: { vertCount: number; triCount: number } | null;
+  surfaceMeshSource: SurfaceMeshSource | null;
 
   onPickEqSurface: (id: SurfaceId) => void;
   onPickParamSurface: (id: ParamSurfaceId) => void;
@@ -7207,6 +7853,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
   surfaceId,
   paramId,
+  surfaceMeshLabel,
+  surfaceMeshStats,
+  surfaceMeshSource,
   onPickEqSurface,
   onPickParamSurface,
   implicitExpr,
@@ -7271,6 +7920,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isWeierstrass = viewerKind === "weierstrass";
+  const isMeshViewer = viewerKind === "mesh";
   const isGraphViewer = viewerKind === "graph";
   const isParamViewer = viewerKind === "param" || isWeierstrass;
   const isImplicitViewer = viewerKind === "implicit";
@@ -7297,7 +7947,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
   const safeParamDomain = normalizeParamDomain(paramDomain, paramDefaults);
   const safeImplicitDomain = normalizeImplicitDomain(implicitDomain, getDefaultImplicitDomain(surfaceId));
-  const activeMeta = isWeierstrass ? WEIERSTRASS_META : isParamViewer ? paramMeta : eqMeta;
+  const meshMeta = {
+    label: surfaceMeshLabel,
+    formula: "Triangle surface mesh",
+    note: "Imported or generated triangle mesh.",
+  };
+  const activeMeta = isMeshViewer
+    ? meshMeta
+    : isWeierstrass
+      ? WEIERSTRASS_META
+      : isParamViewer
+        ? paramMeta
+        : eqMeta;
 
 
   return (
@@ -7311,6 +7972,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
           {activeMeta.formula}
         </div>
+        {isMeshViewer && surfaceMeshStats && (
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+            {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
+            {surfaceMeshSource ? ` · ${surfaceMeshSource}` : ""}
+          </div>
+        )}
       </div>
 
       {/* Domain picker */}
@@ -7319,7 +7986,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
         {!showDomainPicker ? (
           <div style={{ fontSize: 11, opacity: 0.75 }}>
-            Domain picking is available for graph, param, and Weierstrass surfaces. Use probe mode to pick points on implicit surfaces.
+            {isMeshViewer
+              ? "Domain picking is not used for SurfaceMesh. Use probe mode to pick points on the mesh."
+              : "Domain picking is available for graph, param, and Weierstrass surfaces. Use probe mode to pick points on implicit surfaces."}
           </div>
         ) : isParamViewer ? (
           <>

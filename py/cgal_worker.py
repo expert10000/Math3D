@@ -14,6 +14,51 @@ def send(obj: Dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
+def send_binary(obj: Dict[str, Any], parts: List[Tuple[str, bytes]]) -> None:
+    meta = dict(obj)
+    meta["binary"] = [{"name": name, "bytes": len(data)} for name, data in parts]
+    sys.stdout.write(json.dumps(meta) + "\n")
+    sys.stdout.flush()
+    for _name, data in parts:
+        if data:
+            sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+
+def read_exact(count: int) -> bytes:
+    if count <= 0:
+        return b""
+    out = bytearray()
+    while len(out) < count:
+        chunk = sys.stdin.buffer.read(count - len(out))
+        if not chunk:
+            raise EOFError("Unexpected EOF while reading binary payload")
+        out.extend(chunk)
+    return bytes(out)
+
+
+def read_message() -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, bytes]], bool]:
+    line = sys.stdin.buffer.readline()
+    if not line:
+        return None, None, True
+    line = line.strip()
+    if not line:
+        return None, None, False
+    try:
+        msg = json.loads(line)
+    except Exception as e:
+        send({"type": "error", "jobId": "", "message": f"Bad JSON: {e}"})
+        return None, None, False
+    payloads = None
+    parts = msg.get("binary")
+    if isinstance(parts, list):
+        payloads = {}
+        for part in parts:
+            name = str(part.get("name", ""))
+            size = int(part.get("bytes", 0) or 0)
+            payloads[name] = read_exact(size)
+    return msg, payloads, False
+
 def b64_f32(arr) -> str:
     import numpy as np
     a = np.asarray(arr, dtype=np.float32)
@@ -377,20 +422,213 @@ def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     send(res)
 
 
+def vtk_poly_from_buffers(pos_bytes: bytes, idx_bytes: bytes):
+    import numpy as np
+    import vtk
+    from vtk.util import numpy_support as nps
+
+    positions = np.frombuffer(pos_bytes, dtype=np.float32)
+    if positions.size % 3 != 0:
+        raise RuntimeError("Positions buffer size not divisible by 3")
+    indices = np.frombuffer(idx_bytes, dtype=np.uint32)
+    if indices.size % 3 != 0:
+        raise RuntimeError("Indices buffer size not divisible by 3")
+
+    pts = positions.reshape(-1, 3)
+    tri = indices.reshape(-1, 3).astype(np.int64, copy=False)
+    tri_count = int(tri.shape[0])
+
+    vtk_points = vtk.vtkPoints()
+    vtk_points.SetData(nps.numpy_to_vtk(pts, deep=1))
+
+    conn = np.empty(tri_count * 4, dtype=np.int64)
+    conn[0::4] = 3
+    conn[1::4] = tri[:, 0]
+    conn[2::4] = tri[:, 1]
+    conn[3::4] = tri[:, 2]
+    vtk_ids = nps.numpy_to_vtkIdTypeArray(conn, deep=1)
+    cells = vtk.vtkCellArray()
+    cells.SetCells(tri_count, vtk_ids)
+
+    poly = vtk.vtkPolyData()
+    poly.SetPoints(vtk_points)
+    poly.SetPolys(cells)
+    return poly
+
+
+def vtk_compute_normals(poly):
+    import vtk
+    normals = vtk.vtkPolyDataNormals()
+    normals.SetInputData(poly)
+    normals.ComputePointNormalsOn()
+    normals.ComputeCellNormalsOff()
+    normals.ConsistencyOn()
+    normals.AutoOrientNormalsOn()
+    normals.SplittingOff()
+    normals.Update()
+    return normals.GetOutput()
+
+
+def vtk_triangles_only(poly):
+    import vtk
+    tri = vtk.vtkTriangleFilter()
+    tri.SetInputData(poly)
+    tri.Update()
+    return tri.GetOutput()
+
+
+def vtk_poly_to_buffers(poly, compute_normals: bool):
+    import numpy as np
+    from vtk.util import numpy_support as nps
+
+    out_poly = vtk_triangles_only(poly)
+    if compute_normals:
+        out_poly = vtk_compute_normals(out_poly)
+
+    pts_vtk = out_poly.GetPoints()
+    if pts_vtk is None:
+        raise RuntimeError("VTK output missing points")
+    pts_np = nps.vtk_to_numpy(pts_vtk.GetData())
+    if pts_np is None or pts_np.size == 0:
+        raise RuntimeError("VTK output has empty points")
+    pts_np = np.asarray(pts_np, dtype=np.float32)
+
+    polys = out_poly.GetPolys()
+    if polys is None:
+        raise RuntimeError("VTK output missing polys")
+    cell_data = nps.vtk_to_numpy(polys.GetData())
+    if cell_data is None or cell_data.size == 0:
+        raise RuntimeError("VTK output has empty polys")
+    if cell_data.size % 4 != 0:
+        raise RuntimeError("VTK polys are not triangles")
+    cells = cell_data.reshape(-1, 4)
+    if not np.all(cells[:, 0] == 3):
+        raise RuntimeError("Non-triangle cells found after triangle filter")
+    indices = cells[:, 1:4].astype(np.uint32, copy=False)
+
+    normals_buf = None
+    if compute_normals:
+        n_arr = out_poly.GetPointData().GetNormals()
+        if n_arr is not None:
+            normals_np = nps.vtk_to_numpy(n_arr)
+            if normals_np is not None and normals_np.size == pts_np.size:
+                normals_buf = np.asarray(normals_np, dtype=np.float32).tobytes(order="C")
+
+    return (
+        pts_np.tobytes(order="C"),
+        indices.tobytes(order="C"),
+        normals_buf,
+        int(pts_np.shape[0]),
+        int(indices.shape[0]),
+    )
+
+
+def handle_vtk_job(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    op = msg.get("op") or msg.get("action")
+    if not op:
+        raise RuntimeError("Missing op for vtk_job")
+    if not payloads:
+        raise RuntimeError("Missing binary payloads for vtk_job")
+    pos_bytes = payloads.get("positions")
+    idx_bytes = payloads.get("indices")
+    if not pos_bytes or not idx_bytes:
+        raise RuntimeError("vtk_job requires positions + indices buffers")
+
+    try:
+        import vtk  # noqa: F401
+    except Exception as e:
+        raise RuntimeError(f"VTK not available: {e}")
+
+    options = msg.get("options") or {}
+    compute_normals = bool(options.get("computeNormals", True))
+
+    poly = vtk_poly_from_buffers(pos_bytes, idx_bytes)
+    if op == "vtk_clean_normals":
+        import vtk
+        clean = vtk.vtkCleanPolyData()
+        clean.SetInputData(poly)
+        clean.PointMergingOn()
+        clean.Update()
+        tri = vtk_triangles_only(clean.GetOutput())
+        out_poly = vtk_compute_normals(tri)
+        compute_normals = True
+    elif op == "vtk_decimate":
+        import vtk
+        tri = vtk_triangles_only(poly)
+        target_reduction = options.get("targetReduction")
+        target_faces = options.get("targetFaces")
+        reduction = None
+        if isinstance(target_faces, (int, float)) and target_faces > 0:
+            face_count = max(1, int(tri.GetNumberOfPolys()))
+            reduction = 1.0 - float(target_faces) / float(face_count)
+        if reduction is None:
+            reduction = float(target_reduction or 0.5)
+        reduction = min(max(reduction, 0.0), 0.95)
+        dec = vtk.vtkDecimatePro()
+        dec.SetInputData(tri)
+        dec.SetTargetReduction(reduction)
+        dec.PreserveTopologyOn()
+        dec.BoundaryVertexDeletionOff()
+        dec.Update()
+        out_poly = dec.GetOutput()
+    elif op == "vtk_smooth":
+        import vtk
+        tri = vtk_triangles_only(poly)
+        iterations = int(options.get("iterations", 20))
+        iterations = max(1, min(200, iterations))
+        passband = float(options.get("passband", 0.1))
+        passband = min(max(passband, 0.001), 1.0)
+        smooth = vtk.vtkWindowedSincPolyDataFilter()
+        smooth.SetInputData(tri)
+        smooth.SetNumberOfIterations(iterations)
+        smooth.SetPassBand(passband)
+        smooth.NormalizeCoordinatesOn()
+        smooth.FeatureEdgeSmoothingOff()
+        smooth.BoundarySmoothingOn()
+        smooth.NonManifoldSmoothingOn()
+        smooth.Update()
+        out_poly = smooth.GetOutput()
+    else:
+        raise RuntimeError(f"Unknown vtk op: {op}")
+
+    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(out_poly, compute_normals)
+    parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
+    if normals_out:
+        parts.append(("normals", normals_out))
+
+    send_binary(
+        {
+            "type": "vtk_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vcount,
+            "triCount": tcount,
+        },
+        parts,
+    )
+
 def main() -> None:
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            msg = json.loads(line)
-        except Exception as e:
-            send({"type": "error", "jobId": "", "message": f"Bad JSON: {e}"})
+    while True:
+        msg, payloads, eof = read_message()
+        if eof:
+            break
+        if msg is None:
             continue
 
         if msg.get("type") == "mesh_job":
             try:
                 handle_job(msg)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "vtk_job":
+            try:
+                handle_vtk_job(msg, payloads)
             except Exception as e:
                 send({
                     "type": "error",

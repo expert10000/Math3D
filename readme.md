@@ -258,6 +258,21 @@ Slicing adds multi-plane cross sections:
 Slicing is effective for understanding the implicit surfaces because it reveals how the
 level set intersects coordinate planes.
 
+## Python setup
+
+The Python worker powers CGAL meshing and the new VTK mesh ops. Install these into the
+Python environment used by the app (set `MATH3D_PYTHON` if needed):
+
+```bash
+python -m pip install numpy scipy sympy pygalmesh vtk
+```
+
+## Latest changes (2026-01)
+
+- Added a Python VTK pipeline (clean normals, decimate, smooth) with binary IPC buffers.
+- Added VTK mesh ops UI to push any surface mesh through the worker and return a new SurfaceMesh.
+- Enabled ridge/valley overlays for SurfaceMesh and added mesh presets that show features clearly.
+
 Slice plane intersections for graph surfaces are computed by defining a unit normal n and
 offset c so the plane is n dot X = c. For graph surfaces z=f(x,y), we sample
 g(x,y)=nx*x + ny*f(x,y) + nz*y - c on a grid and run marching squares at level 0 to get

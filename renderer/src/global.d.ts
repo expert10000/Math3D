@@ -53,6 +53,30 @@ declare global {
     | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
     | { ok: false; error: string };
 
+  type VtkMeshRequest = {
+    jobId: string;
+    positions: ArrayBuffer | ArrayBufferView;
+    indices: ArrayBuffer | ArrayBufferView;
+    options?: {
+      targetReduction?: number;
+      targetFaces?: number;
+      iterations?: number;
+      passband?: number;
+      computeNormals?: boolean;
+    };
+  };
+
+  type VtkMeshResponse =
+    | {
+        ok: true;
+        positions: ArrayBuffer | ArrayBufferView;
+        indices: ArrayBuffer | ArrayBufferView;
+        normals?: ArrayBuffer | ArrayBufferView;
+        vertexCount: number;
+        triCount: number;
+      }
+    | { ok: false; error: string };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -64,6 +88,11 @@ declare global {
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
       geodesicHeat: (req: GeodesicHeatRequest) => Promise<GeodesicHeatResponse>;
+    };
+    vtkMesh?: {
+      cleanNormals: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
+      decimate: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
+      smooth: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
     };
   }
 }

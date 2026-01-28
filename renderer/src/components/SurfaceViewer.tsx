@@ -16,6 +16,7 @@ import { integrateGeodesic } from "../math/geodesic";
 
 import { scalarToColor01, type ColorPalette, solidColorForPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
+import type { MeshValidation } from "../mesh/surfaceMesh";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
@@ -47,6 +48,16 @@ type CameraSyncState = {
 type ImplicitMeshOverride = {
   positions: number[];
   indices: number[];
+};
+
+type SurfaceMeshOverride = {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+  normals?: ArrayLike<number> | null;
+  uvs?: ArrayLike<number> | null;
+  adjacency?: number[][] | null;
+  meanEdgeLength?: number | null;
+  validation?: MeshValidation | null;
 };
 
 const DBG_COLORS = false;
@@ -105,7 +116,8 @@ export type SurfaceId =
   | "graph_sinc2"
   | "graph_custom"
   // implicit f(x,y,z)=0
-  | "implicit_custom";
+  | "implicit_custom"
+  | "surface_mesh";
 
 export type ProbeInfo = {
   point: { x: number; y: number; z: number };
@@ -701,6 +713,7 @@ type Props = {
   graphExpr?: string;
   implicitExpr?: string;
   implicitMeshOverride?: ImplicitMeshOverride | null;
+  surfaceMeshOverride?: SurfaceMeshOverride | null;
   implicitMeshToken?: number;
 
   wireframe?: boolean;
@@ -861,6 +874,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     graphExpr,
     implicitExpr,
     implicitMeshOverride = null,
+    surfaceMeshOverride = null,
     implicitMeshToken,
 
     wireframe,
@@ -1633,6 +1647,7 @@ useEffect(() => {
 
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
+    const isMeshSurface = surfaceId === "surface_mesh";
     if (!isGraphSurface && !isImplicitSurface) return;
     if (!showContours || contourCount <= 0) return;
 
@@ -2327,6 +2342,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const implicitRes = Math.max(18, Math.round(implicitResolution));
     const useImplicitOverride =
       !!implicitMeshOverride?.positions?.length && !!implicitMeshOverride?.indices?.length;
+    const useSurfaceMeshOverride =
+      surfaceId === "surface_mesh" && !!surfaceMeshOverride?.positions?.length;
 
     const makeMaterial = () =>
       new THREE.MeshStandardMaterial({
@@ -2372,6 +2389,40 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return mesh;
     };
 
+    const makeSurfaceMeshOverrideMesh = () => {
+      const geom = new THREE.BufferGeometry();
+      const positions = surfaceMeshOverride?.positions ?? [];
+      const normals = surfaceMeshOverride?.normals ?? null;
+      const uvs = surfaceMeshOverride?.uvs ?? null;
+      const indices = surfaceMeshOverride?.indices ?? null;
+      const validation = surfaceMeshOverride?.validation ?? null;
+      const nanNormals = validation?.stats?.nanNormals ?? 0;
+
+      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+
+      if (indices && indices.length >= 3) {
+        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
+        geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+      }
+
+      if (uvs && uvs.length >= 2) {
+        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
+        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+      }
+
+      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      if (normalsOk) {
+        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
+        geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+      } else {
+        geom.computeVertexNormals();
+      }
+
+      if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
+      return new THREE.Mesh(geom, makeMaterial());
+    };
+
     // Build an implicit surface by sampling f on a cubic grid and extracting the 0-isosurface.
     const makeImplicitSurface = (f: (x: number, y: number, z: number) => number, size = 2.2) => {
       const finalSize = resolveImplicitSize(size);
@@ -2409,6 +2460,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const makeSurface = (id: SurfaceId): THREE.Object3D => {
         switch (id) {
+          case "surface_mesh": {
+            if (useSurfaceMeshOverride) return makeSurfaceMeshOverrideMesh();
+            const geo = new THREE.SphereGeometry(1, 32, 24);
+            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+            return new THREE.Mesh(geo, makeMaterial());
+          }
           case "sphere": {
             const f = (x: number, y: number, z: number) => x * x + y * y + z * z - 1;
             if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
@@ -3074,9 +3131,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!intersects.length) return;
 
       const isGraphSurface = isGraphId(surfaceId);
+      const allowMeshPick = isGraphSurface || surfaceId === "surface_mesh";
       let hit = intersects[0];
       if (geodesicHeatEnabledRef.current || geodesicDiskPickEnabledRef.current) {
-        const heatHit = isGraphSurface
+        const heatHit = allowMeshPick
           ? intersects.find((candidate) => typeof (candidate as any).faceIndex === "number")
           : intersects.find((candidate) => {
             const obj = candidate.object as any;
@@ -3111,7 +3169,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const geom = mesh.geometry as THREE.BufferGeometry;
             const faceIndex = (hit as any).faceIndex;
             const implicitMeta = (mesh as any)?.userData?.__implicit as { source?: string } | undefined;
-            const allowDiskPick = isGraphSurface || implicitMeta?.source === "cgal";
+            const allowDiskPick = isGraphSurface || surfaceId === "surface_mesh" || implicitMeta?.source === "cgal";
             if (geom && typeof faceIndex === "number" && allowDiskPick) {
               const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
               const idxAttr = geom.getIndex();
@@ -3157,7 +3215,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const geom = mesh.geometry as THREE.BufferGeometry;
             const faceIndex = (hit as any).faceIndex;
             const implicitMeta = (mesh as any)?.userData?.__implicit as { source?: string } | undefined;
-            const allowHeatPick = isGraphSurface || implicitMeta?.source === "cgal";
+            const allowHeatPick = isGraphSurface || surfaceId === "surface_mesh" || implicitMeta?.source === "cgal";
             if (geom && typeof faceIndex === "number" && allowHeatPick) {
               const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
               const idxAttr = geom.getIndex();
@@ -3506,8 +3564,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     implicitProbeToken,
       graphResolution,
       implicitResolution,
-      implicitMeshToken,
-      implicitDomainSize,
+    implicitMeshToken,
+    surfaceMeshOverride,
+    implicitDomainSize,
       graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
@@ -4666,6 +4725,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     implicitResolution,
+    surfaceMeshOverride,
     sceneEpoch,
   ]);
 
@@ -4684,7 +4744,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const isGraphSurface = isGraphId(surfaceId);
     const isImplicitSurface = isImplicitId(surfaceId);
-    if (!isGraphSurface && !isImplicitSurface) {
+    const isMeshSurface = surfaceId === "surface_mesh";
+    if (!isGraphSurface && !isImplicitSurface && !isMeshSurface) {
       principalFieldRef.current = { key, data: null };
       return null;
     }
@@ -4804,7 +4865,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     }
 
-    const normalsOut = isImplicitSurface ? new Float32Array(vertexCount * 3) : normals;
+    const normalsOut = isImplicitSurface || isMeshSurface ? new Float32Array(vertexCount * 3) : normals;
     const k1 = new Float32Array(vertexCount);
     const k2 = new Float32Array(vertexCount);
     const d1 = new Float32Array(vertexCount * 3);
@@ -4863,6 +4924,158 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         d2[nIdx] = res.dir2.x;
         d2[nIdx + 1] = res.dir2.y;
         d2[nIdx + 2] = res.dir2.z;
+      }
+    } else if (isMeshSurface) {
+      const index = geometry.getIndex() ? (geometry.getIndex()!.array as ArrayLike<number>) : null;
+      const meshAdjacency = surfaceMeshOverride?.adjacency ?? null;
+      const neighbors =
+        meshAdjacency && meshAdjacency.length === vertexCount
+          ? meshAdjacency
+          : buildVertexAdjacency(index, vertexCount, positions);
+      const tmpNormal = new THREE.Vector3();
+      const tmpE1 = new THREE.Vector3();
+      const tmpE2 = new THREE.Vector3();
+
+      for (let i = 0; i < vertexCount; i++) {
+        const idx = i * 3;
+        tmpNormal.set(normals[idx], normals[idx + 1], normals[idx + 2]);
+        const nLen = tmpNormal.length();
+        if (!Number.isFinite(nLen) || nLen < 1e-8) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          normalsOut[idx] = NaN;
+          normalsOut[idx + 1] = NaN;
+          normalsOut[idx + 2] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          continue;
+        }
+        tmpNormal.multiplyScalar(1 / nLen);
+        normalsOut[idx] = tmpNormal.x;
+        normalsOut[idx + 1] = tmpNormal.y;
+        normalsOut[idx + 2] = tmpNormal.z;
+
+        const nbrs = neighbors[i];
+        if (!nbrs || nbrs.length < 2) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          continue;
+        }
+
+        const basis = makePlaneBasis(tmpNormal);
+        tmpE1.copy(basis.e1);
+        tmpE2.copy(basis.e2);
+
+        let sumU = 0;
+        let sumV = 0;
+        let sumU2 = 0;
+        let sumV2 = 0;
+        let sumUV = 0;
+        let count = 0;
+
+        const px = positions[idx];
+        const py = positions[idx + 1];
+        const pz = positions[idx + 2];
+
+        for (let n = 0; n < nbrs.length; n++) {
+          const j = nbrs[n];
+          if (j < 0 || j >= vertexCount) continue;
+          const jIdx = j * 3;
+          let vx = positions[jIdx] - px;
+          let vy = positions[jIdx + 1] - py;
+          let vz = positions[jIdx + 2] - pz;
+          const ndot = vx * tmpNormal.x + vy * tmpNormal.y + vz * tmpNormal.z;
+          vx -= ndot * tmpNormal.x;
+          vy -= ndot * tmpNormal.y;
+          vz -= ndot * tmpNormal.z;
+          const u = vx * tmpE1.x + vy * tmpE1.y + vz * tmpE1.z;
+          const v = vx * tmpE2.x + vy * tmpE2.y + vz * tmpE2.z;
+          if (!Number.isFinite(u) || !Number.isFinite(v)) continue;
+          sumU += u;
+          sumV += v;
+          sumU2 += u * u;
+          sumV2 += v * v;
+          sumUV += u * v;
+          count += 1;
+        }
+
+        if (count < 2) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          continue;
+        }
+
+        const inv = 1 / count;
+        const meanU = sumU * inv;
+        const meanV = sumV * inv;
+        const sxx = sumU2 * inv - meanU * meanU;
+        const syy = sumV2 * inv - meanV * meanV;
+        const sxy = sumUV * inv - meanU * meanV;
+        if (!Number.isFinite(sxx) || !Number.isFinite(syy) || !Number.isFinite(sxy)) {
+          k1[i] = NaN;
+          k2[i] = NaN;
+          d1[idx] = NaN;
+          d1[idx + 1] = NaN;
+          d1[idx + 2] = NaN;
+          d2[idx] = NaN;
+          d2[idx + 1] = NaN;
+          d2[idx + 2] = NaN;
+          continue;
+        }
+
+        const trace = sxx + syy;
+        const diff = sxx - syy;
+        const disc = Math.sqrt(diff * diff + 4 * sxy * sxy);
+        const lambda1 = 0.5 * (trace + disc);
+        const lambda2 = 0.5 * (trace - disc);
+        k1[i] = lambda1;
+        k2[i] = lambda2;
+
+        let vx = sxy;
+        let vy = lambda1 - sxx;
+        if (Math.abs(vx) + Math.abs(vy) < 1e-10) {
+          vx = lambda1 - syy;
+          vy = sxy;
+        }
+        if (Math.abs(vx) + Math.abs(vy) < 1e-10) {
+          vx = 1;
+          vy = 0;
+        }
+        const vlen = Math.hypot(vx, vy);
+        vx /= vlen;
+        vy /= vlen;
+
+        const d1x = tmpE1.x * vx + tmpE2.x * vy;
+        const d1y = tmpE1.y * vx + tmpE2.y * vy;
+        const d1z = tmpE1.z * vx + tmpE2.z * vy;
+        const d1len = Math.hypot(d1x, d1y, d1z) || 1;
+        d1[idx] = d1x / d1len;
+        d1[idx + 1] = d1y / d1len;
+        d1[idx + 2] = d1z / d1len;
+
+        const d2x = tmpNormal.y * d1[idx + 2] - tmpNormal.z * d1[idx + 1];
+        const d2y = tmpNormal.z * d1[idx] - tmpNormal.x * d1[idx + 2];
+        const d2z = tmpNormal.x * d1[idx + 1] - tmpNormal.y * d1[idx];
+        const d2len = Math.hypot(d2x, d2y, d2z) || 1;
+        d2[idx] = d2x / d2len;
+        d2[idx + 1] = d2y / d2len;
+        d2[idx + 2] = d2z / d2len;
       }
     } else if (isImplicitSurface && implicitF) {
       const baseSize = implicitSize ?? radiusRef.current ?? 3;
@@ -4952,6 +5165,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!showCurvatureLines) return;
 
     const isImplicitSurface = isImplicitId(surfaceId);
+    const isMeshSurface = surfaceId === "surface_mesh";
     let field = getPrincipalField();
     if (isImplicitSurface) {
       const sampleSet = sampleSetRef.current;
@@ -5058,6 +5272,47 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (!field) return;
 
     const { positions, normals, d1, d2, vertexCount, index } = field;
+    const estimateEdgeSpacing = (idx: ArrayLike<number> | null, pos: Float32Array, vCount: number) => {
+      let sum = 0;
+      let edges = 0;
+      const maxTris = 6000;
+      if (idx && idx.length >= 3) {
+        const triCount = Math.min(Math.floor(idx.length / 3), maxTris);
+        for (let t = 0; t < triCount; t++) {
+          const base = t * 3;
+          const a = Number(idx[base]);
+          const b = Number(idx[base + 1]);
+          const c = Number(idx[base + 2]);
+          if (a < 0 || b < 0 || c < 0 || a >= vCount || b >= vCount || c >= vCount) continue;
+          const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+          const bx = pos[b * 3], by = pos[b * 3 + 1], bz = pos[b * 3 + 2];
+          const cx = pos[c * 3], cy = pos[c * 3 + 1], cz = pos[c * 3 + 2];
+          const ab = Math.hypot(ax - bx, ay - by, az - bz);
+          const bc = Math.hypot(bx - cx, by - cy, bz - cz);
+          const ca = Math.hypot(cx - ax, cy - ay, cz - az);
+          if (Number.isFinite(ab)) { sum += ab; edges++; }
+          if (Number.isFinite(bc)) { sum += bc; edges++; }
+          if (Number.isFinite(ca)) { sum += ca; edges++; }
+        }
+      } else if (vCount >= 3) {
+        const triCount = Math.min(Math.floor(vCount / 3), maxTris);
+        for (let t = 0; t < triCount; t++) {
+          const a = t * 3;
+          const b = t * 3 + 1;
+          const c = t * 3 + 2;
+          const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+          const bx = pos[b * 3], by = pos[b * 3 + 1], bz = pos[b * 3 + 2];
+          const cx = pos[c * 3], cy = pos[c * 3 + 1], cz = pos[c * 3 + 2];
+          const ab = Math.hypot(ax - bx, ay - by, az - bz);
+          const bc = Math.hypot(bx - cx, by - cy, bz - cz);
+          const ca = Math.hypot(cx - ax, cy - ay, cz - az);
+          if (Number.isFinite(ab)) { sum += ab; edges++; }
+          if (Number.isFinite(bc)) { sum += bc; edges++; }
+          if (Number.isFinite(ca)) { sum += ca; edges++; }
+        }
+      }
+      return edges > 0 ? sum / edges : 0;
+    };
     const buildSpatialAdjacency = (pos: Float32Array, count: number) => {
       const neighbors: Set<number>[] = Array.from({ length: count }, () => new Set<number>());
       let minX = Infinity;
@@ -5142,12 +5397,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
     let neighbors: number[][];
     let neighborSpacing = 0;
+    const meshAdjacency = isMeshSurface ? surfaceMeshOverride?.adjacency ?? null : null;
+    const meshMeanEdge = isMeshSurface ? surfaceMeshOverride?.meanEdgeLength ?? 0 : 0;
     if (isImplicitSurface && !index) {
       const built = buildSpatialAdjacency(positions, vertexCount);
       neighbors = built.neighbors;
       neighborSpacing = built.spacing;
     } else {
-      neighbors = buildVertexAdjacency(index, vertexCount, positions);
+      neighbors =
+        meshAdjacency && meshAdjacency.length === vertexCount
+          ? meshAdjacency
+          : buildVertexAdjacency(index, vertexCount, positions);
+      if (neighborSpacing <= 0) {
+        if (isMeshSurface && Number.isFinite(meshMeanEdge) && meshMeanEdge > 0) {
+          neighborSpacing = meshMeanEdge;
+        } else if (isMeshSurface || !isImplicitSurface) {
+          neighborSpacing = estimateEdgeSpacing(index, positions, vertexCount);
+        }
+      }
     }
     const dirField = curvatureLineField === "d2" ? d2 : d1;
     const maxStepsRaw = Math.max(10, Math.floor(curvatureMaxSteps));
@@ -5155,7 +5422,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const maxSteps = isImplicitSurface ? Math.min(maxStepsRaw, 320) : maxStepsRaw;
     const maxLines = isImplicitSurface ? Math.min(maxLinesRaw, 220) : maxLinesRaw;
     const baseStride = Math.max(1, Math.floor(curvatureSeedDensity));
-    const stride = isImplicitSurface && neighborSpacing > 0 ? Math.max(1, Math.floor(baseStride * 0.4)) : baseStride;
+    const stride =
+      (isImplicitSurface || isMeshSurface) && neighborSpacing > 0
+        ? Math.max(1, Math.floor(baseStride * 0.4))
+        : baseStride;
     const bboxDiag = (radiusRef.current || 3) * 2;
     let stepSize = curvatureStepSize > 0 ? curvatureStepSize : Math.max(1e-4, bboxDiag / 200);
     if (neighborSpacing > 0) {
@@ -5244,7 +5514,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         neighbors,
         maxSteps,
         stepSize,
-        minCos: isImplicitSurface ? 0.05 : undefined,
+        minCos: isImplicitSurface ? 0.05 : isMeshSurface ? 0.05 : undefined,
       });
       if (path.length < 2) continue;
       paths.push(path);
@@ -5284,6 +5554,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     implicitResolution,
+    surfaceMeshOverride,
     sceneEpoch,
   ]);
 
@@ -5303,11 +5574,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (!showRidges && !showValleys) return;
 
+    const isMeshSurface = surfaceId === "surface_mesh";
     const field = getPrincipalField();
     if (!field) return;
 
     const { positions, k1, k2, d1, d2, vertexCount, index } = field;
-    const neighbors = buildRidgeAdjacency(index, vertexCount);
+    const meshAdjacency = isMeshSurface ? surfaceMeshOverride?.adjacency ?? null : null;
+    const neighbors =
+      meshAdjacency && meshAdjacency.length === vertexCount
+        ? meshAdjacency
+        : buildRidgeAdjacency(index, vertexCount);
     const bboxDiag = (radiusRef.current || 3) * 2;
     const segmentLength = ridgeValleyStitch
       ? 0

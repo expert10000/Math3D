@@ -1,8 +1,6 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import fs from "node:fs";
 import path from "node:path";
-import readline from "node:readline";
-
 import type {
   CgalMeshRequest,
   CgalMeshResponse,
@@ -10,10 +8,42 @@ import type {
   GeodesicHeatResponse,
 } from "../ipc/cgalMeshIpc";
 
+export type VtkMeshOp = "vtk_clean_normals" | "vtk_decimate" | "vtk_smooth";
+export type VtkMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  options?: {
+    targetReduction?: number;
+    targetFaces?: number;
+    iterations?: number;
+    passband?: number;
+    computeNormals?: boolean;
+  };
+};
+export type VtkMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer;
+      indices: ArrayBuffer;
+      normals?: ArrayBuffer;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: any) => void;
   timeout: NodeJS.Timeout;
+};
+
+type BinaryPart = { name: string; bytes: number };
+type PendingBinary = {
+  jobId: string;
+  meta: any;
+  parts: BinaryPart[];
+  totalBytes: number;
 };
 
 function decodeFloat32(b64: string): number[] {
@@ -28,6 +58,21 @@ function decodeUint32(b64: string): number[] {
   return Array.from(arr);
 }
 
+function toBuffer(data: ArrayBuffer | ArrayBufferView | Buffer): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return Buffer.from([]);
+}
+
+function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
+  const out = new ArrayBuffer(buf.byteLength);
+  Buffer.from(out).set(buf);
+  return out;
+}
+
 class PythonWorker {
   private proc: ChildProcessWithoutNullStreams;
   private pending = new Map<string, Pending>();
@@ -37,6 +82,8 @@ class PythonWorker {
   private stderrLastLog = 0;
   private stderrDropped = 0;
   private stderrLastLine = "";
+  private stdoutBuffer = Buffer.alloc(0);
+  private pendingBinary: PendingBinary | null = null;
 
   constructor(proc: ChildProcessWithoutNullStreams) {
     this.proc = proc;
@@ -46,39 +93,8 @@ class PythonWorker {
     this.envLogStderr = truthy(envVerbose) || truthy(envLog);
     this.logStderr = this.envLogStderr;
 
-    const rl = readline.createInterface({ input: proc.stdout });
-    rl.on("line", (line) => {
-      if (!line) return;
-      let msg: any;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        return;
-      }
-
-      const jobId = msg.jobId;
-      if (!jobId) return;
-
-      if (msg.type === "progress") {
-        const phase = msg.phase ? ` ${msg.phase}` : "";
-        const pct = typeof msg.pct === "number" ? ` ${msg.pct}%` : "";
-        const detail = msg.msg ? ` - ${msg.msg}` : "";
-        console.log(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
-        return;
-      }
-
-      const pending = this.pending.get(jobId);
-      if (!pending) return;
-
-      clearTimeout(pending.timeout);
-      this.pending.delete(jobId);
-
-      if (msg.type === "error") {
-        pending.reject(new Error(msg.message || msg.error || "Python worker error"));
-        return;
-      }
-
-      pending.resolve(msg);
+    proc.stdout.on("data", (buf: Buffer) => {
+      this.handleStdout(buf);
     });
 
     proc.stderr.on("data", (buf) => {
@@ -114,7 +130,95 @@ class PythonWorker {
     });
   }
 
-  private request(job: any, timeoutMs = 120000): Promise<any> {
+  private resolveMessage(msg: any) {
+    const jobId = msg?.jobId;
+    if (!jobId) return;
+
+    if (msg.type === "progress") {
+      const phase = msg.phase ? ` ${msg.phase}` : "";
+      const pct = typeof msg.pct === "number" ? ` ${msg.pct}%` : "";
+      const detail = msg.msg ? ` - ${msg.msg}` : "";
+      console.log(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
+      return;
+    }
+
+    const pending = this.pending.get(jobId);
+    if (!pending) return;
+
+    clearTimeout(pending.timeout);
+    this.pending.delete(jobId);
+
+    if (msg.type === "error" || msg.ok === false) {
+      pending.reject(new Error(msg.message || msg.error || "Python worker error"));
+      return;
+    }
+
+    pending.resolve(msg);
+  }
+
+  private handleStdout(buf: Buffer) {
+    if (!buf?.length) return;
+    const chunk = Buffer.from(buf);
+    this.stdoutBuffer = this.stdoutBuffer.length ? Buffer.concat([this.stdoutBuffer, chunk]) : chunk;
+
+    while (true) {
+      if (this.pendingBinary) {
+        if (this.stdoutBuffer.length < this.pendingBinary.totalBytes) return;
+        const payload = this.stdoutBuffer.subarray(0, this.pendingBinary.totalBytes);
+        this.stdoutBuffer = this.stdoutBuffer.subarray(this.pendingBinary.totalBytes);
+
+        const payloads: Record<string, Buffer> = {};
+        let offset = 0;
+        for (const part of this.pendingBinary.parts) {
+          const next = offset + part.bytes;
+          payloads[part.name] = payload.subarray(offset, next);
+          offset = next;
+        }
+
+        const msg = { ...this.pendingBinary.meta, binaryPayloads: payloads };
+        this.pendingBinary = null;
+        this.resolveMessage(msg);
+        continue;
+      }
+
+      const nl = this.stdoutBuffer.indexOf(10);
+      if (nl < 0) return;
+      const lineBuf = this.stdoutBuffer.subarray(0, nl);
+      this.stdoutBuffer = this.stdoutBuffer.subarray(nl + 1);
+
+      if (!lineBuf.length) continue;
+      let msg: any;
+      try {
+        msg = JSON.parse(lineBuf.toString("utf8"));
+      } catch {
+        continue;
+      }
+
+      const binaryParts: BinaryPart[] = Array.isArray(msg?.binary)
+        ? msg.binary
+            .map((p: any) => ({
+              name: String(p?.name ?? ""),
+              bytes: Number(p?.bytes ?? 0),
+            }))
+            .filter((p: BinaryPart) => p.name && p.bytes > 0)
+        : [];
+
+      if (binaryParts.length && msg?.jobId) {
+        const total = binaryParts.reduce((sum, p) => sum + p.bytes, 0);
+        this.pendingBinary = { jobId: msg.jobId, meta: msg, parts: binaryParts, totalBytes: total };
+        if (total === 0) {
+          const msgWithPayloads = { ...msg, binaryPayloads: {} };
+          this.pendingBinary = null;
+          this.resolveMessage(msgWithPayloads);
+        }
+        continue;
+      }
+
+      this.resolveMessage(msg);
+    }
+  }
+
+  private request(job: any, timeoutMs = 120000, payloads?: Buffer[]): Promise<any> {
     const jobId: string = job.jobId;
     return new Promise((resolve, reject) => {
       if (!jobId) {
@@ -129,6 +233,11 @@ class PythonWorker {
 
       this.pending.set(jobId, { resolve, reject, timeout });
       this.proc.stdin.write(JSON.stringify(job) + "\n");
+      if (payloads && payloads.length) {
+        for (const payload of payloads) {
+          if (payload?.length) this.proc.stdin.write(payload);
+        }
+      }
     });
   }
 
@@ -259,6 +368,57 @@ class PythonWorker {
       polyline: res.polyline,
       length: typeof res.length === "number" ? res.length : 0,
       phi_vertex: Array.isArray(res.phi_vertex) ? res.phi_vertex : undefined,
+    };
+  }
+
+  async vtkMesh(op: VtkMeshOp, req: VtkMeshRequest): Promise<VtkMeshResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "VTK mesh request missing buffers" };
+    }
+
+    const msg = {
+      type: "vtk_job",
+      jobId: req.jobId,
+      op,
+      options: req.options ?? {},
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK worker response" };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK worker returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
   }
 
