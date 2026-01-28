@@ -65,6 +65,16 @@ export type VtkMeshResponse =
     }
   | { ok: false; error: string };
 
+export type VtkPreviewRequest = {
+  jobId: string;
+  expr: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  resolution: number;
+  targetFaces?: number;
+  targetReduction?: number;
+};
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -94,4 +104,6 @@ contextBridge.exposeInMainWorld("vtkMesh", {
     ipcRenderer.invoke("mesh:vtk:decimate", req),
   smooth: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
     ipcRenderer.invoke("mesh:vtk:smooth", req),
+  previewImplicit: (req: VtkPreviewRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:preview", req),
 });

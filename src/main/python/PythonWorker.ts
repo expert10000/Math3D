@@ -32,6 +32,16 @@ export type VtkMeshResponse =
     }
   | { ok: false; error: string };
 
+export type VtkPreviewRequest = {
+  jobId: string;
+  expr: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  resolution: number;
+  targetFaces?: number;
+  targetReduction?: number;
+};
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: any) => void;
@@ -409,6 +419,51 @@ class PythonWorker {
     const idx = payloads?.indices;
     if (!pos || !idx) {
       return { ok: false, error: "VTK worker returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkPreviewImplicit(req: VtkPreviewRequest): Promise<VtkMeshResponse> {
+    const msg = {
+      type: "vtk_preview",
+      jobId: req.jobId,
+      expr: req.expr,
+      iso: req.iso,
+      bbox: req.domain,
+      resolution: req.resolution,
+      targetFaces: req.targetFaces,
+      targetReduction: req.targetReduction,
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk preview response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK preview response" };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK preview returned empty buffers" };
     }
 
     const normals = payloads?.normals;

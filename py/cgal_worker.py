@@ -376,6 +376,7 @@ def handle_health(msg: Dict[str, Any]) -> None:
         import sympy  # noqa: F401
         import numpy  # noqa: F401
         import scipy  # noqa: F401
+        import vtk  # noqa: F401
     except Exception as e:
         send({
             "type": "error",
@@ -420,6 +421,109 @@ def handle_geodesic_heat(msg: Dict[str, Any]) -> None:
     res["type"] = "geodesic_heat_result"
     res["jobId"] = job_id
     send(res)
+
+
+def handle_vtk_preview(msg: Dict[str, Any]) -> None:
+    job_id = msg.get("jobId", "")
+    expr = msg.get("expr", "") or msg.get("f", "")
+    if not expr:
+        raise RuntimeError("Missing expr for vtk preview")
+    iso = float(msg.get("iso", 0.0))
+    bbox = msg.get("bbox") or msg.get("domain")
+    if not bbox or "min" not in bbox or "max" not in bbox:
+        raise RuntimeError("Missing bbox for vtk preview")
+    bmin = [float(v) for v in bbox["min"]]
+    bmax = [float(v) for v in bbox["max"]]
+
+    resolution = int(msg.get("resolution", 80))
+    resolution = max(8, min(220, resolution))
+
+    try:
+        import numpy as np
+        import vtk
+        from vtk.util import numpy_support as nps
+    except Exception as e:
+        raise RuntimeError(f"VTK preview requires numpy+vtk: {e}")
+
+    send({"type": "progress", "jobId": job_id, "phase": "parse", "pct": 5, "msg": "parsing expression"})
+    f_sym = safe_lambdify(expr)
+
+    xs = np.linspace(bmin[0], bmax[0], resolution, dtype=np.float32)
+    ys = np.linspace(bmin[1], bmax[1], resolution, dtype=np.float32)
+    zs = np.linspace(bmin[2], bmax[2], resolution, dtype=np.float32)
+    X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
+    try:
+        vals = f_sym(X, Y, Z).astype(np.float32) - np.float32(iso)
+    except Exception as e:
+        raise RuntimeError(f"Failed to evaluate expression on grid: {e}")
+
+    safe_scale = np.float32(1e6 * (1.0 + abs(iso)))
+    vals = np.where(np.isfinite(vals), vals, safe_scale).astype(np.float32, copy=False)
+
+    img = vtk.vtkImageData()
+    img.SetDimensions(resolution, resolution, resolution)
+    dx = (bmax[0] - bmin[0]) / max(1, resolution - 1)
+    dy = (bmax[1] - bmin[1]) / max(1, resolution - 1)
+    dz = (bmax[2] - bmin[2]) / max(1, resolution - 1)
+    img.SetOrigin(bmin[0], bmin[1], bmin[2])
+    img.SetSpacing(dx, dy, dz)
+
+    flat = vals.ravel(order="F")
+    scalars = nps.numpy_to_vtk(flat, deep=1, array_type=vtk.VTK_FLOAT)
+    img.GetPointData().SetScalars(scalars)
+
+    send({"type": "progress", "jobId": job_id, "phase": "meshing", "pct": 35, "msg": "running VTK flying edges"})
+    if hasattr(vtk, "vtkFlyingEdges3D"):
+        fe = vtk.vtkFlyingEdges3D()
+        fe.SetInputData(img)
+        fe.SetValue(0, 0.0)
+        fe.Update()
+        poly = fe.GetOutput()
+    else:
+        mc = vtk.vtkMarchingCubes()
+        mc.SetInputData(img)
+        mc.SetValue(0, 0.0)
+        mc.Update()
+        poly = mc.GetOutput()
+
+    target_faces = msg.get("targetFaces")
+    target_reduction = msg.get("targetReduction")
+    if target_faces or target_reduction:
+        try:
+            tri = vtk_triangles_only(poly)
+            face_count = max(1, int(tri.GetNumberOfPolys()))
+            reduction = None
+            if isinstance(target_faces, (int, float)) and target_faces > 0:
+                reduction = 1.0 - float(target_faces) / float(face_count)
+            if reduction is None:
+                reduction = float(target_reduction or 0.5)
+            reduction = min(max(reduction, 0.0), 0.95)
+            dec = vtk.vtkDecimatePro()
+            dec.SetInputData(tri)
+            dec.SetTargetReduction(reduction)
+            dec.PreserveTopologyOn()
+            dec.BoundaryVertexDeletionOff()
+            dec.Update()
+            poly = dec.GetOutput()
+        except Exception:
+            pass
+
+    send({"type": "progress", "jobId": job_id, "phase": "encode", "pct": 85, "msg": "encoding buffers"})
+    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(poly, True)
+    parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
+    if normals_out:
+        parts.append(("normals", normals_out))
+
+    send_binary(
+        {
+            "type": "vtk_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vcount,
+            "triCount": tcount,
+        },
+        parts,
+    )
 
 
 def vtk_poly_from_buffers(pos_bytes: bytes, idx_bytes: bytes):
@@ -629,6 +733,16 @@ def main() -> None:
         elif msg.get("type") == "vtk_job":
             try:
                 handle_vtk_job(msg, payloads)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "vtk_preview":
+            try:
+                handle_vtk_preview(msg)
             except Exception as e:
                 send({
                     "type": "error",

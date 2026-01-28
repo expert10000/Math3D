@@ -77,6 +77,16 @@ declare global {
       }
     | { ok: false; error: string };
 
+  type VtkPreviewRequest = {
+    jobId: string;
+    expr: string;
+    iso: number;
+    domain: { min: [number, number, number]; max: [number, number, number] };
+    resolution: number;
+    targetFaces?: number;
+    targetReduction?: number;
+  };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -93,6 +103,7 @@ declare global {
       cleanNormals: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       decimate: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       smooth: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
+      previewImplicit: (req: VtkPreviewRequest) => Promise<VtkMeshResponse>;
     };
   }
 }

@@ -45,7 +45,7 @@ import {
 import { buildGeodesicDisk } from "./math/geodesicDisk";
 import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
-import { vtkCleanNormals, vtkDecimate, vtkSmooth } from "./services/vtkMeshClient";
+import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import {
   solveContinuousParamGeodesic,
@@ -714,6 +714,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [vtkUseTargetFaces, setVtkUseTargetFaces] = useState(false);
   const [vtkSmoothIterations, setVtkSmoothIterations] = useState(20);
   const [vtkSmoothPassband, setVtkSmoothPassband] = useState(0.1);
+  const [vtkPreviewBusy, setVtkPreviewBusy] = useState(false);
+  const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
+  const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
+  const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -1042,6 +1046,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : surfaceViewerKind === "mesh"
         ? "surface_mesh"
         : implicitSurfaceId;
+  const activeImplicitExpr = useMemo(() => {
+    const fallback = (implicitExpr ?? "").trim();
+    if (implicitSurfaceId === "implicit_custom") return fallback;
+    const preset = IMPLICIT_EXPR_PRESETS.find((p) => p.id === implicitSurfaceId);
+    return (preset?.expr ?? fallback).trim();
+  }, [implicitSurfaceId, implicitExpr]);
   const surfaceMeshLabel = surfaceMeshData?.label ?? "SurfaceMesh";
   const surfaceMeshStats = useMemo(() => {
     if (!surfaceMeshData?.positions?.length) return null;
@@ -1532,9 +1542,9 @@ case "mobius":
   const activeCgalMesh = useMemo(() => {
     if (!cgalMeshState) return null;
     if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
-    if (cgalMeshState.expr !== implicitExpr) return null;
+    if (cgalMeshState.expr !== activeImplicitExpr) return null;
     return cgalMeshState;
-  }, [cgalMeshState, activeEqSurfaceId, implicitExpr]);
+  }, [cgalMeshState, activeEqSurfaceId, activeImplicitExpr]);
 
   const buildActiveMeshLabel = useCallback(() => {
     const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
@@ -3408,6 +3418,54 @@ case "mobius":
     [cgalEstimatedTris, cgalTriBudgetEnabled, cgalAutoTargetEdge]
   );
 
+  const handleVtkPreviewImplicit = useCallback(async () => {
+    if (vtkBusy || vtkPreviewBusy) return;
+    if (surfaceViewerKind !== "implicit") {
+      setVtkPreviewError("VTK preview is available only in the implicit viewer.");
+      return;
+    }
+
+    const expr = activeImplicitExpr;
+    if (!expr) {
+      setVtkPreviewError("Implicit expression is empty.");
+      return;
+    }
+
+    const resolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
+    const targetFaces = Number.isFinite(vtkPreviewTargetFaces) ? Math.max(200, Math.round(vtkPreviewTargetFaces)) : 20000;
+
+    setVtkPreviewBusy(true);
+    setVtkPreviewError(null);
+    try {
+      const res = await vtkPreviewImplicit({
+        expr,
+        iso: 0,
+        domain: cgalDomainPreview,
+        resolution,
+        targetFaces: vtkPreviewUseDecimate ? targetFaces : undefined,
+      });
+      if (!res.ok) {
+        setVtkPreviewError(res.error);
+        return;
+      }
+      applyVtkResultToSurfaceMesh("VTK preview", res);
+    } catch (err: any) {
+      setVtkPreviewError(err?.message ?? "VTK preview failed.");
+    } finally {
+      setVtkPreviewBusy(false);
+    }
+  }, [
+    vtkBusy,
+    vtkPreviewBusy,
+    surfaceViewerKind,
+    activeImplicitExpr,
+    implicitResolution,
+    vtkPreviewTargetFaces,
+    vtkPreviewUseDecimate,
+    cgalDomainPreview,
+    applyVtkResultToSurfaceMesh,
+  ]);
+
   const handleRunCgalMesh = useCallback(async () => {
     setCgalError(null);
 
@@ -3416,7 +3474,7 @@ case "mobius":
       return;
     }
 
-    const expr = (implicitExpr ?? "").trim();
+    const expr = activeImplicitExpr;
     if (!expr) {
       setCgalError("Implicit expression is empty.");
       return;
@@ -3496,7 +3554,7 @@ case "mobius":
     }
   }, [
     surfaceViewerKind,
-    implicitExpr,
+    activeImplicitExpr,
     selectionStats,
     implicitDomainBBox,
     activeImplicitDomain,
@@ -4610,6 +4668,14 @@ case "mobius":
                 onPickParamSurface={handlePickParamSurface}
                 implicitExpr={implicitExpr}
                 onChangeImplicitExpr={setImplicitExpr}
+                implicitResolution={implicitResolution}
+                vtkPreviewBusy={vtkPreviewBusy}
+                vtkPreviewError={vtkPreviewError}
+                vtkPreviewTargetFaces={vtkPreviewTargetFaces}
+                vtkPreviewUseDecimate={vtkPreviewUseDecimate}
+                onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
+                onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
+                onRunVtkPreview={handleVtkPreviewImplicit}
                 cgalHealthState={cgalHealthState}
                 cgalBusy={cgalBusy}
                 cgalError={cgalError}
@@ -7789,6 +7855,14 @@ type SurfacesRightPanelProps = {
 
   implicitExpr: string;
   onChangeImplicitExpr: (s: string) => void;
+  implicitResolution: number;
+  vtkPreviewBusy: boolean;
+  vtkPreviewError: string | null;
+  vtkPreviewTargetFaces: number;
+  vtkPreviewUseDecimate: boolean;
+  onChangeVtkPreviewTargetFaces: (v: number) => void;
+  onChangeVtkPreviewUseDecimate: (v: boolean) => void;
+  onRunVtkPreview: () => void;
   cgalHealthState: CgalHealthState | null;
   cgalBusy: boolean;
   cgalError: string | null;
@@ -7860,6 +7934,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onPickParamSurface,
   implicitExpr,
   onChangeImplicitExpr,
+  implicitResolution,
+  vtkPreviewBusy,
+  vtkPreviewError,
+  vtkPreviewTargetFaces,
+  vtkPreviewUseDecimate,
+  onChangeVtkPreviewTargetFaces,
+  onChangeVtkPreviewUseDecimate,
+  onRunVtkPreview,
   cgalHealthState,
   cgalBusy,
   cgalError,
@@ -7932,6 +8014,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const cgalDisabled = cgalBusy || cgalHealthState?.ok === false;
   const cgalStopDisabled = !cgalHealthState && !cgalBusy;
   const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
+  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy;
+  const vtkPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -8339,6 +8423,53 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               Use <code>x</code>, <code>y</code>, <code>z</code> and <code>Math.*</code>.
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600 }}>Preview (VTK)</div>
+                <div style={{ fontSize: 11, color: vtkPreviewBusy ? "#b42318" : "#556" }}>
+                  {vtkPreviewBusy ? "running..." : "fast grid"}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => void onRunVtkPreview()}
+                  disabled={vtkPreviewDisabled}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: "1px solid #d0d5dd",
+                    background: vtkPreviewDisabled ? "#f3f4f6" : "#fff",
+                    cursor: vtkPreviewDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {vtkPreviewBusy ? "preview..." : "preview (VTK)"}
+                </button>
+                <span style={{ fontSize: 11, color: "#556" }}>res {vtkPreviewResolution}^3</span>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
+                  <input
+                    type="checkbox"
+                    checked={vtkPreviewUseDecimate}
+                    disabled={vtkPreviewDisabled}
+                    onChange={(e) => onChangeVtkPreviewUseDecimate(e.target.checked)}
+                  />
+                  decimate
+                </label>
+                <input
+                  type="number"
+                  min={200}
+                  max={500000}
+                  step={100}
+                  value={Math.min(500000, Math.max(200, Math.round(vtkPreviewTargetFaces)))}
+                  disabled={!vtkPreviewUseDecimate || vtkPreviewDisabled}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeVtkPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
+                  }}
+                  style={{ width: 110 }}
+                />
+                <span style={{ fontSize: 11, color: "#556" }}>faces</span>
+              </div>
+              {vtkPreviewError && <div style={{ fontSize: 11, color: "#b42318" }}>{vtkPreviewError}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
                 <div style={{ fontSize: 11, color: cgalStatusColor }}>{cgalStatusText}</div>
