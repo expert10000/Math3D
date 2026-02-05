@@ -48,6 +48,7 @@ import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClie
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
+import { compileExpression } from "./math/expression";
 import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
@@ -74,7 +75,13 @@ import {
 } from "./mesh/meshOps";
 import type { DatasetKind, SurfaceDataset } from "./scene/datasets";
 import type { PolylineSet } from "./scene/renderPrimitives";
-import { buildToyVolumeGrid } from "./scene/volume/toyVolume";
+import {
+  buildVolumeGridFromPreset,
+  getVolumePreset,
+  VOLUME_PRESETS,
+  type VolumePreset,
+  type VolumePresetId,
+} from "./scene/volume/volumePresets";
 import type { SliceAxis } from "./scene/volume/sliceVolume";
 /* ---------------- App modes ---------------- */
 
@@ -139,6 +146,8 @@ const WEIERSTRASS_DEFAULTS = {
   resolution: 80,
   recenter: true,
 };
+
+const DEFAULT_VOLUME_PRESET_ID: VolumePresetId = "sphere";
 
 const WEIERSTRASS_META = {
   label: "Weierstrass",
@@ -713,9 +722,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return null;
     }
   });
+  const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
+  const [volumeDims, setVolumeDims] = useState<[number, number, number]>(() =>
+    getVolumePreset(DEFAULT_VOLUME_PRESET_ID).defaultDims
+  );
+  const volumePreset = useMemo(() => getVolumePreset(volumePresetId), [volumePresetId]);
   const volumeDataset = useMemo(
-    () => ({ kind: "volume", grid: buildToyVolumeGrid([64, 64, 64]) }),
-    []
+    () => ({ kind: "volume", grid: buildVolumeGridFromPreset(volumePresetId, { dims: volumeDims }) }),
+    [volumePresetId, volumeDims]
   );
   const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
   const surfaceMeshData = surfaceDataset?.mesh ?? null;
@@ -724,6 +738,17 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     Math.floor(volumeDataset.grid.dims[2] / 2)
   );
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
+  const clampVolumeDim = (value: number) => {
+    if (!Number.isFinite(value)) return 1;
+    return Math.max(1, Math.min(256, Math.round(value)));
+  };
+  const handleVolumeDimChange = (axisIndex: 0 | 1 | 2, value: number) => {
+    setVolumeDims((prev) => {
+      const next: [number, number, number] = [prev[0], prev[1], prev[2]];
+      next[axisIndex] = clampVolumeDim(value);
+      return next;
+    });
+  };
   const volumeSliceMax = useMemo(() => {
     const [nx, ny, nz] = volumeDataset.grid.dims;
     if (volumeSliceAxis === "x") return Math.max(0, nx - 1);
@@ -4078,10 +4103,15 @@ case "mobius":
                   paramId={paramSurfaceId}
                   datasetKind={datasetKind}
                   onChangeDatasetKind={setDatasetKind}
+                  volumePresetId={volumePresetId}
+                  volumePreset={volumePreset}
+                  volumeDims={volumeDims}
                   volumeAxis={volumeSliceAxis}
                   volumeIndex={volumeSliceIndex}
                   volumeIndexMax={volumeSliceMax}
                   volumeOpacity={volumeSliceOpacity}
+                  onChangeVolumePresetId={setVolumePresetId}
+                  onChangeVolumeDim={handleVolumeDimChange}
                   onChangeVolumeAxis={setVolumeSliceAxis}
                   onChangeVolumeIndex={setVolumeSliceIndex}
                   onChangeVolumeOpacity={setVolumeSliceOpacity}
@@ -5254,10 +5284,15 @@ type SurfacesLeftPanelProps = {
   paramId: ParamSurfaceId;
   datasetKind: DatasetKind;
   onChangeDatasetKind: (kind: DatasetKind) => void;
+  volumePresetId: VolumePresetId;
+  volumePreset: VolumePreset;
+  volumeDims: [number, number, number];
   volumeAxis: SliceAxis;
   volumeIndex: number;
   volumeIndexMax: number;
   volumeOpacity: number;
+  onChangeVolumePresetId: (id: VolumePresetId) => void;
+  onChangeVolumeDim: (axisIndex: 0 | 1 | 2, value: number) => void;
   onChangeVolumeAxis: (axis: SliceAxis) => void;
   onChangeVolumeIndex: (value: number) => void;
   onChangeVolumeOpacity: (value: number) => void;
@@ -5523,10 +5558,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramId,
   datasetKind,
   onChangeDatasetKind,
+  volumePresetId,
+  volumePreset,
+  volumeDims,
   volumeAxis,
   volumeIndex,
   volumeIndexMax,
   volumeOpacity,
+  onChangeVolumePresetId,
+  onChangeVolumeDim,
   onChangeVolumeAxis,
   onChangeVolumeIndex,
   onChangeVolumeOpacity,
@@ -5789,9 +5829,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     note: "Imported or generated triangle mesh.",
   };
   const volumeMeta = {
-    label: "Volume grid",
-    formula: "Scalar field on a voxel grid",
-    note: "Toy volume generated client-side.",
+    label: `Volume: ${volumePreset.label}`,
+    formula: volumePreset.formula,
+    note: volumePreset.note ?? "Scalar field on a voxel grid.",
   };
   const activeMeta = isVolume
     ? volumeMeta
@@ -5816,6 +5856,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     ? "unavailable"
     : "pending";
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
+  const fmt = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
+  const volumeBounds = volumePreset.bounds;
 
   const modeLabel =
     isVolume
@@ -5902,7 +5944,58 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
       {datasetKind === "volume" && (
         <div style={{ ...cardStyle, marginTop: 10 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume slice</div>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume grid</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
+              <span>Preset</span>
+              <select
+                value={volumePresetId}
+                onChange={(e) => onChangeVolumePresetId(e.target.value as VolumePresetId)}
+                style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
+              >
+                {VOLUME_PRESETS.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Dims (Nx, Ny, Nz)</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={volumeDims[0]}
+                  onChange={(e) => onChangeVolumeDim(0, Number(e.target.value))}
+                  style={{ width: 70 }}
+                  aria-label="Volume dim Nx"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={volumeDims[1]}
+                  onChange={(e) => onChangeVolumeDim(1, Number(e.target.value))}
+                  style={{ width: 70 }}
+                  aria-label="Volume dim Ny"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={volumeDims[2]}
+                  onChange={(e) => onChangeVolumeDim(2, Number(e.target.value))}
+                  style={{ width: 70 }}
+                  aria-label="Volume dim Nz"
+                />
+              </div>
+            </label>
+          </div>
+
+          <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Volume slice</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Axis</span>
@@ -5943,7 +6036,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </label>
           </div>
           <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
-            Source: toy scalar grid (client-side).
+            Source: {volumePreset.label} field sampled on {volumeDims[0]}x{volumeDims[1]}x{volumeDims[2]}. Bounds: x in [
+            {fmt(volumeBounds.min[0])}, {fmt(volumeBounds.max[0])}], y in [{fmt(volumeBounds.min[1])},{" "}
+            {fmt(volumeBounds.max[1])}], z in [{fmt(volumeBounds.min[2])}, {fmt(volumeBounds.max[2])}].
           </div>
         </div>
       )}
