@@ -3,6 +3,23 @@ import type { Image2D } from "../renderPrimitives";
 
 export type SliceAxis = "x" | "y" | "z";
 
+export type SlicePlane = {
+  center: [number, number, number];
+  normal: [number, number, number];
+  u: [number, number, number];
+  v: [number, number, number];
+  width: number;
+  height: number;
+};
+
+export type SliceInfo = {
+  axis: SliceAxis;
+  sliceIndex: number;
+  width: number;
+  height: number;
+  plane: SlicePlane;
+};
+
 type AxisMap = {
   axis: SliceAxis;
   axisIndex: number;
@@ -48,17 +65,51 @@ const clampIndex = (value: number, max: number) => {
   return Math.min(max, Math.max(0, Math.round(value)));
 };
 
-export function sliceVolume(grid: VolumeGrid, axis: SliceAxis, index: number): Image2D {
-  const { dims, scalars } = grid;
-  const [nx, ny, nz] = dims;
+export function getSliceInfo(grid: VolumeGrid, axis: SliceAxis, index: number): SliceInfo {
+  const { dims } = grid;
   const spacing = grid.spacing ?? [1, 1, 1];
   const origin = grid.origin ?? [0, 0, 0];
   const map = axisMaps[axis];
+  const [nx, ny, nz] = dims;
   const axisDims = [nx, ny, nz];
   const sliceIndex = clampIndex(index, Math.max(0, axisDims[map.axisIndex] - 1));
 
   const width = axisDims[map.widthIndex];
   const height = axisDims[map.heightIndex];
+
+  const widthSpacing = spacing[map.widthIndex];
+  const heightSpacing = spacing[map.heightIndex];
+  const widthWorld = Math.max(0, (width - 1) * widthSpacing);
+  const heightWorld = Math.max(0, (height - 1) * heightSpacing);
+
+  const center: [number, number, number] = [
+    origin[0] + (nx - 1) * spacing[0] * 0.5,
+    origin[1] + (ny - 1) * spacing[1] * 0.5,
+    origin[2] + (nz - 1) * spacing[2] * 0.5,
+  ];
+  center[map.axisIndex] = origin[map.axisIndex] + sliceIndex * spacing[map.axisIndex];
+
+  return {
+    axis,
+    sliceIndex,
+    width,
+    height,
+    plane: {
+      center,
+      normal: map.normal,
+      u: map.widthAxis,
+      v: map.heightAxis,
+      width: widthWorld,
+      height: heightWorld,
+    },
+  };
+}
+
+export function sliceVolumeCpu(grid: VolumeGrid, axis: SliceAxis, index: number): Image2D {
+  const { dims, scalars } = grid;
+  const [nx, ny, nz] = dims;
+  const info = getSliceInfo(grid, axis, index);
+  const { width, height, sliceIndex, plane } = info;
   const sliceCount = Math.max(0, width * height);
   const data = new Uint8ClampedArray(sliceCount * 4);
 
@@ -117,30 +168,15 @@ export function sliceVolume(grid: VolumeGrid, axis: SliceAxis, index: number): I
     }
   }
 
-  const widthSpacing = spacing[map.widthIndex];
-  const heightSpacing = spacing[map.heightIndex];
-  const widthWorld = Math.max(0, (width - 1) * widthSpacing);
-  const heightWorld = Math.max(0, (height - 1) * heightSpacing);
-
-  const center = [
-    origin[0] + (nx - 1) * spacing[0] * 0.5,
-    origin[1] + (ny - 1) * spacing[1] * 0.5,
-    origin[2] + (nz - 1) * spacing[2] * 0.5,
-  ] as [number, number, number];
-  center[map.axisIndex] = origin[map.axisIndex] + sliceIndex * spacing[map.axisIndex];
-
   return {
     width,
     height,
     format: "rgba8",
     data,
-    worldPlane: {
-      center,
-      normal: map.normal,
-      u: map.widthAxis,
-      v: map.heightAxis,
-      width: widthWorld,
-      height: heightWorld,
-    },
+    worldPlane: plane,
   };
+}
+
+export function sliceVolume(grid: VolumeGrid, axis: SliceAxis, index: number): Image2D {
+  return sliceVolumeCpu(grid, axis, index);
 }

@@ -87,6 +87,28 @@ declare global {
     targetReduction?: number;
   };
 
+  type VtkVolumeSliceRequest = {
+    jobId: string;
+    dims: [number, number, number];
+    scalars: ArrayBuffer | ArrayBufferView;
+    axis: "x" | "y" | "z";
+    index: number;
+    spacing?: [number, number, number];
+    origin?: [number, number, number];
+  };
+
+  type VtkVolumeSliceResponse =
+    | {
+        ok: true;
+        data: ArrayBuffer | ArrayBufferView;
+        width: number;
+        height: number;
+        format: "rgba8";
+        min?: number;
+        max?: number;
+      }
+    | { ok: false; error: string };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -104,6 +126,9 @@ declare global {
       decimate: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       smooth: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       previewImplicit: (req: VtkPreviewRequest) => Promise<VtkMeshResponse>;
+    };
+    vtkVolume?: {
+      slice: (req: VtkVolumeSliceRequest) => Promise<VtkVolumeSliceResponse>;
     };
   }
 }

@@ -526,6 +526,109 @@ def handle_vtk_preview(msg: Dict[str, Any]) -> None:
     )
 
 
+def handle_volume_slice(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    dims = msg.get("dims") or msg.get("dimensions")
+    if not dims or len(dims) != 3:
+        raise RuntimeError("Missing dims for volume slice")
+    if not payloads or "scalars" not in payloads:
+        raise RuntimeError("Missing scalars payload for volume slice")
+
+    axis = str(msg.get("axis", "z")).lower()
+    index = int(msg.get("index", 0))
+    spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
+    origin = msg.get("origin") or [0.0, 0.0, 0.0]
+
+    try:
+        import numpy as np
+        import vtk
+        from vtk.util import numpy_support as nps
+    except Exception as e:
+        raise RuntimeError(f"VTK volume slice requires numpy+vtk: {e}")
+
+    nx, ny, nz = [int(v) for v in dims]
+    total = max(0, nx * ny * nz)
+    scalars_np = np.frombuffer(payloads["scalars"], dtype=np.float32)
+    if scalars_np.size < total:
+        raise RuntimeError("Scalars buffer too small for volume slice")
+    if scalars_np.size > total:
+        scalars_np = scalars_np[:total]
+
+    img = vtk.vtkImageData()
+    img.SetDimensions(nx, ny, nz)
+    img.SetSpacing(float(spacing[0]), float(spacing[1]), float(spacing[2]))
+    img.SetOrigin(float(origin[0]), float(origin[1]), float(origin[2]))
+    scalars_vtk = nps.numpy_to_vtk(scalars_np, deep=1, array_type=vtk.VTK_FLOAT)
+    img.GetPointData().SetScalars(scalars_vtk)
+
+    if axis == "x":
+        idx = max(0, min(nx - 1, index))
+        voi = (idx, idx, 0, max(0, ny - 1), 0, max(0, nz - 1))
+        width, height = ny, nz
+    elif axis == "y":
+        idx = max(0, min(ny - 1, index))
+        voi = (0, max(0, nx - 1), idx, idx, 0, max(0, nz - 1))
+        width, height = nx, nz
+    else:
+        idx = max(0, min(nz - 1, index))
+        voi = (0, max(0, nx - 1), 0, max(0, ny - 1), idx, idx)
+        width, height = nx, ny
+
+    extract = vtk.vtkExtractVOI()
+    extract.SetInputData(img)
+    extract.SetVOI(*voi)
+    extract.Update()
+    out = extract.GetOutput()
+    out_scalars = out.GetPointData().GetScalars()
+    if out_scalars is None:
+        raise RuntimeError("VTK volume slice missing scalars")
+
+    vals = nps.vtk_to_numpy(out_scalars)
+    vals = np.asarray(vals, dtype=np.float32, order="C")
+    expected = int(max(0, width * height))
+    if vals.size < expected:
+        raise RuntimeError("VTK volume slice returned empty data")
+    if vals.size > expected:
+        vals = vals[:expected]
+    vals = vals.reshape((height, width))
+
+    finite = np.isfinite(vals)
+    if finite.any():
+        vmin = float(np.nanmin(vals))
+        vmax = float(np.nanmax(vals))
+    else:
+        vmin = 0.0
+        vmax = 0.0
+
+    vrange = vmax - vmin
+    if vrange > 1e-8:
+        scaled = (vals - vmin) / vrange
+        scaled = np.where(finite, scaled, 0.0)
+        gray = np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
+    else:
+        gray = np.zeros((height, width), dtype=np.uint8)
+
+    rgba = np.empty((height, width, 4), dtype=np.uint8)
+    rgba[..., 0] = gray
+    rgba[..., 1] = gray
+    rgba[..., 2] = gray
+    rgba[..., 3] = 255
+
+    send_binary(
+        {
+            "type": "volume_slice_result",
+            "jobId": job_id,
+            "ok": True,
+            "width": int(width),
+            "height": int(height),
+            "format": "rgba8",
+            "min": vmin,
+            "max": vmax,
+        },
+        [("data", rgba.tobytes(order="C"))],
+    )
+
+
 def vtk_poly_from_buffers(pos_bytes: bytes, idx_bytes: bytes):
     import numpy as np
     import vtk
@@ -743,6 +846,16 @@ def main() -> None:
         elif msg.get("type") == "vtk_preview":
             try:
                 handle_vtk_preview(msg)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "volume_slice":
+            try:
+                handle_volume_slice(msg, payloads)
             except Exception as e:
                 send({
                     "type": "error",

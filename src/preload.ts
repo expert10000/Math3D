@@ -75,6 +75,28 @@ export type VtkPreviewRequest = {
   targetReduction?: number;
 };
 
+export type VtkVolumeSliceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView;
+  axis: "x" | "y" | "z";
+  index: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeSliceResponse =
+  | {
+      ok: true;
+      data: ArrayBuffer | ArrayBufferView;
+      width: number;
+      height: number;
+      format: "rgba8";
+      min?: number;
+      max?: number;
+    }
+  | { ok: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -106,4 +128,9 @@ contextBridge.exposeInMainWorld("vtkMesh", {
     ipcRenderer.invoke("mesh:vtk:smooth", req),
   previewImplicit: (req: VtkPreviewRequest): Promise<VtkMeshResponse> =>
     ipcRenderer.invoke("mesh:vtk:preview", req),
+});
+
+contextBridge.exposeInMainWorld("vtkVolume", {
+  slice: (req: VtkVolumeSliceRequest): Promise<VtkVolumeSliceResponse> =>
+    ipcRenderer.invoke("volume:vtk:slice", req),
 });

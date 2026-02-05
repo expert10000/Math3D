@@ -3,7 +3,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { VolumeDataset } from "../scene/datasets";
-import { sliceVolume, type SliceAxis } from "../scene/volume/sliceVolume";
+import { getSliceInfo, sliceVolumeCpu, type SliceAxis } from "../scene/volume/sliceVolume";
+import { vtkVolumeSlice } from "../services/vtkVolumeClient";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
@@ -30,6 +31,12 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({ dataset, axis, index
   const controlsRef = useRef<OrbitControls | null>(null);
   const sliceMeshRef = useRef<THREE.Mesh | null>(null);
   const sliceTextureRef = useRef<THREE.DataTexture | null>(null);
+  const sliceRequestRef = useRef(0);
+  const opacityRef = useRef(opacity);
+
+  useEffect(() => {
+    opacityRef.current = opacity;
+  }, [opacity]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -127,63 +134,106 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({ dataset, axis, index
       return;
     }
 
-    const slice = sliceVolume(dataset.grid, axis, index);
-    const plane = slice.worldPlane;
+    const info = getSliceInfo(dataset.grid, axis, index);
+    const requestId = ++sliceRequestRef.current;
+    let cancelled = false;
 
-    let texture = sliceTextureRef.current;
-    if (!texture || texture.image.width !== slice.width || texture.image.height !== slice.height) {
-      if (texture) texture.dispose();
-      texture = new THREE.DataTexture(slice.data, slice.width, slice.height, THREE.RGBAFormat);
-      texture.magFilter = THREE.LinearFilter;
-      texture.minFilter = THREE.LinearFilter;
-      texture.needsUpdate = true;
-      sliceTextureRef.current = texture;
-    } else {
-      texture.image.data = slice.data;
-      texture.needsUpdate = true;
-    }
+    const applySlice = (slice: { width: number; height: number; data: Uint8Array | Uint8ClampedArray }) => {
+      if (cancelled || requestId !== sliceRequestRef.current) return;
+      const plane = info.plane;
 
-    const safeOpacity = Math.min(1, Math.max(0, opacity));
-    let mesh = sliceMeshRef.current;
-    if (!mesh) {
-      const geom = new THREE.PlaneGeometry(plane?.width ?? 1, plane?.height ?? 1);
-      const mat = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: safeOpacity < 1,
-        opacity: safeOpacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
-      mesh = new THREE.Mesh(geom, mat);
-      mesh.renderOrder = 3;
-      scene.add(mesh);
-      sliceMeshRef.current = mesh;
-    } else {
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.map = texture;
-      mat.opacity = safeOpacity;
-      mat.transparent = safeOpacity < 1;
-      mat.needsUpdate = true;
+      let texture = sliceTextureRef.current;
+      if (!texture || texture.image.width !== slice.width || texture.image.height !== slice.height) {
+        if (texture) texture.dispose();
+        texture = new THREE.DataTexture(slice.data, slice.width, slice.height, THREE.RGBAFormat);
+        texture.magFilter = THREE.LinearFilter;
+        texture.minFilter = THREE.LinearFilter;
+        texture.needsUpdate = true;
+        sliceTextureRef.current = texture;
+      } else {
+        texture.image.data = slice.data;
+        texture.needsUpdate = true;
+      }
 
-      if (plane) {
-        const geom = mesh.geometry as THREE.PlaneGeometry;
-        const params = geom.parameters as { width: number; height: number };
-        if (Math.abs(params.width - plane.width) > 1e-6 || Math.abs(params.height - plane.height) > 1e-6) {
-          geom.dispose();
-          mesh.geometry = new THREE.PlaneGeometry(plane.width, plane.height);
+      const safeOpacity = Math.min(1, Math.max(0, opacityRef.current));
+      let mesh = sliceMeshRef.current;
+      if (!mesh) {
+        const geom = new THREE.PlaneGeometry(plane?.width ?? 1, plane?.height ?? 1);
+        const mat = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: safeOpacity < 1,
+          opacity: safeOpacity,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        mesh = new THREE.Mesh(geom, mat);
+        mesh.renderOrder = 3;
+        scene.add(mesh);
+        sliceMeshRef.current = mesh;
+      } else {
+        const mat = mesh.material as THREE.MeshBasicMaterial;
+        mat.map = texture;
+        mat.opacity = safeOpacity;
+        mat.transparent = safeOpacity < 1;
+        mat.needsUpdate = true;
+
+        if (plane) {
+          const geom = mesh.geometry as THREE.PlaneGeometry;
+          const params = geom.parameters as { width: number; height: number };
+          if (Math.abs(params.width - plane.width) > 1e-6 || Math.abs(params.height - plane.height) > 1e-6) {
+            geom.dispose();
+            mesh.geometry = new THREE.PlaneGeometry(plane.width, plane.height);
+          }
         }
       }
-    }
 
-    if (plane && mesh) {
-      mesh.position.set(plane.center[0], plane.center[1], plane.center[2]);
-      const u = new THREE.Vector3(...plane.u).normalize();
-      const v = new THREE.Vector3(...plane.v).normalize();
-      const n = new THREE.Vector3(...plane.normal).normalize();
-      const basis = new THREE.Matrix4().makeBasis(u, v, n);
-      mesh.setRotationFromMatrix(basis);
-    }
-  }, [dataset, axis, index, opacity]);
+      if (plane && mesh) {
+        mesh.position.set(plane.center[0], plane.center[1], plane.center[2]);
+        const u = new THREE.Vector3(...plane.u).normalize();
+        const v = new THREE.Vector3(...plane.v).normalize();
+        const n = new THREE.Vector3(...plane.normal).normalize();
+        const basis = new THREE.Matrix4().makeBasis(u, v, n);
+        mesh.setRotationFromMatrix(basis);
+      }
+    };
+
+    (async () => {
+      const res = await vtkVolumeSlice({
+        dims: dataset.grid.dims,
+        scalars: dataset.grid.scalars,
+        axis: info.axis,
+        index: info.sliceIndex,
+        spacing: dataset.grid.spacing,
+        origin: dataset.grid.origin,
+      });
+
+      if (cancelled || requestId !== sliceRequestRef.current) return;
+
+      if (res.ok && res.data.length) {
+        const width = res.width || info.width;
+        const height = res.height || info.height;
+        applySlice({ width, height, data: res.data });
+        return;
+      }
+
+      const fallback = sliceVolumeCpu(dataset.grid, axis, info.sliceIndex);
+      applySlice({ width: fallback.width, height: fallback.height, data: fallback.data });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dataset, axis, index]);
+
+  useEffect(() => {
+    const mesh = sliceMeshRef.current;
+    if (!mesh) return;
+    const safeOpacity = Math.min(1, Math.max(0, opacity));
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = safeOpacity;
+    mat.transparent = safeOpacity < 1;
+    mat.needsUpdate = true;
+  }, [opacity]);
 
   return <div ref={mountRef} style={{ width: "100%", height: "100%" }} />;
 };

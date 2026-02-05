@@ -5,10 +5,13 @@ import {
   type VtkMeshResponse,
   type VtkMeshOp,
   type VtkPreviewRequest,
+  type VtkVolumeSliceRequest,
+  type VtkVolumeSliceResponse,
 } from "../python/PythonWorker";
 
 export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
 export type VtkPreviewRequestPayload = Omit<VtkPreviewRequest, "jobId"> & { jobId: string };
+export type VtkVolumeSliceRequestPayload = Omit<VtkVolumeSliceRequest, "jobId"> & { jobId: string };
 
 async function runVtkJob(op: VtkMeshOp, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> {
   try {
@@ -40,4 +43,16 @@ export function registerVtkMeshIpc() {
       return { ok: false, error: e?.message ?? String(e) };
     }
   });
+
+  ipcMain.handle(
+    "volume:vtk:slice",
+    async (_evt, req: VtkVolumeSliceRequestPayload): Promise<VtkVolumeSliceResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        return await worker.vtkVolumeSlice(req);
+      } catch (e: any) {
+        return { ok: false, error: e?.message ?? String(e) };
+      }
+    }
+  );
 }

@@ -42,6 +42,28 @@ export type VtkPreviewRequest = {
   targetReduction?: number;
 };
 
+export type VtkVolumeSliceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView | Buffer;
+  axis: "x" | "y" | "z";
+  index: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeSliceResponse =
+  | {
+      ok: true;
+      data: ArrayBuffer;
+      width: number;
+      height: number;
+      format: "rgba8";
+      min?: number;
+      max?: number;
+    }
+  | { ok: false; error: string };
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: any) => void;
@@ -474,6 +496,55 @@ class PythonWorker {
       normals: normals ? bufferToArrayBuffer(normals) : undefined,
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkVolumeSlice(req: VtkVolumeSliceRequest): Promise<VtkVolumeSliceResponse> {
+    const scalarsBuf = toBuffer(req.scalars);
+    if (!scalarsBuf.length) {
+      return { ok: false, error: "VTK volume slice request missing scalars buffer" };
+    }
+
+    const msg = {
+      type: "volume_slice",
+      jobId: req.jobId,
+      dims: req.dims,
+      axis: req.axis,
+      index: req.index,
+      spacing: req.spacing,
+      origin: req.origin,
+      binary: [{ name: "scalars", bytes: scalarsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [scalarsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume slice response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      width: res?.width,
+      height: res?.height,
+    });
+
+    if (!res || res.type !== "volume_slice_result" || res.ok === false) {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume slice response" };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const data = payloads?.data;
+    if (!data) {
+      return { ok: false, error: "VTK volume slice returned empty buffer" };
+    }
+
+    return {
+      ok: true,
+      data: bufferToArrayBuffer(data),
+      width: Number(res.width) || 0,
+      height: Number(res.height) || 0,
+      format: "rgba8",
+      min: typeof res.min === "number" ? res.min : undefined,
+      max: typeof res.max === "number" ? res.max : undefined,
     };
   }
 
