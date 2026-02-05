@@ -91,10 +91,20 @@ declare global {
     jobId: string;
     dims: [number, number, number];
     scalars: ArrayBuffer | ArrayBufferView;
-    axis: "x" | "y" | "z";
-    index: number;
+    axis?: "x" | "y" | "z";
+    index?: number;
     spacing?: [number, number, number];
     origin?: [number, number, number];
+    plane?: {
+      center: [number, number, number];
+      normal: [number, number, number];
+      u: [number, number, number];
+      v: [number, number, number];
+      width: number;
+      height: number;
+      resolution?: [number, number];
+    };
+    window?: { low: number; high: number };
   };
 
   type VtkVolumeSliceResponse =
@@ -129,6 +139,39 @@ declare global {
       }
     | { ok: false; error: string };
 
+  type VtkVolumeDistanceRequest = {
+    jobId: string;
+    dims: [number, number, number];
+    positions: ArrayBuffer | ArrayBufferView;
+    indices: ArrayBuffer | ArrayBufferView;
+    spacing?: [number, number, number];
+    origin?: [number, number, number];
+  };
+
+  type VtkVolumeDistanceResponse =
+    | {
+        ok: true;
+        scalars: ArrayBuffer | ArrayBufferView;
+        dims: [number, number, number];
+      }
+    | { ok: false; error: string };
+
+  type VtkVolumeStreamlinesRequest = {
+    jobId: string;
+    dims: [number, number, number];
+    vectors: ArrayBuffer | ArrayBufferView;
+    spacing?: [number, number, number];
+    origin?: [number, number, number];
+    seeds: [number, number, number][];
+    stepSize?: number;
+    maxSteps?: number;
+    maxLength?: number;
+  };
+
+  type VtkVolumeStreamlinesResponse =
+    | { ok: true; lines: number[][][] }
+    | { ok: false; error: string };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -150,6 +193,8 @@ declare global {
     vtkVolume?: {
       slice: (req: VtkVolumeSliceRequest) => Promise<VtkVolumeSliceResponse>;
       isosurface: (req: VtkVolumeIsosurfaceRequest) => Promise<VtkVolumeIsosurfaceResponse>;
+      distanceField: (req: VtkVolumeDistanceRequest) => Promise<VtkVolumeDistanceResponse>;
+      streamlines: (req: VtkVolumeStreamlinesRequest) => Promise<VtkVolumeStreamlinesResponse>;
     };
   }
 }

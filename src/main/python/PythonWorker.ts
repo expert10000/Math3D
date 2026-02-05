@@ -46,10 +46,20 @@ export type VtkVolumeSliceRequest = {
   jobId: string;
   dims: [number, number, number];
   scalars: ArrayBuffer | ArrayBufferView | Buffer;
-  axis: "x" | "y" | "z";
-  index: number;
+  axis?: "x" | "y" | "z";
+  index?: number;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  plane?: {
+    center: [number, number, number];
+    normal: [number, number, number];
+    u: [number, number, number];
+    v: [number, number, number];
+    width: number;
+    height: number;
+    resolution?: [number, number];
+  };
+  window?: { low: number; high: number };
 };
 
 export type VtkVolumeSliceResponse =
@@ -82,6 +92,39 @@ export type VtkVolumeIsosurfaceResponse =
       vertexCount: number;
       triCount: number;
     }
+  | { ok: false; error: string };
+
+export type VtkVolumeDistanceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeDistanceResponse =
+  | {
+      ok: true;
+      scalars: ArrayBuffer;
+      dims: [number, number, number];
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeStreamlinesRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  vectors: ArrayBuffer | ArrayBufferView | Buffer;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  seeds: [number, number, number][];
+  stepSize?: number;
+  maxSteps?: number;
+  maxLength?: number;
+};
+
+export type VtkVolumeStreamlinesResponse =
+  | { ok: true; lines: number[][][] }
   | { ok: false; error: string };
 
 type Pending = {
@@ -533,6 +576,8 @@ class PythonWorker {
       index: req.index,
       spacing: req.spacing,
       origin: req.origin,
+      plane: req.plane,
+      window: req.window,
       binary: [{ name: "scalars", bytes: scalarsBuf.length }],
     };
 
@@ -615,6 +660,91 @@ class PythonWorker {
       vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
       triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
+  }
+
+  async vtkVolumeDistance(req: VtkVolumeDistanceRequest): Promise<VtkVolumeDistanceResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "VTK volume distance request missing mesh buffers" };
+    }
+
+    const msg = {
+      type: "volume_distance",
+      jobId: req.jobId,
+      dims: req.dims,
+      spacing: req.spacing,
+      origin: req.origin,
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume distance response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+    });
+
+    if (!res || res.type !== "volume_distance_result" || res.ok === false) {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume distance response" };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const scalars = payloads?.scalars;
+    if (!scalars) {
+      return { ok: false, error: "VTK volume distance returned empty buffer" };
+    }
+
+    return {
+      ok: true,
+      scalars: bufferToArrayBuffer(scalars),
+      dims: Array.isArray(res.dims) && res.dims.length === 3 ? res.dims : req.dims,
+    };
+  }
+
+  async vtkVolumeStreamlines(req: VtkVolumeStreamlinesRequest): Promise<VtkVolumeStreamlinesResponse> {
+    const vectorsBuf = toBuffer(req.vectors);
+    if (!vectorsBuf.length) {
+      return { ok: false, error: "VTK streamlines request missing vectors buffer" };
+    }
+
+    const msg = {
+      type: "volume_streamlines",
+      jobId: req.jobId,
+      dims: req.dims,
+      spacing: req.spacing,
+      origin: req.origin,
+      seeds: req.seeds,
+      stepSize: req.stepSize,
+      maxSteps: req.maxSteps,
+      maxLength: req.maxLength,
+      binary: [{ name: "vectors", bytes: vectorsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [vectorsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk streamlines response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      lines: Array.isArray(res?.lines) ? res.lines.length : 0,
+    });
+
+    if (!res || res.type !== "volume_streamlines_result" || res.ok === false) {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK streamlines response" };
+    }
+
+    if (!Array.isArray(res.lines)) {
+      return { ok: false, error: "VTK streamlines returned empty data" };
+    }
+
+    return { ok: true, lines: res.lines };
   }
 
   kill() {

@@ -4,10 +4,20 @@ export type VtkVolumeSliceRequest = {
   jobId: string;
   dims: [number, number, number];
   scalars: ArrayBuffer | ArrayBufferView;
-  axis: SliceAxis;
-  index: number;
+  axis?: SliceAxis;
+  index?: number;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  plane?: {
+    center: [number, number, number];
+    normal: [number, number, number];
+    u: [number, number, number];
+    v: [number, number, number];
+    width: number;
+    height: number;
+    resolution?: [number, number];
+  };
+  window?: { low: number; high: number };
 };
 
 export type VtkVolumeSliceResponse =
@@ -39,7 +49,40 @@ export type VtkVolumeIsosurfaceResponse =
       normals?: Float32Array;
       vertexCount: number;
       triCount: number;
+  }
+  | { ok: false; error: string };
+
+export type VtkVolumeDistanceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeDistanceResponse =
+  | {
+      ok: true;
+      scalars: Float32Array;
+      dims: [number, number, number];
     }
+  | { ok: false; error: string };
+
+export type VtkVolumeStreamlinesRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  vectors: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  seeds: [number, number, number][];
+  stepSize?: number;
+  maxSteps?: number;
+  maxLength?: number;
+};
+
+export type VtkVolumeStreamlinesResponse =
+  | { ok: true; lines: [number, number, number][][] }
   | { ok: false; error: string };
 
 function makeJobId() {
@@ -106,4 +149,41 @@ export async function vtkVolumeIsosurface(
     vertexCount: Number(res.vertexCount) || 0,
     triCount: Number(res.triCount) || 0,
   };
+}
+
+export async function vtkVolumeDistance(
+  req: Omit<VtkVolumeDistanceRequest, "jobId">
+): Promise<VtkVolumeDistanceResponse> {
+  const api = (window as any).vtkVolume;
+  if (!api || typeof api.distanceField !== "function") {
+    return { ok: false, error: "VTK volume IPC unavailable" };
+  }
+  const jobId = makeJobId();
+  const res = await api.distanceField({ ...req, jobId });
+  if (!res || res.ok === false) {
+    return { ok: false, error: res?.error ?? "VTK volume distance failed" };
+  }
+  return {
+    ok: true,
+    scalars: toFloat32(res.scalars),
+    dims: Array.isArray(res.dims) && res.dims.length === 3 ? res.dims : req.dims,
+  };
+}
+
+export async function vtkVolumeStreamlines(
+  req: Omit<VtkVolumeStreamlinesRequest, "jobId">
+): Promise<VtkVolumeStreamlinesResponse> {
+  const api = (window as any).vtkVolume;
+  if (!api || typeof api.streamlines !== "function") {
+    return { ok: false, error: "VTK volume IPC unavailable" };
+  }
+  const jobId = makeJobId();
+  const res = await api.streamlines({ ...req, jobId });
+  if (!res || res.ok === false) {
+    return { ok: false, error: res?.error ?? "VTK streamlines failed" };
+  }
+  if (!Array.isArray(res.lines)) {
+    return { ok: false, error: "VTK streamlines returned empty data" };
+  }
+  return { ok: true, lines: res.lines };
 }

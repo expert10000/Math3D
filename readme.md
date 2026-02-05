@@ -28,6 +28,9 @@
 - Added ridge/valley curve stitching (v2) that turns feature vertices into readable polylines with decimation and cap controls.
 - Added geodesic disk selection (intrinsic radius) plus zoom-to-region controls in the selection panel.
 - Added geodesic distance heatmaps for mesh-based heat paths on graph, parametric, and Weierstrass surfaces.
+- Added VTK worker ops for volume slice (vtkImageReslice), unsigned distance fields, and streamlines, with IPC/preload/service updates to expose them end-to-end.
+- Integrated a volume bridge in the UI (Surface → Volume distance field), plus a volume override mode, and a new streamlines panel with vector presets and seed controls.
+- Swapped volume slice rendering to use VTK when available/large grids, added a small-grid CPU fallback for volume isosurface, and added VTK streamlines rendering as tubes.
 
 ## Build the renderer into /dist
 
@@ -487,3 +490,9 @@ To exit the environment:
 ```powershell
 conda deactivate
 ```
+
+## Roadmap
+
+- Add signed distance via winding number (VTK) and surface-to-volume auto-bounds.
+- Tune streamline integration options (step size/max steps) with UI controls.
+- Add a proper JS marching-cubes implementation for non-cubic toy grids.

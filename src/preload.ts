@@ -79,10 +79,20 @@ export type VtkVolumeSliceRequest = {
   jobId: string;
   dims: [number, number, number];
   scalars: ArrayBuffer | ArrayBufferView;
-  axis: "x" | "y" | "z";
-  index: number;
+  axis?: "x" | "y" | "z";
+  index?: number;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  plane?: {
+    center: [number, number, number];
+    normal: [number, number, number];
+    u: [number, number, number];
+    v: [number, number, number];
+    width: number;
+    height: number;
+    resolution?: [number, number];
+  };
+  window?: { low: number; high: number };
 };
 
 export type VtkVolumeSliceResponse =
@@ -115,6 +125,39 @@ export type VtkVolumeIsosurfaceResponse =
       vertexCount: number;
       triCount: number;
     }
+  | { ok: false; error: string };
+
+export type VtkVolumeDistanceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeDistanceResponse =
+  | {
+      ok: true;
+      scalars: ArrayBuffer | ArrayBufferView;
+      dims: [number, number, number];
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeStreamlinesRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  vectors: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  seeds: [number, number, number][];
+  stepSize?: number;
+  maxSteps?: number;
+  maxLength?: number;
+};
+
+export type VtkVolumeStreamlinesResponse =
+  | { ok: true; lines: number[][][] }
   | { ok: false; error: string };
 
 contextBridge.exposeInMainWorld("surfacePresets", {
@@ -155,4 +198,8 @@ contextBridge.exposeInMainWorld("vtkVolume", {
     ipcRenderer.invoke("volume:vtk:slice", req),
   isosurface: (req: VtkVolumeIsosurfaceRequest): Promise<VtkVolumeIsosurfaceResponse> =>
     ipcRenderer.invoke("volume:vtk:isosurface", req),
+  distanceField: (req: VtkVolumeDistanceRequest): Promise<VtkVolumeDistanceResponse> =>
+    ipcRenderer.invoke("volume:vtk:distance", req),
+  streamlines: (req: VtkVolumeStreamlinesRequest): Promise<VtkVolumeStreamlinesResponse> =>
+    ipcRenderer.invoke("volume:vtk:streamlines", req),
 });

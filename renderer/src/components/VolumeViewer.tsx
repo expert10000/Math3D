@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 
-import type { VolumeDataset } from "../scene/datasets";
+import type { VolumeDataset, VectorGrid } from "../scene/datasets";
+import type { Image2D } from "../scene/renderPrimitives";
 import {
   buildSliceImage,
   gradientMagnitudeAt,
@@ -16,11 +18,12 @@ import {
   type VolumeSliceReport,
   type VolumeSliceWindow,
 } from "../scene/volume/sliceVolume";
-import { vtkVolumeIsosurface } from "../services/vtkVolumeClient";
+import { vtkVolumeIsosurface, vtkVolumeSlice, vtkVolumeStreamlines } from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
 
 export type VolumeViewerProps = {
   dataset: VolumeDataset | null;
+  vectorGrid?: VectorGrid | null;
   axis: SliceAxis;
   index: number;
   opacity: number;
@@ -39,6 +42,11 @@ export type VolumeViewerProps = {
   cropGizmoEnabled?: boolean;
   cropGizmoMode?: "move" | "scale";
   onCropChange?: (center: [number, number, number], extents: [number, number, number]) => void;
+  showStreamlines?: boolean;
+  streamlineSeeds?: [number, number, number][];
+  streamlineStepSize?: number;
+  streamlineMaxSteps?: number;
+  streamlineMaxLength?: number;
 };
 
 const disposeMesh = (mesh: THREE.Mesh) => {
@@ -67,8 +75,58 @@ const clearGroup = (group: THREE.Group) => {
   }
 };
 
+const VTK_SLICE_THRESHOLD = 64 * 64 * 64;
+const VTK_ISO_THRESHOLD = 64 * 64 * 64;
+
+const buildCpuIsosurface = (
+  grid: VolumeDataset["grid"],
+  iso: number
+): { geometry: THREE.BufferGeometry; center: [number, number, number]; scale: [number, number, number] } | null => {
+  const [nx, ny, nz] = grid.dims;
+  if (nx !== ny || nx !== nz) return null;
+  const total = nx * ny * nz;
+  if (!total || total > VTK_ISO_THRESHOLD) return null;
+
+  const effect = new MarchingCubes(nx, new THREE.MeshStandardMaterial(), false, false);
+  const field = effect.field;
+  if (grid.scalars.length >= field.length) {
+    field.set(grid.scalars.subarray(0, field.length));
+  } else {
+    field.set(grid.scalars);
+  }
+  effect.isolation = iso;
+  effect.enableUvs = false;
+  effect.enableColors = false;
+  effect.update();
+
+  const geom = effect.geometry.clone() as THREE.BufferGeometry;
+  effect.geometry.dispose();
+  const mat = effect.material as THREE.Material | THREE.Material[] | undefined;
+  if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+  else mat?.dispose();
+  geom.computeBoundingSphere();
+  geom.computeBoundingBox();
+
+  const spacing = grid.spacing ?? [1, 1, 1];
+  const origin = grid.origin ?? [0, 0, 0];
+  const span: [number, number, number] = [
+    Math.max(0, (nx - 1) * spacing[0]),
+    Math.max(0, (ny - 1) * spacing[1]),
+    Math.max(0, (nz - 1) * spacing[2]),
+  ];
+  const center: [number, number, number] = [
+    origin[0] + span[0] * 0.5,
+    origin[1] + span[1] * 0.5,
+    origin[2] + span[2] * 0.5,
+  ];
+  const scale: [number, number, number] = [span[0] * 0.5, span[1] * 0.5, span[2] * 0.5];
+
+  return { geometry: geom, center, scale };
+};
+
 export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   dataset,
+  vectorGrid,
   axis,
   index,
   opacity,
@@ -87,6 +145,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   cropGizmoEnabled = false,
   cropGizmoMode = "move",
   onCropChange,
+  showStreamlines = false,
+  streamlineSeeds,
+  streamlineStepSize,
+  streamlineMaxSteps,
+  streamlineMaxLength,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -98,12 +161,14 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const contourGroupRef = useRef<THREE.Group | null>(null);
   const hoverMarkerRef = useRef<THREE.Mesh | null>(null);
   const isoMeshRef = useRef<THREE.Mesh | null>(null);
+  const streamlinesGroupRef = useRef<THREE.Group | null>(null);
   const cropBoxRef = useRef<THREE.LineSegments | null>(null);
   const cropGizmoRef = useRef<TransformControls | null>(null);
   const cropGizmoHelperRef = useRef<THREE.Object3D | null>(null);
   const cropDraggingRef = useRef(false);
   const opacityRef = useRef(opacity);
   const [sliceData, setSliceData] = useState<VolumeSliceData | null>(null);
+  const [sliceImage, setSliceImage] = useState<Image2D | null>(null);
   const sliceDataRef = useRef<VolumeSliceData | null>(null);
   const datasetRef = useRef<VolumeDataset | null>(dataset);
   const [hoverInfo, setHoverInfo] = useState<VolumeSliceHover | null>(null);
@@ -285,6 +350,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         scene.remove(contourGroupRef.current);
         contourGroupRef.current = null;
       }
+      if (streamlinesGroupRef.current) {
+        clearGroup(streamlinesGroupRef.current);
+        scene.remove(streamlinesGroupRef.current);
+        streamlinesGroupRef.current = null;
+      }
       if (hoverMarkerRef.current) {
         scene.remove(hoverMarkerRef.current);
         hoverMarkerRef.current.geometry.dispose();
@@ -317,6 +387,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     if (!dataset?.grid) {
       setSliceData(null);
+      setSliceImage(null);
       setHoverInfo(null);
       if (onSliceReport) onSliceReport(null);
       return;
@@ -326,10 +397,67 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   }, [dataset, axis, index, onSliceReport]);
 
   useEffect(() => {
+    if (!sliceData || !dataset?.grid) {
+      setSliceImage(null);
+      return;
+    }
+
+    let cancelled = false;
+    const grid = dataset.grid;
+    const total = grid.dims[0] * grid.dims[1] * grid.dims[2];
+    const canUseVtk = Boolean((window as any).vtkVolume?.slice) && total > VTK_SLICE_THRESHOLD;
+    const plane = sliceData.plane;
+    const windowReq = sliceWindow ? { low: sliceWindow.low, high: sliceWindow.high } : undefined;
+    const planeReq = plane
+      ? {
+          center: plane.center,
+          normal: plane.normal,
+          u: plane.u,
+          v: plane.v,
+          width: plane.width,
+          height: plane.height,
+          resolution: [sliceData.width, sliceData.height] as [number, number],
+        }
+      : undefined;
+
+    (async () => {
+      if (canUseVtk) {
+        const res = await vtkVolumeSlice({
+          dims: grid.dims,
+          scalars: grid.scalars,
+          axis,
+          index,
+          spacing: grid.spacing,
+          origin: grid.origin,
+          plane: planeReq,
+          window: windowReq,
+        });
+        if (!cancelled && res.ok) {
+          setSliceImage({
+            width: res.width,
+            height: res.height,
+            format: "rgba8",
+            data: res.data,
+            worldPlane: plane,
+          });
+          return;
+        }
+      }
+      if (!cancelled) {
+        setSliceImage(buildSliceImage(sliceData, sliceWindow ?? undefined));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sliceData, sliceWindow, dataset, axis, index]);
+
+  useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
 
-    if (!sliceData) {
+    if (!sliceData || !sliceImage) {
       if (sliceMeshRef.current) {
         scene.remove(sliceMeshRef.current);
         disposeMesh(sliceMeshRef.current);
@@ -342,19 +470,19 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       return;
     }
 
-    const plane = sliceData.plane;
-    const sliceImage = buildSliceImage(sliceData, sliceWindow ?? undefined);
+    const plane = sliceImage.worldPlane ?? sliceData.plane;
+    const image = sliceImage;
 
     let texture = sliceTextureRef.current;
-    if (!texture || texture.image.width !== sliceImage.width || texture.image.height !== sliceImage.height) {
+    if (!texture || texture.image.width !== image.width || texture.image.height !== image.height) {
       if (texture) texture.dispose();
-      texture = new THREE.DataTexture(sliceImage.data, sliceImage.width, sliceImage.height, THREE.RGBAFormat);
+      texture = new THREE.DataTexture(image.data, image.width, image.height, THREE.RGBAFormat);
       texture.magFilter = THREE.LinearFilter;
       texture.minFilter = THREE.LinearFilter;
       texture.needsUpdate = true;
       sliceTextureRef.current = texture;
     } else {
-      texture.image.data = sliceImage.data;
+      texture.image.data = image.data;
       texture.needsUpdate = true;
     }
 
@@ -396,7 +524,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       const basis = new THREE.Matrix4().makeBasis(u, v, n);
       mesh.setRotationFromMatrix(basis);
     }
-  }, [sliceData, sliceWindow]);
+  }, [sliceData, sliceImage]);
 
   useEffect(() => {
     if (!sliceData || !sliceWindow || !onSliceReport) {
@@ -657,7 +785,36 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       if (cancelled) return;
       if (!res.ok) {
-        console.warn("[volume] isosurface failed", res.error);
+        const cpu = buildCpuIsosurface(dataset.grid, isoValue);
+        if (!cpu) {
+          if (isoMeshRef.current) {
+            scene.remove(isoMeshRef.current);
+            disposeMesh(isoMeshRef.current);
+            isoMeshRef.current = null;
+          }
+          console.warn("[volume] isosurface failed", res.error);
+          return;
+        }
+
+        let mesh = isoMeshRef.current;
+        if (!mesh) {
+          const geom = new THREE.BufferGeometry();
+          const mat = new THREE.MeshStandardMaterial({
+            color: 0x5b6f91,
+            roughness: 0.4,
+            metalness: 0.1,
+            side: THREE.DoubleSide,
+          });
+          mesh = new THREE.Mesh(geom, mat);
+          mesh.renderOrder = 1;
+          scene.add(mesh);
+          isoMeshRef.current = mesh;
+        }
+
+        mesh.geometry.dispose();
+        mesh.geometry = cpu.geometry;
+        mesh.position.set(cpu.center[0], cpu.center[1], cpu.center[2]);
+        mesh.scale.set(cpu.scale[0], cpu.scale[1], cpu.scale[2]);
         return;
       }
 
@@ -703,12 +860,98 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
 
       mesh.geometry.dispose();
       mesh.geometry = geom;
+      mesh.position.set(0, 0, 0);
+      mesh.scale.set(1, 1, 1);
     })();
 
     return () => {
       cancelled = true;
     };
   }, [dataset, showIsosurface, isoValue, isoSmoothing, isoSmoothingIterations]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (streamlinesGroupRef.current) {
+      scene.remove(streamlinesGroupRef.current);
+      clearGroup(streamlinesGroupRef.current);
+      streamlinesGroupRef.current = null;
+    }
+
+    if (!showStreamlines || !vectorGrid || !streamlineSeeds?.length) return;
+
+    let cancelled = false;
+
+    (async () => {
+      const res = await vtkVolumeStreamlines({
+        dims: vectorGrid.dims,
+        vectors: vectorGrid.vectors,
+        spacing: vectorGrid.spacing,
+        origin: vectorGrid.origin,
+        seeds: streamlineSeeds,
+        stepSize: streamlineStepSize,
+        maxSteps: streamlineMaxSteps,
+        maxLength: streamlineMaxLength,
+      });
+
+      if (cancelled || !res.ok) {
+        if (!res.ok) {
+          console.warn("[volume] streamlines failed", res.error);
+        }
+        return;
+      }
+
+      const spacing = vectorGrid.spacing ?? [1, 1, 1];
+      const dims = vectorGrid.dims;
+      const spanX = Math.max(0, (dims[0] - 1) * spacing[0]);
+      const spanY = Math.max(0, (dims[1] - 1) * spacing[1]);
+      const spanZ = Math.max(0, (dims[2] - 1) * spacing[2]);
+      const diag = Math.sqrt(spanX * spanX + spanY * spanY + spanZ * spanZ);
+      const tubeRadius = Math.max(0.0012, diag * 0.004);
+      const radialSegments = 8;
+
+      const group = new THREE.Group();
+      group.renderOrder = 4;
+
+      for (const line of res.lines) {
+        if (!line || line.length < 2) continue;
+        const points = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+        const path = new THREE.CurvePath<THREE.Vector3>();
+        for (let i = 0; i + 1 < points.length; i++) {
+          path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+        }
+        const tubularSegments = Math.min(2000, Math.max(60, points.length * 3));
+        const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0x1f9fbf,
+          transparent: true,
+          opacity: 0.85,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const tube = new THREE.Mesh(geom, mat);
+        tube.renderOrder = 4;
+        tube.frustumCulled = false;
+        group.add(tube);
+      }
+
+      if (!group.children.length) return;
+      scene.add(group);
+      streamlinesGroupRef.current = group;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showStreamlines,
+    vectorGrid,
+    streamlineSeeds,
+    streamlineStepSize,
+    streamlineMaxSteps,
+    streamlineMaxLength,
+  ]);
 
   useEffect(() => {
     const mesh = sliceMeshRef.current;

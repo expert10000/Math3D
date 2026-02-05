@@ -48,6 +48,7 @@ import { buildGeodesicDisk } from "./math/geodesicDisk";
 import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
+import { vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
 import {
@@ -74,7 +75,7 @@ import {
   computeVertexNormals,
   validateMesh,
 } from "./mesh/meshOps";
-import type { DatasetKind, SurfaceDataset } from "./scene/datasets";
+import type { DatasetKind, SurfaceDataset, VolumeDataset, VectorGrid } from "./scene/datasets";
 import type { PolylineSet } from "./scene/renderPrimitives";
 import {
   buildVolumeGridFromPreset,
@@ -99,6 +100,13 @@ import {
   samplingToBounds,
   type VolumeSampling,
 } from "./scene/volume/volumeSampling";
+import {
+  buildVectorGridFromPreset,
+  getVectorPreset,
+  VECTOR_PRESETS,
+  type VectorPresetId,
+} from "./scene/volume/vectorPresets";
+import { buildSliceSeeds } from "./scene/volume/streamlines";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
@@ -738,6 +746,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return null;
     }
   });
+  const [volumeDatasetOverride, setVolumeDatasetOverride] = useState<VolumeDataset | null>(null);
+  const [volumeDistanceBusy, setVolumeDistanceBusy] = useState(false);
+  const [volumeDistanceError, setVolumeDistanceError] = useState<string | null>(null);
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   const [volumeParams, setVolumeParams] = useState<VolumePresetParams>(() =>
     getVolumePresetDefaultParams(DEFAULT_VOLUME_PRESET_ID)
@@ -806,9 +817,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     () => samplingSpacing(volumeSamplingClamped),
     [volumeSamplingClamped]
   );
-  const volumeDataset = useMemo(
+  const volumeDatasetPreset = useMemo(
     () => ({
-      kind: "volume",
+      kind: "volume" as const,
       grid: buildVolumeGridFromPreset(volumePresetId, {
         dims: volumeSamplingClamped.dims,
         bounds: volumeSamplingBounds,
@@ -818,6 +829,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }),
     [volumePresetId, volumeSamplingClamped, volumeSamplingBounds, volumeParamsResolved, volumeCustomCompiled.fn]
   );
+  const volumeDataset = volumeDatasetOverride ?? volumeDatasetPreset;
   const volumeScalarRange = useMemo(() => {
     const scalars = volumeDataset.grid.scalars;
     let min = Infinity;
@@ -856,6 +868,55 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     Math.floor(volumeDataset.grid.dims[2] / 2)
   );
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
+  const [volumeShowStreamlines, setVolumeShowStreamlines] = useState(false);
+  const [volumeVectorPresetId, setVolumeVectorPresetId] = useState<VectorPresetId>("vortex");
+  const [volumeStreamSeedGrid, setVolumeStreamSeedGrid] = useState(8);
+  const volumeGridBounds = useMemo(() => {
+    const grid = volumeDataset.grid;
+    const spacing = grid.spacing ?? [1, 1, 1];
+    const origin = grid.origin ?? [0, 0, 0];
+    return {
+      min: [origin[0], origin[1], origin[2]] as [number, number, number],
+      max: [
+        origin[0] + spacing[0] * Math.max(0, grid.dims[0] - 1),
+        origin[1] + spacing[1] * Math.max(0, grid.dims[1] - 1),
+        origin[2] + spacing[2] * Math.max(0, grid.dims[2] - 1),
+      ] as [number, number, number],
+    };
+  }, [volumeDataset]);
+  const volumeVectorPreset = useMemo(
+    () => getVectorPreset(volumeVectorPresetId),
+    [volumeVectorPresetId]
+  );
+  const volumeVectorGrid: VectorGrid | null = useMemo(() => {
+    if (!volumeShowStreamlines) return null;
+    return buildVectorGridFromPreset(volumeVectorPresetId, {
+      dims: volumeDataset.grid.dims,
+      bounds: volumeGridBounds,
+    });
+  }, [volumeShowStreamlines, volumeVectorPresetId, volumeDataset, volumeGridBounds]);
+  const volumeStreamlineSeeds = useMemo(() => {
+    if (!volumeShowStreamlines) return [];
+    return buildSliceSeeds(
+      volumeDataset.grid,
+      volumeSliceAxis,
+      volumeSliceIndex,
+      volumeStreamSeedGrid,
+      volumeStreamSeedGrid
+    );
+  }, [volumeShowStreamlines, volumeDataset, volumeSliceAxis, volumeSliceIndex, volumeStreamSeedGrid]);
+  const volumeStreamlineStepSize = useMemo(() => {
+    const spacing = volumeDataset.grid.spacing ?? [1, 1, 1];
+    const minSpacing = Math.min(spacing[0], spacing[1], spacing[2]);
+    return Math.max(1e-3, minSpacing * 0.65);
+  }, [volumeDataset]);
+  const volumeStreamlineMaxLength = useMemo(() => {
+    const dx = volumeGridBounds.max[0] - volumeGridBounds.min[0];
+    const dy = volumeGridBounds.max[1] - volumeGridBounds.min[1];
+    const dz = volumeGridBounds.max[2] - volumeGridBounds.min[2];
+    return Math.max(dx, dy, dz) * 2.4;
+  }, [volumeGridBounds]);
+  const volumeStreamlineMaxSteps = 900;
   const [volumeContourEnabled, setVolumeContourEnabled] = useState(true);
   const [volumeContourCount, setVolumeContourCount] = useState(6);
   const [volumeWindowMode, setVolumeWindowMode] = useState<"auto" | "minmax">("auto");
@@ -894,6 +955,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return { ...prev, extents };
     });
   };
+  const handleVolumeStreamSeedGridChange = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return;
+    const next = Math.max(2, Math.min(24, Math.round(value)));
+    setVolumeStreamSeedGrid(next);
+  }, []);
   const handleResetVolumeSampling = () => {
     setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
   };
@@ -1920,6 +1986,78 @@ case "mobius":
       setVtkBusy(false);
     }
   }, [vtkBusy, getMeshForVtk, vtkSmoothIterations, vtkSmoothPassband, applyVtkResultToSurfaceMesh]);
+
+  const handleBuildDistanceVolume = useCallback(async () => {
+    if (volumeDistanceBusy) return;
+    if (!surfaceMeshData?.positions?.length) {
+      setVolumeDistanceError("Surface mesh not ready yet.");
+      return;
+    }
+    if (!(window as any).vtkVolume?.distanceField) {
+      setVolumeDistanceError("VTK volume worker unavailable.");
+      return;
+    }
+    const positions = surfaceMeshData.positions;
+    let indices = surfaceMeshData.indices;
+    if (!indices || indices.length < 3) {
+      const vertCount = Math.floor(positions.length / 3);
+      if (vertCount < 3) {
+        setVolumeDistanceError("Surface mesh has no triangles.");
+        return;
+      }
+      const seq = new Uint32Array(vertCount);
+      for (let i = 0; i < vertCount; i++) seq[i] = i;
+      indices = seq;
+    }
+
+    setVolumeDistanceBusy(true);
+    setVolumeDistanceError(null);
+    try {
+      const res = await vtkVolumeDistance({
+        dims: volumeSamplingClamped.dims,
+        positions,
+        indices,
+        spacing: volumeSamplingSpacing,
+        origin: volumeSamplingBounds.min,
+      });
+      if (!res.ok) {
+        setVolumeDistanceError(res.error);
+        return;
+      }
+      const grid = {
+        dims: res.dims,
+        scalars: res.scalars,
+        spacing: volumeSamplingSpacing,
+        origin: volumeSamplingBounds.min,
+      };
+      const label = `Distance field: ${surfaceMeshData.label ?? "Surface mesh"}`;
+      setVolumeDatasetOverride({
+        kind: "volume",
+        grid,
+        label,
+        note: "Unsigned distance to surface mesh.",
+        sourceId: "surface_distance",
+      });
+      setDatasetKind("volume");
+      setVolumeShowIsosurface(true);
+      setVolumeIsoValue(0);
+    } catch (err: any) {
+      setVolumeDistanceError(err?.message ?? "Distance field failed.");
+    } finally {
+      setVolumeDistanceBusy(false);
+    }
+  }, [
+    volumeDistanceBusy,
+    surfaceMeshData,
+    volumeSamplingClamped.dims,
+    volumeSamplingSpacing,
+    volumeSamplingBounds,
+  ]);
+
+  const handleClearVolumeOverride = useCallback(() => {
+    setVolumeDatasetOverride(null);
+    setVolumeDistanceError(null);
+  }, []);
 
   const handleExportToSurfaceMesh = useCallback(() => {
     if (surfaceViewerKind === "implicit" && !activeCgalMesh) {
@@ -4291,6 +4429,11 @@ case "mobius":
                   paramId={paramSurfaceId}
                   datasetKind={datasetKind}
                   onChangeDatasetKind={setDatasetKind}
+                  volumeDatasetOverride={volumeDatasetOverride}
+                  volumeDistanceBusy={volumeDistanceBusy}
+                  volumeDistanceError={volumeDistanceError}
+                  onBuildDistanceVolume={handleBuildDistanceVolume}
+                  onClearVolumeOverride={handleClearVolumeOverride}
                   volumePresetId={volumePresetId}
                   volumePreset={volumePreset}
                   volumeDims={volumeDims}
@@ -4301,6 +4444,12 @@ case "mobius":
                   volumeIndex={volumeSliceIndex}
                   volumeIndexMax={volumeSliceMax}
                   volumeOpacity={volumeSliceOpacity}
+                  volumeVectorPresetId={volumeVectorPresetId}
+                  volumeVectorPresetLabel={volumeVectorPreset.label}
+                  volumeShowStreamlines={volumeShowStreamlines}
+                  volumeStreamSeedGrid={volumeStreamSeedGrid}
+                  volumeStreamlineStepSize={volumeStreamlineStepSize}
+                  volumeStreamlineMaxLength={volumeStreamlineMaxLength}
                   volumeSampling={volumeSamplingClamped}
                   volumeSamplingSpacing={volumeSamplingSpacing}
                   volumeShowCropBox={volumeShowCropBox}
@@ -4337,6 +4486,9 @@ case "mobius":
                   onChangeVolumeAxis={setVolumeSliceAxis}
                   onChangeVolumeIndex={setVolumeSliceIndex}
                   onChangeVolumeOpacity={setVolumeSliceOpacity}
+                  onChangeVolumeVectorPreset={setVolumeVectorPresetId}
+                  onToggleVolumeStreamlines={setVolumeShowStreamlines}
+                  onChangeVolumeStreamSeedGrid={handleVolumeStreamSeedGridChange}
                   surfaceMeshLabel={surfaceMeshLabel}
                   surfaceMeshStats={surfaceMeshStats}
                   surfaceMeshSource={surfaceMeshData?.source ?? null}
@@ -4612,6 +4764,7 @@ case "mobius":
                   <div style={{ width: "100%", height: "100%" }}>
                     <VolumeViewer
                       dataset={activeDataset?.kind === "volume" ? activeDataset : null}
+                      vectorGrid={volumeVectorGrid}
                       axis={volumeSliceAxis}
                       index={volumeSliceIndex}
                       opacity={volumeSliceOpacity}
@@ -4630,6 +4783,11 @@ case "mobius":
                       cropGizmoEnabled={volumeCropGizmoEnabled}
                       cropGizmoMode={volumeCropGizmoMode}
                       onCropChange={handleVolumeCropChange}
+                      showStreamlines={volumeShowStreamlines}
+                      streamlineSeeds={volumeStreamlineSeeds}
+                      streamlineStepSize={volumeStreamlineStepSize}
+                      streamlineMaxSteps={volumeStreamlineMaxSteps}
+                      streamlineMaxLength={volumeStreamlineMaxLength}
                     />
                   </div>
                 ) : (
@@ -5521,6 +5679,11 @@ type SurfacesLeftPanelProps = {
   paramId: ParamSurfaceId;
   datasetKind: DatasetKind;
   onChangeDatasetKind: (kind: DatasetKind) => void;
+  volumeDatasetOverride: VolumeDataset | null;
+  volumeDistanceBusy: boolean;
+  volumeDistanceError: string | null;
+  onBuildDistanceVolume: () => void;
+  onClearVolumeOverride: () => void;
   volumePresetId: VolumePresetId;
   volumePreset: VolumePreset;
   volumeDims: [number, number, number];
@@ -5531,6 +5694,12 @@ type SurfacesLeftPanelProps = {
   volumeIndex: number;
   volumeIndexMax: number;
   volumeOpacity: number;
+  volumeVectorPresetId: VectorPresetId;
+  volumeVectorPresetLabel: string;
+  volumeShowStreamlines: boolean;
+  volumeStreamSeedGrid: number;
+  volumeStreamlineStepSize: number;
+  volumeStreamlineMaxLength: number;
   volumeSampling: VolumeSampling;
   volumeSamplingSpacing: [number, number, number];
   volumeShowCropBox: boolean;
@@ -5567,6 +5736,9 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeAxis: (axis: SliceAxis) => void;
   onChangeVolumeIndex: (value: number) => void;
   onChangeVolumeOpacity: (value: number) => void;
+  onChangeVolumeVectorPreset: (id: VectorPresetId) => void;
+  onToggleVolumeStreamlines: (v: boolean) => void;
+  onChangeVolumeStreamSeedGrid: (v: number) => void;
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshSource: SurfaceMeshSource | null;
@@ -5829,6 +6001,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramId,
   datasetKind,
   onChangeDatasetKind,
+  volumeDatasetOverride,
+  volumeDistanceBusy,
+  volumeDistanceError,
+  onBuildDistanceVolume,
+  onClearVolumeOverride,
   volumePresetId,
   volumePreset,
   volumeDims,
@@ -5839,6 +6016,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeIndex,
   volumeIndexMax,
   volumeOpacity,
+  volumeVectorPresetId,
+  volumeVectorPresetLabel,
+  volumeShowStreamlines,
+  volumeStreamSeedGrid,
+  volumeStreamlineStepSize,
+  volumeStreamlineMaxLength,
   volumeSampling,
   volumeSamplingSpacing,
   volumeShowCropBox,
@@ -5875,6 +6058,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeAxis,
   onChangeVolumeIndex,
   onChangeVolumeOpacity,
+  onChangeVolumeVectorPreset,
+  onToggleVolumeStreamlines,
+  onChangeVolumeStreamSeedGrid,
   surfaceMeshLabel,
   surfaceMeshStats,
   surfaceMeshSource,
@@ -6133,11 +6319,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     formula: "Triangle surface mesh",
     note: "Imported or generated triangle mesh.",
   };
-  const volumeMeta = {
-    label: `Volume: ${volumePreset.label}`,
-    formula: volumePresetId === "custom" ? (volumeCustomExpr.trim() || volumePreset.formula) : volumePreset.formula,
-    note: volumePreset.note ?? "Scalar field on a voxel grid.",
-  };
+  const volumeMeta = volumeDatasetOverride
+    ? {
+        label: volumeDatasetOverride.label ?? "Volume: Distance field",
+        formula: "Unsigned distance field |d(p, S)|",
+        note: volumeDatasetOverride.note ?? "Distance field sampled on a voxel grid.",
+      }
+    : {
+        label: `Volume: ${volumePreset.label}`,
+        formula: volumePresetId === "custom" ? (volumeCustomExpr.trim() || volumePreset.formula) : volumePreset.formula,
+        note: volumePreset.note ?? "Scalar field on a voxel grid.",
+      };
   const activeMeta = isVolume
     ? volumeMeta
     : isMeshViewer
@@ -6288,6 +6480,39 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       {datasetKind === "volume" && (
         <div style={{ ...cardStyle, marginTop: 10 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume grid</div>
+          {volumeDatasetOverride && (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid #e0e0e0",
+                background: "#fff",
+                fontSize: 11,
+              }}
+            >
+              <div style={{ fontWeight: 600 }}>Active: {volumeDatasetOverride.label ?? "Distance field"}</div>
+              {volumeDatasetOverride.note && (
+                <div style={{ marginTop: 4, opacity: 0.7 }}>{volumeDatasetOverride.note}</div>
+              )}
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={onClearVolumeOverride} style={{ padding: "4px 8px" }}>
+                  Use preset grid
+                </button>
+                <button
+                  type="button"
+                  onClick={onBuildDistanceVolume}
+                  disabled={volumeDistanceBusy}
+                  style={{ padding: "4px 8px" }}
+                >
+                  {volumeDistanceBusy ? "Rebuilding..." : "Rebuild distance field"}
+                </button>
+              </div>
+              {volumeDistanceError && (
+                <div style={{ marginTop: 6, color: "#b42318" }}>Error: {volumeDistanceError}</div>
+              )}
+            </div>
+          )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Dims (Nx, Ny, Nz)</span>
@@ -6677,11 +6902,56 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </label>
             )}
           </div>
+          <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Streamlines</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeShowStreamlines}
+                onChange={(e) => onToggleVolumeStreamlines(e.target.checked)}
+              />
+              Show
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Seeds per side</span>
+              <input
+                type="number"
+                min={2}
+                max={24}
+                value={volumeStreamSeedGrid}
+                onChange={(e) => onChangeVolumeStreamSeedGrid(Number(e.target.value))}
+                style={{ width: 80 }}
+              />
+            </label>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Field preset</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {VECTOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => onChangeVolumeVectorPreset(preset.id)}
+                  style={pill(volumeVectorPresetId === preset.id)}
+                  aria-pressed={volumeVectorPresetId === preset.id}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+              Active field: {volumeVectorPresetLabel}. Step {fmtVal(volumeStreamlineStepSize, 3)}, max length{" "}
+              {fmtVal(volumeStreamlineMaxLength, 2)}.
+            </div>
+          </div>
           <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
-            Source: {volumePreset.label} field sampled on {volumeSampling.dims[0]}x{volumeSampling.dims[1]}x
-            {volumeSampling.dims[2]}. Bounds: x in [{fmtVal(volumeBounds.min[0])},{" "}
-            {fmtVal(volumeBounds.max[0])}], y in [{fmtVal(volumeBounds.min[1])}, {fmtVal(volumeBounds.max[1])}], z in [
-            {fmtVal(volumeBounds.min[2])}, {fmtVal(volumeBounds.max[2])}].
+            Source: {volumeDatasetOverride?.label ?? volumePreset.label} sampled on{" "}
+            {(volumeDatasetOverride?.grid.dims ?? volumeSampling.dims)[0]}x
+            {(volumeDatasetOverride?.grid.dims ?? volumeSampling.dims)[1]}x
+            {(volumeDatasetOverride?.grid.dims ?? volumeSampling.dims)[2]}. Bounds: x in [
+            {fmtVal(volumeBounds.min[0])}, {fmtVal(volumeBounds.max[0])}], y in [
+            {fmtVal(volumeBounds.min[1])}, {fmtVal(volumeBounds.max[1])}], z in [{fmtVal(volumeBounds.min[2])},{" "}
+            {fmtVal(volumeBounds.max[2])}].
           </div>
         </div>
       )}
@@ -6764,6 +7034,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshImportError}</div>
             )}
           </>
+        )}
+        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600 }}>Volume bridge</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+          <button
+            type="button"
+            onClick={onBuildDistanceVolume}
+            disabled={volumeDistanceBusy}
+            style={{ padding: "4px 10px" }}
+          >
+            {volumeDistanceBusy ? "Building..." : "Surface → Volume (distance)"}
+          </button>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+          Builds an unsigned distance field on the current sampling box. Use the Volume panel to view slices/isosurface.
+        </div>
+        {volumeDistanceError && (
+          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>
         )}
       </div>
 

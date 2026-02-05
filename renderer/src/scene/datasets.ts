@@ -24,6 +24,13 @@ export type VolumeGrid = {
   origin?: [number, number, number];
 };
 
+export type VectorGrid = {
+  dims: [number, number, number];
+  vectors: Float32Array;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
 export type VolumeFields = {
   scalars?: { name: string; values: Float32Array | number[] }[];
 };
@@ -33,6 +40,9 @@ export type VolumeDataset = {
   grid: VolumeGrid;
   fields?: VolumeFields | null;
   derived?: { slice?: Image2D | null } | null;
+  label?: string;
+  note?: string;
+  sourceId?: string;
 };
 
 export type Dataset = SurfaceDataset | VolumeDataset;

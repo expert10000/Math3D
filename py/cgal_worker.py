@@ -534,10 +534,10 @@ def handle_volume_slice(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
     if not payloads or "scalars" not in payloads:
         raise RuntimeError("Missing scalars payload for volume slice")
 
-    axis = str(msg.get("axis", "z")).lower()
-    index = int(msg.get("index", 0))
     spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
     origin = msg.get("origin") or [0.0, 0.0, 0.0]
+    plane = msg.get("plane") or None
+    window = msg.get("window") or None
 
     try:
         import numpy as np
@@ -561,24 +561,92 @@ def handle_volume_slice(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
     scalars_vtk = nps.numpy_to_vtk(scalars_np, deep=1, array_type=vtk.VTK_FLOAT)
     img.GetPointData().SetScalars(scalars_vtk)
 
-    if axis == "x":
-        idx = max(0, min(nx - 1, index))
-        voi = (idx, idx, 0, max(0, ny - 1), 0, max(0, nz - 1))
-        width, height = ny, nz
-    elif axis == "y":
-        idx = max(0, min(ny - 1, index))
-        voi = (0, max(0, nx - 1), idx, idx, 0, max(0, nz - 1))
-        width, height = nx, nz
-    else:
-        idx = max(0, min(nz - 1, index))
-        voi = (0, max(0, nx - 1), 0, max(0, ny - 1), idx, idx)
-        width, height = nx, ny
+    def normalize_vec(vec, fallback):
+        try:
+            v = [float(vec[0]), float(vec[1]), float(vec[2])]
+        except Exception:
+            return fallback
+        n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+        if n <= 0:
+            return fallback
+        return [v[0] / n, v[1] / n, v[2] / n]
 
-    extract = vtk.vtkExtractVOI()
-    extract.SetInputData(img)
-    extract.SetVOI(*voi)
-    extract.Update()
-    out = extract.GetOutput()
+    if plane:
+        center = plane.get("center") or [0.0, 0.0, 0.0]
+        u = normalize_vec(plane.get("u"), [1.0, 0.0, 0.0])
+        v = normalize_vec(plane.get("v"), [0.0, 1.0, 0.0])
+        n = normalize_vec(plane.get("normal"), [0.0, 0.0, 1.0])
+        width_world = float(plane.get("width", 0.0) or 0.0)
+        height_world = float(plane.get("height", 0.0) or 0.0)
+        resolution = plane.get("resolution") or plane.get("dims")
+        width = int(resolution[0]) if resolution and len(resolution) >= 2 else max(1, nx)
+        height = int(resolution[1]) if resolution and len(resolution) >= 2 else max(1, ny)
+    else:
+        axis = str(msg.get("axis", "z")).lower()
+        index = int(msg.get("index", 0))
+        if axis == "x":
+            idx = max(0, min(nx - 1, index))
+            width, height = ny, nz
+            u = [0.0, 1.0, 0.0]
+            v = [0.0, 0.0, 1.0]
+            n = [1.0, 0.0, 0.0]
+            center = [
+                float(origin[0] + idx * spacing[0]),
+                float(origin[1] + (ny - 1) * spacing[1] * 0.5),
+                float(origin[2] + (nz - 1) * spacing[2] * 0.5),
+            ]
+            width_world = max(0.0, (ny - 1) * float(spacing[1]))
+            height_world = max(0.0, (nz - 1) * float(spacing[2]))
+        elif axis == "y":
+            idx = max(0, min(ny - 1, index))
+            width, height = nx, nz
+            u = [1.0, 0.0, 0.0]
+            v = [0.0, 0.0, 1.0]
+            n = [0.0, 1.0, 0.0]
+            center = [
+                float(origin[0] + (nx - 1) * spacing[0] * 0.5),
+                float(origin[1] + idx * spacing[1]),
+                float(origin[2] + (nz - 1) * spacing[2] * 0.5),
+            ]
+            width_world = max(0.0, (nx - 1) * float(spacing[0]))
+            height_world = max(0.0, (nz - 1) * float(spacing[2]))
+        else:
+            idx = max(0, min(nz - 1, index))
+            width, height = nx, ny
+            u = [1.0, 0.0, 0.0]
+            v = [0.0, 1.0, 0.0]
+            n = [0.0, 0.0, 1.0]
+            center = [
+                float(origin[0] + (nx - 1) * spacing[0] * 0.5),
+                float(origin[1] + (ny - 1) * spacing[1] * 0.5),
+                float(origin[2] + idx * spacing[2]),
+            ]
+            width_world = max(0.0, (nx - 1) * float(spacing[0]))
+            height_world = max(0.0, (ny - 1) * float(spacing[1]))
+
+    width = max(1, int(width))
+    height = max(1, int(height))
+    spacing_u = width_world / (width - 1) if width > 1 else max(width_world, 1.0)
+    spacing_v = height_world / (height - 1) if height > 1 else max(height_world, 1.0)
+
+    axes = vtk.vtkMatrix4x4()
+    for i in range(3):
+        axes.SetElement(i, 0, float(u[i]))
+        axes.SetElement(i, 1, float(v[i]))
+        axes.SetElement(i, 2, float(n[i]))
+        axes.SetElement(i, 3, float(center[i]))
+
+    reslice = vtk.vtkImageReslice()
+    reslice.SetInputData(img)
+    reslice.SetOutputDimensionality(2)
+    reslice.SetInterpolationModeToLinear()
+    reslice.SetResliceAxes(axes)
+    reslice.SetOutputOrigin(-0.5 * width_world, -0.5 * height_world, 0.0)
+    reslice.SetOutputSpacing(float(spacing_u), float(spacing_v), 1.0)
+    reslice.SetOutputExtent(0, width - 1, 0, height - 1, 0, 0)
+    reslice.Update()
+
+    out = reslice.GetOutput()
     out_scalars = out.GetPointData().GetScalars()
     if out_scalars is None:
         raise RuntimeError("VTK volume slice missing scalars")
@@ -600,9 +668,25 @@ def handle_volume_slice(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
         vmin = 0.0
         vmax = 0.0
 
-    vrange = vmax - vmin
+    low = None
+    high = None
+    if isinstance(window, dict):
+        low = window.get("low")
+        high = window.get("high")
+    if low is None or high is None:
+        low = vmin
+        high = vmax
+
+    try:
+        low = float(low)
+        high = float(high)
+    except Exception:
+        low = vmin
+        high = vmax
+
+    vrange = high - low
     if vrange > 1e-8:
-        scaled = (vals - vmin) / vrange
+        scaled = (vals - low) / vrange
         scaled = np.where(finite, scaled, 0.0)
         gray = np.clip(scaled * 255.0, 0.0, 255.0).astype(np.uint8)
     else:
@@ -690,6 +774,234 @@ def handle_volume_isosurface(msg: Dict[str, Any], payloads: Optional[Dict[str, b
             "triCount": tcount,
         },
         parts,
+    )
+
+
+def handle_volume_distance(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    dims = msg.get("dims") or msg.get("dimensions")
+    if not dims or len(dims) != 3:
+        raise RuntimeError("Missing dims for volume distance")
+    if not payloads or "positions" not in payloads or "indices" not in payloads:
+        raise RuntimeError("Missing mesh payload for volume distance")
+
+    spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
+    origin = msg.get("origin") or [0.0, 0.0, 0.0]
+
+    try:
+        import numpy as np
+        import vtk
+        from vtk.util import numpy_support as nps
+    except Exception as e:
+        raise RuntimeError(f"VTK volume distance requires numpy+vtk: {e}")
+
+    nx, ny, nz = [int(v) for v in dims]
+    total = max(0, nx * ny * nz)
+    if total <= 0:
+        raise RuntimeError("Volume distance requires positive dims")
+
+    poly = vtk_poly_from_buffers(payloads["positions"], payloads["indices"])
+
+    implicit = vtk.vtkImplicitPolyDataDistance()
+    implicit.SetInput(poly)
+
+    minx = float(origin[0])
+    miny = float(origin[1])
+    minz = float(origin[2])
+    maxx = minx + float(spacing[0]) * max(0, nx - 1)
+    maxy = miny + float(spacing[1]) * max(0, ny - 1)
+    maxz = minz + float(spacing[2]) * max(0, nz - 1)
+
+    sample = vtk.vtkSampleFunction()
+    sample.SetImplicitFunction(implicit)
+    sample.SetModelBounds(minx, maxx, miny, maxy, minz, maxz)
+    sample.SetSampleDimensions(nx, ny, nz)
+    sample.ComputeNormalsOff()
+    sample.Update()
+
+    out = sample.GetOutput()
+    out_scalars = out.GetPointData().GetScalars()
+    if out_scalars is None:
+        raise RuntimeError("VTK distance returned empty scalars")
+    vals = nps.vtk_to_numpy(out_scalars)
+    vals = np.asarray(vals, dtype=np.float32, order="C")
+    if vals.size < total:
+        raise RuntimeError("VTK distance returned too few samples")
+    if vals.size > total:
+        vals = vals[:total]
+
+    vals = np.abs(vals)
+
+    send_binary(
+        {
+            "type": "volume_distance_result",
+            "jobId": job_id,
+            "ok": True,
+            "dims": [nx, ny, nz],
+        },
+        [("scalars", vals.tobytes(order="C"))],
+    )
+
+
+def handle_volume_streamlines(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    dims = msg.get("dims") or msg.get("dimensions")
+    if not dims or len(dims) != 3:
+        raise RuntimeError("Missing dims for volume streamlines")
+    if not payloads or "vectors" not in payloads:
+        raise RuntimeError("Missing vectors payload for volume streamlines")
+
+    spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
+    origin = msg.get("origin") or [0.0, 0.0, 0.0]
+    seeds = msg.get("seeds") or []
+    step_size = float(msg.get("stepSize", 0.0) or 0.0)
+    max_steps = int(msg.get("maxSteps", 0) or 0)
+    max_length = float(msg.get("maxLength", 0.0) or 0.0)
+
+    try:
+        import numpy as np
+        import vtk
+        from vtk.util import numpy_support as nps
+    except Exception as e:
+        raise RuntimeError(f"VTK streamlines requires numpy+vtk: {e}")
+
+    nx, ny, nz = [int(v) for v in dims]
+    total = max(0, nx * ny * nz)
+    if total <= 0:
+        raise RuntimeError("Streamlines require positive dims")
+
+    vec_np = np.frombuffer(payloads["vectors"], dtype=np.float32)
+    if vec_np.size < total * 3:
+        raise RuntimeError("Vectors buffer too small for streamlines")
+    if vec_np.size > total * 3:
+        vec_np = vec_np[: total * 3]
+    vec_np = vec_np.reshape((total, 3))
+
+    img = vtk.vtkImageData()
+    img.SetDimensions(nx, ny, nz)
+    img.SetSpacing(float(spacing[0]), float(spacing[1]), float(spacing[2]))
+    img.SetOrigin(float(origin[0]), float(origin[1]), float(origin[2]))
+    vectors_vtk = nps.numpy_to_vtk(vec_np, deep=1, array_type=vtk.VTK_FLOAT)
+    vectors_vtk.SetNumberOfComponents(3)
+    vectors_vtk.SetName("vectors")
+    img.GetPointData().SetVectors(vectors_vtk)
+    img.GetPointData().SetActiveVectors("vectors")
+
+    if not isinstance(seeds, list) or not seeds:
+        send(
+            {
+                "type": "volume_streamlines_result",
+                "jobId": job_id,
+                "ok": True,
+                "lines": [],
+            }
+        )
+        return
+
+    points = vtk.vtkPoints()
+    seed_count = 0
+    for s in seeds:
+        if not isinstance(s, (list, tuple)) or len(s) < 3:
+            continue
+        try:
+            x, y, z = float(s[0]), float(s[1]), float(s[2])
+        except Exception:
+            continue
+        points.InsertNextPoint(x, y, z)
+        seed_count += 1
+
+    if seed_count == 0:
+        send(
+            {
+                "type": "volume_streamlines_result",
+                "jobId": job_id,
+                "ok": True,
+                "lines": [],
+            }
+        )
+        return
+
+    seed_poly = vtk.vtkPolyData()
+    seed_poly.SetPoints(points)
+
+    tracer = vtk.vtkStreamTracer()
+    tracer.SetInputData(img)
+    tracer.SetSourceData(seed_poly)
+    tracer.SetIntegratorTypeToRungeKutta4()
+    tracer.SetIntegrationDirectionToBoth()
+    if step_size > 0:
+        tracer.SetInitialIntegrationStep(step_size)
+        tracer.SetMinimumIntegrationStep(step_size * 0.2)
+        tracer.SetMaximumIntegrationStep(step_size * 2.0)
+    if max_steps > 0:
+        tracer.SetMaximumNumberOfSteps(max_steps)
+    if max_length > 0:
+        tracer.SetMaximumPropagation(max_length)
+    tracer.Update()
+
+    out = tracer.GetOutput()
+    out_points = out.GetPoints()
+    if out_points is None or out.GetNumberOfPoints() == 0:
+        send(
+            {
+                "type": "volume_streamlines_result",
+                "jobId": job_id,
+                "ok": True,
+                "lines": [],
+            }
+        )
+        return
+
+    pts_np = nps.vtk_to_numpy(out_points.GetData())
+    lines = out.GetLines()
+    if lines is None:
+        send(
+            {
+                "type": "volume_streamlines_result",
+                "jobId": job_id,
+                "ok": True,
+                "lines": [],
+            }
+        )
+        return
+
+    cell_data = nps.vtk_to_numpy(lines.GetData())
+    if cell_data is None or cell_data.size == 0:
+        send(
+            {
+                "type": "volume_streamlines_result",
+                "jobId": job_id,
+                "ok": True,
+                "lines": [],
+            }
+        )
+        return
+
+    polylines: List[List[List[float]]] = []
+    idx = 0
+    total_cells = cell_data.size
+    while idx < total_cells:
+        npts = int(cell_data[idx])
+        idx += 1
+        if npts <= 1 or idx + npts > total_cells:
+            idx += max(0, npts)
+            continue
+        ids = cell_data[idx : idx + npts]
+        idx += npts
+        line: List[List[float]] = []
+        for pid in ids:
+            p = pts_np[int(pid)]
+            line.append([float(p[0]), float(p[1]), float(p[2])])
+        if len(line) >= 2:
+            polylines.append(line)
+
+    send(
+        {
+            "type": "volume_streamlines_result",
+            "jobId": job_id,
+            "ok": True,
+            "lines": polylines,
+        }
     )
 
 
@@ -930,6 +1242,26 @@ def main() -> None:
         elif msg.get("type") == "volume_isosurface":
             try:
                 handle_volume_isosurface(msg, payloads)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "volume_distance":
+            try:
+                handle_volume_distance(msg, payloads)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "volume_streamlines":
+            try:
+                handle_volume_streamlines(msg, payloads)
             except Exception as e:
                 send({
                     "type": "error",
