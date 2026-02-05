@@ -739,22 +739,36 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     () => resolveVolumePresetParams(volumePreset, volumeParams),
     [volumePreset, volumeParams]
   );
+  const volumeCustomFnRef = useRef<((x: number, y: number, z: number) => number) | null>(null);
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
     let src = volumeCustomExpr.trim();
     if (!src) return { fn: undefined, error: "Expression required." };
     const eqIdx = src.indexOf("=");
     if (eqIdx >= 0) src = src.slice(eqIdx + 1).trim();
+    const funcNames = ["sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "log", "exp", "min", "max"];
+    const funcRegex = new RegExp(`\\\\b(${funcNames.join("|")})\\\\b`, "gi");
+    src = src.replace(funcRegex, (m) => m.toLowerCase());
+    const funcNoParen = new RegExp(
+      `\\\\b(${funcNames.join("|")})\\\\s+(-?\\\\s*[A-Za-z_][A-Za-z0-9_]*|-?\\\\s*\\\\d*\\\\.?\\\\d+)`,
+      "g"
+    );
+    src = src.replace(funcNoParen, (_m, fn, arg) => `${fn}(${String(arg).replace(/\\\\s+/g, "")})`);
     const { fn, error } = compileExpression(src, ["x", "y", "z"]);
     return { fn, error: error ? error.message : null };
   }, [volumeCustomExpr, volumePresetId]);
+  useEffect(() => {
+    if (volumeCustomCompiled.fn) {
+      volumeCustomFnRef.current = volumeCustomCompiled.fn;
+    }
+  }, [volumeCustomCompiled.fn]);
   const volumeDataset = useMemo(
     () => ({
       kind: "volume",
       grid: buildVolumeGridFromPreset(volumePresetId, {
         dims: volumeDims,
         params: volumeParamsResolved,
-        customFn: volumeCustomCompiled.fn,
+        customFn: volumeCustomCompiled.fn ?? volumeCustomFnRef.current ?? undefined,
       }),
     }),
     [volumePresetId, volumeDims, volumeParamsResolved, volumeCustomCompiled.fn]
@@ -6152,8 +6166,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 </select>
               </label>
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-                Use x,y,z and functions like sin, cos, exp, log, sqrt, abs, min, max. You can type F=... and it will be
-                accepted.
+                Use x,y,z and functions like sin, cos, exp, log, sqrt, abs, min, max. Use sin(x) or sin x. You can type
+                F=... and it will be accepted.
               </div>
               {volumeCustomError && (
                 <div style={{ marginTop: 6, fontSize: 11, color: "#b00020" }}>Error: {volumeCustomError}</div>
