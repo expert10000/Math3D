@@ -64,6 +64,26 @@ export type VtkVolumeSliceResponse =
     }
   | { ok: false; error: string };
 
+export type VtkVolumeIsosurfaceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView | Buffer;
+  iso: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeIsosurfaceResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer;
+      indices: ArrayBuffer;
+      normals?: ArrayBuffer;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: any) => void;
@@ -545,6 +565,55 @@ class PythonWorker {
       format: "rgba8",
       min: typeof res.min === "number" ? res.min : undefined,
       max: typeof res.max === "number" ? res.max : undefined,
+    };
+  }
+
+  async vtkVolumeIsosurface(req: VtkVolumeIsosurfaceRequest): Promise<VtkVolumeIsosurfaceResponse> {
+    const scalarsBuf = toBuffer(req.scalars);
+    if (!scalarsBuf.length) {
+      return { ok: false, error: "VTK volume isosurface request missing scalars buffer" };
+    }
+
+    const msg = {
+      type: "volume_isosurface",
+      jobId: req.jobId,
+      dims: req.dims,
+      iso: req.iso,
+      spacing: req.spacing,
+      origin: req.origin,
+      binary: [{ name: "scalars", bytes: scalarsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [scalarsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume isosurface response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "volume_isosurface_result" || res.ok === false) {
+      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume isosurface response" };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK volume isosurface returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
     };
   }
 

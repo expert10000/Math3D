@@ -19,6 +19,7 @@ import {
   type ProbeInfo,
 } from "./components/SurfaceViewer";
 import { VolumeViewer } from "./components/VolumeViewer";
+import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import type { ColorPalette } from "./components/colorPalette";
@@ -86,7 +87,18 @@ import {
   type VolumePresetId,
   type VolumePresetParams,
 } from "./scene/volume/volumePresets";
-import type { SliceAxis } from "./scene/volume/sliceVolume";
+import {
+  type SliceAxis,
+  type VolumeSliceHover,
+  type VolumeSliceReport,
+} from "./scene/volume/sliceVolume";
+import {
+  clampSampling,
+  samplingFromBounds,
+  samplingSpacing,
+  samplingToBounds,
+  type VolumeSampling,
+} from "./scene/volume/volumeSampling";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
@@ -739,6 +751,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     () => resolveVolumePresetParams(volumePreset, volumeParams),
     [volumePreset, volumeParams]
   );
+  const volumePresetBounds = useMemo(
+    () => getVolumePresetBounds(volumePreset, volumeParamsResolved),
+    [volumePreset, volumeParamsResolved]
+  );
+  const [volumeSampling, setVolumeSampling] = useState<VolumeSampling>(() =>
+    samplingFromBounds(volumePresetBounds, volumeDims)
+  );
   const volumeCustomFnRef = useRef<((x: number, y: number, z: number) => number) | null>(null);
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
@@ -772,17 +791,64 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       volumeCustomFnRef.current = volumeCustomCompiled.fn;
     }
   }, [volumeCustomCompiled.fn]);
+  useEffect(() => {
+    setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
+  }, [volumePresetBounds]);
+  useEffect(() => {
+    setVolumeSampling((prev) => ({ ...prev, dims: volumeDims }));
+  }, [volumeDims]);
+  const volumeSamplingClamped = useMemo(() => clampSampling(volumeSampling), [volumeSampling]);
+  const volumeSamplingBounds = useMemo(
+    () => samplingToBounds(volumeSamplingClamped),
+    [volumeSamplingClamped]
+  );
+  const volumeSamplingSpacing = useMemo(
+    () => samplingSpacing(volumeSamplingClamped),
+    [volumeSamplingClamped]
+  );
   const volumeDataset = useMemo(
     () => ({
       kind: "volume",
       grid: buildVolumeGridFromPreset(volumePresetId, {
-        dims: volumeDims,
+        dims: volumeSamplingClamped.dims,
+        bounds: volumeSamplingBounds,
         params: volumeParamsResolved,
         customFn: volumeCustomCompiled.fn ?? volumeCustomFnRef.current ?? undefined,
       }),
     }),
-    [volumePresetId, volumeDims, volumeParamsResolved, volumeCustomCompiled.fn]
+    [volumePresetId, volumeSamplingClamped, volumeSamplingBounds, volumeParamsResolved, volumeCustomCompiled.fn]
   );
+  const volumeScalarRange = useMemo(() => {
+    const scalars = volumeDataset.grid.scalars;
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < scalars.length; i++) {
+      const v = scalars[i];
+      if (!Number.isFinite(v)) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      min = 0;
+      max = 0;
+    }
+    return { min, max };
+  }, [volumeDataset]);
+  const volumeIsoRange = useMemo(() => {
+    let min = volumeScalarRange.min;
+    let max = volumeScalarRange.max;
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      min = -1;
+      max = 1;
+    }
+    if (Math.abs(max - min) < 1e-6) {
+      min -= 1;
+      max += 1;
+    }
+    const span = max - min;
+    const step = span > 0 ? span / 200 : 0.01;
+    return { min, max, step };
+  }, [volumeScalarRange]);
   const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
   const surfaceMeshData = surfaceDataset?.mesh ?? null;
   const [volumeSliceAxis, setVolumeSliceAxis] = useState<SliceAxis>("z");
@@ -790,6 +856,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     Math.floor(volumeDataset.grid.dims[2] / 2)
   );
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
+  const [volumeContourEnabled, setVolumeContourEnabled] = useState(true);
+  const [volumeContourCount, setVolumeContourCount] = useState(6);
+  const [volumeWindowMode, setVolumeWindowMode] = useState<"auto" | "minmax">("auto");
+  const [volumeSliceReport, setVolumeSliceReport] = useState<VolumeSliceReport | null>(null);
+  const [volumeSliceHover, setVolumeSliceHover] = useState<VolumeSliceHover | null>(null);
+  const [volumeShowIsosurface, setVolumeShowIsosurface] = useState(false);
+  const [volumeIsoValue, setVolumeIsoValue] = useState(0);
+  const [volumeIsoSmooth, setVolumeIsoSmooth] = useState(false);
+  const [volumeIsoSmoothIterations, setVolumeIsoSmoothIterations] = useState(20);
+  const [volumeShowCropBox, setVolumeShowCropBox] = useState(true);
+  const [volumeCropGizmoEnabled, setVolumeCropGizmoEnabled] = useState(true);
+  const [volumeCropGizmoMode, setVolumeCropGizmoMode] = useState<"move" | "scale">("move");
   const clampVolumeDim = (value: number) => {
     if (!Number.isFinite(value)) return 1;
     return Math.max(1, Math.min(256, Math.round(value)));
@@ -801,6 +879,39 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return next;
     });
   };
+  const handleVolumeSamplingCenterChange = (axisIndex: 0 | 1 | 2, value: number) => {
+    setVolumeSampling((prev) => {
+      const center: [number, number, number] = [prev.center[0], prev.center[1], prev.center[2]];
+      center[axisIndex] = Number.isFinite(value) ? value : center[axisIndex];
+      return { ...prev, center };
+    });
+  };
+  const handleVolumeSamplingExtentChange = (axisIndex: 0 | 1 | 2, value: number) => {
+    setVolumeSampling((prev) => {
+      const extents: [number, number, number] = [prev.extents[0], prev.extents[1], prev.extents[2]];
+      const next = Number.isFinite(value) ? Math.max(1e-6, Math.abs(value)) : extents[axisIndex];
+      extents[axisIndex] = next;
+      return { ...prev, extents };
+    });
+  };
+  const handleResetVolumeSampling = () => {
+    setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
+  };
+  const handleRebuildVolumeSampling = () => {
+    setVolumeSampling((prev) => ({ ...prev }));
+  };
+  const handleVolumeCropChange = useCallback(
+    (center: [number, number, number], extents: [number, number, number]) => {
+      setVolumeSampling((prev) => clampSampling({ ...prev, center, extents }));
+    },
+    []
+  );
+  const handleToggleVolumeCropGizmo = useCallback((enabled: boolean) => {
+    setVolumeCropGizmoEnabled(enabled);
+    if (enabled) {
+      setVolumeShowCropBox(true);
+    }
+  }, []);
   const handleVolumeParamChange = useCallback(
     (id: string, value: number) => {
       setVolumeParams((prev) => {
@@ -826,6 +937,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     setVolumeSliceIndex((value) => Math.max(0, Math.min(volumeSliceMax, value)));
   }, [volumeSliceMax]);
+  useEffect(() => {
+    const { min, max } = volumeScalarRange;
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+    const hasZero = min <= 0 && max >= 0;
+    const fallback = hasZero ? 0 : (min + max) * 0.5;
+    if (!Number.isFinite(volumeIsoValue) || volumeIsoValue < min || volumeIsoValue > max) {
+      setVolumeIsoValue(fallback);
+    }
+  }, [volumeScalarRange, volumeIsoValue]);
   const [surfaceMeshImportBusy, setSurfaceMeshImportBusy] = useState(false);
   const [surfaceMeshImportError, setSurfaceMeshImportError] = useState<string | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
@@ -4181,8 +4301,37 @@ case "mobius":
                   volumeIndex={volumeSliceIndex}
                   volumeIndexMax={volumeSliceMax}
                   volumeOpacity={volumeSliceOpacity}
+                  volumeSampling={volumeSamplingClamped}
+                  volumeSamplingSpacing={volumeSamplingSpacing}
+                  volumeShowCropBox={volumeShowCropBox}
+                  volumeCropGizmoEnabled={volumeCropGizmoEnabled}
+                  volumeCropGizmoMode={volumeCropGizmoMode}
+                  volumeContourEnabled={volumeContourEnabled}
+                  volumeContourCount={volumeContourCount}
+                  volumeWindowMode={volumeWindowMode}
+                  volumeSliceReport={volumeSliceReport}
+                  volumeSliceHover={volumeSliceHover}
+                  volumeShowIsosurface={volumeShowIsosurface}
+                  volumeIsoValue={volumeIsoValue}
+                  volumeIsoRange={volumeIsoRange}
+                  volumeIsoSmooth={volumeIsoSmooth}
+                  volumeIsoSmoothIterations={volumeIsoSmoothIterations}
                   onChangeVolumePresetId={setVolumePresetId}
                   onChangeVolumeDim={handleVolumeDimChange}
+                  onChangeVolumeSamplingCenter={handleVolumeSamplingCenterChange}
+                  onChangeVolumeSamplingExtent={handleVolumeSamplingExtentChange}
+                  onResetVolumeSampling={handleResetVolumeSampling}
+                  onRebuildVolumeSampling={handleRebuildVolumeSampling}
+                  onToggleVolumeCropBox={setVolumeShowCropBox}
+                  onToggleVolumeCropGizmo={handleToggleVolumeCropGizmo}
+                  onChangeVolumeCropGizmoMode={setVolumeCropGizmoMode}
+                  onToggleVolumeContour={setVolumeContourEnabled}
+                  onChangeVolumeContourCount={setVolumeContourCount}
+                  onChangeVolumeWindowMode={setVolumeWindowMode}
+                  onToggleVolumeIsosurface={setVolumeShowIsosurface}
+                  onChangeVolumeIsoValue={setVolumeIsoValue}
+                  onToggleVolumeIsoSmooth={setVolumeIsoSmooth}
+                  onChangeVolumeIsoSmoothIterations={setVolumeIsoSmoothIterations}
                   onChangeVolumeParam={handleVolumeParamChange}
                   onChangeVolumeCustomExpr={setVolumeCustomExpr}
                   onChangeVolumeAxis={setVolumeSliceAxis}
@@ -4466,6 +4615,21 @@ case "mobius":
                       axis={volumeSliceAxis}
                       index={volumeSliceIndex}
                       opacity={volumeSliceOpacity}
+                      contourEnabled={volumeContourEnabled}
+                      contourCount={volumeContourCount}
+                      windowMode={volumeWindowMode}
+                      onSliceReport={setVolumeSliceReport}
+                      onSliceHover={setVolumeSliceHover}
+                      showIsosurface={volumeShowIsosurface}
+                      isoValue={volumeIsoValue}
+                      isoSmoothing={volumeIsoSmooth}
+                      isoSmoothingIterations={volumeIsoSmoothIterations}
+                      showCropBox={volumeShowCropBox}
+                      cropCenter={volumeSamplingClamped.center}
+                      cropExtents={volumeSamplingClamped.extents}
+                      cropGizmoEnabled={volumeCropGizmoEnabled}
+                      cropGizmoMode={volumeCropGizmoMode}
+                      onCropChange={handleVolumeCropChange}
                     />
                   </div>
                 ) : (
@@ -5367,8 +5531,37 @@ type SurfacesLeftPanelProps = {
   volumeIndex: number;
   volumeIndexMax: number;
   volumeOpacity: number;
+  volumeSampling: VolumeSampling;
+  volumeSamplingSpacing: [number, number, number];
+  volumeShowCropBox: boolean;
+  volumeCropGizmoEnabled: boolean;
+  volumeCropGizmoMode: "move" | "scale";
+  volumeContourEnabled: boolean;
+  volumeContourCount: number;
+  volumeWindowMode: "auto" | "minmax";
+  volumeSliceReport: VolumeSliceReport | null;
+  volumeSliceHover: VolumeSliceHover | null;
+  volumeShowIsosurface: boolean;
+  volumeIsoValue: number;
+  volumeIsoRange: { min: number; max: number; step: number };
+  volumeIsoSmooth: boolean;
+  volumeIsoSmoothIterations: number;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
   onChangeVolumeDim: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onChangeVolumeSamplingCenter: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onChangeVolumeSamplingExtent: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onResetVolumeSampling: () => void;
+  onRebuildVolumeSampling: () => void;
+  onToggleVolumeCropBox: (v: boolean) => void;
+  onToggleVolumeCropGizmo: (v: boolean) => void;
+  onChangeVolumeCropGizmoMode: (mode: "move" | "scale") => void;
+  onToggleVolumeContour: (v: boolean) => void;
+  onChangeVolumeContourCount: (v: number) => void;
+  onChangeVolumeWindowMode: (mode: "auto" | "minmax") => void;
+  onToggleVolumeIsosurface: (v: boolean) => void;
+  onChangeVolumeIsoValue: (v: number) => void;
+  onToggleVolumeIsoSmooth: (v: boolean) => void;
+  onChangeVolumeIsoSmoothIterations: (v: number) => void;
   onChangeVolumeParam: (id: string, value: number) => void;
   onChangeVolumeCustomExpr: (value: string) => void;
   onChangeVolumeAxis: (axis: SliceAxis) => void;
@@ -5646,8 +5839,37 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeIndex,
   volumeIndexMax,
   volumeOpacity,
+  volumeSampling,
+  volumeSamplingSpacing,
+  volumeShowCropBox,
+  volumeCropGizmoEnabled,
+  volumeCropGizmoMode,
+  volumeContourEnabled,
+  volumeContourCount,
+  volumeWindowMode,
+  volumeSliceReport,
+  volumeSliceHover,
+  volumeShowIsosurface,
+  volumeIsoValue,
+  volumeIsoRange,
+  volumeIsoSmooth,
+  volumeIsoSmoothIterations,
   onChangeVolumePresetId,
   onChangeVolumeDim,
+  onChangeVolumeSamplingCenter,
+  onChangeVolumeSamplingExtent,
+  onResetVolumeSampling,
+  onRebuildVolumeSampling,
+  onToggleVolumeCropBox,
+  onToggleVolumeCropGizmo,
+  onChangeVolumeCropGizmoMode,
+  onToggleVolumeContour,
+  onChangeVolumeContourCount,
+  onChangeVolumeWindowMode,
+  onToggleVolumeIsosurface,
+  onChangeVolumeIsoValue,
+  onToggleVolumeIsoSmooth,
+  onChangeVolumeIsoSmoothIterations,
   onChangeVolumeParam,
   onChangeVolumeCustomExpr,
   onChangeVolumeAxis,
@@ -5940,7 +6162,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     : "pending";
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
   const fmtVal = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
-  const volumeBounds = getVolumePresetBounds(volumePreset, volumeParams);
+  const volumeBounds = samplingToBounds(volumeSampling);
 
   const modeLabel =
     isVolume
@@ -6099,6 +6321,89 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 />
               </div>
             </label>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12 }}>Sampling box</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {(["X", "Y", "Z"] as const).map((label, axisIndex) => (
+                <label
+                  key={`center-${label}`}
+                  style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}
+                >
+                  <span>Center {label}</span>
+                  <input
+                    type="number"
+                    value={volumeSampling.center[axisIndex]}
+                    onChange={(e) => onChangeVolumeSamplingCenter(axisIndex as 0 | 1 | 2, Number(e.target.value))}
+                    style={{ width: 90 }}
+                  />
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginTop: 6 }}>
+              {(["X", "Y", "Z"] as const).map((label, axisIndex) => (
+                <label
+                  key={`extent-${label}`}
+                  style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}
+                >
+                  <span>Extent {label}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={volumeSampling.extents[axisIndex]}
+                    onChange={(e) => onChangeVolumeSamplingExtent(axisIndex as 0 | 1 | 2, Number(e.target.value))}
+                    style={{ width: 90 }}
+                  />
+                </label>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={volumeShowCropBox}
+                  onChange={(e) => onToggleVolumeCropBox(e.target.checked)}
+                />
+                Show crop box
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={volumeCropGizmoEnabled}
+                  onChange={(e) => onToggleVolumeCropGizmo(e.target.checked)}
+                />
+                Crop gizmo
+              </label>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => onChangeVolumeCropGizmoMode("move")}
+                  style={pill(volumeCropGizmoMode === "move")}
+                  disabled={!volumeCropGizmoEnabled}
+                >
+                  Move
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChangeVolumeCropGizmoMode("scale")}
+                  style={pill(volumeCropGizmoMode === "scale")}
+                  disabled={!volumeCropGizmoEnabled}
+                >
+                  Scale
+                </button>
+              </div>
+              <button type="button" onClick={onRebuildVolumeSampling} style={{ padding: "4px 8px" }}>
+                Rebuild grid
+              </button>
+              <button type="button" onClick={onResetVolumeSampling} style={{ padding: "4px 8px" }}>
+                Reset bounds
+              </button>
+            </div>
+            <div style={{ fontSize: 10, opacity: 0.65, marginTop: 6 }}>
+              Spacing: {fmtVal(volumeSamplingSpacing[0], 3)} × {fmtVal(volumeSamplingSpacing[1], 3)} ×{" "}
+              {fmtVal(volumeSamplingSpacing[2], 3)} (world units)
+            </div>
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -6271,10 +6576,112 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               />
             </label>
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeContourEnabled}
+                onChange={(e) => onToggleVolumeContour(e.target.checked)}
+              />
+              Contours
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Count</span>
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={volumeContourCount}
+                onChange={(e) =>
+                  onChangeVolumeContourCount(Math.max(1, Math.min(16, Number(e.target.value))))
+                }
+                style={{ width: 70 }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeWindowMode === "auto"}
+                onChange={(e) => onChangeVolumeWindowMode(e.target.checked ? "auto" : "minmax")}
+              />
+              Auto window/level
+            </label>
+          </div>
+          {volumeSliceReport && (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 8 }}>
+              <VolumeSliceHistogram stats={volumeSliceReport} />
+              <div style={{ fontSize: 10, color: "#566273" }}>
+                <div>
+                  min {fmtVal(volumeSliceReport.min)} · max {fmtVal(volumeSliceReport.max)}
+                </div>
+                <div>
+                  window {fmtVal(volumeSliceReport.window.low)} → {fmtVal(volumeSliceReport.window.high)} (
+                  {volumeSliceReport.window.mode})
+                </div>
+                <div>
+                  mean {fmtVal(volumeSliceReport.mean)} · σ {fmtVal(volumeSliceReport.std)}
+                </div>
+              </div>
+            </div>
+          )}
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+            {volumeSliceHover
+              ? `Hover: (${fmtVal(volumeSliceHover.world[0], 3)}, ${fmtVal(volumeSliceHover.world[1], 3)}, ${fmtVal(
+                  volumeSliceHover.world[2],
+                  3
+                )})  F=${fmtVal(volumeSliceHover.value, 4)}  |∇F|=${fmtVal(volumeSliceHover.gradMag ?? 0, 4)}`
+              : "Hover over the slice to read F(x,y,z)."}
+          </div>
+          <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Isosurface</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeShowIsosurface}
+                onChange={(e) => onToggleVolumeIsosurface(e.target.checked)}
+              />
+              Show
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 180 }}>
+              <span>Iso {fmtVal(volumeIsoValue, 4)}</span>
+              <input
+                type="range"
+                min={volumeIsoRange.min}
+                max={volumeIsoRange.max}
+                step={volumeIsoRange.step}
+                value={volumeIsoValue}
+                onChange={(e) => onChangeVolumeIsoValue(Number(e.target.value))}
+                style={{ width: 180 }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeIsoSmooth}
+                onChange={(e) => onToggleVolumeIsoSmooth(e.target.checked)}
+              />
+              Smoothing
+            </label>
+            {volumeIsoSmooth && (
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+                <span>Iterations {volumeIsoSmoothIterations}</span>
+                <input
+                  type="range"
+                  min={5}
+                  max={80}
+                  step={1}
+                  value={volumeIsoSmoothIterations}
+                  onChange={(e) => onChangeVolumeIsoSmoothIterations(Number(e.target.value))}
+                  style={{ width: 140 }}
+                />
+              </label>
+            )}
+          </div>
           <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
-            Source: {volumePreset.label} field sampled on {volumeDims[0]}x{volumeDims[1]}x{volumeDims[2]}. Bounds: x in [
-            {fmtVal(volumeBounds.min[0])}, {fmtVal(volumeBounds.max[0])}], y in [{fmtVal(volumeBounds.min[1])},{" "}
-            {fmtVal(volumeBounds.max[1])}], z in [{fmtVal(volumeBounds.min[2])}, {fmtVal(volumeBounds.max[2])}].
+            Source: {volumePreset.label} field sampled on {volumeSampling.dims[0]}x{volumeSampling.dims[1]}x
+            {volumeSampling.dims[2]}. Bounds: x in [{fmtVal(volumeBounds.min[0])},{" "}
+            {fmtVal(volumeBounds.max[0])}], y in [{fmtVal(volumeBounds.min[1])}, {fmtVal(volumeBounds.max[1])}], z in [
+            {fmtVal(volumeBounds.min[2])}, {fmtVal(volumeBounds.max[2])}].
           </div>
         </div>
       )}

@@ -97,6 +97,26 @@ export type VtkVolumeSliceResponse =
     }
   | { ok: false; error: string };
 
+export type VtkVolumeIsosurfaceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView;
+  iso: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeIsosurfaceResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -133,4 +153,6 @@ contextBridge.exposeInMainWorld("vtkMesh", {
 contextBridge.exposeInMainWorld("vtkVolume", {
   slice: (req: VtkVolumeSliceRequest): Promise<VtkVolumeSliceResponse> =>
     ipcRenderer.invoke("volume:vtk:slice", req),
+  isosurface: (req: VtkVolumeIsosurfaceRequest): Promise<VtkVolumeIsosurfaceResponse> =>
+    ipcRenderer.invoke("volume:vtk:isosurface", req),
 });

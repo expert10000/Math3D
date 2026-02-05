@@ -3,6 +3,9 @@
 ## Latest changes
 
 - Added geodesic disk selection (heat-method + Dijkstra) with boundary extraction and disk stats (area/perimeter/phi).
+- Added volume slice overlays: marching-squares contours, hover probe with F(x,y,z)/|∇F|, histogram, and auto window/level.
+- Added VTK-backed volume isosurface extraction with optional Laplacian smoothing.
+- Added volume sampling controls with a crop box + gizmo (move/scale) and quick rebuild/reset.
 - Added Volume viewer v0 with a toy voxel grid and slice preview (axis/index/opacity controls).
 - Added true Volume Presets (sphere, torus, gyroid, metaballs) that sample F(x,y,z) into a volume grid with per-axis dims.
 - Added adjustable volume presets (sliders per preset), plus noise fields, Mandelbulb DE, and a custom F(x,y,z) expression entry.
@@ -95,12 +98,15 @@ and editable.
 
 #### 4) Volume grids (experimental)
 
-- Purpose: Preview scalar fields sampled on a voxel grid and inspect slices quickly.
+- Purpose: Preview scalar fields sampled on a voxel grid, inspect slices, and extract first-pass 3D surfaces.
 - Rendering: A slice plane in three.js textured with a grayscale Image2D derived from the grid.
 - Presets: Sphere, ellipsoid, torus, capped cylinder, superquadric, gyroid (TPMS), metaballs, noise fields, Mandelbulb DE, and a custom F(x,y,z) field.
 - Controls: Preset/custom toggle, per-preset parameter sliders, grid dims (Nx, Ny, Nz), slice axis/index, and opacity in the left panel when Volume mode is active.
+- Slice overlays: marching-squares contours, hover probe (x,y,z + F + |∇F|), plus histogram + auto window/level for contrast.
+- Isosurface: VTK marching cubes/flying edges to a shaded SurfaceMesh, with optional Laplacian smoothing.
+- Sampling box: crop box and gizmo to move/scale the sampled bounds, with quick rebuild/reset.
 - Custom: Enter F(x,y,z) with standard math syntax (sin, cos, exp, sqrt, etc.) and live-compile errors. Examples are one-click buttons.
-- Source: Volume grids are sampled client-side (no worker/VTK dependency yet).
+- Source: Volume grids are sampled client-side; VTK is used only for isosurface extraction/smoothing via the Python worker.
 
 ### Gauss map (S²)
 

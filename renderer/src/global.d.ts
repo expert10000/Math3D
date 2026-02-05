@@ -109,6 +109,26 @@ declare global {
       }
     | { ok: false; error: string };
 
+  type VtkVolumeIsosurfaceRequest = {
+    jobId: string;
+    dims: [number, number, number];
+    scalars: ArrayBuffer | ArrayBufferView;
+    iso: number;
+    spacing?: [number, number, number];
+    origin?: [number, number, number];
+  };
+
+  type VtkVolumeIsosurfaceResponse =
+    | {
+        ok: true;
+        positions: ArrayBuffer | ArrayBufferView;
+        indices: ArrayBuffer | ArrayBufferView;
+        normals?: ArrayBuffer | ArrayBufferView;
+        vertexCount: number;
+        triCount: number;
+      }
+    | { ok: false; error: string };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -129,6 +149,7 @@ declare global {
     };
     vtkVolume?: {
       slice: (req: VtkVolumeSliceRequest) => Promise<VtkVolumeSliceResponse>;
+      isosurface: (req: VtkVolumeIsosurfaceRequest) => Promise<VtkVolumeIsosurfaceResponse>;
     };
   }
 }

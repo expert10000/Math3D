@@ -22,6 +22,26 @@ export type VtkVolumeSliceResponse =
     }
   | { ok: false; error: string };
 
+export type VtkVolumeIsosurfaceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView;
+  iso: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeIsosurfaceResponse =
+  | {
+      ok: true;
+      positions: Float32Array;
+      indices: Uint32Array;
+      normals?: Float32Array;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
 function makeJobId() {
   const c: any = globalThis.crypto;
   return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
@@ -53,5 +73,37 @@ export async function vtkVolumeSlice(
     format: "rgba8",
     min: typeof res.min === "number" ? res.min : undefined,
     max: typeof res.max === "number" ? res.max : undefined,
+  };
+}
+
+function toFloat32(data: ArrayBuffer | ArrayBufferView): Float32Array {
+  const buf = toArrayBuffer(data);
+  return new Float32Array(buf);
+}
+
+function toUint32(data: ArrayBuffer | ArrayBufferView): Uint32Array {
+  const buf = toArrayBuffer(data);
+  return new Uint32Array(buf);
+}
+
+export async function vtkVolumeIsosurface(
+  req: Omit<VtkVolumeIsosurfaceRequest, "jobId">
+): Promise<VtkVolumeIsosurfaceResponse> {
+  const api = (window as any).vtkVolume;
+  if (!api || typeof api.isosurface !== "function") {
+    return { ok: false, error: "VTK volume IPC unavailable" };
+  }
+  const jobId = makeJobId();
+  const res = await api.isosurface({ ...req, jobId });
+  if (!res || res.ok === false) {
+    return { ok: false, error: res?.error ?? "VTK volume isosurface failed" };
+  }
+  return {
+    ok: true,
+    positions: toFloat32(res.positions),
+    indices: toUint32(res.indices),
+    normals: res.normals ? toFloat32(res.normals) : undefined,
+    vertexCount: Number(res.vertexCount) || 0,
+    triCount: Number(res.triCount) || 0,
   };
 }

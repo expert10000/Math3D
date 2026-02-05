@@ -629,6 +629,70 @@ def handle_volume_slice(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]
     )
 
 
+def handle_volume_isosurface(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    dims = msg.get("dims") or msg.get("dimensions")
+    if not dims or len(dims) != 3:
+        raise RuntimeError("Missing dims for volume isosurface")
+    if not payloads or "scalars" not in payloads:
+        raise RuntimeError("Missing scalars payload for volume isosurface")
+
+    iso = float(msg.get("iso", 0.0))
+    spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
+    origin = msg.get("origin") or [0.0, 0.0, 0.0]
+
+    try:
+        import numpy as np
+        import vtk
+        from vtk.util import numpy_support as nps
+    except Exception as e:
+        raise RuntimeError(f"VTK volume isosurface requires numpy+vtk: {e}")
+
+    nx, ny, nz = [int(v) for v in dims]
+    total = max(0, nx * ny * nz)
+    scalars_np = np.frombuffer(payloads["scalars"], dtype=np.float32)
+    if scalars_np.size < total:
+        raise RuntimeError("Scalars buffer too small for volume isosurface")
+    if scalars_np.size > total:
+        scalars_np = scalars_np[:total]
+
+    img = vtk.vtkImageData()
+    img.SetDimensions(nx, ny, nz)
+    img.SetSpacing(float(spacing[0]), float(spacing[1]), float(spacing[2]))
+    img.SetOrigin(float(origin[0]), float(origin[1]), float(origin[2]))
+    scalars_vtk = nps.numpy_to_vtk(scalars_np, deep=1, array_type=vtk.VTK_FLOAT)
+    img.GetPointData().SetScalars(scalars_vtk)
+
+    if hasattr(vtk, "vtkFlyingEdges3D"):
+        fe = vtk.vtkFlyingEdges3D()
+        fe.SetInputData(img)
+        fe.SetValue(0, iso)
+        fe.Update()
+        poly = fe.GetOutput()
+    else:
+        mc = vtk.vtkMarchingCubes()
+        mc.SetInputData(img)
+        mc.SetValue(0, iso)
+        mc.Update()
+        poly = mc.GetOutput()
+
+    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(poly, True)
+    parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
+    if normals_out:
+        parts.append(("normals", normals_out))
+
+    send_binary(
+        {
+            "type": "volume_isosurface_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vcount,
+            "triCount": tcount,
+        },
+        parts,
+    )
+
+
 def vtk_poly_from_buffers(pos_bytes: bytes, idx_bytes: bytes):
     import numpy as np
     import vtk
@@ -856,6 +920,16 @@ def main() -> None:
         elif msg.get("type") == "volume_slice":
             try:
                 handle_volume_slice(msg, payloads)
+            except Exception as e:
+                send({
+                    "type": "error",
+                    "jobId": msg.get("jobId", ""),
+                    "message": str(e),
+                    "trace": traceback.format_exc(),
+                })
+        elif msg.get("type") == "volume_isosurface":
+            try:
+                handle_volume_isosurface(msg, payloads)
             except Exception as e:
                 send({
                     "type": "error",

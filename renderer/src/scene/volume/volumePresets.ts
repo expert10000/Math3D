@@ -39,6 +39,7 @@ type VolumePresetBuildOptions = {
   dims?: [number, number, number];
   params?: VolumePresetParams;
   customFn?: (x: number, y: number, z: number) => number;
+  bounds?: { min: [number, number, number]; max: [number, number, number] };
 };
 
 const DEFAULT_DIMS: [number, number, number] = [64, 64, 64];
@@ -386,7 +387,7 @@ export function buildVolumeGridFromPreset(
   const scalars = new Float32Array(total);
 
   const params = resolveVolumePresetParams(preset, options.params);
-  const { min, max } = getVolumePresetBounds(preset, params);
+  const { min, max } = options.bounds ?? getVolumePresetBounds(preset, params);
   const spacing: [number, number, number] = [
     nx > 1 ? (max[0] - min[0]) / (nx - 1) : 1,
     ny > 1 ? (max[1] - min[1]) / (ny - 1) : 1,
