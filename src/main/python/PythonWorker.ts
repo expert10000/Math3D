@@ -101,6 +101,8 @@ export type VtkVolumeDistanceRequest = {
   indices: ArrayBuffer | ArrayBufferView | Buffer;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  signed?: boolean;
+  windingNumber?: boolean;
 };
 
 export type VtkVolumeDistanceResponse =
@@ -675,6 +677,8 @@ class PythonWorker {
       dims: req.dims,
       spacing: req.spacing,
       origin: req.origin,
+      signed: req.signed,
+      windingNumber: req.windingNumber,
       binary: [
         { name: "positions", bytes: positionsBuf.length },
         { name: "indices", bytes: indicesBuf.length },

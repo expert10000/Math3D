@@ -134,6 +134,8 @@ export type VtkVolumeDistanceRequest = {
   indices: ArrayBuffer | ArrayBufferView;
   spacing?: [number, number, number];
   origin?: [number, number, number];
+  signed?: boolean;
+  windingNumber?: boolean;
 };
 
 export type VtkVolumeDistanceResponse =

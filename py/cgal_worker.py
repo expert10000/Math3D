@@ -787,6 +787,8 @@ def handle_volume_distance(msg: Dict[str, Any], payloads: Optional[Dict[str, byt
 
     spacing = msg.get("spacing") or [1.0, 1.0, 1.0]
     origin = msg.get("origin") or [0.0, 0.0, 0.0]
+    signed = bool(msg.get("signed", False))
+    use_winding = bool(msg.get("windingNumber", signed))
 
     try:
         import numpy as np
@@ -823,14 +825,36 @@ def handle_volume_distance(msg: Dict[str, Any], payloads: Optional[Dict[str, byt
     out_scalars = out.GetPointData().GetScalars()
     if out_scalars is None:
         raise RuntimeError("VTK distance returned empty scalars")
-    vals = nps.vtk_to_numpy(out_scalars)
-    vals = np.asarray(vals, dtype=np.float32, order="C")
-    if vals.size < total:
+    vals_raw = nps.vtk_to_numpy(out_scalars)
+    vals_raw = np.asarray(vals_raw, dtype=np.float32, order="C")
+    if vals_raw.size < total:
         raise RuntimeError("VTK distance returned too few samples")
-    if vals.size > total:
-        vals = vals[:total]
+    if vals_raw.size > total:
+        vals_raw = vals_raw[:total]
 
-    vals = np.abs(vals)
+    vals_mag = np.abs(vals_raw)
+    vals = vals_raw if signed else vals_mag
+    if signed and use_winding:
+        inside_ok = False
+        try:
+            geom = vtk.vtkImageDataGeometryFilter()
+            geom.SetInputData(out)
+            geom.Update()
+            select = vtk.vtkSelectEnclosedPoints()
+            select.SetInputData(geom.GetOutput())
+            select.SetSurfaceData(poly)
+            select.Update()
+            inside_arr = select.GetOutput().GetPointData().GetArray("SelectedPoints")
+            if inside_arr is not None:
+                inside = nps.vtk_to_numpy(inside_arr)
+                if inside.size >= total:
+                    sign = np.where(inside[:total] > 0.5, -1.0, 1.0).astype(np.float32)
+                    vals = vals_mag * sign
+                    inside_ok = True
+        except Exception:
+            inside_ok = False
+        if not inside_ok:
+            vals = vals_raw
 
     send_binary(
         {

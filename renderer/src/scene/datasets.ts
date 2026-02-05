@@ -42,6 +42,7 @@ export type VolumeDataset = {
   derived?: { slice?: Image2D | null } | null;
   label?: string;
   note?: string;
+  distanceSigned?: boolean;
   sourceId?: string;
 };
 
