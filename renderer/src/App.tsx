@@ -741,8 +741,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
   const volumeCustomCompiled = useMemo(() => {
     if (volumePresetId !== "custom") return { fn: undefined, error: null };
-    const src = volumeCustomExpr.trim();
+    let src = volumeCustomExpr.trim();
     if (!src) return { fn: undefined, error: "Expression required." };
+    const eqIdx = src.indexOf("=");
+    if (eqIdx >= 0) src = src.slice(eqIdx + 1).trim();
     const { fn, error } = compileExpression(src, ["x", "y", "z"]);
     return { fn, error: error ? error.message : null };
   }, [volumeCustomExpr, volumePresetId]);
@@ -5956,6 +5958,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     return 4;
   };
   const formatVolumeParam = (value: number, step: number) => value.toFixed(volumeParamDecimals(step));
+  const volumeCustomExamples = [
+    { label: "Sphere", expr: "x^2 + y^2 + z^2 - 1" },
+    { label: "Ellipsoid", expr: "x^2/1.6^2 + y^2/1.0^2 + z^2/0.7^2 - 1" },
+    { label: "Torus", expr: "(x^2 + y^2 - 1.0)^2 + z^2 - 0.35^2" },
+    { label: "Gyroid", expr: "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)" },
+    { label: "Cos surface", expr: "cos(x) + cos(y) + cos(z) - 0.5" },
+    {
+      label: "Metaballs",
+      expr:
+        "exp(-4*((x+0.6)^2+y^2+z^2)) + exp(-4*((x-0.6)^2+y^2+z^2)) + exp(-4*(x^2+(y-0.6)^2+z^2)) - 0.7",
+    },
+    { label: "Rounded box", expr: "abs(x)^4 + abs(y)^4 + abs(z)^4 - 1" },
+    { label: "Octahedron-like", expr: "abs(x) + abs(y) + abs(z) - 1" },
+    { label: "Shell", expr: "(sqrt(x^2+y^2+z^2)-1.0)^2 - 0.02" },
+    { label: "Double cone", expr: "x^2 + y^2 - z^2" },
+    { label: "Saddle (implicit)", expr: "z - x^2 + y^2" },
+  ];
 
   return (
     <section>
@@ -6113,6 +6132,29 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   style={{ width: "100%", fontFamily: "monospace" }}
                 />
               </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, marginTop: 8 }}>
+                <span>Examples</span>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value) onChangeVolumeCustomExpr(value);
+                    e.currentTarget.value = "";
+                  }}
+                  style={{ fontSize: 11, padding: "2px 4px", maxWidth: 320 }}
+                >
+                  <option value="">Pick an example…</option>
+                  {volumeCustomExamples.map((ex) => (
+                    <option key={ex.label} value={ex.expr}>
+                      {ex.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                Use x,y,z and functions like sin, cos, exp, log, sqrt, abs, min, max. You can type F=... and it will be
+                accepted.
+              </div>
               {volumeCustomError && (
                 <div style={{ marginTop: 6, fontSize: 11, color: "#b00020" }}>Error: {volumeCustomError}</div>
               )}
