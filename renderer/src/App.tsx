@@ -90,8 +90,11 @@ import {
 } from "./scene/volume/volumePresets";
 import {
   type SliceAxis,
+  gradientMagnitudeAt,
+  sampleGridTrilinear,
   type VolumeSliceHover,
   type VolumeSliceReport,
+  worldToGridIndex,
 } from "./scene/volume/sliceVolume";
 import {
   clampSampling,
@@ -598,6 +601,30 @@ function inflateBBox(b: BBox3, padFrac = 0.05): BBox3 {
   };
 }
 
+function boundsFromPositions(positions: ArrayLike<number> | null | undefined): BBox3 | null {
+  if (!positions || positions.length < 3) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const x = Number(positions[i]);
+    const y = Number(positions[i + 1]);
+    const z = Number(positions[i + 2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  if (!(minX <= maxX) || !(minY <= maxY) || !(minZ <= maxZ)) return null;
+  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+}
+
 function clampBBox(b: BBox3, c: BBox3): BBox3 {
   return {
     min: [
@@ -749,6 +776,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [volumeDatasetOverride, setVolumeDatasetOverride] = useState<VolumeDataset | null>(null);
   const [volumeDistanceBusy, setVolumeDistanceBusy] = useState(false);
   const [volumeDistanceError, setVolumeDistanceError] = useState<string | null>(null);
+  const [volumeDistanceSigned, setVolumeDistanceSigned] = useState(false);
+  const [volumeDistanceAutoBounds, setVolumeDistanceAutoBounds] = useState(true);
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   const [volumeParams, setVolumeParams] = useState<VolumePresetParams>(() =>
     getVolumePresetDefaultParams(DEFAULT_VOLUME_PRESET_ID)
@@ -863,14 +892,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [volumeScalarRange]);
   const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
   const surfaceMeshData = surfaceDataset?.mesh ?? null;
-  const [volumeSliceAxis, setVolumeSliceAxis] = useState<SliceAxis>("z");
-  const [volumeSliceIndex, setVolumeSliceIndex] = useState(() =>
+  const [volumeSeedAxis, setVolumeSeedAxis] = useState<SliceAxis>("z");
+  const [volumeSeedIndex, setVolumeSeedIndex] = useState(() =>
     Math.floor(volumeDataset.grid.dims[2] / 2)
   );
+  const [volumeCrosshair, setVolumeCrosshair] = useState<[number, number, number] | null>(null);
   const [volumeSliceOpacity, setVolumeSliceOpacity] = useState(0.85);
   const [volumeShowStreamlines, setVolumeShowStreamlines] = useState(false);
   const [volumeVectorPresetId, setVolumeVectorPresetId] = useState<VectorPresetId>("vortex");
   const [volumeStreamSeedGrid, setVolumeStreamSeedGrid] = useState(8);
+  const [volumeStreamlineStepSizeOverride, setVolumeStreamlineStepSizeOverride] = useState<number | null>(null);
+  const [volumeStreamlineMaxSteps, setVolumeStreamlineMaxSteps] = useState(900);
+  const [volumeViewMode, setVolumeViewMode] = useState<"slices" | "3d">("slices");
   const volumeGridBounds = useMemo(() => {
     const grid = volumeDataset.grid;
     const spacing = grid.spacing ?? [1, 1, 1];
@@ -884,6 +917,86 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       ] as [number, number, number],
     };
   }, [volumeDataset]);
+  const clampGridIndex = (value: number, max: number) => {
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(max, Math.round(value)));
+  };
+  const gridIndexToWorld = (grid: VolumeDataset["grid"], idx: [number, number, number]) => {
+    const spacing = grid.spacing ?? [1, 1, 1];
+    const origin = grid.origin ?? [0, 0, 0];
+    return [
+      origin[0] + idx[0] * spacing[0],
+      origin[1] + idx[1] * spacing[1],
+      origin[2] + idx[2] * spacing[2],
+    ] as [number, number, number];
+  };
+  const volumeCrosshairIndex = useMemo(() => {
+    const grid = volumeDataset.grid;
+    const centerIdx: [number, number, number] = [
+      Math.round((grid.dims[0] - 1) * 0.5),
+      Math.round((grid.dims[1] - 1) * 0.5),
+      Math.round((grid.dims[2] - 1) * 0.5),
+    ];
+    if (!volumeCrosshair) return centerIdx;
+    const [fx, fy, fz] = worldToGridIndex(grid, volumeCrosshair);
+    return [
+      clampGridIndex(fx, grid.dims[0] - 1),
+      clampGridIndex(fy, grid.dims[1] - 1),
+      clampGridIndex(fz, grid.dims[2] - 1),
+    ] as [number, number, number];
+  }, [volumeCrosshair, volumeDataset]);
+  useEffect(() => {
+    const grid = volumeDataset.grid;
+    const centerIdx: [number, number, number] = [
+      Math.round((grid.dims[0] - 1) * 0.5),
+      Math.round((grid.dims[1] - 1) * 0.5),
+      Math.round((grid.dims[2] - 1) * 0.5),
+    ];
+    setVolumeCrosshair((prev) => {
+      if (!prev) return gridIndexToWorld(grid, centerIdx);
+      const [fx, fy, fz] = worldToGridIndex(grid, prev);
+      const idx: [number, number, number] = [
+        clampGridIndex(fx, grid.dims[0] - 1),
+        clampGridIndex(fy, grid.dims[1] - 1),
+        clampGridIndex(fz, grid.dims[2] - 1),
+      ];
+      return gridIndexToWorld(grid, idx);
+    });
+  }, [volumeDataset]);
+  const volumeCrosshairSample = useMemo(() => {
+    if (!volumeCrosshair) return null;
+    const grid = volumeDataset.grid;
+    return {
+      value: sampleGridTrilinear(grid, volumeCrosshair),
+      gradMag: gradientMagnitudeAt(grid, volumeCrosshair),
+    };
+  }, [volumeCrosshair, volumeDataset]);
+  const handleVolumeCrosshairIndexChange = useCallback(
+    (axisIndex: 0 | 1 | 2, value: number) => {
+      const grid = volumeDataset.grid;
+      const idx: [number, number, number] = [
+        volumeCrosshairIndex[0],
+        volumeCrosshairIndex[1],
+        volumeCrosshairIndex[2],
+      ];
+      idx[axisIndex] = clampGridIndex(value, grid.dims[axisIndex] - 1);
+      setVolumeCrosshair(gridIndexToWorld(grid, idx));
+    },
+    [volumeDataset, volumeCrosshairIndex]
+  );
+  const handleVolumeSlicePick = useCallback(
+    (world: [number, number, number]) => {
+      const grid = volumeDataset.grid;
+      const [fx, fy, fz] = worldToGridIndex(grid, world);
+      const idx: [number, number, number] = [
+        clampGridIndex(fx, grid.dims[0] - 1),
+        clampGridIndex(fy, grid.dims[1] - 1),
+        clampGridIndex(fz, grid.dims[2] - 1),
+      ];
+      setVolumeCrosshair(gridIndexToWorld(grid, idx));
+    },
+    [volumeDataset]
+  );
   const volumeVectorPreset = useMemo(
     () => getVectorPreset(volumeVectorPresetId),
     [volumeVectorPresetId]
@@ -899,24 +1012,34 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (!volumeShowStreamlines) return [];
     return buildSliceSeeds(
       volumeDataset.grid,
-      volumeSliceAxis,
-      volumeSliceIndex,
+      volumeSeedAxis,
+      volumeSeedIndex,
       volumeStreamSeedGrid,
       volumeStreamSeedGrid
     );
-  }, [volumeShowStreamlines, volumeDataset, volumeSliceAxis, volumeSliceIndex, volumeStreamSeedGrid]);
-  const volumeStreamlineStepSize = useMemo(() => {
+  }, [volumeShowStreamlines, volumeDataset, volumeSeedAxis, volumeSeedIndex, volumeStreamSeedGrid]);
+  const volumeStreamlineStepAuto = useMemo(() => {
     const spacing = volumeDataset.grid.spacing ?? [1, 1, 1];
     const minSpacing = Math.min(spacing[0], spacing[1], spacing[2]);
     return Math.max(1e-3, minSpacing * 0.65);
   }, [volumeDataset]);
+  const volumeStreamlineStepSize = useMemo(() => {
+    const v = volumeStreamlineStepSizeOverride;
+    if (Number.isFinite(v) && v && v > 0) return v;
+    return volumeStreamlineStepAuto;
+  }, [volumeStreamlineStepSizeOverride, volumeStreamlineStepAuto]);
+  const volumeStreamlineStepRange = useMemo(() => {
+    const min = Math.max(1e-4, volumeStreamlineStepAuto * 0.2);
+    const max = Math.max(min * 1.2, volumeStreamlineStepAuto * 3);
+    const step = Math.max(1e-4, volumeStreamlineStepAuto * 0.05);
+    return { min, max, step };
+  }, [volumeStreamlineStepAuto]);
   const volumeStreamlineMaxLength = useMemo(() => {
     const dx = volumeGridBounds.max[0] - volumeGridBounds.min[0];
     const dy = volumeGridBounds.max[1] - volumeGridBounds.min[1];
     const dz = volumeGridBounds.max[2] - volumeGridBounds.min[2];
     return Math.max(dx, dy, dz) * 2.4;
   }, [volumeGridBounds]);
-  const volumeStreamlineMaxSteps = 900;
   const [volumeContourEnabled, setVolumeContourEnabled] = useState(true);
   const [volumeContourCount, setVolumeContourCount] = useState(6);
   const [volumeWindowMode, setVolumeWindowMode] = useState<"auto" | "minmax">("auto");
@@ -960,6 +1083,22 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const next = Math.max(2, Math.min(24, Math.round(value)));
     setVolumeStreamSeedGrid(next);
   }, []);
+  const handleVolumeStreamlineStepChange = useCallback(
+    (value: number) => {
+      if (!Number.isFinite(value)) return;
+      const next = Math.max(volumeStreamlineStepRange.min, Math.min(volumeStreamlineStepRange.max, value));
+      setVolumeStreamlineStepSizeOverride(next);
+    },
+    [volumeStreamlineStepRange]
+  );
+  const handleVolumeStreamlineStepAuto = useCallback(() => {
+    setVolumeStreamlineStepSizeOverride(null);
+  }, []);
+  const handleVolumeStreamlineMaxStepsChange = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return;
+    const next = Math.max(50, Math.min(5000, Math.round(value)));
+    setVolumeStreamlineMaxSteps(next);
+  }, []);
   const handleResetVolumeSampling = () => {
     setVolumeSampling(samplingFromBounds(volumePresetBounds, volumeDims));
   };
@@ -994,15 +1133,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     setVolumeParams(getVolumePresetDefaultParams(volumePresetId));
   }, [volumePresetId]);
-  const volumeSliceMax = useMemo(() => {
+  const volumeSeedIndexMax = useMemo(() => {
     const [nx, ny, nz] = volumeDataset.grid.dims;
-    if (volumeSliceAxis === "x") return Math.max(0, nx - 1);
-    if (volumeSliceAxis === "y") return Math.max(0, ny - 1);
+    if (volumeSeedAxis === "x") return Math.max(0, nx - 1);
+    if (volumeSeedAxis === "y") return Math.max(0, ny - 1);
     return Math.max(0, nz - 1);
-  }, [volumeDataset, volumeSliceAxis]);
+  }, [volumeDataset, volumeSeedAxis]);
   useEffect(() => {
-    setVolumeSliceIndex((value) => Math.max(0, Math.min(volumeSliceMax, value)));
-  }, [volumeSliceMax]);
+    setVolumeSeedIndex((value) => Math.max(0, Math.min(volumeSeedIndexMax, value)));
+  }, [volumeSeedIndexMax]);
   useEffect(() => {
     const { min, max } = volumeScalarRange;
     if (!Number.isFinite(min) || !Number.isFinite(max)) return;
@@ -2010,15 +2149,39 @@ case "mobius":
       indices = seq;
     }
 
+    let sampling = volumeSamplingClamped;
+    let bounds = volumeSamplingBounds;
+    let spacing = volumeSamplingSpacing;
+    if (volumeDistanceAutoBounds) {
+      const rawBounds = boundsFromPositions(positions);
+      if (!rawBounds) {
+        setVolumeDistanceError("Unable to compute mesh bounds for auto sampling.");
+        return;
+      }
+      const diag = bboxDiag(rawBounds);
+      const pad = Math.max(1e-3, diag * 0.06);
+      const padded = {
+        min: [rawBounds.min[0] - pad, rawBounds.min[1] - pad, rawBounds.min[2] - pad] as [number, number, number],
+        max: [rawBounds.max[0] + pad, rawBounds.max[1] + pad, rawBounds.max[2] + pad] as [number, number, number],
+      };
+      const autoSampling = clampSampling(samplingFromBounds(padded, volumeSamplingClamped.dims));
+      sampling = autoSampling;
+      bounds = samplingToBounds(autoSampling);
+      spacing = samplingSpacing(autoSampling);
+      setVolumeSampling(autoSampling);
+    }
+
     setVolumeDistanceBusy(true);
     setVolumeDistanceError(null);
     try {
       const res = await vtkVolumeDistance({
-        dims: volumeSamplingClamped.dims,
+        dims: sampling.dims,
         positions,
         indices,
-        spacing: volumeSamplingSpacing,
-        origin: volumeSamplingBounds.min,
+        spacing,
+        origin: bounds.min,
+        signed: volumeDistanceSigned,
+        windingNumber: volumeDistanceSigned,
       });
       if (!res.ok) {
         setVolumeDistanceError(res.error);
@@ -2027,15 +2190,19 @@ case "mobius":
       const grid = {
         dims: res.dims,
         scalars: res.scalars,
-        spacing: volumeSamplingSpacing,
-        origin: volumeSamplingBounds.min,
+        spacing,
+        origin: bounds.min,
       };
       const label = `Distance field: ${surfaceMeshData.label ?? "Surface mesh"}`;
+      const note = volumeDistanceSigned
+        ? "Signed distance to surface mesh (winding number)."
+        : "Unsigned distance to surface mesh.";
       setVolumeDatasetOverride({
         kind: "volume",
         grid,
         label,
-        note: "Unsigned distance to surface mesh.",
+        note,
+        distanceSigned: volumeDistanceSigned,
         sourceId: "surface_distance",
       });
       setDatasetKind("volume");
@@ -2048,8 +2215,10 @@ case "mobius":
     }
   }, [
     volumeDistanceBusy,
+    volumeDistanceSigned,
+    volumeDistanceAutoBounds,
     surfaceMeshData,
-    volumeSamplingClamped.dims,
+    volumeSamplingClamped,
     volumeSamplingSpacing,
     volumeSamplingBounds,
   ]);
@@ -4432,6 +4601,8 @@ case "mobius":
                   volumeDatasetOverride={volumeDatasetOverride}
                   volumeDistanceBusy={volumeDistanceBusy}
                   volumeDistanceError={volumeDistanceError}
+                  volumeDistanceSigned={volumeDistanceSigned}
+                  volumeDistanceAutoBounds={volumeDistanceAutoBounds}
                   onBuildDistanceVolume={handleBuildDistanceVolume}
                   onClearVolumeOverride={handleClearVolumeOverride}
                   volumePresetId={volumePresetId}
@@ -4440,15 +4611,22 @@ case "mobius":
                   volumeParams={volumeParamsResolved}
                   volumeCustomExpr={volumeCustomExpr}
                   volumeCustomError={volumeCustomCompiled.error}
-                  volumeAxis={volumeSliceAxis}
-                  volumeIndex={volumeSliceIndex}
-                  volumeIndexMax={volumeSliceMax}
+                  volumeSeedAxis={volumeSeedAxis}
+                  volumeSeedIndex={volumeSeedIndex}
+                  volumeSeedIndexMax={volumeSeedIndexMax}
+                  volumeCrosshairWorld={volumeCrosshair}
+                  volumeCrosshairIndex={volumeCrosshairIndex}
+                  volumeCrosshairValue={volumeCrosshairSample?.value ?? null}
+                  volumeCrosshairGradMag={volumeCrosshairSample?.gradMag ?? null}
+                  volumeViewMode={volumeViewMode}
                   volumeOpacity={volumeSliceOpacity}
                   volumeVectorPresetId={volumeVectorPresetId}
                   volumeVectorPresetLabel={volumeVectorPreset.label}
                   volumeShowStreamlines={volumeShowStreamlines}
                   volumeStreamSeedGrid={volumeStreamSeedGrid}
                   volumeStreamlineStepSize={volumeStreamlineStepSize}
+                  volumeStreamlineStepRange={volumeStreamlineStepRange}
+                  volumeStreamlineMaxSteps={volumeStreamlineMaxSteps}
                   volumeStreamlineMaxLength={volumeStreamlineMaxLength}
                   volumeSampling={volumeSamplingClamped}
                   volumeSamplingSpacing={volumeSamplingSpacing}
@@ -4483,12 +4661,17 @@ case "mobius":
                   onChangeVolumeIsoSmoothIterations={setVolumeIsoSmoothIterations}
                   onChangeVolumeParam={handleVolumeParamChange}
                   onChangeVolumeCustomExpr={setVolumeCustomExpr}
-                  onChangeVolumeAxis={setVolumeSliceAxis}
-                  onChangeVolumeIndex={setVolumeSliceIndex}
+                  onChangeVolumeCrosshairIndex={handleVolumeCrosshairIndexChange}
+                  onChangeVolumeSeedAxis={setVolumeSeedAxis}
+                  onChangeVolumeSeedIndex={setVolumeSeedIndex}
+                  onChangeVolumeViewMode={setVolumeViewMode}
                   onChangeVolumeOpacity={setVolumeSliceOpacity}
                   onChangeVolumeVectorPreset={setVolumeVectorPresetId}
                   onToggleVolumeStreamlines={setVolumeShowStreamlines}
                   onChangeVolumeStreamSeedGrid={handleVolumeStreamSeedGridChange}
+                  onChangeVolumeStreamlineStepSize={handleVolumeStreamlineStepChange}
+                  onResetVolumeStreamlineStep={handleVolumeStreamlineStepAuto}
+                  onChangeVolumeStreamlineMaxSteps={handleVolumeStreamlineMaxStepsChange}
                   surfaceMeshLabel={surfaceMeshLabel}
                   surfaceMeshStats={surfaceMeshStats}
                   surfaceMeshSource={surfaceMeshData?.source ?? null}
@@ -4501,6 +4684,8 @@ case "mobius":
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onExportSurfaceMesh={handleExportToSurfaceMesh}
+                  onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
+                  onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   vtkAvailable={vtkMeshAvailable}
                   vtkBusy={vtkBusy}
                   vtkError={vtkError}
@@ -4761,35 +4946,133 @@ case "mobius":
                 }}
               >
                 {datasetKind === "volume" ? (
-                  <div style={{ width: "100%", height: "100%" }}>
-                    <VolumeViewer
-                      dataset={activeDataset?.kind === "volume" ? activeDataset : null}
-                      vectorGrid={volumeVectorGrid}
-                      axis={volumeSliceAxis}
-                      index={volumeSliceIndex}
-                      opacity={volumeSliceOpacity}
-                      contourEnabled={volumeContourEnabled}
-                      contourCount={volumeContourCount}
-                      windowMode={volumeWindowMode}
-                      onSliceReport={setVolumeSliceReport}
-                      onSliceHover={setVolumeSliceHover}
-                      showIsosurface={volumeShowIsosurface}
-                      isoValue={volumeIsoValue}
-                      isoSmoothing={volumeIsoSmooth}
-                      isoSmoothingIterations={volumeIsoSmoothIterations}
-                      showCropBox={volumeShowCropBox}
-                      cropCenter={volumeSamplingClamped.center}
-                      cropExtents={volumeSamplingClamped.extents}
-                      cropGizmoEnabled={volumeCropGizmoEnabled}
-                      cropGizmoMode={volumeCropGizmoMode}
-                      onCropChange={handleVolumeCropChange}
-                      showStreamlines={volumeShowStreamlines}
-                      streamlineSeeds={volumeStreamlineSeeds}
-                      streamlineStepSize={volumeStreamlineStepSize}
-                      streamlineMaxSteps={volumeStreamlineMaxSteps}
-                      streamlineMaxLength={volumeStreamlineMaxLength}
-                    />
-                  </div>
+                  volumeViewMode === "slices" ? (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 8,
+                        padding: 8,
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {(
+                        [
+                          { id: "xy", label: "XY", axis: "z" as const, index: volumeCrosshairIndex[2], preset: "xy", primary: true },
+                          { id: "xz", label: "XZ", axis: "y" as const, index: volumeCrosshairIndex[1], preset: "xz", primary: false },
+                          { id: "yz", label: "YZ", axis: "x" as const, index: volumeCrosshairIndex[0], preset: "yz", primary: false },
+                        ] as const
+                      ).map((view) => (
+                        <div
+                          key={view.id}
+                          style={{
+                            position: "relative",
+                            borderRadius: 10,
+                            overflow: "hidden",
+                            background: "#f8f9fb",
+                            boxShadow: "0 0 0 1px #e0e0e0",
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 8,
+                              left: 8,
+                              padding: "2px 6px",
+                              borderRadius: 6,
+                              background: "rgba(255,255,255,0.85)",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: 0.3,
+                              color: "#1f2937",
+                              pointerEvents: "none",
+                              zIndex: 2,
+                            }}
+                          >
+                            {view.label}
+                          </div>
+                          <VolumeViewer
+                            dataset={activeDataset?.kind === "volume" ? activeDataset : null}
+                            vectorGrid={view.primary ? volumeVectorGrid : null}
+                            axis={view.axis}
+                            index={view.index}
+                            opacity={volumeSliceOpacity}
+                            crosshair={volumeCrosshair}
+                            onSlicePick={handleVolumeSlicePick}
+                            viewPreset={view.preset}
+                            showAxes={false}
+                            contourEnabled={volumeContourEnabled}
+                            contourCount={volumeContourCount}
+                            windowMode={volumeWindowMode}
+                            onSliceReport={view.primary ? setVolumeSliceReport : undefined}
+                            onSliceHover={setVolumeSliceHover}
+                            showIsosurface={volumeShowIsosurface && view.primary}
+                            isoValue={volumeIsoValue}
+                            isoSmoothing={volumeIsoSmooth}
+                            isoSmoothingIterations={volumeIsoSmoothIterations}
+                            showCropBox={volumeShowCropBox}
+                            cropCenter={volumeSamplingClamped.center}
+                            cropExtents={volumeSamplingClamped.extents}
+                            cropGizmoEnabled={view.primary ? volumeCropGizmoEnabled : false}
+                            cropGizmoMode={volumeCropGizmoMode}
+                            onCropChange={handleVolumeCropChange}
+                            showStreamlines={volumeShowStreamlines && view.primary}
+                            streamlineSeeds={view.primary ? volumeStreamlineSeeds : undefined}
+                            streamlineStepSize={volumeStreamlineStepSize}
+                            streamlineMaxSteps={volumeStreamlineMaxSteps}
+                            streamlineMaxLength={volumeStreamlineMaxLength}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ width: "100%", height: "100%", padding: 8, boxSizing: "border-box" }}>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: "#f8f9fb",
+                          boxShadow: "0 0 0 1px #e0e0e0",
+                        }}
+                      >
+                        <VolumeViewer
+                          dataset={activeDataset?.kind === "volume" ? activeDataset : null}
+                          vectorGrid={volumeVectorGrid}
+                          axis={"z"}
+                          index={volumeCrosshairIndex[2]}
+                          opacity={volumeSliceOpacity}
+                          crosshair={volumeCrosshair}
+                          onSlicePick={handleVolumeSlicePick}
+                          viewPreset="free"
+                          showAxes={true}
+                          contourEnabled={volumeContourEnabled}
+                          contourCount={volumeContourCount}
+                          windowMode={volumeWindowMode}
+                          onSliceReport={setVolumeSliceReport}
+                          onSliceHover={setVolumeSliceHover}
+                          showIsosurface={volumeShowIsosurface}
+                          isoValue={volumeIsoValue}
+                          isoSmoothing={volumeIsoSmooth}
+                          isoSmoothingIterations={volumeIsoSmoothIterations}
+                          showCropBox={volumeShowCropBox}
+                          cropCenter={volumeSamplingClamped.center}
+                          cropExtents={volumeSamplingClamped.extents}
+                          cropGizmoEnabled={volumeCropGizmoEnabled}
+                          cropGizmoMode={volumeCropGizmoMode}
+                          onCropChange={handleVolumeCropChange}
+                          showStreamlines={volumeShowStreamlines}
+                          streamlineSeeds={volumeStreamlineSeeds}
+                          streamlineStepSize={volumeStreamlineStepSize}
+                          streamlineMaxSteps={volumeStreamlineMaxSteps}
+                          streamlineMaxLength={volumeStreamlineMaxLength}
+                        />
+                      </div>
+                    </div>
+                  )
                 ) : (
                   <div
                     style={{
@@ -5682,6 +5965,8 @@ type SurfacesLeftPanelProps = {
   volumeDatasetOverride: VolumeDataset | null;
   volumeDistanceBusy: boolean;
   volumeDistanceError: string | null;
+  volumeDistanceSigned: boolean;
+  volumeDistanceAutoBounds: boolean;
   onBuildDistanceVolume: () => void;
   onClearVolumeOverride: () => void;
   volumePresetId: VolumePresetId;
@@ -5690,15 +5975,22 @@ type SurfacesLeftPanelProps = {
   volumeParams: VolumePresetParams;
   volumeCustomExpr: string;
   volumeCustomError: string | null;
-  volumeAxis: SliceAxis;
-  volumeIndex: number;
-  volumeIndexMax: number;
+  volumeSeedAxis: SliceAxis;
+  volumeSeedIndex: number;
+  volumeSeedIndexMax: number;
+  volumeCrosshairWorld: [number, number, number] | null;
+  volumeCrosshairIndex: [number, number, number];
+  volumeCrosshairValue: number | null;
+  volumeCrosshairGradMag: number | null;
+  volumeViewMode: "slices" | "3d";
   volumeOpacity: number;
   volumeVectorPresetId: VectorPresetId;
   volumeVectorPresetLabel: string;
   volumeShowStreamlines: boolean;
   volumeStreamSeedGrid: number;
   volumeStreamlineStepSize: number;
+  volumeStreamlineStepRange: { min: number; max: number; step: number };
+  volumeStreamlineMaxSteps: number;
   volumeStreamlineMaxLength: number;
   volumeSampling: VolumeSampling;
   volumeSamplingSpacing: [number, number, number];
@@ -5733,12 +6025,17 @@ type SurfacesLeftPanelProps = {
   onChangeVolumeIsoSmoothIterations: (v: number) => void;
   onChangeVolumeParam: (id: string, value: number) => void;
   onChangeVolumeCustomExpr: (value: string) => void;
-  onChangeVolumeAxis: (axis: SliceAxis) => void;
-  onChangeVolumeIndex: (value: number) => void;
+  onChangeVolumeCrosshairIndex: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onChangeVolumeSeedAxis: (axis: SliceAxis) => void;
+  onChangeVolumeSeedIndex: (value: number) => void;
+  onChangeVolumeViewMode: (mode: "slices" | "3d") => void;
   onChangeVolumeOpacity: (value: number) => void;
   onChangeVolumeVectorPreset: (id: VectorPresetId) => void;
   onToggleVolumeStreamlines: (v: boolean) => void;
   onChangeVolumeStreamSeedGrid: (v: number) => void;
+  onChangeVolumeStreamlineStepSize: (v: number) => void;
+  onResetVolumeStreamlineStep: () => void;
+  onChangeVolumeStreamlineMaxSteps: (v: number) => void;
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshSource: SurfaceMeshSource | null;
@@ -5751,6 +6048,8 @@ type SurfacesLeftPanelProps = {
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onExportSurfaceMesh: () => void;
+  onToggleVolumeDistanceSigned: (v: boolean) => void;
+  onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   vtkAvailable: boolean;
   vtkBusy: boolean;
   vtkError: string | null;
@@ -6004,6 +6303,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeDatasetOverride,
   volumeDistanceBusy,
   volumeDistanceError,
+  volumeDistanceSigned,
+  volumeDistanceAutoBounds,
   onBuildDistanceVolume,
   onClearVolumeOverride,
   volumePresetId,
@@ -6012,15 +6313,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumeParams,
   volumeCustomExpr,
   volumeCustomError,
-  volumeAxis,
-  volumeIndex,
-  volumeIndexMax,
+  volumeSeedAxis,
+  volumeSeedIndex,
+  volumeSeedIndexMax,
+  volumeCrosshairWorld,
+  volumeCrosshairIndex,
+  volumeCrosshairValue,
+  volumeCrosshairGradMag,
+  volumeViewMode,
   volumeOpacity,
   volumeVectorPresetId,
   volumeVectorPresetLabel,
   volumeShowStreamlines,
   volumeStreamSeedGrid,
   volumeStreamlineStepSize,
+  volumeStreamlineStepRange,
+  volumeStreamlineMaxSteps,
   volumeStreamlineMaxLength,
   volumeSampling,
   volumeSamplingSpacing,
@@ -6055,12 +6363,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeVolumeIsoSmoothIterations,
   onChangeVolumeParam,
   onChangeVolumeCustomExpr,
-  onChangeVolumeAxis,
-  onChangeVolumeIndex,
+  onChangeVolumeCrosshairIndex,
+  onChangeVolumeSeedAxis,
+  onChangeVolumeSeedIndex,
+  onChangeVolumeViewMode,
   onChangeVolumeOpacity,
   onChangeVolumeVectorPreset,
   onToggleVolumeStreamlines,
   onChangeVolumeStreamSeedGrid,
+  onChangeVolumeStreamlineStepSize,
+  onResetVolumeStreamlineStep,
+  onChangeVolumeStreamlineMaxSteps,
   surfaceMeshLabel,
   surfaceMeshStats,
   surfaceMeshSource,
@@ -6073,6 +6386,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onGenerateSurfaceMeshPreset,
   onLoadSurfaceMeshFile,
   onExportSurfaceMesh,
+  onToggleVolumeDistanceSigned,
+  onToggleVolumeDistanceAutoBounds,
   vtkAvailable,
   vtkBusy,
   vtkError,
@@ -6319,10 +6634,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     formula: "Triangle surface mesh",
     note: "Imported or generated triangle mesh.",
   };
+  const distanceSigned = volumeDatasetOverride?.distanceSigned;
   const volumeMeta = volumeDatasetOverride
     ? {
         label: volumeDatasetOverride.label ?? "Volume: Distance field",
-        formula: "Unsigned distance field |d(p, S)|",
+        formula: distanceSigned ? "Signed distance field d(p, S)" : "Unsigned distance field |d(p, S)|",
         note: volumeDatasetOverride.note ?? "Distance field sampled on a voxel grid.",
       }
     : {
@@ -6757,37 +7073,61 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
           )}
 
+          <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Crosshair</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {(["X", "Y", "Z"] as const).map((label, axisIndex) => (
+              <label
+                key={label}
+                style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 90 }}
+              >
+                <span>{label} index</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={Math.max(0, volumeSampling.dims[axisIndex] - 1)}
+                  value={volumeCrosshairIndex[axisIndex]}
+                  onChange={(e) => onChangeVolumeCrosshairIndex(axisIndex as 0 | 1 | 2, Number(e.target.value))}
+                  style={{ width: 80 }}
+                />
+              </label>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "#566273", marginTop: 6 }}>
+            {volumeCrosshairWorld
+              ? `World: (${fmtVal(volumeCrosshairWorld[0], 3)}, ${fmtVal(volumeCrosshairWorld[1], 3)}, ${fmtVal(
+                  volumeCrosshairWorld[2],
+                  3
+                )})`
+              : "Click a slice to place the crosshair."}
+          </div>
+          {volumeCrosshairWorld && (
+            <div style={{ fontSize: 11, color: "#566273", marginTop: 2 }}>
+              F={fmtVal(volumeCrosshairValue ?? 0, 4)} · |∇F|={fmtVal(volumeCrosshairGradMag ?? 0, 4)}
+            </div>
+          )}
+
+          <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>View</div>
+          <div style={pillRow}>
+            <button
+              type="button"
+              onClick={() => onChangeVolumeViewMode("slices")}
+              style={pill(volumeViewMode === "slices")}
+              aria-pressed={volumeViewMode === "slices"}
+            >
+              Slices
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeVolumeViewMode("3d")}
+              style={pill(volumeViewMode === "3d")}
+              aria-pressed={volumeViewMode === "3d"}
+            >
+              3D
+            </button>
+          </div>
+
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Volume slice</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-              <span>Axis</span>
-              <div style={pillRow}>
-                {(["x", "y", "z"] as const).map((axis) => (
-                  <button
-                    key={axis}
-                    type="button"
-                    onClick={() => onChangeVolumeAxis(axis)}
-                    style={pill(volumeAxis === axis)}
-                    aria-pressed={volumeAxis === axis}
-                  >
-                    {axis.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-              <span>Index</span>
-              <input
-                type="number"
-                min={0}
-                max={volumeIndexMax}
-                value={volumeIndex}
-                onChange={(e) => onChangeVolumeIndex(Number(e.target.value))}
-                style={{ width: 90 }}
-              />
-            </label>
-
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
               <span>Opacity {volumeOpacity.toFixed(2)}</span>
               <input
@@ -6855,7 +7195,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   volumeSliceHover.world[2],
                   3
                 )})  F=${fmtVal(volumeSliceHover.value, 4)}  |∇F|=${fmtVal(volumeSliceHover.gradMag ?? 0, 4)}`
-              : "Hover over the slice to read F(x,y,z)."}
+              : "Hover over a slice to read F(x,y,z)."}
           </div>
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Isosurface</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
@@ -6912,6 +7252,33 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               />
               Show
             </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Seed plane</span>
+              <div style={pillRow}>
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    onClick={() => onChangeVolumeSeedAxis(axis)}
+                    style={pill(volumeSeedAxis === axis)}
+                    aria-pressed={volumeSeedAxis === axis}
+                  >
+                    {axis.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Seed index</span>
+              <input
+                type="number"
+                min={0}
+                max={volumeSeedIndexMax}
+                value={volumeSeedIndex}
+                onChange={(e) => onChangeVolumeSeedIndex(Number(e.target.value))}
+                style={{ width: 80 }}
+              />
+            </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Seeds per side</span>
               <input
@@ -6921,6 +7288,47 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 value={volumeStreamSeedGrid}
                 onChange={(e) => onChangeVolumeStreamSeedGrid(Number(e.target.value))}
                 style={{ width: 80 }}
+              />
+            </label>
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginTop: 8 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 180 }}>
+              <span>Step size {fmtVal(volumeStreamlineStepSize, 4)}</span>
+              <input
+                type="range"
+                min={volumeStreamlineStepRange.min}
+                max={volumeStreamlineStepRange.max}
+                step={volumeStreamlineStepRange.step}
+                value={volumeStreamlineStepSize}
+                onChange={(e) => onChangeVolumeStreamlineStepSize(Number(e.target.value))}
+                style={{ width: 180 }}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Step (num)</span>
+              <input
+                type="number"
+                min={volumeStreamlineStepRange.min}
+                max={volumeStreamlineStepRange.max}
+                step={volumeStreamlineStepRange.step}
+                value={volumeStreamlineStepSize}
+                onChange={(e) => onChangeVolumeStreamlineStepSize(Number(e.target.value))}
+                style={{ width: 90 }}
+              />
+            </label>
+            <button type="button" onClick={onResetVolumeStreamlineStep} style={{ padding: "3px 8px" }}>
+              Auto step
+            </button>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+              <span>Max steps</span>
+              <input
+                type="number"
+                min={50}
+                max={5000}
+                step={10}
+                value={volumeStreamlineMaxSteps}
+                onChange={(e) => onChangeVolumeStreamlineMaxSteps(Number(e.target.value))}
+                style={{ width: 90 }}
               />
             </label>
           </div>
@@ -6940,8 +7348,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               ))}
             </div>
             <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-              Active field: {volumeVectorPresetLabel}. Step {fmtVal(volumeStreamlineStepSize, 3)}, max length{" "}
-              {fmtVal(volumeStreamlineMaxLength, 2)}.
+              Active field: {volumeVectorPresetLabel}. Step {fmtVal(volumeStreamlineStepSize, 3)}, max steps{" "}
+              {volumeStreamlineMaxSteps}, max length {fmtVal(volumeStreamlineMaxLength, 2)}.
             </div>
           </div>
           <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
@@ -7036,6 +7444,24 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </>
         )}
         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600 }}>Volume bridge</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={volumeDistanceSigned}
+              onChange={(e) => onToggleVolumeDistanceSigned(e.target.checked)}
+            />
+            Signed (winding number)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={volumeDistanceAutoBounds}
+              onChange={(e) => onToggleVolumeDistanceAutoBounds(e.target.checked)}
+            />
+            Auto bounds (fit mesh)
+          </label>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
           <button
             type="button"
@@ -7047,7 +7473,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </button>
         </div>
         <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-          Builds an unsigned distance field on the current sampling box. Use the Volume panel to view slices/isosurface.
+          Builds a {volumeDistanceSigned ? "signed" : "unsigned"} distance field on{" "}
+          {volumeDistanceAutoBounds ? "auto mesh bounds" : "the current sampling box"}. Use the Volume panel to view
+          slices/isosurface.
         </div>
         {volumeDistanceError && (
           <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>

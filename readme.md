@@ -2,6 +2,7 @@
 
 ## Latest changes
 
+- Added linked orthogonal volume slices with click-to-place crosshair, readout panel, and a toggle back to full 3D view.
 - Added geodesic disk selection (heat-method + Dijkstra) with boundary extraction and disk stats (area/perimeter/phi).
 - Added volume slice overlays: marching-squares contours, hover probe with F(x,y,z)/|∇F|, histogram, and auto window/level.
 - Added VTK-backed volume isosurface extraction with optional Laplacian smoothing.
@@ -491,8 +492,12 @@ To exit the environment:
 conda deactivate
 ```
 
-## Roadmap
 
-- Add signed distance via winding number (VTK) and surface-to-volume auto-bounds.
-- Tune streamline integration options (step size/max steps) with UI controls.
-- Add a proper JS marching-cubes implementation for non-cubic toy grids.
+Added signed distance fields (winding-number sign) and auto-bounds for Surface → Volume, with UI toggles and updated distance-field metadata.
+Added streamline step size + max steps controls (range + numeric) and plumbed them through to VTK.
+Implemented a proper non‑cubic CPU marching‑cubes fallback using three’s tables and a custom grid marcher.
+
+
+Add a dedicated 3D view (4th pane) to show the isosurface without locking rotation.
+Share isosurface geometry across views so it can render in all three without duplicate computation.
+Add a “snap crosshair to voxel center / keep continuous” toggle.

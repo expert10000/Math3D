@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
+import { marchingCubesVolume } from "../math/marchingCubes";
 
 import type { VolumeDataset, VectorGrid } from "../scene/datasets";
 import type { Image2D } from "../scene/renderPrimitives";
@@ -27,6 +27,10 @@ export type VolumeViewerProps = {
   axis: SliceAxis;
   index: number;
   opacity: number;
+  crosshair?: [number, number, number] | null;
+  onSlicePick?: (world: [number, number, number]) => void;
+  viewPreset?: "free" | "xy" | "xz" | "yz";
+  showAxes?: boolean;
   contourEnabled?: boolean;
   contourCount?: number;
   windowMode?: "auto" | "minmax";
@@ -81,47 +85,95 @@ const VTK_ISO_THRESHOLD = 64 * 64 * 64;
 const buildCpuIsosurface = (
   grid: VolumeDataset["grid"],
   iso: number
-): { geometry: THREE.BufferGeometry; center: [number, number, number]; scale: [number, number, number] } | null => {
+): THREE.BufferGeometry | null => {
   const [nx, ny, nz] = grid.dims;
-  if (nx !== ny || nx !== nz) return null;
   const total = nx * ny * nz;
   if (!total || total > VTK_ISO_THRESHOLD) return null;
 
-  const effect = new MarchingCubes(nx, new THREE.MeshStandardMaterial(), false, false);
-  const field = effect.field;
-  if (grid.scalars.length >= field.length) {
-    field.set(grid.scalars.subarray(0, field.length));
-  } else {
-    field.set(grid.scalars);
-  }
-  effect.isolation = iso;
-  effect.enableUvs = false;
-  effect.enableColors = false;
-  effect.update();
+  const res = marchingCubesVolume(grid, iso);
+  if (!res) return null;
 
-  const geom = effect.geometry.clone() as THREE.BufferGeometry;
-  effect.geometry.dispose();
-  const mat = effect.material as THREE.Material | THREE.Material[] | undefined;
-  if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-  else mat?.dispose();
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.BufferAttribute(res.positions, 3));
+  geom.setIndex(new THREE.BufferAttribute(res.indices, 1));
+  geom.computeVertexNormals();
   geom.computeBoundingSphere();
   geom.computeBoundingBox();
+  return geom;
+};
 
+const getGridBounds = (grid: VolumeDataset["grid"]) => {
   const spacing = grid.spacing ?? [1, 1, 1];
   const origin = grid.origin ?? [0, 0, 0];
-  const span: [number, number, number] = [
-    Math.max(0, (nx - 1) * spacing[0]),
-    Math.max(0, (ny - 1) * spacing[1]),
-    Math.max(0, (nz - 1) * spacing[2]),
+  const max: [number, number, number] = [
+    origin[0] + spacing[0] * Math.max(0, grid.dims[0] - 1),
+    origin[1] + spacing[1] * Math.max(0, grid.dims[1] - 1),
+    origin[2] + spacing[2] * Math.max(0, grid.dims[2] - 1),
   ];
+  const min: [number, number, number] = [origin[0], origin[1], origin[2]];
   const center: [number, number, number] = [
-    origin[0] + span[0] * 0.5,
-    origin[1] + span[1] * 0.5,
-    origin[2] + span[2] * 0.5,
+    (min[0] + max[0]) * 0.5,
+    (min[1] + max[1]) * 0.5,
+    (min[2] + max[2]) * 0.5,
   ];
-  const scale: [number, number, number] = [span[0] * 0.5, span[1] * 0.5, span[2] * 0.5];
+  const dx = max[0] - min[0];
+  const dy = max[1] - min[1];
+  const dz = max[2] - min[2];
+  const diag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  return { min, max, center, diag };
+};
 
-  return { geometry: geom, center, scale };
+const findNearestPointOnMesh = (geom: THREE.BufferGeometry, point: THREE.Vector3) => {
+  const pos = geom.getAttribute("position") as THREE.BufferAttribute | null;
+  if (!pos) return null;
+  const index = geom.getIndex();
+  const posArr = pos.array as ArrayLike<number>;
+  const idxArr = index?.array as ArrayLike<number> | undefined;
+
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const tri = new THREE.Triangle();
+  const closest = new THREE.Vector3();
+  const best = new THREE.Vector3();
+  let bestDist = Infinity;
+
+  if (idxArr && idxArr.length >= 3) {
+    const triCount = Math.floor(idxArr.length / 3);
+    for (let i = 0; i < triCount; i++) {
+      const ia = Number(idxArr[i * 3]) * 3;
+      const ib = Number(idxArr[i * 3 + 1]) * 3;
+      const ic = Number(idxArr[i * 3 + 2]) * 3;
+      a.set(posArr[ia], posArr[ia + 1], posArr[ia + 2]);
+      b.set(posArr[ib], posArr[ib + 1], posArr[ib + 2]);
+      c.set(posArr[ic], posArr[ic + 1], posArr[ic + 2]);
+      tri.set(a, b, c);
+      tri.closestPointToPoint(point, closest);
+      const dist = closest.distanceToSquared(point);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best.copy(closest);
+      }
+    }
+  } else {
+    const triCount = Math.floor(posArr.length / 9);
+    for (let i = 0; i < triCount; i++) {
+      const base = i * 9;
+      a.set(posArr[base], posArr[base + 1], posArr[base + 2]);
+      b.set(posArr[base + 3], posArr[base + 4], posArr[base + 5]);
+      c.set(posArr[base + 6], posArr[base + 7], posArr[base + 8]);
+      tri.set(a, b, c);
+      tri.closestPointToPoint(point, closest);
+      const dist = closest.distanceToSquared(point);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best.copy(closest);
+      }
+    }
+  }
+
+  if (!Number.isFinite(bestDist)) return null;
+  return best;
 };
 
 export const VolumeViewer: React.FC<VolumeViewerProps> = ({
@@ -130,6 +182,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   axis,
   index,
   opacity,
+  crosshair = null,
+  onSlicePick,
+  viewPreset = "free",
+  showAxes = true,
   contourEnabled = false,
   contourCount = 6,
   windowMode = "auto",
@@ -156,16 +212,19 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const axesHelperRef = useRef<THREE.AxesHelper | null>(null);
   const sliceMeshRef = useRef<THREE.Mesh | null>(null);
   const sliceTextureRef = useRef<THREE.DataTexture | null>(null);
   const contourGroupRef = useRef<THREE.Group | null>(null);
   const hoverMarkerRef = useRef<THREE.Mesh | null>(null);
   const isoMeshRef = useRef<THREE.Mesh | null>(null);
+  const isoMarkerRef = useRef<THREE.Mesh | null>(null);
   const streamlinesGroupRef = useRef<THREE.Group | null>(null);
   const cropBoxRef = useRef<THREE.LineSegments | null>(null);
   const cropGizmoRef = useRef<TransformControls | null>(null);
   const cropGizmoHelperRef = useRef<THREE.Object3D | null>(null);
   const cropDraggingRef = useRef(false);
+  const crosshairGroupRef = useRef<THREE.Group | null>(null);
   const opacityRef = useRef(opacity);
   const [sliceData, setSliceData] = useState<VolumeSliceData | null>(null);
   const [sliceImage, setSliceImage] = useState<Image2D | null>(null);
@@ -174,8 +233,11 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   const [hoverInfo, setHoverInfo] = useState<VolumeSliceHover | null>(null);
   const hoverInfoRef = useRef<VolumeSliceHover | null>(null);
   const onCropChangeRef = useRef(onCropChange);
+  const onSlicePickRef = useRef(onSlicePick);
   const hoverPendingRef = useRef<{ x: number; y: number } | null>(null);
   const hoverRafRef = useRef<number | null>(null);
+  const [isoMeshToken, setIsoMeshToken] = useState(0);
+  const [sceneReady, setSceneReady] = useState(false);
 
   useEffect(() => {
     opacityRef.current = opacity;
@@ -198,6 +260,16 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     onCropChangeRef.current = onCropChange;
   }, [onCropChange]);
 
+  useEffect(() => {
+    onSlicePickRef.current = onSlicePick;
+  }, [onSlicePick]);
+
+  useEffect(() => {
+    if (axesHelperRef.current) {
+      axesHelperRef.current.visible = showAxes;
+    }
+  }, [showAxes]);
+
   const sliceWindow = useMemo<VolumeSliceWindow | null>(() => {
     if (!sliceData) return null;
     const stats = sliceData.stats;
@@ -215,6 +287,37 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       cropGizmoHelperRef.current.visible = enabled;
     }
   }, [cropGizmoMode, cropGizmoEnabled, showCropBox]);
+
+  useEffect(() => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!sceneReady || !camera || !controls) return;
+    controls.enableRotate = viewPreset === "free";
+    controls.enablePan = true;
+    controls.enableZoom = true;
+    if (viewPreset === "free" || !dataset?.grid) return;
+
+    const bounds = getGridBounds(dataset.grid);
+    const center = new THREE.Vector3(...bounds.center);
+    const dist = Math.max(1, bounds.diag * 1.4);
+    const pos = new THREE.Vector3(...bounds.center);
+
+    if (viewPreset === "xy") {
+      pos.set(center.x, center.y, center.z + dist);
+      camera.up.set(0, 1, 0);
+    } else if (viewPreset === "xz") {
+      pos.set(center.x, center.y - dist, center.z);
+      camera.up.set(0, 0, 1);
+    } else if (viewPreset === "yz") {
+      pos.set(center.x + dist, center.y, center.z);
+      camera.up.set(0, 0, 1);
+    }
+
+    camera.position.copy(pos);
+    camera.lookAt(center);
+    controls.target.copy(center);
+    controls.update();
+  }, [dataset, viewPreset, sceneReady]);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -248,7 +351,9 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       axesMat.depthTest = false;
     }
     axes.renderOrder = 5;
+    axes.visible = showAxes;
     scene.add(axes);
+    axesHelperRef.current = axes;
 
     const ambient = new THREE.AmbientLight(0xffffff, 0.55);
     scene.add(ambient);
@@ -306,6 +411,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     sceneRef.current = scene;
     cameraRef.current = camera;
     controlsRef.current = controls;
+    setSceneReady(true);
 
     const handleResize = () => {
       const w = mount.clientWidth || 1;
@@ -361,6 +467,18 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         const mat = hoverMarkerRef.current.material as THREE.Material | undefined;
         if (mat) mat.dispose();
         hoverMarkerRef.current = null;
+      }
+      if (crosshairGroupRef.current) {
+        clearGroup(crosshairGroupRef.current);
+        scene.remove(crosshairGroupRef.current);
+        crosshairGroupRef.current = null;
+      }
+      if (isoMarkerRef.current) {
+        scene.remove(isoMarkerRef.current);
+        isoMarkerRef.current.geometry.dispose();
+        const mat = isoMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
+        isoMarkerRef.current = null;
       }
       if (cropBoxRef.current) {
         scene.remove(cropBoxRef.current);
@@ -592,30 +710,21 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     const plane = new THREE.Plane();
     const tmp = new THREE.Vector3();
 
-    const process = () => {
-      hoverRafRef.current = null;
-      const pending = hoverPendingRef.current;
-      if (!pending) return;
+    const pickAt = (clientX: number, clientY: number) => {
       const data = sliceDataRef.current;
       const grid = datasetRef.current?.grid;
-      if (!data || !grid) {
-        setHoverInfo(null);
-        return;
-      }
+      if (!data || !grid) return null;
 
       const rect = dom.getBoundingClientRect();
-      const x = ((pending.x - rect.left) / Math.max(1, rect.width)) * 2 - 1;
-      const y = -((pending.y - rect.top) / Math.max(1, rect.height)) * 2 + 1;
+      const x = ((clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+      const y = -((clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
       raycaster.setFromCamera({ x, y }, camera);
 
       const normal = new THREE.Vector3(...data.plane.normal).normalize();
       const center = new THREE.Vector3(...data.plane.center);
       plane.setFromNormalAndCoplanarPoint(normal, center);
       const hit = raycaster.ray.intersectPlane(plane, tmp);
-      if (!hit) {
-        setHoverInfo(null);
-        return;
-      }
+      if (!hit) return null;
 
       const u = new THREE.Vector3(...data.plane.u).normalize();
       const v = new THREE.Vector3(...data.plane.v).normalize();
@@ -625,13 +734,26 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       const halfW = data.plane.width * 0.5;
       const halfH = data.plane.height * 0.5;
       if (Math.abs(s) > halfW + 1e-6 || Math.abs(t) > halfH + 1e-6) {
-        setHoverInfo(null);
-        return;
+        return null;
       }
 
       const world: [number, number, number] = [hit.x, hit.y, hit.z];
       const value = sampleGridTrilinear(grid, world);
       const gradMag = gradientMagnitudeAt(grid, world);
+      return { world, value, gradMag };
+    };
+
+    const process = () => {
+      hoverRafRef.current = null;
+      const pending = hoverPendingRef.current;
+      if (!pending) return;
+      const hit = pickAt(pending.x, pending.y);
+      if (!hit) {
+        setHoverInfo(null);
+        return;
+      }
+
+      const { world, value, gradMag } = hit;
       const prev = hoverInfoRef.current;
       if (
         prev &&
@@ -650,6 +772,13 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       hoverRafRef.current = window.requestAnimationFrame(process);
     };
 
+    const handleClick = (e: MouseEvent) => {
+      if (e.button !== 0 || cropDraggingRef.current) return;
+      const hit = pickAt(e.clientX, e.clientY);
+      if (!hit) return;
+      onSlicePickRef.current?.(hit.world);
+    };
+
     const handleLeave = () => {
       hoverPendingRef.current = null;
       if (hoverRafRef.current !== null) {
@@ -660,10 +789,12 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     };
 
     dom.addEventListener("pointermove", handleMove);
+    dom.addEventListener("click", handleClick);
     dom.addEventListener("pointerleave", handleLeave);
 
     return () => {
       dom.removeEventListener("pointermove", handleMove);
+      dom.removeEventListener("click", handleClick);
       dom.removeEventListener("pointerleave", handleLeave);
       if (hoverRafRef.current !== null) {
         window.cancelAnimationFrame(hoverRafRef.current);
@@ -704,6 +835,103 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     hoverMarkerRef.current.position.set(hoverInfo.world[0], hoverInfo.world[1], hoverInfo.world[2]);
     hoverMarkerRef.current.position.add(normal.multiplyScalar(offset));
   }, [hoverInfo]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (!crosshair || !dataset?.grid) {
+      if (crosshairGroupRef.current) {
+        clearGroup(crosshairGroupRef.current);
+        scene.remove(crosshairGroupRef.current);
+        crosshairGroupRef.current = null;
+      }
+      return;
+    }
+
+    const bounds = getGridBounds(dataset.grid);
+    const [x, y, z] = crosshair;
+
+    let group = crosshairGroupRef.current;
+    if (!group) {
+      group = new THREE.Group();
+      group.renderOrder = 8;
+      scene.add(group);
+      crosshairGroupRef.current = group;
+    } else {
+      clearGroup(group);
+    }
+
+    const makeLine = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const geom = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const mat = new THREE.LineBasicMaterial({
+        color: 0x2563eb,
+        transparent: true,
+        opacity: 0.7,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const line = new THREE.Line(geom, mat);
+      line.renderOrder = 8;
+      return line;
+    };
+
+    group.add(makeLine(new THREE.Vector3(bounds.min[0], y, z), new THREE.Vector3(bounds.max[0], y, z)));
+    group.add(makeLine(new THREE.Vector3(x, bounds.min[1], z), new THREE.Vector3(x, bounds.max[1], z)));
+    group.add(makeLine(new THREE.Vector3(x, y, bounds.min[2]), new THREE.Vector3(x, y, bounds.max[2])));
+
+    const radius = Math.max(0.01, bounds.diag * 0.012);
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(radius, 14, 14),
+      new THREE.MeshBasicMaterial({ color: 0x2563eb, depthTest: false, depthWrite: false })
+    );
+    marker.position.set(x, y, z);
+    marker.renderOrder = 9;
+    group.add(marker);
+  }, [crosshair, dataset]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (!showIsosurface || !crosshair || !isoMeshRef.current) {
+      if (isoMarkerRef.current) {
+        scene.remove(isoMarkerRef.current);
+        isoMarkerRef.current.geometry.dispose();
+        const mat = isoMarkerRef.current.material as THREE.Material | undefined;
+        if (mat) mat.dispose();
+        isoMarkerRef.current = null;
+      }
+      return;
+    }
+
+    const geom = isoMeshRef.current.geometry as THREE.BufferGeometry | undefined;
+    if (!geom) return;
+    const nearest = findNearestPointOnMesh(geom, new THREE.Vector3(...crosshair));
+    if (!nearest) return;
+
+    const bounds = dataset?.grid ? getGridBounds(dataset.grid) : null;
+    const radius = Math.max(0.01, (bounds?.diag ?? 1) * 0.012);
+
+    let marker = isoMarkerRef.current;
+    if (!marker) {
+      marker = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 14, 14),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e, depthTest: false, depthWrite: false })
+      );
+      marker.renderOrder = 9;
+      isoMarkerRef.current = marker;
+      scene.add(marker);
+    } else {
+      const geomSphere = marker.geometry as THREE.SphereGeometry;
+      if (geomSphere.parameters.radius !== radius) {
+        marker.geometry.dispose();
+        marker.geometry = new THREE.SphereGeometry(radius, 14, 14);
+      }
+    }
+
+    marker.position.copy(nearest);
+  }, [crosshair, showIsosurface, isoMeshToken, dataset]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -812,9 +1040,10 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
         }
 
         mesh.geometry.dispose();
-        mesh.geometry = cpu.geometry;
-        mesh.position.set(cpu.center[0], cpu.center[1], cpu.center[2]);
-        mesh.scale.set(cpu.scale[0], cpu.scale[1], cpu.scale[2]);
+        mesh.geometry = cpu;
+        mesh.position.set(0, 0, 0);
+        mesh.scale.set(1, 1, 1);
+        setIsoMeshToken((t) => t + 1);
         return;
       }
 
@@ -862,6 +1091,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
       mesh.geometry = geom;
       mesh.position.set(0, 0, 0);
       mesh.scale.set(1, 1, 1);
+      setIsoMeshToken((t) => t + 1);
     })();
 
     return () => {
