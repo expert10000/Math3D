@@ -5,6 +5,7 @@
 - Added geodesic disk selection (heat-method + Dijkstra) with boundary extraction and disk stats (area/perimeter/phi).
 - Added Volume viewer v0 with a toy voxel grid and slice preview (axis/index/opacity controls).
 - Added true Volume Presets (sphere, torus, gyroid, metaballs) that sample F(x,y,z) into a volume grid with per-axis dims.
+- Added adjustable volume presets (sliders per preset), plus noise fields, Mandelbulb DE, and a custom F(x,y,z) expression entry.
 - Added parametric geodesic heat paths (mesh heat + continuous ODE in UV).
 - Added Weierstrass minimal surface mode (g(z), phi(z)) rendered through the parametric pipeline.
 - Added Weierstrass presets (Enneper, Catenoid, Helicoid) and improved complex expression parsing for functions like exp(z).
@@ -95,8 +96,9 @@ and editable.
 
 - Purpose: Preview scalar fields sampled on a voxel grid and inspect slices quickly.
 - Rendering: A slice plane in three.js textured with a grayscale Image2D derived from the grid.
-- Presets: Sphere, torus, gyroid (TPMS), and metaballs as true F(x,y,z) fields.
-- Controls: Preset selector, grid dims (Nx, Ny, Nz), slice axis/index, and opacity in the left panel when Volume mode is active.
+- Presets: Sphere, torus, gyroid (TPMS), metaballs, noise fields, Mandelbulb DE, and a custom F(x,y,z) field.
+- Controls: Preset selector, per-preset parameter sliders, grid dims (Nx, Ny, Nz), slice axis/index, and opacity in the left panel when Volume mode is active.
+- Custom: Enter F(x,y,z) with standard math syntax (sin, cos, exp, sqrt, etc.) and live-compile errors.
 - Source: Volume grids are sampled client-side (no worker/VTK dependency yet).
 
 ### Gauss map (S²)

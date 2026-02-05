@@ -78,9 +78,13 @@ import type { PolylineSet } from "./scene/renderPrimitives";
 import {
   buildVolumeGridFromPreset,
   getVolumePreset,
+  getVolumePresetBounds,
+  getVolumePresetDefaultParams,
+  resolveVolumePresetParams,
   VOLUME_PRESETS,
   type VolumePreset,
   type VolumePresetId,
+  type VolumePresetParams,
 } from "./scene/volume/volumePresets";
 import type { SliceAxis } from "./scene/volume/sliceVolume";
 /* ---------------- App modes ---------------- */
@@ -723,13 +727,35 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
   });
   const [volumePresetId, setVolumePresetId] = useState<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
+  const [volumeParams, setVolumeParams] = useState<VolumePresetParams>(() =>
+    getVolumePresetDefaultParams(DEFAULT_VOLUME_PRESET_ID)
+  );
   const [volumeDims, setVolumeDims] = useState<[number, number, number]>(() =>
     getVolumePreset(DEFAULT_VOLUME_PRESET_ID).defaultDims
   );
+  const [volumeCustomExpr, setVolumeCustomExpr] = useState("x^2 + y^2 + z^2 - 1");
   const volumePreset = useMemo(() => getVolumePreset(volumePresetId), [volumePresetId]);
+  const volumeParamsResolved = useMemo(
+    () => resolveVolumePresetParams(volumePreset, volumeParams),
+    [volumePreset, volumeParams]
+  );
+  const volumeCustomCompiled = useMemo(() => {
+    if (volumePresetId !== "custom") return { fn: undefined, error: null };
+    const src = volumeCustomExpr.trim();
+    if (!src) return { fn: undefined, error: "Expression required." };
+    const { fn, error } = compileExpression(src, ["x", "y", "z"]);
+    return { fn, error: error ? error.message : null };
+  }, [volumeCustomExpr, volumePresetId]);
   const volumeDataset = useMemo(
-    () => ({ kind: "volume", grid: buildVolumeGridFromPreset(volumePresetId, { dims: volumeDims }) }),
-    [volumePresetId, volumeDims]
+    () => ({
+      kind: "volume",
+      grid: buildVolumeGridFromPreset(volumePresetId, {
+        dims: volumeDims,
+        params: volumeParamsResolved,
+        customFn: volumeCustomCompiled.fn,
+      }),
+    }),
+    [volumePresetId, volumeDims, volumeParamsResolved, volumeCustomCompiled.fn]
   );
   const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
   const surfaceMeshData = surfaceDataset?.mesh ?? null;
@@ -749,6 +775,22 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return next;
     });
   };
+  const handleVolumeParamChange = useCallback(
+    (id: string, value: number) => {
+      setVolumeParams((prev) => {
+        const def = volumePreset.params?.find((param) => param.id === id);
+        if (!def) return prev;
+        const nextValue = Number.isFinite(value)
+          ? Math.min(def.max, Math.max(def.min, value))
+          : def.defaultValue;
+        return { ...prev, [id]: nextValue };
+      });
+    },
+    [volumePreset]
+  );
+  useEffect(() => {
+    setVolumeParams(getVolumePresetDefaultParams(volumePresetId));
+  }, [volumePresetId]);
   const volumeSliceMax = useMemo(() => {
     const [nx, ny, nz] = volumeDataset.grid.dims;
     if (volumeSliceAxis === "x") return Math.max(0, nx - 1);
@@ -4106,12 +4148,17 @@ case "mobius":
                   volumePresetId={volumePresetId}
                   volumePreset={volumePreset}
                   volumeDims={volumeDims}
+                  volumeParams={volumeParamsResolved}
+                  volumeCustomExpr={volumeCustomExpr}
+                  volumeCustomError={volumeCustomCompiled.error}
                   volumeAxis={volumeSliceAxis}
                   volumeIndex={volumeSliceIndex}
                   volumeIndexMax={volumeSliceMax}
                   volumeOpacity={volumeSliceOpacity}
                   onChangeVolumePresetId={setVolumePresetId}
                   onChangeVolumeDim={handleVolumeDimChange}
+                  onChangeVolumeParam={handleVolumeParamChange}
+                  onChangeVolumeCustomExpr={setVolumeCustomExpr}
                   onChangeVolumeAxis={setVolumeSliceAxis}
                   onChangeVolumeIndex={setVolumeSliceIndex}
                   onChangeVolumeOpacity={setVolumeSliceOpacity}
@@ -5287,12 +5334,17 @@ type SurfacesLeftPanelProps = {
   volumePresetId: VolumePresetId;
   volumePreset: VolumePreset;
   volumeDims: [number, number, number];
+  volumeParams: VolumePresetParams;
+  volumeCustomExpr: string;
+  volumeCustomError: string | null;
   volumeAxis: SliceAxis;
   volumeIndex: number;
   volumeIndexMax: number;
   volumeOpacity: number;
   onChangeVolumePresetId: (id: VolumePresetId) => void;
   onChangeVolumeDim: (axisIndex: 0 | 1 | 2, value: number) => void;
+  onChangeVolumeParam: (id: string, value: number) => void;
+  onChangeVolumeCustomExpr: (value: string) => void;
   onChangeVolumeAxis: (axis: SliceAxis) => void;
   onChangeVolumeIndex: (value: number) => void;
   onChangeVolumeOpacity: (value: number) => void;
@@ -5561,12 +5613,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   volumePresetId,
   volumePreset,
   volumeDims,
+  volumeParams,
+  volumeCustomExpr,
+  volumeCustomError,
   volumeAxis,
   volumeIndex,
   volumeIndexMax,
   volumeOpacity,
   onChangeVolumePresetId,
   onChangeVolumeDim,
+  onChangeVolumeParam,
+  onChangeVolumeCustomExpr,
   onChangeVolumeAxis,
   onChangeVolumeIndex,
   onChangeVolumeOpacity,
@@ -5830,7 +5887,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   };
   const volumeMeta = {
     label: `Volume: ${volumePreset.label}`,
-    formula: volumePreset.formula,
+    formula: volumePresetId === "custom" ? (volumeCustomExpr.trim() || volumePreset.formula) : volumePreset.formula,
     note: volumePreset.note ?? "Scalar field on a voxel grid.",
   };
   const activeMeta = isVolume
@@ -5856,8 +5913,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     ? "unavailable"
     : "pending";
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
-  const fmt = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
-  const volumeBounds = volumePreset.bounds;
+  const fmtVal = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
+  const volumeBounds = getVolumePresetBounds(volumePreset, volumeParamsResolved);
 
   const modeLabel =
     isVolume
@@ -5889,6 +5946,16 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       : viewerKind === "graph"
       ? ["solid", "height", "radius", "curvature"]
       : ["solid", "height", "radius"];
+  const volumeParamDefs = volumePreset.params ?? [];
+  const volumeShowCustom = volumePresetId === "custom";
+  const volumeParamDecimals = (step: number) => {
+    if (step >= 1) return 0;
+    if (step >= 0.1) return 1;
+    if (step >= 0.01) return 2;
+    if (step >= 0.001) return 3;
+    return 4;
+  };
+  const formatVolumeParam = (value: number, step: number) => value.toFixed(volumeParamDecimals(step));
 
   return (
     <section>
@@ -5995,6 +6062,63 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </label>
           </div>
 
+          {volumeParamDefs.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Parameters</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {volumeParamDefs.map((param) => {
+                  const value = volumeParams[param.id] ?? param.defaultValue;
+                  return (
+                    <label
+                      key={param.id}
+                      style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 200 }}
+                    >
+                      <span>
+                        {param.label} {formatVolumeParam(value, param.step)}
+                      </span>
+                      <input
+                        type="range"
+                        min={param.min}
+                        max={param.max}
+                        step={param.step}
+                        value={value}
+                        onChange={(e) => onChangeVolumeParam(param.id, Number(e.target.value))}
+                      />
+                      <input
+                        type="number"
+                        min={param.min}
+                        max={param.max}
+                        step={param.step}
+                        value={value}
+                        onChange={(e) => onChangeVolumeParam(param.id, Number(e.target.value))}
+                        style={{ width: 90 }}
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {volumeShowCustom && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Custom field</div>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+                <span>F(x,y,z)</span>
+                <input
+                  type="text"
+                  value={volumeCustomExpr}
+                  onChange={(e) => onChangeVolumeCustomExpr(e.target.value)}
+                  placeholder="e.g. x^2 + y^2 + z^2 - 1"
+                  style={{ width: "100%", fontFamily: "monospace" }}
+                />
+              </label>
+              {volumeCustomError && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#b00020" }}>Error: {volumeCustomError}</div>
+              )}
+            </div>
+          )}
+
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Volume slice</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
@@ -6037,8 +6161,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </div>
           <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
             Source: {volumePreset.label} field sampled on {volumeDims[0]}x{volumeDims[1]}x{volumeDims[2]}. Bounds: x in [
-            {fmt(volumeBounds.min[0])}, {fmt(volumeBounds.max[0])}], y in [{fmt(volumeBounds.min[1])},{" "}
-            {fmt(volumeBounds.max[1])}], z in [{fmt(volumeBounds.min[2])}, {fmt(volumeBounds.max[2])}].
+            {fmtVal(volumeBounds.min[0])}, {fmtVal(volumeBounds.max[0])}], y in [{fmtVal(volumeBounds.min[1])},{" "}
+            {fmtVal(volumeBounds.max[1])}], z in [{fmtVal(volumeBounds.min[2])}, {fmtVal(volumeBounds.max[2])}].
           </div>
         </div>
       )}
