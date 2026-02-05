@@ -5974,6 +5974,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       : ["solid", "height", "radius"];
   const volumeParamDefs = volumePreset.params ?? [];
   const volumeShowCustom = volumePresetId === "custom";
+  const volumePresetOptions = VOLUME_PRESETS.filter((preset) => preset.id !== "custom");
   const lastVolumePresetIdRef = useRef<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   useEffect(() => {
     if (volumePresetId !== "custom") {
@@ -6126,20 +6127,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
           {!volumeShowCustom && (
             <div style={{ marginTop: 10 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
-                <span>Preset</span>
-                <select
-                  value={volumePresetId}
-                  onChange={(e) => onChangeVolumePresetId(e.target.value as VolumePresetId)}
-                  style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
-                >
-                  {VOLUME_PRESETS.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Preset</div>
+              <div style={pillRow}>
+                {volumePresetOptions.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => onChangeVolumePresetId(preset.id)}
+                    style={pill(volumePresetId === preset.id)}
+                    aria-pressed={volumePresetId === preset.id}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -6228,18 +6229,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
           <div style={{ fontWeight: 700, margin: "10px 0 6px" }}>Volume slice</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Axis</span>
-              <select
-                value={volumeAxis}
-                onChange={(e) => onChangeVolumeAxis(e.target.value as SliceAxis)}
-                style={{ fontSize: 11, padding: "2px 4px", width: 80 }}
-              >
-                <option value="x">X</option>
-                <option value="y">Y</option>
-                <option value="z">Z</option>
-              </select>
-            </label>
+              <div style={pillRow}>
+                {(["x", "y", "z"] as const).map((axis) => (
+                  <button
+                    key={axis}
+                    type="button"
+                    onClick={() => onChangeVolumeAxis(axis)}
+                    style={pill(volumeAxis === axis)}
+                    aria-pressed={volumeAxis === axis}
+                  >
+                    {axis.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Index</span>
