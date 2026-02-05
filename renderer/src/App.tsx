@@ -755,7 +755,17 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     );
     src = src.replace(funcNoParen, (_m, fn, arg) => `${fn}(${String(arg).replace(/\\\\s+/g, "")})`);
     const { fn, error } = compileExpression(src, ["x", "y", "z"]);
-    return { fn, error: error ? error.message : null };
+    if (error) return { fn: undefined, error: `${error.message} (col ${error.col})` };
+    const evalFn = fn!;
+    const vars = { x: 0, y: 0, z: 0 };
+    const wrapped = (x: number, y: number, z: number) => {
+      vars.x = x;
+      vars.y = y;
+      vars.z = z;
+      const v = evalFn(vars);
+      return Number.isFinite(v) ? v : NaN;
+    };
+    return { fn: wrapped, error: null };
   }, [volumeCustomExpr, volumePresetId]);
   useEffect(() => {
     if (volumeCustomCompiled.fn) {
@@ -5964,6 +5974,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       : ["solid", "height", "radius"];
   const volumeParamDefs = volumePreset.params ?? [];
   const volumeShowCustom = volumePresetId === "custom";
+  const lastVolumePresetIdRef = useRef<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
+  useEffect(() => {
+    if (volumePresetId !== "custom") {
+      lastVolumePresetIdRef.current = volumePresetId;
+    }
+  }, [volumePresetId]);
   const volumeParamDecimals = (step: number) => {
     if (step >= 1) return 0;
     if (step >= 0.1) return 1;
@@ -5978,12 +5994,16 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     { label: "Torus", expr: "(x^2 + y^2 - 1.0)^2 + z^2 - 0.35^2" },
     { label: "Gyroid", expr: "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)" },
     { label: "Cos surface", expr: "cos(x) + cos(y) + cos(z) - 0.5" },
+    { label: "Schwarz D", expr: "cos(x)*cos(y)*cos(z) - cos(x) - cos(y) - cos(z) + 0.3" },
+    { label: "Neovius", expr: "3*(cos(x) + cos(y) + cos(z)) + 4*cos(x)*cos(y)*cos(z)" },
     {
       label: "Metaballs",
       expr:
         "exp(-4*((x+0.6)^2+y^2+z^2)) + exp(-4*((x-0.6)^2+y^2+z^2)) + exp(-4*(x^2+(y-0.6)^2+z^2)) - 0.7",
     },
     { label: "Rounded box", expr: "abs(x)^4 + abs(y)^4 + abs(z)^4 - 1" },
+    { label: "Capped cylinder", expr: "max(x^2 + y^2 - 1.0^2, abs(z) - 1.1)" },
+    { label: "Shell", expr: "abs(sqrt(x^2+y^2+z^2) - 1.0) - 0.12" },
     { label: "Octahedron-like", expr: "abs(x) + abs(y) + abs(z) - 1" },
     { label: "Shell", expr: "(sqrt(x^2+y^2+z^2)-1.0)^2 - 0.02" },
     { label: "Double cone", expr: "x^2 + y^2 - z^2" },
@@ -6046,21 +6066,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         <div style={{ ...cardStyle, marginTop: 10 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume grid</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
-              <span>Preset</span>
-              <select
-                value={volumePresetId}
-                onChange={(e) => onChangeVolumePresetId(e.target.value as VolumePresetId)}
-                style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
-              >
-                {VOLUME_PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
               <span>Dims (Nx, Ny, Nz)</span>
               <div style={{ display: "flex", gap: 6 }}>
@@ -6095,7 +6100,50 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </label>
           </div>
 
-          {volumeParamDefs.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Field</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeVolumePresetId(volumeShowCustom ? lastVolumePresetIdRef.current : volumePresetId)
+                }
+                style={pill(!volumeShowCustom)}
+                aria-pressed={!volumeShowCustom}
+              >
+                Preset
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeVolumePresetId("custom")}
+                style={pill(volumeShowCustom)}
+                aria-pressed={volumeShowCustom}
+              >
+                Custom
+              </button>
+            </div>
+          </div>
+
+          {!volumeShowCustom && (
+            <div style={{ marginTop: 10 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, minWidth: 160 }}>
+                <span>Preset</span>
+                <select
+                  value={volumePresetId}
+                  onChange={(e) => onChangeVolumePresetId(e.target.value as VolumePresetId)}
+                  style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
+                >
+                  {VOLUME_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+
+          {!volumeShowCustom && volumeParamDefs.length > 0 && (
             <div style={{ marginTop: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Parameters</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -6146,25 +6194,28 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   style={{ width: "100%", fontFamily: "monospace" }}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, marginTop: 8 }}>
-                <span>Examples</span>
-                <select
-                  defaultValue=""
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value) onChangeVolumeCustomExpr(value);
-                    e.currentTarget.value = "";
-                  }}
-                  style={{ fontSize: 11, padding: "2px 4px", maxWidth: 320 }}
-                >
-                  <option value="">Pick an example…</option>
+              <div style={{ marginTop: 8, fontSize: 11 }}>
+                <div style={{ marginBottom: 6, opacity: 0.8 }}>Examples</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {volumeCustomExamples.map((ex) => (
-                    <option key={ex.label} value={ex.expr}>
+                    <button
+                      key={ex.label}
+                      type="button"
+                      onClick={() => onChangeVolumeCustomExpr(ex.expr)}
+                      style={{
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        border: "1px solid #ddd",
+                        background: "#fff",
+                        cursor: "pointer",
+                        fontSize: 11,
+                      }}
+                    >
                       {ex.label}
-                    </option>
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
                 Use x,y,z and functions like sin, cos, exp, log, sqrt, abs, min, max. Use sin(x) or sin x. You can type
                 F=... and it will be accepted.

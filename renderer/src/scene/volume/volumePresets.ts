@@ -2,7 +2,10 @@ import type { VolumeGrid } from "../datasets";
 
 export type VolumePresetId =
   | "sphere"
+  | "ellipsoid"
   | "torus"
+  | "cylinder"
+  | "superquadric"
   | "gyroid"
   | "metaballs"
   | "noise"
@@ -156,6 +159,31 @@ export const VOLUME_PRESETS: VolumePreset[] = [
     },
   },
   {
+    id: "ellipsoid",
+    label: "Ellipsoid",
+    formula: "F = x^2/a^2 + y^2/b^2 + z^2/c^2 - 1",
+    note: "Axis-aligned ellipsoid centered at the origin.",
+    defaultDims: DEFAULT_DIMS,
+    params: [
+      { id: "a", label: "Radius a", min: 0.4, max: 2.5, step: 0.05, defaultValue: 1.3 },
+      { id: "b", label: "Radius b", min: 0.4, max: 2.5, step: 0.05, defaultValue: 1.0 },
+      { id: "c", label: "Radius c", min: 0.4, max: 2.5, step: 0.05, defaultValue: 0.75 },
+    ],
+    getBounds: (params) => {
+      const a = params.a ?? 1.3;
+      const b = params.b ?? 1.0;
+      const c = params.c ?? 0.75;
+      const span = Math.max(a, b, c) * 1.35;
+      return { min: [-span, -span, -span], max: [span, span, span] };
+    },
+    sample: (x, y, z, params) => {
+      const a = params.a ?? 1.3;
+      const b = params.b ?? 1.0;
+      const c = params.c ?? 0.75;
+      return (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c) - 1;
+    },
+  },
+  {
     id: "torus",
     label: "Torus",
     formula: "F = (x^2 + y^2 - R)^2 + z^2 - r^2",
@@ -176,6 +204,42 @@ export const VOLUME_PRESETS: VolumePreset[] = [
       const r = params.r ?? 0.35;
       const q = x * x + y * y - R;
       return q * q + z * z - r * r;
+    },
+  },
+  {
+    id: "cylinder",
+    label: "Capped cylinder",
+    formula: "F = max(x^2 + y^2 - R^2, abs(z) - h)",
+    note: "Finite cylinder with radius R and half-height h.",
+    defaultDims: DEFAULT_DIMS,
+    params: [
+      { id: "R", label: "Radius R", min: 0.3, max: 2.0, step: 0.05, defaultValue: 0.9 },
+      { id: "h", label: "Half-height h", min: 0.3, max: 2.5, step: 0.05, defaultValue: 1.1 },
+    ],
+    getBounds: (params) => {
+      const R = params.R ?? 0.9;
+      const h = params.h ?? 1.1;
+      return { min: [-R * 1.3, -R * 1.3, -h * 1.2], max: [R * 1.3, R * 1.3, h * 1.2] };
+    },
+    sample: (x, y, z, params) => {
+      const R = params.R ?? 0.9;
+      const h = params.h ?? 1.1;
+      const r2 = x * x + y * y - R * R;
+      const cap = Math.abs(z) - h;
+      return Math.max(r2, cap);
+    },
+  },
+  {
+    id: "superquadric",
+    label: "Superquadric",
+    formula: "F = |x|^p + |y|^p + |z|^p - 1",
+    note: "Rounded cube/sphere family controlled by exponent p.",
+    defaultDims: DEFAULT_DIMS,
+    params: [{ id: "p", label: "Exponent p", min: 1.2, max: 8, step: 0.2, defaultValue: 3.2 }],
+    bounds: DEFAULT_BOUNDS,
+    sample: (x, y, z, params) => {
+      const p = params.p ?? 3.2;
+      return Math.pow(Math.abs(x), p) + Math.pow(Math.abs(y), p) + Math.pow(Math.abs(z), p) - 1;
     },
   },
   {

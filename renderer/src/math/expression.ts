@@ -76,7 +76,7 @@ function tokenize(src: string): { toks: Tok[]; error?: ExprError } {
 
 // Insert implicit multiplications:
 // num id, num lp, id num, id lp, rp id, rp num, rp lp
-function insertImplicitMul(toks: Tok[]): Tok[] {
+function insertImplicitMul(toks: Tok[], funcNames?: Set<string>): Tok[] {
   const out: Tok[] = [];
   const isValueEnd = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "rp";
   const isValueStart = (t: Tok) => t.k === "num" || t.k === "id" || t.k === "lp";
@@ -86,6 +86,9 @@ function insertImplicitMul(toks: Tok[]): Tok[] {
     out.push(a);
     const b = toks[i + 1];
     if (!b) continue;
+    if (a.k === "id" && b.k === "lp" && funcNames?.has(a.v)) {
+      continue;
+    }
     if (isValueEnd(a) && isValueStart(b)) {
       out.push({ k: "op", v: "*", i: b.i });
     }
@@ -110,7 +113,7 @@ export function compileExpression(
   const t0 = tokenize(src);
   if (t0.error) return { error: t0.error };
 
-  const toks = insertImplicitMul(t0.toks);
+  const toks = insertImplicitMul(t0.toks, new Set(Object.keys(FUNCS)));
 
   // parse to RPN
   const output: Rpn[] = [];
