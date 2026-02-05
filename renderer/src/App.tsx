@@ -5914,7 +5914,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     : "pending";
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
   const fmtVal = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
-  const volumeBounds = getVolumePresetBounds(volumePreset, volumeParamsResolved);
+  const volumeBounds = getVolumePresetBounds(volumePreset, volumeParams);
 
   const modeLabel =
     isVolume
