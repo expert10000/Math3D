@@ -20,7 +20,8 @@ export type ComplexMapSweepSpec = {
   wScale: number;
   clampAbs: number | null;
   showIsolines: boolean;
-  isolinesCount: number;
+  isolinesCountU: number;
+  isolinesCountV: number;
 };
 
 type ComplexMapSweepBuild = {
@@ -175,46 +176,52 @@ export function buildComplexMapSweep(
   }
 
   let polylines: PolylineSet | null = null;
-  if (outputMode === "sweep" && spec.showIsolines && spec.isolinesCount > 0) {
-    const count = Math.max(1, Math.round(spec.isolinesCount));
-    polylines = [];
-    const sweepIsV = spec.sweepAxis === "v";
-    const lineMin = sweepIsV ? vMin : uMin;
-    const lineMax = sweepIsV ? vMax : uMax;
-    const lineRange = lineMax - lineMin;
-    const lineStep = count > 1 ? lineRange / (count - 1) : 0;
-    const sampleCount = sweepIsV ? nu : nv;
-    const sampleMin = sweepIsV ? uMin : vMin;
-    const sampleStep = sweepIsV ? uStep : vStep;
+  if (outputMode === "sweep" && spec.showIsolines) {
+    const countU = Math.max(0, Math.round(spec.isolinesCountU));
+    const countV = Math.max(0, Math.round(spec.isolinesCountV));
+    const makeFamily = (axis: "u" | "v", count: number) => {
+      if (count <= 0) return [] as PolylineSet;
+      const lineMin = axis === "u" ? uMin : vMin;
+      const lineMax = axis === "u" ? uMax : vMax;
+      const lineRange = lineMax - lineMin;
+      const lineStep = count > 1 ? lineRange / (count - 1) : 0;
+      const sampleCount = axis === "u" ? nv : nu;
+      const sampleMin = axis === "u" ? vMin : uMin;
+      const sampleStep = axis === "u" ? vStep : uStep;
+      const lines: PolylineSet = [];
 
-    for (let k = 0; k < count; k++) {
-      const sweepVal = lineMin + lineStep * k;
-      let currentLine: { x: number; y: number; z: number }[] = [];
-
-      for (let s = 0; s < sampleCount; s++) {
-        const t = sampleMin + sampleStep * s;
-        const u = sweepIsV ? t : sweepVal;
-        const v = sweepIsV ? sweepVal : t;
-        let re = reFn(u, v);
-        let im = imFn(u, v);
-        if (!Number.isFinite(re) || !Number.isFinite(im)) {
-          if (currentLine.length >= 2) polylines.push(currentLine);
-          currentLine = [];
-          continue;
+      for (let k = 0; k < count; k++) {
+        const constVal = lineMin + lineStep * k;
+        let currentLine: { x: number; y: number; z: number }[] = [];
+        for (let s = 0; s < sampleCount; s++) {
+          const t = sampleMin + sampleStep * s;
+          const u = axis === "u" ? constVal : t;
+          const v = axis === "u" ? t : constVal;
+          let re = reFn(u, v);
+          let im = imFn(u, v);
+          if (!Number.isFinite(re) || !Number.isFinite(im)) {
+            if (currentLine.length >= 2) lines.push(currentLine);
+            currentLine = [];
+            continue;
+          }
+          re *= wScale;
+          im *= wScale;
+          if (clampAbs) {
+            const clamped = clampMag(re, im, clampAbs);
+            re = clamped.re;
+            im = clamped.im;
+          }
+          const x = spec.sweepAxis === "v" ? v : u;
+          currentLine.push({ x, y: re, z: im });
         }
-        re *= wScale;
-        im *= wScale;
-        if (clampAbs) {
-          const clamped = clampMag(re, im, clampAbs);
-          re = clamped.re;
-          im = clamped.im;
-        }
-        const x = sweepIsV ? v : u;
-        currentLine.push({ x, y: re, z: im });
+        if (currentLine.length >= 2) lines.push(currentLine);
       }
-      if (currentLine.length >= 2) polylines.push(currentLine);
-    }
+      return lines;
+    };
 
+    const linesU = makeFamily("u", countU);
+    const linesV = makeFamily("v", countV);
+    polylines = [...linesU, ...linesV];
     if (!polylines.length) polylines = null;
   }
 

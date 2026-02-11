@@ -68,6 +68,12 @@ export type OverlayPointSet = {
   size?: number;
   opacity?: number;
 };
+export type OverlayPolylineGroup = {
+  lines: PolylineSet;
+  color: number;
+  opacity?: number;
+  radiusScale?: number;
+};
 
 const DBG_COLORS = false;
 const TAU = Math.PI * 2;
@@ -900,6 +906,7 @@ type Props = {
   overlayHeatmapEnabled?: boolean;
   overlayPolylines?: PolylineSet | null;
   overlayPolylinesColor?: number;
+  overlayPolylineGroups?: OverlayPolylineGroup[] | null;
   overlayPointSets?: OverlayPointSet[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
@@ -1046,6 +1053,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     overlayHeatmapEnabled = false,
     overlayPolylines = null,
     overlayPolylinesColor = 0x2a7bff,
+    overlayPolylineGroups = null,
     overlayPointSets = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
@@ -1084,6 +1092,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   });
   const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
+  const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
@@ -4616,6 +4625,56 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(group);
     overlayPolylinesRef.current = group;
   }, [overlayPolylines, overlayPolylinesColor, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayPolylineGroupsRef.current) {
+      scene.remove(overlayPolylineGroupsRef.current);
+      overlayPolylineGroupsRef.current.traverse(disposeObject3D);
+      overlayPolylineGroupsRef.current = null;
+    }
+
+    if (!overlayPolylineGroups?.length) return;
+
+    const group = new THREE.Group();
+    const sizeHint = radiusRef.current || 3;
+    const baseRadius = Math.max(0.006, (sizeHint / 110) * 1.1);
+    const radialSegments = 12;
+
+    for (const entry of overlayPolylineGroups) {
+      if (!entry?.lines?.length) continue;
+      const tubeRadius = baseRadius * (entry.radiusScale ?? 1);
+      const opacity = entry.opacity ?? 1;
+      const mat = new THREE.MeshBasicMaterial({
+        color: entry.color,
+        transparent: opacity < 1,
+        opacity,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      for (const line of entry.lines) {
+        if (!line || line.length < 2) continue;
+        const points = line.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+        const path = new THREE.CurvePath<THREE.Vector3>();
+        for (let i = 0; i + 1 < points.length; i++) {
+          path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+        }
+        const tubularSegments = Math.min(1600, Math.max(80, points.length * 2));
+        const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.renderOrder = 300;
+        mesh.frustumCulled = false;
+        group.add(mesh);
+      }
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayPolylineGroupsRef.current = group;
+  }, [overlayPolylineGroups, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

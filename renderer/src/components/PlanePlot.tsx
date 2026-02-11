@@ -747,7 +747,16 @@ export type PlanePlotHandle = {
   drawGrid(step: number): void;
   x(re: number): number;
   y(im: number): number;
-  drawCurve(points: [number, number][], stroke: string): void;
+  drawCurve(
+    points: [number, number][],
+    stroke: string,
+    opts?: {
+      width?: number;
+      opacity?: number;
+      dash?: string;
+      layer?: string;
+    }
+  ): void;
   drawPoints(
     points: [number, number][],
     style?: {
@@ -1179,7 +1188,11 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           const y = yScaleRef.current;
           return y ? y(im) : 0;
         },
-        drawCurve(points: [number, number][], stroke: string) {
+        drawCurve(
+          points: [number, number][],
+          stroke: string,
+          opts?: { width?: number; opacity?: number; dash?: string; layer?: string }
+        ) {
           const g = gContentRef.current;
           const x = xScaleRef.current;
           const y = yScaleRef.current;
@@ -1192,12 +1205,23 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
           const dAttr = lineGen(points);
           if (!dAttr) return;
+          const layerId = opts?.layer;
+          const target = layerId
+            ? (g.selectAll(`g[data-layer="${layerId}"]`).empty()
+              ? g.append("g").attr("data-layer", layerId)
+              : g.select(`g[data-layer="${layerId}"]`))
+            : g;
 
-          g.append("path")
+          const path = target
+            .append("path")
             .attr("fill", "none")
             .attr("stroke", stroke)
-            .attr("stroke-width", 1.5)
+            .attr("stroke-width", opts?.width ?? 1.5)
+            .attr("stroke-opacity", opts?.opacity ?? 1)
             .attr("d", dAttr);
+          if (opts?.dash) {
+            path.attr("stroke-dasharray", opts.dash);
+          }
         },
         drawPoints(
           points: [number, number][],

@@ -564,3 +564,42 @@ Implemented a proper non‑cubic CPU marching‑cubes fallback using three’s t
 Add a dedicated 3D view (4th pane) to show the isosurface without locking rotation.
 Share isosurface geometry across views so it can render in all three without duplicate computation.
 Add a “snap crosshair to voxel center / keep continuous” toggle.
+
+Summary
+
+Implemented PR4 distortion visualization controls + Z‑plane heatmap/surface coloring + probe readout in App.tsx.
+Implemented PR5 linked probe (Z/W/3D picking), cross‑markers, readout, and pinned probes in App.tsx.
+Implemented PR6 mapped coordinate net upgrades (separate u/v counts, thickness/opacity, two‑color grid, optional surface tubes) across App.tsx, complexMapSweep.ts, PlanePlot.tsx, and SurfaceViewer.tsx.
+Tests
+
+Not run (not requested).
+Next Steps
+
+Run the app and sanity‑check: Z/W/3D linked picks, distortion heatmap + surface color, and grid thickness/opacity + tube overlays.
+
+PR7 - Riemann sphere mode (stereographic)
+
+Visualize w on the sphere via stereographic projection:
+- map w in C U {infinity} -> S^2
+- sweep axis becomes "stacked spheres" or animate v
+- poles go to north pole (clean handling of infinity)
+
+Why: handles huge values/poles elegantly; very "complex analysis".
+
+PR8 - Multi-sheet surfaces (true algebraic/Riemann surfaces)
+
+For things like w^k = p(z) or w = sqrt(p(z)):
+- generate k sheets
+- branch point detection + sheet stitching (harder)
+- UI: choose branch cut strategy
+
+Why: this is the real "Riemann surface" feature.
+
+Performance/quality (you'll want this soon)
+
+PR9 - Robust meshing around singularities
+- triangle dropping near invalid vertices
+- adaptive refinement in cells with large gradients (simple heuristic)
+- optional "singularity mask" overlay
+
+Why: removes skinny sliver artifacts and makes plots stable.

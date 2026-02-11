@@ -158,6 +158,20 @@ type ComplexMapDistortionProbe = {
   ratio: number;
   conformalErr: number;
 };
+type ComplexMapProbe = {
+  u: number;
+  v: number;
+  w: { re: number; im: number; mag: number; arg: number };
+  det: number;
+  detAbs: number;
+  sigmaMax: number;
+  sigmaMin: number;
+  ratio: number;
+  conformalErr: number;
+  localScale: number;
+  source: "z" | "w" | "surface";
+};
+type ComplexMapProbePin = ComplexMapProbe & { id: string; label?: string };
 type CgalMeshState = {
   surfaceId: SurfaceId;
   expr: string;
@@ -232,7 +246,8 @@ const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
   wScale: 1,
   clampAbs: null,
   showIsolines: false,
-  isolinesCount: 7,
+  isolinesCountU: 7,
+  isolinesCountV: 7,
 };
 
 const COMPLEX_MAP_LABEL = "Complex Map Sweep (z→w)";
@@ -243,6 +258,14 @@ const COMPLEX_MAP_OUTPUT_LABELS: Record<ComplexMapSweepSpec["outputMode"], strin
   both: "Complex Map Surfaces (Re + Im)",
 };
 const COMPLEX_MAP_LABEL_SET = new Set(Object.values(COMPLEX_MAP_OUTPUT_LABELS));
+const COMPLEX_GRID_COLORS = {
+  u: "#1f77b4",
+  v: "#e67e22",
+};
+const COMPLEX_GRID_COLORS_3D = {
+  u: 0x1f77b4,
+  v: 0xe67e22,
+};
 
 const DEFAULT_VOLUME_PRESET_ID: VolumePresetId = "sphere";
 
@@ -1262,9 +1285,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [complexMapLine, setComplexMapLine] = useState<ComplexMapLine>(null);
   const [complexMapLinePolylines, setComplexMapLinePolylines] = useState<PolylineSet | null>(null);
   const [complexMapLineWPolylines, setComplexMapLineWPolylines] = useState<[number, number][][] | null>(null);
-  const [complexMapIsolineWPolylines, setComplexMapIsolineWPolylines] = useState<[number, number][][] | null>(null);
-  const [complexMapIsolineZLines, setComplexMapIsolineZLines] = useState<[number, number][][] | null>(null);
-  const [complexMapIsoline3dPolylines, setComplexMapIsoline3dPolylines] = useState<PolylineSet | null>(null);
+  const [complexMapIsolineWPolylinesU, setComplexMapIsolineWPolylinesU] = useState<[number, number][][] | null>(null);
+  const [complexMapIsolineWPolylinesV, setComplexMapIsolineWPolylinesV] = useState<[number, number][][] | null>(null);
+  const [complexMapIsolineZLinesU, setComplexMapIsolineZLinesU] = useState<[number, number][][] | null>(null);
+  const [complexMapIsolineZLinesV, setComplexMapIsolineZLinesV] = useState<[number, number][][] | null>(null);
+  const [complexMapIsoline3dPolylinesU, setComplexMapIsoline3dPolylinesU] = useState<PolylineSet | null>(null);
+  const [complexMapIsoline3dPolylinesV, setComplexMapIsoline3dPolylinesV] = useState<PolylineSet | null>(null);
   const [complexMapLive, setComplexMapLive] = useState(true);
   const [complexMapShowCritical, setComplexMapShowCritical] = useState(true);
   const [complexMapShowZeros, setComplexMapShowZeros] = useState(true);
@@ -1284,6 +1310,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [complexDistortionShowZ, setComplexDistortionShowZ] = useState(true);
   const [complexDistortionShowSurface, setComplexDistortionShowSurface] = useState(true);
   const [complexDistortionScale, setComplexDistortionScale] = useState<"linear" | "log">("linear");
+  const [complexMapGridThickness, setComplexMapGridThickness] = useState(1.1);
+  const [complexMapGridOpacity, setComplexMapGridOpacity] = useState(0.85);
+  const [complexMapGridShowSurface, setComplexMapGridShowSurface] = useState(true);
+  const [complexMapProbe, setComplexMapProbe] = useState<ComplexMapProbe | null>(null);
+  const [complexMapProbePins, setComplexMapProbePins] = useState<ComplexMapProbePin[]>([]);
 
   const updateComplexMapSpec = useCallback((patch: Partial<ComplexMapSweepSpec>) => {
     setComplexMapSpec((prev) => ({ ...prev, ...patch }));
@@ -1314,6 +1345,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (!complexMapCompiled.reFn || !complexMapCompiled.imFn) return null;
     return { reFn: complexMapCompiled.reFn, imFn: complexMapCompiled.imFn };
   }, [complexMapCompiled]);
+
+  useEffect(() => {
+    setComplexMapProbe(null);
+  }, [
+    complexMapSpec.reExpr,
+    complexMapSpec.imExpr,
+    complexMapSpec.uMin,
+    complexMapSpec.uMax,
+    complexMapSpec.vMin,
+    complexMapSpec.vMax,
+    complexMapSpec.nu,
+    complexMapSpec.nv,
+    complexMapSpec.wScale,
+    complexMapSpec.clampAbs,
+  ]);
 
   const complexMapZExtent = useMemo(() => {
     const m = Math.max(
@@ -1545,6 +1591,175 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     return { detJAbs, sigmaRatio, conformalErr, detJMedian };
   }, [complexMapGrid]);
 
+  const buildComplexMapProbe = useCallback(
+    (uRaw: number, vRaw: number, source: ComplexMapProbe["source"]): ComplexMapProbe | null => {
+      if (!complexMapFns) return null;
+      const { reFn, imFn } = complexMapFns;
+      const uMin = Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
+      const uMax = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
+      const vMin = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
+      const vMax = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
+      if (!Number.isFinite(uRaw) || !Number.isFinite(vRaw)) return null;
+      const u = Math.min(uMax, Math.max(uMin, uRaw));
+      const v = Math.min(vMax, Math.max(vMin, vRaw));
+
+      const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+      const clampAbs =
+        complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+          ? complexMapSpec.clampAbs
+          : null;
+
+      const clampMag = (re: number, im: number, limit: number) => {
+        const mag = Math.hypot(re, im);
+        if (!Number.isFinite(mag) || mag <= limit) return { re, im };
+        const s = limit / mag;
+        return { re: re * s, im: im * s };
+      };
+
+      const evalW = (uu: number, vv: number) => {
+        let re = reFn(uu, vv);
+        let im = imFn(uu, vv);
+        if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
+        re *= wScale;
+        im *= wScale;
+        if (clampAbs) {
+          const clamped = clampMag(re, im, clampAbs);
+          re = clamped.re;
+          im = clamped.im;
+        }
+        return { re, im };
+      };
+
+      const c00 = evalW(u, v);
+      if (!c00) return null;
+      const du = Math.abs(uMax - uMin) / Math.max(2, Math.round(complexMapSpec.nu));
+      const dv = Math.abs(vMax - vMin) / Math.max(2, Math.round(complexMapSpec.nv));
+      const hU = Math.max(1e-5, du * 0.5);
+      const hV = Math.max(1e-5, dv * 0.5);
+      const c10 = evalW(u + hU, v);
+      const c_10 = evalW(u - hU, v);
+      const c01 = evalW(u, v + hV);
+      const c0_1 = evalW(u, v - hV);
+      if (!c10 || !c_10 || !c01 || !c0_1) return null;
+
+      const a = (c10.re - c_10.re) / (2 * hU);
+      const b = (c01.re - c0_1.re) / (2 * hV);
+      const c = (c10.im - c_10.im) / (2 * hU);
+      const d = (c01.im - c0_1.im) / (2 * hV);
+
+      const det = a * d - b * c;
+      const detAbs = Math.abs(det);
+      const s1 = a * a + c * c;
+      const s2 = b * b + d * d;
+      const s3 = a * b + c * d;
+      const tr = s1 + s2;
+      const disc = Math.max(0, tr * tr - 4 * (s1 * s2 - s3 * s3));
+      const sqrtDisc = Math.sqrt(disc);
+      const lambda1 = 0.5 * (tr + sqrtDisc);
+      const lambda2 = 0.5 * (tr - sqrtDisc);
+      const sigmaMax = Math.sqrt(Math.max(0, lambda1));
+      const sigmaMin = Math.sqrt(Math.max(0, lambda2));
+      const ratio = sigmaMax / Math.max(1e-9, sigmaMin);
+
+      const fzRe = 0.5 * (a + d);
+      const fzIm = 0.5 * (c - b);
+      const fzbRe = 0.5 * (a - d);
+      const fzbIm = 0.5 * (c + b);
+      const fz = Math.hypot(fzRe, fzIm);
+      const fzb = Math.hypot(fzbRe, fzbIm);
+      const conformalErr = fzb / Math.max(1e-9, fz);
+
+      return {
+        u,
+        v,
+        w: {
+          re: c00.re,
+          im: c00.im,
+          mag: Math.hypot(c00.re, c00.im),
+          arg: Math.atan2(c00.im, c00.re),
+        },
+        det,
+        detAbs,
+        sigmaMax,
+        sigmaMin,
+        ratio,
+        conformalErr,
+        localScale: Math.sqrt(Math.max(0, detAbs)),
+        source,
+      };
+    },
+    [complexMapFns, complexMapSpec]
+  );
+
+  const findClosestUVForW = useCallback(
+    (pt: { re: number; im: number }) => {
+      if (!complexMapGrid) return null;
+      const { nu, nv, uMin, vMin, uStep, vStep, reClamped, imClamped, valid } = complexMapGrid;
+      let best = { u: 0, v: 0, d2: Infinity };
+      for (let j = 0; j < nv; j++) {
+        for (let i = 0; i < nu; i++) {
+          const idx = j * nu + i;
+          if (!valid[idx]) continue;
+          const re = reClamped[idx];
+          const im = imClamped[idx];
+          if (!Number.isFinite(re) || !Number.isFinite(im)) continue;
+          const dx = re - pt.re;
+          const dy = im - pt.im;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < best.d2) {
+            best = {
+              u: uMin + uStep * i,
+              v: vMin + vStep * j,
+              d2,
+            };
+          }
+        }
+      }
+      return Number.isFinite(best.d2) ? { u: best.u, v: best.v, d2: best.d2 } : null;
+    },
+    [complexMapGrid]
+  );
+
+  const setComplexMapProbeFromUV = useCallback(
+    (u: number, v: number, source: ComplexMapProbe["source"]) => {
+      const next = buildComplexMapProbe(u, v, source);
+      if (next) setComplexMapProbe(next);
+    },
+    [buildComplexMapProbe]
+  );
+
+  const setComplexMapProbeFromW = useCallback(
+    (pt: { re: number; im: number }) => {
+      const best = findClosestUVForW(pt);
+      if (!best) return;
+      const next = buildComplexMapProbe(best.u, best.v, "w");
+      if (next) setComplexMapProbe(next);
+    },
+    [findClosestUVForW, buildComplexMapProbe]
+  );
+
+  const pinComplexMapProbe = useCallback(() => {
+    if (!complexMapProbe) return;
+    setComplexMapProbePins((prev) => [{ ...complexMapProbe, id: makeId() }, ...prev]);
+  }, [complexMapProbe]);
+
+  const clearComplexMapProbe = useCallback(() => {
+    setComplexMapProbe(null);
+  }, []);
+
+  const clearComplexMapProbePins = useCallback(() => {
+    setComplexMapProbePins([]);
+  }, []);
+
+  const recallComplexMapProbe = useCallback((pin: ComplexMapProbePin) => {
+    const { id, label, ...rest } = pin;
+    setComplexMapProbe(rest);
+  }, []);
+
+  const removeComplexMapProbePin = useCallback((id: string) => {
+    setComplexMapProbePins((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
   const complexMapDistortionField = useMemo(() => {
     if (!complexMapGrid || !complexMapJacobian || complexDistortionMode === "none") return null;
     const { detJAbs, sigmaRatio, conformalErr } = complexMapJacobian;
@@ -1701,21 +1916,43 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexMapPoleRel,
   ]);
 
+  const complexMapProbePoints3d = useMemo(() => {
+    if (!complexMapProbe) return null;
+    const { u, v, w } = complexMapProbe;
+    const x = complexMapSpec.sweepAxis === "v" ? v : u;
+    const other = complexMapSpec.sweepAxis === "v" ? u : v;
+    const points: { x: number; y: number; z: number }[] = [];
+    if (complexMapSpec.outputMode === "sweep") {
+      points.push({ x, y: w.re, z: w.im });
+    } else if (complexMapSpec.outputMode === "re") {
+      points.push({ x, y: w.re, z: other });
+    } else if (complexMapSpec.outputMode === "im") {
+      points.push({ x, y: w.im, z: other });
+    } else {
+      points.push({ x, y: w.re, z: other }, { x, y: w.im, z: other });
+    }
+    return points.length ? points : null;
+  }, [complexMapProbe, complexMapSpec.outputMode, complexMapSpec.sweepAxis]);
+
   const complexMapOverlayPointSets = useMemo(() => {
-    if (!complexMapMarkers3d || !complexMapMarkerData) return null;
     const sets: { points: { x: number; y: number; z: number }[]; color: number; size?: number; opacity?: number }[] =
       [];
-    if (complexMapMarkerData.critical.p3d.length) {
-      sets.push({ points: complexMapMarkerData.critical.p3d, color: 0xd81b60, size: 0.055, opacity: 0.9 });
+    if (complexMapMarkers3d && complexMapMarkerData) {
+      if (complexMapMarkerData.critical.p3d.length) {
+        sets.push({ points: complexMapMarkerData.critical.p3d, color: 0xd81b60, size: 0.055, opacity: 0.9 });
+      }
+      if (complexMapMarkerData.zero.p3d.length) {
+        sets.push({ points: complexMapMarkerData.zero.p3d, color: 0x2e7d32, size: 0.052, opacity: 0.9 });
+      }
+      if (complexMapMarkerData.pole.p3d.length) {
+        sets.push({ points: complexMapMarkerData.pole.p3d, color: 0xf57c00, size: 0.06, opacity: 0.9 });
+      }
     }
-    if (complexMapMarkerData.zero.p3d.length) {
-      sets.push({ points: complexMapMarkerData.zero.p3d, color: 0x2e7d32, size: 0.052, opacity: 0.9 });
-    }
-    if (complexMapMarkerData.pole.p3d.length) {
-      sets.push({ points: complexMapMarkerData.pole.p3d, color: 0xf57c00, size: 0.06, opacity: 0.9 });
+    if (complexMapProbePoints3d?.length) {
+      sets.push({ points: complexMapProbePoints3d, color: 0x111111, size: 0.07, opacity: 0.95 });
     }
     return sets.length ? sets : null;
-  }, [complexMapMarkerData, complexMapMarkers3d]);
+  }, [complexMapMarkerData, complexMapMarkers3d, complexMapProbePoints3d]);
 
   const complexMapDistortionValues3d = useMemo(() => {
     if (!complexDistortionShowSurface || !complexMapGrid || !complexMapJacobian) return null;
@@ -1776,76 +2013,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
 
   const complexMapDistortionProbe = useMemo(() => {
-    if (complexDistortionMode === "none") return null;
-    if (!complexMapFns) return null;
-    if (!probeInfo?.uv) return null;
-    const { u, v } = probeInfo.uv;
-    const uMin = complexMapSpec.uMin;
-    const uMax = complexMapSpec.uMax;
-    const vMin = complexMapSpec.vMin;
-    const vMax = complexMapSpec.vMax;
-    if (u < Math.min(uMin, uMax) || u > Math.max(uMin, uMax)) return null;
-    if (v < Math.min(vMin, vMax) || v > Math.max(vMin, vMax)) return null;
-
-    const { reFn, imFn } = complexMapFns;
-    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
-    const du = Math.abs(uMax - uMin) / Math.max(2, Math.round(complexMapSpec.nu));
-    const dv = Math.abs(vMax - vMin) / Math.max(2, Math.round(complexMapSpec.nv));
-    const hU = Math.max(1e-5, du * 0.5);
-    const hV = Math.max(1e-5, dv * 0.5);
-
-    const evalW = (uu: number, vv: number) => {
-      let re = reFn(uu, vv);
-      let im = imFn(uu, vv);
-      if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
-      re *= wScale;
-      im *= wScale;
-      return { re, im };
-    };
-
-    const c00 = evalW(u, v);
-    if (!c00) return null;
-    const c10 = evalW(u + hU, v);
-    const c_10 = evalW(u - hU, v);
-    const c01 = evalW(u, v + hV);
-    const c0_1 = evalW(u, v - hV);
-    if (!c10 || !c_10 || !c01 || !c0_1) return null;
-
-    const a = (c10.re - c_10.re) / (2 * hU);
-    const b = (c01.re - c0_1.re) / (2 * hV);
-    const c = (c10.im - c_10.im) / (2 * hU);
-    const d = (c01.im - c0_1.im) / (2 * hV);
-
-    const det = a * d - b * c;
-    const s1 = a * a + c * c;
-    const s2 = b * b + d * d;
-    const s3 = a * b + c * d;
-    const tr = s1 + s2;
-    const disc = Math.max(0, tr * tr - 4 * (s1 * s2 - s3 * s3));
-    const sqrtDisc = Math.sqrt(disc);
-    const lambda1 = 0.5 * (tr + sqrtDisc);
-    const lambda2 = 0.5 * (tr - sqrtDisc);
-    const sigmaMax = Math.sqrt(Math.max(0, lambda1));
-    const sigmaMin = Math.sqrt(Math.max(0, lambda2));
-    const ratio = sigmaMax / Math.max(1e-9, sigmaMin);
-
-    const fzRe = 0.5 * (a + d);
-    const fzIm = 0.5 * (c - b);
-    const fzbRe = 0.5 * (a - d);
-    const fzbIm = 0.5 * (c + b);
-    const fz = Math.hypot(fzRe, fzIm);
-    const fzb = Math.hypot(fzbRe, fzbIm);
-    const conformalErr = fzb / Math.max(1e-9, fz);
-
+    if (!complexMapProbe) return null;
     return {
-      u,
-      v,
-      w: { re: c00.re, im: c00.im, mag: Math.hypot(c00.re, c00.im) },
-      detAbs: Math.abs(det),
-      ratio,
-      conformalErr,
+      u: complexMapProbe.u,
+      v: complexMapProbe.v,
+      detAbs: complexMapProbe.detAbs,
+      ratio: complexMapProbe.ratio,
+      conformalErr: complexMapProbe.conformalErr,
     };
-  }, [complexDistortionMode, complexMapFns, complexMapSpec, probeInfo?.uv]);
+  }, [complexMapProbe]);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -2441,6 +2617,7 @@ case "mobius":
     setGraphProbeXY(null);
     setParamProbeUV(null);
     setImplicitProbeXYZ(null);
+    setComplexMapProbe(null);
   }, [activeEqSurfaceId, paramSurfaceId, surfaceViewerKind, colorMode]);
 
   useEffect(() => {
@@ -2448,6 +2625,7 @@ case "mobius":
       setProbeInfo(null);
       setProbeCurv(null);
       setParamProbeCurv(null);
+      setComplexMapProbe(null);
     }
   }, [probeEnabled]);
 
@@ -2461,8 +2639,13 @@ case "mobius":
       } else {
         setProbeCurv(null);
       }
+
+      if (surfaceViewerKind === "complex" && info.uv) {
+        const next = buildComplexMapProbe(info.uv.u, info.uv.v, "surface");
+        if (next) setComplexMapProbe(next);
+      }
     },
-    [surfaceViewerKind, activeEqSurfaceId, graphExpr]
+    [surfaceViewerKind, activeEqSurfaceId, graphExpr, buildComplexMapProbe]
   );
 
   const handleParamCurvature = useCallback((data: PrincipalCurvatureScalars | null) => {
@@ -2647,17 +2830,42 @@ case "mobius":
   const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
     if (!isMeshLikeViewer) return null;
     if (!surfaceMeshData || !COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label)) return null;
-    const out: PolylineSet = [];
-    const iso = complexMapIsoline3dPolylines?.length ? complexMapIsoline3dPolylines : complexMapPolylines;
-    if (iso?.length) out.push(...iso);
-    if (complexMapLinePolylines?.length) out.push(...complexMapLinePolylines);
-    return out.length ? out : null;
+    if (!complexMapLinePolylines?.length) return null;
+    return complexMapLinePolylines;
+  }, [isMeshLikeViewer, surfaceMeshData, complexMapLinePolylines]);
+
+  const complexMapOverlayPolylineGroups = useMemo(() => {
+    if (!isMeshLikeViewer) return null;
+    if (!surfaceMeshData || !COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label)) return null;
+    const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
+    if (complexMapSpec.showIsolines && complexMapGridShowSurface) {
+      if (complexMapIsoline3dPolylinesU?.length) {
+        groups.push({
+          lines: complexMapIsoline3dPolylinesU,
+          color: COMPLEX_GRID_COLORS_3D.u,
+          opacity: complexMapGridOpacity,
+          radiusScale: complexMapGridThickness,
+        });
+      }
+      if (complexMapIsoline3dPolylinesV?.length) {
+        groups.push({
+          lines: complexMapIsoline3dPolylinesV,
+          color: COMPLEX_GRID_COLORS_3D.v,
+          opacity: complexMapGridOpacity,
+          radiusScale: complexMapGridThickness,
+        });
+      }
+    }
+    return groups.length ? groups : null;
   }, [
     isMeshLikeViewer,
     surfaceMeshData,
-    complexMapIsoline3dPolylines,
-    complexMapPolylines,
-    complexMapLinePolylines,
+    complexMapSpec.showIsolines,
+    complexMapGridShowSurface,
+    complexMapIsoline3dPolylinesU,
+    complexMapIsoline3dPolylinesV,
+    complexMapGridOpacity,
+    complexMapGridThickness,
   ]);
 
   const handleBuildComplexMapSweep = useCallback(() => {
@@ -2789,9 +2997,12 @@ case "mobius":
 
   useEffect(() => {
     if (!complexMapSpec.showIsolines || !complexMapFns) {
-      setComplexMapIsolineWPolylines(null);
-      setComplexMapIsolineZLines(null);
-      setComplexMapIsoline3dPolylines(null);
+      setComplexMapIsolineWPolylinesU(null);
+      setComplexMapIsolineWPolylinesV(null);
+      setComplexMapIsolineZLinesU(null);
+      setComplexMapIsolineZLinesV(null);
+      setComplexMapIsoline3dPolylinesU(null);
+      setComplexMapIsoline3dPolylinesV(null);
       return;
     }
 
@@ -2809,97 +3020,114 @@ case "mobius":
       return { re: re * s, im: im * s };
     };
 
-    const count = Math.max(1, Math.round(complexMapSpec.isolinesCount));
     const sweepIsV = complexMapSpec.sweepAxis === "v";
-    const lineMin = sweepIsV ? complexMapSpec.vMin : complexMapSpec.uMin;
-    const lineMax = sweepIsV ? complexMapSpec.vMax : complexMapSpec.uMax;
-    const lineRange = lineMax - lineMin;
-    const lineStep = count > 1 ? lineRange / (count - 1) : 0;
-    const sampleCount = Math.max(2, Math.round(sweepIsV ? complexMapSpec.nu : complexMapSpec.nv));
-    const sampleMin = sweepIsV ? complexMapSpec.uMin : complexMapSpec.vMin;
-    const sampleMax = sweepIsV ? complexMapSpec.uMax : complexMapSpec.vMax;
-    const sampleStep = sampleCount > 1 ? (sampleMax - sampleMin) / (sampleCount - 1) : 0;
-
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
     const outputMode = complexMapSpec.outputMode;
-    const wLines: [number, number][][] = [];
-    const zLines: [number, number][][] = [];
-    const lineSweep: PolylineSet = [];
-    const lineRe: PolylineSet = [];
-    const lineIm: PolylineSet = [];
 
-    for (let k = 0; k < count; k++) {
-      const sweepVal = lineMin + lineStep * k;
-      let currentW: [number, number][] = [];
-      let currentSweep: { x: number; y: number; z: number }[] = [];
-      let currentRe: { x: number; y: number; z: number }[] = [];
-      let currentIm: { x: number; y: number; z: number }[] = [];
+    const buildFamily = (axis: "u" | "v", count: number) => {
+      const zLines: [number, number][][] = [];
+      const wLines: [number, number][][] = [];
+      const lineSweep: PolylineSet = [];
+      const lineRe: PolylineSet = [];
+      const lineIm: PolylineSet = [];
 
-      for (let s = 0; s < sampleCount; s++) {
-        const t = sampleMin + sampleStep * s;
-        const u = sweepIsV ? t : sweepVal;
-        const v = sweepIsV ? sweepVal : t;
-        let re = reFn(u, v);
-        let im = imFn(u, v);
-        if (!Number.isFinite(re) || !Number.isFinite(im)) {
-          if (currentW.length >= 2) wLines.push(currentW);
-          if (currentSweep.length >= 2) lineSweep.push(currentSweep);
-          if (currentRe.length >= 2) lineRe.push(currentRe);
-          if (currentIm.length >= 2) lineIm.push(currentIm);
-          currentW = [];
-          currentSweep = [];
-          currentRe = [];
-          currentIm = [];
-          continue;
+      const safeCount = Math.max(0, Math.round(count));
+      if (safeCount <= 0) return { zLines, wLines, line3d: [] as PolylineSet };
+
+      const lineMin = axis === "u" ? uMin : vMin;
+      const lineMax = axis === "u" ? uMax : vMax;
+      const lineStep = safeCount > 1 ? (lineMax - lineMin) / (safeCount - 1) : 0;
+      const sampleCount = Math.max(2, Math.round(axis === "u" ? complexMapSpec.nv : complexMapSpec.nu));
+      const sampleMin = axis === "u" ? vMin : uMin;
+      const sampleMax = axis === "u" ? vMax : uMax;
+      const sampleStep = sampleCount > 1 ? (sampleMax - sampleMin) / (sampleCount - 1) : 0;
+
+      for (let k = 0; k < safeCount; k++) {
+        const constVal = lineMin + lineStep * k;
+        let currentW: [number, number][] = [];
+        let currentSweep: { x: number; y: number; z: number }[] = [];
+        let currentRe: { x: number; y: number; z: number }[] = [];
+        let currentIm: { x: number; y: number; z: number }[] = [];
+
+        for (let s = 0; s < sampleCount; s++) {
+          const t = sampleMin + sampleStep * s;
+          const u = axis === "u" ? constVal : t;
+          const v = axis === "u" ? t : constVal;
+          let re = reFn(u, v);
+          let im = imFn(u, v);
+          if (!Number.isFinite(re) || !Number.isFinite(im)) {
+            if (currentW.length >= 2) wLines.push(currentW);
+            if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+            if (currentRe.length >= 2) lineRe.push(currentRe);
+            if (currentIm.length >= 2) lineIm.push(currentIm);
+            currentW = [];
+            currentSweep = [];
+            currentRe = [];
+            currentIm = [];
+            continue;
+          }
+          re *= wScale;
+          im *= wScale;
+          if (clampAbs) {
+            const clamped = clampMag(re, im, clampAbs);
+            re = clamped.re;
+            im = clamped.im;
+          }
+          currentW.push([re, im]);
+          const x = sweepIsV ? v : u;
+          const other = sweepIsV ? u : v;
+          currentSweep.push({ x, y: re, z: im });
+          currentRe.push({ x, y: re, z: other });
+          currentIm.push({ x, y: im, z: other });
         }
-        re *= wScale;
-        im *= wScale;
-        if (clampAbs) {
-          const clamped = clampMag(re, im, clampAbs);
-          re = clamped.re;
-          im = clamped.im;
+
+        if (currentW.length >= 2) wLines.push(currentW);
+        if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+        if (currentRe.length >= 2) lineRe.push(currentRe);
+        if (currentIm.length >= 2) lineIm.push(currentIm);
+
+        if (axis === "u") {
+          zLines.push([
+            [constVal, vMin],
+            [constVal, vMax],
+          ]);
+        } else {
+          zLines.push([
+            [uMin, constVal],
+            [uMax, constVal],
+          ]);
         }
-        currentW.push([re, im]);
-        const x = sweepIsV ? v : u;
-        const other = sweepIsV ? u : v;
-        currentSweep.push({ x, y: re, z: im });
-        currentRe.push({ x, y: re, z: other });
-        currentIm.push({ x, y: im, z: other });
       }
-      if (currentW.length >= 2) wLines.push(currentW);
-      if (currentSweep.length >= 2) lineSweep.push(currentSweep);
-      if (currentRe.length >= 2) lineRe.push(currentRe);
-      if (currentIm.length >= 2) lineIm.push(currentIm);
 
-      if (sweepIsV) {
-        zLines.push([
-          [complexMapSpec.uMin, sweepVal],
-          [complexMapSpec.uMax, sweepVal],
-        ]);
+      const line3d: PolylineSet = [];
+      if (outputMode === "sweep") {
+        line3d.push(...lineSweep);
+      } else if (outputMode === "re") {
+        line3d.push(...lineRe);
+      } else if (outputMode === "im") {
+        line3d.push(...lineIm);
       } else {
-        zLines.push([
-          [sweepVal, complexMapSpec.vMin],
-          [sweepVal, complexMapSpec.vMax],
-        ]);
+        line3d.push(...lineRe, ...lineIm);
       }
-    }
+      if (outputMode !== "sweep") {
+        line3d.push(...lineSweep);
+      }
 
-    const line3d: PolylineSet = [];
-    if (outputMode === "sweep") {
-      line3d.push(...lineSweep);
-    } else if (outputMode === "re") {
-      line3d.push(...lineRe);
-    } else if (outputMode === "im") {
-      line3d.push(...lineIm);
-    } else {
-      line3d.push(...lineRe, ...lineIm);
-    }
-    if (outputMode !== "sweep") {
-      line3d.push(...lineSweep);
-    }
+      return { zLines, wLines, line3d };
+    };
 
-    setComplexMapIsolineWPolylines(wLines.length ? wLines : null);
-    setComplexMapIsolineZLines(zLines.length ? zLines : null);
-    setComplexMapIsoline3dPolylines(line3d.length ? line3d : null);
+    const uRes = buildFamily("u", complexMapSpec.isolinesCountU);
+    const vRes = buildFamily("v", complexMapSpec.isolinesCountV);
+
+    setComplexMapIsolineWPolylinesU(uRes.wLines.length ? uRes.wLines : null);
+    setComplexMapIsolineWPolylinesV(vRes.wLines.length ? vRes.wLines : null);
+    setComplexMapIsolineZLinesU(uRes.zLines.length ? uRes.zLines : null);
+    setComplexMapIsolineZLinesV(vRes.zLines.length ? vRes.zLines : null);
+    setComplexMapIsoline3dPolylinesU(uRes.line3d.length ? uRes.line3d : null);
+    setComplexMapIsoline3dPolylinesV(vRes.line3d.length ? vRes.line3d : null);
   }, [complexMapFns, complexMapSpec]);
 
   useEffect(() => {
@@ -5827,8 +6055,13 @@ case "mobius":
                   complexMapZExtent={complexMapZExtent}
                   complexMapWExtent={complexMapWExtent}
                   complexMapLineWPolylines={complexMapLineWPolylines}
-                  complexMapIsolineWPolylines={complexMapIsolineWPolylines}
-                  complexMapIsolineZLines={complexMapIsolineZLines}
+                  complexMapIsolineWPolylinesU={complexMapIsolineWPolylinesU}
+                  complexMapIsolineWPolylinesV={complexMapIsolineWPolylinesV}
+                  complexMapIsolineZLinesU={complexMapIsolineZLinesU}
+                  complexMapIsolineZLinesV={complexMapIsolineZLinesV}
+                  complexMapGridThickness={complexMapGridThickness}
+                  complexMapGridOpacity={complexMapGridOpacity}
+                  complexMapGridShowSurface={complexMapGridShowSurface}
                   complexMapMarkerData={complexMapMarkerData}
                   complexMapShowCritical={complexMapShowCritical}
                   complexMapShowZeros={complexMapShowZeros}
@@ -5863,10 +6096,20 @@ case "mobius":
                   complexDistortionScale={complexDistortionScale}
                   complexMapDistortionField={complexMapDistortionField}
                   complexMapDistortionProbe={complexMapDistortionProbe}
+                  complexMapProbe={complexMapProbe}
+                  complexMapProbePins={complexMapProbePins}
                   setComplexDistortionMode={setComplexDistortionMode}
                   setComplexDistortionShowZ={setComplexDistortionShowZ}
                   setComplexDistortionShowSurface={setComplexDistortionShowSurface}
                   setComplexDistortionScale={setComplexDistortionScale}
+                  setComplexMapGridThickness={setComplexMapGridThickness}
+                  setComplexMapGridOpacity={setComplexMapGridOpacity}
+                  setComplexMapGridShowSurface={setComplexMapGridShowSurface}
+                  onPinComplexMapProbe={pinComplexMapProbe}
+                  onClearComplexMapProbe={clearComplexMapProbe}
+                  onClearComplexMapProbePins={clearComplexMapProbePins}
+                  onRecallComplexMapProbe={recallComplexMapProbe}
+                  onRemoveComplexMapProbePin={removeComplexMapProbePin}
                   wPlaneDomainColor={wPlaneDomainColor}
                   wPlaneShowRings={wPlaneShowRings}
                   wPlaneShowRays={wPlaneShowRays}
@@ -5880,6 +6123,8 @@ case "mobius":
                   onChangeComplexMapPreset={applyComplexMapPreset}
                   onBuildComplexMapSweep={handleBuildComplexMapSweep}
                   onPickComplexMapLine={setComplexMapLine}
+                  onSetComplexMapProbeFromUV={setComplexMapProbeFromUV}
+                  onSetComplexMapProbeFromW={setComplexMapProbeFromW}
                   weierstrassGExpr={weierstrassGExpr}
                 weierstrassPhiExpr={weierstrassPhiExpr}
                 onChangeWeierstrassGExpr={setWeierstrassGExpr}
@@ -6476,6 +6721,7 @@ case "mobius":
                         overlayHeatmapEnabled={complexMapHeatmapActive}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
+                        overlayPolylineGroups={complexMapOverlayPolylineGroups}
                         overlayPointSets={complexMapOverlayPointsActive}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
@@ -7349,8 +7595,13 @@ type SurfacesLeftPanelProps = {
   complexMapZExtent: number;
   complexMapWExtent: number;
   complexMapLineWPolylines: [number, number][][] | null;
-  complexMapIsolineWPolylines: [number, number][][] | null;
-  complexMapIsolineZLines: [number, number][][] | null;
+  complexMapIsolineWPolylinesU: [number, number][][] | null;
+  complexMapIsolineWPolylinesV: [number, number][][] | null;
+  complexMapIsolineZLinesU: [number, number][][] | null;
+  complexMapIsolineZLinesV: [number, number][][] | null;
+  complexMapGridThickness: number;
+  complexMapGridOpacity: number;
+  complexMapGridShowSurface: boolean;
   complexMapMarkerData: ComplexMapMarkerData | null;
   complexMapShowCritical: boolean;
   complexMapShowZeros: boolean;
@@ -7385,10 +7636,20 @@ type SurfacesLeftPanelProps = {
   complexDistortionScale: "linear" | "log";
   complexMapDistortionField: ComplexMapDistortionField | null;
   complexMapDistortionProbe: ComplexMapDistortionProbe | null;
+  complexMapProbe: ComplexMapProbe | null;
+  complexMapProbePins: ComplexMapProbePin[];
   setComplexDistortionMode: (m: ComplexDistortionMode) => void;
   setComplexDistortionShowZ: (v: boolean) => void;
   setComplexDistortionShowSurface: (v: boolean) => void;
   setComplexDistortionScale: (v: "linear" | "log") => void;
+  setComplexMapGridThickness: (v: number) => void;
+  setComplexMapGridOpacity: (v: number) => void;
+  setComplexMapGridShowSurface: (v: boolean) => void;
+  onPinComplexMapProbe: () => void;
+  onClearComplexMapProbe: () => void;
+  onClearComplexMapProbePins: () => void;
+  onRecallComplexMapProbe: (pin: ComplexMapProbePin) => void;
+  onRemoveComplexMapProbePin: (id: string) => void;
   wPlaneDomainColor: boolean;
   wPlaneShowRings: boolean;
   wPlaneShowRays: boolean;
@@ -7402,6 +7663,8 @@ type SurfacesLeftPanelProps = {
   onChangeComplexMapPreset: (id: string) => void;
   onBuildComplexMapSweep: () => void;
   onPickComplexMapLine: (line: ComplexMapLine) => void;
+  onSetComplexMapProbeFromUV: (u: number, v: number, source: ComplexMapProbe["source"]) => void;
+  onSetComplexMapProbeFromW: (pt: { re: number; im: number }) => void;
   weierstrassGExpr: string;
   weierstrassPhiExpr: string;
   onChangeWeierstrassGExpr: (s: string) => void;
@@ -7743,8 +8006,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   complexMapZExtent,
   complexMapWExtent,
   complexMapLineWPolylines,
-  complexMapIsolineWPolylines,
-  complexMapIsolineZLines,
+  complexMapIsolineWPolylinesU,
+  complexMapIsolineWPolylinesV,
+  complexMapIsolineZLinesU,
+  complexMapIsolineZLinesV,
+  complexMapGridThickness,
+  complexMapGridOpacity,
+  complexMapGridShowSurface,
   complexMapMarkerData,
   complexMapShowCritical,
   complexMapShowZeros,
@@ -7779,10 +8047,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   complexDistortionScale,
   complexMapDistortionField,
   complexMapDistortionProbe,
+  complexMapProbe,
+  complexMapProbePins,
   setComplexDistortionMode,
   setComplexDistortionShowZ,
   setComplexDistortionShowSurface,
   setComplexDistortionScale,
+  setComplexMapGridThickness,
+  setComplexMapGridOpacity,
+  setComplexMapGridShowSurface,
+  onPinComplexMapProbe,
+  onClearComplexMapProbe,
+  onClearComplexMapProbePins,
+  onRecallComplexMapProbe,
+  onRemoveComplexMapProbePin,
   wPlaneDomainColor,
   wPlaneShowRings,
   wPlaneShowRays,
@@ -7796,6 +8074,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeComplexMapPreset,
   onBuildComplexMapSweep,
   onPickComplexMapLine,
+  onSetComplexMapProbeFromUV,
+  onSetComplexMapProbeFromW,
   weierstrassGExpr,
   weierstrassPhiExpr,
   onChangeWeierstrassGExpr,
@@ -8143,8 +8423,14 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       const vMax = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
       const value = axis === "u" ? clamp(pt.re, uMin, uMax) : clamp(pt.im, vMin, vMax);
       onPickComplexMapLine({ axis, value });
+
+      if (probeEnabled) {
+        const u = clamp(pt.re, uMin, uMax);
+        const v = clamp(pt.im, vMin, vMax);
+        onSetComplexMapProbeFromUV(u, v, "z");
+      }
     },
-    [complexLineMode, complexMapSpec, onPickComplexMapLine]
+    [complexLineMode, complexMapSpec, onPickComplexMapLine, probeEnabled, onSetComplexMapProbeFromUV]
   );
 
   const snapPreimageValue = useCallback(
@@ -8206,25 +8492,26 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
   const handleWPlaneClick = useCallback(
     (pt: { re: number; im: number }) => {
-      if (complexPreimageMode === "none") return;
-      if (complexPreimageMode === "re") {
-        applyPreimageValue(complexPreimageMode, clamp(pt.re, -complexMapWExtent, complexMapWExtent));
-        return;
+      if (complexPreimageMode !== "none") {
+        if (complexPreimageMode === "re") {
+          applyPreimageValue(complexPreimageMode, clamp(pt.re, -complexMapWExtent, complexMapWExtent));
+        } else if (complexPreimageMode === "im") {
+          applyPreimageValue(complexPreimageMode, clamp(pt.im, -complexMapWExtent, complexMapWExtent));
+        } else if (complexPreimageMode === "abs") {
+          applyPreimageValue(
+            complexPreimageMode,
+            Math.max(0, Math.min(complexMapWExtent, Math.hypot(pt.re, pt.im)))
+          );
+        } else {
+          applyPreimageValue(complexPreimageMode, Math.atan2(pt.im, pt.re));
+        }
       }
-      if (complexPreimageMode === "im") {
-        applyPreimageValue(complexPreimageMode, clamp(pt.im, -complexMapWExtent, complexMapWExtent));
-        return;
+
+      if (probeEnabled) {
+        onSetComplexMapProbeFromW(pt);
       }
-      if (complexPreimageMode === "abs") {
-        applyPreimageValue(
-          complexPreimageMode,
-          Math.max(0, Math.min(complexMapWExtent, Math.hypot(pt.re, pt.im)))
-        );
-        return;
-      }
-      applyPreimageValue(complexPreimageMode, Math.atan2(pt.im, pt.re));
     },
-    [applyPreimageValue, complexMapWExtent, complexPreimageMode]
+    [applyPreimageValue, complexMapWExtent, complexPreimageMode, probeEnabled, onSetComplexMapProbeFromW]
   );
 
   const complexPreimageWShape = useMemo(() => {
@@ -8271,14 +8558,25 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     }
 
     if (complexMapSpec.showIsolines) {
-      if (complexMapIsolineZLines?.length) {
-        for (const line of complexMapIsolineZLines) {
-          zPlaneRef.current?.drawCurve(line, "#9aa3ad");
+      const gridStyle = { width: complexMapGridThickness, opacity: complexMapGridOpacity };
+      if (complexMapIsolineZLinesU?.length) {
+        for (const line of complexMapIsolineZLinesU) {
+          zPlaneRef.current?.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
         }
       }
-      if (complexMapIsolineWPolylines?.length) {
-        for (const line of complexMapIsolineWPolylines) {
-          wPlaneRef.current?.drawCurve(line, "#9aa3ad");
+      if (complexMapIsolineZLinesV?.length) {
+        for (const line of complexMapIsolineZLinesV) {
+          zPlaneRef.current?.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
+        }
+      }
+      if (complexMapIsolineWPolylinesU?.length) {
+        for (const line of complexMapIsolineWPolylinesU) {
+          wPlaneRef.current?.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
+        }
+      }
+      if (complexMapIsolineWPolylinesV?.length) {
+        for (const line of complexMapIsolineWPolylinesV) {
+          wPlaneRef.current?.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
         }
       }
     }
@@ -8381,11 +8679,31 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         }
       }
     }
+
+    if (probeEnabled && complexMapProbe) {
+      zPlaneRef.current?.drawPoints([[complexMapProbe.u, complexMapProbe.v]], {
+        color: "#111",
+        shape: "cross",
+        size: 5.2,
+        layer: "probe-z",
+      });
+      wPlaneRef.current?.drawPoints([[complexMapProbe.w.re, complexMapProbe.w.im]], {
+        color: "#111",
+        shape: "cross",
+        size: 5.2,
+        layer: "probe-w",
+      });
+    } else {
+      zPlaneRef.current?.drawPoints([], { layer: "probe-z" });
+      wPlaneRef.current?.drawPoints([], { layer: "probe-w" });
+    }
   }, [
     complexMapLine,
     complexMapLineWPolylines,
-    complexMapIsolineWPolylines,
-    complexMapIsolineZLines,
+    complexMapIsolineWPolylinesU,
+    complexMapIsolineWPolylinesV,
+    complexMapIsolineZLinesU,
+    complexMapIsolineZLinesV,
     complexPreimagePolylines,
     complexPreimageWShape,
     complexMapMarkerData,
@@ -8395,9 +8713,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     complexMapDistortionField,
     colorPalette,
     complexMapSpec,
+    complexMapGridOpacity,
+    complexMapGridThickness,
     wPlaneDomainColor,
     wPlaneShowRings,
     wPlaneShowRays,
+    probeEnabled,
+    complexMapProbe,
   ]);
 
   return (
@@ -9215,31 +9537,96 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           />
         </div>
 
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Mapped iso-lines</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Mapped coordinate net</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
             <input
               type="checkbox"
               checked={complexMapSpec.showIsolines}
               onChange={(e) => onChangeComplexMapSpec({ showIsolines: e.target.checked })}
             />
-            Show mapped lines
+            Show u/v grid
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            Count
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.u }} />
+            u-count
             <input
               type="number"
-              min={1}
-              max={100}
+              min={0}
+              max={120}
               step={1}
-              value={complexMapSpec.isolinesCount}
+              value={complexMapSpec.isolinesCountU}
               disabled={!complexMapSpec.showIsolines}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCount: clampInt(v, 1, 100) });
+                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountU: clampInt(v, 0, 120) });
               }}
               style={{ width: 70 }}
             />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.v }} />
+            v-count
+            <input
+              type="number"
+              min={0}
+              max={120}
+              step={1}
+              value={complexMapSpec.isolinesCountV}
+              disabled={!complexMapSpec.showIsolines}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountV: clampInt(v, 0, 120) });
+              }}
+              style={{ width: 70 }}
+            />
+          </label>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 12,
+            alignItems: "center",
+            marginTop: 6,
+            opacity: complexMapSpec.showIsolines ? 1 : 0.6,
+            fontSize: 11,
+          }}
+        >
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>Thickness {fmtVal(complexMapGridThickness, 2)}</span>
+            <input
+              type="range"
+              min={0.4}
+              max={2.5}
+              step={0.1}
+              value={complexMapGridThickness}
+              onChange={(e) => setComplexMapGridThickness(Number(e.target.value))}
+              disabled={!complexMapSpec.showIsolines}
+              style={{ width: 140 }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span>Opacity {fmtVal(complexMapGridOpacity, 2)}</span>
+            <input
+              type="range"
+              min={0.15}
+              max={1}
+              step={0.05}
+              value={complexMapGridOpacity}
+              onChange={(e) => setComplexMapGridOpacity(Number(e.target.value))}
+              disabled={!complexMapSpec.showIsolines}
+              style={{ width: 140 }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 18 }}>
+            <input
+              type="checkbox"
+              checked={complexMapGridShowSurface}
+              onChange={(e) => setComplexMapGridShowSurface(e.target.checked)}
+              disabled={!complexMapSpec.showIsolines}
+            />
+            Show on surface
           </label>
         </div>
         {complexMapSpec.outputMode !== "sweep" && (
@@ -9275,7 +9662,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             Clear line
           </button>
           <span style={{ fontSize: 11, opacity: 0.7, alignSelf: "center" }}>
-            Click Z-plane to pick. Shift-click flips direction.
+            Click Z-plane to pick. Shift-click flips direction. Probe mode links a point.
           </span>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
@@ -9327,7 +9714,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               step={1}
               ref={wPlaneRef}
               style={{ height: 160 }}
-              onClickPoint={complexPreimageMode === "none" ? undefined : handleWPlaneClick}
+              onClickPoint={complexPreimageMode === "none" && !probeEnabled ? undefined : handleWPlaneClick}
               domainColoring={wPlaneDomainColor}
               domainRings={wPlaneShowRings}
               domainRays={wPlaneShowRays}
@@ -9580,9 +9967,75 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 )}
             </>
           ) : (
-            "Probe a point on the surface to read local distortion."
+            "Probe in Z/W/3D to read local distortion."
           )}
         </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Linked probe</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
+          Enable probe mode (click Z/W/3D)
+        </label>
+        <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6, lineHeight: 1.4 }}>
+          {complexMapProbe ? (
+            <>
+              u={fmtVal(complexMapProbe.u, 3)} v={fmtVal(complexMapProbe.v, 3)} · w=
+              {fmtVal(complexMapProbe.w.re, 3)} + {fmtVal(complexMapProbe.w.im, 3)}i · |w|=
+              {fmtVal(complexMapProbe.w.mag, 3)} · arg(w)={fmtVal(complexMapProbe.w.arg, 3)} (
+              {fmtVal((complexMapProbe.w.arg * 180) / Math.PI, 1)}°)
+              <br />
+              local scale={fmtVal(complexMapProbe.localScale, 4)} · detJ={fmtVal(complexMapProbe.det, 4)}
+            </>
+          ) : (
+            "Click the Z-plane, W-plane, or 3D surface to inspect a point."
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+          <button type="button" onClick={onPinComplexMapProbe} disabled={!complexMapProbe}>
+            Pin probe
+          </button>
+          <button type="button" onClick={onClearComplexMapProbe} disabled={!complexMapProbe}>
+            Clear
+          </button>
+          {complexMapProbePins.length > 0 && (
+            <button type="button" onClick={onClearComplexMapProbePins}>
+              Clear pins
+            </button>
+          )}
+        </div>
+        {complexMapProbePins.length > 0 && (
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+            {complexMapProbePins.map((pin) => (
+              <div
+                key={pin.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 6px",
+                  borderRadius: 6,
+                  border: "1px solid #e0e0e0",
+                  background: "#fafafa",
+                  fontSize: 11,
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  u={fmtVal(pin.u, 3)} v={fmtVal(pin.v, 3)} · |w|={fmtVal(pin.w.mag, 3)} · detJ=
+                  {fmtVal(pin.det, 3)}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" onClick={() => onRecallComplexMapProbe(pin)}>
+                    Use
+                  </button>
+                  <button type="button" onClick={() => onRemoveComplexMapProbePin(pin.id)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
           <button type="button" onClick={onBuildComplexMapSweep} style={{ padding: "4px 10px" }}>
