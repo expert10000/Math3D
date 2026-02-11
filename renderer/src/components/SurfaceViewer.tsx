@@ -62,6 +62,13 @@ type SurfaceMeshOverride = {
   validation?: MeshValidation | null;
 };
 
+export type OverlayPointSet = {
+  points: { x: number; y: number; z: number }[];
+  color?: number;
+  size?: number;
+  opacity?: number;
+};
+
 const DBG_COLORS = false;
 const TAU = Math.PI * 2;
 
@@ -325,7 +332,7 @@ function applyVertexColors(
 
 function applyHeatmapColors(
   geometry: THREE.BufferGeometry,
-  values: number[] | Float32Array,
+  values: ArrayLike<number>,
   palette: ColorPalette
 ) {
   const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
@@ -889,8 +896,11 @@ type Props = {
   geodesicHeatPolylines?: PolylineSet | null;
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
+  overlayHeatmapValues?: ArrayLike<number> | null;
+  overlayHeatmapEnabled?: boolean;
   overlayPolylines?: PolylineSet | null;
   overlayPolylinesColor?: number;
+  overlayPointSets?: OverlayPointSet[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -1032,8 +1042,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicHeatPolylines = null,
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
+    overlayHeatmapValues = null,
+    overlayHeatmapEnabled = false,
     overlayPolylines = null,
     overlayPolylinesColor = 0x2a7bff,
+    overlayPointSets = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -1071,6 +1084,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   });
   const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
+  const overlayPointSetsRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -1598,6 +1612,12 @@ useEffect(() => {
     if (!root) return;
 
     const f = isGraphId(surfaceId) ? getGraphF() : null;
+    const activeHeatmapValues =
+      overlayHeatmapEnabled && overlayHeatmapValues?.length
+        ? overlayHeatmapValues
+        : geodesicHeatmapEnabled && geodesicHeatmapValues?.length
+        ? geodesicHeatmapValues
+        : null;
 
     root.traverse((o) => {
       const anyO = o as any;
@@ -1605,10 +1625,9 @@ useEffect(() => {
         const implicitMeta = (anyO as any).userData?.__implicit as
           | { f: (x: number, y: number, z: number) => number }
           | undefined;
-        const useHeatmap = !!geodesicHeatmapEnabled && !!geodesicHeatmapValues?.length;
+        const useHeatmap = !!activeHeatmapValues?.length;
         const posAttr = anyO.geometry?.getAttribute("position") as THREE.BufferAttribute | null;
-        const heatmapOk =
-          useHeatmap && !!posAttr && posAttr.count === geodesicHeatmapValues!.length;
+        const heatmapOk = useHeatmap && !!posAttr && posAttr.count === activeHeatmapValues!.length;
         const useImplicitCurv =
           !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
 
@@ -1632,7 +1651,7 @@ useEffect(() => {
         }
         if (anyO.geometry) {
           if (heatmapOk) {
-            applyHeatmapColors(anyO.geometry, geodesicHeatmapValues!, colorPalette);
+            applyHeatmapColors(anyO.geometry, activeHeatmapValues!, colorPalette);
           } else if (useImplicitCurv && implicitMeta?.f) {
             applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
           } else if (anyO.geometry.getAttribute("color")) {
@@ -1647,15 +1666,12 @@ useEffect(() => {
         const geom = mesh.geometry as THREE.BufferGeometry;
         const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
         const heatmapOk =
-          !!geodesicHeatmapEnabled &&
-          !!geodesicHeatmapValues?.length &&
-          !!posAttr &&
-          posAttr.count === geodesicHeatmapValues.length;
+          !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
 
         debugMesh("[recolorTraverse] BEFORE", mesh, { surfaceId, colorMode, colorPalette });
 
         if (heatmapOk) {
-          applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+          applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
         } else if (colorMode === "solid") {
           geom.deleteAttribute("color");
         } else if (colorMode === "curvature" && f) {
@@ -1704,6 +1720,11 @@ useEffect(() => {
     materialRoughness,
     materialMetalness,
     materialOpacity,
+    implicitOverlay,
+    geodesicHeatmapEnabled,
+    geodesicHeatmapValues,
+    overlayHeatmapEnabled,
+    overlayHeatmapValues,
     implicitMeshToken,
   ]);
 
@@ -2201,6 +2222,12 @@ function firstMeshIn(obj: THREE.Object3D): THREE.Mesh | null {
 useEffect(() => {
   const obj = surfaceObjRef.current;
   if (!obj) return;
+  const activeHeatmapValues =
+    overlayHeatmapEnabled && overlayHeatmapValues?.length
+      ? overlayHeatmapValues
+      : geodesicHeatmapEnabled && geodesicHeatmapValues?.length
+      ? geodesicHeatmapValues
+      : null;
 
   // MarchingCubes: update material color only (no vertex colors)
   if (isImplicitMeshObj(obj)) {
@@ -2208,13 +2235,10 @@ useEffect(() => {
     const geom = mesh.geometry as THREE.BufferGeometry | null;
     const posAttr = geom?.getAttribute("position") as THREE.BufferAttribute | null;
     const heatmapOk =
-      !!geodesicHeatmapEnabled &&
-      !!geodesicHeatmapValues?.length &&
-      !!posAttr &&
-      posAttr.count === geodesicHeatmapValues.length;
+      !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
     const mat = (mesh as any).material as THREE.Material | undefined;
     if (geom && heatmapOk) {
-      applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+      applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
     }
     if (mat && (mat as any).color) {
       if (heatmapOk || colorMode !== "solid") {
@@ -2241,10 +2265,7 @@ debugMesh("[recolorFirstMesh] BEFORE", mesh, { surfaceId, colorMode, colorPalett
   const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
   const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
   const heatmapOk =
-    !!geodesicHeatmapEnabled &&
-    !!geodesicHeatmapValues?.length &&
-    !!posAttr &&
-    posAttr.count === geodesicHeatmapValues.length;
+    !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
   if (mat) {
     mat.vertexColors = heatmapOk || colorMode !== "solid";
     if (heatmapOk || colorMode !== "solid") {
@@ -2257,7 +2278,7 @@ debugMesh("[recolorFirstMesh] BEFORE", mesh, { surfaceId, colorMode, colorPalett
 
   // repaint
   if (heatmapOk) {
-    applyHeatmapColors(geom, geodesicHeatmapValues!, colorPalette);
+    applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
   } else if (colorMode === "curvature") {
     const g = (obj as any).userData?.__graph;
     const f = g?.f as ((x: number, y: number) => number) | undefined;
@@ -2292,6 +2313,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   implicitMeshToken,
   geodesicHeatmapEnabled,
   geodesicHeatmapValues,
+  overlayHeatmapEnabled,
+  overlayHeatmapValues,
 ]);
 
   useEffect(() => {
@@ -3112,7 +3135,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(principalGroup);
     principalGroupRef.current = principalGroup;
 
-    const applyProbe = (point: THREE.Vector3, normalWorld: THREE.Vector3, xyDomain?: { x: number; y: number }) => {
+    const applyProbe = (
+      point: THREE.Vector3,
+      normalWorld: THREE.Vector3,
+      xyDomain?: { x: number; y: number },
+      uvDomain?: { u: number; v: number }
+    ) => {
       const n = normalWorld.clone().normalize();
 
       probeMarker.position.copy(point);
@@ -3154,6 +3182,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: n.x, y: n.y, z: n.z },
           xy: xyDomain,
+          uv: uvDomain,
         });
       }
     };
@@ -3233,8 +3262,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       let xyDomain: { x: number; y: number } | undefined;
+      let uvDomain: { u: number; v: number } | undefined;
       if (isGraphSurface) {
         xyDomain = { x: point.x, y: point.z };
+      }
+      const hitUv = (hit as any).uv as THREE.Vector2 | undefined;
+      if (hitUv && Number.isFinite(hitUv.x) && Number.isFinite(hitUv.y)) {
+        uvDomain = { u: hitUv.x, v: hitUv.y };
       }
 
         if (geodesicDiskPickEnabledRef.current) {
@@ -3321,6 +3355,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                     meshKey: mesh.uuid,
                     faceIndex,
                     bary: [bary.x, bary.y, bary.z],
+                    uv: uvDomain,
                   });
                 }
               }
@@ -3336,7 +3371,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             pathCb({
               point: { x: point.x, y: point.y, z: point.z },
               normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
-              uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+              uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
               sampleIndex: nearest?.index,
               meshKey: nearest?.sample.meshKey,
               vertexIndex: nearest?.sample.vertexIndex,
@@ -3372,7 +3407,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (probeEnabled) {
-        applyProbe(point, normalWorld, xyDomain);
+        applyProbe(point, normalWorld, xyDomain, uvDomain);
       }
 
       const selectionCb = onSelectionPickRef.current;
@@ -3381,12 +3416,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         console.log("[SurfaceViewer] before selection callback", {
           point: { x: point.x, y: point.y, z: point.z },
           normal: normalWorld.toArray(),
-          uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+          uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
         });
         selectionCb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
-          uv: xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined,
+          uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           sampleIndex: nearest?.index,
           meshKey: nearest?.sample.meshKey,
           vertexIndex: nearest?.sample.vertexIndex,
@@ -4581,6 +4616,53 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(group);
     overlayPolylinesRef.current = group;
   }, [overlayPolylines, overlayPolylinesColor, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayPointSetsRef.current) {
+      scene.remove(overlayPointSetsRef.current);
+      overlayPointSetsRef.current.traverse(disposeObject3D);
+      overlayPointSetsRef.current = null;
+    }
+
+    if (!overlayPointSets?.length) return;
+
+    const group = new THREE.Group();
+    const sizeHint = radiusRef.current || 3;
+    const defaultSize = Math.max(0.02, (sizeHint / 90) * 0.45);
+
+    for (const set of overlayPointSets) {
+      if (!set.points?.length) continue;
+      const positions = new Float32Array(set.points.length * 3);
+      for (let i = 0; i < set.points.length; i++) {
+        const p = set.points[i];
+        positions[3 * i] = p.x;
+        positions[3 * i + 1] = p.y;
+        positions[3 * i + 2] = p.z;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        color: set.color ?? 0xff3333,
+        size: set.size ?? defaultSize,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: set.opacity ?? 0.9,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const points = new THREE.Points(geom, mat);
+      points.renderOrder = 310;
+      points.frustumCulled = false;
+      group.add(points);
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayPointSetsRef.current = group;
+  }, [overlayPointSets, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

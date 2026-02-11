@@ -60,3 +60,11 @@ contextBridge.exposeInMainWorld("cgalMesh", {
   geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
     ipcRenderer.invoke("mesh:geodesic:heat", req),
 });
+
+contextBridge.exposeInMainWorld("appMenu", {
+  onModeChange: (handler: (mode: string) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, mode: string) => handler(mode);
+    ipcRenderer.on("app:mode", listener);
+    return () => ipcRenderer.removeListener("app:mode", listener);
+  },
+});

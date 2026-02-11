@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
 import * as path from "node:path";
 
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
@@ -35,6 +35,7 @@ function createWindow() {
 const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
     win.loadFile(indexPath);
   }
+  return win;
 }
 
 app.whenReady().then(() => {
@@ -62,7 +63,8 @@ try {
     } catch {}
   }
 
-  createWindow();
+  const win = createWindow();
+  if (win) buildAppMenu(win);
 });
 
 app.on("window-all-closed", () => {
@@ -70,5 +72,57 @@ app.on("window-all-closed", () => {
 });
 
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) {
+    const win = createWindow();
+    if (win) buildAppMenu(win);
+  }
 });
+
+function buildAppMenu(win: BrowserWindow) {
+  const sendMode = (mode: string) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("app:mode", mode);
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: "File",
+      submenu: [{ role: "quit" }],
+    },
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Mode",
+          submenu: [
+            { label: "Surfaces", click: () => sendMode("surfaces") },
+            { label: "Möbius map", click: () => sendMode("mobius") },
+            { label: "Chebyshev Tₙ", click: () => sendMode("chebyshev") },
+            { label: "Transform (z²)", click: () => sendMode("transform") },
+            { label: "Standard maps", click: () => sendMode("maps") },
+          ],
+        },
+        { type: "separator" },
+        { role: "reload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [{ role: "minimize" }, { role: "close" }],
+    },
+    {
+      label: "Help",
+      submenu: [{ role: "about" }],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}

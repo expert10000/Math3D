@@ -56,6 +56,7 @@ import {
   compileComplexMapExpressions,
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
+import { marchingSquares } from "./math/marchingSquares";
 import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
@@ -127,7 +128,36 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces"];
+const isModeValue = (value: string): value is Mode =>
+  MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
+type ComplexPreimageMode = "none" | "re" | "im" | "abs" | "arg";
+type ComplexDistortionMode = "none" | "area" | "anisotropy" | "conformal";
+type ComplexMapMarkerData = {
+  thresholds: { critical: number; zero: number; pole: number };
+  critical: { z: [number, number][]; w: [number, number][]; p3d: { x: number; y: number; z: number }[] };
+  zero: { z: [number, number][]; w: [number, number][]; p3d: { x: number; y: number; z: number }[] };
+  pole: { z: [number, number][]; w: [number, number][]; p3d: { x: number; y: number; z: number }[] };
+};
+type ComplexMapDistortionField = {
+  values: Float32Array;
+  nx: number;
+  ny: number;
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  min: number;
+  max: number;
+};
+type ComplexMapDistortionProbe = {
+  u: number;
+  v: number;
+  detAbs: number;
+  ratio: number;
+  conformalErr: number;
+};
 type CgalMeshState = {
   surfaceId: SurfaceId;
   expr: string;
@@ -783,6 +813,15 @@ const vNormalize = (v: Vec3): Vec3 => {
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("mobius");
+
+  useEffect(() => {
+    const api = window.appMenu;
+    if (!api?.onModeChange) return;
+    return api.onModeChange((next) => {
+      if (!isModeValue(next)) return;
+      setMode(next);
+    });
+  }, []);
   const samples = 800;
 
   // Möbius params
@@ -945,6 +984,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [volumeStreamlineStepSizeOverride, setVolumeStreamlineStepSizeOverride] = useState<number | null>(null);
   const [volumeStreamlineMaxSteps, setVolumeStreamlineMaxSteps] = useState(900);
   const [volumeViewMode, setVolumeViewMode] = useState<"slices" | "3d">("slices");
+  const isDev = typeof import.meta !== "undefined" && !!(import.meta as any).env?.DEV;
+  const [devError, setDevError] = useState<{ message: string; stack?: string } | null>(null);
   const volumeGridBounds = useMemo(() => {
     const grid = volumeDataset.grid;
     const spacing = grid.spacing ?? [1, 1, 1];
@@ -1225,6 +1266,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [complexMapIsolineZLines, setComplexMapIsolineZLines] = useState<[number, number][][] | null>(null);
   const [complexMapIsoline3dPolylines, setComplexMapIsoline3dPolylines] = useState<PolylineSet | null>(null);
   const [complexMapLive, setComplexMapLive] = useState(true);
+  const [complexMapShowCritical, setComplexMapShowCritical] = useState(true);
+  const [complexMapShowZeros, setComplexMapShowZeros] = useState(true);
+  const [complexMapShowPoles, setComplexMapShowPoles] = useState(true);
+  const [complexMapMarkersZ, setComplexMapMarkersZ] = useState(true);
+  const [complexMapMarkersW, setComplexMapMarkersW] = useState(true);
+  const [complexMapMarkers3d, setComplexMapMarkers3d] = useState(false);
+  const [complexMapMarkerMax, setComplexMapMarkerMax] = useState(500);
+  const [complexMapCriticalRel, setComplexMapCriticalRel] = useState(0.08);
+  const [complexMapZeroRel, setComplexMapZeroRel] = useState(0.03);
+  const [complexMapPoleRel, setComplexMapPoleRel] = useState(0.85);
+  const [complexPreimageMode, setComplexPreimageMode] = useState<ComplexPreimageMode>("none");
+  const [complexPreimageValue, setComplexPreimageValue] = useState(0);
+  const [complexPreimageSnap, setComplexPreimageSnap] = useState(true);
+  const [complexPreimagePolylines, setComplexPreimagePolylines] = useState<[number, number][][] | null>(null);
+  const [complexDistortionMode, setComplexDistortionMode] = useState<ComplexDistortionMode>("none");
+  const [complexDistortionShowZ, setComplexDistortionShowZ] = useState(true);
+  const [complexDistortionShowSurface, setComplexDistortionShowSurface] = useState(true);
+  const [complexDistortionScale, setComplexDistortionScale] = useState<"linear" | "log">("linear");
 
   const updateComplexMapSpec = useCallback((patch: Partial<ComplexMapSweepSpec>) => {
     setComplexMapSpec((prev) => ({ ...prev, ...patch }));
@@ -1250,6 +1309,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr),
     [complexMapSpec.reExpr, complexMapSpec.imExpr]
   );
+  const complexMapFns = useMemo(() => {
+    if (complexMapCompiled.error) return null;
+    if (!complexMapCompiled.reFn || !complexMapCompiled.imFn) return null;
+    return { reFn: complexMapCompiled.reFn, imFn: complexMapCompiled.imFn };
+  }, [complexMapCompiled]);
 
   const complexMapZExtent = useMemo(() => {
     const m = Math.max(
@@ -1265,8 +1329,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const complexMapWExtent = useMemo(() => {
     const clampAbs = complexMapSpec.clampAbs;
     if (clampAbs != null && Number.isFinite(clampAbs) && clampAbs > 0) return clampAbs;
-    if (complexMapCompiled.error) return 3;
-    const { reFn, imFn } = complexMapCompiled;
+    if (!complexMapFns) return 3;
+    const { reFn, imFn } = complexMapFns;
     const uMin = complexMapSpec.uMin;
     const uMax = complexMapSpec.uMax;
     const vMin = complexMapSpec.vMin;
@@ -1294,8 +1358,494 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexMapSpec.vMax,
     complexMapSpec.wScale,
     complexMapSpec.clampAbs,
-    complexMapCompiled,
+    complexMapFns,
   ]);
+
+  const complexMapGrid = useMemo(() => {
+    if (!complexMapFns) return null;
+    const { reFn, imFn } = complexMapFns;
+    const nu = Math.max(2, Math.round(complexMapSpec.nu));
+    const nv = Math.max(2, Math.round(complexMapSpec.nv));
+    if (!Number.isFinite(nu) || !Number.isFinite(nv)) return null;
+
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const uStep = nu > 1 ? (uMax - uMin) / (nu - 1) : 0;
+    const vStep = nv > 1 ? (vMax - vMin) / (nv - 1) : 0;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+    const clampAbs =
+      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+        ? complexMapSpec.clampAbs
+        : null;
+
+    const total = nu * nv;
+    const re = new Float32Array(total);
+    const im = new Float32Array(total);
+    const reClamped = new Float32Array(total);
+    const imClamped = new Float32Array(total);
+    const wMag = new Float32Array(total);
+    const valid = new Uint8Array(total);
+    let wMagMax = 0;
+
+    const clampMag = (r: number, i: number, limit: number) => {
+      const mag = Math.hypot(r, i);
+      if (!Number.isFinite(mag) || mag <= limit) return { re: r, im: i };
+      const s = limit / mag;
+      return { re: r * s, im: i * s };
+    };
+
+    for (let j = 0; j < nv; j++) {
+      const v = vMin + vStep * j;
+      for (let i = 0; i < nu; i++) {
+        const u = uMin + uStep * i;
+        const idx = j * nu + i;
+        let r = reFn(u, v);
+        let m = imFn(u, v);
+        if (!Number.isFinite(r) || !Number.isFinite(m)) {
+          re[idx] = NaN;
+          im[idx] = NaN;
+          reClamped[idx] = NaN;
+          imClamped[idx] = NaN;
+          wMag[idx] = NaN;
+          continue;
+        }
+        r *= wScale;
+        m *= wScale;
+        re[idx] = r;
+        im[idx] = m;
+        const mag = Math.hypot(r, m);
+        wMag[idx] = mag;
+        if (Number.isFinite(mag) && mag > wMagMax) wMagMax = mag;
+        let rc = r;
+        let mc = m;
+        if (clampAbs) {
+          const clamped = clampMag(r, m, clampAbs);
+          rc = clamped.re;
+          mc = clamped.im;
+        }
+        reClamped[idx] = rc;
+        imClamped[idx] = mc;
+        valid[idx] = 1;
+      }
+    }
+
+    if (!Number.isFinite(wMagMax) || wMagMax <= 0) {
+      wMagMax = 1;
+    }
+
+    return {
+      nu,
+      nv,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+      uStep,
+      vStep,
+      wScale,
+      clampAbs,
+      re,
+      im,
+      reClamped,
+      imClamped,
+      wMag,
+      valid,
+      wMagMax,
+    };
+  }, [complexMapFns, complexMapSpec]);
+
+  const complexMapJacobian = useMemo(() => {
+    if (!complexMapGrid) return null;
+    const { nu, nv, uStep, vStep, re, im, valid } = complexMapGrid;
+    const total = nu * nv;
+    const detJAbs = new Float32Array(total);
+    const sigmaRatio = new Float32Array(total);
+    const conformalErr = new Float32Array(total);
+
+    const safeUStep = Math.abs(uStep) > 1e-12 ? uStep : 1;
+    const safeVStep = Math.abs(vStep) > 1e-12 ? vStep : 1;
+
+    const idx = (i: number, j: number) => j * nu + i;
+    const deriv = (arr: Float32Array, i: number, j: number, axis: "u" | "v") => {
+      const center = arr[idx(i, j)];
+      if (!Number.isFinite(center)) return NaN;
+      if (axis === "u") {
+        const left = i > 0 ? arr[idx(i - 1, j)] : NaN;
+        const right = i < nu - 1 ? arr[idx(i + 1, j)] : NaN;
+        if (Number.isFinite(left) && Number.isFinite(right)) return (right - left) / (2 * safeUStep);
+        if (Number.isFinite(right)) return (right - center) / safeUStep;
+        if (Number.isFinite(left)) return (center - left) / safeUStep;
+        return NaN;
+      }
+      const down = j > 0 ? arr[idx(i, j - 1)] : NaN;
+      const up = j < nv - 1 ? arr[idx(i, j + 1)] : NaN;
+      if (Number.isFinite(down) && Number.isFinite(up)) return (up - down) / (2 * safeVStep);
+      if (Number.isFinite(up)) return (up - center) / safeVStep;
+      if (Number.isFinite(down)) return (center - down) / safeVStep;
+      return NaN;
+    };
+
+    const detVals: number[] = [];
+
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const k = idx(i, j);
+        if (!valid[k]) {
+          detJAbs[k] = NaN;
+          sigmaRatio[k] = NaN;
+          conformalErr[k] = NaN;
+          continue;
+        }
+        const a = deriv(re, i, j, "u");
+        const b = deriv(re, i, j, "v");
+        const c = deriv(im, i, j, "u");
+        const d = deriv(im, i, j, "v");
+        if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || !Number.isFinite(d)) {
+          detJAbs[k] = NaN;
+          sigmaRatio[k] = NaN;
+          conformalErr[k] = NaN;
+          continue;
+        }
+        const det = a * d - b * c;
+        const detAbs = Math.abs(det);
+        detJAbs[k] = detAbs;
+        detVals.push(detAbs);
+
+        const s1 = a * a + c * c;
+        const s2 = b * b + d * d;
+        const s3 = a * b + c * d;
+        const tr = s1 + s2;
+        const disc = Math.max(0, tr * tr - 4 * (s1 * s2 - s3 * s3));
+        const sqrtDisc = Math.sqrt(disc);
+        const lambda1 = 0.5 * (tr + sqrtDisc);
+        const lambda2 = 0.5 * (tr - sqrtDisc);
+        const sigmaMax = Math.sqrt(Math.max(0, lambda1));
+        const sigmaMin = Math.sqrt(Math.max(0, lambda2));
+        sigmaRatio[k] = sigmaMax / Math.max(1e-9, sigmaMin);
+
+        const fzRe = 0.5 * (a + d);
+        const fzIm = 0.5 * (c - b);
+        const fzbRe = 0.5 * (a - d);
+        const fzbIm = 0.5 * (c + b);
+        const fz = Math.hypot(fzRe, fzIm);
+        const fzb = Math.hypot(fzbRe, fzbIm);
+        conformalErr[k] = fzb / Math.max(1e-9, fz);
+      }
+    }
+
+    let detJMedian = 0;
+    if (detVals.length) {
+      detVals.sort((a, b) => a - b);
+      detJMedian = detVals[Math.floor(detVals.length / 2)];
+    }
+    if (!Number.isFinite(detJMedian) || detJMedian <= 0) detJMedian = 1e-6;
+
+    return { detJAbs, sigmaRatio, conformalErr, detJMedian };
+  }, [complexMapGrid]);
+
+  const complexMapDistortionField = useMemo(() => {
+    if (!complexMapGrid || !complexMapJacobian || complexDistortionMode === "none") return null;
+    const { detJAbs, sigmaRatio, conformalErr } = complexMapJacobian;
+    const values =
+      complexDistortionMode === "area"
+        ? detJAbs
+        : complexDistortionMode === "anisotropy"
+        ? sigmaRatio
+        : conformalErr;
+
+    const logScale = complexDistortionScale === "log" &&
+      (complexDistortionMode === "area" || complexDistortionMode === "anisotropy");
+    const scaleValue = (v: number) => {
+      if (!Number.isFinite(v)) return NaN;
+      if (!logScale) return v;
+      return Math.log10(1 + Math.max(0, v));
+    };
+
+    const scaled = new Float32Array(values.length);
+    const finite: number[] = [];
+    for (let i = 0; i < values.length; i++) {
+      const v = scaleValue(values[i]);
+      scaled[i] = Number.isFinite(v) ? v : NaN;
+      if (!Number.isFinite(v)) continue;
+      finite.push(v);
+    }
+    if (!finite.length) return null;
+    finite.sort((a, b) => a - b);
+    const lo = finite[Math.floor(finite.length * 0.02)];
+    const hi = finite[Math.floor(finite.length * 0.98)];
+    const min = Number.isFinite(lo) ? lo : finite[0];
+    const max = Number.isFinite(hi) ? hi : finite[finite.length - 1];
+
+    return {
+      values: scaled,
+      nx: complexMapGrid.nu,
+      ny: complexMapGrid.nv,
+      xMin: complexMapGrid.uMin,
+      xMax: complexMapGrid.uMax,
+      yMin: complexMapGrid.vMin,
+      yMax: complexMapGrid.vMax,
+      min,
+      max: Math.max(max, min + 1e-6),
+      scale: logScale ? "log" : "linear",
+    };
+  }, [complexDistortionMode, complexDistortionScale, complexMapGrid, complexMapJacobian]);
+
+  const complexMapMarkerData = useMemo(() => {
+    if (!complexMapGrid || !complexMapJacobian) return null;
+
+    const { nu, nv, uMin, vMin, uStep, vStep, reClamped, imClamped, wMag } = complexMapGrid;
+    const { detJAbs, detJMedian } = complexMapJacobian;
+
+    const critThresh = detJMedian * complexMapCriticalRel;
+    const zeroThresh = complexMapGrid.wMagMax * complexMapZeroRel;
+    const poleThresh = complexMapGrid.wMagMax * complexMapPoleRel;
+
+    const limit = Math.max(20, Math.round(complexMapMarkerMax));
+    const sweepIsV = complexMapSpec.sweepAxis === "v";
+    const outputMode = complexMapSpec.outputMode;
+
+    const criticalZ: [number, number][] = [];
+    const criticalW: [number, number][] = [];
+    const critical3d: { x: number; y: number; z: number }[] = [];
+    const zeroZ: [number, number][] = [];
+    const zeroW: [number, number][] = [];
+    const zero3d: { x: number; y: number; z: number }[] = [];
+    const poleZ: [number, number][] = [];
+    const poleW: [number, number][] = [];
+    const pole3d: { x: number; y: number; z: number }[] = [];
+
+    const push3d = (arr: { x: number; y: number; z: number }[], u: number, v: number, rc: number, mc: number) => {
+      const x = sweepIsV ? v : u;
+      const other = sweepIsV ? u : v;
+      if (outputMode === "sweep") {
+        arr.push({ x, y: rc, z: mc });
+      } else if (outputMode === "re") {
+        arr.push({ x, y: rc, z: other });
+      } else if (outputMode === "im") {
+        arr.push({ x, y: mc, z: other });
+      } else {
+        arr.push({ x, y: rc, z: other }, { x, y: mc, z: other });
+      }
+    };
+
+    for (let j = 0; j < nv; j++) {
+      const v = vMin + vStep * j;
+      for (let i = 0; i < nu; i++) {
+        const u = uMin + uStep * i;
+        const idx = j * nu + i;
+        const rc = reClamped[idx];
+        const mc = imClamped[idx];
+        const mag = wMag[idx];
+        const detAbs = detJAbs[idx];
+
+        if (complexMapShowCritical && Number.isFinite(detAbs) && detAbs <= critThresh) {
+          criticalZ.push([u, v]);
+          if (Number.isFinite(rc) && Number.isFinite(mc)) criticalW.push([rc, mc]);
+          if (complexMapMarkers3d && Number.isFinite(rc) && Number.isFinite(mc)) push3d(critical3d, u, v, rc, mc);
+        }
+        if (complexMapShowZeros && Number.isFinite(mag) && mag <= zeroThresh) {
+          zeroZ.push([u, v]);
+          if (Number.isFinite(rc) && Number.isFinite(mc)) zeroW.push([rc, mc]);
+          if (complexMapMarkers3d && Number.isFinite(rc) && Number.isFinite(mc)) push3d(zero3d, u, v, rc, mc);
+        }
+        if (complexMapShowPoles && (!Number.isFinite(mag) || mag >= poleThresh)) {
+          poleZ.push([u, v]);
+          if (Number.isFinite(rc) && Number.isFinite(mc)) poleW.push([rc, mc]);
+          if (complexMapMarkers3d && Number.isFinite(rc) && Number.isFinite(mc)) push3d(pole3d, u, v, rc, mc);
+        }
+      }
+    }
+
+    const limitPoints = <T,>(arr: T[]) => {
+      if (arr.length <= limit) return arr;
+      const stride = Math.ceil(arr.length / limit);
+      return arr.filter((_v, i) => i % stride === 0);
+    };
+
+    return {
+      thresholds: {
+        critical: critThresh,
+        zero: zeroThresh,
+        pole: poleThresh,
+      },
+      critical: {
+        z: limitPoints(criticalZ),
+        w: limitPoints(criticalW),
+        p3d: limitPoints(critical3d),
+      },
+      zero: {
+        z: limitPoints(zeroZ),
+        w: limitPoints(zeroW),
+        p3d: limitPoints(zero3d),
+      },
+      pole: {
+        z: limitPoints(poleZ),
+        w: limitPoints(poleW),
+        p3d: limitPoints(pole3d),
+      },
+    };
+  }, [
+    complexMapGrid,
+    complexMapJacobian,
+    complexMapSpec.sweepAxis,
+    complexMapSpec.outputMode,
+    complexMapShowCritical,
+    complexMapShowZeros,
+    complexMapShowPoles,
+    complexMapMarkers3d,
+    complexMapMarkerMax,
+    complexMapCriticalRel,
+    complexMapZeroRel,
+    complexMapPoleRel,
+  ]);
+
+  const complexMapOverlayPointSets = useMemo(() => {
+    if (!complexMapMarkers3d || !complexMapMarkerData) return null;
+    const sets: { points: { x: number; y: number; z: number }[]; color: number; size?: number; opacity?: number }[] =
+      [];
+    if (complexMapMarkerData.critical.p3d.length) {
+      sets.push({ points: complexMapMarkerData.critical.p3d, color: 0xd81b60, size: 0.055, opacity: 0.9 });
+    }
+    if (complexMapMarkerData.zero.p3d.length) {
+      sets.push({ points: complexMapMarkerData.zero.p3d, color: 0x2e7d32, size: 0.052, opacity: 0.9 });
+    }
+    if (complexMapMarkerData.pole.p3d.length) {
+      sets.push({ points: complexMapMarkerData.pole.p3d, color: 0xf57c00, size: 0.06, opacity: 0.9 });
+    }
+    return sets.length ? sets : null;
+  }, [complexMapMarkerData, complexMapMarkers3d]);
+
+  const complexMapDistortionValues3d = useMemo(() => {
+    if (!complexDistortionShowSurface || !complexMapGrid || !complexMapJacobian) return null;
+    if (complexDistortionMode === "none") return null;
+    const base =
+      complexDistortionMode === "area"
+        ? complexMapJacobian.detJAbs
+        : complexDistortionMode === "anisotropy"
+        ? complexMapJacobian.sigmaRatio
+        : complexMapJacobian.conformalErr;
+
+    if (!base?.length) return null;
+    const logScale = complexDistortionScale === "log" &&
+      (complexDistortionMode === "area" || complexDistortionMode === "anisotropy");
+    const scaleValue = (v: number) => {
+      if (!Number.isFinite(v)) return 0;
+      if (!logScale) return v;
+      return Math.log10(1 + Math.max(0, v));
+    };
+    const sanitize = (arr: Float32Array) => {
+      const out = new Float32Array(arr.length);
+      for (let i = 0; i < arr.length; i++) {
+        const v = arr[i];
+        out[i] = scaleValue(v);
+      }
+      return out;
+    };
+    if (complexMapSpec.outputMode === "both") {
+      const clean = sanitize(base);
+      const out = new Float32Array(base.length * 2);
+      out.set(clean, 0);
+      out.set(clean, clean.length);
+      return out;
+    }
+    return sanitize(base);
+  }, [
+    complexDistortionMode,
+    complexDistortionScale,
+    complexDistortionShowSurface,
+    complexMapGrid,
+    complexMapJacobian,
+    complexMapSpec.outputMode,
+  ]);
+
+  const isComplexMapMesh =
+    surfaceViewerKind === "complex" &&
+    !!surfaceMeshData &&
+    COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label);
+  const complexMapHeatmapActive =
+    isComplexMapMesh &&
+    complexDistortionShowSurface &&
+    complexDistortionMode !== "none" &&
+    !!complexMapDistortionValues3d?.length;
+  const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
+
+  const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
+  const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
+  const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
+
+  const complexMapDistortionProbe = useMemo(() => {
+    if (complexDistortionMode === "none") return null;
+    if (!complexMapFns) return null;
+    if (!probeInfo?.uv) return null;
+    const { u, v } = probeInfo.uv;
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    if (u < Math.min(uMin, uMax) || u > Math.max(uMin, uMax)) return null;
+    if (v < Math.min(vMin, vMax) || v > Math.max(vMin, vMax)) return null;
+
+    const { reFn, imFn } = complexMapFns;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+    const du = Math.abs(uMax - uMin) / Math.max(2, Math.round(complexMapSpec.nu));
+    const dv = Math.abs(vMax - vMin) / Math.max(2, Math.round(complexMapSpec.nv));
+    const hU = Math.max(1e-5, du * 0.5);
+    const hV = Math.max(1e-5, dv * 0.5);
+
+    const evalW = (uu: number, vv: number) => {
+      let re = reFn(uu, vv);
+      let im = imFn(uu, vv);
+      if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
+      re *= wScale;
+      im *= wScale;
+      return { re, im };
+    };
+
+    const c00 = evalW(u, v);
+    if (!c00) return null;
+    const c10 = evalW(u + hU, v);
+    const c_10 = evalW(u - hU, v);
+    const c01 = evalW(u, v + hV);
+    const c0_1 = evalW(u, v - hV);
+    if (!c10 || !c_10 || !c01 || !c0_1) return null;
+
+    const a = (c10.re - c_10.re) / (2 * hU);
+    const b = (c01.re - c0_1.re) / (2 * hV);
+    const c = (c10.im - c_10.im) / (2 * hU);
+    const d = (c01.im - c0_1.im) / (2 * hV);
+
+    const det = a * d - b * c;
+    const s1 = a * a + c * c;
+    const s2 = b * b + d * d;
+    const s3 = a * b + c * d;
+    const tr = s1 + s2;
+    const disc = Math.max(0, tr * tr - 4 * (s1 * s2 - s3 * s3));
+    const sqrtDisc = Math.sqrt(disc);
+    const lambda1 = 0.5 * (tr + sqrtDisc);
+    const lambda2 = 0.5 * (tr - sqrtDisc);
+    const sigmaMax = Math.sqrt(Math.max(0, lambda1));
+    const sigmaMin = Math.sqrt(Math.max(0, lambda2));
+    const ratio = sigmaMax / Math.max(1e-9, sigmaMin);
+
+    const fzRe = 0.5 * (a + d);
+    const fzIm = 0.5 * (c - b);
+    const fzbRe = 0.5 * (a - d);
+    const fzbIm = 0.5 * (c + b);
+    const fz = Math.hypot(fzRe, fzIm);
+    const fzb = Math.hypot(fzbRe, fzbIm);
+    const conformalErr = fzb / Math.max(1e-9, fz);
+
+    return {
+      u,
+      v,
+      w: { re: c00.re, im: c00.im, mag: Math.hypot(c00.re, c00.im) },
+      detAbs: Math.abs(det),
+      ratio,
+      conformalErr,
+    };
+  }, [complexDistortionMode, complexMapFns, complexMapSpec, probeInfo?.uv]);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -1561,10 +2111,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [ridgeValleyDecimate, setRidgeValleyDecimate] = useState(0.002);
   const [ridgeValleyMaxCurves, setRidgeValleyMaxCurves] = useState(200);
   const [ridgeValleyMinConf, setRidgeValleyMinConf] = useState(0);
-  const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
-  const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
-  const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
-
   // domain pick tokens (right panel)
   const [paramProbeUV, setParamProbeUV] = useState<{ u: number; v: number } | null>(null);
   const [paramProbeToken, setParamProbeToken] = useState(0);
@@ -2125,6 +2671,7 @@ case "mobius":
       label,
       positions: res.build.positions,
       indices: res.build.indices,
+      uvs: res.build.uvs,
       source: "generated",
     };
     setSurfaceDataset(applySurfaceMeshOps(next));
@@ -2145,13 +2692,13 @@ case "mobius":
   }, [complexMapLive, handleBuildComplexMapSweep, mode, surfaceViewerKind]);
 
   useEffect(() => {
-    if (!complexMapLine || complexMapCompiled.error) {
+    if (!complexMapLine || !complexMapFns) {
       setComplexMapLinePolylines(null);
       setComplexMapLineWPolylines(null);
       return;
     }
 
-    const { reFn, imFn } = complexMapCompiled;
+    const { reFn, imFn } = complexMapFns;
     const clampAbs =
       complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
         ? complexMapSpec.clampAbs
@@ -2238,17 +2785,17 @@ case "mobius":
 
     setComplexMapLinePolylines(line3d.length ? line3d : null);
     setComplexMapLineWPolylines(lineW.length ? lineW : null);
-  }, [complexMapLine, complexMapCompiled, complexMapSpec]);
+  }, [complexMapLine, complexMapFns, complexMapSpec]);
 
   useEffect(() => {
-    if (!complexMapSpec.showIsolines || complexMapCompiled.error) {
+    if (!complexMapSpec.showIsolines || !complexMapFns) {
       setComplexMapIsolineWPolylines(null);
       setComplexMapIsolineZLines(null);
       setComplexMapIsoline3dPolylines(null);
       return;
     }
 
-    const { reFn, imFn } = complexMapCompiled;
+    const { reFn, imFn } = complexMapFns;
     const clampAbs =
       complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
         ? complexMapSpec.clampAbs
@@ -2353,7 +2900,109 @@ case "mobius":
     setComplexMapIsolineWPolylines(wLines.length ? wLines : null);
     setComplexMapIsolineZLines(zLines.length ? zLines : null);
     setComplexMapIsoline3dPolylines(line3d.length ? line3d : null);
-  }, [complexMapCompiled, complexMapSpec]);
+  }, [complexMapFns, complexMapSpec]);
+
+  useEffect(() => {
+    if (complexPreimageMode === "none" || !complexMapFns) {
+      setComplexPreimagePolylines(null);
+      return;
+    }
+
+    const { reFn, imFn } = complexMapFns;
+    const nu = Math.max(2, Math.round(complexMapSpec.nu));
+    const nv = Math.max(2, Math.round(complexMapSpec.nv));
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const uStep = nu > 1 ? (uMax - uMin) / (nu - 1) : 0;
+    const vStep = nv > 1 ? (vMax - vMin) / (nv - 1) : 0;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+    const clampAbs =
+      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+        ? complexMapSpec.clampAbs
+        : null;
+
+    const clampMag = (re: number, im: number, limit: number) => {
+      const mag = Math.hypot(re, im);
+      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
+      const s = limit / mag;
+      return { re: re * s, im: im * s };
+    };
+
+    const theta = complexPreimageMode === "arg" ? complexPreimageValue : 0;
+    const cosT = Math.cos(theta);
+    const sinT = Math.sin(theta);
+
+    const sample = (i: number, j: number) => {
+      const u = uMin + uStep * i;
+      const v = vMin + vStep * j;
+      let re = reFn(u, v);
+      let im = imFn(u, v);
+      if (!Number.isFinite(re) || !Number.isFinite(im)) return NaN;
+      re *= wScale;
+      im *= wScale;
+      if (clampAbs) {
+        const clamped = clampMag(re, im, clampAbs);
+        re = clamped.re;
+        im = clamped.im;
+      }
+      if (complexPreimageMode === "re") return re;
+      if (complexPreimageMode === "im") return im;
+      if (complexPreimageMode === "abs") return Math.hypot(re, im);
+      return im * cosT - re * sinT;
+    };
+
+    const level =
+      complexPreimageMode === "abs" ? Math.max(0, complexPreimageValue) : complexPreimageMode === "arg" ? 0 : complexPreimageValue;
+
+    const lines = marchingSquares({
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      sample,
+      level,
+    });
+
+    let polylines = lines.map((line) => line.map((p) => [p.x, p.y] as [number, number]));
+
+    if (complexPreimageMode === "arg") {
+      const filtered: [number, number][][] = [];
+      for (const line of polylines) {
+        let current: [number, number][] = [];
+        for (const [u, v] of line) {
+          let re = reFn(u, v);
+          let im = imFn(u, v);
+          if (!Number.isFinite(re) || !Number.isFinite(im)) {
+            if (current.length >= 2) filtered.push(current);
+            current = [];
+            continue;
+          }
+          re *= wScale;
+          im *= wScale;
+          if (clampAbs) {
+            const clamped = clampMag(re, im, clampAbs);
+            re = clamped.re;
+            im = clamped.im;
+          }
+          const reRot = re * cosT + im * sinT;
+          if (Number.isFinite(reRot) && reRot >= 0) {
+            current.push([u, v]);
+          } else {
+            if (current.length >= 2) filtered.push(current);
+            current = [];
+          }
+        }
+        if (current.length >= 2) filtered.push(current);
+      }
+      polylines = filtered;
+    }
+
+    setComplexPreimagePolylines(polylines.length ? polylines : null);
+  }, [complexPreimageMode, complexPreimageValue, complexMapFns, complexMapSpec]);
 
   const handleGenerateSurfaceMeshPreset = useCallback((presetId: string) => {
     const preset = SURFACE_MESH_PRESETS.find((p) => p.id === presetId);
@@ -4168,8 +4817,12 @@ case "mobius":
             },
           });
 
-          if (!res.ok || !res.phi_vertex?.length) {
-            setGeodesicDiskMessage(res?.error ?? "Geodesic heat failed.");
+          if (!res.ok) {
+            setGeodesicDiskMessage(res.error ?? "Geodesic heat failed.");
+            return;
+          }
+          if (!res.phi_vertex?.length) {
+            setGeodesicDiskMessage("Geodesic heat returned empty distances.");
             return;
           }
           if (geodesicDiskRequestIdRef.current !== requestId) return;
@@ -4910,28 +5563,83 @@ case "mobius":
     [runSurfaceCommand]
   );
 
+  useEffect(() => {
+    if (!isDev || typeof window === "undefined") return;
+
+    const onError = (ev: ErrorEvent) => {
+      const message = ev.message || "Uncaught error";
+      const stack = ev.error?.stack;
+      setDevError({ message, stack });
+    };
+
+    const onRejection = (ev: PromiseRejectionEvent) => {
+      const reason = ev.reason;
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === "string"
+          ? reason
+          : "Unhandled promise rejection";
+      const stack = reason instanceof Error ? reason.stack : undefined;
+      setDevError({ message, stack });
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [isDev]);
+
   return (
     <div style={rootStyle}>
+      {isDev && devError && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 3000,
+            maxWidth: 520,
+            padding: "10px 12px",
+            background: "#fff4f4",
+            border: "1px solid #f2b8b5",
+            borderRadius: 8,
+            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Dev error</div>
+          <div style={{ marginBottom: devError.stack ? 6 : 0 }}>{devError.message}</div>
+          {devError.stack && (
+            <pre
+              style={{
+                margin: 0,
+                padding: 6,
+                background: "#fff",
+                border: "1px solid #f2b8b5",
+                borderRadius: 6,
+                maxHeight: 160,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                fontSize: 11,
+              }}
+            >
+              {devError.stack.split("\n").slice(0, 6).join("\n")}
+            </pre>
+          )}
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => setDevError(null)} style={{ padding: "3px 8px" }}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
       <header style={styles.header}>
-        <h1 style={styles.h1}>Möbius/Chebyshev/Surfaces</h1>
+        <h1 style={styles.h1}>Math3D</h1>
 
         <div style={styles.tabs}>
-          <TabButton active={mode === "mobius"} onClick={() => setMode("mobius")}>
-            Möbius map
-          </TabButton>
-
-          <TabButton active={mode === "chebyshev"} onClick={() => setMode("chebyshev")}>
-            Chebyshev Tₙ
-          </TabButton>
-
-          <TabButton active={mode === "transform"} onClick={() => setMode("transform")}>
-            Transform (z²)
-          </TabButton>
-
-          <TabButton active={mode === "maps"} onClick={() => setMode("maps")}>
-            Standard maps
-          </TabButton>
-
           <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
             Surfaces
           </TabButton>
@@ -4962,8 +5670,6 @@ case "mobius":
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
               onChangeCompareParamId={setCompareParamId}
-              geodesicHeatHeatmapAllowed={geodesicHeatHeatmapAllowed}
-              geodesicHeatHeatmapReason={geodesicHeatHeatmapReason}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -5123,7 +5829,44 @@ case "mobius":
                   complexMapLineWPolylines={complexMapLineWPolylines}
                   complexMapIsolineWPolylines={complexMapIsolineWPolylines}
                   complexMapIsolineZLines={complexMapIsolineZLines}
-                  complexMapIsoline3dPolylines={complexMapIsoline3dPolylines}
+                  complexMapMarkerData={complexMapMarkerData}
+                  complexMapShowCritical={complexMapShowCritical}
+                  complexMapShowZeros={complexMapShowZeros}
+                  complexMapShowPoles={complexMapShowPoles}
+                  complexMapMarkersZ={complexMapMarkersZ}
+                  complexMapMarkersW={complexMapMarkersW}
+                  complexMapMarkers3d={complexMapMarkers3d}
+                  complexMapMarkerMax={complexMapMarkerMax}
+                  complexMapCriticalRel={complexMapCriticalRel}
+                  complexMapZeroRel={complexMapZeroRel}
+                  complexMapPoleRel={complexMapPoleRel}
+                  setComplexMapShowCritical={setComplexMapShowCritical}
+                  setComplexMapShowZeros={setComplexMapShowZeros}
+                  setComplexMapShowPoles={setComplexMapShowPoles}
+                  setComplexMapMarkersZ={setComplexMapMarkersZ}
+                  setComplexMapMarkersW={setComplexMapMarkersW}
+                  setComplexMapMarkers3d={setComplexMapMarkers3d}
+                  setComplexMapMarkerMax={setComplexMapMarkerMax}
+                  setComplexMapCriticalRel={setComplexMapCriticalRel}
+                  setComplexMapZeroRel={setComplexMapZeroRel}
+                  setComplexMapPoleRel={setComplexMapPoleRel}
+                  complexPreimageMode={complexPreimageMode}
+                  complexPreimageValue={complexPreimageValue}
+                  complexPreimageSnap={complexPreimageSnap}
+                  complexPreimagePolylines={complexPreimagePolylines}
+                  setComplexPreimageMode={setComplexPreimageMode}
+                  setComplexPreimageValue={setComplexPreimageValue}
+                  setComplexPreimageSnap={setComplexPreimageSnap}
+                  complexDistortionMode={complexDistortionMode}
+                  complexDistortionShowZ={complexDistortionShowZ}
+                  complexDistortionShowSurface={complexDistortionShowSurface}
+                  complexDistortionScale={complexDistortionScale}
+                  complexMapDistortionField={complexMapDistortionField}
+                  complexMapDistortionProbe={complexMapDistortionProbe}
+                  setComplexDistortionMode={setComplexDistortionMode}
+                  setComplexDistortionShowZ={setComplexDistortionShowZ}
+                  setComplexDistortionShowSurface={setComplexDistortionShowSurface}
+                  setComplexDistortionScale={setComplexDistortionScale}
                   wPlaneDomainColor={wPlaneDomainColor}
                   wPlaneShowRings={wPlaneShowRings}
                   wPlaneShowRays={wPlaneShowRays}
@@ -5729,8 +6472,11 @@ case "mobius":
                         geodesicHeatPolylines={geodesicHeatPolylines}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                        overlayHeatmapValues={complexMapHeatmapActive ? complexMapDistortionValues3d : null}
+                        overlayHeatmapEnabled={complexMapHeatmapActive}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
+                        overlayPointSets={complexMapOverlayPointsActive}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -6155,8 +6901,6 @@ type SurfacesControlsProps = {
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
   onChangeCompareParamId: (p: ParamSurfaceId) => void;
-  geodesicHeatHeatmapAllowed: boolean;
-  geodesicHeatHeatmapReason: string;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -6177,8 +6921,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeCompareSurface,
   compareParamId,
   onChangeCompareParamId,
-  geodesicHeatHeatmapAllowed,
-  geodesicHeatHeatmapReason,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -6609,7 +7351,44 @@ type SurfacesLeftPanelProps = {
   complexMapLineWPolylines: [number, number][][] | null;
   complexMapIsolineWPolylines: [number, number][][] | null;
   complexMapIsolineZLines: [number, number][][] | null;
-  complexMapIsoline3dPolylines: PolylineSet | null;
+  complexMapMarkerData: ComplexMapMarkerData | null;
+  complexMapShowCritical: boolean;
+  complexMapShowZeros: boolean;
+  complexMapShowPoles: boolean;
+  complexMapMarkersZ: boolean;
+  complexMapMarkersW: boolean;
+  complexMapMarkers3d: boolean;
+  complexMapMarkerMax: number;
+  complexMapCriticalRel: number;
+  complexMapZeroRel: number;
+  complexMapPoleRel: number;
+  setComplexMapShowCritical: (v: boolean) => void;
+  setComplexMapShowZeros: (v: boolean) => void;
+  setComplexMapShowPoles: (v: boolean) => void;
+  setComplexMapMarkersZ: (v: boolean) => void;
+  setComplexMapMarkersW: (v: boolean) => void;
+  setComplexMapMarkers3d: (v: boolean) => void;
+  setComplexMapMarkerMax: (v: number) => void;
+  setComplexMapCriticalRel: (v: number) => void;
+  setComplexMapZeroRel: (v: number) => void;
+  setComplexMapPoleRel: (v: number) => void;
+  complexPreimageMode: ComplexPreimageMode;
+  complexPreimageValue: number;
+  complexPreimageSnap: boolean;
+  complexPreimagePolylines: [number, number][][] | null;
+  setComplexPreimageMode: (m: ComplexPreimageMode) => void;
+  setComplexPreimageValue: (v: number) => void;
+  setComplexPreimageSnap: (v: boolean) => void;
+  complexDistortionMode: ComplexDistortionMode;
+  complexDistortionShowZ: boolean;
+  complexDistortionShowSurface: boolean;
+  complexDistortionScale: "linear" | "log";
+  complexMapDistortionField: ComplexMapDistortionField | null;
+  complexMapDistortionProbe: ComplexMapDistortionProbe | null;
+  setComplexDistortionMode: (m: ComplexDistortionMode) => void;
+  setComplexDistortionShowZ: (v: boolean) => void;
+  setComplexDistortionShowSurface: (v: boolean) => void;
+  setComplexDistortionScale: (v: "linear" | "log") => void;
   wPlaneDomainColor: boolean;
   wPlaneShowRings: boolean;
   wPlaneShowRays: boolean;
@@ -6966,7 +7745,44 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   complexMapLineWPolylines,
   complexMapIsolineWPolylines,
   complexMapIsolineZLines,
-  complexMapIsoline3dPolylines,
+  complexMapMarkerData,
+  complexMapShowCritical,
+  complexMapShowZeros,
+  complexMapShowPoles,
+  complexMapMarkersZ,
+  complexMapMarkersW,
+  complexMapMarkers3d,
+  complexMapMarkerMax,
+  complexMapCriticalRel,
+  complexMapZeroRel,
+  complexMapPoleRel,
+  setComplexMapShowCritical,
+  setComplexMapShowZeros,
+  setComplexMapShowPoles,
+  setComplexMapMarkersZ,
+  setComplexMapMarkersW,
+  setComplexMapMarkers3d,
+  setComplexMapMarkerMax,
+  setComplexMapCriticalRel,
+  setComplexMapZeroRel,
+  setComplexMapPoleRel,
+  complexPreimageMode,
+  complexPreimageValue,
+  complexPreimageSnap,
+  complexPreimagePolylines,
+  setComplexPreimageMode,
+  setComplexPreimageValue,
+  setComplexPreimageSnap,
+  complexDistortionMode,
+  complexDistortionShowZ,
+  complexDistortionShowSurface,
+  complexDistortionScale,
+  complexMapDistortionField,
+  complexMapDistortionProbe,
+  setComplexDistortionMode,
+  setComplexDistortionShowZ,
+  setComplexDistortionShowSurface,
+  setComplexDistortionScale,
   wPlaneDomainColor,
   wPlaneShowRings,
   wPlaneShowRays,
@@ -7331,9 +8147,128 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     [complexLineMode, complexMapSpec, onPickComplexMapLine]
   );
 
+  const snapPreimageValue = useCallback(
+    (mode: ComplexPreimageMode, value: number) => {
+      if (!complexPreimageSnap || mode === "none" || !Number.isFinite(value)) return value;
+      if (mode === "arg") {
+        const nice = [
+          -Math.PI,
+          -3 * Math.PI / 4,
+          -2 * Math.PI / 3,
+          -Math.PI / 2,
+          -Math.PI / 3,
+          -Math.PI / 4,
+          -Math.PI / 6,
+          0,
+          Math.PI / 6,
+          Math.PI / 4,
+          Math.PI / 3,
+          Math.PI / 2,
+          2 * Math.PI / 3,
+          3 * Math.PI / 4,
+          Math.PI,
+        ];
+        let best = nice[0];
+        let bestD = Infinity;
+        for (const n of nice) {
+          const d = Math.abs(value - n);
+          if (d < bestD) {
+            bestD = d;
+            best = n;
+          }
+        }
+        return best;
+      }
+
+      const base = [0, 0.5, 1, 2, 3, 4];
+      const nice = mode === "abs" ? base : base.concat(base.slice(1).map((v) => -v));
+      let best = nice[0];
+      let bestD = Infinity;
+      for (const n of nice) {
+        const d = Math.abs(value - n);
+        if (d < bestD) {
+          bestD = d;
+          best = n;
+        }
+      }
+      return best;
+    },
+    [complexPreimageSnap]
+  );
+
+  const applyPreimageValue = useCallback(
+    (mode: ComplexPreimageMode, value: number) => {
+      const next = snapPreimageValue(mode, value);
+      if (Number.isFinite(next)) setComplexPreimageValue(next);
+    },
+    [snapPreimageValue]
+  );
+
+  const handleWPlaneClick = useCallback(
+    (pt: { re: number; im: number }) => {
+      if (complexPreimageMode === "none") return;
+      if (complexPreimageMode === "re") {
+        applyPreimageValue(complexPreimageMode, clamp(pt.re, -complexMapWExtent, complexMapWExtent));
+        return;
+      }
+      if (complexPreimageMode === "im") {
+        applyPreimageValue(complexPreimageMode, clamp(pt.im, -complexMapWExtent, complexMapWExtent));
+        return;
+      }
+      if (complexPreimageMode === "abs") {
+        applyPreimageValue(
+          complexPreimageMode,
+          Math.max(0, Math.min(complexMapWExtent, Math.hypot(pt.re, pt.im)))
+        );
+        return;
+      }
+      applyPreimageValue(complexPreimageMode, Math.atan2(pt.im, pt.re));
+    },
+    [applyPreimageValue, complexMapWExtent, complexPreimageMode]
+  );
+
+  const complexPreimageWShape = useMemo(() => {
+    if (complexPreimageMode === "none") return null;
+    const extent = Math.max(1e-6, complexMapWExtent);
+    if (complexPreimageMode === "re") {
+      return [[[complexPreimageValue, -extent], [complexPreimageValue, extent]]] as [number, number][][];
+    }
+    if (complexPreimageMode === "im") {
+      return [[[-extent, complexPreimageValue], [extent, complexPreimageValue]]] as [number, number][][];
+    }
+    if (complexPreimageMode === "abs") {
+      const r = Math.max(0, complexPreimageValue);
+      const steps = 80;
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = (i / steps) * Math.PI * 2;
+        pts.push([r * Math.cos(t), r * Math.sin(t)]);
+      }
+      return [pts];
+    }
+    const theta = complexPreimageValue;
+    return [[[0, 0], [extent * Math.cos(theta), extent * Math.sin(theta)]]] as [number, number][][];
+  }, [complexPreimageMode, complexPreimageValue, complexMapWExtent]);
+
   useEffect(() => {
     zPlaneRef.current?.drawGrid(1);
     wPlaneRef.current?.drawGrid(1);
+
+    if (complexDistortionShowZ && complexMapDistortionField) {
+      zPlaneRef.current?.drawHeatmap({
+        values: complexMapDistortionField.values,
+        nx: complexMapDistortionField.nx,
+        ny: complexMapDistortionField.ny,
+        xMin: complexMapDistortionField.xMin,
+        xMax: complexMapDistortionField.xMax,
+        yMin: complexMapDistortionField.yMin,
+        yMax: complexMapDistortionField.yMax,
+        min: complexMapDistortionField.min,
+        max: complexMapDistortionField.max,
+        palette: colorPalette,
+        opacity: 0.78,
+      });
+    }
 
     if (complexMapSpec.showIsolines) {
       if (complexMapIsolineZLines?.length) {
@@ -7345,6 +8280,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         for (const line of complexMapIsolineWPolylines) {
           wPlaneRef.current?.drawCurve(line, "#9aa3ad");
         }
+      }
+    }
+
+    if (complexPreimagePolylines?.length) {
+      for (const line of complexPreimagePolylines) {
+        zPlaneRef.current?.drawCurve(line, "#1b7f3a");
+      }
+    }
+
+    if (complexPreimageWShape?.length) {
+      for (const line of complexPreimageWShape) {
+        wPlaneRef.current?.drawCurve(line, "#1b7f3a");
       }
     }
 
@@ -7378,11 +8325,75 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         wPlaneRef.current?.drawCurve(line, "#d14d00");
       }
     }
+
+    if (complexMapMarkerData) {
+      if (complexMapMarkersZ) {
+        if (complexMapMarkerData.critical.z.length) {
+          zPlaneRef.current?.drawPoints(complexMapMarkerData.critical.z, {
+            color: "#d81b60",
+            shape: "diamond",
+            size: 4.2,
+            layer: "crit-z",
+          });
+        }
+        if (complexMapMarkerData.zero.z.length) {
+          zPlaneRef.current?.drawPoints(complexMapMarkerData.zero.z, {
+            color: "#2e7d32",
+            shape: "circle",
+            size: 4.0,
+            layer: "zero-z",
+          });
+        }
+        if (complexMapMarkerData.pole.z.length) {
+          zPlaneRef.current?.drawPoints(complexMapMarkerData.pole.z, {
+            color: "#f57c00",
+            shape: "triangle",
+            size: 4.6,
+            layer: "pole-z",
+          });
+        }
+      }
+
+      if (complexMapMarkersW) {
+        if (complexMapMarkerData.critical.w.length) {
+          wPlaneRef.current?.drawPoints(complexMapMarkerData.critical.w, {
+            color: "#d81b60",
+            shape: "diamond",
+            size: 4.2,
+            layer: "crit-w",
+          });
+        }
+        if (complexMapMarkerData.zero.w.length) {
+          wPlaneRef.current?.drawPoints(complexMapMarkerData.zero.w, {
+            color: "#2e7d32",
+            shape: "circle",
+            size: 4.0,
+            layer: "zero-w",
+          });
+        }
+        if (complexMapMarkerData.pole.w.length) {
+          wPlaneRef.current?.drawPoints(complexMapMarkerData.pole.w, {
+            color: "#f57c00",
+            shape: "triangle",
+            size: 4.6,
+            layer: "pole-w",
+          });
+        }
+      }
+    }
   }, [
     complexMapLine,
     complexMapLineWPolylines,
     complexMapIsolineWPolylines,
     complexMapIsolineZLines,
+    complexPreimagePolylines,
+    complexPreimageWShape,
+    complexMapMarkerData,
+    complexMapMarkersZ,
+    complexMapMarkersW,
+    complexDistortionShowZ,
+    complexMapDistortionField,
+    colorPalette,
     complexMapSpec,
     wPlaneDomainColor,
     wPlaneShowRings,
@@ -8038,18 +9049,19 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         />
 
         <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Quick presets</div>
-        <select
-          value={complexMapPresetId}
-          onChange={(e) => onChangeComplexMapPreset(e.target.value)}
-          style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #ccc" }}
-        >
-          <option value={COMPLEX_MAP_CUSTOM_ID}>Custom</option>
-          {COMPLEX_MAP_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
+        <div style={{ ...pillRow, flexWrap: "wrap" }}>
+          {[{ id: COMPLEX_MAP_CUSTOM_ID, label: "Custom" }, ...COMPLEX_MAP_PRESETS].map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onChangeComplexMapPreset(p.id)}
+              style={pill(complexMapPresetId === p.id)}
+              aria-pressed={complexMapPresetId === p.id}
+            >
               {p.label}
-            </option>
+            </button>
           ))}
-        </select>
+        </div>
         <div style={{ ...styles.hint, marginTop: 6 }}>Use u, v and functions like sin, cos, exp. Constants: pi, e.</div>
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Domain & sampling</div>
@@ -8315,11 +9327,261 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               step={1}
               ref={wPlaneRef}
               style={{ height: 160 }}
+              onClickPoint={complexPreimageMode === "none" ? undefined : handleWPlaneClick}
               domainColoring={wPlaneDomainColor}
               domainRings={wPlaneShowRings}
               domainRays={wPlaneShowRays}
             />
           </div>
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Preimage tool</div>
+        <div style={pillRow}>
+          {(
+            [
+              { id: "none", label: "Off" },
+              { id: "re", label: "Re(w)=c" },
+              { id: "im", label: "Im(w)=c" },
+              { id: "abs", label: "|w|=r" },
+              { id: "arg", label: "arg(w)=θ" },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setComplexPreimageMode(mode.id)}
+              style={pill(complexPreimageMode === mode.id)}
+              aria-pressed={complexPreimageMode === mode.id}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            Value
+            <input
+              type="number"
+              step={complexPreimageMode === "arg" ? 0.1 : 0.05}
+              value={complexPreimageValue}
+              disabled={complexPreimageMode === "none"}
+              onChange={(e) => applyPreimageValue(complexPreimageMode, Number(e.target.value))}
+              style={{ width: 90 }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={complexPreimageSnap}
+              onChange={(e) => setComplexPreimageSnap(e.target.checked)}
+              disabled={complexPreimageMode === "none"}
+            />
+            Snap to nice values
+          </label>
+          {complexPreimageMode === "arg" && (
+            <span style={{ fontSize: 11, opacity: 0.7 }}>
+              θ = {(complexPreimageValue * (180 / Math.PI)).toFixed(1)}°
+            </span>
+          )}
+          <span style={{ fontSize: 11, opacity: 0.7 }}>Click W-plane to set.</span>
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>
+          Critical points / zeros / poles
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapShowCritical}
+              onChange={(e) => setComplexMapShowCritical(e.target.checked)}
+            />
+            critical |detJ| ≤ {fmtVal(complexMapMarkerData?.thresholds.critical ?? 0, 4)}
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapShowZeros}
+              onChange={(e) => setComplexMapShowZeros(e.target.checked)}
+            />
+            zeros |w| ≤ {fmtVal(complexMapMarkerData?.thresholds.zero ?? 0, 4)}
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapShowPoles}
+              onChange={(e) => setComplexMapShowPoles(e.target.checked)}
+            />
+            poles |w| ≥ {fmtVal(complexMapMarkerData?.thresholds.pole ?? 0, 4)}
+          </label>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            crit rel
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={complexMapCriticalRel}
+              onChange={(e) => setComplexMapCriticalRel(clamp(Number(e.target.value), 0, 1))}
+              style={{ width: 70 }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            zero rel
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={complexMapZeroRel}
+              onChange={(e) => setComplexMapZeroRel(clamp(Number(e.target.value), 0, 1))}
+              style={{ width: 70 }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            pole rel
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.02}
+              value={complexMapPoleRel}
+              onChange={(e) => setComplexMapPoleRel(clamp(Number(e.target.value), 0, 1))}
+              style={{ width: 70 }}
+            />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            max markers
+            <input
+              type="number"
+              min={20}
+              max={2000}
+              step={10}
+              value={complexMapMarkerMax}
+              onChange={(e) => setComplexMapMarkerMax(clampInt(Number(e.target.value), 20, 2000))}
+              style={{ width: 80 }}
+            />
+          </label>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapMarkersZ}
+              onChange={(e) => setComplexMapMarkersZ(e.target.checked)}
+            />
+            Z-plane markers
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapMarkersW}
+              onChange={(e) => setComplexMapMarkersW(e.target.checked)}
+            />
+            W-plane markers
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapMarkers3d}
+              onChange={(e) => setComplexMapMarkers3d(e.target.checked)}
+            />
+            3D markers
+          </label>
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Distortion</div>
+        <div style={pillRow}>
+          {(
+            [
+              { id: "none", label: "Off" },
+              { id: "area", label: "Area |detJ|" },
+              { id: "anisotropy", label: "σmax/σmin" },
+              { id: "conformal", label: "Conformal error" },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setComplexDistortionMode(mode.id)}
+              style={pill(complexDistortionMode === mode.id)}
+              aria-pressed={complexDistortionMode === mode.id}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            Scale
+            <button
+              type="button"
+              onClick={() => setComplexDistortionScale("linear")}
+              style={pill(complexDistortionScale === "linear")}
+              aria-pressed={complexDistortionScale === "linear"}
+              disabled={complexDistortionMode === "none"}
+            >
+              Linear
+            </button>
+            <button
+              type="button"
+              onClick={() => setComplexDistortionScale("log")}
+              style={pill(complexDistortionScale === "log")}
+              aria-pressed={complexDistortionScale === "log"}
+              disabled={
+                complexDistortionMode === "none" ||
+                (complexDistortionMode !== "area" && complexDistortionMode !== "anisotropy")
+              }
+            >
+              Log
+            </button>
+          </div>
+          {complexDistortionMode === "conformal" && (
+            <span style={{ opacity: 0.7 }}>Log scale only applies to |detJ| and σmax/σmin.</span>
+          )}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexDistortionShowZ}
+              onChange={(e) => setComplexDistortionShowZ(e.target.checked)}
+              disabled={complexDistortionMode === "none"}
+            />
+            Z-plane heatmap
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexDistortionShowSurface}
+              onChange={(e) => setComplexDistortionShowSurface(e.target.checked)}
+              disabled={complexDistortionMode === "none"}
+            />
+            Surface color
+          </label>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+          {complexMapDistortionProbe ? (
+            <>
+              u={fmtVal(complexMapDistortionProbe.u, 3)} v={fmtVal(complexMapDistortionProbe.v, 3)} · |detJ|=
+              {fmtVal(complexMapDistortionProbe.detAbs, 4)} · σmax/σmin=
+              {fmtVal(complexMapDistortionProbe.ratio, 3)} · conf=
+              {fmtVal(complexMapDistortionProbe.conformalErr, 4)}
+              {complexDistortionScale === "log" &&
+                (complexDistortionMode === "area" || complexDistortionMode === "anisotropy") && (
+                  <>
+                    {" "}· log10(1+v)=
+                    {complexDistortionMode === "area"
+                      ? fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.detAbs)), 4)
+                      : fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.ratio)), 4)}
+                  </>
+                )}
+            </>
+          ) : (
+            "Probe a point on the surface to read local distortion."
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>

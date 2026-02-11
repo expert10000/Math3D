@@ -102,7 +102,68 @@ and editable.
 - Custom param: Provide X(u,v), Y(u,v), Z(u,v) expressions for custom surfaces.
 - Geodesics: Heat-method paths on the parametric mesh, plus a continuous ODE solver in UV when enabled.
 
-#### 4) Volume grids (experimental)
+#### 4) Complex maps (w = f(z))
+
+This tab helps you inspect a complex map w = f(z) by:
+
+- Drawing preimages of simple sets in the W-plane.
+- Highlighting critical points / zeros / poles.
+- Visualizing local distortion (area / anisotropy / conformality).
+
+**Preimage tool**
+
+Choose which W-plane set you want to preimage:
+
+- Off — disables the preimage overlay.
+- Re(w)=c — shows the preimage of the vertical line Re(w)=c.
+- Im(w)=c — shows the preimage of the horizontal line Im(w)=c.
+- |w|=1 — shows the preimage of the unit circle |w|=1.
+- arg(w)=θ — shows the preimage of a ray with argument arg(w)=θ.
+
+Controls:
+
+- Value — the constant c or angle θ used by the selected mode.
+- Snap to nice values — snaps the chosen value to convenient numbers (e.g., near 0, simple angles) to make exploration easier.
+- Click W-plane to set — click inside the W-plane view to set the value interactively (depending on the mode).
+
+**Critical points / zeros / poles**
+
+This section draws markers for special points detected from the map:
+
+- Critical — marks points where the mapping becomes locally degenerate (near singular Jacobian / derivative). Threshold shown as |detJ| ≤ ….
+- Zeros — marks points where |w| is near 0 (i.e., f(z) ≈ 0). Threshold shown as |w| ≤ ….
+- Poles — marks points where |w| is very large (i.e., the map blows up). Threshold shown as |w| ≥ ….
+
+Tuning:
+
+- crit rel / zero rel / pole rel — relative sensitivity sliders (0–1). Lower values usually mean stricter / fewer markers; higher values mean more / looser detection.
+- max markers — limits how many markers are drawn (performance + readability).
+- Z-plane markers — show markers in the Z-plane view.
+- W-plane markers — show corresponding points in the W-plane view.
+- 3D markers — show markers on the 3D surface (if enabled).
+
+**Distortion**
+
+Visualizes how the map locally stretches/warps space.
+
+Modes:
+
+- Off — no distortion visualization.
+- Area |detJ| — shows local area scaling (how much the mapping expands/contracts area).
+- σmax/σmin — shows anisotropy (how directional the stretching is). Values near 1 are close to isotropic; larger values indicate strong directional distortion.
+- Conformal error — shows deviation from conformality (angle-preservation). Smaller values are “more conformal”; larger values indicate angle distortion.
+
+Display settings:
+
+- Scale: Linear / Log. Log is available only for |detJ| and σmax/σmin (helps when values vary a lot).
+- Z-plane heatmap — overlays the distortion as a heatmap in the Z-plane.
+- Surface color — colors the 3D surface by the chosen distortion metric.
+
+Tip:
+
+- Probe a point on the surface to read the local distortion value at that point.
+
+#### 5) Volume grids (experimental)
 
 - Purpose: Preview scalar fields sampled on a voxel grid, inspect slices, and extract first-pass 3D surfaces.
 - Rendering: A slice plane in three.js textured with a grayscale Image2D derived from the grid.

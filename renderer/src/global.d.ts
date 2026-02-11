@@ -198,5 +198,8 @@ declare global {
       distanceField: (req: VtkVolumeDistanceRequest) => Promise<VtkVolumeDistanceResponse>;
       streamlines: (req: VtkVolumeStreamlinesRequest) => Promise<VtkVolumeStreamlinesResponse>;
     };
+    appMenu?: {
+      onModeChange: (handler: (mode: string) => void) => () => void;
+    };
   }
 }

@@ -7,6 +7,10 @@ import React, {
   forwardRef,
 } from "react";
 import * as d3 from "d3";
+import { scalarToColor01, type ColorPalette } from "./colorPalette";
+import { scalarToColor01, type ColorPalette } from "./colorPalette";
+import { scalarToColor01, type ColorPalette } from "./colorPalette";
+import { scalarToColor01, type ColorPalette } from "./colorPalette";
 
 export type PlanePlotHandle = {
   clear(): void;
@@ -736,6 +740,7 @@ import React, {
   forwardRef,
 } from "react";
 import * as d3 from "d3";
+import { scalarToColor01, type ColorPalette } from "./colorPalette";
 
 export type PlanePlotHandle = {
   clear(): void;
@@ -743,6 +748,31 @@ export type PlanePlotHandle = {
   x(re: number): number;
   y(im: number): number;
   drawCurve(points: [number, number][], stroke: string): void;
+  drawPoints(
+    points: [number, number][],
+    style?: {
+      color?: string;
+      size?: number;
+      shape?: "circle" | "square" | "diamond" | "cross" | "triangle";
+      stroke?: string;
+      strokeWidth?: number;
+      opacity?: number;
+      layer?: string;
+    }
+  ): void;
+  drawHeatmap(opts: {
+    values: ArrayLike<number>;
+    nx: number;
+    ny: number;
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+    palette?: ColorPalette;
+    min?: number;
+    max?: number;
+    opacity?: number;
+  }): void;
 };
 
 type PlanePlotProps = {
@@ -840,6 +870,72 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           v = 0.15 + 0.85 * v;
           const h01 = ((Math.atan2(im, re) / TAU) + 1) % 1;
           const rgb = hsvToRgb(h01, 1, v);
+          data[idx++] = Math.round(rgb.r * 255);
+          data[idx++] = Math.round(rgb.g * 255);
+          data[idx++] = Math.round(rgb.b * 255);
+          data[idx++] = 255;
+        }
+      }
+
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL();
+    };
+
+    const buildHeatmapImage = (opts: {
+      values: ArrayLike<number>;
+      nx: number;
+      ny: number;
+      min?: number;
+      max?: number;
+      palette?: ColorPalette;
+    }) => {
+      if (typeof document === "undefined") return null;
+      const nx = Math.max(1, Math.floor(opts.nx));
+      const ny = Math.max(1, Math.floor(opts.ny));
+      if (!opts.values || opts.values.length < nx * ny) return null;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = nx;
+      canvas.height = ny;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      let min = Number.isFinite(opts.min) ? (opts.min as number) : Infinity;
+      let max = Number.isFinite(opts.max) ? (opts.max as number) : -Infinity;
+      if (!Number.isFinite(opts.min) || !Number.isFinite(opts.max)) {
+        for (let i = 0; i < nx * ny; i++) {
+          const v = Number(opts.values[i]);
+          if (!Number.isFinite(v)) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+      if (Math.abs(max - min) < 1e-9) {
+        max = min + 1;
+      }
+      const invRange = 1 / (max - min);
+      const palette = opts.palette ?? "blueRed";
+
+      const img = ctx.createImageData(nx, ny);
+      const data = img.data;
+      let idx = 0;
+      for (let j = 0; j < ny; j++) {
+        const srcRow = ny - 1 - j;
+        const rowOffset = srcRow * nx;
+        for (let i = 0; i < nx; i++) {
+          const v = Number(opts.values[rowOffset + i]);
+          if (!Number.isFinite(v)) {
+            data[idx++] = 0;
+            data[idx++] = 0;
+            data[idx++] = 0;
+            data[idx++] = 0;
+            continue;
+          }
+          let t = (v - min) * invRange;
+          if (t < 0) t = 0;
+          else if (t > 1) t = 1;
+          const rgb = scalarToColor01(t, palette);
           data[idx++] = Math.round(rgb.r * 255);
           data[idx++] = Math.round(rgb.g * 255);
           data[idx++] = Math.round(rgb.b * 255);
@@ -1102,6 +1198,127 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
             .attr("stroke", stroke)
             .attr("stroke-width", 1.5)
             .attr("d", dAttr);
+        },
+        drawPoints(
+          points: [number, number][],
+          style?: {
+            color?: string;
+            size?: number;
+            shape?: "circle" | "square" | "diamond" | "cross" | "triangle";
+            stroke?: string;
+            strokeWidth?: number;
+            opacity?: number;
+            layer?: string;
+          }
+        ) {
+          const g = gContentRef.current;
+          const x = xScaleRef.current;
+          const y = yScaleRef.current;
+          if (!g || !x || !y) return;
+
+          const layerId = style?.layer ?? "points";
+          g.selectAll(`g[data-layer="${layerId}"]`).remove();
+          if (!points.length) return;
+
+          const group = g.append("g").attr("data-layer", layerId).style("pointer-events", "none");
+          const color = style?.color ?? "#d14d00";
+          const stroke = style?.stroke ?? "#000";
+          const strokeWidth = style?.strokeWidth ?? 0.6;
+          const opacity = style?.opacity ?? 0.95;
+          const size = Math.max(1, style?.size ?? 4);
+
+          const shape = style?.shape ?? "circle";
+          if (shape === "circle") {
+            group
+              .selectAll("circle")
+              .data(points)
+              .enter()
+              .append("circle")
+              .attr("cx", (d) => x(d[0]))
+              .attr("cy", (d) => y(d[1]))
+              .attr("r", size)
+              .attr("fill", color)
+              .attr("stroke", stroke)
+              .attr("stroke-width", strokeWidth)
+              .attr("fill-opacity", opacity);
+            return;
+          }
+
+          const symbolType =
+            shape === "square"
+              ? (d3.symbolSquare as any)
+              : shape === "diamond"
+              ? (d3.symbolDiamond as any)
+              : shape === "triangle"
+              ? (d3.symbolTriangle as any)
+              : (d3.symbolCross as any);
+
+          const symbol = (d3 as any).symbol().type(symbolType).size(size * size * 2.2);
+          group
+            .selectAll("path")
+            .data(points)
+            .enter()
+            .append("path")
+            .attr("d", symbol as any)
+            .attr("transform", (d) => `translate(${x(d[0])},${y(d[1])})`)
+            .attr("fill", color)
+            .attr("stroke", stroke)
+            .attr("stroke-width", strokeWidth)
+            .attr("fill-opacity", opacity);
+        },
+        drawHeatmap(opts: {
+          values: ArrayLike<number>;
+          nx: number;
+          ny: number;
+          xMin: number;
+          xMax: number;
+          yMin: number;
+          yMax: number;
+          palette?: ColorPalette;
+          min?: number;
+          max?: number;
+          opacity?: number;
+        }) {
+          const g = gContentRef.current;
+          const x = xScaleRef.current;
+          const y = yScaleRef.current;
+          if (!g || !x || !y) return;
+
+          g.selectAll(`image[data-layer="heatmap"]`).remove();
+          const dataUrl = buildHeatmapImage(opts);
+          if (!dataUrl) return;
+
+          const x0 = x(opts.xMin);
+          const x1 = x(opts.xMax);
+          const y0 = y(opts.yMax);
+          const y1 = y(opts.yMin);
+          const width = Math.max(1, x1 - x0);
+          const height = Math.max(1, y1 - y0);
+          const opacity = opts.opacity ?? 0.75;
+
+          const ref = g.select(`g[data-layer="grid"]`);
+          if (!ref.empty()) {
+            g.insert("image", 'g[data-layer="grid"]')
+              .attr("data-layer", "heatmap")
+              .attr("x", x0)
+              .attr("y", y0)
+              .attr("width", width)
+              .attr("height", height)
+              .attr("href", dataUrl)
+              .attr("opacity", opacity)
+              .style("pointer-events", "none");
+            return;
+          }
+
+          g.append("image")
+            .attr("data-layer", "heatmap")
+            .attr("x", x0)
+            .attr("y", y0)
+            .attr("width", width)
+            .attr("height", height)
+            .attr("href", dataUrl)
+            .attr("opacity", opacity)
+            .style("pointer-events", "none");
         },
       }),
       [extent]

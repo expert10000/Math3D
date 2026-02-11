@@ -27,6 +27,7 @@ type ComplexMapSweepBuild = {
   positions: Float32Array;
   indices: Uint32Array;
   polylines: PolylineSet | null;
+  uvs: Float32Array;
 };
 
 const FUNC_NAMES = ["sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "log", "exp", "min", "max"];
@@ -113,6 +114,7 @@ export function buildComplexMapSweep(
   const positionsSweep = needSweep ? new Float32Array(total * 3) : null;
   const positionsRe = needRe ? new Float32Array(total * 3) : null;
   const positionsIm = needIm ? new Float32Array(total * 3) : null;
+  const uvsBase = new Float32Array(total * 2);
   const valid = new Uint8Array(total);
 
   for (let j = 0; j < nv; j++) {
@@ -149,6 +151,8 @@ export function buildComplexMapSweep(
         positionsIm[3 * idx + 1] = im;
         positionsIm[3 * idx + 2] = other;
       }
+      uvsBase[2 * idx] = u;
+      uvsBase[2 * idx + 1] = v;
       valid[idx] = 1;
     }
   }
@@ -217,6 +221,7 @@ export function buildComplexMapSweep(
   const indexArray = Uint32Array.from(indices);
   let positions: Float32Array;
   let indicesOut: Uint32Array;
+  let uvs: Float32Array;
 
   if (outputMode === "both") {
     if (!positionsRe || !positionsIm) {
@@ -228,18 +233,24 @@ export function buildComplexMapSweep(
     ]);
     positions = merged.positions;
     indicesOut = merged.indices;
+    uvs = new Float32Array(uvsBase.length * 2);
+    uvs.set(uvsBase, 0);
+    uvs.set(uvsBase, uvsBase.length);
   } else if (outputMode === "re") {
     if (!positionsRe) return { error: "Failed to build Re surface." };
     positions = positionsRe;
     indicesOut = indexArray;
+    uvs = uvsBase;
   } else if (outputMode === "im") {
     if (!positionsIm) return { error: "Failed to build Im surface." };
     positions = positionsIm;
     indicesOut = indexArray;
+    uvs = uvsBase;
   } else {
     if (!positionsSweep) return { error: "Failed to build sweep surface." };
     positions = positionsSweep;
     indicesOut = indexArray;
+    uvs = uvsBase;
   }
 
   return {
@@ -247,6 +258,7 @@ export function buildComplexMapSweep(
       positions,
       indices: indicesOut,
       polylines,
+      uvs,
     },
   };
 }

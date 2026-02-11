@@ -205,3 +205,11 @@ contextBridge.exposeInMainWorld("vtkVolume", {
   streamlines: (req: VtkVolumeStreamlinesRequest): Promise<VtkVolumeStreamlinesResponse> =>
     ipcRenderer.invoke("volume:vtk:streamlines", req),
 });
+
+contextBridge.exposeInMainWorld("appMenu", {
+  onModeChange: (handler: (mode: string) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, mode: string) => handler(mode);
+    ipcRenderer.on("app:mode", listener);
+    return () => ipcRenderer.removeListener("app:mode", listener);
+  },
+});
