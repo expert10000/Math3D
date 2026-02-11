@@ -114,6 +114,9 @@ function makeZFunction(expr: string | undefined): (x: number, y: number) => numb
       "log",
       "pow",
       "PI",
+      "E",
+      "pi",
+      "e",
       `return (${expr});`
     ) as (
       x: number,
@@ -127,7 +130,10 @@ function makeZFunction(expr: string | undefined): (x: number, y: number) => numb
       exp: (t: number) => number,
       log: (t: number) => number,
       pow: (a: number, b: number) => number,
-      PI: number
+      PI: number,
+      E: number,
+      pi: number,
+      e: number
     ) => number;
 
     return (x, y) => {
@@ -143,7 +149,10 @@ function makeZFunction(expr: string | undefined): (x: number, y: number) => numb
         Math.exp,
         Math.log,
         Math.pow,
-        Math.PI
+        Math.PI,
+        Math.E,
+        Math.PI,
+        Math.E
       );
       return Number.isFinite(z) ? z : 0;
     };

@@ -750,22 +750,106 @@ type PlanePlotProps = {
   extent?: number;
   step?: number;
   style?: React.CSSProperties;
+  onClickPoint?: (pt: { re: number; im: number }, ev: MouseEvent) => void;
+  domainColoring?: boolean;
+  domainRings?: boolean;
+  domainRays?: boolean;
 };
 
 const W = 900;
 const H = 320;
 const m = { top: 18, right: 18, bottom: 28, left: 36 };
+const TAU = Math.PI * 2;
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+const hsvToRgb = (h: number, s: number, v: number) => {
+  const hh = ((h % 1) + 1) % 1;
+  const c = v * s;
+  const x = c * (1 - Math.abs((hh * 6) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+
+  const seg = Math.floor(hh * 6);
+  switch (seg) {
+    case 0: r = c; g = x; b = 0; break;
+    case 1: r = x; g = c; b = 0; break;
+    case 2: r = 0; g = c; b = x; break;
+    case 3: r = 0; g = x; b = c; break;
+    case 4: r = x; g = 0; b = c; break;
+    default: r = c; g = 0; b = x; break;
+  }
+
+  return { r: r + m, g: g + m, b: b + m };
+};
 
 export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
-  ({ id, extent = 3, step = 1, style }, ref) => {
+  ({ id, extent = 3, step = 1, style, onClickPoint, domainColoring, domainRings, domainRays }, ref) => {
     const svgRef = useRef<SVGSVGElement | null>(null);
 
     const gContentRef =
       useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
     const xScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
     const yScaleRef = useRef<d3.ScaleLinear<number, number> | null>(null);
+    const domainConfigRef = useRef({
+      domainColoring: !!domainColoring,
+      domainRings: !!domainRings,
+      domainRays: !!domainRays,
+    });
 
     const isZ = id === "svgZ";
+
+    useEffect(() => {
+      domainConfigRef.current = {
+        domainColoring: !!domainColoring,
+        domainRings: !!domainRings,
+        domainRays: !!domainRays,
+      };
+    }, [domainColoring, domainRings, domainRays]);
+
+    const buildDomainImage = (width: number, height: number) => {
+      if (typeof document === "undefined") return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.floor(width));
+      canvas.height = Math.max(1, Math.floor(height));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      const img = ctx.createImageData(canvas.width, canvas.height);
+      const data = img.data;
+      const rMax = Math.max(1e-6, extent);
+      const rMin = Math.max(1e-9, rMax * 1e-3);
+      const logMin = Math.log(rMin);
+      const logMax = Math.log(rMax);
+      const invLogRange = 1 / Math.max(1e-6, logMax - logMin);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const reSpan = extent * 2;
+      const imSpan = extent * 2;
+
+      let idx = 0;
+      for (let j = 0; j < h; j++) {
+        const im = extent - ((j + 0.5) / h) * imSpan;
+        for (let i = 0; i < w; i++) {
+          const re = -extent + ((i + 0.5) / w) * reSpan;
+          const r = Math.hypot(re, im);
+          const logR = Math.log(r + 1e-9);
+          let v = (logR - logMin) * invLogRange;
+          v = clamp01(v);
+          v = 0.15 + 0.85 * v;
+          const h01 = ((Math.atan2(im, re) / TAU) + 1) % 1;
+          const rgb = hsvToRgb(h01, 1, v);
+          data[idx++] = Math.round(rgb.r * 255);
+          data[idx++] = Math.round(rgb.g * 255);
+          data[idx++] = Math.round(rgb.b * 255);
+          data[idx++] = 255;
+        }
+      }
+
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL();
+    };
 
     // Draw grid + axes + badge into the existing content group
     const drawFullGrid = (stepLocal: number) => {
@@ -776,7 +860,34 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
       gContent.selectAll("*").remove();
 
+      const domainCfg = domainConfigRef.current;
+      const showDomain = !isZ && domainCfg.domainColoring;
+
+      if (showDomain) {
+        const x0 = x(-extent);
+        const x1 = x(extent);
+        const y0 = y(extent);
+        const y1 = y(-extent);
+        const width = Math.max(1, x1 - x0);
+        const height = Math.max(1, y1 - y0);
+        const dataUrl = buildDomainImage(width, height);
+        if (dataUrl) {
+          gContent
+            .append("image")
+            .attr("data-layer", "domain")
+            .attr("x", x0)
+            .attr("y", y0)
+            .attr("width", width)
+            .attr("height", height)
+            .attr("href", dataUrl)
+            .attr("opacity", 0.95)
+            .style("pointer-events", "none");
+        }
+      }
+
       const gGrid = gContent.append("g").attr("data-layer", "grid");
+      const gridStroke = showDomain ? "#ffffff" : "#e0e0e0";
+      const gridOpacity = showDomain ? 0.35 : 1;
 
       // ----- GRID LINES (same in Z and W) -----
       for (let re = -extent; re <= extent + 1e-9; re += stepLocal) {
@@ -786,7 +897,8 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           .attr("y1", y(-extent))
           .attr("x2", x(re))
           .attr("y2", y(extent))
-          .attr("stroke", "#e0e0e0")
+          .attr("stroke", gridStroke)
+          .attr("stroke-opacity", gridOpacity)
           .attr("stroke-width", 1);
       }
 
@@ -797,8 +909,61 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           .attr("y1", y(im))
           .attr("x2", x(extent))
           .attr("y2", y(im))
-          .attr("stroke", "#e0e0e0")
+          .attr("stroke", gridStroke)
+          .attr("stroke-opacity", gridOpacity)
           .attr("stroke-width", 1);
+      }
+
+      if (showDomain && (domainCfg.domainRings || domainCfg.domainRays)) {
+        const gContours = gContent.append("g").attr("data-layer", "domain-contours");
+        const cx = x(0);
+        const cy = y(0);
+
+        if (domainCfg.domainRings) {
+          const ringCount = 6;
+          const rMax = Math.max(1e-6, extent);
+          const rMin = Math.max(1e-9, rMax * 1e-3);
+          const logMin = Math.log(rMin);
+          const logMax = Math.log(rMax);
+          for (let i = 0; i < ringCount; i++) {
+            const t = ringCount === 1 ? 0 : i / (ringCount - 1);
+            const r = Math.exp(logMin + t * (logMax - logMin));
+            const rx = Math.abs(x(r) - x(0));
+            const ry = Math.abs(y(r) - y(0));
+            gContours
+              .append("ellipse")
+              .attr("cx", cx)
+              .attr("cy", cy)
+              .attr("rx", rx)
+              .attr("ry", ry)
+              .attr("fill", "none")
+              .attr("stroke", "#000")
+              .attr("stroke-opacity", 0.25)
+              .attr("stroke-width", 0.9)
+              .attr("stroke-dasharray", "4 4")
+              .style("pointer-events", "none");
+          }
+        }
+
+        if (domainCfg.domainRays) {
+          const rayCount = 12;
+          for (let k = 0; k < rayCount; k++) {
+            const theta = (k / rayCount) * TAU;
+            const re = extent * Math.cos(theta);
+            const im = extent * Math.sin(theta);
+            gContours
+              .append("line")
+              .attr("x1", cx)
+              .attr("y1", cy)
+              .attr("x2", x(re))
+              .attr("y2", y(im))
+              .attr("stroke", "#000")
+              .attr("stroke-opacity", 0.22)
+              .attr("stroke-width", 0.9)
+              .attr("stroke-dasharray", "4 4")
+              .style("pointer-events", "none");
+          }
+        }
       }
 
       // ----- AXES (color depends on plane) -----
@@ -877,10 +1042,29 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         svg.transition().duration(200).call(zoom.transform, d3.zoomIdentity);
       });
 
+      if (onClickPoint) {
+        svg.on("click", (ev: MouseEvent) => {
+          const x = xScaleRef.current;
+          const y = yScaleRef.current;
+          if (!x || !y) return;
+          const svgNode = svgRef.current;
+          if (!svgNode) return;
+          const [sx, sy] = d3.pointer(ev, svgNode);
+          const t = d3.zoomTransform(svgNode as any);
+          const [cx, cy] = t.invert([sx, sy]);
+          const re = x.invert(cx);
+          const im = y.invert(cy);
+          onClickPoint({ re, im }, ev);
+        });
+      } else {
+        svg.on("click", null);
+      }
+
       return () => {
         svg.on(".zoom", null);
+        svg.on("click", null);
       };
-    }, [id, extent, step]);
+    }, [id, extent, step, onClickPoint]);
 
     useImperativeHandle(
       ref,

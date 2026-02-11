@@ -48,6 +48,7 @@ type ParamPreset = {
 };
 
 const LS_PARAM_KEY = "mathapp.surfacePresets.param.v1";
+const TAU = Math.PI * 2;
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 type CameraSyncState = {
   position: { x: number; y: number; z: number };
@@ -300,23 +301,26 @@ function makeSafeParamExpr(
     compiled = new Function(
       "u",
       "v",
+      "pi",
+      "e",
+      "PI",
+      "E",
       `
       const {
         sin, cos, tan, asin, acos, atan,
         sinh, cosh, tanh,
-        exp, log, sqrt, abs, pow,
-        PI
+        exp, log, sqrt, abs, pow
       } = Math;
       return (${trimmed});
     `
-    ) as (u: number, v: number) => number;
+    ) as (u: number, v: number, pi: number, e: number, PI: number, E: number) => number;
   } catch {
     return () => NaN;
   }
 
   return (u: number, v: number) => {
     try {
-      const val = compiled(u, v);
+      const val = compiled(u, v, Math.PI, Math.E, Math.PI, Math.E);
       return Number.isFinite(val) ? val : NaN;
     } catch {
       return NaN;
@@ -427,6 +431,67 @@ function scalarToColor01(
   }
 }
 
+function hsvToRgb(h: number, s: number, v: number) {
+  const hh = ((h % 1) + 1) % 1;
+  const c = v * s;
+  const x = c * (1 - Math.abs((hh * 6) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+
+  const seg = Math.floor(hh * 6);
+  switch (seg) {
+    case 0: r = c; g = x; b = 0; break;
+    case 1: r = x; g = c; b = 0; break;
+    case 2: r = 0; g = c; b = x; break;
+    case 3: r = 0; g = x; b = c; break;
+    case 4: r = x; g = 0; b = c; break;
+    default: r = c; g = 0; b = x; break;
+  }
+
+  return { r: r + m, g: g + m, b: b + m };
+}
+
+function applyPhaseColors(geometry: THREE.BufferGeometry) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+  const count = pos.count;
+  if (!count) return;
+
+  const values = new Float32Array(count);
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (let i = 0; i < count; i++) {
+    const re = pos.getY(i);
+    const im = pos.getZ(i);
+    const logR = Math.log(Math.hypot(re, im) + 1e-9);
+    values[i] = logR;
+    if (logR < min) min = logR;
+    if (logR > max) max = logR;
+  }
+
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let v = (values[i] - min) / range;
+    if (v < 0) v = 0;
+    else if (v > 1) v = 1;
+    v = 0.15 + 0.85 * v;
+    const re = pos.getY(i);
+    const im = pos.getZ(i);
+    const h = ((Math.atan2(im, re) / TAU) + 1) % 1;
+    const { r, g, b } = hsvToRgb(h, 1, v);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.attributes.color.needsUpdate = true;
+}
+
 function applyVertexColors(
   geometry: THREE.BufferGeometry,
   colorMode: ColorMode,
@@ -434,6 +499,11 @@ function applyVertexColors(
 ) {
   if (colorMode === "solid") {
     geometry.deleteAttribute("color");
+    return;
+  }
+
+  if (colorMode === "phase") {
+    applyPhaseColors(geometry);
     return;
   }
 

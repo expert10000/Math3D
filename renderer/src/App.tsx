@@ -52,6 +52,11 @@ import { vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
 import {
+  buildComplexMapSweep,
+  compileComplexMapExpressions,
+  type ComplexMapSweepSpec,
+} from "./math/complexMapSweep";
+import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
 } from "./math/paramGeodesicContinuous";
@@ -113,7 +118,7 @@ import { buildSliceSeeds } from "./scene/volume/streamlines";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
-type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh";
+type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type GraphDomain = { xSpan: number; ySpan: number };
 type ImplicitDomain = { xSpan: number; ySpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
@@ -122,6 +127,7 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
 type CgalMeshState = {
   surfaceId: SurfaceId;
   expr: string;
@@ -173,6 +179,40 @@ const WEIERSTRASS_DEFAULTS = {
   resolution: 80,
   recenter: true,
 };
+
+const COMPLEX_MAP_PRESETS = [
+  { id: "z", label: "w = z", reExpr: "u", imExpr: "v" },
+  { id: "z2", label: "w = z^2", reExpr: "u^2 - v^2", imExpr: "2*u*v" },
+  { id: "z3", label: "w = z^3", reExpr: "u^3 - 3*u*v^2", imExpr: "3*u^2*v - v^3" },
+  { id: "exp", label: "w = exp(z)", reExpr: "exp(u) * cos(v)", imExpr: "exp(u) * sin(v)" },
+];
+const COMPLEX_MAP_CUSTOM_ID = "custom";
+
+const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
+  reExpr: COMPLEX_MAP_PRESETS[0]?.reExpr ?? "u",
+  imExpr: COMPLEX_MAP_PRESETS[0]?.imExpr ?? "v",
+  uMin: -2,
+  uMax: 2,
+  vMin: -2,
+  vMax: 2,
+  nu: 120,
+  nv: 80,
+  sweepAxis: "v",
+  outputMode: "sweep",
+  wScale: 1,
+  clampAbs: null,
+  showIsolines: false,
+  isolinesCount: 7,
+};
+
+const COMPLEX_MAP_LABEL = "Complex Map Sweep (z→w)";
+const COMPLEX_MAP_OUTPUT_LABELS: Record<ComplexMapSweepSpec["outputMode"], string> = {
+  sweep: COMPLEX_MAP_LABEL,
+  re: "Complex Map Surface (Re)",
+  im: "Complex Map Surface (Im)",
+  both: "Complex Map Surfaces (Re + Im)",
+};
+const COMPLEX_MAP_LABEL_SET = new Set(Object.values(COMPLEX_MAP_OUTPUT_LABELS));
 
 const DEFAULT_VOLUME_PRESET_ID: VolumePresetId = "sphere";
 
@@ -346,6 +386,7 @@ const COLOR_MODE_LABELS: Record<ColorMode, string> = {
   solid: "Solid",
   height: "Height",
   radius: "Radius",
+  phase: "Phase",
   curvature: "Curvature",
   gaussian: "K",
   mean: "H",
@@ -1170,6 +1211,92 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setDatasetKind("surface");
   }, []);
 
+  // complex map sweep
+  const [complexMapSpec, setComplexMapSpec] = useState<ComplexMapSweepSpec>(COMPLEX_MAP_DEFAULT_SPEC);
+  const [complexMapPresetId, setComplexMapPresetId] = useState<string>(
+    COMPLEX_MAP_PRESETS[0]?.id ?? COMPLEX_MAP_CUSTOM_ID
+  );
+  const [complexMapError, setComplexMapError] = useState<string | null>(null);
+  const [complexMapPolylines, setComplexMapPolylines] = useState<PolylineSet | null>(null);
+  const [complexMapLine, setComplexMapLine] = useState<ComplexMapLine>(null);
+  const [complexMapLinePolylines, setComplexMapLinePolylines] = useState<PolylineSet | null>(null);
+  const [complexMapLineWPolylines, setComplexMapLineWPolylines] = useState<[number, number][][] | null>(null);
+  const [complexMapIsolineWPolylines, setComplexMapIsolineWPolylines] = useState<[number, number][][] | null>(null);
+  const [complexMapIsolineZLines, setComplexMapIsolineZLines] = useState<[number, number][][] | null>(null);
+  const [complexMapIsoline3dPolylines, setComplexMapIsoline3dPolylines] = useState<PolylineSet | null>(null);
+  const [complexMapLive, setComplexMapLive] = useState(true);
+
+  const updateComplexMapSpec = useCallback((patch: Partial<ComplexMapSweepSpec>) => {
+    setComplexMapSpec((prev) => ({ ...prev, ...patch }));
+    setComplexMapError(null);
+  }, []);
+
+  const applyComplexMapPreset = useCallback((id: string) => {
+    setComplexMapPresetId(id);
+    const preset = COMPLEX_MAP_PRESETS.find((p) => p.id === id);
+    if (!preset) {
+      setComplexMapError(null);
+      return;
+    }
+    setComplexMapSpec((prev) => ({
+      ...prev,
+      reExpr: preset.reExpr,
+      imExpr: preset.imExpr,
+    }));
+    setComplexMapError(null);
+  }, []);
+
+  const complexMapCompiled = useMemo(
+    () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr),
+    [complexMapSpec.reExpr, complexMapSpec.imExpr]
+  );
+
+  const complexMapZExtent = useMemo(() => {
+    const m = Math.max(
+      1,
+      Math.abs(complexMapSpec.uMin),
+      Math.abs(complexMapSpec.uMax),
+      Math.abs(complexMapSpec.vMin),
+      Math.abs(complexMapSpec.vMax)
+    );
+    return m;
+  }, [complexMapSpec.uMin, complexMapSpec.uMax, complexMapSpec.vMin, complexMapSpec.vMax]);
+
+  const complexMapWExtent = useMemo(() => {
+    const clampAbs = complexMapSpec.clampAbs;
+    if (clampAbs != null && Number.isFinite(clampAbs) && clampAbs > 0) return clampAbs;
+    if (complexMapCompiled.error) return 3;
+    const { reFn, imFn } = complexMapCompiled;
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+    const samples = 16;
+    let maxMag = 0;
+    for (let i = 0; i < samples; i++) {
+      const u = uMin + (uMax - uMin) * (i / (samples - 1));
+      for (let j = 0; j < samples; j++) {
+        const v = vMin + (vMax - vMin) * (j / (samples - 1));
+        const re = reFn(u, v);
+        const im = imFn(u, v);
+        if (!Number.isFinite(re) || !Number.isFinite(im)) continue;
+        const mag = Math.hypot(re * wScale, im * wScale);
+        if (mag > maxMag) maxMag = mag;
+      }
+    }
+    if (!Number.isFinite(maxMag) || maxMag <= 1e-6) return 3;
+    return Math.max(2, maxMag * 1.15);
+  }, [
+    complexMapSpec.uMin,
+    complexMapSpec.uMax,
+    complexMapSpec.vMin,
+    complexMapSpec.vMax,
+    complexMapSpec.wScale,
+    complexMapSpec.clampAbs,
+    complexMapCompiled,
+  ]);
+
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
   const [graphSurfaceId, setGraphSurfaceId] = useState<SurfaceId>("graph_saddle");
@@ -1495,11 +1622,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     safeParseArray<ImplicitDomainPreset>(localStorage.getItem("mathapp.domainPresets.implicit.v1"))
   );
 
+  const isComplexViewer = surfaceViewerKind === "complex";
+  const isMeshLikeViewer = surfaceViewerKind === "mesh" || isComplexViewer;
+
   // active equation surface id (single truth)
   const activeEqSurfaceId =
     surfaceViewerKind === "graph"
       ? graphSurfaceId
-      : surfaceViewerKind === "mesh"
+      : isMeshLikeViewer
         ? "surface_mesh"
         : implicitSurfaceId;
   const activeImplicitExpr = useMemo(() => {
@@ -1599,7 +1729,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   useEffect(() => {
     if (!compareEnabled) return;
-    if (surfaceViewerKind === "mesh") {
+    if (isMeshLikeViewer) {
       setCompareEnabled(false);
       return;
     }
@@ -1609,7 +1739,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (surfaceViewerKind === "implicit" && isGraphSurface(compareSurfaceId)) {
       setCompareSurfaceId("sphere");
     }
-  }, [compareEnabled, surfaceViewerKind, compareSurfaceId]);
+  }, [compareEnabled, isMeshLikeViewer, surfaceViewerKind, compareSurfaceId]);
 
   useEffect(() => {
     saveArray("mathapp.domainPresets.graph.v1", graphDomainPresets);
@@ -1638,6 +1768,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
   const wRef = useRef<PlanePlotHandle | null>(null);
+  const [wPlaneDomainColor, setWPlaneDomainColor] = useState(true);
+  const [wPlaneShowRings, setWPlaneShowRings] = useState(false);
+  const [wPlaneShowRays, setWPlaneShowRays] = useState(false);
 
   // resizable panels
   const [leftWidth, setLeftWidth] = useState(260);
@@ -1717,7 +1850,10 @@ const mobiusEffectiveParams = useMemo(() => {
     ) {
       setColorMode("height");
     }
-  }, [surfaceViewerKind, colorMode]);
+    if (colorMode === "phase" && !(isMeshLikeViewer && surfaceMeshData?.label === COMPLEX_MAP_LABEL)) {
+      setColorMode("height");
+    }
+  }, [surfaceViewerKind, colorMode, surfaceMeshData?.label]);
 
   /* ---------- central drawing effect (2D modes) ---------- */
   useEffect(() => {
@@ -1748,7 +1884,7 @@ case "mobius":
         wRef.current.drawGrid(0.5);
         break;
     }
-  }, [mode, mobiusParams, chebN, primKind, primValue, mapId, samples]);
+  }, [mode, mobiusParams, chebN, primKind, primValue, mapId, samples, wPlaneDomainColor, wPlaneShowRings, wPlaneShowRays]);
 
   /* ---------- probe reset rules ---------- */
   useEffect(() => {
@@ -1941,7 +2077,7 @@ case "mobius":
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
-    if (kind === "weierstrass" || kind === "mesh") {
+    if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
     }
@@ -1962,6 +2098,263 @@ case "mobius":
     setSurfaceSampleSet(set);
   }, []);
 
+  const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
+    if (!isMeshLikeViewer) return null;
+    if (!surfaceMeshData || !COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label)) return null;
+    const out: PolylineSet = [];
+    const iso = complexMapIsoline3dPolylines?.length ? complexMapIsoline3dPolylines : complexMapPolylines;
+    if (iso?.length) out.push(...iso);
+    if (complexMapLinePolylines?.length) out.push(...complexMapLinePolylines);
+    return out.length ? out : null;
+  }, [
+    isMeshLikeViewer,
+    surfaceMeshData,
+    complexMapIsoline3dPolylines,
+    complexMapPolylines,
+    complexMapLinePolylines,
+  ]);
+
+  const handleBuildComplexMapSweep = useCallback(() => {
+    const res = buildComplexMapSweep(complexMapSpec);
+    if (!res.build || res.error) {
+      setComplexMapError(res.error ?? "Failed to build complex map surface.");
+      return;
+    }
+    const label = COMPLEX_MAP_OUTPUT_LABELS[complexMapSpec.outputMode] ?? COMPLEX_MAP_LABEL;
+    const next: SurfaceMeshData = {
+      label,
+      positions: res.build.positions,
+      indices: res.build.indices,
+      source: "generated",
+    };
+    setSurfaceDataset(applySurfaceMeshOps(next));
+    setSurfaceViewerKind("complex");
+    setSurfaceMeshImportError(null);
+    setComplexMapError(null);
+    setComplexMapPolylines(res.build.polylines ?? null);
+  }, [complexMapSpec, setSurfaceDataset]);
+
+  useEffect(() => {
+    if (!complexMapLive) return;
+    if (mode !== "surfaces") return;
+    if (surfaceViewerKind !== "complex") return;
+    const handle = window.setTimeout(() => {
+      handleBuildComplexMapSweep();
+    }, 200);
+    return () => window.clearTimeout(handle);
+  }, [complexMapLive, handleBuildComplexMapSweep, mode, surfaceViewerKind]);
+
+  useEffect(() => {
+    if (!complexMapLine || complexMapCompiled.error) {
+      setComplexMapLinePolylines(null);
+      setComplexMapLineWPolylines(null);
+      return;
+    }
+
+    const { reFn, imFn } = complexMapCompiled;
+    const clampAbs =
+      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+        ? complexMapSpec.clampAbs
+        : null;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+
+    const clampMag = (re: number, im: number, limit: number) => {
+      const mag = Math.hypot(re, im);
+      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
+      const s = limit / mag;
+      return { re: re * s, im: im * s };
+    };
+
+    const isUConst = complexMapLine.axis === "u";
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const count = Math.max(2, Math.round(isUConst ? complexMapSpec.nv : complexMapSpec.nu));
+    const tMin = isUConst ? vMin : uMin;
+    const tMax = isUConst ? vMax : uMax;
+    const tStep = count > 1 ? (tMax - tMin) / (count - 1) : 0;
+
+    const outputMode = complexMapSpec.outputMode;
+    const lineSweep: PolylineSet = [];
+    const lineRe: PolylineSet = [];
+    const lineIm: PolylineSet = [];
+    const lineW: [number, number][][] = [];
+    let currentSweep: { x: number; y: number; z: number }[] = [];
+    let currentRe: { x: number; y: number; z: number }[] = [];
+    let currentIm: { x: number; y: number; z: number }[] = [];
+    let currentW: [number, number][] = [];
+
+    for (let i = 0; i < count; i++) {
+      const t = tMin + tStep * i;
+      const u = isUConst ? complexMapLine.value : t;
+      const v = isUConst ? t : complexMapLine.value;
+      let re = reFn(u, v);
+      let im = imFn(u, v);
+      if (!Number.isFinite(re) || !Number.isFinite(im)) {
+        if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+        if (currentRe.length >= 2) lineRe.push(currentRe);
+        if (currentIm.length >= 2) lineIm.push(currentIm);
+        if (currentW.length >= 2) lineW.push(currentW);
+        currentSweep = [];
+        currentRe = [];
+        currentIm = [];
+        currentW = [];
+        continue;
+      }
+      re *= wScale;
+      im *= wScale;
+      if (clampAbs) {
+        const clamped = clampMag(re, im, clampAbs);
+        re = clamped.re;
+        im = clamped.im;
+      }
+      const x = complexMapSpec.sweepAxis === "v" ? v : u;
+      const other = complexMapSpec.sweepAxis === "v" ? u : v;
+      currentSweep.push({ x, y: re, z: im });
+      currentRe.push({ x, y: re, z: other });
+      currentIm.push({ x, y: im, z: other });
+      currentW.push([re, im]);
+    }
+
+    if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+    if (currentRe.length >= 2) lineRe.push(currentRe);
+    if (currentIm.length >= 2) lineIm.push(currentIm);
+    if (currentW.length >= 2) lineW.push(currentW);
+
+    const line3d: PolylineSet = [];
+    if (outputMode === "sweep") {
+      line3d.push(...lineSweep);
+    } else if (outputMode === "re") {
+      line3d.push(...lineRe);
+    } else if (outputMode === "im") {
+      line3d.push(...lineIm);
+    } else {
+      line3d.push(...lineRe, ...lineIm);
+    }
+    if (outputMode !== "sweep") {
+      line3d.push(...lineSweep);
+    }
+
+    setComplexMapLinePolylines(line3d.length ? line3d : null);
+    setComplexMapLineWPolylines(lineW.length ? lineW : null);
+  }, [complexMapLine, complexMapCompiled, complexMapSpec]);
+
+  useEffect(() => {
+    if (!complexMapSpec.showIsolines || complexMapCompiled.error) {
+      setComplexMapIsolineWPolylines(null);
+      setComplexMapIsolineZLines(null);
+      setComplexMapIsoline3dPolylines(null);
+      return;
+    }
+
+    const { reFn, imFn } = complexMapCompiled;
+    const clampAbs =
+      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+        ? complexMapSpec.clampAbs
+        : null;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+
+    const clampMag = (re: number, im: number, limit: number) => {
+      const mag = Math.hypot(re, im);
+      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
+      const s = limit / mag;
+      return { re: re * s, im: im * s };
+    };
+
+    const count = Math.max(1, Math.round(complexMapSpec.isolinesCount));
+    const sweepIsV = complexMapSpec.sweepAxis === "v";
+    const lineMin = sweepIsV ? complexMapSpec.vMin : complexMapSpec.uMin;
+    const lineMax = sweepIsV ? complexMapSpec.vMax : complexMapSpec.uMax;
+    const lineRange = lineMax - lineMin;
+    const lineStep = count > 1 ? lineRange / (count - 1) : 0;
+    const sampleCount = Math.max(2, Math.round(sweepIsV ? complexMapSpec.nu : complexMapSpec.nv));
+    const sampleMin = sweepIsV ? complexMapSpec.uMin : complexMapSpec.vMin;
+    const sampleMax = sweepIsV ? complexMapSpec.uMax : complexMapSpec.vMax;
+    const sampleStep = sampleCount > 1 ? (sampleMax - sampleMin) / (sampleCount - 1) : 0;
+
+    const outputMode = complexMapSpec.outputMode;
+    const wLines: [number, number][][] = [];
+    const zLines: [number, number][][] = [];
+    const lineSweep: PolylineSet = [];
+    const lineRe: PolylineSet = [];
+    const lineIm: PolylineSet = [];
+
+    for (let k = 0; k < count; k++) {
+      const sweepVal = lineMin + lineStep * k;
+      let currentW: [number, number][] = [];
+      let currentSweep: { x: number; y: number; z: number }[] = [];
+      let currentRe: { x: number; y: number; z: number }[] = [];
+      let currentIm: { x: number; y: number; z: number }[] = [];
+
+      for (let s = 0; s < sampleCount; s++) {
+        const t = sampleMin + sampleStep * s;
+        const u = sweepIsV ? t : sweepVal;
+        const v = sweepIsV ? sweepVal : t;
+        let re = reFn(u, v);
+        let im = imFn(u, v);
+        if (!Number.isFinite(re) || !Number.isFinite(im)) {
+          if (currentW.length >= 2) wLines.push(currentW);
+          if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+          if (currentRe.length >= 2) lineRe.push(currentRe);
+          if (currentIm.length >= 2) lineIm.push(currentIm);
+          currentW = [];
+          currentSweep = [];
+          currentRe = [];
+          currentIm = [];
+          continue;
+        }
+        re *= wScale;
+        im *= wScale;
+        if (clampAbs) {
+          const clamped = clampMag(re, im, clampAbs);
+          re = clamped.re;
+          im = clamped.im;
+        }
+        currentW.push([re, im]);
+        const x = sweepIsV ? v : u;
+        const other = sweepIsV ? u : v;
+        currentSweep.push({ x, y: re, z: im });
+        currentRe.push({ x, y: re, z: other });
+        currentIm.push({ x, y: im, z: other });
+      }
+      if (currentW.length >= 2) wLines.push(currentW);
+      if (currentSweep.length >= 2) lineSweep.push(currentSweep);
+      if (currentRe.length >= 2) lineRe.push(currentRe);
+      if (currentIm.length >= 2) lineIm.push(currentIm);
+
+      if (sweepIsV) {
+        zLines.push([
+          [complexMapSpec.uMin, sweepVal],
+          [complexMapSpec.uMax, sweepVal],
+        ]);
+      } else {
+        zLines.push([
+          [sweepVal, complexMapSpec.vMin],
+          [sweepVal, complexMapSpec.vMax],
+        ]);
+      }
+    }
+
+    const line3d: PolylineSet = [];
+    if (outputMode === "sweep") {
+      line3d.push(...lineSweep);
+    } else if (outputMode === "re") {
+      line3d.push(...lineRe);
+    } else if (outputMode === "im") {
+      line3d.push(...lineIm);
+    } else {
+      line3d.push(...lineRe, ...lineIm);
+    }
+    if (outputMode !== "sweep") {
+      line3d.push(...lineSweep);
+    }
+
+    setComplexMapIsolineWPolylines(wLines.length ? wLines : null);
+    setComplexMapIsolineZLines(zLines.length ? zLines : null);
+    setComplexMapIsoline3dPolylines(line3d.length ? line3d : null);
+  }, [complexMapCompiled, complexMapSpec]);
+
   const handleGenerateSurfaceMeshPreset = useCallback((presetId: string) => {
     const preset = SURFACE_MESH_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
@@ -1969,6 +2362,7 @@ case "mobius":
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
       setSurfaceDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
+      setComplexMapPolylines(null);
       setSurfaceViewerKind("mesh");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
@@ -1984,6 +2378,7 @@ case "mobius":
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         setSurfaceDataset(applySurfaceMeshOps(base));
+        setComplexMapPolylines(null);
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
@@ -2013,7 +2408,7 @@ case "mobius":
           ? "Weierstrass surface"
           : surfaceViewerKind === "param"
             ? `Param: ${paramMeta?.label ?? paramSurfaceId}`
-            : surfaceViewerKind === "mesh"
+            : surfaceViewerKind === "mesh" || surfaceViewerKind === "complex"
               ? surfaceMeshData?.label ?? "Surface mesh"
               : "Surface mesh";
   }, [surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, surfaceMeshData?.label]);
@@ -2039,6 +2434,7 @@ case "mobius":
       setSurfaceDataset(applySurfaceMeshOps(next));
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
+      setComplexMapPolylines(null);
     },
     [buildActiveMeshLabel]
   );
@@ -2250,7 +2646,9 @@ case "mobius":
             ? "Weierstrass surface"
             : surfaceViewerKind === "param"
               ? `Param: ${paramMeta?.label ?? paramSurfaceId}`
-              : "Surface mesh";
+              : surfaceViewerKind === "complex"
+                ? surfaceMeshData?.label ?? "Complex map surface"
+                : "Surface mesh";
 
     const next: SurfaceMeshData = {
       label,
@@ -2261,7 +2659,8 @@ case "mobius":
     setSurfaceDataset(applySurfaceMeshOps(next));
     setSurfaceViewerKind("mesh");
     setSurfaceMeshImportError(null);
-  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh]);
+    setComplexMapPolylines(null);
+  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh, surfaceMeshData?.label]);
 
   const handleParamGeodesicState = useCallback((state: ParamGeodesicState | null) => {
     paramGeodesicStateRef.current = state;
@@ -3189,7 +3588,7 @@ case "mobius":
   }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric, selectionStatsToken]);
 
   const surfaceMeshExportable =
-    surfaceViewerKind !== "mesh" &&
+    !isMeshLikeViewer &&
     (surfaceViewerKind === "implicit" ? !!activeCgalMesh : !!surfaceSampleSet?.meshData?.length);
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
@@ -3323,7 +3722,8 @@ case "mobius":
   const geodesicHeatParamAvailable =
     (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") &&
     !!surfaceSampleSet?.meshData?.length;
-  const geodesicHeatMeshAvailable = surfaceViewerKind === "mesh" && !!surfaceSampleSet?.meshData?.length;
+  const geodesicHeatMeshAvailable =
+    (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") && !!surfaceSampleSet?.meshData?.length;
   const geodesicHeatAvailable =
     (surfaceViewerKind === "implicit" && !!activeCgalMesh) ||
     geodesicHeatGraphAvailable ||
@@ -3334,7 +3734,8 @@ case "mobius":
       surfaceViewerKind === "graph" ||
       surfaceViewerKind === "param" ||
       surfaceViewerKind === "weierstrass" ||
-      surfaceViewerKind === "mesh") &&
+      surfaceViewerKind === "mesh" ||
+      surfaceViewerKind === "complex") &&
     !geodesicHeatUseContinuous;
   const geodesicHeatHeatmapActive = useMemo(() => {
     if (!geodesicHeatHeatmapAllowed) return false;
@@ -3346,7 +3747,8 @@ case "mobius":
       surfaceViewerKind === "graph" ||
       surfaceViewerKind === "param" ||
       surfaceViewerKind === "weierstrass" ||
-      surfaceViewerKind === "mesh"
+      surfaceViewerKind === "mesh" ||
+      surfaceViewerKind === "complex"
     ) {
       if (!geodesicHeatMeshKey) return false;
       const meshes = surfaceSampleSet?.meshData;
@@ -3373,7 +3775,7 @@ case "mobius":
     if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
       return "Param mesh not ready";
     }
-    if (surfaceViewerKind === "mesh") {
+    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
       return "Surface mesh not ready";
     }
     return "Heat path only available in implicit, graph, param/weierstrass, or mesh";
@@ -3391,7 +3793,7 @@ case "mobius":
     if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
       return "Param mesh not ready";
     }
-    if (surfaceViewerKind === "mesh") {
+    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
       return "Surface mesh not ready";
     }
     return "Disk only available in implicit, graph, param/weierstrass, or mesh";
@@ -4243,7 +4645,7 @@ case "mobius":
           [
             "surface implicit|graph|param <id>",
             "surface mesh",
-            "colorMode <solid|height|radius|curvature|gaussian|mean|k1|k2>",
+            "colorMode <solid|height|radius|phase|curvature|gaussian|mean|k1|k2>",
             "palette <blueRed|rainbow|grayscale|redYellow>",
             "wireframe on|off  |  planes on|off  |  probe on|off",
             "normals on|off  |  tangents on|off  |  tangentPlane on|off",
@@ -4542,6 +4944,8 @@ case "mobius":
             <SurfacesControls
               viewerKind={surfaceViewerKind}
               onChangeViewerKind={handleChangeViewerKind}
+              datasetKind={datasetKind}
+              onChangeDatasetKind={setDatasetKind}
               surfaceId={activeEqSurfaceId}
               onChangeSurface={handlePickEqSurface}
               paramId={paramSurfaceId}
@@ -4597,7 +5001,6 @@ case "mobius":
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
                   datasetKind={datasetKind}
-                  onChangeDatasetKind={setDatasetKind}
                   volumeDatasetOverride={volumeDatasetOverride}
                   volumeDistanceBusy={volumeDistanceBusy}
                   volumeDistanceError={volumeDistanceError}
@@ -4706,13 +5109,35 @@ case "mobius":
                   implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
                 onChangeImplicitExpr={setImplicitExpr}
-                paramXExpr={paramXExpr}
-                paramYExpr={paramYExpr}
-                paramZExpr={paramZExpr}
-                onChangeParamXExpr={setParamXExpr}
-                onChangeParamYExpr={setParamYExpr}
-                onChangeParamZExpr={setParamZExpr}
-                weierstrassGExpr={weierstrassGExpr}
+                  paramXExpr={paramXExpr}
+                  paramYExpr={paramYExpr}
+                  paramZExpr={paramZExpr}
+                  complexMapSpec={complexMapSpec}
+                  complexMapPresetId={complexMapPresetId}
+                  complexMapError={complexMapError}
+                  complexMapLive={complexMapLive}
+                  onToggleComplexMapLive={setComplexMapLive}
+                  complexMapLine={complexMapLine}
+                  complexMapZExtent={complexMapZExtent}
+                  complexMapWExtent={complexMapWExtent}
+                  complexMapLineWPolylines={complexMapLineWPolylines}
+                  complexMapIsolineWPolylines={complexMapIsolineWPolylines}
+                  complexMapIsolineZLines={complexMapIsolineZLines}
+                  complexMapIsoline3dPolylines={complexMapIsoline3dPolylines}
+                  wPlaneDomainColor={wPlaneDomainColor}
+                  wPlaneShowRings={wPlaneShowRings}
+                  wPlaneShowRays={wPlaneShowRays}
+                  onChangeWPlaneDomainColor={setWPlaneDomainColor}
+                  onChangeWPlaneShowRings={setWPlaneShowRings}
+                  onChangeWPlaneShowRays={setWPlaneShowRays}
+                  onChangeParamXExpr={setParamXExpr}
+                  onChangeParamYExpr={setParamYExpr}
+                  onChangeParamZExpr={setParamZExpr}
+                  onChangeComplexMapSpec={updateComplexMapSpec}
+                  onChangeComplexMapPreset={applyComplexMapPreset}
+                  onBuildComplexMapSweep={handleBuildComplexMapSweep}
+                  onPickComplexMapLine={setComplexMapLine}
+                  weierstrassGExpr={weierstrassGExpr}
                 weierstrassPhiExpr={weierstrassPhiExpr}
                 onChangeWeierstrassGExpr={setWeierstrassGExpr}
                 onChangeWeierstrassPhiExpr={setWeierstrassPhiExpr}
@@ -5215,7 +5640,9 @@ case "mobius":
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
                             implicitMeshOverride={activeCgalMesh}
-                            surfaceMeshOverride={surfaceViewerKind === "mesh" ? surfaceMeshData : null}
+                            surfaceMeshOverride={
+                              surfaceViewerKind === "mesh" || surfaceViewerKind === "complex" ? surfaceMeshData : null
+                            }
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                             wireframe={showWireframe}
@@ -5302,6 +5729,8 @@ case "mobius":
                         geodesicHeatPolylines={geodesicHeatPolylines}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                        overlayPolylines={complexMapOverlayPolylines}
+                        overlayPolylinesColor={0xffd400}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -5355,7 +5784,9 @@ case "mobius":
                               surfaceId={compareSurfaceId}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
-                              surfaceMeshOverride={surfaceViewerKind === "mesh" ? surfaceMeshData : null}
+                              surfaceMeshOverride={
+                                surfaceViewerKind === "mesh" || surfaceViewerKind === "complex" ? surfaceMeshData : null
+                              }
                               sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={showWireframe}
                               showPlanes={showPlanes}
@@ -5575,8 +6006,45 @@ case "mobius":
               </div>
 
               <h3 style={styles.h3}>W-plane (image)</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={wPlaneDomainColor}
+                    onChange={(e) => setWPlaneDomainColor(e.target.checked)}
+                  />
+                  Domain coloring
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={wPlaneShowRings}
+                    onChange={(e) => setWPlaneShowRings(e.target.checked)}
+                    disabled={!wPlaneDomainColor}
+                  />
+                  |w| rings
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={wPlaneShowRays}
+                    onChange={(e) => setWPlaneShowRays(e.target.checked)}
+                    disabled={!wPlaneDomainColor}
+                  />
+                  arg(w) rays
+                </label>
+              </div>
               <div style={{ flex: 1, minHeight: 260 }}>
-                <PlanePlot id="svgW" extent={3} step={1} ref={wRef} style={{ height: "100%" }} />
+                <PlanePlot
+                  id="svgW"
+                  extent={3}
+                  step={1}
+                  ref={wRef}
+                  style={{ height: "100%" }}
+                  domainColoring={wPlaneDomainColor}
+                  domainRings={wPlaneShowRings}
+                  domainRays={wPlaneShowRays}
+                />
               </div>
             </div>
           </>
@@ -5672,6 +6140,8 @@ const MapsPanel: React.FC<{ mapId: MapId }> = ({ mapId }) => {
 type SurfacesControlsProps = {
   viewerKind: SurfaceViewerKind;
   onChangeViewerKind: (k: SurfaceViewerKind) => void;
+  datasetKind: DatasetKind;
+  onChangeDatasetKind: (k: DatasetKind) => void;
   surfaceId: SurfaceId;
   onChangeSurface: (s: SurfaceId) => void;
   paramId: ParamSurfaceId;
@@ -5692,6 +6162,8 @@ type SurfacesControlsProps = {
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   viewerKind,
   onChangeViewerKind,
+  datasetKind,
+  onChangeDatasetKind,
   surfaceId,
   onChangeSurface,
   paramId,
@@ -5710,19 +6182,24 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
+  const isVolume = datasetKind === "volume";
+  const isSurface = !isVolume;
 
   return (
     <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
       <div style={{ display: "flex", gap: 4 }}>
         <button
           type="button"
-          onClick={() => onChangeViewerKind("implicit")}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("implicit");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
-            background: viewerKind === "implicit" ? "#e6f0ff" : "#fff",
-            fontWeight: viewerKind === "implicit" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -5731,13 +6208,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
         <button
           type="button"
-          onClick={() => onChangeViewerKind("graph")}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("graph");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (viewerKind === "graph" ? "#0a66c2" : "#ddd"),
-            background: viewerKind === "graph" ? "#e6f0ff" : "#fff",
-            fontWeight: viewerKind === "graph" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -5746,13 +6226,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
         <button
           type="button"
-          onClick={() => onChangeViewerKind("param")}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("param");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (viewerKind === "param" ? "#0a66c2" : "#ddd"),
-            background: viewerKind === "param" ? "#e6f0ff" : "#fff",
-            fontWeight: viewerKind === "param" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "param" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "param" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "param" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -5760,13 +6243,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => onChangeViewerKind("weierstrass")}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("weierstrass");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
-            background: viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
-            fontWeight: viewerKind === "weierstrass" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -5774,99 +6260,137 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => onChangeViewerKind("mesh")}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("complex");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
-            background: viewerKind === "mesh" ? "#e6f0ff" : "#fff",
-            fontWeight: viewerKind === "mesh" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "complex" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "complex" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Complex map
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("mesh");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isSurface && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "mesh" ? 600 : 400,
             cursor: "pointer",
           }}
         >
           SurfaceMesh
         </button>
+        <button
+          type="button"
+          onClick={() => onChangeDatasetKind("volume")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isVolume ? "#0a66c2" : "#ddd"),
+            background: isVolume ? "#e6f0ff" : "#fff",
+            fontWeight: isVolume ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Volume
+        </button>
       </div>
 
-      <div style={{ flex: 1 }}>
-        {viewerKind === "implicit" && (
-          <SurfacesButtons surfaceId={surfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeSurface} />
-        )}
-        {viewerKind === "graph" && <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />}
-        {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
-        {viewerKind === "weierstrass" && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              <span style={{ fontWeight: 600, fontSize: 13 }}>Presets</span>
-              <span
-                title="Presets avoid singularities on the boundary; adjust the domain carefully when poles are nearby."
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: "50%",
-                  border: "1px solid #bbb",
-                  fontSize: 12,
-                  textAlign: "center",
-                  lineHeight: "14px",
-                  cursor: "help",
-                  userSelect: "none",
-                }}
-              >
-                ?
-              </span>
-            </div>
-            <div style={styles.presetsRow}>
-              {WEIERSTRASS_PRESETS.map((p) => {
-                const active = activeWeierstrassPreset?.id === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => onApplyWeierstrassPreset(p)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      border: "1px solid " + (active ? "#0a66c2" : "#ddd"),
-                      background: active ? "#e6f0ff" : "#fff",
-                      fontWeight: active ? 600 : 400,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-            {activeWeierstrassPreset && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid #e0e0e0",
-                  background: "#fff",
-                }}
-              >
-                <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Suggested safe domain</div>
-                <div style={{ fontSize: 12 }}>
-                  u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>
-                  {activeWeierstrassPreset.safeDomainReason}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onApplySuggestedDomain(activeWeierstrassPreset)}
-                  style={{ marginTop: 8, padding: "4px 10px" }}
+      {datasetKind !== "volume" && (
+        <div style={{ flex: 1 }}>
+          {viewerKind === "implicit" && (
+            <SurfacesButtons surfaceId={surfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeSurface} />
+          )}
+          {viewerKind === "graph" && (
+            <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />
+          )}
+          {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
+          {viewerKind === "weierstrass" && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>Presets</span>
+                <span
+                  title="Presets avoid singularities on the boundary; adjust the domain carefully when poles are nearby."
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: "50%",
+                    border: "1px solid #bbb",
+                    fontSize: 12,
+                    textAlign: "center",
+                    lineHeight: "14px",
+                    cursor: "help",
+                    userSelect: "none",
+                  }}
                 >
-                  Apply suggested domain
-                </button>
+                  ?
+                </span>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              <div style={styles.presetsRow}>
+                {WEIERSTRASS_PRESETS.map((p) => {
+                  const active = activeWeierstrassPreset?.id === p.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onApplyWeierstrassPreset(p)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid " + (active ? "#0a66c2" : "#ddd"),
+                        background: active ? "#e6f0ff" : "#fff",
+                        fontWeight: active ? 600 : 400,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {activeWeierstrassPreset && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #e0e0e0",
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Suggested safe domain</div>
+                  <div style={{ fontSize: 12 }}>
+                    u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>
+                    {activeWeierstrassPreset.safeDomainReason}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onApplySuggestedDomain(activeWeierstrassPreset)}
+                    style={{ marginTop: 8, padding: "4px 10px" }}
+                  >
+                    Apply suggested domain
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -5874,13 +6398,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             type="checkbox"
             checked={compareEnabled}
             onChange={onToggleCompare}
-            disabled={viewerKind === "weierstrass" || viewerKind === "mesh"}
+            disabled={viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
           />
           Compare
         </label>
       </div>
 
-      {compareEnabled && viewerKind !== "mesh" && (
+      {compareEnabled && viewerKind !== "mesh" && viewerKind !== "complex" && !isVolume && (
         <div style={{ flex: 1 }}>
           {viewerKind === "implicit" && (
             <SurfacesButtons surfaceId={compareSurfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeCompareSurface} />
@@ -5961,7 +6485,6 @@ type SurfacesLeftPanelProps = {
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
   datasetKind: DatasetKind;
-  onChangeDatasetKind: (kind: DatasetKind) => void;
   volumeDatasetOverride: VolumeDataset | null;
   volumeDistanceBusy: boolean;
   volumeDistanceError: string | null;
@@ -6075,9 +6598,31 @@ type SurfacesLeftPanelProps = {
   paramXExpr: string;
   paramYExpr: string;
   paramZExpr: string;
+  complexMapSpec: ComplexMapSweepSpec;
+  complexMapPresetId: string;
+  complexMapError: string | null;
+  complexMapLive: boolean;
+  onToggleComplexMapLive: (v: boolean) => void;
+  complexMapLine: ComplexMapLine;
+  complexMapZExtent: number;
+  complexMapWExtent: number;
+  complexMapLineWPolylines: [number, number][][] | null;
+  complexMapIsolineWPolylines: [number, number][][] | null;
+  complexMapIsolineZLines: [number, number][][] | null;
+  complexMapIsoline3dPolylines: PolylineSet | null;
+  wPlaneDomainColor: boolean;
+  wPlaneShowRings: boolean;
+  wPlaneShowRays: boolean;
+  onChangeWPlaneDomainColor: (v: boolean) => void;
+  onChangeWPlaneShowRings: (v: boolean) => void;
+  onChangeWPlaneShowRays: (v: boolean) => void;
   onChangeParamXExpr: (s: string) => void;
   onChangeParamYExpr: (s: string) => void;
   onChangeParamZExpr: (s: string) => void;
+  onChangeComplexMapSpec: (patch: Partial<ComplexMapSweepSpec>) => void;
+  onChangeComplexMapPreset: (id: string) => void;
+  onBuildComplexMapSweep: () => void;
+  onPickComplexMapLine: (line: ComplexMapLine) => void;
   weierstrassGExpr: string;
   weierstrassPhiExpr: string;
   onChangeWeierstrassGExpr: (s: string) => void;
@@ -6299,7 +6844,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceId,
   paramId,
   datasetKind,
-  onChangeDatasetKind,
   volumeDatasetOverride,
   volumeDistanceBusy,
   volumeDistanceError,
@@ -6411,9 +6955,31 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramXExpr,
   paramYExpr,
   paramZExpr,
+  complexMapSpec,
+  complexMapPresetId,
+  complexMapError,
+  complexMapLive,
+  onToggleComplexMapLive,
+  complexMapLine,
+  complexMapZExtent,
+  complexMapWExtent,
+  complexMapLineWPolylines,
+  complexMapIsolineWPolylines,
+  complexMapIsolineZLines,
+  complexMapIsoline3dPolylines,
+  wPlaneDomainColor,
+  wPlaneShowRings,
+  wPlaneShowRays,
+  onChangeWPlaneDomainColor,
+  onChangeWPlaneShowRings,
+  onChangeWPlaneShowRays,
   onChangeParamXExpr,
   onChangeParamYExpr,
   onChangeParamZExpr,
+  onChangeComplexMapSpec,
+  onChangeComplexMapPreset,
+  onBuildComplexMapSweep,
+  onPickComplexMapLine,
   weierstrassGExpr,
   weierstrassPhiExpr,
   onChangeWeierstrassGExpr,
@@ -6627,7 +7193,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
   const isVolume = datasetKind === "volume";
   const isWeierstrass = viewerKind === "weierstrass";
-  const isMeshViewer = viewerKind === "mesh";
+  const isMeshViewer = viewerKind === "mesh" || viewerKind === "complex";
   const isEqViewer = viewerKind === "implicit" || viewerKind === "graph";
   const meshMeta = {
     label: surfaceMeshLabel,
@@ -6679,11 +7245,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         ? "implicit surface  f(x,y,z) = 0"
         : viewerKind === "graph"
           ? "graph (explicit)  z = f(x,y)"
-          : viewerKind === "weierstrass"
-            ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
-            : viewerKind === "mesh"
-              ? "surface mesh (triangles)"
-              : "parametric surface  σ(u,v)";
+      : viewerKind === "weierstrass"
+        ? "Weierstrass minimal surface  X(z) = Re integral Phi(z) dz"
+        : viewerKind === "complex"
+          ? "complex map surface  w(u,v) = Re + i Im"
+          : viewerKind === "mesh"
+            ? "surface mesh (triangles)"
+            : "parametric surface  σ(u,v)";
 
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
@@ -6693,15 +7261,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
+  const zPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const wPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
+  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
+  const canPhaseColor =
+    (viewerKind === "mesh" || viewerKind === "complex") && surfaceMeshLabel === COMPLEX_MAP_LABEL;
   const colorModes: ColorMode[] =
     viewerKind === "param" || viewerKind === "weierstrass"
       ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
       : viewerKind === "graph"
       ? ["solid", "height", "radius", "curvature"]
-      : ["solid", "height", "radius"];
+      : canPhaseColor
+        ? ["solid", "height", "radius", "phase"]
+        : ["solid", "height", "radius"];
   const volumeParamDefs = volumePreset.params ?? [];
   const volumeShowCustom = volumePresetId === "custom";
   const volumePresetOptions = VOLUME_PRESETS.filter((preset) => preset.id !== "custom");
@@ -6741,6 +7317,78 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     { label: "Saddle (implicit)", expr: "z - x^2 + y^2" },
   ];
 
+  const handleZPlaneClick = useCallback(
+    (pt: { re: number; im: number }, ev: MouseEvent) => {
+      const baseAxis = complexLineMode === "vertical" ? "u" : "v";
+      const axis = ev.shiftKey ? (baseAxis === "u" ? "v" : "u") : baseAxis;
+      const uMin = Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
+      const uMax = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
+      const vMin = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
+      const vMax = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
+      const value = axis === "u" ? clamp(pt.re, uMin, uMax) : clamp(pt.im, vMin, vMax);
+      onPickComplexMapLine({ axis, value });
+    },
+    [complexLineMode, complexMapSpec, onPickComplexMapLine]
+  );
+
+  useEffect(() => {
+    zPlaneRef.current?.drawGrid(1);
+    wPlaneRef.current?.drawGrid(1);
+
+    if (complexMapSpec.showIsolines) {
+      if (complexMapIsolineZLines?.length) {
+        for (const line of complexMapIsolineZLines) {
+          zPlaneRef.current?.drawCurve(line, "#9aa3ad");
+        }
+      }
+      if (complexMapIsolineWPolylines?.length) {
+        for (const line of complexMapIsolineWPolylines) {
+          wPlaneRef.current?.drawCurve(line, "#9aa3ad");
+        }
+      }
+    }
+
+    if (complexMapLine) {
+      const uMin = Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
+      const uMax = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
+      const vMin = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
+      const vMax = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
+
+      if (complexMapLine.axis === "u") {
+        zPlaneRef.current?.drawCurve(
+          [
+            [complexMapLine.value, vMin],
+            [complexMapLine.value, vMax],
+          ],
+          "#d14d00"
+        );
+      } else {
+        zPlaneRef.current?.drawCurve(
+          [
+            [uMin, complexMapLine.value],
+            [uMax, complexMapLine.value],
+          ],
+          "#d14d00"
+        );
+      }
+    }
+
+    if (complexMapLineWPolylines?.length) {
+      for (const line of complexMapLineWPolylines) {
+        wPlaneRef.current?.drawCurve(line, "#d14d00");
+      }
+    }
+  }, [
+    complexMapLine,
+    complexMapLineWPolylines,
+    complexMapIsolineWPolylines,
+    complexMapIsolineZLines,
+    complexMapSpec,
+    wPlaneDomainColor,
+    wPlaneShowRings,
+    wPlaneShowRays,
+  ]);
+
   return (
     <section>
       <h2 style={styles.h2}>{isVolume ? "Volume viewer (three.js)" : "Surface viewer (three.js)"}</h2>
@@ -6767,31 +7415,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       <p style={styles.hint}>
         Mode: <strong>{modeLabel}</strong>
       </p>
-
-      <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Dataset mode</div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => onChangeDatasetKind("surface")}
-            style={pill(datasetKind === "surface")}
-            aria-pressed={datasetKind === "surface"}
-          >
-            Surface
-          </button>
-          <button
-            type="button"
-            onClick={() => onChangeDatasetKind("volume")}
-            style={pill(datasetKind === "volume")}
-            aria-pressed={datasetKind === "volume"}
-          >
-            Volume
-          </button>
-        </div>
-        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-          Surface datasets render triangle meshes. Volume datasets will use voxel grids.
-        </div>
-      </div>
 
       {datasetKind === "volume" && (
         <div style={{ ...cardStyle, marginTop: 10 }}>
@@ -7364,6 +7987,364 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         </div>
       )}
 
+      {viewerKind === "complex" && (
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (z→w)</div>
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          Map z = u + iv to w(u,v) = Re + i Im, then sweep or graph Re/Im as surfaces.
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 8 }}>Mapping definition</div>
+        <label style={{ fontSize: 12 }}>Re(w)(u,v) =</label>
+        <input
+          type="text"
+          value={complexMapSpec.reExpr}
+          onChange={(e) => {
+            onChangeComplexMapSpec({ reExpr: e.target.value });
+            if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
+          }}
+          style={{
+            width: "100%",
+            marginTop: 2,
+            marginBottom: 6,
+            padding: "4px 6px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            fontFamily: "monospace",
+            fontSize: 13,
+            boxSizing: "border-box",
+          }}
+        />
+
+        <label style={{ fontSize: 12 }}>Im(w)(u,v) =</label>
+        <input
+          type="text"
+          value={complexMapSpec.imExpr}
+          onChange={(e) => {
+            onChangeComplexMapSpec({ imExpr: e.target.value });
+            if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
+          }}
+          style={{
+            width: "100%",
+            marginTop: 2,
+            marginBottom: 8,
+            padding: "4px 6px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            fontFamily: "monospace",
+            fontSize: 13,
+            boxSizing: "border-box",
+          }}
+        />
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Quick presets</div>
+        <select
+          value={complexMapPresetId}
+          onChange={(e) => onChangeComplexMapPreset(e.target.value)}
+          style={{ width: "100%", padding: "4px 6px", borderRadius: 6, border: "1px solid #ccc" }}
+        >
+          <option value={COMPLEX_MAP_CUSTOM_ID}>Custom</option>
+          {COMPLEX_MAP_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <div style={{ ...styles.hint, marginTop: 6 }}>Use u, v and functions like sin, cos, exp. Constants: pi, e.</div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Domain & sampling</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <label style={{ fontSize: 11 }}>
+            u min
+            <input
+              type="number"
+              step={0.1}
+              value={complexMapSpec.uMin}
+              onChange={(e) => onChangeComplexMapSpec({ uMin: Number(e.target.value) })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            u max
+            <input
+              type="number"
+              step={0.1}
+              value={complexMapSpec.uMax}
+              onChange={(e) => onChangeComplexMapSpec({ uMax: Number(e.target.value) })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            v min
+            <input
+              type="number"
+              step={0.1}
+              value={complexMapSpec.vMin}
+              onChange={(e) => onChangeComplexMapSpec({ vMin: Number(e.target.value) })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            v max
+            <input
+              type="number"
+              step={0.1}
+              value={complexMapSpec.vMax}
+              onChange={(e) => onChangeComplexMapSpec({ vMax: Number(e.target.value) })}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            nu
+            <input
+              type="number"
+              min={2}
+              max={400}
+              step={1}
+              value={complexMapSpec.nu}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChangeComplexMapSpec({ nu: clampInt(v, 2, 400) });
+              }}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            nv
+            <input
+              type="number"
+              min={2}
+              max={400}
+              step={1}
+              value={complexMapSpec.nv}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChangeComplexMapSpec({ nv: clampInt(v, 2, 400) });
+              }}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Embedding</div>
+        <div style={pillRow}>
+          {(["v", "u"] as const).map((axis) => (
+            <button
+              key={axis}
+              type="button"
+              onClick={() => onChangeComplexMapSpec({ sweepAxis: axis })}
+              style={pill(complexMapSpec.sweepAxis === axis)}
+              aria-pressed={complexMapSpec.sweepAxis === axis}
+            >
+              Sweep by {axis}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Output surface</div>
+        <div style={pillRow}>
+          {(
+            [
+              { id: "sweep", label: "Sweep (Re, Im)" },
+              { id: "re", label: "Re surface" },
+              { id: "im", label: "Im surface" },
+              { id: "both", label: "Re + Im surfaces" },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => onChangeComplexMapSpec({ outputMode: mode.id })}
+              style={pill(complexMapSpec.outputMode === mode.id)}
+              aria-pressed={complexMapSpec.outputMode === mode.id}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+          Re/Im surfaces use x = sweep axis, z = the other domain axis, height = Re/Im.
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Scaling & safety</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+          <span style={{ minWidth: 54 }}>w scale</span>
+          <input
+            type="number"
+            step={0.1}
+            value={complexMapSpec.wScale}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) onChangeComplexMapSpec({ wScale: v });
+            }}
+            style={{ width: 90 }}
+          />
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapSpec.clampAbs != null}
+              onChange={(e) => onChangeComplexMapSpec({ clampAbs: e.target.checked ? 4 : null })}
+            />
+            Clamp |w|
+          </label>
+          <input
+            type="number"
+            step={0.1}
+            min={0}
+            value={complexMapSpec.clampAbs ?? 4}
+            disabled={complexMapSpec.clampAbs == null}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v)) onChangeComplexMapSpec({ clampAbs: v });
+            }}
+            style={{ width: 80 }}
+          />
+        </div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Mapped iso-lines</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={complexMapSpec.showIsolines}
+              onChange={(e) => onChangeComplexMapSpec({ showIsolines: e.target.checked })}
+            />
+            Show mapped lines
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            Count
+            <input
+              type="number"
+              min={1}
+              max={100}
+              step={1}
+              value={complexMapSpec.isolinesCount}
+              disabled={!complexMapSpec.showIsolines}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCount: clampInt(v, 1, 100) });
+              }}
+              style={{ width: 70 }}
+            />
+          </label>
+        </div>
+        {complexMapSpec.outputMode !== "sweep" && (
+          <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+            3D lines include mapped lines plus the Re/Im graph lines.
+          </div>
+        )}
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Z/W planes</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+          <button
+            type="button"
+            onClick={() => setComplexLineMode("vertical")}
+            style={pill(complexLineMode === "vertical")}
+            aria-pressed={complexLineMode === "vertical"}
+          >
+            Vertical line
+          </button>
+          <button
+            type="button"
+            onClick={() => setComplexLineMode("horizontal")}
+            style={pill(complexLineMode === "horizontal")}
+            aria-pressed={complexLineMode === "horizontal"}
+          >
+            Horizontal line
+          </button>
+          <button
+            type="button"
+            onClick={() => onPickComplexMapLine(null)}
+            style={pill(!complexMapLine)}
+            aria-pressed={!complexMapLine}
+          >
+            Clear line
+          </button>
+          <span style={{ fontSize: 11, opacity: 0.7, alignSelf: "center" }}>
+            Click Z-plane to pick. Shift-click flips direction.
+          </span>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={wPlaneDomainColor}
+              onChange={(e) => onChangeWPlaneDomainColor(e.target.checked)}
+            />
+            W-plane domain coloring
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={wPlaneShowRings}
+              onChange={(e) => onChangeWPlaneShowRings(e.target.checked)}
+              disabled={!wPlaneDomainColor}
+            />
+            |w| rings
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={wPlaneShowRays}
+              onChange={(e) => onChangeWPlaneShowRays(e.target.checked)}
+              disabled={!wPlaneDomainColor}
+            />
+            arg(w) rays
+          </label>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Z-plane</div>
+            <PlanePlot
+              id="svgZ"
+              extent={complexMapZExtent}
+              step={1}
+              ref={zPlaneRef}
+              style={{ height: 160 }}
+              onClickPoint={handleZPlaneClick}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>W-plane</div>
+            <PlanePlot
+              id="svgW"
+              extent={complexMapWExtent}
+              step={1}
+              ref={wPlaneRef}
+              style={{ height: 160 }}
+              domainColoring={wPlaneDomainColor}
+              domainRings={wPlaneShowRings}
+              domainRays={wPlaneShowRays}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+          <button type="button" onClick={onBuildComplexMapSweep} style={{ padding: "4px 10px" }}>
+            {complexMapSpec.outputMode === "both" ? "Build surfaces" : "Build surface"}
+          </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={complexMapLive}
+              onChange={(e) => onToggleComplexMapLive(e.target.checked)}
+            />
+            Live update
+          </label>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {complexMapLive ? "Auto rebuild on edits." : "Rebuild after edits."}
+          </span>
+        </div>
+
+        {complexMapError && (
+          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{complexMapError}</div>
+        )}
+      </div>
+      )}
+
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>SurfaceMesh</div>
         {viewerKind !== "mesh" ? (
@@ -7857,7 +8838,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 viewerKind === "implicit" ||
                 viewerKind === "param" ||
                 viewerKind === "weierstrass" ||
-                viewerKind === "mesh";
+                viewerKind === "mesh" ||
+                viewerKind === "complex";
               if (!ridgeValleyAvailable) {
                 return (
                   <div style={{ fontSize: 11, color: "#666", marginBottom: 6 }}>
@@ -7874,7 +8856,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 viewerKind === "implicit" ||
                 viewerKind === "param" ||
                 viewerKind === "weierstrass" ||
-                viewerKind === "mesh";
+                viewerKind === "mesh" ||
+                viewerKind === "complex";
               const ridgeValleyEnabled = ridgeValleyAvailable && (showRidges || showValleys);
               const ridgeValleyStitchEnabled = ridgeValleyEnabled && ridgeValleyStitch;
               return (
@@ -8579,9 +9562,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
           </div>
         )}
-        {viewerKind === "mesh" && (
+        {(viewerKind === "mesh" || viewerKind === "complex") && (
           <div style={{ fontSize: 12, opacity: 0.75 }}>
-            SurfaceMesh presets and import live in the left panel.
+            {viewerKind === "complex"
+              ? "Complex map controls live in the left panel."
+              : "SurfaceMesh presets and import live in the left panel."}
           </div>
         )}
       </div>
@@ -9620,7 +10605,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isWeierstrass = viewerKind === "weierstrass";
-  const isMeshViewer = viewerKind === "mesh";
+  const isMeshViewer = viewerKind === "mesh" || viewerKind === "complex";
   const isGraphViewer = viewerKind === "graph";
   const isParamViewer = viewerKind === "param" || isWeierstrass;
   const isImplicitViewer = viewerKind === "implicit";

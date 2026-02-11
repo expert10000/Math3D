@@ -32,6 +32,7 @@ export type ColorMode =
   | "solid"
   | "height"
   | "radius"
+  | "phase"
   | "curvature"
   | "gaussian"
   | "mean"
@@ -62,6 +63,7 @@ type SurfaceMeshOverride = {
 };
 
 const DBG_COLORS = false;
+const TAU = Math.PI * 2;
 
 function disposeObject3D(obj: THREE.Object3D) {
   const anyObj = obj as any;
@@ -192,6 +194,68 @@ function makeGraphContourLines(
   return lines;
 }
 
+function hsvToRgb(h: number, s: number, v: number) {
+  const hh = ((h % 1) + 1) % 1;
+  const c = v * s;
+  const x = c * (1 - Math.abs((hh * 6) % 2 - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+
+  const seg = Math.floor(hh * 6);
+  switch (seg) {
+    case 0: r = c; g = x; b = 0; break;
+    case 1: r = x; g = c; b = 0; break;
+    case 2: r = 0; g = c; b = x; break;
+    case 3: r = 0; g = x; b = c; break;
+    case 4: r = x; g = 0; b = c; break;
+    default: r = c; g = 0; b = x; break;
+  }
+
+  return { r: r + m, g: g + m, b: b + m };
+}
+
+function applyPhaseColors(geometry: THREE.BufferGeometry) {
+  const pos = geometry.attributes.position as THREE.BufferAttribute | undefined;
+  if (!pos) return;
+  const count = pos.count;
+  if (!count) return;
+
+  const values = new Float32Array(count);
+  let min = Infinity;
+  let max = -Infinity;
+
+  for (let i = 0; i < count; i++) {
+    const re = pos.getY(i);
+    const im = pos.getZ(i);
+    const logR = Math.log(Math.hypot(re, im) + 1e-9);
+    values[i] = logR;
+    if (logR < min) min = logR;
+    if (logR > max) max = logR;
+  }
+
+  let range = max - min;
+  if (!Number.isFinite(range) || range === 0) range = 1;
+
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let v = (values[i] - min) / range;
+    if (v < 0) v = 0;
+    else if (v > 1) v = 1;
+    v = 0.15 + 0.85 * v;
+    const re = pos.getY(i);
+    const im = pos.getZ(i);
+    const h = ((Math.atan2(im, re) / TAU) + 1) % 1;
+    const { r, g, b } = hsvToRgb(h, 1, v);
+    colors[3 * i] = r;
+    colors[3 * i + 1] = g;
+    colors[3 * i + 2] = b;
+  }
+
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  (geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+  stampGeom(geometry, "phase");
+}
+
 function applyVertexColors(
   geometry: THREE.BufferGeometry,
   colorMode: ColorMode,
@@ -199,6 +263,11 @@ function applyVertexColors(
 ) {
   if (colorMode === "solid") {
     geometry.deleteAttribute("color");
+    return;
+  }
+
+  if (colorMode === "phase") {
+    applyPhaseColors(geometry);
     return;
   }
 
@@ -820,6 +889,8 @@ type Props = {
   geodesicHeatPolylines?: PolylineSet | null;
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
+  overlayPolylines?: PolylineSet | null;
+  overlayPolylinesColor?: number;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -961,6 +1032,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicHeatPolylines = null,
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
+    overlayPolylines = null,
+    overlayPolylinesColor = 0x2a7bff,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -997,6 +1070,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     end: null,
   });
   const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
+  const overlayPolylinesRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -4463,6 +4537,50 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(group);
     geodesicHeatLineRef.current = group;
   }, [geodesicHeatEnd, geodesicHeatPolylines, geodesicHeatStart, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayPolylinesRef.current) {
+      scene.remove(overlayPolylinesRef.current);
+      overlayPolylinesRef.current.traverse(disposeObject3D);
+      overlayPolylinesRef.current = null;
+    }
+
+    if (!overlayPolylines?.length) return;
+
+    const group = new THREE.Group();
+    const sizeHint = radiusRef.current || 3;
+    const tubeRadius = Math.max(0.006, (sizeHint / 110) * 1.1);
+    const radialSegments = 12;
+
+    for (const line of overlayPolylines) {
+      if (!line || line.length < 2) continue;
+      const points = line.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+      const path = new THREE.CurvePath<THREE.Vector3>();
+      for (let i = 0; i + 1 < points.length; i++) {
+        path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+      }
+      const tubularSegments = Math.min(1600, Math.max(80, points.length * 2));
+      const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+      const mat = new THREE.MeshBasicMaterial({
+        color: overlayPolylinesColor,
+        transparent: false,
+        opacity: 1,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 300;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayPolylinesRef.current = group;
+  }, [overlayPolylines, overlayPolylinesColor, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

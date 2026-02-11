@@ -2,6 +2,8 @@
 
 ## Latest changes
 
+- Added a dedicated Complex map tab next to Weierstrass, with sweep output choices for Re/Im surfaces and 3D isolines; complex rebuilds can be live or manual.
+- Split SurfaceMesh controls into Surface vs Volume tabs (next to SurfaceMesh), moving dataset selection into the header tabs.
 - Added linked orthogonal volume slices with click-to-place crosshair, readout panel, and a toggle back to full 3D view.
 - Added geodesic disk selection (heat-method + Dijkstra) with boundary extraction and disk stats (area/perimeter/phi).
 - Added volume slice overlays: marching-squares contours, hover probe with F(x,y,z)/|∇F|, histogram, and auto window/level.
