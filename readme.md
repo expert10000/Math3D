@@ -163,6 +163,15 @@ Tip:
 
 - Probe a point on the surface to read the local distortion value at that point.
 
+**Riemann sphere view (PR7)**
+
+Optional stereographic projection view for W:
+
+- Toggle "Riemann sphere view" under the Z/W planes in the Complex map panel.
+- W-plane samples (isolines, picked lines, preimage curves, markers, probes) are mapped to S².
+- Poles map to the north pole, giving a clean representation of infinity.
+- "Stack along sweep axis" shows one sphere per sweep slice, centered along the sweep axis.
+
 #### 5) Volume grids (experimental)
 
 - Purpose: Preview scalar fields sampled on a voxel grid, inspect slices, and extract first-pass 3D surfaces.

@@ -7,6 +7,12 @@ import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
 
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
+import {
+  RiemannSpherePlot,
+  type SphereGuide as RiemannSphereGuide,
+  type SphereLine as RiemannSphereLine,
+  type SpherePoint as RiemannSpherePoint,
+} from "./components/RiemannSpherePlot";
 import TabButton from "./components/TabButton";
 import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
@@ -172,6 +178,11 @@ type ComplexMapProbe = {
   source: "z" | "w" | "surface";
 };
 type ComplexMapProbePin = ComplexMapProbe & { id: string; label?: string };
+type ComplexMapSphereLine = {
+  axis: "u" | "v";
+  value: number;
+  line: [number, number][];
+};
 type CgalMeshState = {
   surfaceId: SurfaceId;
   expr: string;
@@ -180,6 +191,25 @@ type CgalMeshState = {
   createdAt: number;
 };
 type CgalHealthState = { ok: boolean; error?: string };
+
+const stereographicToSphere = (re: number, im: number) => {
+  if (!Number.isFinite(re) || !Number.isFinite(im)) {
+    return { x: 0, y: 0, z: 1 };
+  }
+  const r2 = re * re + im * im;
+  if (!Number.isFinite(r2)) {
+    return { x: 0, y: 0, z: 1 };
+  }
+  const denom = 1 + r2;
+  if (!Number.isFinite(denom) || denom === 0) {
+    return { x: 0, y: 0, z: 1 };
+  }
+  return {
+    x: (2 * re) / denom,
+    y: (2 * im) / denom,
+    z: (r2 - 1) / denom,
+  };
+};
 
 const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   let next = mesh;
@@ -1281,7 +1311,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     COMPLEX_MAP_PRESETS[0]?.id ?? COMPLEX_MAP_CUSTOM_ID
   );
   const [complexMapError, setComplexMapError] = useState<string | null>(null);
-  const [complexMapPolylines, setComplexMapPolylines] = useState<PolylineSet | null>(null);
   const [complexMapLine, setComplexMapLine] = useState<ComplexMapLine>(null);
   const [complexMapLinePolylines, setComplexMapLinePolylines] = useState<PolylineSet | null>(null);
   const [complexMapLineWPolylines, setComplexMapLineWPolylines] = useState<[number, number][][] | null>(null);
@@ -1291,6 +1320,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [complexMapIsolineZLinesV, setComplexMapIsolineZLinesV] = useState<[number, number][][] | null>(null);
   const [complexMapIsoline3dPolylinesU, setComplexMapIsoline3dPolylinesU] = useState<PolylineSet | null>(null);
   const [complexMapIsoline3dPolylinesV, setComplexMapIsoline3dPolylinesV] = useState<PolylineSet | null>(null);
+  const [complexMapSphereLines, setComplexMapSphereLines] = useState<ComplexMapSphereLine[] | null>(null);
   const [complexMapLive, setComplexMapLive] = useState(true);
   const [complexMapShowCritical, setComplexMapShowCritical] = useState(true);
   const [complexMapShowZeros, setComplexMapShowZeros] = useState(true);
@@ -1313,6 +1343,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [complexMapGridThickness, setComplexMapGridThickness] = useState(1.1);
   const [complexMapGridOpacity, setComplexMapGridOpacity] = useState(0.85);
   const [complexMapGridShowSurface, setComplexMapGridShowSurface] = useState(true);
+  const [complexMapShowSphere, setComplexMapShowSphere] = useState(false);
+  const [complexMapSphereStacked, setComplexMapSphereStacked] = useState(false);
   const [complexMapProbe, setComplexMapProbe] = useState<ComplexMapProbe | null>(null);
   const [complexMapProbePins, setComplexMapProbePins] = useState<ComplexMapProbePin[]>([]);
 
@@ -2022,6 +2054,194 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       conformalErr: complexMapProbe.conformalErr,
     };
   }, [complexMapProbe]);
+
+  const complexPreimageWShape = useMemo(() => {
+    if (complexPreimageMode === "none") return null;
+    const extent = Math.max(1e-6, complexMapWExtent);
+    if (complexPreimageMode === "re") {
+      return [[[complexPreimageValue, -extent], [complexPreimageValue, extent]]] as [number, number][][];
+    }
+    if (complexPreimageMode === "im") {
+      return [[[-extent, complexPreimageValue], [extent, complexPreimageValue]]] as [number, number][][];
+    }
+    if (complexPreimageMode === "abs") {
+      const r = Math.max(0, complexPreimageValue);
+      const steps = 80;
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = (i / steps) * Math.PI * 2;
+        pts.push([r * Math.cos(t), r * Math.sin(t)]);
+      }
+      return [pts];
+    }
+    const theta = complexPreimageValue;
+    return [[[0, 0], [extent * Math.cos(theta), extent * Math.sin(theta)]]] as [number, number][][];
+  }, [complexPreimageMode, complexPreimageValue, complexMapWExtent]);
+
+  const complexMapSphereStackParams = useMemo(() => {
+    if (!complexMapSphereStacked) return null;
+    const sweepIsV = complexMapSpec.sweepAxis === "v";
+    const sweepMin = sweepIsV
+      ? Math.min(complexMapSpec.vMin, complexMapSpec.vMax)
+      : Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
+    const sweepMax = sweepIsV
+      ? Math.max(complexMapSpec.vMin, complexMapSpec.vMax)
+      : Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
+    const center = 0.5 * (sweepMin + sweepMax);
+    const halfRange = Math.max(1e-6, 0.5 * (sweepMax - sweepMin));
+    return { axis: complexMapSpec.sweepAxis, center, halfRange };
+  }, [
+    complexMapSphereStacked,
+    complexMapSpec.sweepAxis,
+    complexMapSpec.uMin,
+    complexMapSpec.uMax,
+    complexMapSpec.vMin,
+    complexMapSpec.vMax,
+  ]);
+
+  const complexMapSphereLines3d = useMemo<RiemannSphereLine[] | null>(() => {
+    if (!complexMapShowSphere) return null;
+    const lines: RiemannSphereLine[] = [];
+    const stackParams = complexMapSphereStackParams;
+    const sweepAxis = stackParams?.axis;
+    const offsetFor = (value: number) =>
+      stackParams ? (value - stackParams.center) / stackParams.halfRange : 0;
+    const mapPoint = (re: number, im: number, offset: number) => {
+      const p = stereographicToSphere(re, im);
+      return { x: p.x + offset, y: p.y, z: p.z };
+    };
+    const addLine = (
+      line: [number, number][],
+      color: number,
+      opacity: number,
+      axis?: "u" | "v",
+      value?: number
+    ) => {
+      if (!line || line.length < 2) return;
+      const offset =
+        axis && stackParams && sweepAxis && axis === sweepAxis && Number.isFinite(value)
+          ? offsetFor(value as number)
+          : 0;
+      const points = line.map(([re, im]) => mapPoint(re, im, offset));
+      if (points.length >= 2) {
+        lines.push({ points, color, opacity });
+      }
+    };
+
+    if (complexMapSpec.showIsolines && complexMapSphereLines?.length) {
+      for (const entry of complexMapSphereLines) {
+        if (stackParams && entry.axis !== sweepAxis) continue;
+        addLine(
+          entry.line,
+          entry.axis === "u" ? COMPLEX_GRID_COLORS_3D.u : COMPLEX_GRID_COLORS_3D.v,
+          complexMapGridOpacity,
+          entry.axis,
+          entry.value
+        );
+      }
+    }
+
+    if (complexMapLineWPolylines?.length) {
+      for (const line of complexMapLineWPolylines) {
+        addLine(line, 0xd14d00, 0.9, complexMapLine?.axis, complexMapLine?.value ?? 0);
+      }
+    }
+
+    if (complexPreimageWShape?.length) {
+      for (const line of complexPreimageWShape) {
+        addLine(line, 0x1b7f3a, 0.85);
+      }
+    }
+
+    return lines.length ? lines : null;
+  }, [
+    complexMapShowSphere,
+    complexMapSphereStackParams,
+    complexMapSpec.showIsolines,
+    complexMapSphereLines,
+    complexMapGridOpacity,
+    complexMapLineWPolylines,
+    complexMapLine,
+    complexPreimageWShape,
+  ]);
+
+  const complexMapSpherePoints3d = useMemo<RiemannSpherePoint[] | null>(() => {
+    if (!complexMapShowSphere) return null;
+    const points: RiemannSpherePoint[] = [];
+    const stackParams = complexMapSphereStackParams;
+    const sweepAxis = stackParams?.axis;
+    const offsetForUV = (u: number, v: number) => {
+      if (!stackParams || !sweepAxis) return 0;
+      const value = sweepAxis === "v" ? v : u;
+      return (value - stackParams.center) / stackParams.halfRange;
+    };
+    const addGroup = (
+      group: { z: [number, number][]; w: [number, number][] },
+      color: number,
+      size: number,
+      forceNorth = false
+    ) => {
+      const count = Math.min(group.z.length, group.w.length);
+      for (let i = 0; i < count; i++) {
+        const [u, v] = group.z[i];
+        const [re, im] = group.w[i];
+        const offset = offsetForUV(u, v);
+        const p = forceNorth ? { x: 0, y: 0, z: 1 } : stereographicToSphere(re, im);
+        points.push({ x: p.x + offset, y: p.y, z: p.z, color, size });
+      }
+    };
+
+    if (complexMapMarkerData && complexMapMarkersW) {
+      addGroup(complexMapMarkerData.critical, 0xd81b60, 0.05);
+      addGroup(complexMapMarkerData.zero, 0x2e7d32, 0.045);
+      addGroup(complexMapMarkerData.pole, 0xf57c00, 0.055, true);
+    }
+
+    if (complexMapProbe) {
+      const offset = offsetForUV(complexMapProbe.u, complexMapProbe.v);
+      const p = stereographicToSphere(complexMapProbe.w.re, complexMapProbe.w.im);
+      points.push({ x: p.x + offset, y: p.y, z: p.z, color: 0x111111, size: 0.07 });
+    }
+
+    if (complexMapProbePins.length) {
+      for (const pin of complexMapProbePins) {
+        const offset = offsetForUV(pin.u, pin.v);
+        const p = stereographicToSphere(pin.w.re, pin.w.im);
+        points.push({ x: p.x + offset, y: p.y, z: p.z, color: 0x333333, size: 0.06 });
+      }
+    }
+
+    return points.length ? points : null;
+  }, [
+    complexMapShowSphere,
+    complexMapSphereStackParams,
+    complexMapMarkerData,
+    complexMapMarkersW,
+    complexMapProbe,
+    complexMapProbePins,
+  ]);
+
+  const complexMapSphereGuides = useMemo<RiemannSphereGuide[] | null>(() => {
+    if (!complexMapShowSphere || !complexMapSphereStackParams || !complexMapSphereLines?.length) return null;
+    const values = new Set<number>();
+    for (const entry of complexMapSphereLines) {
+      if (entry.axis !== complexMapSphereStackParams.axis) continue;
+      values.add(entry.value);
+    }
+    if (!values.size) return null;
+    const guides: RiemannSphereGuide[] = [];
+    for (const value of values) {
+      const offset = (value - complexMapSphereStackParams.center) / complexMapSphereStackParams.halfRange;
+      guides.push({
+        center: { x: offset, y: 0, z: 0 },
+        radius: 1,
+        color: 0x9ca3af,
+        opacity: 0.2,
+        wireframe: true,
+      });
+    }
+    return guides;
+  }, [complexMapShowSphere, complexMapSphereStackParams, complexMapSphereLines]);
 
   // Split eq surfaces into implicit vs graph, but keep separate selected ids
   const [implicitSurfaceId, setImplicitSurfaceId] = useState<SurfaceId>("sphere");
@@ -2886,7 +3106,6 @@ case "mobius":
     setSurfaceViewerKind("complex");
     setSurfaceMeshImportError(null);
     setComplexMapError(null);
-    setComplexMapPolylines(res.build.polylines ?? null);
   }, [complexMapSpec, setSurfaceDataset]);
 
   useEffect(() => {
@@ -3003,6 +3222,7 @@ case "mobius":
       setComplexMapIsolineZLinesV(null);
       setComplexMapIsoline3dPolylinesU(null);
       setComplexMapIsoline3dPolylinesV(null);
+      setComplexMapSphereLines(null);
       return;
     }
 
@@ -3026,6 +3246,7 @@ case "mobius":
     const vMin = complexMapSpec.vMin;
     const vMax = complexMapSpec.vMax;
     const outputMode = complexMapSpec.outputMode;
+    const sphereLines: ComplexMapSphereLine[] = [];
 
     const buildFamily = (axis: "u" | "v", count: number) => {
       const zLines: [number, number][][] = [];
@@ -3059,7 +3280,10 @@ case "mobius":
           let re = reFn(u, v);
           let im = imFn(u, v);
           if (!Number.isFinite(re) || !Number.isFinite(im)) {
-            if (currentW.length >= 2) wLines.push(currentW);
+            if (currentW.length >= 2) {
+              wLines.push(currentW);
+              sphereLines.push({ axis, value: constVal, line: currentW });
+            }
             if (currentSweep.length >= 2) lineSweep.push(currentSweep);
             if (currentRe.length >= 2) lineRe.push(currentRe);
             if (currentIm.length >= 2) lineIm.push(currentIm);
@@ -3084,7 +3308,10 @@ case "mobius":
           currentIm.push({ x, y: im, z: other });
         }
 
-        if (currentW.length >= 2) wLines.push(currentW);
+        if (currentW.length >= 2) {
+          wLines.push(currentW);
+          sphereLines.push({ axis, value: constVal, line: currentW });
+        }
         if (currentSweep.length >= 2) lineSweep.push(currentSweep);
         if (currentRe.length >= 2) lineRe.push(currentRe);
         if (currentIm.length >= 2) lineIm.push(currentIm);
@@ -3128,6 +3355,7 @@ case "mobius":
     setComplexMapIsolineZLinesV(vRes.zLines.length ? vRes.zLines : null);
     setComplexMapIsoline3dPolylinesU(uRes.line3d.length ? uRes.line3d : null);
     setComplexMapIsoline3dPolylinesV(vRes.line3d.length ? vRes.line3d : null);
+    setComplexMapSphereLines(sphereLines.length ? sphereLines : null);
   }, [complexMapFns, complexMapSpec]);
 
   useEffect(() => {
@@ -3239,7 +3467,6 @@ case "mobius":
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
       setSurfaceDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
-      setComplexMapPolylines(null);
       setSurfaceViewerKind("mesh");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
@@ -3255,7 +3482,6 @@ case "mobius":
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         setSurfaceDataset(applySurfaceMeshOps(base));
-        setComplexMapPolylines(null);
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
@@ -3311,7 +3537,6 @@ case "mobius":
       setSurfaceDataset(applySurfaceMeshOps(next));
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
-      setComplexMapPolylines(null);
     },
     [buildActiveMeshLabel]
   );
@@ -3536,7 +3761,6 @@ case "mobius":
     setSurfaceDataset(applySurfaceMeshOps(next));
     setSurfaceViewerKind("mesh");
     setSurfaceMeshImportError(null);
-    setComplexMapPolylines(null);
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh, surfaceMeshData?.label]);
 
   const handleParamGeodesicState = useCallback((state: ParamGeodesicState | null) => {
@@ -6087,6 +6311,7 @@ case "mobius":
                   complexPreimageValue={complexPreimageValue}
                   complexPreimageSnap={complexPreimageSnap}
                   complexPreimagePolylines={complexPreimagePolylines}
+                  complexPreimageWShape={complexPreimageWShape}
                   setComplexPreimageMode={setComplexPreimageMode}
                   setComplexPreimageValue={setComplexPreimageValue}
                   setComplexPreimageSnap={setComplexPreimageSnap}
@@ -6105,6 +6330,13 @@ case "mobius":
                   setComplexMapGridThickness={setComplexMapGridThickness}
                   setComplexMapGridOpacity={setComplexMapGridOpacity}
                   setComplexMapGridShowSurface={setComplexMapGridShowSurface}
+                  complexMapShowSphere={complexMapShowSphere}
+                  onToggleComplexMapShowSphere={setComplexMapShowSphere}
+                  complexMapSphereStacked={complexMapSphereStacked}
+                  onToggleComplexMapSphereStacked={setComplexMapSphereStacked}
+                  complexMapSphereLines={complexMapSphereLines3d}
+                  complexMapSpherePoints={complexMapSpherePoints3d}
+                  complexMapSphereGuides={complexMapSphereGuides}
                   onPinComplexMapProbe={pinComplexMapProbe}
                   onClearComplexMapProbe={clearComplexMapProbe}
                   onClearComplexMapProbePins={clearComplexMapProbePins}
@@ -7627,6 +7859,7 @@ type SurfacesLeftPanelProps = {
   complexPreimageValue: number;
   complexPreimageSnap: boolean;
   complexPreimagePolylines: [number, number][][] | null;
+  complexPreimageWShape: [number, number][][] | null;
   setComplexPreimageMode: (m: ComplexPreimageMode) => void;
   setComplexPreimageValue: (v: number) => void;
   setComplexPreimageSnap: (v: boolean) => void;
@@ -7645,6 +7878,13 @@ type SurfacesLeftPanelProps = {
   setComplexMapGridThickness: (v: number) => void;
   setComplexMapGridOpacity: (v: number) => void;
   setComplexMapGridShowSurface: (v: boolean) => void;
+  complexMapShowSphere: boolean;
+  onToggleComplexMapShowSphere: (v: boolean) => void;
+  complexMapSphereStacked: boolean;
+  onToggleComplexMapSphereStacked: (v: boolean) => void;
+  complexMapSphereLines: RiemannSphereLine[] | null;
+  complexMapSpherePoints: RiemannSpherePoint[] | null;
+  complexMapSphereGuides: RiemannSphereGuide[] | null;
   onPinComplexMapProbe: () => void;
   onClearComplexMapProbe: () => void;
   onClearComplexMapProbePins: () => void;
@@ -8038,6 +8278,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   complexPreimageValue,
   complexPreimageSnap,
   complexPreimagePolylines,
+  complexPreimageWShape,
   setComplexPreimageMode,
   setComplexPreimageValue,
   setComplexPreimageSnap,
@@ -8056,6 +8297,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   setComplexMapGridThickness,
   setComplexMapGridOpacity,
   setComplexMapGridShowSurface,
+  complexMapShowSphere,
+  onToggleComplexMapShowSphere,
+  complexMapSphereStacked,
+  onToggleComplexMapSphereStacked,
+  complexMapSphereLines,
+  complexMapSpherePoints,
+  complexMapSphereGuides,
   onPinComplexMapProbe,
   onClearComplexMapProbe,
   onClearComplexMapProbePins,
@@ -8513,29 +8761,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     },
     [applyPreimageValue, complexMapWExtent, complexPreimageMode, probeEnabled, onSetComplexMapProbeFromW]
   );
-
-  const complexPreimageWShape = useMemo(() => {
-    if (complexPreimageMode === "none") return null;
-    const extent = Math.max(1e-6, complexMapWExtent);
-    if (complexPreimageMode === "re") {
-      return [[[complexPreimageValue, -extent], [complexPreimageValue, extent]]] as [number, number][][];
-    }
-    if (complexPreimageMode === "im") {
-      return [[[-extent, complexPreimageValue], [extent, complexPreimageValue]]] as [number, number][][];
-    }
-    if (complexPreimageMode === "abs") {
-      const r = Math.max(0, complexPreimageValue);
-      const steps = 80;
-      const pts: [number, number][] = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = (i / steps) * Math.PI * 2;
-        pts.push([r * Math.cos(t), r * Math.sin(t)]);
-      }
-      return [pts];
-    }
-    const theta = complexPreimageValue;
-    return [[[0, 0], [extent * Math.cos(theta), extent * Math.sin(theta)]]] as [number, number][][];
-  }, [complexPreimageMode, complexPreimageValue, complexMapWExtent]);
 
   useEffect(() => {
     zPlaneRef.current?.drawGrid(1);
@@ -9693,6 +9918,26 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             arg(w) rays
           </label>
         </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="checkbox"
+              checked={complexMapShowSphere}
+              onChange={(e) => onToggleComplexMapShowSphere(e.target.checked)}
+            />
+            Riemann sphere view
+          </label>
+          {complexMapShowSphere && (
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={complexMapSphereStacked}
+                onChange={(e) => onToggleComplexMapSphereStacked(e.target.checked)}
+              />
+              Stack along sweep axis ({complexMapSpec.sweepAxis})
+            </label>
+          )}
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
           <div>
@@ -9720,6 +9965,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               domainRays={wPlaneShowRays}
             />
           </div>
+          {complexMapShowSphere && (
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>Riemann sphere</div>
+              <RiemannSpherePlot
+                lines={complexMapSphereLines}
+                points={complexMapSpherePoints}
+                guideSpheres={complexMapSphereGuides}
+                style={{ height: 180 }}
+              />
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                w mapped by stereographic projection; poles collapse to the north pole.
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Preimage tool</div>
