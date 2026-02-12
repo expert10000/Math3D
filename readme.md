@@ -172,6 +172,15 @@ Optional stereographic projection view for W:
 - Poles map to the north pole, giving a clean representation of infinity.
 - "Stack along sweep axis" shows one sphere per sweep slice, centered along the sweep axis.
 
+**Multi-sheet surfaces (PR8)**
+
+Render algebraic/Riemann surfaces defined by w^k = p(z):
+
+- Switch the Complex map "Map mode" to multi-sheet.
+- Re/Im define p(z); choose k (sheet count) and whether to render all sheets or a single sheet.
+- The branch cut angle rotates the principal argument used by the root.
+- The active sheet drives W-plane and preimage tools; all sheets can be rendered in 3D.
+
 #### 5) Volume grids (experimental)
 
 - Purpose: Preview scalar fields sampled on a voxel grid, inspect slices, and extract first-pass 3D surfaces.

@@ -211,6 +211,32 @@ const stereographicToSphere = (re: number, im: number) => {
   };
 };
 
+const wrapAngle = (theta: number) => {
+  const twoPi = Math.PI * 2;
+  let t = theta;
+  if (!Number.isFinite(t)) return 0;
+  t = ((t + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
+  return t;
+};
+
+const evalRiemannSheet = (
+  re: number,
+  im: number,
+  sheetIndex: number,
+  sheetCount: number,
+  branchCutAngle: number
+) => {
+  const r = Math.hypot(re, im);
+  if (!Number.isFinite(r)) return null;
+  if (r === 0) return { re: 0, im: 0 };
+  const thetaRaw = Math.atan2(im, re);
+  const theta = wrapAngle(thetaRaw - branchCutAngle) + branchCutAngle;
+  const k = Math.max(1, sheetCount);
+  const angle = (theta + 2 * Math.PI * sheetIndex) / k;
+  const mag = Math.pow(r, 1 / k);
+  return { re: mag * Math.cos(angle), im: mag * Math.sin(angle) };
+};
+
 const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   let next = mesh;
   if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
@@ -278,6 +304,11 @@ const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
   showIsolines: false,
   isolinesCountU: 7,
   isolinesCountV: 7,
+  mapMode: "standard",
+  sheetCount: 2,
+  sheetMode: "all",
+  sheetIndex: 0,
+  branchCutAngle: 0,
 };
 
 const COMPLEX_MAP_LABEL = "Complex Map Sweep (z→w)";
@@ -288,6 +319,9 @@ const COMPLEX_MAP_OUTPUT_LABELS: Record<ComplexMapSweepSpec["outputMode"], strin
   both: "Complex Map Surfaces (Re + Im)",
 };
 const COMPLEX_MAP_LABEL_SET = new Set(Object.values(COMPLEX_MAP_OUTPUT_LABELS));
+const RIEMANN_SURFACE_PREFIX = "Riemann surface";
+const isComplexMapSurfaceLabel = (label?: string | null) =>
+  !!label && (COMPLEX_MAP_LABEL_SET.has(label) || label.startsWith(RIEMANN_SURFACE_PREFIX));
 const COMPLEX_GRID_COLORS = {
   u: "#1f77b4",
   v: "#e67e22",
@@ -1377,6 +1411,72 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (!complexMapCompiled.reFn || !complexMapCompiled.imFn) return null;
     return { reFn: complexMapCompiled.reFn, imFn: complexMapCompiled.imFn };
   }, [complexMapCompiled]);
+  const complexMapMode = complexMapSpec.mapMode === "riemann" ? "riemann" : "standard";
+  const complexMapSheetCount =
+    complexMapMode === "riemann" ? Math.max(2, Math.round(complexMapSpec.sheetCount)) : 1;
+  const complexMapSheetMode =
+    complexMapMode === "riemann" && complexMapSpec.sheetMode === "all" ? "all" : "single";
+  const complexMapSheetIndex = Math.min(
+    Math.max(0, Math.round(complexMapSpec.sheetIndex)),
+    complexMapSheetCount - 1
+  );
+  const complexMapBranchCutAngle = Number.isFinite(complexMapSpec.branchCutAngle)
+    ? complexMapSpec.branchCutAngle
+    : 0;
+
+  useEffect(() => {
+    if (complexMapMode !== "riemann") return;
+    const clampedCount = Math.max(2, Math.round(complexMapSpec.sheetCount));
+    const clampedIndex = Math.min(Math.max(0, Math.round(complexMapSpec.sheetIndex)), clampedCount - 1);
+    if (clampedCount !== complexMapSpec.sheetCount || clampedIndex !== complexMapSpec.sheetIndex) {
+      setComplexMapSpec((prev) => ({
+        ...prev,
+        sheetCount: clampedCount,
+        sheetIndex: clampedIndex,
+      }));
+    }
+  }, [complexMapMode, complexMapSpec.sheetCount, complexMapSpec.sheetIndex]);
+
+  const evalComplexMapW = useCallback(
+    (u: number, v: number, sheetIndex = complexMapSheetIndex) => {
+      if (!complexMapFns) return null;
+      const { reFn, imFn } = complexMapFns;
+      let re = reFn(u, v);
+      let im = imFn(u, v);
+      if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
+      if (complexMapMode === "riemann") {
+        const w = evalRiemannSheet(re, im, sheetIndex, complexMapSheetCount, complexMapBranchCutAngle);
+        if (!w) return null;
+        re = w.re;
+        im = w.im;
+      }
+      const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+      re *= wScale;
+      im *= wScale;
+      const clampAbs =
+        complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+          ? complexMapSpec.clampAbs
+          : null;
+      if (clampAbs) {
+        const mag = Math.hypot(re, im);
+        if (Number.isFinite(mag) && mag > clampAbs) {
+          const s = clampAbs / mag;
+          re *= s;
+          im *= s;
+        }
+      }
+      return { re, im };
+    },
+    [
+      complexMapFns,
+      complexMapMode,
+      complexMapSheetIndex,
+      complexMapSheetCount,
+      complexMapBranchCutAngle,
+      complexMapSpec.wScale,
+      complexMapSpec.clampAbs,
+    ]
+  );
 
   useEffect(() => {
     setComplexMapProbe(null);
@@ -1391,6 +1491,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexMapSpec.nv,
     complexMapSpec.wScale,
     complexMapSpec.clampAbs,
+    complexMapSpec.mapMode,
+    complexMapSpec.sheetCount,
+    complexMapSpec.sheetIndex,
+    complexMapSpec.branchCutAngle,
   ]);
 
   const complexMapZExtent = useMemo(() => {
@@ -1408,22 +1512,19 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const clampAbs = complexMapSpec.clampAbs;
     if (clampAbs != null && Number.isFinite(clampAbs) && clampAbs > 0) return clampAbs;
     if (!complexMapFns) return 3;
-    const { reFn, imFn } = complexMapFns;
     const uMin = complexMapSpec.uMin;
     const uMax = complexMapSpec.uMax;
     const vMin = complexMapSpec.vMin;
     const vMax = complexMapSpec.vMax;
-    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
     const samples = 16;
     let maxMag = 0;
     for (let i = 0; i < samples; i++) {
       const u = uMin + (uMax - uMin) * (i / (samples - 1));
       for (let j = 0; j < samples; j++) {
         const v = vMin + (vMax - vMin) * (j / (samples - 1));
-        const re = reFn(u, v);
-        const im = imFn(u, v);
-        if (!Number.isFinite(re) || !Number.isFinite(im)) continue;
-        const mag = Math.hypot(re * wScale, im * wScale);
+        const w = evalComplexMapW(u, v);
+        if (!w) continue;
+        const mag = Math.hypot(w.re, w.im);
         if (mag > maxMag) maxMag = mag;
       }
     }
@@ -1434,9 +1535,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexMapSpec.uMax,
     complexMapSpec.vMin,
     complexMapSpec.vMax,
-    complexMapSpec.wScale,
     complexMapSpec.clampAbs,
     complexMapFns,
+    evalComplexMapW,
   ]);
 
   const complexMapGrid = useMemo(() => {
@@ -1467,6 +1568,19 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const valid = new Uint8Array(total);
     let wMagMax = 0;
 
+    const evalBaseW = (u: number, v: number) => {
+      let r = reFn(u, v);
+      let m = imFn(u, v);
+      if (!Number.isFinite(r) || !Number.isFinite(m)) return null;
+      if (complexMapMode === "riemann") {
+        const w = evalRiemannSheet(r, m, complexMapSheetIndex, complexMapSheetCount, complexMapBranchCutAngle);
+        if (!w) return null;
+        r = w.re;
+        m = w.im;
+      }
+      return { re: r, im: m };
+    };
+
     const clampMag = (r: number, i: number, limit: number) => {
       const mag = Math.hypot(r, i);
       if (!Number.isFinite(mag) || mag <= limit) return { re: r, im: i };
@@ -1479,9 +1593,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       for (let i = 0; i < nu; i++) {
         const u = uMin + uStep * i;
         const idx = j * nu + i;
-        let r = reFn(u, v);
-        let m = imFn(u, v);
-        if (!Number.isFinite(r) || !Number.isFinite(m)) {
+        const base = evalBaseW(u, v);
+        if (!base) {
           re[idx] = NaN;
           im[idx] = NaN;
           reClamped[idx] = NaN;
@@ -1489,6 +1602,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           wMag[idx] = NaN;
           continue;
         }
+        let r = base.re;
+        let m = base.im;
         r *= wScale;
         m *= wScale;
         re[idx] = r;
@@ -1532,7 +1647,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       valid,
       wMagMax,
     };
-  }, [complexMapFns, complexMapSpec]);
+  }, [
+    complexMapFns,
+    complexMapSpec,
+    complexMapMode,
+    complexMapSheetIndex,
+    complexMapSheetCount,
+    complexMapBranchCutAngle,
+  ]);
 
   const complexMapJacobian = useMemo(() => {
     if (!complexMapGrid) return null;
@@ -1626,7 +1748,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const buildComplexMapProbe = useCallback(
     (uRaw: number, vRaw: number, source: ComplexMapProbe["source"]): ComplexMapProbe | null => {
       if (!complexMapFns) return null;
-      const { reFn, imFn } = complexMapFns;
       const uMin = Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
       const uMax = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
       const vMin = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
@@ -1635,43 +1756,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       const u = Math.min(uMax, Math.max(uMin, uRaw));
       const v = Math.min(vMax, Math.max(vMin, vRaw));
 
-      const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
-      const clampAbs =
-        complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
-          ? complexMapSpec.clampAbs
-          : null;
-
-      const clampMag = (re: number, im: number, limit: number) => {
-        const mag = Math.hypot(re, im);
-        if (!Number.isFinite(mag) || mag <= limit) return { re, im };
-        const s = limit / mag;
-        return { re: re * s, im: im * s };
-      };
-
-      const evalW = (uu: number, vv: number) => {
-        let re = reFn(uu, vv);
-        let im = imFn(uu, vv);
-        if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
-        re *= wScale;
-        im *= wScale;
-        if (clampAbs) {
-          const clamped = clampMag(re, im, clampAbs);
-          re = clamped.re;
-          im = clamped.im;
-        }
-        return { re, im };
-      };
-
-      const c00 = evalW(u, v);
+      const c00 = evalComplexMapW(u, v);
       if (!c00) return null;
       const du = Math.abs(uMax - uMin) / Math.max(2, Math.round(complexMapSpec.nu));
       const dv = Math.abs(vMax - vMin) / Math.max(2, Math.round(complexMapSpec.nv));
       const hU = Math.max(1e-5, du * 0.5);
       const hV = Math.max(1e-5, dv * 0.5);
-      const c10 = evalW(u + hU, v);
-      const c_10 = evalW(u - hU, v);
-      const c01 = evalW(u, v + hV);
-      const c0_1 = evalW(u, v - hV);
+      const c10 = evalComplexMapW(u + hU, v);
+      const c_10 = evalComplexMapW(u - hU, v);
+      const c01 = evalComplexMapW(u, v + hV);
+      const c0_1 = evalComplexMapW(u, v - hV);
       if (!c10 || !c_10 || !c01 || !c0_1) return null;
 
       const a = (c10.re - c_10.re) / (2 * hU);
@@ -1720,7 +1814,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         source,
       };
     },
-    [complexMapFns, complexMapSpec]
+    [complexMapFns, complexMapSpec, evalComplexMapW]
   );
 
   const findClosestUVForW = useCallback(
@@ -2032,7 +2126,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const isComplexMapMesh =
     surfaceViewerKind === "complex" &&
     !!surfaceMeshData &&
-    COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label);
+    isComplexMapSurfaceLabel(surfaceMeshData.label);
   const complexMapHeatmapActive =
     isComplexMapMesh &&
     complexDistortionShowSurface &&
@@ -2792,7 +2886,7 @@ const mobiusEffectiveParams = useMemo(() => {
     ) {
       setColorMode("height");
     }
-    if (colorMode === "phase" && !(isMeshLikeViewer && surfaceMeshData?.label === COMPLEX_MAP_LABEL)) {
+    if (colorMode === "phase" && !(isMeshLikeViewer && isComplexMapSurfaceLabel(surfaceMeshData?.label))) {
       setColorMode("height");
     }
   }, [surfaceViewerKind, colorMode, surfaceMeshData?.label]);
@@ -3049,14 +3143,14 @@ case "mobius":
 
   const complexMapOverlayPolylines = useMemo<PolylineSet | null>(() => {
     if (!isMeshLikeViewer) return null;
-    if (!surfaceMeshData || !COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label)) return null;
+    if (!surfaceMeshData || !isComplexMapSurfaceLabel(surfaceMeshData.label)) return null;
     if (!complexMapLinePolylines?.length) return null;
     return complexMapLinePolylines;
   }, [isMeshLikeViewer, surfaceMeshData, complexMapLinePolylines]);
 
   const complexMapOverlayPolylineGroups = useMemo(() => {
     if (!isMeshLikeViewer) return null;
-    if (!surfaceMeshData || !COMPLEX_MAP_LABEL_SET.has(surfaceMeshData.label)) return null;
+    if (!surfaceMeshData || !isComplexMapSurfaceLabel(surfaceMeshData.label)) return null;
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapSpec.showIsolines && complexMapGridShowSurface) {
       if (complexMapIsoline3dPolylinesU?.length) {
@@ -3094,7 +3188,19 @@ case "mobius":
       setComplexMapError(res.error ?? "Failed to build complex map surface.");
       return;
     }
-    const label = COMPLEX_MAP_OUTPUT_LABELS[complexMapSpec.outputMode] ?? COMPLEX_MAP_LABEL;
+    const outputLabel = COMPLEX_MAP_OUTPUT_LABELS[complexMapSpec.outputMode] ?? COMPLEX_MAP_LABEL;
+    const riemannSuffix =
+      complexMapSpec.outputMode === "sweep"
+        ? ""
+        : complexMapSpec.outputMode === "both"
+        ? "Re+Im"
+        : complexMapSpec.outputMode.toUpperCase();
+    const label =
+      complexMapMode === "riemann"
+        ? `Riemann surface (${complexMapSheetCount} sheets${
+            complexMapSheetMode === "single" ? `, sheet ${complexMapSheetIndex + 1}` : ""
+          }${riemannSuffix ? `, ${riemannSuffix}` : ""})`
+        : outputLabel;
     const next: SurfaceMeshData = {
       label,
       positions: res.build.positions,
@@ -3106,7 +3212,14 @@ case "mobius":
     setSurfaceViewerKind("complex");
     setSurfaceMeshImportError(null);
     setComplexMapError(null);
-  }, [complexMapSpec, setSurfaceDataset]);
+  }, [
+    complexMapSpec,
+    complexMapMode,
+    complexMapSheetCount,
+    complexMapSheetMode,
+    complexMapSheetIndex,
+    setSurfaceDataset,
+  ]);
 
   useEffect(() => {
     if (!complexMapLive) return;
@@ -3124,20 +3237,6 @@ case "mobius":
       setComplexMapLineWPolylines(null);
       return;
     }
-
-    const { reFn, imFn } = complexMapFns;
-    const clampAbs =
-      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
-        ? complexMapSpec.clampAbs
-        : null;
-    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
-
-    const clampMag = (re: number, im: number, limit: number) => {
-      const mag = Math.hypot(re, im);
-      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
-      const s = limit / mag;
-      return { re: re * s, im: im * s };
-    };
 
     const isUConst = complexMapLine.axis === "u";
     const uMin = complexMapSpec.uMin;
@@ -3163,9 +3262,8 @@ case "mobius":
       const t = tMin + tStep * i;
       const u = isUConst ? complexMapLine.value : t;
       const v = isUConst ? t : complexMapLine.value;
-      let re = reFn(u, v);
-      let im = imFn(u, v);
-      if (!Number.isFinite(re) || !Number.isFinite(im)) {
+      const w = evalComplexMapW(u, v);
+      if (!w) {
         if (currentSweep.length >= 2) lineSweep.push(currentSweep);
         if (currentRe.length >= 2) lineRe.push(currentRe);
         if (currentIm.length >= 2) lineIm.push(currentIm);
@@ -3176,13 +3274,7 @@ case "mobius":
         currentW = [];
         continue;
       }
-      re *= wScale;
-      im *= wScale;
-      if (clampAbs) {
-        const clamped = clampMag(re, im, clampAbs);
-        re = clamped.re;
-        im = clamped.im;
-      }
+      const { re, im } = w;
       const x = complexMapSpec.sweepAxis === "v" ? v : u;
       const other = complexMapSpec.sweepAxis === "v" ? u : v;
       currentSweep.push({ x, y: re, z: im });
@@ -3212,7 +3304,7 @@ case "mobius":
 
     setComplexMapLinePolylines(line3d.length ? line3d : null);
     setComplexMapLineWPolylines(lineW.length ? lineW : null);
-  }, [complexMapLine, complexMapFns, complexMapSpec]);
+  }, [complexMapLine, complexMapFns, complexMapSpec, evalComplexMapW]);
 
   useEffect(() => {
     if (!complexMapSpec.showIsolines || !complexMapFns) {
@@ -3225,20 +3317,6 @@ case "mobius":
       setComplexMapSphereLines(null);
       return;
     }
-
-    const { reFn, imFn } = complexMapFns;
-    const clampAbs =
-      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
-        ? complexMapSpec.clampAbs
-        : null;
-    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
-
-    const clampMag = (re: number, im: number, limit: number) => {
-      const mag = Math.hypot(re, im);
-      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
-      const s = limit / mag;
-      return { re: re * s, im: im * s };
-    };
 
     const sweepIsV = complexMapSpec.sweepAxis === "v";
     const uMin = complexMapSpec.uMin;
@@ -3277,9 +3355,8 @@ case "mobius":
           const t = sampleMin + sampleStep * s;
           const u = axis === "u" ? constVal : t;
           const v = axis === "u" ? t : constVal;
-          let re = reFn(u, v);
-          let im = imFn(u, v);
-          if (!Number.isFinite(re) || !Number.isFinite(im)) {
+          const w = evalComplexMapW(u, v);
+          if (!w) {
             if (currentW.length >= 2) {
               wLines.push(currentW);
               sphereLines.push({ axis, value: constVal, line: currentW });
@@ -3293,13 +3370,7 @@ case "mobius":
             currentIm = [];
             continue;
           }
-          re *= wScale;
-          im *= wScale;
-          if (clampAbs) {
-            const clamped = clampMag(re, im, clampAbs);
-            re = clamped.re;
-            im = clamped.im;
-          }
+          const { re, im } = w;
           currentW.push([re, im]);
           const x = sweepIsV ? v : u;
           const other = sweepIsV ? u : v;
@@ -3356,7 +3427,7 @@ case "mobius":
     setComplexMapIsoline3dPolylinesU(uRes.line3d.length ? uRes.line3d : null);
     setComplexMapIsoline3dPolylinesV(vRes.line3d.length ? vRes.line3d : null);
     setComplexMapSphereLines(sphereLines.length ? sphereLines : null);
-  }, [complexMapFns, complexMapSpec]);
+  }, [complexMapFns, complexMapSpec, evalComplexMapW]);
 
   useEffect(() => {
     if (complexPreimageMode === "none" || !complexMapFns) {
@@ -3364,7 +3435,6 @@ case "mobius":
       return;
     }
 
-    const { reFn, imFn } = complexMapFns;
     const nu = Math.max(2, Math.round(complexMapSpec.nu));
     const nv = Math.max(2, Math.round(complexMapSpec.nv));
     const uMin = complexMapSpec.uMin;
@@ -3373,18 +3443,6 @@ case "mobius":
     const vMax = complexMapSpec.vMax;
     const uStep = nu > 1 ? (uMax - uMin) / (nu - 1) : 0;
     const vStep = nv > 1 ? (vMax - vMin) / (nv - 1) : 0;
-    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
-    const clampAbs =
-      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
-        ? complexMapSpec.clampAbs
-        : null;
-
-    const clampMag = (re: number, im: number, limit: number) => {
-      const mag = Math.hypot(re, im);
-      if (!Number.isFinite(mag) || mag <= limit) return { re, im };
-      const s = limit / mag;
-      return { re: re * s, im: im * s };
-    };
 
     const theta = complexPreimageMode === "arg" ? complexPreimageValue : 0;
     const cosT = Math.cos(theta);
@@ -3393,16 +3451,9 @@ case "mobius":
     const sample = (i: number, j: number) => {
       const u = uMin + uStep * i;
       const v = vMin + vStep * j;
-      let re = reFn(u, v);
-      let im = imFn(u, v);
-      if (!Number.isFinite(re) || !Number.isFinite(im)) return NaN;
-      re *= wScale;
-      im *= wScale;
-      if (clampAbs) {
-        const clamped = clampMag(re, im, clampAbs);
-        re = clamped.re;
-        im = clamped.im;
-      }
+      const w = evalComplexMapW(u, v);
+      if (!w) return NaN;
+      const { re, im } = w;
       if (complexPreimageMode === "re") return re;
       if (complexPreimageMode === "im") return im;
       if (complexPreimageMode === "abs") return Math.hypot(re, im);
@@ -3430,21 +3481,13 @@ case "mobius":
       for (const line of polylines) {
         let current: [number, number][] = [];
         for (const [u, v] of line) {
-          let re = reFn(u, v);
-          let im = imFn(u, v);
-          if (!Number.isFinite(re) || !Number.isFinite(im)) {
+          const w = evalComplexMapW(u, v);
+          if (!w) {
             if (current.length >= 2) filtered.push(current);
             current = [];
             continue;
           }
-          re *= wScale;
-          im *= wScale;
-          if (clampAbs) {
-            const clamped = clampMag(re, im, clampAbs);
-            re = clamped.re;
-            im = clamped.im;
-          }
-          const reRot = re * cosT + im * sinT;
+          const reRot = w.re * cosT + w.im * sinT;
           if (Number.isFinite(reRot) && reRot >= 0) {
             current.push([u, v]);
           } else {
@@ -3458,7 +3501,7 @@ case "mobius":
     }
 
     setComplexPreimagePolylines(polylines.length ? polylines : null);
-  }, [complexPreimageMode, complexPreimageValue, complexMapFns, complexMapSpec]);
+  }, [complexPreimageMode, complexPreimageValue, complexMapFns, complexMapSpec, evalComplexMapW]);
 
   const handleGenerateSurfaceMeshPreset = useCallback((presetId: string) => {
     const preset = SURFACE_MESH_PRESETS.find((p) => p.id === presetId);
@@ -8612,8 +8655,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
+  const complexMapIsRiemann = complexMapSpec.mapMode === "riemann";
+  const complexMapSheetCount = complexMapIsRiemann ? Math.max(2, Math.round(complexMapSpec.sheetCount)) : 1;
+  const complexMapSheetIndex = Math.min(
+    Math.max(0, Math.round(complexMapSpec.sheetIndex)),
+    Math.max(0, complexMapSheetCount - 1)
+  );
+  const complexMapBranchCutDeg = (complexMapSpec.branchCutAngle * 180) / Math.PI;
   const canPhaseColor =
-    (viewerKind === "mesh" || viewerKind === "complex") && surfaceMeshLabel === COMPLEX_MAP_LABEL;
+    (viewerKind === "mesh" || viewerKind === "complex") && isComplexMapSurfaceLabel(surfaceMeshLabel);
   const colorModes: ColorMode[] =
     viewerKind === "param" || viewerKind === "weierstrass"
       ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
@@ -9549,11 +9599,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (z→w)</div>
         <div style={{ fontSize: 11, opacity: 0.75 }}>
-          Map z = u + iv to w(u,v) = Re + i Im, then sweep or graph Re/Im as surfaces.
+          {complexMapIsRiemann
+            ? "Define p(z) = Re + i Im and render the k-sheet surface w^k = p(z)."
+            : "Map z = u + iv to w(u,v) = Re + i Im, then sweep or graph Re/Im as surfaces."}
         </div>
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 8 }}>Mapping definition</div>
-        <label style={{ fontSize: 12 }}>Re(w)(u,v) =</label>
+        <label style={{ fontSize: 12 }}>Re({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
         <input
           type="text"
           value={complexMapSpec.reExpr}
@@ -9574,7 +9626,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           }}
         />
 
-        <label style={{ fontSize: 12 }}>Im(w)(u,v) =</label>
+        <label style={{ fontSize: 12 }}>Im({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
         <input
           type="text"
           value={complexMapSpec.imExpr}
@@ -9610,6 +9662,99 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           ))}
         </div>
         <div style={{ ...styles.hint, marginTop: 6 }}>Use u, v and functions like sin, cos, exp. Constants: pi, e.</div>
+
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Map mode</div>
+        <div style={pillRow}>
+          <button
+            type="button"
+            onClick={() => onChangeComplexMapSpec({ mapMode: "standard" })}
+            style={pill(!complexMapIsRiemann)}
+            aria-pressed={!complexMapIsRiemann}
+          >
+            Single-valued w = f(z)
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeComplexMapSpec({ mapMode: "riemann" })}
+            style={pill(complexMapIsRiemann)}
+            aria-pressed={complexMapIsRiemann}
+          >
+            Multi-sheet w^k = p(z)
+          </button>
+        </div>
+        {complexMapIsRiemann && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+              <label style={{ fontSize: 11 }}>
+                Sheets k
+                <input
+                  type="number"
+                  min={2}
+                  max={12}
+                  step={1}
+                  value={complexMapSheetCount}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    onChangeComplexMapSpec({ sheetCount: clampInt(v, 2, 12) });
+                  }}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: 11 }}>
+                Active sheet
+                <input
+                  type="number"
+                  min={1}
+                  max={complexMapSheetCount}
+                  step={1}
+                  value={complexMapSheetIndex + 1}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (!Number.isFinite(v)) return;
+                    onChangeComplexMapSpec({ sheetIndex: clampInt(v - 1, 0, complexMapSheetCount - 1) });
+                  }}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => onChangeComplexMapSpec({ sheetMode: "all" })}
+                style={pill(complexMapSpec.sheetMode === "all")}
+                aria-pressed={complexMapSpec.sheetMode === "all"}
+              >
+                Render all sheets
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeComplexMapSpec({ sheetMode: "single" })}
+                style={pill(complexMapSpec.sheetMode !== "all")}
+                aria-pressed={complexMapSpec.sheetMode !== "all"}
+              >
+                Render active sheet only
+              </button>
+            </div>
+            <label style={{ fontSize: 11, display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+              <span>Branch cut angle (deg)</span>
+              <input
+                type="number"
+                step={5}
+                value={Number.isFinite(complexMapBranchCutDeg) ? complexMapBranchCutDeg.toFixed(1) : "0"}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (!Number.isFinite(v)) return;
+                  onChangeComplexMapSpec({ branchCutAngle: (v * Math.PI) / 180 });
+                }}
+                style={{ width: "100%" }}
+              />
+            </label>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+              The branch cut angle rotates the principal argument; zeros of p(z) are branch points for k&gt;1.
+            </div>
+          </>
+        )}
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Domain & sampling</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
