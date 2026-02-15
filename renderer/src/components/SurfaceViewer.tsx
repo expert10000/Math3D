@@ -1094,6 +1094,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
   const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
+  const viewGizmoRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -1154,6 +1155,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const [slicePlaneSize, setSlicePlaneSize] = useState(3.5);
   const [slicePolylines2D, setSlicePolylines2D] = useState<Array<Array<{ s: number; t: number }>>>([]);
   const [sliceSnapToCurve, setSliceSnapToCurve] = useState(true);
+  const [showViewGizmo, setShowViewGizmo] = useState(true);
   const [sliceHoverST, setSliceHoverST] = useState<{ s: number; t: number } | null>(null);
   const [sliceHoverReadout, setSliceHoverReadout] = useState<{ s: number; t: number } | null>(null);
   const sliceHoverReadoutTimerRef = useRef<number | null>(null);
@@ -3020,40 +3022,74 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       scene.add(boxHelper);
     }
 
-    const axesLength = 1.6;
-    const axes = new THREE.AxesHelper(axesLength);
-    scene.add(axes);
+    const viewGizmo = new THREE.Group();
+    viewGizmo.position.copy(center);
+    viewGizmo.visible = showViewGizmo;
+    viewGizmoRef.current = viewGizmo;
+    scene.add(viewGizmo);
 
-    const labelSprites: THREE.Sprite[] = [];
-    const makeAxisLabel = (text: string, color: string, position: THREE.Vector3) => {
-      const size = 64;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+    const gizmoSize = Math.max(0.7, Math.min(1.7, (radiusRef.current || 3) * 0.26));
+    const arrowLen = gizmoSize;
+    const negLen = gizmoSize * 0.75;
+    const headLen = Math.max(0.14, arrowLen * 0.22);
+    const headWidth = Math.max(0.08, headLen * 0.6);
 
-      ctx.clearRect(0, 0, size, size);
-      ctx.fillStyle = "rgba(255,255,255,0.9)";
-      ctx.fillRect(0, 0, size, size);
-      ctx.font = "28px system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
-      ctx.fillStyle = color;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(text, size / 2, size / 2);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-      const sprite = new THREE.Sprite(material);
-      sprite.scale.set(0.35, 0.35, 0.35);
-      sprite.position.copy(position);
-      scene.add(sprite);
-      labelSprites.push(sprite);
+    const makeArrow = (dir: THREE.Vector3, len: number, color: number) => {
+      const arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0, 0, 0), len, color, headLen, headWidth);
+      arrow.renderOrder = 450;
+      arrow.line.material.depthTest = false;
+      arrow.line.material.depthWrite = false;
+      arrow.cone.material.depthTest = false;
+      arrow.cone.material.depthWrite = false;
+      viewGizmo.add(arrow);
+      return arrow;
     };
 
-    makeAxisLabel("+x", "#d9534f", new THREE.Vector3(axesLength * 1.1, 0, 0));
-    makeAxisLabel("+y", "#5cb85c", new THREE.Vector3(0, axesLength * 1.1, 0));
-    makeAxisLabel("+z", "#5bc0de", new THREE.Vector3(0, 0, axesLength * 1.1));
+    const makePlane = (color: number, size: number) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+      });
+      const geom = new THREE.PlaneGeometry(size, size);
+      const plane = new THREE.Mesh(geom, mat);
+      plane.renderOrder = 440;
+      viewGizmo.add(plane);
+      return plane;
+    };
+
+    const colorX = 0xe53b3b;
+    const colorY = 0x2faf5c;
+    const colorZ = 0x2f6fe8;
+
+    makeArrow(new THREE.Vector3(1, 0, 0), arrowLen, colorX);
+    makeArrow(new THREE.Vector3(-1, 0, 0), negLen, colorX);
+    makeArrow(new THREE.Vector3(0, 1, 0), arrowLen, colorY);
+    makeArrow(new THREE.Vector3(0, -1, 0), negLen, colorY);
+    makeArrow(new THREE.Vector3(0, 0, 1), arrowLen, colorZ);
+    makeArrow(new THREE.Vector3(0, 0, -1), negLen, colorZ);
+
+    const planeSize = gizmoSize * 0.55;
+    const planeXY = makePlane(colorZ, planeSize);
+    planeXY.position.z = gizmoSize * 0.02;
+
+    const planeYZ = makePlane(colorX, planeSize);
+    planeYZ.rotation.y = Math.PI / 2;
+    planeYZ.position.x = gizmoSize * 0.02;
+
+    const planeXZ = makePlane(colorY, planeSize);
+    planeXZ.rotation.x = -Math.PI / 2;
+    planeXZ.position.y = gizmoSize * 0.02;
+
+    const originSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(Math.max(0.04, gizmoSize * 0.08), 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xf2f5f8, depthTest: false, depthWrite: false })
+    );
+    originSphere.renderOrder = 460;
+    viewGizmo.add(originSphere);
 
     if (showPlanes) {
       const planeSize = 3.0;
@@ -3552,11 +3588,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
       controls.dispose();
 
-      labelSprites.forEach((s) => {
-        const mat = s.material as THREE.SpriteMaterial;
-        if (mat.map) mat.map.dispose();
-        mat.dispose();
-      });
+      viewGizmo.traverse(disposeObject3D);
+      scene.remove(viewGizmo);
+      if (viewGizmoRef.current === viewGizmo) viewGizmoRef.current = null;
 
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
@@ -6442,6 +6476,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     isCameraLeader,
   ]);
 
+  useEffect(() => {
+    const gizmo = viewGizmoRef.current;
+    if (gizmo) gizmo.visible = showViewGizmo;
+  }, [showViewGizmo]);
+
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 
   type GraphPreset = { id: string; label: string; expr: string; createdAt: number };
@@ -6856,28 +6895,92 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           position: "absolute",
           left: 12,
           bottom: 12,
-          borderRadius: 6,
-          background: "rgba(255,255,255,0.9)",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          padding: 6,
+          borderRadius: 12,
+          background:
+            "linear-gradient(145deg, rgba(250,252,255,0.98), rgba(228,236,246,0.96))",
+          border: "1px solid rgba(140,160,184,0.55)",
+          boxShadow:
+            "0 12px 26px rgba(30,45,70,0.18), inset 0 1px 2px rgba(255,255,255,0.9)",
+          padding: 10,
           display: "flex",
           flexDirection: "column",
-          gap: 4,
-          fontSize: 11,
+          gap: 8,
+          fontSize: 12,
+          fontFamily:
+            "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+          color: "#2b3441",
+          backdropFilter: "blur(6px)",
         }}
       >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "2px 2px 4px",
+            fontSize: 11,
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            fontWeight: 700,
+            color: "#5a6676",
+          }}
+        >
+          <span>View Gizmo</span>
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "#4b82f6",
+              boxShadow: "0 0 8px rgba(75,130,246,0.55)",
+            }}
+          />
+        </div>
         <AxisGizmo
-          size={96}
+          size={108}
           getMainCamera={() => cameraRef.current}
           onSelectView={(view) => setViewMode(view)}
         />
-        <label style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "5px 8px",
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.75)",
+            border: "1px solid rgba(160,176,196,0.45)",
+            boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
+          }}
+        >
           <input
             type="checkbox"
             checked={lockToAxisPlane && viewMode !== "free"}
             onChange={(e) => setLockToAxisPlane(e.target.checked)}
+            style={{ accentColor: "#3b82f6" }}
           />
-          <span>Lock view to axis</span>
+          <span style={{ fontWeight: 600 }}>Lock view to axis</span>
+        </label>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "5px 8px",
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.75)",
+            border: "1px solid rgba(160,176,196,0.45)",
+            boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showViewGizmo}
+            onChange={(e) => setShowViewGizmo(e.target.checked)}
+            style={{ accentColor: "#3b82f6" }}
+          />
+          <span style={{ fontWeight: 600 }}>Show 3D gizmo</span>
         </label>
       </div>
 

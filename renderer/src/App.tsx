@@ -87,8 +87,9 @@ import {
   computeVertexNormals,
   validateMesh,
 } from "./mesh/meshOps";
-import type { DatasetKind, SurfaceDataset, VolumeDataset, VectorGrid } from "./scene/datasets";
+import type { DatasetKind, MeshDataset, VolumeDataset, VectorGrid } from "./scene/datasets";
 import type { PolylineSet } from "./scene/renderPrimitives";
+import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "./math/bakeSurface";
 import {
   buildVolumeGridFromPreset,
   getVolumePreset,
@@ -248,8 +249,8 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   return next;
 };
 
-const toSurfaceDataset = (mesh: SurfaceMeshData | null): SurfaceDataset | null =>
-  mesh ? { kind: "surface", mesh } : null;
+const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
+  mesh ? { kind: "mesh", mesh } : null;
 
 /* ---------------- constants ---------------- */
 
@@ -931,11 +932,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
   const [datasetKind, setDatasetKind] = useState<DatasetKind>("surface");
-  const [surfaceDataset, setSurfaceDatasetState] = useState<SurfaceDataset | null>(() => {
+  const [meshDataset, setMeshDatasetState] = useState<MeshDataset | null>(() => {
     const preset = SURFACE_MESH_PRESETS[0];
     try {
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
-      return toSurfaceDataset(applySurfaceMeshOps(base));
+      return toMeshDataset(applySurfaceMeshOps(base));
     } catch {
       return null;
     }
@@ -1057,8 +1058,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const step = span > 0 ? span / 200 : 0.01;
     return { min, max, step };
   }, [volumeScalarRange]);
-  const activeDataset = datasetKind === "volume" ? volumeDataset : surfaceDataset;
-  const surfaceMeshData = surfaceDataset?.mesh ?? null;
+  const activeDataset =
+    datasetKind === "volume" ? volumeDataset : datasetKind === "mesh" ? meshDataset : null;
+  const surfaceMeshData = meshDataset?.mesh ?? null;
   const [volumeSeedAxis, setVolumeSeedAxis] = useState<SliceAxis>("z");
   const [volumeSeedIndex, setVolumeSeedIndex] = useState(() =>
     Math.floor(volumeDataset.grid.dims[2] / 2)
@@ -1334,9 +1336,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
-  const setSurfaceDataset = useCallback((mesh: SurfaceMeshData | null) => {
-    setSurfaceDatasetState(toSurfaceDataset(mesh));
-    setDatasetKind("surface");
+  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
+    setMeshDatasetState(toMeshDataset(mesh));
+    setDatasetKind("mesh");
   }, []);
 
   // complex map sweep
@@ -3104,11 +3106,13 @@ case "mobius":
   }, []);
 
   const handlePickParamSurface = (id: ParamSurfaceId) => {
+    setDatasetKind("surface");
     setSurfaceViewerKind("param");
     setParamSurfaceId(id);
   };
 
   const handlePickEqSurface = (id: SurfaceId) => {
+    setDatasetKind("surface");
     if (isGraphSurface(id)) {
       setSurfaceViewerKind("graph");
       setGraphSurfaceId(id);
@@ -3120,6 +3124,7 @@ case "mobius":
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
+    setDatasetKind(kind === "mesh" || kind === "complex" ? "mesh" : "surface");
     if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
@@ -3208,8 +3213,7 @@ case "mobius":
       uvs: res.build.uvs,
       source: "generated",
     };
-    setSurfaceDataset(applySurfaceMeshOps(next));
-    setSurfaceViewerKind("complex");
+    setMeshDataset(applySurfaceMeshOps(next));
     setSurfaceMeshImportError(null);
     setComplexMapError(null);
   }, [
@@ -3218,7 +3222,7 @@ case "mobius":
     complexMapSheetCount,
     complexMapSheetMode,
     complexMapSheetIndex,
-    setSurfaceDataset,
+    setMeshDataset,
   ]);
 
   useEffect(() => {
@@ -3508,7 +3512,7 @@ case "mobius":
     if (!preset) return;
     try {
       const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
-      setSurfaceDataset(applySurfaceMeshOps(base));
+      setMeshDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
       setSurfaceViewerKind("mesh");
     } catch (err) {
@@ -3524,7 +3528,7 @@ case "mobius":
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
-        setSurfaceDataset(applySurfaceMeshOps(base));
+        setMeshDataset(applySurfaceMeshOps(base));
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
@@ -3577,7 +3581,7 @@ case "mobius":
         normals: res.normals ?? null,
         source: "surface",
       };
-      setSurfaceDataset(applySurfaceMeshOps(next));
+      setMeshDataset(applySurfaceMeshOps(next));
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
     },
@@ -3769,42 +3773,114 @@ case "mobius":
     setVolumeDistanceError(null);
   }, []);
 
-  const handleExportToSurfaceMesh = useCallback(() => {
-    if (surfaceViewerKind === "implicit" && !activeCgalMesh) {
-      setSurfaceMeshImportError("Run CGAL mesh first.");
-      return;
-    }
-    const meshData = surfaceSampleSet?.meshData ?? [];
-    if (!meshData.length) {
-      setSurfaceMeshImportError("Surface mesh not ready yet.");
-      return;
-    }
-    const merged = mergeMeshData(meshData);
-    const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
-    const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramSurfaceId);
-    const label =
-      surfaceViewerKind === "graph"
-        ? `Graph: ${eqMeta?.label ?? activeEqSurfaceId}`
-        : surfaceViewerKind === "implicit"
-          ? `Implicit: ${eqMeta?.label ?? activeEqSurfaceId}`
-          : surfaceViewerKind === "weierstrass"
-            ? "Weierstrass surface"
-            : surfaceViewerKind === "param"
-              ? `Param: ${paramMeta?.label ?? paramSurfaceId}`
-              : surfaceViewerKind === "complex"
-                ? surfaceMeshData?.label ?? "Complex map surface"
-                : "Surface mesh";
-
-    const next: SurfaceMeshData = {
-      label,
-      positions: merged.positions,
-      indices: merged.indices,
-      source: "surface",
-    };
-    setSurfaceDataset(applySurfaceMeshOps(next));
-    setSurfaceViewerKind("mesh");
+  const handleConvertToMesh = useCallback(() => {
     setSurfaceMeshImportError(null);
-  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, activeCgalMesh, surfaceMeshData?.label]);
+
+    if (surfaceViewerKind === "implicit") {
+      if (!activeCgalMesh) {
+        setSurfaceMeshImportError("Run CGAL mesh first.");
+        return;
+      }
+      const positions = Float32Array.from(activeCgalMesh.positions);
+      const indices = Uint32Array.from(activeCgalMesh.indices);
+      const next: SurfaceMeshData = {
+        label: buildActiveMeshLabel(),
+        positions,
+        indices,
+        source: "surface",
+      };
+      setMeshDataset(applySurfaceMeshOps(next));
+      handleChangeViewerKind("mesh");
+      return;
+    }
+
+    if (surfaceViewerKind === "graph") {
+      const baked = bakeGraphSurface({
+        surfaceId: activeEqSurfaceId,
+        graphExpr,
+        domain: activeGraphDomain,
+        resolution: graphResolution,
+        label: buildActiveMeshLabel(),
+      });
+      if ("error" in baked) {
+        setSurfaceMeshImportError(baked.error);
+        return;
+      }
+      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      handleChangeViewerKind("mesh");
+      return;
+    }
+
+    if (surfaceViewerKind === "param") {
+      const baked = bakeParamSurface({
+        surfaceId: paramSurfaceId,
+        domain: activeParamDomain,
+        resolution: paramResolution,
+        label: buildActiveMeshLabel(),
+        customX: paramXExpr,
+        customY: paramYExpr,
+        customZ: paramZExpr,
+      });
+      if ("error" in baked) {
+        setSurfaceMeshImportError(baked.error);
+        return;
+      }
+      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      handleChangeViewerKind("mesh");
+      return;
+    }
+
+    if (surfaceViewerKind === "weierstrass") {
+      const gExpr = (weierstrassGExpr ?? "z").trim() || "z";
+      const phiExpr = (weierstrassPhiExpr ?? "1").trim() || "1";
+      const baked = bakeWeierstrassSurface({
+        gExpr,
+        phiExpr,
+        domain: activeWeierstrassDomain,
+        resolution: weierstrassResolution,
+        label: buildActiveMeshLabel(),
+        recenterRescale: weierstrassRecenter,
+      });
+      if ("error" in baked) {
+        setSurfaceMeshImportError(baked.error);
+        return;
+      }
+      setMeshDataset(applySurfaceMeshOps(baked.mesh));
+      handleChangeViewerKind("mesh");
+      return;
+    }
+
+    if (surfaceViewerKind === "complex") {
+      if (!surfaceMeshData?.positions?.length || !isComplexMapSurfaceLabel(surfaceMeshData?.label)) {
+        setSurfaceMeshImportError("Complex map mesh not ready yet.");
+        return;
+      }
+      setMeshDataset(applySurfaceMeshOps(surfaceMeshData));
+      handleChangeViewerKind("mesh");
+    }
+  }, [
+    surfaceViewerKind,
+    activeCgalMesh,
+    buildActiveMeshLabel,
+    activeEqSurfaceId,
+    graphExpr,
+    activeGraphDomain,
+    graphResolution,
+    paramSurfaceId,
+    activeParamDomain,
+    paramResolution,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    activeWeierstrassDomain,
+    weierstrassResolution,
+    weierstrassRecenter,
+    surfaceMeshData,
+    setMeshDataset,
+    handleChangeViewerKind,
+  ]);
 
   const handleParamGeodesicState = useCallback((state: ParamGeodesicState | null) => {
     paramGeodesicStateRef.current = state;
@@ -4731,9 +4807,14 @@ case "mobius":
     });
   }, [selectionBaseArrays, selectionIndices, selectionCurvatures, selectedMetric, selectionStatsToken]);
 
+  const complexMeshReady =
+    surfaceViewerKind === "complex" &&
+    !!surfaceMeshData?.positions?.length &&
+    isComplexMapSurfaceLabel(surfaceMeshData?.label);
   const surfaceMeshExportable =
-    !isMeshLikeViewer &&
-    (surfaceViewerKind === "implicit" ? !!activeCgalMesh : !!surfaceSampleSet?.meshData?.length);
+    surfaceViewerKind === "complex"
+      ? complexMeshReady
+      : !isMeshLikeViewer && (surfaceViewerKind !== "implicit" || !!activeCgalMesh);
   const vtkMeshAvailable = !!surfaceSampleSet?.meshData?.length;
 
   const cgalMeshInfo = useMemo(() => {
@@ -6287,7 +6368,7 @@ case "mobius":
                   onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
-                  onExportSurfaceMesh={handleExportToSurfaceMesh}
+                  onConvertToMesh={handleConvertToMesh}
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   vtkAvailable={vtkMeshAvailable}
@@ -6765,8 +6846,11 @@ case "mobius":
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: showGaussMap ? "minmax(0,1fr) 320px" : "1fr",
-                      gap: showGaussMap ? 10 : 0,
+                      gridTemplateColumns:
+                        showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)
+                          ? "minmax(0,1fr) 320px"
+                          : "1fr",
+                      gap: showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere) ? 10 : 0,
                       height: "100%",
                     }}
                   >
@@ -7095,21 +7179,55 @@ case "mobius":
                     </div>
                   </div>
 
-                  {showGaussMap && (
-                    <div style={{ minWidth: 240, maxWidth: 340, display: "flex", alignItems: "stretch" }}>
-                    <GaussMapPanel
-                        samples={surfaceSampleSet?.samples ?? []}
-                        palette={colorPalette}
-                        colorMode={gaussColorMode}
-                        probeNormal={probeInfo?.normal ?? null}
-                        inspectDir={inspectNormal}
-                        onPointHover={(idx) => setGaussHoverIndex(idx)}
-                        height={280}
-                        selectionMask={selectionMask}
-                        onGaussSelection={handleGaussSelection}
-                        densityNormals={selectionBaseArrays?.normals ?? null}
-                        densitySelectionIndices={selectionIndices}
-                      />
+                  {(showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) && (
+                    <div
+                      style={{
+                        minWidth: 240,
+                        maxWidth: 340,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                        alignItems: "stretch",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {showGaussMap && (
+                        <GaussMapPanel
+                          samples={surfaceSampleSet?.samples ?? []}
+                          palette={colorPalette}
+                          colorMode={gaussColorMode}
+                          probeNormal={probeInfo?.normal ?? null}
+                          inspectDir={inspectNormal}
+                          onPointHover={(idx) => setGaussHoverIndex(idx)}
+                          height={surfaceViewerKind === "complex" && complexMapShowSphere ? 220 : 280}
+                          selectionMask={selectionMask}
+                          onGaussSelection={handleGaussSelection}
+                          densityNormals={selectionBaseArrays?.normals ?? null}
+                          densitySelectionIndices={selectionIndices}
+                        />
+                      )}
+                      {surfaceViewerKind === "complex" && complexMapShowSphere && (
+                        <div
+                          style={{
+                            borderRadius: 10,
+                            background: "#f8f9fb",
+                            boxShadow: "0 0 0 1px #e0e0e0",
+                            padding: 8,
+                            minHeight: 250,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Riemann sphere</div>
+                          <RiemannSpherePlot
+                            lines={complexMapSphereLines3d}
+                            points={complexMapSpherePoints3d}
+                            guideSpheres={complexMapSphereGuides}
+                            style={{ height: 220 }}
+                          />
+                          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                            w mapped by stereographic projection; poles collapse to the north pole.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -7445,24 +7563,25 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
-  const isVolume = datasetKind === "volume";
-  const isSurface = !isVolume;
+    const isVolume = datasetKind === "volume";
+    const isMesh = datasetKind === "mesh";
+    const isSurface = datasetKind === "surface";
 
   return (
     <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
       <div style={{ display: "flex", gap: 4 }}>
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("implicit");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("surface");
+              onChangeViewerKind("implicit");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
+              border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
+              background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
+              fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7471,16 +7590,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("graph");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("surface");
+              onChangeViewerKind("graph");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
+              border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
+              background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
+              fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7489,16 +7608,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("param");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("surface");
+              onChangeViewerKind("param");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "param" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "param" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "param" ? 600 : 400,
+              border: "1px solid " + (isSurface && viewerKind === "param" ? "#0a66c2" : "#ddd"),
+              background: isSurface && viewerKind === "param" ? "#e6f0ff" : "#fff",
+              fontWeight: isSurface && viewerKind === "param" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7506,16 +7625,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("weierstrass");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("surface");
+              onChangeViewerKind("weierstrass");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
+              border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
+              background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
+              fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7523,16 +7642,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("complex");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("mesh");
+              onChangeViewerKind("complex");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "complex" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "complex" ? 600 : 400,
+              border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
+              background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
+              fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7540,16 +7659,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("mesh");
-          }}
+            onClick={() => {
+              onChangeDatasetKind("mesh");
+              onChangeViewerKind("mesh");
+            }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "mesh" ? 600 : 400,
+              border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
+              background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
+              fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -7833,7 +7952,7 @@ type SurfacesLeftPanelProps = {
   onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
-  onExportSurfaceMesh: () => void;
+  onConvertToMesh: () => void;
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   vtkAvailable: boolean;
@@ -8254,7 +8373,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
   onLoadSurfaceMeshFile,
-  onExportSurfaceMesh,
+    onConvertToMesh,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   vtkAvailable,
@@ -8651,6 +8770,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
+  const [complexToolMode, setComplexToolMode] = useState<"line" | "probe" | "preimage">("line");
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -8681,6 +8801,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       lastVolumePresetIdRef.current = volumePresetId;
     }
   }, [volumePresetId]);
+  useEffect(() => {
+    if (viewerKind !== "complex") return;
+    const shouldProbeBeOn = complexToolMode === "probe";
+    if (probeEnabled !== shouldProbeBeOn) {
+      onToggleProbe();
+    }
+  }, [viewerKind, complexToolMode, probeEnabled, onToggleProbe]);
   const volumeParamDecimals = (step: number) => {
     if (step >= 1) return 0;
     if (step >= 0.1) return 1;
@@ -8719,16 +8846,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       const uMax = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
       const vMin = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
       const vMax = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
-      const value = axis === "u" ? clamp(pt.re, uMin, uMax) : clamp(pt.im, vMin, vMax);
-      onPickComplexMapLine({ axis, value });
+      if (complexToolMode === "line") {
+        const value = axis === "u" ? clamp(pt.re, uMin, uMax) : clamp(pt.im, vMin, vMax);
+        onPickComplexMapLine({ axis, value });
+      }
 
-      if (probeEnabled) {
+      if (complexToolMode === "probe") {
         const u = clamp(pt.re, uMin, uMax);
         const v = clamp(pt.im, vMin, vMax);
         onSetComplexMapProbeFromUV(u, v, "z");
       }
     },
-    [complexLineMode, complexMapSpec, onPickComplexMapLine, probeEnabled, onSetComplexMapProbeFromUV]
+    [complexLineMode, complexMapSpec, complexToolMode, onPickComplexMapLine, onSetComplexMapProbeFromUV]
   );
 
   const snapPreimageValue = useCallback(
@@ -8790,7 +8919,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
   const handleWPlaneClick = useCallback(
     (pt: { re: number; im: number }) => {
-      if (complexPreimageMode !== "none") {
+      if (complexToolMode === "preimage" && complexPreimageMode !== "none") {
         if (complexPreimageMode === "re") {
           applyPreimageValue(complexPreimageMode, clamp(pt.re, -complexMapWExtent, complexMapWExtent));
         } else if (complexPreimageMode === "im") {
@@ -8805,11 +8934,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         }
       }
 
-      if (probeEnabled) {
+      if (complexToolMode === "probe") {
         onSetComplexMapProbeFromW(pt);
       }
     },
-    [applyPreimageValue, complexMapWExtent, complexPreimageMode, probeEnabled, onSetComplexMapProbeFromW]
+    [applyPreimageValue, complexMapWExtent, complexPreimageMode, complexToolMode, onSetComplexMapProbeFromW]
   );
 
   useEffect(() => {
@@ -8996,6 +9125,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     probeEnabled,
     complexMapProbe,
   ]);
+  const wrapComplexAdvancedTools = (content: React.ReactNode) => {
+    if (viewerKind !== "complex") return content;
+    return (
+      <details style={{ ...cardStyle, marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Mesh tools (advanced)</summary>
+        <div style={{ marginTop: 8 }}>{content}</div>
+      </details>
+    );
+  };
 
   return (
     <section>
@@ -9603,8 +9741,38 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             ? "Define p(z) = Re + i Im and render the k-sheet surface w^k = p(z)."
             : "Map z = u + iv to w(u,v) = Re + i Im, then sweep or graph Re/Im as surfaces."}
         </div>
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Tool mode</div>
+        <div style={pillRow}>
+          {(
+            [
+              { id: "line", label: "Set line" },
+              { id: "probe", label: "Probe" },
+              { id: "preimage", label: "Preimage pick" },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setComplexToolMode(mode.id)}
+              style={pill(complexToolMode === mode.id)}
+              aria-pressed={complexToolMode === mode.id}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.72, marginTop: 6 }}>
+          {complexToolMode === "line"
+            ? "Click Z-plane to set a mapped line."
+            : complexToolMode === "probe"
+              ? "Click Z/W/3D to inspect one linked point."
+              : "Click W-plane to set a preimage target."}
+        </div>
 
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 8 }}>Mapping definition</div>
+        <details style={{ marginTop: 10 }} open>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Map</summary>
+          <div style={{ marginTop: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 0 }}>Mapping definition</div>
         <label style={{ fontSize: 12 }}>Re({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
         <input
           type="text"
@@ -9844,8 +10012,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </button>
           ))}
         </div>
+          </div>
+        </details>
 
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Output surface</div>
+        <details style={{ marginTop: 10 }} open>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>View / Output</summary>
+          <div style={{ marginTop: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 0, marginBottom: 4 }}>Output surface</div>
         <div style={pillRow}>
           {(
             [
@@ -9907,103 +10080,107 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           />
         </div>
 
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Mapped coordinate net</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <input
-              type="checkbox"
-              checked={complexMapSpec.showIsolines}
-              onChange={(e) => onChangeComplexMapSpec({ showIsolines: e.target.checked })}
-            />
-            Show u/v grid
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.u }} />
-            u-count
-            <input
-              type="number"
-              min={0}
-              max={120}
-              step={1}
-              value={complexMapSpec.isolinesCountU}
-              disabled={!complexMapSpec.showIsolines}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountU: clampInt(v, 0, 120) });
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Mapped coordinate net (advanced)</summary>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapSpec.showIsolines}
+                  onChange={(e) => onChangeComplexMapSpec({ showIsolines: e.target.checked })}
+                />
+                Show u/v grid
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.u }} />
+                u-count
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={1}
+                  value={complexMapSpec.isolinesCountU}
+                  disabled={!complexMapSpec.showIsolines}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountU: clampInt(v, 0, 120) });
+                  }}
+                  style={{ width: 70 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.v }} />
+                v-count
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  step={1}
+                  value={complexMapSpec.isolinesCountV}
+                  disabled={!complexMapSpec.showIsolines}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountV: clampInt(v, 0, 120) });
+                  }}
+                  style={{ width: 70 }}
+                />
+              </label>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                alignItems: "center",
+                marginTop: 6,
+                opacity: complexMapSpec.showIsolines ? 1 : 0.6,
+                fontSize: 11,
               }}
-              style={{ width: 70 }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: COMPLEX_GRID_COLORS.v }} />
-            v-count
-            <input
-              type="number"
-              min={0}
-              max={120}
-              step={1}
-              value={complexMapSpec.isolinesCountV}
-              disabled={!complexMapSpec.showIsolines}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v)) onChangeComplexMapSpec({ isolinesCountV: clampInt(v, 0, 120) });
-              }}
-              style={{ width: 70 }}
-            />
-          </label>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-            alignItems: "center",
-            marginTop: 6,
-            opacity: complexMapSpec.showIsolines ? 1 : 0.6,
-            fontSize: 11,
-          }}
-        >
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span>Thickness {fmtVal(complexMapGridThickness, 2)}</span>
-            <input
-              type="range"
-              min={0.4}
-              max={2.5}
-              step={0.1}
-              value={complexMapGridThickness}
-              onChange={(e) => setComplexMapGridThickness(Number(e.target.value))}
-              disabled={!complexMapSpec.showIsolines}
-              style={{ width: 140 }}
-            />
-          </label>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <span>Opacity {fmtVal(complexMapGridOpacity, 2)}</span>
-            <input
-              type="range"
-              min={0.15}
-              max={1}
-              step={0.05}
-              value={complexMapGridOpacity}
-              onChange={(e) => setComplexMapGridOpacity(Number(e.target.value))}
-              disabled={!complexMapSpec.showIsolines}
-              style={{ width: 140 }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 18 }}>
-            <input
-              type="checkbox"
-              checked={complexMapGridShowSurface}
-              onChange={(e) => setComplexMapGridShowSurface(e.target.checked)}
-              disabled={!complexMapSpec.showIsolines}
-            />
-            Show on surface
-          </label>
-        </div>
-        {complexMapSpec.outputMode !== "sweep" && (
-          <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
-            3D lines include mapped lines plus the Re/Im graph lines.
+            >
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span>Thickness {fmtVal(complexMapGridThickness, 2)}</span>
+                <input
+                  type="range"
+                  min={0.4}
+                  max={2.5}
+                  step={0.1}
+                  value={complexMapGridThickness}
+                  onChange={(e) => setComplexMapGridThickness(Number(e.target.value))}
+                  disabled={!complexMapSpec.showIsolines}
+                  style={{ width: 140 }}
+                />
+              </label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <span>Opacity {fmtVal(complexMapGridOpacity, 2)}</span>
+                <input
+                  type="range"
+                  min={0.15}
+                  max={1}
+                  step={0.05}
+                  value={complexMapGridOpacity}
+                  onChange={(e) => setComplexMapGridOpacity(Number(e.target.value))}
+                  disabled={!complexMapSpec.showIsolines}
+                  style={{ width: 140 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 18 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapGridShowSurface}
+                  onChange={(e) => setComplexMapGridShowSurface(e.target.checked)}
+                  disabled={!complexMapSpec.showIsolines}
+                />
+                Show on surface
+              </label>
+            </div>
+            {complexMapSpec.outputMode !== "sweep" && (
+              <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+                3D lines include mapped lines plus the Re/Im graph lines.
+              </div>
+            )}
           </div>
-        )}
+        </details>
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Z/W planes</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
@@ -10012,6 +10189,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             onClick={() => setComplexLineMode("vertical")}
             style={pill(complexLineMode === "vertical")}
             aria-pressed={complexLineMode === "vertical"}
+            disabled={complexToolMode !== "line"}
           >
             Vertical line
           </button>
@@ -10020,6 +10198,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             onClick={() => setComplexLineMode("horizontal")}
             style={pill(complexLineMode === "horizontal")}
             aria-pressed={complexLineMode === "horizontal"}
+            disabled={complexToolMode !== "line"}
           >
             Horizontal line
           </button>
@@ -10028,61 +10207,74 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             onClick={() => onPickComplexMapLine(null)}
             style={pill(!complexMapLine)}
             aria-pressed={!complexMapLine}
+            disabled={complexToolMode !== "line"}
           >
             Clear line
           </button>
           <span style={{ fontSize: 11, opacity: 0.7, alignSelf: "center" }}>
-            Click Z-plane to pick. Shift-click flips direction. Probe mode links a point.
+            {complexToolMode === "line"
+              ? "Click Z-plane to pick. Shift-click flips direction."
+              : "Switch Tool mode to Set line to edit mapped lines."}
           </span>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={wPlaneDomainColor}
-              onChange={(e) => onChangeWPlaneDomainColor(e.target.checked)}
-            />
-            W-plane domain coloring
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={wPlaneShowRings}
-              onChange={(e) => onChangeWPlaneShowRings(e.target.checked)}
-              disabled={!wPlaneDomainColor}
-            />
-            |w| rings
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={wPlaneShowRays}
-              onChange={(e) => onChangeWPlaneShowRays(e.target.checked)}
-              disabled={!wPlaneDomainColor}
-            />
-            arg(w) rays
-          </label>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapShowSphere}
-              onChange={(e) => onToggleComplexMapShowSphere(e.target.checked)}
-            />
-            Riemann sphere view
-          </label>
-          {complexMapShowSphere && (
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={complexMapSphereStacked}
-                onChange={(e) => onToggleComplexMapSphereStacked(e.target.checked)}
-              />
-              Stack along sweep axis ({complexMapSpec.sweepAxis})
-            </label>
-          )}
-        </div>
+        <details style={{ marginBottom: 6 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>W-plane overlays (advanced)</summary>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={wPlaneDomainColor}
+                  onChange={(e) => onChangeWPlaneDomainColor(e.target.checked)}
+                />
+                W-plane domain coloring
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={wPlaneShowRings}
+                  onChange={(e) => onChangeWPlaneShowRings(e.target.checked)}
+                  disabled={!wPlaneDomainColor}
+                />
+                |w| rings
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={wPlaneShowRays}
+                  onChange={(e) => onChangeWPlaneShowRays(e.target.checked)}
+                  disabled={!wPlaneDomainColor}
+                />
+                arg(w) rays
+              </label>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapShowSphere}
+                  onChange={(e) => onToggleComplexMapShowSphere(e.target.checked)}
+                />
+                Riemann sphere view
+              </label>
+              {complexMapShowSphere && (
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={complexMapSphereStacked}
+                    onChange={(e) => onToggleComplexMapSphereStacked(e.target.checked)}
+                  />
+                  Stack along sweep axis ({complexMapSpec.sweepAxis})
+                </label>
+              )}
+            </div>
+            {complexMapShowSphere && (
+              <div style={{ fontSize: 11, opacity: 0.72, marginBottom: 6 }}>
+                Riemann sphere is shown in the right-side panel next to the main 3D view.
+              </div>
+            )}
+          </div>
+        </details>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
           <div>
@@ -10093,7 +10285,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               step={1}
               ref={zPlaneRef}
               style={{ height: 160 }}
-              onClickPoint={handleZPlaneClick}
+              onClickPoint={complexToolMode === "preimage" ? undefined : handleZPlaneClick}
             />
           </div>
           <div>
@@ -10104,7 +10296,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               step={1}
               ref={wPlaneRef}
               style={{ height: 160 }}
-              onClickPoint={complexPreimageMode === "none" && !probeEnabled ? undefined : handleWPlaneClick}
+              onClickPoint={complexToolMode === "line" ? undefined : handleWPlaneClick}
               domainColoring={wPlaneDomainColor}
               domainRings={wPlaneShowRings}
               domainRays={wPlaneShowRays}
@@ -10174,212 +10366,231 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               θ = {(complexPreimageValue * (180 / Math.PI)).toFixed(1)}°
             </span>
           )}
-          <span style={{ fontSize: 11, opacity: 0.7 }}>Click W-plane to set.</span>
+          <span style={{ fontSize: 11, opacity: 0.7 }}>
+            {complexToolMode === "preimage" ? "Click W-plane to set." : "Switch Tool mode to Preimage pick to set."}
+          </span>
         </div>
-
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>
-          Critical points / zeros / poles
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapShowCritical}
-              onChange={(e) => setComplexMapShowCritical(e.target.checked)}
-            />
-            critical |detJ| ≤ {fmtVal(complexMapMarkerData?.thresholds.critical ?? 0, 4)}
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapShowZeros}
-              onChange={(e) => setComplexMapShowZeros(e.target.checked)}
-            />
-            zeros |w| ≤ {fmtVal(complexMapMarkerData?.thresholds.zero ?? 0, 4)}
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapShowPoles}
-              onChange={(e) => setComplexMapShowPoles(e.target.checked)}
-            />
-            poles |w| ≥ {fmtVal(complexMapMarkerData?.thresholds.pole ?? 0, 4)}
-          </label>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            crit rel
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.01}
-              value={complexMapCriticalRel}
-              onChange={(e) => setComplexMapCriticalRel(clamp(Number(e.target.value), 0, 1))}
-              style={{ width: 70 }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            zero rel
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.01}
-              value={complexMapZeroRel}
-              onChange={(e) => setComplexMapZeroRel(clamp(Number(e.target.value), 0, 1))}
-              style={{ width: 70 }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            pole rel
-            <input
-              type="number"
-              min={0}
-              max={1}
-              step={0.02}
-              value={complexMapPoleRel}
-              onChange={(e) => setComplexMapPoleRel(clamp(Number(e.target.value), 0, 1))}
-              style={{ width: 70 }}
-            />
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            max markers
-            <input
-              type="number"
-              min={20}
-              max={2000}
-              step={10}
-              value={complexMapMarkerMax}
-              onChange={(e) => setComplexMapMarkerMax(clampInt(Number(e.target.value), 20, 2000))}
-              style={{ width: 80 }}
-            />
-          </label>
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapMarkersZ}
-              onChange={(e) => setComplexMapMarkersZ(e.target.checked)}
-            />
-            Z-plane markers
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapMarkersW}
-              onChange={(e) => setComplexMapMarkersW(e.target.checked)}
-            />
-            W-plane markers
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexMapMarkers3d}
-              onChange={(e) => setComplexMapMarkers3d(e.target.checked)}
-            />
-            3D markers
-          </label>
-        </div>
-
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Distortion</div>
-        <div style={pillRow}>
-          {(
-            [
-              { id: "none", label: "Off" },
-              { id: "area", label: "Area |detJ|" },
-              { id: "anisotropy", label: "σmax/σmin" },
-              { id: "conformal", label: "Conformal error" },
-            ] as const
-          ).map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => setComplexDistortionMode(mode.id)}
-              style={pill(complexDistortionMode === mode.id)}
-              aria-pressed={complexDistortionMode === mode.id}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            Scale
-            <button
-              type="button"
-              onClick={() => setComplexDistortionScale("linear")}
-              style={pill(complexDistortionScale === "linear")}
-              aria-pressed={complexDistortionScale === "linear"}
-              disabled={complexDistortionMode === "none"}
-            >
-              Linear
-            </button>
-            <button
-              type="button"
-              onClick={() => setComplexDistortionScale("log")}
-              style={pill(complexDistortionScale === "log")}
-              aria-pressed={complexDistortionScale === "log"}
-              disabled={
-                complexDistortionMode === "none" ||
-                (complexDistortionMode !== "area" && complexDistortionMode !== "anisotropy")
-              }
-            >
-              Log
-            </button>
           </div>
-          {complexDistortionMode === "conformal" && (
-            <span style={{ opacity: 0.7 }}>Log scale only applies to |detJ| and σmax/σmin.</span>
-          )}
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexDistortionShowZ}
-              onChange={(e) => setComplexDistortionShowZ(e.target.checked)}
-              disabled={complexDistortionMode === "none"}
-            />
-            Z-plane heatmap
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={complexDistortionShowSurface}
-              onChange={(e) => setComplexDistortionShowSurface(e.target.checked)}
-              disabled={complexDistortionMode === "none"}
-            />
-            Surface color
-          </label>
-        </div>
-        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-          {complexMapDistortionProbe ? (
-            <>
-              u={fmtVal(complexMapDistortionProbe.u, 3)} v={fmtVal(complexMapDistortionProbe.v, 3)} · |detJ|=
-              {fmtVal(complexMapDistortionProbe.detAbs, 4)} · σmax/σmin=
-              {fmtVal(complexMapDistortionProbe.ratio, 3)} · conf=
-              {fmtVal(complexMapDistortionProbe.conformalErr, 4)}
-              {complexDistortionScale === "log" &&
-                (complexDistortionMode === "area" || complexDistortionMode === "anisotropy") && (
-                  <>
-                    {" "}· log10(1+v)=
-                    {complexDistortionMode === "area"
-                      ? fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.detAbs)), 4)
-                      : fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.ratio)), 4)}
-                  </>
-                )}
-            </>
-          ) : (
-            "Probe in Z/W/3D to read local distortion."
-          )}
-        </div>
+        </details>
 
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Linked probe</div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-          <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
-          Enable probe mode (click Z/W/3D)
-        </label>
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Analysis</summary>
+          <div style={{ marginTop: 8 }}>
+        <details>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Marker overlays (advanced)</summary>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapShowCritical}
+                  onChange={(e) => setComplexMapShowCritical(e.target.checked)}
+                />
+                critical |detJ| ≤ {fmtVal(complexMapMarkerData?.thresholds.critical ?? 0, 4)}
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapShowZeros}
+                  onChange={(e) => setComplexMapShowZeros(e.target.checked)}
+                />
+                zeros |w| ≤ {fmtVal(complexMapMarkerData?.thresholds.zero ?? 0, 4)}
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapShowPoles}
+                  onChange={(e) => setComplexMapShowPoles(e.target.checked)}
+                />
+                poles |w| ≥ {fmtVal(complexMapMarkerData?.thresholds.pole ?? 0, 4)}
+              </label>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                crit rel
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={complexMapCriticalRel}
+                  onChange={(e) => setComplexMapCriticalRel(clamp(Number(e.target.value), 0, 1))}
+                  style={{ width: 70 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                zero rel
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={complexMapZeroRel}
+                  onChange={(e) => setComplexMapZeroRel(clamp(Number(e.target.value), 0, 1))}
+                  style={{ width: 70 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                pole rel
+                <input
+                  type="number"
+                  min={0}
+                  max={1}
+                  step={0.02}
+                  value={complexMapPoleRel}
+                  onChange={(e) => setComplexMapPoleRel(clamp(Number(e.target.value), 0, 1))}
+                  style={{ width: 70 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                max markers
+                <input
+                  type="number"
+                  min={20}
+                  max={2000}
+                  step={10}
+                  value={complexMapMarkerMax}
+                  onChange={(e) => setComplexMapMarkerMax(clampInt(Number(e.target.value), 20, 2000))}
+                  style={{ width: 80 }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapMarkersZ}
+                  onChange={(e) => setComplexMapMarkersZ(e.target.checked)}
+                />
+                Z-plane markers
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapMarkersW}
+                  onChange={(e) => setComplexMapMarkersW(e.target.checked)}
+                />
+                W-plane markers
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexMapMarkers3d}
+                  onChange={(e) => setComplexMapMarkers3d(e.target.checked)}
+                />
+                3D markers
+              </label>
+            </div>
+          </div>
+        </details>
+
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Distortion (advanced)</summary>
+          <div style={{ marginTop: 6 }}>
+            <div style={pillRow}>
+              {(
+                [
+                  { id: "none", label: "Off" },
+                  { id: "area", label: "Area |detJ|" },
+                  { id: "anisotropy", label: "σmax/σmin" },
+                  { id: "conformal", label: "Conformal error" },
+                ] as const
+              ).map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => setComplexDistortionMode(mode.id)}
+                  style={pill(complexDistortionMode === mode.id)}
+                  aria-pressed={complexDistortionMode === mode.id}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6, fontSize: 11 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Scale
+                <button
+                  type="button"
+                  onClick={() => setComplexDistortionScale("linear")}
+                  style={pill(complexDistortionScale === "linear")}
+                  aria-pressed={complexDistortionScale === "linear"}
+                  disabled={complexDistortionMode === "none"}
+                >
+                  Linear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComplexDistortionScale("log")}
+                  style={pill(complexDistortionScale === "log")}
+                  aria-pressed={complexDistortionScale === "log"}
+                  disabled={
+                    complexDistortionMode === "none" ||
+                    (complexDistortionMode !== "area" && complexDistortionMode !== "anisotropy")
+                  }
+                >
+                  Log
+                </button>
+              </div>
+              {complexDistortionMode === "conformal" && (
+                <span style={{ opacity: 0.7 }}>Log scale only applies to |detJ| and σmax/σmin.</span>
+              )}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 6, fontSize: 11 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexDistortionShowZ}
+                  onChange={(e) => setComplexDistortionShowZ(e.target.checked)}
+                  disabled={complexDistortionMode === "none"}
+                />
+                Z-plane heatmap
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexDistortionShowSurface}
+                  onChange={(e) => setComplexDistortionShowSurface(e.target.checked)}
+                  disabled={complexDistortionMode === "none"}
+                />
+                Surface color
+              </label>
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+              {complexMapDistortionProbe ? (
+                <>
+                  u={fmtVal(complexMapDistortionProbe.u, 3)} v={fmtVal(complexMapDistortionProbe.v, 3)} · |detJ|=
+                  {fmtVal(complexMapDistortionProbe.detAbs, 4)} · σmax/σmin=
+                  {fmtVal(complexMapDistortionProbe.ratio, 3)} · conf=
+                  {fmtVal(complexMapDistortionProbe.conformalErr, 4)}
+                  {complexDistortionScale === "log" &&
+                    (complexDistortionMode === "area" || complexDistortionMode === "anisotropy") && (
+                      <>
+                        {" "}· log10(1+v)=
+                        {complexDistortionMode === "area"
+                          ? fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.detAbs)), 4)
+                          : fmtVal(Math.log10(1 + Math.max(0, complexMapDistortionProbe.ratio)), 4)}
+                      </>
+                    )}
+                </>
+              ) : (
+                "Probe in Z/W/3D to read local distortion."
+              )}
+            </div>
+          </div>
+        </details>
+          </div>
+        </details>
+
+        <details style={{ marginTop: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Inspect</summary>
+          <div style={{ marginTop: 8 }}>
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 0, marginBottom: 4 }}>Linked probe</div>
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          {complexToolMode === "probe"
+            ? "Probe mode is active. Click Z/W/3D to inspect."
+            : "Switch Tool mode to Probe to inspect points."}
+        </div>
         <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6, lineHeight: 1.4 }}>
           {complexMapProbe ? (
             <>
@@ -10440,6 +10651,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             ))}
           </div>
         )}
+          </div>
+        </details>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
           <button type="button" onClick={onBuildComplexMapSweep} style={{ padding: "4px 10px" }}>
@@ -10464,25 +10677,65 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       </div>
       )}
 
-      <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>SurfaceMesh</div>
+      <div style={{ marginTop: 10, fontSize: 12 }}>
+        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
+          <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} style={{ marginRight: 6 }} />
+          Wireframe mesh
+        </label>
+        <label style={{ display: "block", cursor: "pointer" }}>
+          <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} style={{ marginRight: 6 }} />
+          Show coordinate planes (x=0, y=0, z=0)
+        </label>
+        <label style={{ display: "block", cursor: "pointer" }}>
+          <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} style={{ marginRight: 6 }} />
+          Show normal arrow
+        </label>
+        <label style={{ display: "block", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={showProbeTangentPlane}
+            onChange={onToggleProbeTangentPlane}
+            style={{ marginRight: 6 }}
+          />
+          Show tangent plane
+        </label>
+        <label style={{ display: "block", cursor: "pointer" }}>
+          <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
+          Show tangent directions
+        </label>
+      </div>
+
+      {wrapComplexAdvancedTools(
+      <>
+      <details style={{ ...cardStyle, marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>SurfaceMesh</summary>
+        <div style={{ marginTop: 8 }}>
         {viewerKind !== "mesh" ? (
           <>
             <button
               type="button"
-              onClick={onExportSurfaceMesh}
+              onClick={onConvertToMesh}
               disabled={!surfaceMeshExportable}
               style={{ padding: "4px 10px" }}
             >
-              Export to SurfaceMesh
+              Convert to Mesh…
             </button>
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
               {surfaceMeshExportable
-                ? "Convert the current surface triangles into SurfaceMesh mode."
+                ? viewerKind === "complex"
+                  ? "Switch to the SurfaceMesh viewer using the current complex map mesh."
+                  : "Bake the current surface into a mesh dataset."
                 : viewerKind === "implicit"
-                  ? "Run CGAL mesh first to export an implicit surface mesh."
-                  : "Mesh export will enable once the surface is ready."}
+                  ? "Run CGAL mesh first to convert an implicit surface."
+                  : viewerKind === "complex"
+                    ? "Build the complex map surface first."
+                    : "Mesh conversion will enable once the surface is ready."}
             </div>
+            {surfaceMeshImportError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
+                {surfaceMeshImportError}
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -10580,10 +10833,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         {volumeDistanceError && (
           <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>
         )}
-      </div>
+        </div>
+      </details>
 
-      <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Python mesh ops (VTK)</div>
+      <details style={{ ...cardStyle, marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Python mesh ops (VTK)</summary>
+        <div style={{ marginTop: 8 }}>
         {!vtkAvailable ? (
           <div style={{ fontSize: 11, color: "#666" }}>Mesh data not ready yet.</div>
         ) : (
@@ -10671,38 +10926,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           </>
         )}
         {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
-      </div>
+        </div>
+      </details>
 
-      {/* toggles */}
-      <div style={{ marginTop: 6, marginBottom: 8, fontSize: 12 }}>
-        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
-          <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} style={{ marginRight: 6 }} />
-          Wireframe mesh
-        </label>
-
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} style={{ marginRight: 6 }} />
-          Show coordinate planes (x=0, y=0, z=0)
-        </label>
-
-        <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
-          <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} style={{ marginRight: 6 }} />
-          Probe mode: pick point on surface
-        </label>
-
-        <div style={{ marginLeft: 20, marginTop: 4, fontSize: 12 }}>
-          <label style={{ display: "block", cursor: "pointer" }}>
-            <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} style={{ marginRight: 6 }} />
-            Show normal arrow
+      <details style={{ ...cardStyle, marginTop: 10 }}>
+        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Display & analysis</summary>
+        <div style={{ marginTop: 8, fontSize: 12 }}>
+        {viewerKind !== "complex" && (
+          <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
+            <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} style={{ marginRight: 6 }} />
+            Probe mode: pick point on surface
           </label>
-          <label style={{ display: "block", cursor: "pointer" }}>
-            <input type="checkbox" checked={showProbeTangentPlane} onChange={onToggleProbeTangentPlane} style={{ marginRight: 6 }} />
-            Show tangent plane
-          </label>
-          <label style={{ display: "block", cursor: "pointer" }}>
-            <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
-            Show tangent directions
-          </label>
+        )}
+
+        <div style={{ marginTop: 0, fontSize: 12 }}>
           {(viewerKind === "param" ||
             viewerKind === "weierstrass" ||
             viewerKind === "graph" ||
@@ -11688,9 +11925,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               : "SurfaceMesh presets and import live in the left panel."}
           </div>
         )}
-      </div>
         </div>
-
+        </div>
         <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
           <input type="checkbox" checked={showBoundingBox} onChange={onToggleBoundingBox} style={{ marginRight: 6 }} />
           Show bounding box for domain
@@ -11712,6 +11948,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           Reset camera view
         </button>
       </div>
+      </details>
+      </>
+      )}
 
       {/* color mode */}
       <div style={{ marginBottom: 10 }}>

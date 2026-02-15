@@ -2,6 +2,9 @@
 
 ## Latest changes
 
+- Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
+- Added MeshDataset plumbing and dataset switching to support SurfaceMesh as a first-class dataset type.
+- Added graph/param/Weierstrass surface bakers (grid sampling + triangulation + invalid-point skipping).
 - Added a dedicated Complex map tab next to Weierstrass, with sweep output choices for Re/Im surfaces and 3D isolines; complex rebuilds can be live or manual.
 - Split SurfaceMesh controls into Surface vs Volume tabs (next to SurfaceMesh), moving dataset selection into the header tabs.
 - Added linked orthogonal volume slices with click-to-place crosshair, readout panel, and a toggle back to full 3D view.
@@ -101,6 +104,35 @@ and editable.
 - Presets: Canonical examples such as torus, helicoid, catenoid, Enneper, and others.
 - Custom param: Provide X(u,v), Y(u,v), Z(u,v) expressions for custom surfaces.
 - Geodesics: Heat-method paths on the parametric mesh, plus a continuous ODE solver in UV when enabled.
+
+### SurfaceMesh conversion (Convert to Mesh…)
+
+Use the **Convert to Mesh…** button in the SurfaceMesh panel to bake the current surface into a mesh dataset and switch to the **SurfaceMesh** viewer.
+
+How it works (by viewer):
+
+Implicit (f(x,y,z)=0)
+- Requires CGAL mesh first.
+- Convert uses the current CGAL mesh output. If CGAL hasn’t run, it won’t convert.
+
+Explicit graph (z=f(x,y))
+- Samples a grid over the current graph domain at the current resolution.
+- Skips invalid points, then triangulates the grid.
+- If everything is invalid, you’ll get “No valid triangles produced.”
+
+Parametric (σ(u,v))
+- Samples the current u,v domain at the current resolution.
+- Skips invalid points, triangulates the grid.
+- Custom expressions are evaluated; invalid values are skipped.
+
+Weierstrass
+- Uses the current g/phi, domain, resolution.
+- Samples the param surface from the Weierstrass builder.
+- Skips invalid points; triangulates.
+
+Complex map
+- Uses the already-built complex map mesh.
+- If the map isn’t ready, it errors (“Complex map mesh not ready yet.”).
 
 #### 4) Complex maps (w = f(z))
 

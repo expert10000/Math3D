@@ -1,6 +1,6 @@
 import type { Image2D, PolylineSet, SurfaceMesh } from "./renderPrimitives";
 
-export type DatasetKind = "surface" | "volume";
+export type DatasetKind = "surface" | "mesh" | "volume";
 
 export type SurfaceScalarField = {
   name: string;
@@ -11,8 +11,8 @@ export type SurfaceFields = {
   scalars?: SurfaceScalarField[];
 };
 
-export type SurfaceDataset = {
-  kind: "surface";
+export type MeshDataset = {
+  kind: "mesh";
   mesh: SurfaceMesh;
   fields?: SurfaceFields | null;
 };
@@ -46,7 +46,7 @@ export type VolumeDataset = {
   sourceId?: string;
 };
 
-export type Dataset = SurfaceDataset | VolumeDataset;
+export type Dataset = MeshDataset | VolumeDataset;
 
 export type SurfaceDerivedView =
   | { kind: "polylines"; data: PolylineSet }
