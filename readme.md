@@ -693,3 +693,35 @@ PR D - Navigation + teaching polish
 - Next stale/failed block navigation
 - Export: Markdown/PDF report view + JSON
 - Example workbook template (solved problem)
+
+Workbook PRs (Notebook UX, Next)
+
+PR1 — Real dependency graph + “stale” + cache
+
+- Each block has typed inputs/outputs (even if hidden in UI).
+- Compute blocks store inputHash → cached outputs.
+- If an upstream block changes → downstream becomes STALE (badge + “Run from here”).
+- Add “Run stage”, “Run all stale”, and a tiny status line: ✓ up to date / ⟳ stale / ✗ failed.
+- This single PR makes everything else scale.
+
+PR2 — Parameter controls inside blocks (sliders, pickers, scrub)
+
+- Any block can expose params: gridDensity, geodesicCount, stepSize, seed, colormap range, etc.
+- Add “scrub mode”: slider drag updates visualization live (throttled).
+- Add “keyframes”: save a few param states and play them (mini animation).
+- This is where “Math3D > Jupyter” starts to show.
+
+PR3 — Interaction blocks (the killer feature)
+
+- Add blocks that ask the user to do something in the viewer and output data:
+- PickPoint → outputs Point3 + chart coords + tangent basis
+- DrawCurve (polyline) → outputs PolylineSet
+- SelectRegion (paint/brush on mesh) → outputs FaceSet or VertexMask
+- PickDirection at point → outputs tangent vector
+- Then Compute blocks consume these outputs: geodesics from picked point, transport along drawn curve, integrate divergence on selected region, etc.
+
+PR4 — Visualize blocks control the viewer
+
+- Capture current view (camera + toggles + selected overlays)
+- Jump to view on block click
+- Mini thumbnail preview (optional)

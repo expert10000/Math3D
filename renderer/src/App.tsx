@@ -133,6 +133,10 @@ import {
   type WorkbookBlockType,
   type WorkbookStageId,
   type WorkbookViewSnapshot,
+  type WorkbookPort,
+  type WorkbookValueType,
+  type WorkbookComputeCacheEntry,
+  type WorkbookComputeOutputs,
 } from "./workbook/workbookModel";
 /* ---------------- App modes ---------------- */
 
@@ -963,6 +967,80 @@ const vNormalize = (v: Vec3): Vec3 => {
   return len > 1e-12 ? vScale(v, 1 / len) : { x: 0, y: 0, z: 0 };
 };
 
+const stableStringify = (value: unknown) => {
+  const seen = new WeakSet();
+  const walk = (val: any): any => {
+    if (val === null || typeof val !== "object") return val;
+    if (seen.has(val)) return "[Circular]";
+    seen.add(val);
+    if (Array.isArray(val)) return val.map(walk);
+    const out: Record<string, any> = {};
+    for (const key of Object.keys(val).sort()) {
+      out[key] = walk(val[key]);
+    }
+    return out;
+  };
+  return JSON.stringify(walk(value));
+};
+
+const hashString = (input: string) => {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+};
+
+const hashValue = (value: unknown) => hashString(stableStringify(value));
+
+const BASE_COMPUTE_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "formula", label: "Formula", type: "formula", optional: true },
+  { id: "overlay", label: "Overlay", type: "overlay", optional: true },
+  { id: "curve", label: "Curve", type: "curve", optional: true },
+];
+const GEODESIC_INPUTS: WorkbookPort[] = [
+  ...BASE_COMPUTE_INPUTS,
+  { id: "points", label: "Points", type: "points", optional: true },
+];
+const COMPUTE_OPERATOR_OUTPUTS: Record<string, WorkbookPort[]> = {
+  chart_grid: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+  curvature_field: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+  geodesic_heat: [{ id: "curve", label: "Curve", type: "curve" }],
+  principal_dirs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+};
+
+const getComputePorts = (operatorId?: string) => {
+  const outputs = operatorId ? COMPUTE_OPERATOR_OUTPUTS[operatorId] ?? [] : [];
+  const inputs = operatorId === "geodesic_heat" ? GEODESIC_INPUTS : BASE_COMPUTE_INPUTS;
+  return { inputs, outputs };
+};
+
+const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; outputs: WorkbookPort[] }> = {
+  text: { inputs: [], outputs: [{ id: "text", label: "Text", type: "text" }] },
+  formula: { inputs: [], outputs: [{ id: "formula", label: "Formula", type: "formula" }] },
+  visualize: {
+    inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+    outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
+  },
+  compute: { inputs: BASE_COMPUTE_INPUTS, outputs: [] },
+  assert: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
+};
+
+const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outputs: WorkbookPort[] } => {
+  if (block.type === "compute") {
+    const ports = getComputePorts(block.compute?.operatorId);
+    const inputs = ports.inputs;
+    const outputs = ports.outputs.length ? ports.outputs : block.outputs ?? [];
+    return { inputs, outputs };
+  }
+  const defaults = DEFAULT_BLOCK_PORTS[block.type];
+  const inputs = block.inputs?.length ? block.inputs : defaults.inputs;
+  const outputs = block.outputs?.length ? block.outputs : defaults.outputs;
+  return { inputs, outputs };
+};
+
 /* ---------------- App ---------------- */
 
 const App: React.FC = () => {
@@ -1027,6 +1105,10 @@ const App: React.FC = () => {
       // ignore
     }
   }, [rightPanelTab]);
+  const activeWorkbook = useMemo(
+    () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
+    [workbooks, activeWorkbookId]
+  );
 
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
@@ -2853,6 +2935,174 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     implicitSurfaceId,
   ]);
   const cameraSyncEnabled = compareEnabled || rightPanelTab === "workbook";
+  const workbookGraph = useMemo(() => {
+    if (!activeWorkbook) {
+      return {
+        orderedBlocks: [],
+        blockMetaById: new Map<string, { stageId: WorkbookStageId; index: number; block: WorkbookBlock }>(),
+        dependenciesById: new Map<string, string[]>(),
+        downstreamById: new Map<string, string[]>(),
+        inputHashById: new Map<string, string>(),
+        outputHashById: new Map<string, string>(),
+        computeStatusById: new Map<string, "ok" | "stale" | "failed">(),
+        computeBlockIdsByStage: {
+          define: [],
+          compute: [],
+          visualize: [],
+          explain: [],
+        } as Record<WorkbookStageId, string[]>,
+      };
+    }
+
+    const stageMap = new Map(activeWorkbook.stages.map((s) => [s.id, s]));
+    const orderedBlocks: Array<{ stageId: WorkbookStageId; index: number; block: WorkbookBlock }> = [];
+    const blockMetaById = new Map<string, { stageId: WorkbookStageId; index: number; block: WorkbookBlock }>();
+    const computeBlockIdsByStage: Record<WorkbookStageId, string[]> = {
+      define: [],
+      compute: [],
+      visualize: [],
+      explain: [],
+    };
+    for (const stageId of WORKBOOK_STAGE_IDS) {
+      const stage = stageMap.get(stageId);
+      if (!stage) continue;
+      stage.blocks.forEach((block, index) => {
+        orderedBlocks.push({ stageId, index, block });
+        blockMetaById.set(block.id, { stageId, index, block });
+        if (block.type === "compute") {
+          computeBlockIdsByStage[stageId].push(block.id);
+        }
+      });
+    }
+
+    const dependenciesById = new Map<string, string[]>();
+    const downstreamById = new Map<string, string[]>();
+    const inputHashById = new Map<string, string>();
+    const outputHashById = new Map<string, string>();
+    const computeStatusById = new Map<string, "ok" | "stale" | "failed">();
+    const outputByType = new Map<WorkbookValueType, { blockId: string; hash: string }[]>();
+
+    const blockContentPayload = (block: WorkbookBlock) => ({
+      type: block.type,
+      title: block.title,
+      text: block.text ?? "",
+      formula: block.formula ?? "",
+      visualize: block.visualize
+        ? {
+            live: block.visualize.live,
+            snapshot: block.visualize.snapshot ?? null,
+            notes: block.visualize.notes ?? "",
+          }
+        : null,
+      assert: block.assert
+        ? {
+            expected: block.assert.expected ?? "",
+            status: block.assert.status ?? "pending",
+          }
+        : null,
+      inputs: block.inputs ?? null,
+      outputs: block.outputs ?? null,
+    });
+
+    const findLatestOutput = (type: WorkbookValueType) => {
+      const items = outputByType.get(type);
+      if (!items || !items.length) return null;
+      return items[items.length - 1];
+    };
+
+    for (const entry of orderedBlocks) {
+      const { block } = entry;
+      const { inputs, outputs } = resolveBlockPorts(block);
+      const deps = new Set<string>();
+      const inputTokens = inputs.map((input) => {
+        if (input.type === "dataset") {
+          return { type: input.type, value: currentDatasetRef };
+        }
+        const upstream = findLatestOutput(input.type);
+        if (upstream) {
+          deps.add(upstream.blockId);
+          return { type: input.type, from: upstream.blockId, hash: upstream.hash };
+        }
+        return { type: input.type, missing: true, optional: !!input.optional };
+      });
+      const depList = Array.from(deps);
+      dependenciesById.set(block.id, depList);
+
+      if (block.type === "compute") {
+        const operatorId = block.compute?.operatorId ?? "";
+        const inputHash = hashValue({
+          operatorId,
+          datasetRef: currentDatasetRef,
+          viewerKind: surfaceViewerKind,
+          inputs: inputTokens,
+        });
+        inputHashById.set(block.id, inputHash);
+        const cacheEntry = block.compute?.cache?.[inputHash];
+        let status: "ok" | "stale" | "failed" = "stale";
+        if (cacheEntry?.status === "failed") {
+          status = "failed";
+        } else if (cacheEntry?.status === "ok") {
+          status = "ok";
+        } else if (!operatorId) {
+          status = "stale";
+        } else if (block.compute?.status === "failed" && block.compute?.inputHash === inputHash) {
+          status = "failed";
+        } else if (block.compute?.status === "ok" && block.compute?.inputHash === inputHash) {
+          status = "ok";
+        }
+        computeStatusById.set(block.id, status);
+        const outputHash = hashValue({ operatorId, inputHash });
+        outputHashById.set(block.id, outputHash);
+        outputs.forEach((output) => {
+          const list = outputByType.get(output.type) ?? [];
+          list.push({ blockId: block.id, hash: outputHash });
+          outputByType.set(output.type, list);
+        });
+      } else {
+        const outputHash = hashValue(blockContentPayload(block));
+        outputHashById.set(block.id, outputHash);
+        outputs.forEach((output) => {
+          const list = outputByType.get(output.type) ?? [];
+          list.push({ blockId: block.id, hash: outputHash });
+          outputByType.set(output.type, list);
+        });
+      }
+    }
+
+    for (const [blockId, deps] of dependenciesById) {
+      deps.forEach((depId) => {
+        const list = downstreamById.get(depId) ?? [];
+        list.push(blockId);
+        downstreamById.set(depId, list);
+      });
+    }
+
+    return {
+      orderedBlocks,
+      blockMetaById,
+      dependenciesById,
+      downstreamById,
+      inputHashById,
+      outputHashById,
+      computeStatusById,
+      computeBlockIdsByStage,
+    };
+  }, [activeWorkbook, currentDatasetRef, surfaceViewerKind]);
+  const computeStatusById = useMemo(() => {
+    const map: Record<string, "ok" | "stale" | "failed"> = {};
+    for (const [id, status] of workbookGraph.computeStatusById) {
+      map[id] = status;
+    }
+    return map;
+  }, [workbookGraph]);
+  const workbookStatus = useMemo(() => {
+    const statuses = Object.values(computeStatusById);
+    if (!statuses.length) return "ok";
+    if (statuses.some((status) => status === "failed")) return "failed";
+    if (statuses.some((status) => status === "stale")) return "stale";
+    return "ok";
+  }, [computeStatusById]);
+
   const activeGraphDomain = useMemo(
     () =>
       normalizeGraphDomain(
@@ -3324,13 +3574,24 @@ case "mobius":
     }
   }, []);
 
+  const applyDefaultPorts = useCallback((block: WorkbookBlock): WorkbookBlock => {
+    const ports = resolveBlockPorts(block);
+    return { ...block, inputs: ports.inputs, outputs: ports.outputs };
+  }, []);
+
   const makeWorkbookBlock = (type: WorkbookBlockType): WorkbookBlock => {
     const base: WorkbookBlock = { id: makeId(), type, title: `${type[0].toUpperCase()}${type.slice(1)} block` };
-    if (type === "text") return { ...base, title: "Text", text: "" };
-    if (type === "formula") return { ...base, title: "Formula", formula: "" };
-    if (type === "visualize") return { ...base, title: "View", visualize: { live: true, snapshot: null } };
-    if (type === "compute") return { ...base, title: "Compute", compute: { status: "idle" } };
-    return { ...base, title: "Assert", assert: { expected: "", status: "pending" } };
+    if (type === "text") return applyDefaultPorts({ ...base, title: "Text", text: "" });
+    if (type === "formula") return applyDefaultPorts({ ...base, title: "Formula", formula: "" });
+    if (type === "visualize")
+      return applyDefaultPorts({ ...base, title: "View", visualize: { live: true, snapshot: null } });
+    if (type === "compute")
+      return applyDefaultPorts({
+        ...base,
+        title: "Compute",
+        compute: { status: "idle", cache: {} },
+      });
+    return applyDefaultPorts({ ...base, title: "Assert", assert: { expected: "", status: "pending" } });
   };
 
   const handleCreateWorkbook = useCallback(() => {
@@ -3413,7 +3674,22 @@ case "mobius":
                   s.id === stageId
                     ? {
                         ...s,
-                        blocks: s.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const next: WorkbookBlock = { ...b, ...patch };
+                          if (patch.compute) {
+                            next.compute = { ...(b.compute ?? {}), ...patch.compute };
+                          }
+                          if (patch.visualize) {
+                            next.visualize = { ...(b.visualize ?? { live: true }), ...patch.visualize };
+                          }
+                          if (patch.assert) {
+                            next.assert = { ...(b.assert ?? { expected: "", status: "pending" }), ...patch.assert };
+                          }
+                          if (patch.inputs) next.inputs = patch.inputs;
+                          if (patch.outputs) next.outputs = patch.outputs;
+                          return applyDefaultPorts(next);
+                        }),
                       }
                     : s
                 ),
@@ -3422,7 +3698,7 @@ case "mobius":
         )
       );
     },
-    [activeWorkbookId]
+    [activeWorkbookId, applyDefaultPorts]
   );
 
   const handleRemoveWorkbookBlock = useCallback(
@@ -6117,50 +6393,110 @@ case "mobius":
   const handleRunComputeBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
       if (!activeWorkbookId) return;
-      if (!operatorId) {
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      const block = meta?.block;
+      const resolvedOperator = operatorId ?? block?.compute?.operatorId;
+      if (!resolvedOperator) {
         handleUpdateWorkbookBlock(stageId, blockId, {
           compute: { status: "stale", summary: "Select an operator first." },
         });
         return;
       }
 
-      let status: "ok" | "stale" = "ok";
+      const applyViewPatch = (patch?: WorkbookComputeOutputs["viewPatch"]) => {
+        if (!patch) return;
+        if (patch.colorMode) setColorMode(patch.colorMode);
+        if (patch.showWireframe != null) setShowWireframe(patch.showWireframe);
+        if (patch.showContours != null) setShowContours(patch.showContours);
+        if (patch.showChartGrid != null) setShowChartGrid(patch.showChartGrid);
+        if (patch.probeEnabled != null) setProbeEnabled(patch.probeEnabled);
+        if (patch.showProbeNormal != null) setShowProbeNormal(patch.showProbeNormal);
+        if (patch.showProbeTangentPlane != null) setShowProbeTangentPlane(patch.showProbeTangentPlane);
+        if (patch.showProbeTangents != null) setShowProbeTangents(patch.showProbeTangents);
+        if (patch.showPrincipalDirections != null) setShowPrincipalDirections(patch.showPrincipalDirections);
+        if (patch.showPrincipalGlyphs != null) setShowPrincipalGlyphs(patch.showPrincipalGlyphs);
+      };
+
+      const applyComputeOutputs = (outputs?: WorkbookComputeOutputs) => {
+        if (!outputs) return;
+        applyViewPatch(outputs.viewPatch);
+        if (outputs.geodesicHeat) {
+          setGeodesicHeatEnabled(true);
+          setGeodesicHeatPolylines(outputs.geodesicHeat.polylines ?? null);
+          setGeodesicHeatLength(outputs.geodesicHeat.length ?? null);
+          if (outputs.geodesicHeat.phi != null) setGeodesicHeatPhi(outputs.geodesicHeat.phi ?? null);
+          if (outputs.geodesicHeat.meshToken != null) setGeodesicHeatMeshToken(outputs.geodesicHeat.meshToken);
+          if (outputs.geodesicHeat.meshKey != null) setGeodesicHeatMeshKey(outputs.geodesicHeat.meshKey);
+          if (outputs.geodesicHeat.message != null) setGeodesicHeatMessage(outputs.geodesicHeat.message);
+        }
+      };
+
+      const inputHash =
+        workbookGraph.inputHashById.get(blockId) ??
+        hashValue({
+          operatorId: resolvedOperator,
+          datasetRef: currentDatasetRef,
+          viewerKind: surfaceViewerKind,
+          inputs: [],
+        });
+      const cacheEntry = block?.compute?.cache?.[inputHash];
+      if (cacheEntry?.status === "ok") {
+        applyComputeOutputs(cacheEntry.outputs);
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          compute: {
+            status: "ok",
+            summary: cacheEntry.summary ?? "Cached output applied.",
+            datasetRef: currentDatasetRef,
+            lastRunAt: Date.now(),
+            inputHash,
+            outputHash: cacheEntry.outputHash,
+          },
+        });
+        return;
+      }
+
+      let status: "ok" | "stale" | "failed" = "ok";
       let summary = "";
+      let outputs: WorkbookComputeOutputs | undefined;
 
       if (datasetKind === "volume") {
-        status = "stale";
+        status = "failed";
         summary = "Compute operators target surface datasets (switch off Volume).";
       } else {
-        if (operatorId === "chart_grid") {
-          setProbeEnabled(true);
-          setShowProbeNormal(true);
-          setShowProbeTangentPlane(true);
-          setShowProbeTangents(true);
+        if (resolvedOperator === "chart_grid") {
+          const patch: WorkbookComputeOutputs["viewPatch"] = {
+            probeEnabled: true,
+            showProbeNormal: true,
+            showProbeTangentPlane: true,
+            showProbeTangents: true,
+          };
           if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-            setShowChartGrid(true);
+            patch.showChartGrid = true;
             summary = "Chart grid (iso-u/iso-v) + probe enabled.";
           } else if (surfaceViewerKind === "graph") {
-            setShowChartGrid(true);
+            patch.showChartGrid = true;
             summary = "Chart grid (iso-x/iso-y) + probe enabled.";
           } else {
-            setShowWireframe(true);
+            patch.showWireframe = true;
             if (surfaceViewerKind === "implicit") {
-              setShowContours(true);
+              patch.showContours = true;
               summary = "Wireframe + contours + probe enabled.";
             } else {
               summary = "Wireframe + probe enabled.";
             }
           }
-        } else if (operatorId === "curvature_field") {
-          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-            setColorMode("gaussian");
-          } else {
-            setColorMode("curvature");
-          }
-          setShowPrincipalDirections(true);
-          setShowPrincipalGlyphs(true);
+          applyViewPatch(patch);
+          outputs = { viewPatch: patch };
+        } else if (resolvedOperator === "curvature_field") {
+          const patch: WorkbookComputeOutputs["viewPatch"] = {
+            colorMode: surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "gaussian" : "curvature",
+            showPrincipalDirections: true,
+            showPrincipalGlyphs: true,
+          };
+          applyViewPatch(patch);
+          outputs = { viewPatch: patch };
           summary = "Curvature coloring + principal directions enabled.";
-        } else if (operatorId === "geodesic_heat") {
+        } else if (resolvedOperator === "geodesic_heat") {
           setGeodesicHeatEnabled(true);
           if (!geodesicHeatAvailable) {
             status = "stale";
@@ -6175,14 +6511,45 @@ case "mobius":
             summary = "Geodesic heat path requested.";
             handleRunGeodesicHeat();
           }
-        } else if (operatorId === "principal_dirs") {
-          setShowPrincipalDirections(true);
-          setShowPrincipalGlyphs(true);
+        } else if (resolvedOperator === "principal_dirs") {
+          const patch: WorkbookComputeOutputs["viewPatch"] = {
+            showPrincipalDirections: true,
+            showPrincipalGlyphs: true,
+          };
+          applyViewPatch(patch);
+          outputs = { viewPatch: patch };
           summary = "Principal direction glyphs enabled.";
         } else {
-          status = "stale";
+          status = "failed";
           summary = "Unknown operator.";
         }
+      }
+
+      const outputHash = hashValue({ operatorId: resolvedOperator, inputHash, outputs: outputs ?? null });
+      const cache: Record<string, WorkbookComputeCacheEntry> = {
+        ...(block?.compute?.cache ?? {}),
+      };
+      if (status === "ok" || status === "failed") {
+        cache[inputHash] = {
+          inputHash,
+          outputHash,
+          status: status === "ok" ? "ok" : "failed",
+          summary,
+          outputs,
+          createdAt: Date.now(),
+        };
+      }
+      const cacheEntries = Object.values(cache);
+      if (cacheEntries.length > 8) {
+        cacheEntries.sort((a, b) => a.createdAt - b.createdAt);
+        const pruned: Record<string, WorkbookComputeCacheEntry> = {};
+        cacheEntries.slice(cacheEntries.length - 8).forEach((entry) => {
+          pruned[entry.inputHash] = entry;
+        });
+        Object.keys(cache).forEach((key) => {
+          delete cache[key];
+        });
+        Object.assign(cache, pruned);
       }
 
       setWorkbooks((prev) =>
@@ -6201,11 +6568,14 @@ case "mobius":
                                 ...b,
                                 compute: {
                                   ...(b.compute ?? {}),
-                                  operatorId,
+                                  operatorId: resolvedOperator,
                                   status,
                                   summary,
                                   datasetRef: currentDatasetRef,
                                   lastRunAt: Date.now(),
+                                  inputHash,
+                                  outputHash,
+                                  cache,
                                 },
                               }
                             : b
@@ -6229,6 +6599,13 @@ case "mobius":
       handleRunGeodesicHeat,
       handleUpdateWorkbookBlock,
       setColorMode,
+      setGeodesicHeatEnabled,
+      setGeodesicHeatLength,
+      setGeodesicHeatMessage,
+      setGeodesicHeatMeshKey,
+      setGeodesicHeatMeshToken,
+      setGeodesicHeatPhi,
+      setGeodesicHeatPolylines,
       setShowContours,
       setShowChartGrid,
       setShowPrincipalDirections,
@@ -6239,7 +6616,41 @@ case "mobius":
       setShowWireframe,
       setProbeEnabled,
       surfaceViewerKind,
+      workbookGraph,
     ]
+  );
+
+  const handleRunComputeStage = useCallback(
+    (stageId: WorkbookStageId) => {
+      const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
+      ids.forEach((id) => {
+        const meta = workbookGraph.blockMetaById.get(id);
+        handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
+      });
+    },
+    [handleRunComputeBlock, workbookGraph]
+  );
+
+  const handleRunAllStale = useCallback(() => {
+    Object.entries(computeStatusById).forEach(([id, status]) => {
+      if (status !== "stale") return;
+      const meta = workbookGraph.blockMetaById.get(id);
+      if (!meta) return;
+      handleRunComputeBlock(meta.stageId, id, meta.block.compute?.operatorId);
+    });
+  }, [computeStatusById, handleRunComputeBlock, workbookGraph]);
+
+  const handleRunFromBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
+      const startIdx = ids.indexOf(blockId);
+      if (startIdx < 0) return;
+      ids.slice(startIdx).forEach((id) => {
+        const meta = workbookGraph.blockMetaById.get(id);
+        handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
+      });
+    },
+    [handleRunComputeBlock, workbookGraph]
   );
 
   const handleRecomputeGeodesicDisk = useCallback(
@@ -8372,6 +8783,8 @@ case "mobius":
                   workbooks={workbooks}
                   activeWorkbookId={activeWorkbookId}
                   activeStageId={activeStageId}
+                  computeStatusById={computeStatusById}
+                  workbookStatus={workbookStatus}
                   onSelectWorkbook={setActiveWorkbookId}
                   onCreateWorkbook={handleCreateWorkbook}
                   onDuplicateWorkbook={handleDuplicateWorkbook}
@@ -8386,6 +8799,9 @@ case "mobius":
                   onApplyVisualize={handleApplyVisualize}
                   onToggleVisualizeLive={handleToggleVisualizeLive}
                   onRunComputeBlock={handleRunComputeBlock}
+                  onRunComputeStage={handleRunComputeStage}
+                  onRunAllStale={handleRunAllStale}
+                  onRunFromBlock={handleRunFromBlock}
                   onExportJson={handleExportWorkbooks}
                   onImportJson={handleImportWorkbooks}
                   currentDatasetRef={currentDatasetRef}

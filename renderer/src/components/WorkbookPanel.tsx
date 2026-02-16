@@ -13,6 +13,8 @@ type WorkbookPanelProps = {
   workbooks: Workbook[];
   activeWorkbookId: string | null;
   activeStageId: WorkbookStageId;
+  computeStatusById: Record<string, "ok" | "stale" | "failed">;
+  workbookStatus: "ok" | "stale" | "failed";
   onSelectWorkbook: (id: string) => void;
   onCreateWorkbook: () => void;
   onDuplicateWorkbook: (id: string) => void;
@@ -27,6 +29,9 @@ type WorkbookPanelProps = {
   onApplyVisualize: (snapshot: WorkbookViewSnapshot) => void;
   onToggleVisualizeLive: (stageId: WorkbookStageId, blockId: string, live: boolean) => void;
   onRunComputeBlock: (stageId: WorkbookStageId, blockId: string, operatorId?: string) => void;
+  onRunComputeStage: (stageId: WorkbookStageId) => void;
+  onRunAllStale: () => void;
+  onRunFromBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
   currentDatasetRef: string;
@@ -52,6 +57,7 @@ const STATUS_COLORS: Record<string, string> = {
   ok: "#14532d",
   stale: "#92400e",
   fail: "#b91c1c",
+  failed: "#b91c1c",
   pending: "#1f2937",
 };
 
@@ -80,10 +86,15 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onApplyVisualize,
   onToggleVisualizeLive,
   onRunComputeBlock,
+  onRunComputeStage,
+  onRunAllStale,
+  onRunFromBlock,
   onExportJson,
   onImportJson,
   currentDatasetRef,
   cameraReady,
+  computeStatusById,
+  workbookStatus,
 }) => {
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -99,11 +110,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
     if (block.type === "compute") {
-      const status = block.compute?.status ?? "idle";
-      const datasetMatch =
-        block.compute?.datasetRef && block.compute.datasetRef === currentDatasetRef;
-      if (status === "ok" && datasetMatch) return { state: "ok", label: "ok" };
-      if (status === "ok" && !datasetMatch) return { state: "stale", label: "stale" };
+      const derived = computeStatusById[block.id];
+      const status = derived ?? block.compute?.status ?? "idle";
+      if (status === "failed") return { state: "fail", label: "failed" };
+      if (status === "ok") return { state: "ok", label: "ok" };
       return { state: "stale", label: status === "idle" ? "stale" : status };
     }
     if (block.type === "assert") {
@@ -134,12 +144,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       }
     }
     return items;
-  }, [activeWorkbook, currentDatasetRef]);
+  }, [activeWorkbook, currentDatasetRef, computeStatusById]);
 
   const issueItems = useMemo(
     () =>
       outlineItems.filter((item) => item.status.state === "stale" || item.status.state === "fail"),
     [outlineItems]
+  );
+  const hasStale = useMemo(
+    () => Object.values(computeStatusById).some((status) => status === "stale"),
+    [computeStatusById]
+  );
+  const hasComputeBlocks = useMemo(
+    () => Object.keys(computeStatusById).length > 0,
+    [computeStatusById]
   );
 
   useEffect(() => {
@@ -173,6 +191,35 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 10 }}>
         Current view: <strong>{currentDatasetRef}</strong>
         {cameraReady ? " · camera ready" : " · camera pending"}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 700 }}>
+          Status:{" "}
+          {workbookStatus === "ok"
+            ? "✓ up to date"
+            : workbookStatus === "failed"
+              ? "✗ failed"
+              : "⟳ stale"}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => onRunComputeStage(activeStageId)}
+            disabled={activeStageId !== "compute" || !hasComputeBlocks}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Run stage
+          </button>
+          <button
+            type="button"
+            onClick={onRunAllStale}
+            disabled={!hasStale}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Run all stale
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -508,6 +555,14 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       style={{ padding: "4px 8px" }}
                     >
                       Run operator
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRunFromBlock(activeStageId, block.id)}
+                      disabled={!block.compute?.operatorId}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      Run from here
                     </button>
                     {(() => {
                       const st = getBlockStatus(block);
