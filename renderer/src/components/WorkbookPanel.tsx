@@ -342,6 +342,16 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 background: "#fff",
                 boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
                 borderLeft: `4px solid ${BLOCK_ACCENT[block.type]}`,
+                cursor:
+                  block.type === "visualize" && block.visualize?.snapshot ? "pointer" : "default",
+              }}
+              onClick={(e) => {
+                if (block.type !== "visualize") return;
+                const snap = block.visualize?.snapshot;
+                if (!snap) return;
+                const tag = (e.target as HTMLElement).tagName;
+                if (["INPUT", "TEXTAREA", "BUTTON", "SELECT", "OPTION", "A"].includes(tag)) return;
+                onApplyVisualize(snap);
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>

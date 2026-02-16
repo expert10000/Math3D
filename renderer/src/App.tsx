@@ -3519,9 +3519,12 @@ case "mobius":
           if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
             setShowChartGrid(true);
             summary = "Chart grid (iso-u/iso-v) + probe enabled.";
+          } else if (surfaceViewerKind === "graph") {
+            setShowChartGrid(true);
+            summary = "Chart grid (iso-x/iso-y) + probe enabled.";
           } else {
             setShowWireframe(true);
-            if (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") {
+            if (surfaceViewerKind === "implicit") {
               setShowContours(true);
               summary = "Wireframe + contours + probe enabled.";
             } else {
@@ -8006,6 +8009,9 @@ case "mobius":
                             implicitDomainSize={implicitDomainSizeFor(activeEqSurfaceId)}
                             colorMode={colorMode}
                             colorPalette={colorPalette}
+                            showChartGrid={showChartGrid}
+                            chartGridCountU={chartGridCountU}
+                            chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
                             graphDomain={activeGraphDomain}
                             showBoundingBox={showBoundingBox}
@@ -8180,6 +8186,9 @@ case "mobius":
                               // contours (remove if SurfaceViewer doesn't support yet)
                               showContours={showContours}
                               contourCount={contourCount}
+                              showChartGrid={showChartGrid}
+                              chartGridCountU={chartGridCountU}
+                              chartGridCountV={chartGridCountV}
                               isCameraLeader={false}
                               cameraSync={cameraSync}
                             />

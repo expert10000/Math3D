@@ -815,6 +815,9 @@ type Props = {
   colorPalette?: ColorPalette;
   implicitOverlay?: "none" | "normals" | "curvature";
   graphDomain?: GraphDomain;
+  showChartGrid?: boolean;
+  chartGridCountU?: number;
+  chartGridCountV?: number;
   isCameraLeader?: boolean;
   cameraSync?: CameraSyncState | null;
   onCameraSync?: (state: CameraSyncState) => void;
@@ -986,6 +989,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     colorPalette = "blueRed",
     implicitOverlay = "none",
     graphDomain,
+    showChartGrid = false,
+    chartGridCountU = 11,
+    chartGridCountV = 11,
     isCameraLeader = false,
     cameraSync = null,
     onCameraSync,
@@ -1102,6 +1108,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
   const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
+  const chartGridRef = useRef<THREE.Group | null>(null);
   const viewGizmoRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
@@ -6499,6 +6506,81 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (chartGridRef.current) {
+      chartGridRef.current.traverse(disposeObject3D);
+      scene.remove(chartGridRef.current);
+      chartGridRef.current = null;
+    }
+
+    if (!showChartGrid) return;
+    if (!isGraphId(surfaceId)) return;
+    const f = getGraphF();
+    const span = getGraphSpan(1.5, 1.5);
+    const xMax = span.xSpan;
+    const yMax = span.ySpan;
+    const uCount = Math.max(2, Math.round(chartGridCountU));
+    const vCount = Math.max(2, Math.round(chartGridCountV));
+    const steps = 120;
+
+    const group = new THREE.Group();
+    group.renderOrder = 150;
+
+    const addGrid = (axis: "x" | "y", count: number, color: number) => {
+      const positions: number[] = [];
+      const mat = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.75,
+      });
+      const prev = new THREE.Vector3();
+      const cur = new THREE.Vector3();
+      for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0.5 : i / (count - 1);
+        const fixed = axis === "x" ? -xMax + 2 * xMax * t : -yMax + 2 * yMax * t;
+        let hasPrev = false;
+        for (let j = 0; j < steps; j++) {
+          const s = steps === 1 ? 0.5 : j / (steps - 1);
+          const x = axis === "x" ? fixed : -xMax + 2 * xMax * s;
+          const y = axis === "y" ? fixed : -yMax + 2 * yMax * s;
+          const z = f(x, y);
+          if (!Number.isFinite(z)) {
+            hasPrev = false;
+            continue;
+          }
+          cur.set(x, z, y);
+          if (hasPrev) {
+            positions.push(prev.x, prev.y, prev.z, cur.x, cur.y, cur.z);
+          }
+          prev.copy(cur);
+          hasPrev = true;
+        }
+      }
+      if (!positions.length) {
+        mat.dispose();
+        return;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 150;
+      group.add(lines);
+    };
+
+    addGrid("x", uCount, 0x1f77b4);
+    addGrid("y", vCount, 0xff7f0e);
+
+    if (group.children.length) {
+      chartGridRef.current = group;
+      scene.add(group);
+    } else {
+      group.traverse(disposeObject3D);
+    }
+  }, [showChartGrid, chartGridCountU, chartGridCountV, surfaceId, graphDomain?.xSpan, graphDomain?.ySpan, sceneEpoch]);
 
   useEffect(() => {
     if (!onCaptureThumbnail || !captureToken) return;
