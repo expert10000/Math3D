@@ -820,6 +820,8 @@ type Props = {
   onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  captureToken?: number;
+  onCaptureThumbnail?: (dataUrl: string | null) => void;
 
   showBoundingBox?: boolean;
   resetToken?: number;
@@ -989,6 +991,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onCameraSync,
     cameraOverride = null,
     cameraOverrideToken = 0,
+    captureToken = 0,
+    onCaptureThumbnail,
 
     showBoundingBox = false,
     resetToken,
@@ -1168,6 +1172,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const sliceHoverSmoothRef = useRef<{ s: number; t: number } | null>(null);
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
@@ -2354,6 +2359,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     renderer.domElement.style.display = "block";
     renderer.localClippingEnabled = true;
     mount.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -3693,6 +3699,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      rendererRef.current = null;
 
       sampleSetRef.current = null;
       onSampleSet?.(null);
@@ -6492,6 +6499,31 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    if (!onCaptureThumbnail || !captureToken) return;
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    const cam = cameraRef.current;
+    if (!renderer || !scene || !cam) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    renderer.render(scene, cam);
+    const src = renderer.domElement;
+    const w = 240;
+    const h = 160;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    ctx.drawImage(src, 0, 0, w, h);
+    onCaptureThumbnail(canvas.toDataURL("image/jpeg", 0.7));
+  }, [captureToken]);
 
   useEffect(() => {
     const gizmo = viewGizmoRef.current;

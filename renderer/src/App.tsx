@@ -978,6 +978,12 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_STAGE_KEY);
     return isWorkbookStageId(saved) ? saved : "define";
   });
+  const [workbookCaptureToken, setWorkbookCaptureToken] = useState(0);
+  const [pendingThumbnailCapture, setPendingThumbnailCapture] = useState<{
+    stageId: WorkbookStageId;
+    blockId: string;
+    snapshot: WorkbookViewSnapshot;
+  } | null>(null);
   useEffect(() => {
     if (activeWorkbookId && workbooks.some((w) => w.id === activeWorkbookId)) return;
     setActiveWorkbookId(workbooks[0]?.id ?? null);
@@ -2498,6 +2504,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // 3D visual toggles
   const [showWireframe, setShowWireframe] = useState(false);
+  const [showChartGrid, setShowChartGrid] = useState(false);
+  const chartGridCountU = 11;
+  const chartGridCountV = 11;
   const [showPlanes, setShowPlanes] = useState(false);
   const [colorMode, setColorMode] = useState<ColorMode>("solid");
   const [colorPalette, setColorPalette] = useState<ColorPalette>("blueRed");
@@ -3485,6 +3494,131 @@ case "mobius":
     [activeWorkbookId]
   );
 
+  const handleRunComputeBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
+      if (!activeWorkbookId) return;
+      if (!operatorId) {
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          compute: { status: "stale", summary: "Select an operator first." },
+        });
+        return;
+      }
+
+      let status: "ok" | "stale" = "ok";
+      let summary = "";
+
+      if (datasetKind === "volume") {
+        status = "stale";
+        summary = "Compute operators target surface datasets (switch off Volume).";
+      } else {
+        if (operatorId === "chart_grid") {
+          setProbeEnabled(true);
+          setShowProbeNormal(true);
+          setShowProbeTangentPlane(true);
+          setShowProbeTangents(true);
+          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+            setShowChartGrid(true);
+            summary = "Chart grid (iso-u/iso-v) + probe enabled.";
+          } else {
+            setShowWireframe(true);
+            if (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") {
+              setShowContours(true);
+              summary = "Wireframe + contours + probe enabled.";
+            } else {
+              summary = "Wireframe + probe enabled.";
+            }
+          }
+        } else if (operatorId === "curvature_field") {
+          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+            setColorMode("gaussian");
+          } else {
+            setColorMode("curvature");
+          }
+          setShowPrincipalDirections(true);
+          setShowPrincipalGlyphs(true);
+          summary = "Curvature coloring + principal directions enabled.";
+        } else if (operatorId === "geodesic_heat") {
+          setGeodesicHeatEnabled(true);
+          if (!geodesicHeatAvailable) {
+            status = "stale";
+            summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
+          } else if (!geodesicHeatStart || !geodesicHeatEnd) {
+            status = "stale";
+            summary = "Pick two points on the surface before running.";
+          } else if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
+            status = "stale";
+            summary = "Pick both points on the same mesh.";
+          } else {
+            summary = "Geodesic heat path requested.";
+            handleRunGeodesicHeat();
+          }
+        } else if (operatorId === "principal_dirs") {
+          setShowPrincipalDirections(true);
+          setShowPrincipalGlyphs(true);
+          summary = "Principal direction glyphs enabled.";
+        } else {
+          status = "stale";
+          summary = "Unknown operator.";
+        }
+      }
+
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? {
+                                ...b,
+                                compute: {
+                                  ...(b.compute ?? {}),
+                                  operatorId,
+                                  status,
+                                  summary,
+                                  datasetRef: currentDatasetRef,
+                                  lastRunAt: Date.now(),
+                                },
+                              }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [
+      activeWorkbookId,
+      currentDatasetRef,
+      datasetKind,
+      geodesicHeatAvailable,
+      geodesicHeatEnd,
+      geodesicHeatStart,
+      geodesicHeatUnavailableReason,
+      handleRunGeodesicHeat,
+      handleUpdateWorkbookBlock,
+      setColorMode,
+      setShowContours,
+      setShowChartGrid,
+      setShowPrincipalDirections,
+      setShowPrincipalGlyphs,
+      setShowProbeNormal,
+      setShowProbeTangentPlane,
+      setShowProbeTangents,
+      setShowWireframe,
+      setProbeEnabled,
+      surfaceViewerKind,
+    ]
+  );
+
   const buildViewerSnapshot = useCallback((): WorkbookViewSnapshot => {
     const cam = cameraSync
       ? {
@@ -3503,6 +3637,14 @@ case "mobius":
       colorPalette,
       showWireframe,
       showContours,
+      showChartGrid,
+      probeEnabled,
+      showProbeNormal,
+      showProbeTangentPlane,
+      showProbeTangents,
+      showPrincipalDirections,
+      showPrincipalGlyphs,
+      showPrincipalLines,
       showCurvatureLines,
       showRidges,
       showValleys,
@@ -3514,6 +3656,7 @@ case "mobius":
       volumeShowIsosurface,
       volumeShowStreamlines,
       camera: cam,
+      thumbnail: null,
       capturedAt: Date.now(),
     };
   }, [
@@ -3527,6 +3670,14 @@ case "mobius":
     colorPalette,
     showWireframe,
     showContours,
+    showChartGrid,
+    probeEnabled,
+    showProbeNormal,
+    showProbeTangentPlane,
+    showProbeTangents,
+    showPrincipalDirections,
+    showPrincipalGlyphs,
+    showPrincipalLines,
     showCurvatureLines,
     showRidges,
     showValleys,
@@ -3560,7 +3711,53 @@ case "mobius":
                                 visualize: {
                                   ...(b.visualize ?? { live: false }),
                                   live: false,
-                                  snapshot,
+                                  snapshot: {
+                                    ...snapshot,
+                                    thumbnail: b.visualize?.snapshot?.thumbnail ?? null,
+                                  },
+                                },
+                              }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+      setPendingThumbnailCapture({ stageId, blockId, snapshot });
+      setWorkbookCaptureToken((t) => t + 1);
+    },
+    [activeWorkbookId, buildViewerSnapshot]
+  );
+
+  const handleWorkbookThumbnail = useCallback(
+    (dataUrl: string | null) => {
+      if (!pendingThumbnailCapture || !activeWorkbookId) return;
+      const { stageId, blockId, snapshot } = pendingThumbnailCapture;
+      setPendingThumbnailCapture(null);
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? {
+                                ...b,
+                                visualize: {
+                                  ...(b.visualize ?? { live: false }),
+                                  live: false,
+                                  snapshot: {
+                                    ...snapshot,
+                                    thumbnail: dataUrl ?? snapshot.thumbnail ?? null,
+                                  },
                                 },
                               }
                             : b
@@ -3573,7 +3770,7 @@ case "mobius":
         )
       );
     },
-    [activeWorkbookId, buildViewerSnapshot]
+    [activeWorkbookId, pendingThumbnailCapture]
   );
 
   const handleApplyVisualize = useCallback(
@@ -3597,6 +3794,14 @@ case "mobius":
       if (snapshot.colorPalette) setColorPalette(snapshot.colorPalette);
       if (snapshot.showWireframe !== undefined) setShowWireframe(snapshot.showWireframe);
       if (snapshot.showContours !== undefined) setShowContours(snapshot.showContours);
+      if (snapshot.showChartGrid !== undefined) setShowChartGrid(snapshot.showChartGrid);
+      if (snapshot.probeEnabled !== undefined) setProbeEnabled(snapshot.probeEnabled);
+      if (snapshot.showProbeNormal !== undefined) setShowProbeNormal(snapshot.showProbeNormal);
+      if (snapshot.showProbeTangentPlane !== undefined) setShowProbeTangentPlane(snapshot.showProbeTangentPlane);
+      if (snapshot.showProbeTangents !== undefined) setShowProbeTangents(snapshot.showProbeTangents);
+      if (snapshot.showPrincipalDirections !== undefined) setShowPrincipalDirections(snapshot.showPrincipalDirections);
+      if (snapshot.showPrincipalGlyphs !== undefined) setShowPrincipalGlyphs(snapshot.showPrincipalGlyphs);
+      if (snapshot.showPrincipalLines !== undefined) setShowPrincipalLines(snapshot.showPrincipalLines);
       if (snapshot.showCurvatureLines !== undefined) setShowCurvatureLines(snapshot.showCurvatureLines);
       if (snapshot.showRidges !== undefined) setShowRidges(snapshot.showRidges);
       if (snapshot.showValleys !== undefined) setShowValleys(snapshot.showValleys);
@@ -3623,6 +3828,14 @@ case "mobius":
       setColorPalette,
       setShowWireframe,
       setShowContours,
+      setShowChartGrid,
+      setProbeEnabled,
+      setShowProbeNormal,
+      setShowProbeTangentPlane,
+      setShowProbeTangents,
+      setShowPrincipalDirections,
+      setShowPrincipalGlyphs,
+      setShowPrincipalLines,
       setShowCurvatureLines,
       setShowRidges,
       setShowValleys,
@@ -7571,6 +7784,8 @@ case "mobius":
                             streamlineStepSize={volumeStreamlineStepSize}
                             streamlineMaxSteps={volumeStreamlineMaxSteps}
                             streamlineMaxLength={volumeStreamlineMaxLength}
+                            captureToken={view.primary ? workbookCaptureToken : 0}
+                            onCaptureThumbnail={view.primary ? handleWorkbookThumbnail : undefined}
                           />
                         </div>
                       ))}
@@ -7617,6 +7832,8 @@ case "mobius":
                           streamlineStepSize={volumeStreamlineStepSize}
                           streamlineMaxSteps={volumeStreamlineMaxSteps}
                           streamlineMaxLength={volumeStreamlineMaxLength}
+                          captureToken={workbookCaptureToken}
+                          onCaptureThumbnail={handleWorkbookThumbnail}
                         />
                       </div>
                     </div>
@@ -7658,6 +7875,9 @@ case "mobius":
                             paramResolution={activeParamLikeResolution}
                             colorMode={colorMode}
                             colorPalette={colorPalette}
+                            showChartGrid={showChartGrid}
+                            chartGridCountU={chartGridCountU}
+                            chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
                             weierstrassGExpr={weierstrassGExpr}
                             weierstrassPhiExpr={weierstrassPhiExpr}
@@ -7709,6 +7929,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
+                            captureToken={workbookCaptureToken}
+                            onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
@@ -7833,6 +8055,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
+                            captureToken={workbookCaptureToken}
+                            onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                         onGaussPoints={handleGaussPoints}
@@ -7895,6 +8119,9 @@ case "mobius":
                               paramResolution={paramResolution}
                               colorMode={colorMode}
                               colorPalette={colorPalette}
+                              showChartGrid={showChartGrid}
+                              chartGridCountU={chartGridCountU}
+                              chartGridCountV={chartGridCountV}
                               paramDomain={activeParamDomain}
                               probeEnabled={false}
                               showProbeNormal={false}
@@ -8138,6 +8365,7 @@ case "mobius":
                   onCaptureVisualize={handleCaptureVisualize}
                   onApplyVisualize={handleApplyVisualize}
                   onToggleVisualizeLive={handleToggleVisualizeLive}
+                  onRunComputeBlock={handleRunComputeBlock}
                   onExportJson={handleExportWorkbooks}
                   onImportJson={handleImportWorkbooks}
                   currentDatasetRef={currentDatasetRef}

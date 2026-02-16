@@ -22,6 +22,14 @@ export type WorkbookViewSnapshot = {
   colorPalette?: ColorPalette;
   showWireframe?: boolean;
   showContours?: boolean;
+  showChartGrid?: boolean;
+  probeEnabled?: boolean;
+  showProbeNormal?: boolean;
+  showProbeTangentPlane?: boolean;
+  showProbeTangents?: boolean;
+  showPrincipalDirections?: boolean;
+  showPrincipalGlyphs?: boolean;
+  showPrincipalLines?: boolean;
   showCurvatureLines?: boolean;
   showRidges?: boolean;
   showValleys?: boolean;
@@ -33,6 +41,7 @@ export type WorkbookViewSnapshot = {
   volumeShowIsosurface?: boolean;
   volumeShowStreamlines?: boolean;
   camera?: WorkbookCameraState | null;
+  thumbnail?: string | null;
   capturedAt: number;
 };
 
@@ -51,6 +60,8 @@ export type WorkbookBlock = {
     operatorId?: string;
     status?: "idle" | "ok" | "stale";
     summary?: string;
+    datasetRef?: string;
+    lastRunAt?: number;
   };
   assert?: {
     expected?: string;

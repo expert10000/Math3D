@@ -51,6 +51,8 @@ export type VolumeViewerProps = {
   streamlineStepSize?: number;
   streamlineMaxSteps?: number;
   streamlineMaxLength?: number;
+  captureToken?: number;
+  onCaptureThumbnail?: (dataUrl: string | null) => void;
 };
 
 const disposeMesh = (mesh: THREE.Mesh) => {
@@ -206,6 +208,8 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   streamlineStepSize,
   streamlineMaxSteps,
   streamlineMaxLength,
+  captureToken = 0,
+  onCaptureThumbnail,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -259,6 +263,31 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
   useEffect(() => {
     onCropChangeRef.current = onCropChange;
   }, [onCropChange]);
+
+  useEffect(() => {
+    if (!onCaptureThumbnail || !captureToken) return;
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    const cam = cameraRef.current;
+    if (!renderer || !scene || !cam) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    renderer.render(scene, cam);
+    const src = renderer.domElement;
+    const w = 240;
+    const h = 160;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    ctx.drawImage(src, 0, 0, w, h);
+    onCaptureThumbnail(canvas.toDataURL("image/jpeg", 0.7));
+  }, [captureToken]);
 
   useEffect(() => {
     onSlicePickRef.current = onSlicePick;

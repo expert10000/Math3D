@@ -136,6 +136,9 @@ type Props = {
   paramResolution?: number;
   colorMode?: ColorMode;
   colorPalette?: ColorPalette;
+  showChartGrid?: boolean;
+  chartGridCountU?: number;
+  chartGridCountV?: number;
   paramDomain?: ParamDomain;
   weierstrassGExpr?: string;
   weierstrassPhiExpr?: string;
@@ -150,6 +153,8 @@ type Props = {
   onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  captureToken?: number;
+  onCaptureThumbnail?: (dataUrl: string | null) => void;
   showBoundingBox?: boolean;
   resetToken?: number;
 
@@ -1053,6 +1058,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   paramResolution = 64,
   colorMode = "solid",
   colorPalette = "blueRed",
+  showChartGrid = false,
+  chartGridCountU = 11,
+  chartGridCountV = 11,
   paramDomain,
   weierstrassGExpr,
   weierstrassPhiExpr,
@@ -1067,6 +1075,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onCameraSync,
   cameraOverride = null,
   cameraOverrideToken = 0,
+  captureToken = 0,
+  onCaptureThumbnail,
   showBoundingBox = false,
   resetToken,
   probeEnabled = false,
@@ -1268,6 +1278,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   };
 
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
@@ -1300,6 +1311,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const curvatureLinesRef = useRef<THREE.LineSegments | null>(null);
   const ridgeLinesRef = useRef<THREE.Object3D | null>(null);
   const valleyLinesRef = useRef<THREE.Object3D | null>(null);
+  const chartGridRef = useRef<THREE.Group | null>(null);
   const principalFieldRef = useRef<{ key: string; data: PrincipalField | null } | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
@@ -1938,6 +1950,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     renderer.domElement.style.height = "100%";
     renderer.domElement.style.display = "block";
     mount.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -2977,6 +2990,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);
       }
+      rendererRef.current = null;
 
       sampleSetRef.current = null;
       onSampleSet?.(null);
@@ -4829,6 +4843,102 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (chartGridRef.current) {
+      chartGridRef.current.traverse(disposeObject3D);
+      scene.remove(chartGridRef.current);
+      chartGridRef.current = null;
+    }
+
+    if (!showChartGrid) return;
+    const state = viewerRef.current;
+    if (!state) return;
+
+    const { paramFunc, uMin, uMax, vMin, vMax } = state;
+    const uCount = Math.max(2, Math.round(chartGridCountU));
+    const vCount = Math.max(2, Math.round(chartGridCountV));
+    const steps = 120;
+
+    const group = new THREE.Group();
+    group.renderOrder = 150;
+
+    const addGrid = (axis: "u" | "v", count: number, color: number) => {
+      const positions: number[] = [];
+      const mat = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.75,
+      });
+      const tmp = new THREE.Vector3();
+      for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0.5 : i / (count - 1);
+        const fixed = axis === "u" ? uMin + (uMax - uMin) * t : vMin + (vMax - vMin) * t;
+        let prev: THREE.Vector3 | null = null;
+        for (let j = 0; j < steps; j++) {
+          const s = steps === 1 ? 0.5 : j / (steps - 1);
+          const u = axis === "u" ? fixed : uMin + (uMax - uMin) * s;
+          const v = axis === "v" ? fixed : vMin + (vMax - vMin) * s;
+          paramFunc(u, v, tmp);
+          if (!Number.isFinite(tmp.x) || !Number.isFinite(tmp.y) || !Number.isFinite(tmp.z)) {
+            prev = null;
+            continue;
+          }
+          if (prev) {
+            positions.push(prev.x, prev.y, prev.z, tmp.x, tmp.y, tmp.z);
+          }
+          prev = tmp.clone();
+        }
+      }
+      if (!positions.length) {
+        mat.dispose();
+        return;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const lines = new THREE.LineSegments(geom, mat);
+      lines.renderOrder = 150;
+      group.add(lines);
+    };
+
+    addGrid("u", uCount, 0x1f77b4);
+    addGrid("v", vCount, 0xff7f0e);
+
+    if (group.children.length) {
+      chartGridRef.current = group;
+      scene.add(group);
+    } else {
+      group.traverse(disposeObject3D);
+    }
+  }, [showChartGrid, chartGridCountU, chartGridCountV, sceneEpoch]);
+
+  useEffect(() => {
+    if (!onCaptureThumbnail || !captureToken) return;
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    const cam = cameraRef.current;
+    if (!renderer || !scene || !cam) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    renderer.render(scene, cam);
+    const src = renderer.domElement;
+    const w = 240;
+    const h = 160;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      onCaptureThumbnail(null);
+      return;
+    }
+    ctx.drawImage(src, 0, 0, w, h);
+    onCaptureThumbnail(canvas.toDataURL("image/jpeg", 0.7));
+  }, [captureToken]);
 
   useEffect(() => {
     const obj = surfaceObjRef.current;

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -26,6 +26,7 @@ type WorkbookPanelProps = {
   onCaptureVisualize: (stageId: WorkbookStageId, blockId: string) => void;
   onApplyVisualize: (snapshot: WorkbookViewSnapshot) => void;
   onToggleVisualizeLive: (stageId: WorkbookStageId, blockId: string, live: boolean) => void;
+  onRunComputeBlock: (stageId: WorkbookStageId, blockId: string, operatorId?: string) => void;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
   currentDatasetRef: string;
@@ -46,6 +47,12 @@ const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
   visualize: "#1f3556",
   compute: "#0f766e",
   assert: "#9a3412",
+};
+const STATUS_COLORS: Record<string, string> = {
+  ok: "#14532d",
+  stale: "#92400e",
+  fail: "#b91c1c",
+  pending: "#1f2937",
 };
 
 const COMPUTE_OPERATORS = [
@@ -72,6 +79,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onCaptureVisualize,
   onApplyVisualize,
   onToggleVisualizeLive,
+  onRunComputeBlock,
   onExportJson,
   onImportJson,
   currentDatasetRef,
@@ -86,6 +94,63 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     [activeWorkbook, activeStageId]
   );
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const issueCursorRef = useRef(0);
+
+  const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
+    if (block.type === "compute") {
+      const status = block.compute?.status ?? "idle";
+      const datasetMatch =
+        block.compute?.datasetRef && block.compute.datasetRef === currentDatasetRef;
+      if (status === "ok" && datasetMatch) return { state: "ok", label: "ok" };
+      if (status === "ok" && !datasetMatch) return { state: "stale", label: "stale" };
+      return { state: "stale", label: status === "idle" ? "stale" : status };
+    }
+    if (block.type === "assert") {
+      const st = block.assert?.status ?? "pending";
+      if (st === "fail") return { state: "fail", label: "fail" };
+      if (st === "pass") return { state: "ok", label: "pass" };
+      return { state: "pending", label: "pending" };
+    }
+    return { state: "ok", label: "ok" };
+  };
+
+  const outlineItems = useMemo(() => {
+    if (!activeWorkbook) return [];
+    const items: Array<{
+      stageId: WorkbookStageId;
+      stageTitle: string;
+      block: WorkbookBlock;
+      status: { state: "ok" | "stale" | "fail" | "pending"; label: string };
+    }> = [];
+    for (const stage of activeWorkbook.stages) {
+      for (const block of stage.blocks) {
+        items.push({
+          stageId: stage.id,
+          stageTitle: stage.title,
+          block,
+          status: getBlockStatus(block),
+        });
+      }
+    }
+    return items;
+  }, [activeWorkbook, currentDatasetRef]);
+
+  const issueItems = useMemo(
+    () =>
+      outlineItems.filter((item) => item.status.state === "stale" || item.status.state === "fail"),
+    [outlineItems]
+  );
+
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    const runScroll = () => {
+      const el = document.getElementById(`wb-block-${pendingScrollId}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    const raf = requestAnimationFrame(() => requestAnimationFrame(runScroll));
+    return () => cancelAnimationFrame(raf);
+  }, [pendingScrollId, activeStageId, activeWorkbookId]);
 
   const handleImport = async (file: File) => {
     try {
@@ -197,11 +262,79 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         ))}
       </div>
 
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Outline</div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!issueItems.length) return;
+              const idx = issueCursorRef.current % issueItems.length;
+              const next = issueItems[idx];
+              issueCursorRef.current = idx + 1;
+              onSelectStage(next.stageId);
+              setPendingScrollId(next.block.id);
+            }}
+            disabled={!issueItems.length}
+            style={{ padding: "2px 6px", fontSize: 11 }}
+          >
+            Next stale/failed
+          </button>
+        </div>
+        {outlineItems.length ? (
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+            {outlineItems.map((item) => (
+              <button
+                key={item.block.id}
+                type="button"
+                onClick={() => {
+                  onSelectStage(item.stageId);
+                  setPendingScrollId(item.block.id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "4px 6px",
+                  borderRadius: 8,
+                  border: "1px solid #e5e7eb",
+                  background: item.stageId === activeStageId ? "#f8fafc" : "#fff",
+                  fontSize: 11,
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ fontWeight: 700, color: "#111827" }}>{item.stageTitle}</span>
+                <span style={{ opacity: 0.7 }}>·</span>
+                <span style={{ flex: 1 }}>{item.block.title || BLOCK_TYPE_LABELS[item.block.type]}</span>
+                {(item.block.type === "compute" || item.block.type === "assert") && (
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: 999,
+                      background: `${STATUS_COLORS[item.status.state]}22`,
+                      color: STATUS_COLORS[item.status.state],
+                      fontWeight: 700,
+                      fontSize: 10,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {item.status.label}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, opacity: 0.65 }}>No blocks yet.</div>
+        )}
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {activeStage?.blocks.length ? (
           activeStage.blocks.map((block, idx) => (
             <div
               key={block.id}
+              id={`wb-block-${block.id}`}
               style={{
                 border: "1px solid #e0e0e0",
                 borderRadius: 10,
@@ -272,6 +405,18 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {block.visualize?.snapshot?.thumbnail && (
+                    <img
+                      src={block.visualize.snapshot.thumbnail}
+                      alt="Snapshot thumbnail"
+                      style={{
+                        width: "100%",
+                        borderRadius: 8,
+                        border: "1px solid #e5e7eb",
+                        background: "#f8fafc",
+                      }}
+                    />
+                  )}
                   <div style={{ fontSize: 11, opacity: 0.75 }}>
                     Dataset:{" "}
                     <strong>{block.visualize?.snapshot?.datasetRef ?? currentDatasetRef}</strong>
@@ -345,9 +490,42 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       ))}
                     </select>
                   </label>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>
-                    Operator outputs will bind to overlays and datasets once compute blocks are wired.
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => onRunComputeBlock(activeStageId, block.id, block.compute?.operatorId)}
+                      disabled={!block.compute?.operatorId}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      Run operator
+                    </button>
+                    {(() => {
+                      const st = getBlockStatus(block);
+                      return (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            background: `${STATUS_COLORS[st.state]}22`,
+                            color: STATUS_COLORS[st.state],
+                            fontWeight: 700,
+                            fontSize: 10,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {st.label}
+                        </span>
+                      );
+                    })()}
+                    {block.compute?.datasetRef && (
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>
+                        {block.compute.datasetRef}
+                      </span>
+                    )}
                   </div>
+                  {block.compute?.summary && (
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{block.compute.summary}</div>
+                  )}
                 </div>
               )}
 
