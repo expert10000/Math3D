@@ -764,6 +764,17 @@ function safeParseRecord<T>(raw: string | null): Record<string, T> {
   }
 }
 
+function safeParseObject<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+    return v as T;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeGraphDomain(d: GraphDomain, fallback: GraphDomain): GraphDomain {
   const x = Number.isFinite(d.xSpan) ? Math.max(0.2, d.xSpan) : fallback.xSpan;
   const y = Number.isFinite(d.ySpan) ? Math.max(0.2, d.ySpan) : fallback.ySpan;
@@ -2689,8 +2700,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     return Number.isFinite(raw) ? Math.max(16, Math.min(320, Math.round(raw))) : 160;
   });
   const [implicitBakeBounds, setImplicitBakeBounds] = useState<ImplicitBakeBounds>(() => {
-    const raw = safeParseRecord<ImplicitBakeBounds>(localStorage.getItem("mathapp.implicitBake.bounds.v1"));
-    return normalizeImplicitBakeBounds(raw as ImplicitBakeBounds, DEFAULT_IMPLICIT_BAKE_BOUNDS);
+    const raw = safeParseObject<ImplicitBakeBounds>(localStorage.getItem("mathapp.implicitBake.bounds.v1"));
+    return normalizeImplicitBakeBounds(raw ?? DEFAULT_IMPLICIT_BAKE_BOUNDS, DEFAULT_IMPLICIT_BAKE_BOUNDS);
   });
   const [implicitBakeBusy, setImplicitBakeBusy] = useState(false);
   const [implicitBakePhase, setImplicitBakePhase] = useState<"idle" | "sampling" | "marching">("idle");
@@ -3492,134 +3503,6 @@ case "mobius":
       );
     },
     [activeWorkbookId]
-  );
-
-  const handleRunComputeBlock = useCallback(
-    (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
-      if (!activeWorkbookId) return;
-      if (!operatorId) {
-        handleUpdateWorkbookBlock(stageId, blockId, {
-          compute: { status: "stale", summary: "Select an operator first." },
-        });
-        return;
-      }
-
-      let status: "ok" | "stale" = "ok";
-      let summary = "";
-
-      if (datasetKind === "volume") {
-        status = "stale";
-        summary = "Compute operators target surface datasets (switch off Volume).";
-      } else {
-        if (operatorId === "chart_grid") {
-          setProbeEnabled(true);
-          setShowProbeNormal(true);
-          setShowProbeTangentPlane(true);
-          setShowProbeTangents(true);
-          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-            setShowChartGrid(true);
-            summary = "Chart grid (iso-u/iso-v) + probe enabled.";
-          } else if (surfaceViewerKind === "graph") {
-            setShowChartGrid(true);
-            summary = "Chart grid (iso-x/iso-y) + probe enabled.";
-          } else {
-            setShowWireframe(true);
-            if (surfaceViewerKind === "implicit") {
-              setShowContours(true);
-              summary = "Wireframe + contours + probe enabled.";
-            } else {
-              summary = "Wireframe + probe enabled.";
-            }
-          }
-        } else if (operatorId === "curvature_field") {
-          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-            setColorMode("gaussian");
-          } else {
-            setColorMode("curvature");
-          }
-          setShowPrincipalDirections(true);
-          setShowPrincipalGlyphs(true);
-          summary = "Curvature coloring + principal directions enabled.";
-        } else if (operatorId === "geodesic_heat") {
-          setGeodesicHeatEnabled(true);
-          if (!geodesicHeatAvailable) {
-            status = "stale";
-            summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
-          } else if (!geodesicHeatStart || !geodesicHeatEnd) {
-            status = "stale";
-            summary = "Pick two points on the surface before running.";
-          } else if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
-            status = "stale";
-            summary = "Pick both points on the same mesh.";
-          } else {
-            summary = "Geodesic heat path requested.";
-            handleRunGeodesicHeat();
-          }
-        } else if (operatorId === "principal_dirs") {
-          setShowPrincipalDirections(true);
-          setShowPrincipalGlyphs(true);
-          summary = "Principal direction glyphs enabled.";
-        } else {
-          status = "stale";
-          summary = "Unknown operator.";
-        }
-      }
-
-      setWorkbooks((prev) =>
-        prev.map((w) =>
-          w.id === activeWorkbookId
-            ? {
-                ...w,
-                updatedAt: Date.now(),
-                stages: w.stages.map((s) =>
-                  s.id === stageId
-                    ? {
-                        ...s,
-                        blocks: s.blocks.map((b) =>
-                          b.id === blockId
-                            ? {
-                                ...b,
-                                compute: {
-                                  ...(b.compute ?? {}),
-                                  operatorId,
-                                  status,
-                                  summary,
-                                  datasetRef: currentDatasetRef,
-                                  lastRunAt: Date.now(),
-                                },
-                              }
-                            : b
-                        ),
-                      }
-                    : s
-                ),
-              }
-            : w
-        )
-      );
-    },
-    [
-      activeWorkbookId,
-      currentDatasetRef,
-      datasetKind,
-      geodesicHeatAvailable,
-      geodesicHeatEnd,
-      geodesicHeatStart,
-      geodesicHeatUnavailableReason,
-      handleRunGeodesicHeat,
-      handleUpdateWorkbookBlock,
-      setColorMode,
-      setShowContours,
-      setShowChartGrid,
-      setShowPrincipalDirections,
-      setShowPrincipalGlyphs,
-      setShowProbeNormal,
-      setShowProbeTangentPlane,
-      setShowProbeTangents,
-      setShowWireframe,
-      setProbeEnabled,
-      surfaceViewerKind,
-    ]
   );
 
   const buildViewerSnapshot = useCallback((): WorkbookViewSnapshot => {
@@ -6230,6 +6113,134 @@ case "mobius":
     surfaceSampleSet,
     surfaceViewerKind,
   ]);
+
+  const handleRunComputeBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
+      if (!activeWorkbookId) return;
+      if (!operatorId) {
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          compute: { status: "stale", summary: "Select an operator first." },
+        });
+        return;
+      }
+
+      let status: "ok" | "stale" = "ok";
+      let summary = "";
+
+      if (datasetKind === "volume") {
+        status = "stale";
+        summary = "Compute operators target surface datasets (switch off Volume).";
+      } else {
+        if (operatorId === "chart_grid") {
+          setProbeEnabled(true);
+          setShowProbeNormal(true);
+          setShowProbeTangentPlane(true);
+          setShowProbeTangents(true);
+          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+            setShowChartGrid(true);
+            summary = "Chart grid (iso-u/iso-v) + probe enabled.";
+          } else if (surfaceViewerKind === "graph") {
+            setShowChartGrid(true);
+            summary = "Chart grid (iso-x/iso-y) + probe enabled.";
+          } else {
+            setShowWireframe(true);
+            if (surfaceViewerKind === "implicit") {
+              setShowContours(true);
+              summary = "Wireframe + contours + probe enabled.";
+            } else {
+              summary = "Wireframe + probe enabled.";
+            }
+          }
+        } else if (operatorId === "curvature_field") {
+          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+            setColorMode("gaussian");
+          } else {
+            setColorMode("curvature");
+          }
+          setShowPrincipalDirections(true);
+          setShowPrincipalGlyphs(true);
+          summary = "Curvature coloring + principal directions enabled.";
+        } else if (operatorId === "geodesic_heat") {
+          setGeodesicHeatEnabled(true);
+          if (!geodesicHeatAvailable) {
+            status = "stale";
+            summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
+          } else if (!geodesicHeatStart || !geodesicHeatEnd) {
+            status = "stale";
+            summary = "Pick two points on the surface before running.";
+          } else if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
+            status = "stale";
+            summary = "Pick both points on the same mesh.";
+          } else {
+            summary = "Geodesic heat path requested.";
+            handleRunGeodesicHeat();
+          }
+        } else if (operatorId === "principal_dirs") {
+          setShowPrincipalDirections(true);
+          setShowPrincipalGlyphs(true);
+          summary = "Principal direction glyphs enabled.";
+        } else {
+          status = "stale";
+          summary = "Unknown operator.";
+        }
+      }
+
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? {
+                                ...b,
+                                compute: {
+                                  ...(b.compute ?? {}),
+                                  operatorId,
+                                  status,
+                                  summary,
+                                  datasetRef: currentDatasetRef,
+                                  lastRunAt: Date.now(),
+                                },
+                              }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [
+      activeWorkbookId,
+      currentDatasetRef,
+      datasetKind,
+      geodesicHeatAvailable,
+      geodesicHeatEnd,
+      geodesicHeatStart,
+      geodesicHeatUnavailableReason,
+      handleRunGeodesicHeat,
+      handleUpdateWorkbookBlock,
+      setColorMode,
+      setShowContours,
+      setShowChartGrid,
+      setShowPrincipalDirections,
+      setShowPrincipalGlyphs,
+      setShowProbeNormal,
+      setShowProbeTangentPlane,
+      setShowProbeTangents,
+      setShowWireframe,
+      setProbeEnabled,
+      surfaceViewerKind,
+    ]
+  );
 
   const handleRecomputeGeodesicDisk = useCallback(
     async (centerOverride?: GeodesicDiskCenter | null) => {
