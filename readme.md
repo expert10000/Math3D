@@ -3,6 +3,8 @@
 ## Latest changes
 
 - Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
+- Added an implicit baker (marching cubes) with independent bounds + resolution controls, running in a worker with progress and caching for big grids.
+- Added SurfaceMesh exports (GLB/OBJ) plus a weld-vertices tool with tolerance control.
 - Added MeshDataset plumbing and dataset switching to support SurfaceMesh as a first-class dataset type.
 - Added graph/param/Weierstrass surface bakers (grid sampling + triangulation + invalid-point skipping).
 - Added a dedicated Complex map tab next to Weierstrass, with sweep output choices for Re/Im surfaces and 3D isolines; complex rebuilds can be live or manual.
@@ -627,6 +629,20 @@ Next Steps
 
 Run the app and sanity‑check: Z/W/3D linked picks, distortion heatmap + surface color, and grid thickness/opacity + tube overlays.
 
+PR3 - Implicit baker
+
+- Marching cubes + normals
+- Bounds + resolution UI
+
+PR4 - Worker + progress + caching
+
+- Make it usable for big resolutions
+
+PR5 - Nice extras (optional)
+
+- Export baked mesh (GLB/OBJ)
+- Decimate / smooth / weld vertices
+
 PR7 - Riemann sphere mode (stereographic)
 
 Visualize w on the sphere via stereographic projection:
@@ -653,3 +669,27 @@ PR9 - Robust meshing around singularities
 - optional "singularity mask" overlay
 
 Why: removes skinny sliver artifacts and makes plots stable.
+
+Workbook PRs (Notebook UX)
+
+PR A - Workbook scaffolding
+- Project → Workbook list
+- Workbook editor with 4 stage tabs (Define, Compute, Visualize, Explain / Check)
+- Block types: Text, Formula, Visualize (no compute yet)
+- Save/load as JSON
+
+PR B - Visualize blocks control the viewer
+- Capture current view (camera + toggles + selected overlays)
+- Jump to view on block click
+- Mini thumbnail preview (optional)
+
+PR C - Compute blocks (operator-based, no arbitrary code)
+- Chart: coords readout + grid overlay
+- Curvature heatmap / principal directions
+- Geodesic heat solver → polyline overlay
+
+PR D - Navigation + teaching polish
+- Left outline (headings + block list)
+- Next stale/failed block navigation
+- Export: Markdown/PDF report view + JSON
+- Example workbook template (solved problem)

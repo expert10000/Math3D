@@ -17,6 +17,7 @@ import TabButton from "./components/TabButton";
 import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
+import { WorkbookPanel } from "./components/WorkbookPanel";
 
 import {
   SurfaceViewer,
@@ -77,10 +78,12 @@ import {
   buildSurfaceMeshFromGeometry,
   loadSurfaceMeshFromFile,
   mergeMeshData,
+  weldSurfaceMeshVertices,
   type SurfaceMeshData,
   type SurfaceMeshSource,
   type SurfaceMeshPreset,
 } from "./mesh/surfaceMesh";
+import { exportMeshToGLB, exportMeshToOBJ } from "./mesh/meshExport";
 import {
   computeAdjacency,
   computeMeanEdgeLength,
@@ -123,12 +126,31 @@ import {
   type VectorPresetId,
 } from "./scene/volume/vectorPresets";
 import { buildSliceSeeds } from "./scene/volume/streamlines";
+import {
+  createDefaultWorkbook,
+  type Workbook,
+  type WorkbookBlock,
+  type WorkbookBlockType,
+  type WorkbookStageId,
+  type WorkbookViewSnapshot,
+} from "./workbook/workbookModel";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
+const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
+  "implicit",
+  "graph",
+  "param",
+  "weierstrass",
+  "mesh",
+  "complex",
+];
+const isSurfaceViewerKind = (value: string | undefined): value is SurfaceViewerKind =>
+  !!value && SURFACE_VIEWER_KINDS.includes(value as SurfaceViewerKind);
 type GraphDomain = { xSpan: number; ySpan: number };
 type ImplicitDomain = { xSpan: number; ySpan: number };
+type ImplicitBakeBounds = { xSpan: number; ySpan: number; zSpan: number };
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
 type CameraSyncState = {
   position: { x: number; y: number; z: number };
@@ -139,6 +161,14 @@ const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
+
+const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
+const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
+const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
+const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
+const WORKBOOK_STAGE_IDS: WorkbookStageId[] = ["define", "compute", "visualize", "explain"];
+const isWorkbookStageId = (value: string | null): value is WorkbookStageId =>
+  !!value && WORKBOOK_STAGE_IDS.includes(value as WorkbookStageId);
 type ComplexPreimageMode = "none" | "re" | "im" | "abs" | "arg";
 type ComplexDistortionMode = "none" | "area" | "anisotropy" | "conformal";
 type ComplexMapMarkerData = {
@@ -536,6 +566,19 @@ function normalizeImplicitDomain(d: ImplicitDomain, fallback: ImplicitDomain): I
   };
 }
 
+const DEFAULT_IMPLICIT_BAKE_BOUNDS: ImplicitBakeBounds = { xSpan: 2.2, ySpan: 2.2, zSpan: 2.2 };
+
+function normalizeImplicitBakeBounds(d: ImplicitBakeBounds, fallback: ImplicitBakeBounds): ImplicitBakeBounds {
+  const xSpan = Math.max(0.2, Number(d.xSpan));
+  const ySpan = Math.max(0.2, Number(d.ySpan));
+  const zSpan = Math.max(0.2, Number(d.zSpan));
+  return {
+    xSpan: Number.isFinite(xSpan) && xSpan > 0 ? xSpan : fallback.xSpan,
+    ySpan: Number.isFinite(ySpan) && ySpan > 0 ? ySpan : fallback.ySpan,
+    zSpan: Number.isFinite(zSpan) && zSpan > 0 ? zSpan : Math.max(fallback.xSpan, fallback.ySpan),
+  };
+}
+
 function getDefaultGraphSpan(id: SurfaceId): GraphDomain {
   switch (id) {
     case "graph_saddle":
@@ -868,12 +911,24 @@ function makeId() {
   return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
 }
 
+function loadWorkbooks(): Workbook[] {
+  const raw = safeParseArray<Workbook>(localStorage.getItem(WORKBOOK_STORAGE_KEY));
+  if (raw.length > 0) return raw;
+  return [createDefaultWorkbook(makeId)];
+}
+
 function autoLabelGraphDomain(xSpan: number, ySpan: number) {
   return `x±${xSpan.toFixed(2)} y±${ySpan.toFixed(2)}`;
 }
 
 function autoLabelImplicitDomain(xSpan: number, ySpan: number) {
   return `xñ${xSpan.toFixed(2)} yñ${ySpan.toFixed(2)}`;
+}
+
+function sanitizeFileBase(label: string, fallback: string) {
+  const raw = (label ?? "").trim() || fallback;
+  const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
+  return cleaned || fallback;
 }
 
 function autoLabelParamDomain(p: ParamDomain) {
@@ -911,6 +966,50 @@ const App: React.FC = () => {
     });
   }, []);
   const samples = 800;
+  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
+    const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
+    return saved === "workbook" ? "workbook" : "inspector";
+  });
+  const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
+  const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() =>
+    localStorage.getItem(WORKBOOK_ACTIVE_KEY)
+  );
+  const [activeStageId, setActiveStageId] = useState<WorkbookStageId>(() => {
+    const saved = localStorage.getItem(WORKBOOK_STAGE_KEY);
+    return isWorkbookStageId(saved) ? saved : "define";
+  });
+  useEffect(() => {
+    if (activeWorkbookId && workbooks.some((w) => w.id === activeWorkbookId)) return;
+    setActiveWorkbookId(workbooks[0]?.id ?? null);
+  }, [workbooks, activeWorkbookId]);
+
+  useEffect(() => {
+    saveArray(WORKBOOK_STORAGE_KEY, workbooks);
+  }, [workbooks]);
+
+  useEffect(() => {
+    try {
+      if (activeWorkbookId) localStorage.setItem(WORKBOOK_ACTIVE_KEY, activeWorkbookId);
+    } catch {
+      // ignore
+    }
+  }, [activeWorkbookId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORKBOOK_STAGE_KEY, activeStageId);
+    } catch {
+      // ignore
+    }
+  }, [activeStageId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORKBOOK_PANEL_KEY, rightPanelTab);
+    } catch {
+      // ignore
+    }
+  }, [rightPanelTab]);
 
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
@@ -1325,6 +1424,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfaceMeshImportBusy, setSurfaceMeshImportBusy] = useState(false);
   const [surfaceMeshImportError, setSurfaceMeshImportError] = useState<string | null>(null);
   const [surfaceMeshMergeVertices, setSurfaceMeshMergeVertices] = useState(true);
+  const [surfaceMeshExportBusy, setSurfaceMeshExportBusy] = useState(false);
+  const [surfaceMeshExportError, setSurfaceMeshExportError] = useState<string | null>(null);
+  const [surfaceMeshWeldTolerance, setSurfaceMeshWeldTolerance] = useState(1e-4);
+  const [surfaceMeshWeldBusy, setSurfaceMeshWeldBusy] = useState(false);
+  const [surfaceMeshWeldError, setSurfaceMeshWeldError] = useState<string | null>(null);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
   const [vtkDecimateReduction, setVtkDecimateReduction] = useState(0.5);
@@ -2349,6 +2453,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [compareSurfaceId, setCompareSurfaceId] = useState<SurfaceId>("sphere");
   const [compareParamId, setCompareParamId] = useState<ParamSurfaceId>("plane");
   const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
+  const [cameraOverride, setCameraOverride] = useState<CameraSyncState | null>(null);
+  const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
@@ -2478,6 +2584,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       }
     >()
   );
+  const implicitBakeWorkerRef = useRef<Worker | null>(null);
+  const implicitBakeJobRef = useRef<string | null>(null);
+  const implicitBakeKeyRef = useRef<string | null>(null);
+  const implicitBakeCacheRef = useRef(new Map<string, { mesh: SurfaceMeshData; ts: number }>());
   const [inspectEnabled, setInspectEnabled] = useState(false);
   const [inspectIdx, setInspectIdx] = useState<number | null>(null);
   const [inspectPos, setInspectPos] = useState<{ x: number; y: number; z: number } | null>(null);
@@ -2565,6 +2675,19 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [materialOpacity, setMaterialOpacity] = useState(1);
   const [graphResolution, setGraphResolution] = useState(80);
   const [implicitResolution, setImplicitResolution] = useState(32);
+  const [implicitBakeResolution, setImplicitBakeResolution] = useState(() => {
+    const raw = Number(localStorage.getItem("mathapp.implicitBake.res.v1"));
+    return Number.isFinite(raw) ? Math.max(16, Math.min(320, Math.round(raw))) : 160;
+  });
+  const [implicitBakeBounds, setImplicitBakeBounds] = useState<ImplicitBakeBounds>(() => {
+    const raw = safeParseRecord<ImplicitBakeBounds>(localStorage.getItem("mathapp.implicitBake.bounds.v1"));
+    return normalizeImplicitBakeBounds(raw as ImplicitBakeBounds, DEFAULT_IMPLICIT_BAKE_BOUNDS);
+  });
+  const [implicitBakeBusy, setImplicitBakeBusy] = useState(false);
+  const [implicitBakePhase, setImplicitBakePhase] = useState<"idle" | "sampling" | "marching">("idle");
+  const [implicitBakeProgress, setImplicitBakeProgress] = useState(0);
+  const [implicitBakeError, setImplicitBakeError] = useState<string | null>(null);
+  const [implicitBakeCacheHit, setImplicitBakeCacheHit] = useState(false);
   const [paramResolution, setParamResolution] = useState(160);
   const [showBoundingBox, setShowBoundingBox] = useState(false);
   const [cameraResetToken, setCameraResetToken] = useState(0);
@@ -2685,6 +2808,31 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const currentDatasetRef = useMemo(() => {
+    if (datasetKind === "volume") {
+      const label = volumeDatasetOverride?.label;
+      return label ? `volume:${label}` : `volume:${volumePresetId}`;
+    }
+    if (datasetKind === "mesh") {
+      return `mesh:${surfaceMeshLabel}`;
+    }
+    if (surfaceViewerKind === "param") return `param:${paramSurfaceId}`;
+    if (surfaceViewerKind === "weierstrass") return "weierstrass";
+    if (surfaceViewerKind === "graph") return `graph:${graphSurfaceId}`;
+    if (surfaceViewerKind === "implicit") return `implicit:${implicitSurfaceId}`;
+    if (surfaceViewerKind === "complex") return "complex map";
+    return surfaceViewerKind;
+  }, [
+    datasetKind,
+    volumeDatasetOverride?.label,
+    volumePresetId,
+    surfaceMeshLabel,
+    surfaceViewerKind,
+    paramSurfaceId,
+    graphSurfaceId,
+    implicitSurfaceId,
+  ]);
+  const cameraSyncEnabled = compareEnabled || rightPanelTab === "workbook";
   const activeGraphDomain = useMemo(
     () =>
       normalizeGraphDomain(
@@ -2697,6 +2845,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const raw = implicitDomains[implicitSurfaceId] ?? getDefaultImplicitDomain(implicitSurfaceId);
     return normalizeImplicitDomain(raw, getDefaultImplicitDomain(implicitSurfaceId));
   }, [implicitSurfaceId, implicitDomains[implicitSurfaceId]?.xSpan, implicitDomains[implicitSurfaceId]?.ySpan]);
+  const safeImplicitBakeBounds = useMemo(
+    () => normalizeImplicitBakeBounds(implicitBakeBounds, DEFAULT_IMPLICIT_BAKE_BOUNDS),
+    [implicitBakeBounds]
+  );
   const graphSampleMaxPoints = useMemo(
     () => Math.min(40000, Math.max(900, Math.round(graphResolution * graphResolution))),
     [graphResolution]
@@ -2802,6 +2954,22 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     saveRecord("mathapp.domainState.implicit.v1", implicitDomains);
   }, [implicitDomains]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mathapp.implicitBake.bounds.v1", JSON.stringify(implicitBakeBounds));
+    } catch {
+      // ignore
+    }
+  }, [implicitBakeBounds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("mathapp.implicitBake.res.v1", JSON.stringify(implicitBakeResolution));
+    } catch {
+      // ignore
+    }
+  }, [implicitBakeResolution]);
 
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
@@ -3003,6 +3171,11 @@ case "mobius":
     [implicitSurfaceId]
   );
 
+  const handleChangeImplicitBakeBounds = useCallback((d: ImplicitBakeBounds) => {
+    const safe = normalizeImplicitBakeBounds(d, DEFAULT_IMPLICIT_BAKE_BOUNDS);
+    setImplicitBakeBounds(safe);
+  }, []);
+
   const handleChangeWeierstrassDomain = useCallback((d: ParamDomain) => {
     setWeierstrassDomain(normalizeParamDomain(d, WEIERSTRASS_DEFAULTS.domain));
   }, []);
@@ -3128,6 +3301,377 @@ case "mobius":
     if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
+    }
+  }, []);
+
+  const makeWorkbookBlock = (type: WorkbookBlockType): WorkbookBlock => {
+    const base: WorkbookBlock = { id: makeId(), type, title: `${type[0].toUpperCase()}${type.slice(1)} block` };
+    if (type === "text") return { ...base, title: "Text", text: "" };
+    if (type === "formula") return { ...base, title: "Formula", formula: "" };
+    if (type === "visualize") return { ...base, title: "View", visualize: { live: true, snapshot: null } };
+    if (type === "compute") return { ...base, title: "Compute", compute: { status: "idle" } };
+    return { ...base, title: "Assert", assert: { expected: "", status: "pending" } };
+  };
+
+  const handleCreateWorkbook = useCallback(() => {
+    const wb = createDefaultWorkbook(makeId);
+    setWorkbooks((prev) => [wb, ...prev]);
+    setActiveWorkbookId(wb.id);
+    setActiveStageId("define");
+  }, []);
+
+  const handleDuplicateWorkbook = useCallback(
+    (id: string) => {
+      const base = workbooks.find((w) => w.id === id);
+      if (!base) return;
+      const copy: Workbook = {
+        ...base,
+        id: makeId(),
+        title: `${base.title} copy`,
+        updatedAt: Date.now(),
+        stages: base.stages.map((s) => ({
+          ...s,
+          blocks: s.blocks.map((b) => ({ ...b, id: makeId() })),
+        })),
+      };
+      setWorkbooks((prev) => [copy, ...prev]);
+      setActiveWorkbookId(copy.id);
+    },
+    [workbooks]
+  );
+
+  const handleDeleteWorkbook = useCallback(
+    (id: string) => {
+      setWorkbooks((prev) => {
+        const next = prev.filter((w) => w.id !== id);
+        if (activeWorkbookId === id) {
+          setActiveWorkbookId(next[0]?.id ?? null);
+        }
+        return next;
+      });
+    },
+    [activeWorkbookId]
+  );
+
+  const handleRenameWorkbook = useCallback((id: string, title: string) => {
+    setWorkbooks((prev) =>
+      prev.map((w) => (w.id === id ? { ...w, title, updatedAt: Date.now() } : w))
+    );
+  }, []);
+
+  const handleAddWorkbookBlock = useCallback(
+    (stageId: WorkbookStageId, type: WorkbookBlockType) => {
+      if (!activeWorkbookId) return;
+      const block = makeWorkbookBlock(type);
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId ? { ...s, blocks: [...s.blocks, block] } : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleUpdateWorkbookBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleRemoveWorkbookBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId ? { ...s, blocks: s.blocks.filter((b) => b.id !== blockId) } : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleMoveWorkbookBlock = useCallback(
+    (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) => {
+          if (w.id !== activeWorkbookId) return w;
+          const stages = w.stages.map((s) => {
+            if (s.id !== stageId) return s;
+            const idx = s.blocks.findIndex((b) => b.id === blockId);
+            if (idx < 0) return s;
+            const nextIdx = idx + dir;
+            if (nextIdx < 0 || nextIdx >= s.blocks.length) return s;
+            const nextBlocks = [...s.blocks];
+            const [moved] = nextBlocks.splice(idx, 1);
+            nextBlocks.splice(nextIdx, 0, moved);
+            return { ...s, blocks: nextBlocks };
+          });
+          return { ...w, stages, updatedAt: Date.now() };
+        })
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleToggleVisualizeLive = useCallback(
+    (stageId: WorkbookStageId, blockId: string, live: boolean) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? {
+                                ...b,
+                                visualize: {
+                                  ...(b.visualize ?? { live }),
+                                  live,
+                                  snapshot: live ? null : b.visualize?.snapshot ?? null,
+                                },
+                              }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const buildViewerSnapshot = useCallback((): WorkbookViewSnapshot => {
+    const cam = cameraSync
+      ? {
+          position: { ...cameraSync.position },
+          target: { ...cameraSync.target },
+          up: { ...cameraSync.up },
+        }
+      : null;
+    return {
+      datasetRef: currentDatasetRef,
+      datasetKind,
+      viewerKind: surfaceViewerKind,
+      surfaceId: activeEqSurfaceId,
+      paramId: paramSurfaceId,
+      colorMode,
+      colorPalette,
+      showWireframe,
+      showContours,
+      showCurvatureLines,
+      showRidges,
+      showValleys,
+      showGaussMap,
+      showBoundingBox,
+      showPlanes,
+      volumeViewMode,
+      volumeIsoValue,
+      volumeShowIsosurface,
+      volumeShowStreamlines,
+      camera: cam,
+      capturedAt: Date.now(),
+    };
+  }, [
+    cameraSync,
+    currentDatasetRef,
+    datasetKind,
+    surfaceViewerKind,
+    activeEqSurfaceId,
+    paramSurfaceId,
+    colorMode,
+    colorPalette,
+    showWireframe,
+    showContours,
+    showCurvatureLines,
+    showRidges,
+    showValleys,
+    showGaussMap,
+    showBoundingBox,
+    showPlanes,
+    volumeViewMode,
+    volumeIsoValue,
+    volumeShowIsosurface,
+    volumeShowStreamlines,
+  ]);
+
+  const handleCaptureVisualize = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      const snapshot = buildViewerSnapshot();
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? {
+                                ...b,
+                                visualize: {
+                                  ...(b.visualize ?? { live: false }),
+                                  live: false,
+                                  snapshot,
+                                },
+                              }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId, buildViewerSnapshot]
+  );
+
+  const handleApplyVisualize = useCallback(
+    (snapshot: WorkbookViewSnapshot) => {
+      if (snapshot.datasetKind === "volume") {
+        setDatasetKind("volume");
+      } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
+        setSurfaceViewerKind(snapshot.viewerKind);
+        setDatasetKind(snapshot.viewerKind === "mesh" || snapshot.viewerKind === "complex" ? "mesh" : "surface");
+      }
+
+      if (snapshot.viewerKind === "param" || snapshot.viewerKind === "weierstrass") {
+        if (snapshot.paramId) setParamSurfaceId(snapshot.paramId);
+      } else if (snapshot.viewerKind === "graph") {
+        if (snapshot.surfaceId) setGraphSurfaceId(snapshot.surfaceId);
+      } else if (snapshot.viewerKind === "implicit") {
+        if (snapshot.surfaceId) setImplicitSurfaceId(snapshot.surfaceId);
+      }
+
+      if (snapshot.colorMode) setColorMode(snapshot.colorMode);
+      if (snapshot.colorPalette) setColorPalette(snapshot.colorPalette);
+      if (snapshot.showWireframe !== undefined) setShowWireframe(snapshot.showWireframe);
+      if (snapshot.showContours !== undefined) setShowContours(snapshot.showContours);
+      if (snapshot.showCurvatureLines !== undefined) setShowCurvatureLines(snapshot.showCurvatureLines);
+      if (snapshot.showRidges !== undefined) setShowRidges(snapshot.showRidges);
+      if (snapshot.showValleys !== undefined) setShowValleys(snapshot.showValleys);
+      if (snapshot.showGaussMap !== undefined) setShowGaussMap(snapshot.showGaussMap);
+      if (snapshot.showBoundingBox !== undefined) setShowBoundingBox(snapshot.showBoundingBox);
+      if (snapshot.showPlanes !== undefined) setShowPlanes(snapshot.showPlanes);
+      if (snapshot.volumeViewMode) setVolumeViewMode(snapshot.volumeViewMode);
+      if (snapshot.volumeIsoValue !== undefined) setVolumeIsoValue(snapshot.volumeIsoValue);
+      if (snapshot.volumeShowIsosurface !== undefined) setVolumeShowIsosurface(snapshot.volumeShowIsosurface);
+      if (snapshot.volumeShowStreamlines !== undefined) setVolumeShowStreamlines(snapshot.volumeShowStreamlines);
+
+      if (snapshot.camera) {
+        setCameraOverride(snapshot.camera);
+        setCameraOverrideToken((t) => t + 1);
+      }
+    },
+    [
+      setDatasetKind,
+      setSurfaceViewerKind,
+      setParamSurfaceId,
+      setGraphSurfaceId,
+      setImplicitSurfaceId,
+      setColorMode,
+      setColorPalette,
+      setShowWireframe,
+      setShowContours,
+      setShowCurvatureLines,
+      setShowRidges,
+      setShowValleys,
+      setShowGaussMap,
+      setShowBoundingBox,
+      setShowPlanes,
+      setVolumeViewMode,
+      setVolumeIsoValue,
+      setVolumeShowIsosurface,
+      setVolumeShowStreamlines,
+    ]
+  );
+
+  const handleExportWorkbooks = useCallback(() => {
+    const payload = {
+      version: 1,
+      activeWorkbookId,
+      activeStageId,
+      workbooks,
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [workbooks, activeWorkbookId, activeStageId]);
+
+  const handleImportWorkbooks = useCallback((raw: string) => {
+    try {
+      const parsed = JSON.parse(raw);
+      const nextWorkbooks: Workbook[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.workbooks)
+          ? parsed.workbooks
+          : [];
+      if (!nextWorkbooks.length) return;
+      setWorkbooks(nextWorkbooks);
+      const nextActive =
+        typeof parsed?.activeWorkbookId === "string" &&
+        nextWorkbooks.some((w) => w.id === parsed.activeWorkbookId)
+          ? parsed.activeWorkbookId
+          : nextWorkbooks[0].id;
+      setActiveWorkbookId(nextActive);
+      if (isWorkbookStageId(parsed?.activeStageId)) setActiveStageId(parsed.activeStageId);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -3540,6 +4084,63 @@ case "mobius":
     [surfaceMeshMergeVertices]
   );
 
+  const handleExportSurfaceMeshObj = useCallback(() => {
+    if (surfaceMeshExportBusy) return;
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshExportError("Surface mesh not ready yet.");
+      return;
+    }
+    setSurfaceMeshExportBusy(true);
+    setSurfaceMeshExportError(null);
+    try {
+      const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
+      exportMeshToOBJ(surfaceMeshData, `${base}.obj`);
+    } catch (err: any) {
+      setSurfaceMeshExportError(err?.message ?? "OBJ export failed.");
+    } finally {
+      setSurfaceMeshExportBusy(false);
+    }
+  }, [surfaceMeshExportBusy, surfaceMeshData]);
+
+  const handleExportSurfaceMeshGlb = useCallback(async () => {
+    if (surfaceMeshExportBusy) return;
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshExportError("Surface mesh not ready yet.");
+      return;
+    }
+    setSurfaceMeshExportBusy(true);
+    setSurfaceMeshExportError(null);
+    try {
+      const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
+      await exportMeshToGLB(surfaceMeshData, `${base}.glb`);
+    } catch (err: any) {
+      setSurfaceMeshExportError(err?.message ?? "GLB export failed.");
+    } finally {
+      setSurfaceMeshExportBusy(false);
+    }
+  }, [surfaceMeshExportBusy, surfaceMeshData]);
+
+  const handleWeldSurfaceMesh = useCallback(() => {
+    if (surfaceMeshWeldBusy) return;
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshWeldError("Surface mesh not ready yet.");
+      return;
+    }
+    setSurfaceMeshWeldBusy(true);
+    setSurfaceMeshWeldError(null);
+    try {
+      const tol = Math.max(1e-6, Number(surfaceMeshWeldTolerance) || 1e-6);
+      const label = `${surfaceMeshData.label ?? "Surface mesh"} (welded)`;
+      const welded = weldSurfaceMeshVertices(surfaceMeshData, tol, label);
+      setMeshDataset(applySurfaceMeshOps(welded));
+      handleChangeViewerKind("mesh");
+    } catch (err: any) {
+      setSurfaceMeshWeldError(err?.message ?? "Weld vertices failed.");
+    } finally {
+      setSurfaceMeshWeldBusy(false);
+    }
+  }, [handleChangeViewerKind, surfaceMeshWeldBusy, surfaceMeshData, surfaceMeshWeldTolerance, setMeshDataset]);
+
   const activeCgalMesh = useMemo(() => {
     if (!cgalMeshState) return null;
     if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
@@ -3562,6 +4163,26 @@ case "mobius":
               ? surfaceMeshData?.label ?? "Surface mesh"
               : "Surface mesh";
   }, [surfaceViewerKind, activeEqSurfaceId, paramSurfaceId, surfaceMeshData?.label]);
+
+  const buildImplicitBakeKey = useCallback((expr: string, bounds: ImplicitBakeBounds, resolution: number) => {
+    const round = (v: number) => (Number.isFinite(v) ? v.toFixed(4) : "nan");
+    return `${expr.trim()}::${resolution}::${round(bounds.xSpan)}::${round(bounds.ySpan)}::${round(bounds.zSpan)}`;
+  }, []);
+
+  const storeImplicitBakeCache = useCallback((key: string, mesh: SurfaceMeshData) => {
+    const cache = implicitBakeCacheRef.current;
+    cache.set(key, { mesh, ts: Date.now() });
+    if (cache.size <= 4) return;
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [k, v] of cache.entries()) {
+      if (v.ts < oldestTime) {
+        oldestTime = v.ts;
+        oldestKey = k;
+      }
+    }
+    if (oldestKey) cache.delete(oldestKey);
+  }, []);
 
   const getMeshForVtk = useCallback(() => {
     const meshData = surfaceSampleSet?.meshData ?? [];
@@ -3587,6 +4208,72 @@ case "mobius":
     },
     [buildActiveMeshLabel]
   );
+
+  const getImplicitBakeWorker = useCallback(() => {
+    if (!implicitBakeWorkerRef.current) {
+      implicitBakeWorkerRef.current = new Worker(new URL("./workers/implicitBakeWorker.ts", import.meta.url), {
+        type: "module",
+      });
+    }
+    return implicitBakeWorkerRef.current;
+  }, []);
+
+  useEffect(() => {
+    const worker = getImplicitBakeWorker();
+    const handleMessage = (event: MessageEvent<any>) => {
+      const msg = event.data;
+      if (!msg || msg.jobId !== implicitBakeJobRef.current) return;
+
+      if (msg.type === "progress") {
+        const progress = Number(msg.progress);
+        setImplicitBakePhase(msg.phase === "marching" ? "marching" : "sampling");
+        setImplicitBakeProgress(Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0);
+        return;
+      }
+
+      if (msg.type === "result") {
+        if (!msg.ok) {
+          setImplicitBakeError(msg.error ?? "Implicit bake failed.");
+          setImplicitBakeBusy(false);
+          setImplicitBakePhase("idle");
+          return;
+        }
+
+        const label = `${buildActiveMeshLabel()} (implicit bake)`;
+        const next: SurfaceMeshData = {
+          label,
+          positions: msg.positions,
+          indices: msg.indices,
+          source: "surface",
+        };
+        const processed = applySurfaceMeshOps(next);
+        const key = implicitBakeKeyRef.current ?? "";
+        if (key) {
+          storeImplicitBakeCache(key, processed);
+        }
+        setMeshDataset(processed);
+        handleChangeViewerKind("mesh");
+        setImplicitBakeBusy(false);
+        setImplicitBakePhase("idle");
+        setImplicitBakeProgress(0);
+        setImplicitBakeError(null);
+        setImplicitBakeCacheHit(false);
+      }
+    };
+    worker.addEventListener("message", handleMessage);
+    return () => {
+      worker.removeEventListener("message", handleMessage);
+    };
+  }, [buildActiveMeshLabel, getImplicitBakeWorker, handleChangeViewerKind, setMeshDataset, storeImplicitBakeCache]);
+
+  useEffect(() => {
+    return () => {
+      if (implicitBakeWorkerRef.current) {
+        implicitBakeWorkerRef.current.terminate();
+        implicitBakeWorkerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleVtkCleanNormals = useCallback(async () => {
     if (vtkBusy) return;
@@ -3772,6 +4459,77 @@ case "mobius":
     setVolumeDatasetOverride(null);
     setVolumeDistanceError(null);
   }, []);
+
+  const handleUseImplicitBakeDomain = useCallback(() => {
+    const zSpan = Math.max(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
+    setImplicitBakeBounds({
+      xSpan: activeImplicitDomain.xSpan,
+      ySpan: activeImplicitDomain.ySpan,
+      zSpan,
+    });
+  }, [activeImplicitDomain]);
+
+  const handleResetImplicitBakeBounds = useCallback(() => {
+    setImplicitBakeBounds(DEFAULT_IMPLICIT_BAKE_BOUNDS);
+  }, []);
+
+  const handleBakeImplicit = useCallback(() => {
+    if (implicitBakeBusy) return;
+    setImplicitBakeError(null);
+
+    const expr = (activeImplicitExpr ?? "").trim();
+    if (!expr) {
+      setImplicitBakeError("Expression is empty.");
+      return;
+    }
+
+    const resolution = Math.max(16, Math.min(320, Math.round(implicitBakeResolution)));
+    const bounds = normalizeImplicitBakeBounds(safeImplicitBakeBounds, DEFAULT_IMPLICIT_BAKE_BOUNDS);
+    const key = buildImplicitBakeKey(expr, bounds, resolution);
+    const cached = implicitBakeCacheRef.current.get(key);
+    if (cached) {
+      cached.ts = Date.now();
+      setMeshDataset(cached.mesh);
+      handleChangeViewerKind("mesh");
+      setImplicitBakeCacheHit(true);
+      return;
+    }
+
+    setImplicitBakeCacheHit(false);
+    setImplicitBakeBusy(true);
+    setImplicitBakePhase("sampling");
+    setImplicitBakeProgress(0);
+
+    const jobId = makeId();
+    implicitBakeJobRef.current = jobId;
+    implicitBakeKeyRef.current = key;
+
+    const worker = getImplicitBakeWorker();
+    worker.postMessage({
+      type: "bake",
+      jobId,
+      expr,
+      resolution,
+      bounds: {
+        xMin: -bounds.xSpan,
+        xMax: bounds.xSpan,
+        yMin: -bounds.ySpan,
+        yMax: bounds.ySpan,
+        zMin: -bounds.zSpan,
+        zMax: bounds.zSpan,
+      },
+      iso: 0,
+    });
+  }, [
+    activeImplicitExpr,
+    buildImplicitBakeKey,
+    getImplicitBakeWorker,
+    handleChangeViewerKind,
+    implicitBakeBusy,
+    implicitBakeResolution,
+    safeImplicitBakeBounds,
+    setMeshDataset,
+  ]);
 
   const handleConvertToMesh = useCallback(() => {
     setSurfaceMeshImportError(null);
@@ -6240,7 +6998,7 @@ case "mobius":
               compareEnabled={compareEnabled}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
-                setCameraSync(null);
+                if (rightPanelTab !== "workbook") setCameraSync(null);
               }}
               compareSurfaceId={compareSurfaceId}
               onChangeCompareSurface={setCompareSurfaceId}
@@ -6365,6 +7123,27 @@ case "mobius":
                   surfaceMeshMergeVertices={surfaceMeshMergeVertices}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
                   surfaceMeshExportable={surfaceMeshExportable}
+                  surfaceMeshExportBusy={surfaceMeshExportBusy}
+                  surfaceMeshExportError={surfaceMeshExportError}
+                  surfaceMeshWeldTolerance={surfaceMeshWeldTolerance}
+                  surfaceMeshWeldBusy={surfaceMeshWeldBusy}
+                  surfaceMeshWeldError={surfaceMeshWeldError}
+                  onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
+                  onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
+                  onChangeSurfaceMeshWeldTolerance={setSurfaceMeshWeldTolerance}
+                  onWeldSurfaceMesh={handleWeldSurfaceMesh}
+                  implicitBakeResolution={implicitBakeResolution}
+                  implicitBakeBounds={safeImplicitBakeBounds}
+                  implicitBakeBusy={implicitBakeBusy}
+                  implicitBakePhase={implicitBakePhase}
+                  implicitBakeProgress={implicitBakeProgress}
+                  implicitBakeError={implicitBakeError}
+                  implicitBakeCacheHit={implicitBakeCacheHit}
+                  onChangeImplicitBakeResolution={setImplicitBakeResolution}
+                  onChangeImplicitBakeBounds={handleChangeImplicitBakeBounds}
+                  onBakeImplicit={handleBakeImplicit}
+                  onUseImplicitBakeDomain={handleUseImplicitBakeDomain}
+                  onResetImplicitBakeBounds={handleResetImplicitBakeBounds}
                   onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
@@ -6926,8 +7705,10 @@ case "mobius":
                             onSetCustomX={setParamXExpr}
                             onSetCustomY={setParamYExpr}
                             onSetCustomZ={setParamZExpr}
-                            isCameraLeader={compareEnabled}
-                            onCameraSync={compareEnabled ? setCameraSync : undefined}
+                            isCameraLeader={cameraSyncEnabled}
+                            onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
+                            cameraOverride={cameraOverride}
+                            cameraOverrideToken={cameraOverrideToken}
                           gaussMapEnabled={showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
@@ -7048,8 +7829,10 @@ case "mobius":
                             // contours (remove if SurfaceViewer doesn't support yet)
                             showContours={showContours}
                             contourCount={contourCount}
-                            isCameraLeader={compareEnabled}
-                            onCameraSync={compareEnabled ? setCameraSync : undefined}
+                            isCameraLeader={cameraSyncEnabled}
+                            onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
+                            cameraOverride={cameraOverride}
+                            cameraOverrideToken={cameraOverrideToken}
                           gaussMapEnabled={showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                         onGaussPoints={handleGaussPoints}
@@ -7239,89 +8022,128 @@ case "mobius":
 
             {/* RIGHT */}
             <div style={{ ...styles.panelLeft, width: rightWidth, maxWidth: maxRight }}>
-              <SurfacesRightPanel
-                viewerKind={surfaceViewerKind}
-                surfaceId={activeEqSurfaceId}
-                paramId={paramSurfaceId}
-                surfaceMeshLabel={surfaceMeshLabel}
-                surfaceMeshStats={surfaceMeshStats}
-                surfaceMeshSource={surfaceMeshData?.source ?? null}
-                onPickEqSurface={handlePickEqSurface}
-                onPickParamSurface={handlePickParamSurface}
-                implicitExpr={implicitExpr}
-                onChangeImplicitExpr={setImplicitExpr}
-                implicitResolution={implicitResolution}
-                vtkPreviewBusy={vtkPreviewBusy}
-                vtkPreviewError={vtkPreviewError}
-                vtkPreviewTargetFaces={vtkPreviewTargetFaces}
-                vtkPreviewUseDecimate={vtkPreviewUseDecimate}
-                onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
-                onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
-                onRunVtkPreview={handleVtkPreviewImplicit}
-                cgalHealthState={cgalHealthState}
-                cgalBusy={cgalBusy}
-                cgalError={cgalError}
-                cgalTargetEdge={cgalTargetEdge}
-                cgalAutoTargetEdge={cgalAutoTargetEdge}
-                onChangeCgalTargetEdge={setCgalTargetEdge}
-                onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
-                cgalPadFrac={cgalPadFrac}
-                onChangeCgalPadFrac={setCgalPadFrac}
-                cgalTriBudgetEnabled={cgalTriBudgetEnabled}
-                onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
-                cgalTriBudget={cgalTriBudget}
-                onChangeCgalTriBudget={setCgalTriBudget}
-                cgalAutoEdge={cgalAutoEdge}
-                cgalTriBudgetEdge={cgalTriBudgetEdge}
-                cgalRadiusBound={cgalRadiusBound}
-                onChangeCgalRadiusBound={setCgalRadiusBound}
-                cgalMinTrisEnabled={cgalMinTrisEnabled}
-                onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
-                cgalMinTris={cgalMinTris}
-                onChangeCgalMinTris={setCgalMinTris}
-                cgalDomainDiag={cgalDomainDiag}
-                cgalEffectiveEdge={cgalEffectiveEdge}
-                cgalEstimatedTris={cgalEstimatedTris}
-                cgalTooHeavy={cgalTooHeavy}
-                cgalVerbose={cgalVerbose}
-                onChangeCgalVerbose={setCgalVerbose}
-                cgalPreflightSamples={cgalPreflightSamples}
-                onChangeCgalPreflightSamples={setCgalPreflightSamples}
-                onRunCgalMesh={handleRunCgalMesh}
-                onStopCgalWorker={handleStopCgalWorker}
-                cgalMeshInfo={cgalMeshInfo}
-                probeInfo={probeInfo}
-                onPickDomainUV={(uv) => {
-                  setParamProbeUV(uv);
-                  setParamProbeToken((t) => t + 1);
-                }}
-                onPickDomainXY={(xy) => {
-                  setGraphProbeXY(xy);
-                  setGraphProbeToken((t) => t + 1);
-                }}
-                onPickDomainXYZ={(xyz) => {
-                  setImplicitProbeXYZ(xyz);
-                  setImplicitProbeToken((t) => t + 1);
-                }}
-                graphDomain={activeGraphDomain}
-                onChangeGraphDomain={handleChangeGraphDomain}
-                paramDomain={activeParamLikeDomain}
-                onChangeParamDomain={handleChangeParamDomain}
-                implicitDomain={activeImplicitDomain}
-                onChangeImplicitDomain={handleChangeImplicitDomain}
-                graphDomainPresets={graphDomainPresets}
-                paramDomainPresets={paramDomainPresets}
-                implicitDomainPresets={implicitDomainPresets}
-                onSaveGraphDomainPreset={saveGraphDomainPreset}
-                onSaveParamDomainPreset={saveParamDomainPreset}
-                onSaveImplicitDomainPreset={saveImplicitDomainPreset}
-                onApplyGraphDomainPreset={applyGraphDomainPreset}
-                onApplyParamDomainPreset={applyParamDomainPreset}
-                onApplyImplicitDomainPreset={applyImplicitDomainPreset}
-                onRemoveGraphDomainPreset={removeGraphDomainPreset}
-                onRemoveParamDomainPreset={removeParamDomainPreset}
-                onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
-              />
+              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                {(["inspector", "workbook"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setRightPanelTab(tab)}
+                    style={pill(rightPanelTab === tab)}
+                    aria-pressed={rightPanelTab === tab}
+                  >
+                    {tab === "inspector" ? "Inspector" : "Workbook"}
+                  </button>
+                ))}
+              </div>
+
+              {rightPanelTab === "inspector" ? (
+                <SurfacesRightPanel
+                  viewerKind={surfaceViewerKind}
+                  surfaceId={activeEqSurfaceId}
+                  paramId={paramSurfaceId}
+                  surfaceMeshLabel={surfaceMeshLabel}
+                  surfaceMeshStats={surfaceMeshStats}
+                  surfaceMeshSource={surfaceMeshData?.source ?? null}
+                  onPickEqSurface={handlePickEqSurface}
+                  onPickParamSurface={handlePickParamSurface}
+                  implicitExpr={implicitExpr}
+                  onChangeImplicitExpr={setImplicitExpr}
+                  implicitResolution={implicitResolution}
+                  vtkPreviewBusy={vtkPreviewBusy}
+                  vtkPreviewError={vtkPreviewError}
+                  vtkPreviewTargetFaces={vtkPreviewTargetFaces}
+                  vtkPreviewUseDecimate={vtkPreviewUseDecimate}
+                  onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
+                  onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
+                  onRunVtkPreview={handleVtkPreviewImplicit}
+                  cgalHealthState={cgalHealthState}
+                  cgalBusy={cgalBusy}
+                  cgalError={cgalError}
+                  cgalTargetEdge={cgalTargetEdge}
+                  cgalAutoTargetEdge={cgalAutoTargetEdge}
+                  onChangeCgalTargetEdge={setCgalTargetEdge}
+                  onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
+                  cgalPadFrac={cgalPadFrac}
+                  onChangeCgalPadFrac={setCgalPadFrac}
+                  cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+                  onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
+                  cgalTriBudget={cgalTriBudget}
+                  onChangeCgalTriBudget={setCgalTriBudget}
+                  cgalAutoEdge={cgalAutoEdge}
+                  cgalTriBudgetEdge={cgalTriBudgetEdge}
+                  cgalRadiusBound={cgalRadiusBound}
+                  onChangeCgalRadiusBound={setCgalRadiusBound}
+                  cgalMinTrisEnabled={cgalMinTrisEnabled}
+                  onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
+                  cgalMinTris={cgalMinTris}
+                  onChangeCgalMinTris={setCgalMinTris}
+                  cgalDomainDiag={cgalDomainDiag}
+                  cgalEffectiveEdge={cgalEffectiveEdge}
+                  cgalEstimatedTris={cgalEstimatedTris}
+                  cgalTooHeavy={cgalTooHeavy}
+                  cgalVerbose={cgalVerbose}
+                  onChangeCgalVerbose={setCgalVerbose}
+                  cgalPreflightSamples={cgalPreflightSamples}
+                  onChangeCgalPreflightSamples={setCgalPreflightSamples}
+                  onRunCgalMesh={handleRunCgalMesh}
+                  onStopCgalWorker={handleStopCgalWorker}
+                  cgalMeshInfo={cgalMeshInfo}
+                  probeInfo={probeInfo}
+                  onPickDomainUV={(uv) => {
+                    setParamProbeUV(uv);
+                    setParamProbeToken((t) => t + 1);
+                  }}
+                  onPickDomainXY={(xy) => {
+                    setGraphProbeXY(xy);
+                    setGraphProbeToken((t) => t + 1);
+                  }}
+                  onPickDomainXYZ={(xyz) => {
+                    setImplicitProbeXYZ(xyz);
+                    setImplicitProbeToken((t) => t + 1);
+                  }}
+                  graphDomain={activeGraphDomain}
+                  onChangeGraphDomain={handleChangeGraphDomain}
+                  paramDomain={activeParamLikeDomain}
+                  onChangeParamDomain={handleChangeParamDomain}
+                  implicitDomain={activeImplicitDomain}
+                  onChangeImplicitDomain={handleChangeImplicitDomain}
+                  graphDomainPresets={graphDomainPresets}
+                  paramDomainPresets={paramDomainPresets}
+                  implicitDomainPresets={implicitDomainPresets}
+                  onSaveGraphDomainPreset={saveGraphDomainPreset}
+                  onSaveParamDomainPreset={saveParamDomainPreset}
+                  onSaveImplicitDomainPreset={saveImplicitDomainPreset}
+                  onApplyGraphDomainPreset={applyGraphDomainPreset}
+                  onApplyParamDomainPreset={applyParamDomainPreset}
+                  onApplyImplicitDomainPreset={applyImplicitDomainPreset}
+                  onRemoveGraphDomainPreset={removeGraphDomainPreset}
+                  onRemoveParamDomainPreset={removeParamDomainPreset}
+                  onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
+                />
+              ) : (
+                <WorkbookPanel
+                  workbooks={workbooks}
+                  activeWorkbookId={activeWorkbookId}
+                  activeStageId={activeStageId}
+                  onSelectWorkbook={setActiveWorkbookId}
+                  onCreateWorkbook={handleCreateWorkbook}
+                  onDuplicateWorkbook={handleDuplicateWorkbook}
+                  onDeleteWorkbook={handleDeleteWorkbook}
+                  onRenameWorkbook={handleRenameWorkbook}
+                  onSelectStage={setActiveStageId}
+                  onAddBlock={handleAddWorkbookBlock}
+                  onUpdateBlock={handleUpdateWorkbookBlock}
+                  onRemoveBlock={handleRemoveWorkbookBlock}
+                  onMoveBlock={handleMoveWorkbookBlock}
+                  onCaptureVisualize={handleCaptureVisualize}
+                  onApplyVisualize={handleApplyVisualize}
+                  onToggleVisualizeLive={handleToggleVisualizeLive}
+                  onExportJson={handleExportWorkbooks}
+                  onImportJson={handleImportWorkbooks}
+                  currentDatasetRef={currentDatasetRef}
+                  cameraReady={!!cameraSync}
+                />
+              )}
             </div>
           </div>
         ) : (
@@ -7949,6 +8771,27 @@ type SurfacesLeftPanelProps = {
   surfaceMeshMergeVertices: boolean;
   surfaceMeshPresets: SurfaceMeshPreset[];
   surfaceMeshExportable: boolean;
+  surfaceMeshExportBusy: boolean;
+  surfaceMeshExportError: string | null;
+  surfaceMeshWeldTolerance: number;
+  surfaceMeshWeldBusy: boolean;
+  surfaceMeshWeldError: string | null;
+  onExportSurfaceMeshObj: () => void;
+  onExportSurfaceMeshGlb: () => void;
+  onChangeSurfaceMeshWeldTolerance: (v: number) => void;
+  onWeldSurfaceMesh: () => void;
+  implicitBakeResolution: number;
+  implicitBakeBounds: ImplicitBakeBounds;
+  implicitBakeBusy: boolean;
+  implicitBakePhase: "idle" | "sampling" | "marching";
+  implicitBakeProgress: number;
+  implicitBakeError: string | null;
+  implicitBakeCacheHit: boolean;
+  onChangeImplicitBakeResolution: (v: number) => void;
+  onChangeImplicitBakeBounds: (d: ImplicitBakeBounds) => void;
+  onBakeImplicit: () => void;
+  onUseImplicitBakeDomain: () => void;
+  onResetImplicitBakeBounds: () => void;
   onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
@@ -8370,6 +9213,27 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshMergeVertices,
   surfaceMeshPresets,
   surfaceMeshExportable,
+  surfaceMeshExportBusy,
+  surfaceMeshExportError,
+  surfaceMeshWeldTolerance,
+  surfaceMeshWeldBusy,
+  surfaceMeshWeldError,
+  onExportSurfaceMeshObj,
+  onExportSurfaceMeshGlb,
+  onChangeSurfaceMeshWeldTolerance,
+  onWeldSurfaceMesh,
+  implicitBakeResolution,
+  implicitBakeBounds,
+  implicitBakeBusy,
+  implicitBakePhase,
+  implicitBakeProgress,
+  implicitBakeError,
+  implicitBakeCacheHit,
+  onChangeImplicitBakeResolution,
+  onChangeImplicitBakeBounds,
+  onBakeImplicit,
+  onUseImplicitBakeDomain,
+  onResetImplicitBakeBounds,
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
   onLoadSurfaceMeshFile,
@@ -8693,6 +9557,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleDriftArrow,
   onRecomputeDiagnostics,
 }) => {
+  const meshReady = !!surfaceMeshStats;
+  const implicitBakePercent = Math.max(0, Math.min(100, Math.round(implicitBakeProgress * 100)));
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
   const geodesicSmoothEnabled = viewerKind === "param" || viewerKind === "weierstrass";
@@ -10726,7 +11592,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   ? "Switch to the SurfaceMesh viewer using the current complex map mesh."
                   : "Bake the current surface into a mesh dataset."
                 : viewerKind === "implicit"
-                  ? "Run CGAL mesh first to convert an implicit surface."
+                  ? "Run CGAL mesh first to convert an implicit surface (or use the implicit baker below)."
                   : viewerKind === "complex"
                     ? "Build the complex map surface first."
                     : "Mesh conversion will enable once the surface is ready."}
@@ -10734,6 +11600,118 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             {surfaceMeshImportError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
                 {surfaceMeshImportError}
+              </div>
+            )}
+            {viewerKind === "implicit" && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e0e0e0",
+                  background: "#fafafa",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Implicit baker (marching cubes)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <label style={{ fontSize: 11 }}>
+                    x span
+                    <input
+                      type="number"
+                      min={0.2}
+                      step={0.1}
+                      value={implicitBakeBounds.xSpan}
+                      onChange={(e) =>
+                        onChangeImplicitBakeBounds({
+                          ...implicitBakeBounds,
+                          xSpan: Math.max(0.2, Number(e.target.value)),
+                        })
+                      }
+                      style={{ width: "100%", marginTop: 4 }}
+                    />
+                  </label>
+                  <label style={{ fontSize: 11 }}>
+                    y span
+                    <input
+                      type="number"
+                      min={0.2}
+                      step={0.1}
+                      value={implicitBakeBounds.ySpan}
+                      onChange={(e) =>
+                        onChangeImplicitBakeBounds({
+                          ...implicitBakeBounds,
+                          ySpan: Math.max(0.2, Number(e.target.value)),
+                        })
+                      }
+                      style={{ width: "100%", marginTop: 4 }}
+                    />
+                  </label>
+                  <label style={{ fontSize: 11 }}>
+                    z span
+                    <input
+                      type="number"
+                      min={0.2}
+                      step={0.1}
+                      value={implicitBakeBounds.zSpan}
+                      onChange={(e) =>
+                        onChangeImplicitBakeBounds({
+                          ...implicitBakeBounds,
+                          zSpan: Math.max(0.2, Number(e.target.value)),
+                        })
+                      }
+                      style={{ width: "100%", marginTop: 4 }}
+                    />
+                  </label>
+                  <label style={{ fontSize: 11 }}>
+                    resolution
+                    <input
+                      type="number"
+                      min={16}
+                      max={320}
+                      step={1}
+                      value={implicitBakeResolution}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) {
+                          onChangeImplicitBakeResolution(Math.max(16, Math.min(320, Math.round(v))));
+                        }
+                      }}
+                      style={{ width: "100%", marginTop: 4 }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button type="button" onClick={onUseImplicitBakeDomain} style={{ padding: "4px 8px" }}>
+                    Use domain
+                  </button>
+                  <button type="button" onClick={onResetImplicitBakeBounds} style={{ padding: "4px 8px" }}>
+                    Reset
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  <button type="button" onClick={onBakeImplicit} disabled={implicitBakeBusy} style={{ padding: "4px 10px" }}>
+                    {implicitBakeBusy ? "Baking..." : "Bake (marching cubes)"}
+                  </button>
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+                  Runs in a worker so higher resolutions stay responsive.
+                </div>
+                {implicitBakeBusy && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: 11, color: "#555" }}>
+                      {implicitBakePhase === "marching" ? "Marching cubes" : "Sampling grid"} · {implicitBakePercent}%
+                    </div>
+                    <div style={{ height: 6, background: "#eee", borderRadius: 999, overflow: "hidden", marginTop: 4 }}>
+                      <div style={{ width: `${implicitBakePercent}%`, height: "100%", background: "#0a66c2" }} />
+                    </div>
+                  </div>
+                )}
+                {implicitBakeCacheHit && (
+                  <div style={{ fontSize: 11, color: "#357", marginTop: 6 }}>Used cached bake.</div>
+                )}
+                {implicitBakeError && (
+                  <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{implicitBakeError}</div>
+                )}
               </div>
             )}
           </>
@@ -10793,6 +11771,46 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
             {surfaceMeshImportError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshImportError}</div>
+            )}
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Export</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              <button type="button" onClick={onExportSurfaceMeshGlb} disabled={surfaceMeshExportBusy || !meshReady}>
+                {surfaceMeshExportBusy ? "Exporting..." : "Export GLB"}
+              </button>
+              <button type="button" onClick={onExportSurfaceMeshObj} disabled={surfaceMeshExportBusy || !meshReady}>
+                {surfaceMeshExportBusy ? "Exporting..." : "Export OBJ"}
+              </button>
+            </div>
+            {surfaceMeshExportError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshExportError}</div>
+            )}
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Weld vertices</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <label style={{ fontSize: 11 }}>
+                Tolerance
+                <input
+                  type="number"
+                  min={1e-6}
+                  max={0.1}
+                  step={0.0001}
+                  value={surfaceMeshWeldTolerance}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) {
+                      onChangeSurfaceMeshWeldTolerance(Math.max(1e-6, Math.min(0.1, v)));
+                    }
+                  }}
+                  style={{ width: 90, marginLeft: 6 }}
+                />
+              </label>
+              <button type="button" onClick={onWeldSurfaceMesh} disabled={surfaceMeshWeldBusy || !meshReady}>
+                {surfaceMeshWeldBusy ? "Welding..." : "Weld"}
+              </button>
+            </div>
+            {surfaceMeshWeldError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshWeldError}</div>
             )}
           </>
         )}

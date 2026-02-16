@@ -148,6 +148,8 @@ type Props = {
   isCameraLeader?: boolean;
   cameraSync?: CameraSyncState | null;
   onCameraSync?: (state: CameraSyncState) => void;
+  cameraOverride?: CameraSyncState | null;
+  cameraOverrideToken?: number;
   showBoundingBox?: boolean;
   resetToken?: number;
 
@@ -1063,6 +1065,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   isCameraLeader = false,
   cameraSync = null,
   onCameraSync,
+  cameraOverride = null,
+  cameraOverrideToken = 0,
   showBoundingBox = false,
   resetToken,
   probeEnabled = false,
@@ -4812,6 +4816,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     cameraSync?.up.z,
     isCameraLeader,
   ]);
+
+  useEffect(() => {
+    if (!cameraOverride) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    cam.position.set(cameraOverride.position.x, cameraOverride.position.y, cameraOverride.position.z);
+    cam.up.set(cameraOverride.up.x, cameraOverride.up.y, cameraOverride.up.z);
+    ctrls.target.set(cameraOverride.target.x, cameraOverride.target.y, cameraOverride.target.z);
+    cam.updateProjectionMatrix();
+    ctrls.update();
+  }, [cameraOverrideToken]);
 
   useEffect(() => {
     const obj = surfaceObjRef.current;

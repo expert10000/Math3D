@@ -40,7 +40,7 @@ export type SurfaceMeshPreset = {
   build: () => THREE.BufferGeometry;
 };
 
-type GeometryOpts = { mergeVertices: boolean };
+type GeometryOpts = { mergeVertices: boolean; mergeTolerance?: number };
 
 type FileLikeList = File[] | FileList;
 
@@ -111,7 +111,7 @@ const normalizeGeometry = (geom: THREE.BufferGeometry, opts: GeometryOpts): THRE
       g = g.toNonIndexed();
     }
     g = stripToPositions(g);
-    g = mergeVertices(g);
+    g = mergeVertices(g, opts.mergeTolerance ?? 1e-4);
   } else {
     const posAttr = g.getAttribute("position") as THREE.BufferAttribute | null;
     const normalAttr = g.getAttribute("normal") as THREE.BufferAttribute | null;
@@ -137,13 +137,34 @@ const normalizeGeometry = (geom: THREE.BufferGeometry, opts: GeometryOpts): THRE
   return g;
 };
 
-export function buildSurfaceMeshFromGeometry(
-  geometry: THREE.BufferGeometry,
+export function surfaceMeshToGeometry(mesh: SurfaceMeshData): THREE.BufferGeometry {
+  const geom = new THREE.BufferGeometry();
+  const positions = mesh.positions instanceof Float32Array ? mesh.positions : Float32Array.from(mesh.positions);
+  geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+  if (mesh.indices && mesh.indices.length >= 3) {
+    const indices = mesh.indices instanceof Uint32Array ? mesh.indices : Uint32Array.from(mesh.indices);
+    geom.setIndex(new THREE.BufferAttribute(indices, 1));
+  }
+
+  if (mesh.normals && mesh.normals.length >= positions.length) {
+    const normals = mesh.normals instanceof Float32Array ? mesh.normals : Float32Array.from(mesh.normals);
+    geom.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  }
+
+  if (mesh.uvs && mesh.uvs.length >= 2) {
+    const uvs = mesh.uvs instanceof Float32Array ? mesh.uvs : Float32Array.from(mesh.uvs);
+    geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  }
+
+  return geom;
+}
+
+const surfaceMeshFromGeometry = (
+  geom: THREE.BufferGeometry,
   label: string,
-  source: SurfaceMeshSource,
-  opts: GeometryOpts = { mergeVertices: false }
-): SurfaceMeshData {
-  const geom = normalizeGeometry(geometry, opts);
+  source: SurfaceMeshSource
+): SurfaceMeshData => {
   const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
   if (!posAttr) {
     throw new Error("Surface mesh missing position attribute.");
@@ -160,6 +181,29 @@ export function buildSurfaceMeshFromGeometry(
     uvs: uvAttr ? toFloat32(uvAttr.array as ArrayLike<number>) : null,
     source,
   };
+};
+
+export function buildSurfaceMeshFromGeometry(
+  geometry: THREE.BufferGeometry,
+  label: string,
+  source: SurfaceMeshSource,
+  opts: GeometryOpts = { mergeVertices: false }
+): SurfaceMeshData {
+  const geom = normalizeGeometry(geometry, opts);
+  return surfaceMeshFromGeometry(geom, label, source);
+}
+
+export function weldSurfaceMeshVertices(
+  mesh: SurfaceMeshData,
+  tolerance = 1e-4,
+  labelOverride?: string
+): SurfaceMeshData {
+  const geometry = surfaceMeshToGeometry(mesh);
+  const merged = mergeVertices(geometry, tolerance);
+  if (!merged.getAttribute("normal")) {
+    merged.computeVertexNormals();
+  }
+  return surfaceMeshFromGeometry(merged, labelOverride ?? mesh.label, mesh.source);
 }
 
 export function mergeMeshData(meshes: { positions: ArrayLike<number>; indices: ArrayLike<number> | null }[]) {
