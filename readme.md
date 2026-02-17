@@ -1,6 +1,6 @@
 # Math3D
 
-## Latest changes
+## Changes (Latest changes)
 
 - Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
 - Added an implicit baker (marching cubes) with independent bounds + resolution controls, running in a worker with progress and caching for big grids.
@@ -40,7 +40,9 @@
 - Integrated a volume bridge in the UI (Surface → Volume distance field), plus a volume override mode, and a new streamlines panel with vector presets and seed controls.
 - Swapped volume slice rendering to use VTK when available/large grids, added a small-grid CPU fallback for volume isosurface, and added VTK streamlines rendering as tubes.
 
-## Build the renderer into /dist
+## Code
+
+### Build the renderer into /dist
 
 ```bash
 git clone https://github.com/expert10000/Math3D.git
@@ -55,7 +57,7 @@ cd ..
 npm run build
 ```
 
-## Build
+### Build
 
 ```bash
 npm run build:main
@@ -67,7 +69,27 @@ npm run build
 npm run dist
 ```
 
-## Functionality
+### Python setup
+
+The Python worker powers CGAL meshing and the new VTK mesh ops. Install these into the
+Python environment used by the app (set `MATH3D_PYTHON` if needed):
+
+```bash
+python -m pip install numpy scipy sympy pygalmesh vtk
+```
+
+### VTK implicit preview (fast)
+
+The implicit viewer includes a **Preview (VTK)** button for a fast mesh pass before running CGAL:
+
+- Uses VTK Flying Edges (or Marching Cubes) on a uniform grid.
+- Uses the **implicit domain bounds** and **implicit resolution** controls.
+- Optional decimation to a target face count for responsive previews.
+- Returns a SurfaceMesh, so you can use all mesh tools immediately.
+
+Note: the preview button appears under the **Implicit surface (custom)** block in the right panel.
+
+## Functions (Functionality)
 
 ### Overview
 
@@ -396,27 +418,7 @@ Slicing adds multi-plane cross sections:
 Slicing is effective for understanding the implicit surfaces because it reveals how the
 level set intersects coordinate planes.
 
-## Python setup
-
-The Python worker powers CGAL meshing and the new VTK mesh ops. Install these into the
-Python environment used by the app (set `MATH3D_PYTHON` if needed):
-
-```bash
-python -m pip install numpy scipy sympy pygalmesh vtk
-```
-
-## VTK implicit preview (fast)
-
-The implicit viewer includes a **Preview (VTK)** button for a fast mesh pass before running CGAL:
-
-- Uses VTK Flying Edges (or Marching Cubes) on a uniform grid.
-- Uses the **implicit domain bounds** and **implicit resolution** controls.
-- Optional decimation to a target face count for responsive previews.
-- Returns a SurfaceMesh, so you can use all mesh tools immediately.
-
-Note: the preview button appears under the **Implicit surface (custom)** block in the right panel.
-
-## Latest changes (2026-01)
+## Changes (Latest changes, 2026-01)
 
 - Added VTK implicit preview (flying edges/marching cubes) with optional decimation for fast implicit meshing.
 - Added a Python VTK pipeline (clean normals, decimate, smooth) with binary IPC buffers.
