@@ -4,7 +4,13 @@ import type { ParamSurfaceId } from "../components/ParamSurfaceViewer";
 import type { ColorPalette } from "../components/colorPalette";
 
 export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
-export type WorkbookBlockType = "text" | "formula" | "visualize" | "compute" | "assert";
+export type WorkbookBlockType =
+  | "text"
+  | "formula"
+  | "visualize"
+  | "compute"
+  | "assert"
+  | "interaction";
 export type WorkbookValueType =
   | "text"
   | "formula"
@@ -27,6 +33,77 @@ export type WorkbookPort = {
   label: string;
   type: WorkbookValueType;
   optional?: boolean;
+};
+
+export type WorkbookParamKind = "number" | "select" | "toggle";
+export type WorkbookParamValue = number | string | boolean;
+export type WorkbookParamOption = { value: string; label: string };
+export type WorkbookParamDef = {
+  id: string;
+  label: string;
+  kind: WorkbookParamKind;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: WorkbookParamOption[];
+  defaultValue?: WorkbookParamValue;
+};
+export type WorkbookParamKeyframe = {
+  id: string;
+  label?: string;
+  values: Record<string, WorkbookParamValue>;
+  createdAt: number;
+};
+export type WorkbookParamState = {
+  defs: WorkbookParamDef[];
+  values: Record<string, WorkbookParamValue>;
+  scrub?: boolean;
+  keyframes?: WorkbookParamKeyframe[];
+};
+
+export type WorkbookInteractionKind =
+  | "pick_point"
+  | "draw_curve"
+  | "select_region"
+  | "pick_direction";
+export type WorkbookInteractionStatus = "idle" | "armed" | "captured";
+export type WorkbookPointOutput = {
+  point: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  uv?: { u: number; v: number };
+  xy?: { x: number; y: number };
+  tangentU?: { x: number; y: number; z: number };
+  tangentV?: { x: number; y: number; z: number };
+  meshKey?: string;
+  vertexIndex?: number;
+  faceIndex?: number;
+  bary?: [number, number, number];
+};
+export type WorkbookCurveOutput = {
+  points: { x: number; y: number; z: number }[];
+  closed?: boolean;
+};
+export type WorkbookMaskOutput = {
+  meshKey?: string;
+  indices: number[];
+  count: number;
+};
+export type WorkbookDirectionOutput = {
+  origin: { x: number; y: number; z: number };
+  direction: { x: number; y: number; z: number };
+  tangentU?: { x: number; y: number; z: number };
+  tangentV?: { x: number; y: number; z: number };
+};
+export type WorkbookInteractionData = {
+  kind: WorkbookInteractionKind;
+  status?: WorkbookInteractionStatus;
+  summary?: string;
+  point?: WorkbookPointOutput | null;
+  curve?: WorkbookCurveOutput | null;
+  mask?: WorkbookMaskOutput | null;
+  direction?: WorkbookDirectionOutput | null;
+  points?: { x: number; y: number; z: number }[];
+  directionAngle?: number;
 };
 
 export type WorkbookCameraState = {
@@ -89,6 +166,13 @@ export type WorkbookComputeOutputs = {
     meshKey?: string | null;
     message?: string | null;
   };
+  curveOverlay?: {
+    polylines: { x: number; y: number; z: number }[][] | null;
+  };
+  directionOverlay?: {
+    polylines: { x: number; y: number; z: number }[][] | null;
+  };
+  selectionMask?: WorkbookMaskOutput | null;
 };
 
 export type WorkbookComputeCacheEntry = {
@@ -108,6 +192,7 @@ export type WorkbookBlock = {
   outputs?: WorkbookPort[];
   text?: string;
   formula?: string;
+  params?: WorkbookParamState;
   visualize?: {
     live: boolean;
     snapshot?: WorkbookViewSnapshot | null;
@@ -123,6 +208,7 @@ export type WorkbookBlock = {
     outputHash?: string;
     cache?: Record<string, WorkbookComputeCacheEntry>;
   };
+  interaction?: WorkbookInteractionData;
   assert?: {
     expected?: string;
     status?: "pending" | "pass" | "fail";

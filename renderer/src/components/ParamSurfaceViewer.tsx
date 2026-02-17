@@ -24,7 +24,7 @@ import {
   type WeierstrassDriftResult,
 } from "../math/weierstrass";
 
-import type { ColorMode, ProbeInfo, SliceNormal, SlicePreset } from "./SurfaceViewer";
+import type { ColorMode, ProbeInfo, SliceNormal, SlicePreset, OverlayPolylineGroup } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
@@ -208,6 +208,7 @@ type Props = {
   geodesicHeatPolylines?: PolylineSet | null;
   geodesicHeatmapValues?: number[] | null;
   geodesicHeatmapEnabled?: boolean;
+  overlayPolylineGroups?: OverlayPolylineGroup[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -1109,6 +1110,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     geodesicHeatPolylines = null,
     geodesicHeatmapValues = null,
     geodesicHeatmapEnabled = false,
+    overlayPolylineGroups = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -1209,6 +1211,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   });
   const geodesicDiskGroupRef = useRef<THREE.Group | null>(null);
   const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
+  const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -3962,6 +3965,56 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     scene.add(group);
     geodesicHeatLineRef.current = group;
   }, [geodesicHeatEnd, geodesicHeatPolylines, geodesicHeatStart, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayPolylineGroupsRef.current) {
+      scene.remove(overlayPolylineGroupsRef.current);
+      overlayPolylineGroupsRef.current.traverse(disposeObject3D);
+      overlayPolylineGroupsRef.current = null;
+    }
+
+    if (!overlayPolylineGroups?.length) return;
+
+    const group = new THREE.Group();
+    const sizeHint = radiusRef.current || 3;
+    const baseRadius = Math.max(0.0025, (sizeHint / 160) * 0.9);
+    const radialSegments = 10;
+
+    for (const entry of overlayPolylineGroups) {
+      if (!entry?.lines?.length) continue;
+      const tubeRadius = baseRadius * (entry.radiusScale ?? 1);
+      const opacity = entry.opacity ?? 1;
+      const mat = new THREE.MeshBasicMaterial({
+        color: entry.color,
+        transparent: opacity < 1,
+        opacity,
+        depthTest: false,
+        depthWrite: false,
+      });
+
+      for (const line of entry.lines) {
+        if (!line || line.length < 2) continue;
+        const points = line.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+        const path = new THREE.CurvePath<THREE.Vector3>();
+        for (let i = 0; i + 1 < points.length; i++) {
+          path.add(new THREE.LineCurve3(points[i], points[i + 1]));
+        }
+        const tubularSegments = Math.min(1600, Math.max(80, points.length * 2));
+        const geom = new THREE.TubeGeometry(path, tubularSegments, tubeRadius, radialSegments, false);
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.renderOrder = 230;
+        mesh.frustumCulled = false;
+        group.add(mesh);
+      }
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayPolylineGroupsRef.current = group;
+  }, [overlayPolylineGroups, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

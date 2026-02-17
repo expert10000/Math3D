@@ -137,6 +137,13 @@ import {
   type WorkbookValueType,
   type WorkbookComputeCacheEntry,
   type WorkbookComputeOutputs,
+  type WorkbookInteractionKind,
+  type WorkbookDirectionOutput,
+  type WorkbookMaskOutput,
+  type WorkbookParamDef,
+  type WorkbookParamValue,
+  type WorkbookCurveOutput,
+  type WorkbookPointOutput,
 } from "./workbook/workbookModel";
 /* ---------------- App modes ---------------- */
 
@@ -170,6 +177,7 @@ const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
 const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
+const COMPARE_IGNORE_OVERLAYS_KEY = "math3d.compare.ignoreWorkbookOverlays.v1";
 const WORKBOOK_STAGE_IDS: WorkbookStageId[] = ["define", "compute", "visualize", "explain"];
 const isWorkbookStageId = (value: string | null): value is WorkbookStageId =>
   !!value && WORKBOOK_STAGE_IDS.includes(value as WorkbookStageId);
@@ -956,6 +964,7 @@ type Vec3 = { x: number; y: number; z: number };
 const vLen = (v: Vec3) => Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 const vDot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
 const vScale = (v: Vec3, s: number): Vec3 => ({ x: v.x * s, y: v.y * s, z: v.z * s });
+const vAdd = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
 const vSub = (a: Vec3, b: Vec3): Vec3 => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
 const vCross = (a: Vec3, b: Vec3): Vec3 => ({
   x: a.y * b.z - a.z * b.y,
@@ -965,6 +974,14 @@ const vCross = (a: Vec3, b: Vec3): Vec3 => ({
 const vNormalize = (v: Vec3): Vec3 => {
   const len = vLen(v);
   return len > 1e-12 ? vScale(v, 1 / len) : { x: 0, y: 0, z: 0 };
+};
+
+const buildTangentBasis = (normal: Vec3) => {
+  const n = vNormalize(normal);
+  const ref = Math.abs(n.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+  const t1 = vNormalize(vCross(ref, n));
+  const t2 = vNormalize(vCross(n, t1));
+  return { t1, t2 };
 };
 
 const stableStringify = (value: unknown) => {
@@ -994,21 +1011,90 @@ const hashString = (input: string) => {
 
 const hashValue = (value: unknown) => hashString(stableStringify(value));
 
+const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
+  { id: "graphResolution", label: "Graph resolution", kind: "number", min: 20, max: 320, step: 1, defaultValue: 80 },
+  { id: "paramResolution", label: "Param resolution", kind: "number", min: 20, max: 320, step: 1, defaultValue: 160 },
+  { id: "implicitResolution", label: "Implicit resolution", kind: "number", min: 8, max: 200, step: 1, defaultValue: 32 },
+  { id: "implicitDomainSize", label: "Implicit domain size", kind: "number", min: 0.5, max: 6, step: 0.1, defaultValue: 2.2 },
+  { id: "wireframe", label: "Wireframe", kind: "toggle", defaultValue: false },
+  { id: "contours", label: "Contours", kind: "toggle", defaultValue: false },
+  { id: "chartGrid", label: "Chart grid", kind: "toggle", defaultValue: false },
+  { id: "probe", label: "Probe", kind: "toggle", defaultValue: false },
+  {
+    id: "colorMode",
+    label: "Color mode",
+    kind: "select",
+    options: [
+      { value: "solid", label: "Solid" },
+      { value: "height", label: "Height" },
+      { value: "radius", label: "Radius" },
+      { value: "phase", label: "Phase" },
+      { value: "curvature", label: "Curvature" },
+      { value: "gaussian", label: "Gaussian" },
+      { value: "mean", label: "Mean" },
+      { value: "k1", label: "k1" },
+      { value: "k2", label: "k2" },
+    ],
+    defaultValue: "solid",
+  },
+  {
+    id: "colorPalette",
+    label: "Color palette",
+    kind: "select",
+    options: [
+      { value: "blueRed", label: "Blue/Red" },
+      { value: "rainbow", label: "Rainbow" },
+      { value: "grayscale", label: "Grayscale" },
+      { value: "redYellow", label: "Red/Yellow" },
+    ],
+    defaultValue: "blueRed",
+  },
+  { id: "selectionRadius", label: "Selection radius", kind: "number", min: 0.05, max: 3, step: 0.05, defaultValue: 0.4 },
+];
+
 const BASE_COMPUTE_INPUTS: WorkbookPort[] = [
   { id: "dataset", label: "Dataset", type: "dataset" },
   { id: "formula", label: "Formula", type: "formula", optional: true },
   { id: "overlay", label: "Overlay", type: "overlay", optional: true },
   { id: "curve", label: "Curve", type: "curve", optional: true },
-];
-const GEODESIC_INPUTS: WorkbookPort[] = [
-  ...BASE_COMPUTE_INPUTS,
   { id: "points", label: "Points", type: "points", optional: true },
+  { id: "mask", label: "Mask", type: "mask", optional: true },
+  { id: "vector", label: "Vector", type: "vector", optional: true },
 ];
+const GEODESIC_INPUTS: WorkbookPort[] = [...BASE_COMPUTE_INPUTS];
 const COMPUTE_OPERATOR_OUTPUTS: Record<string, WorkbookPort[]> = {
   chart_grid: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+  curve_overlay: [{ id: "curve", label: "Curve", type: "curve" }],
+  direction_overlay: [{ id: "curve", label: "Curve", type: "curve" }],
+  selection_overlay: [{ id: "mask", label: "Mask", type: "mask" }],
   curvature_field: [{ id: "overlay", label: "Overlay", type: "overlay" }],
   geodesic_heat: [{ id: "curve", label: "Curve", type: "curve" }],
+  geodesic_path: [{ id: "curve", label: "Curve", type: "curve" }],
   principal_dirs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+};
+
+const getInteractionPorts = (
+  kind?: WorkbookInteractionKind | null
+): { inputs: WorkbookPort[]; outputs: WorkbookPort[] } => {
+  const inputs: WorkbookPort[] = [{ id: "dataset", label: "Dataset", type: "dataset" }];
+  if (!kind) return { inputs, outputs: [] };
+  if (kind === "pick_point") {
+    const outputs: WorkbookPort[] = [{ id: "points", label: "Point", type: "points" }];
+    return { inputs, outputs };
+  }
+  if (kind === "draw_curve") {
+    const outputs: WorkbookPort[] = [{ id: "curve", label: "Curve", type: "curve" }];
+    return { inputs, outputs };
+  }
+  if (kind === "select_region") {
+    const outputs: WorkbookPort[] = [{ id: "mask", label: "Mask", type: "mask" }];
+    return { inputs, outputs };
+  }
+  if (kind === "pick_direction") {
+    const outputs: WorkbookPort[] = [{ id: "vector", label: "Vector", type: "vector" }];
+    return { inputs, outputs };
+  }
+  return { inputs, outputs: [] };
 };
 
 const getComputePorts = (operatorId?: string) => {
@@ -1025,6 +1111,7 @@ const DEFAULT_BLOCK_PORTS: Record<WorkbookBlockType, { inputs: WorkbookPort[]; o
     outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
   },
   compute: { inputs: BASE_COMPUTE_INPUTS, outputs: [] },
+  interaction: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
   assert: { inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }], outputs: [] },
 };
 
@@ -1034,6 +1121,11 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
     const inputs = ports.inputs;
     const outputs = ports.outputs.length ? ports.outputs : block.outputs ?? [];
     return { inputs, outputs };
+  }
+  if (block.type === "interaction") {
+    const ports = getInteractionPorts(block.interaction?.kind ?? null);
+    const outputs = ports.outputs.length ? ports.outputs : block.outputs ?? [];
+    return { inputs: ports.inputs, outputs };
   }
   const defaults = DEFAULT_BLOCK_PORTS[block.type];
   const inputs = block.inputs?.length ? block.inputs : defaults.inputs;
@@ -1073,6 +1165,20 @@ const App: React.FC = () => {
     blockId: string;
     snapshot: WorkbookViewSnapshot;
   } | null>(null);
+  const [activeInteraction, setActiveInteraction] = useState<{
+    stageId: WorkbookStageId;
+    blockId: string;
+    kind: WorkbookInteractionKind;
+  } | null>(null);
+  const [workbookCurveOverlay, setWorkbookCurveOverlay] = useState<PolylineSet | null>(null);
+  const interactionPrevRef = useRef<{
+    probeEnabled: boolean;
+    selectRegionEnabled: boolean;
+    inspectEnabled: boolean;
+    geodesicHeatEnabled: boolean;
+    geodesicPathEnabled: boolean;
+    geodesicDiskPickMode: boolean;
+  } | null>(null);
   useEffect(() => {
     if (activeWorkbookId && workbooks.some((w) => w.id === activeWorkbookId)) return;
     setActiveWorkbookId(workbooks[0]?.id ?? null);
@@ -1105,6 +1211,7 @@ const App: React.FC = () => {
       // ignore
     }
   }, [rightPanelTab]);
+
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
     [workbooks, activeWorkbookId]
@@ -2341,6 +2448,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
+  const [probeStamp, setProbeStamp] = useState(0);
   const [paramProbeCurv, setParamProbeCurv] = useState<PrincipalCurvatureScalars | null>(null);
 
   const complexMapDistortionProbe = useMemo(() => {
@@ -2551,6 +2659,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [compareSurfaceId, setCompareSurfaceId] = useState<SurfaceId>("sphere");
   const [compareParamId, setCompareParamId] = useState<ParamSurfaceId>("plane");
+  const [compareIgnoreWorkbookOverlays, setCompareIgnoreWorkbookOverlays] = useState(() => {
+    try {
+      const raw = localStorage.getItem(COMPARE_IGNORE_OVERLAYS_KEY);
+      return raw === "1" || raw === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [selectionMaskOverride, setSelectionMaskOverride] = useState<SelectionMask | null>(null);
+  const [workbookDirectionOverlay, setWorkbookDirectionOverlay] = useState<PolylineSet | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COMPARE_IGNORE_OVERLAYS_KEY, compareIgnoreWorkbookOverlays ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [compareIgnoreWorkbookOverlays]);
   const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
   const [cameraOverride, setCameraOverride] = useState<CameraSyncState | null>(null);
   const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
@@ -2901,6 +3027,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const preset = IMPLICIT_EXPR_PRESETS.find((p) => p.id === implicitSurfaceId);
     return (preset?.expr ?? fallback).trim();
   }, [implicitSurfaceId, implicitExpr]);
+
+  const activeCgalMesh = useMemo(() => {
+    if (!cgalMeshState) return null;
+    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
+    if (cgalMeshState.expr !== activeImplicitExpr) return null;
+    return cgalMeshState;
+  }, [cgalMeshState, activeEqSurfaceId, activeImplicitExpr]);
   const surfaceMeshLabel = surfaceMeshData?.label ?? "SurfaceMesh";
   const surfaceMeshStats = useMemo(() => {
     if (!surfaceMeshData?.positions?.length) return null;
@@ -3000,6 +3133,27 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
             status: block.assert.status ?? "pending",
           }
         : null,
+      params: block.params
+        ? {
+            defs: block.params.defs ?? [],
+            values: block.params.values ?? {},
+            scrub: block.params.scrub ?? false,
+            keyframes: block.params.keyframes ?? [],
+          }
+        : null,
+      interaction: block.interaction
+        ? {
+            kind: block.interaction.kind,
+            status: block.interaction.status ?? "idle",
+            summary: block.interaction.summary ?? "",
+            point: block.interaction.point ?? null,
+            curve: block.interaction.curve ?? null,
+            mask: block.interaction.mask ?? null,
+            direction: block.interaction.direction ?? null,
+            points: block.interaction.points ?? [],
+            directionAngle: block.interaction.directionAngle ?? 0,
+          }
+        : null,
       inputs: block.inputs ?? null,
       outputs: block.outputs ?? null,
     });
@@ -3018,6 +3172,19 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         if (input.type === "dataset") {
           return { type: input.type, value: currentDatasetRef };
         }
+        if (input.type === "points") {
+          const items = outputByType.get("points") ?? [];
+          if (items.length) {
+            const pair = items.slice(-2);
+            pair.forEach((item) => deps.add(item.blockId));
+            return {
+              type: input.type,
+              from: pair.map((item) => item.blockId),
+              hash: pair.map((item) => item.hash),
+            };
+          }
+          return { type: input.type, missing: true, optional: !!input.optional };
+        }
         const upstream = findLatestOutput(input.type);
         if (upstream) {
           deps.add(upstream.blockId);
@@ -3035,6 +3202,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           datasetRef: currentDatasetRef,
           viewerKind: surfaceViewerKind,
           inputs: inputTokens,
+          params: block.params?.values ?? null,
         });
         inputHashById.set(block.id, inputHash);
         const cacheEntry = block.compute?.cache?.[inputHash];
@@ -3143,6 +3311,144 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     },
     [implicitDomains]
   );
+
+  const paramCatalog = useMemo(() => WORKBOOK_PARAM_CATALOG, []);
+  const paramDefById = useMemo(() => {
+    const map = new Map<string, WorkbookParamDef>();
+    paramCatalog.forEach((def) => map.set(def.id, def));
+    return map;
+  }, [paramCatalog]);
+
+  const readParamValue = useCallback(
+    (id: string): WorkbookParamValue | undefined => {
+      switch (id) {
+        case "graphResolution":
+          return graphResolution;
+        case "paramResolution":
+          return paramResolution;
+        case "implicitResolution":
+          return implicitResolution;
+        case "implicitDomainSize":
+          return implicitDomainSizeFor(activeEqSurfaceId) ?? 2.2;
+        case "wireframe":
+          return showWireframe;
+        case "contours":
+          return showContours;
+        case "chartGrid":
+          return showChartGrid;
+        case "probe":
+          return probeEnabled;
+        case "colorMode":
+          return colorMode;
+        case "colorPalette":
+          return colorPalette;
+        case "selectionRadius":
+          return selectionRadius;
+        default:
+          return undefined;
+      }
+    },
+    [
+      graphResolution,
+      paramResolution,
+      implicitResolution,
+      implicitDomainSizeFor,
+      activeEqSurfaceId,
+      showWireframe,
+      showContours,
+      showChartGrid,
+      probeEnabled,
+      colorMode,
+      colorPalette,
+      selectionRadius,
+    ]
+  );
+
+  const applyParamValue = useCallback(
+    (id: string, rawValue: WorkbookParamValue) => {
+      const def = paramDefById.get(id);
+      let value = rawValue;
+      if (def?.kind === "number") {
+        const num = typeof rawValue === "number" ? rawValue : Number(rawValue);
+        if (Number.isFinite(num)) {
+          const min = def.min ?? num;
+          const max = def.max ?? num;
+          value = Math.min(max, Math.max(min, num));
+        }
+      }
+      switch (id) {
+        case "graphResolution": {
+          const next = typeof value === "number" ? Math.round(value) : graphResolution;
+          setGraphResolution(next);
+          return;
+        }
+        case "paramResolution": {
+          const next = typeof value === "number" ? Math.round(value) : paramResolution;
+          setParamResolution(next);
+          return;
+        }
+        case "implicitResolution": {
+          const next = typeof value === "number" ? Math.round(value) : implicitResolution;
+          setImplicitResolution(next);
+          return;
+        }
+        case "implicitDomainSize": {
+          const next = typeof value === "number" ? value : implicitDomainSizeFor(activeEqSurfaceId) ?? 2.2;
+          if (!isImplicitSurface(activeEqSurfaceId)) return;
+          setImplicitDomains((prev) => ({
+            ...prev,
+            [activeEqSurfaceId]: normalizeImplicitDomain({ xSpan: next, ySpan: next }, getDefaultImplicitDomain(activeEqSurfaceId)),
+          }));
+          return;
+        }
+        case "wireframe":
+          setShowWireframe(Boolean(value));
+          return;
+        case "contours":
+          setShowContours(Boolean(value));
+          return;
+        case "chartGrid":
+          setShowChartGrid(Boolean(value));
+          return;
+        case "probe":
+          setProbeEnabled(Boolean(value));
+          return;
+        case "colorMode":
+          if (typeof value === "string") setColorMode(value as ColorMode);
+          return;
+        case "colorPalette":
+          if (typeof value === "string") setColorPalette(value as ColorPalette);
+          return;
+        case "selectionRadius":
+          if (typeof value === "number" && Number.isFinite(value)) setSelectionRadius(value);
+          return;
+        default:
+          return;
+      }
+    },
+    [
+      activeEqSurfaceId,
+      colorMode,
+      colorPalette,
+      graphResolution,
+      implicitResolution,
+      implicitDomainSizeFor,
+      paramDefById,
+      paramResolution,
+      selectionRadius,
+      setColorMode,
+      setColorPalette,
+      setGraphResolution,
+      setImplicitDomains,
+      setImplicitResolution,
+      setParamResolution,
+      setProbeEnabled,
+      setSelectionRadius,
+      setShowChartGrid,
+      setShowContours,
+      setShowWireframe,
+    ]
+  );
   const activeParamDomain = useMemo(
     () =>
       normalizeParamDomain(
@@ -3200,6 +3506,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       setCompareSurfaceId("sphere");
     }
   }, [compareEnabled, isMeshLikeViewer, surfaceViewerKind, compareSurfaceId]);
+
+  useEffect(() => {
+    if (compareEnabled) return;
+    if (compareIgnoreWorkbookOverlays) {
+      setCompareIgnoreWorkbookOverlays(false);
+    }
+  }, [compareEnabled, compareIgnoreWorkbookOverlays]);
 
   useEffect(() => {
     saveArray("mathapp.domainPresets.graph.v1", graphDomainPresets);
@@ -3386,6 +3699,7 @@ case "mobius":
   const handleProbe = useCallback(
     (info: ProbeInfo) => {
       setProbeInfo(info);
+      setProbeStamp((t) => t + 1);
 
       if (surfaceViewerKind === "graph" && isGraphSurface(activeEqSurfaceId)) {
         const curv = computeGraphInvariantsFromProbe(activeEqSurfaceId, graphExpr, info.point);
@@ -3401,6 +3715,269 @@ case "mobius":
     },
     [surfaceViewerKind, activeEqSurfaceId, graphExpr, buildComplexMapProbe]
   );
+
+  const buildPointOutput = useCallback((info: ProbeInfo) => {
+    const normal = info.normal;
+    const basis = buildTangentBasis(normal);
+    let meshKey: string | undefined = undefined;
+    let vertexIndex: number | undefined = undefined;
+    if (surfaceViewerKind === "implicit" && activeCgalMesh?.positions?.length) {
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      const pos = activeCgalMesh.positions;
+      for (let i = 0; i + 2 < pos.length; i += 3) {
+        const dx = pos[i] - info.point.x;
+        const dy = pos[i + 1] - info.point.y;
+        const dz = pos[i + 2] - info.point.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < bestDist) {
+          bestDist = d2;
+          bestIdx = i / 3;
+        }
+      }
+      if (bestIdx >= 0) {
+        meshKey = "cgal";
+        vertexIndex = bestIdx;
+      }
+    } else if (surfaceSampleSet?.samples?.length) {
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      for (let i = 0; i < surfaceSampleSet.samples.length; i++) {
+        const sample = surfaceSampleSet.samples[i];
+        const dx = sample.position.x - info.point.x;
+        const dy = sample.position.y - info.point.y;
+        const dz = sample.position.z - info.point.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < bestDist) {
+          bestDist = d2;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        const sample = surfaceSampleSet.samples[bestIdx];
+        meshKey = sample.meshKey ?? surfaceSampleSet.meshData?.[0]?.key;
+        vertexIndex = sample.vertexIndex ?? bestIdx;
+      }
+    }
+    return {
+      point: { ...info.point },
+      normal: { ...normal },
+      uv: info.uv ? { ...info.uv } : undefined,
+      xy: info.xy ? { ...info.xy } : undefined,
+      tangentU: { ...basis.t1 },
+      tangentV: { ...basis.t2 },
+      meshKey,
+      vertexIndex,
+    };
+  }, [activeCgalMesh, surfaceSampleSet, surfaceViewerKind]);
+
+  const buildHeatEndpointFromPoint = useCallback(
+    (pointOut: { point: { x: number; y: number; z: number }; uv?: { u: number; v: number }; meshKey?: string; vertexIndex?: number }) => {
+      const vertexIndex = pointOut.vertexIndex;
+      if (vertexIndex == null) return null;
+      let positions: ArrayLike<number> | null = null;
+      let indices: ArrayLike<number> | null = null;
+      let meshKey = pointOut.meshKey ?? null;
+      if (surfaceViewerKind === "implicit" && activeCgalMesh?.positions?.length && activeCgalMesh.indices?.length) {
+        positions = activeCgalMesh.positions;
+        indices = activeCgalMesh.indices;
+        meshKey = "cgal";
+      } else if (surfaceSampleSet?.meshData?.length) {
+        const mesh =
+          (meshKey && surfaceSampleSet.meshData.find((m) => m.key === meshKey)) ??
+          surfaceSampleSet.meshData[0];
+        if (mesh) {
+          positions = mesh.positions;
+          indices = mesh.indices ?? null;
+          meshKey = mesh.key;
+        }
+      }
+      if (!positions) return null;
+      const triCount = indices ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
+      let faceIndex = -1;
+      let a = 0;
+      let b = 0;
+      let c = 0;
+      if (indices) {
+        for (let t = 0; t < triCount; t++) {
+          const base = t * 3;
+          const ia = Number(indices[base]);
+          const ib = Number(indices[base + 1]);
+          const ic = Number(indices[base + 2]);
+          if (ia === vertexIndex || ib === vertexIndex || ic === vertexIndex) {
+            faceIndex = t;
+            a = ia;
+            b = ib;
+            c = ic;
+            break;
+          }
+        }
+      } else {
+        const t = Math.floor(vertexIndex / 3);
+        if (t >= 0 && t < triCount) {
+          faceIndex = t;
+          a = t * 3;
+          b = t * 3 + 1;
+          c = t * 3 + 2;
+        }
+      }
+      if (faceIndex < 0) return null;
+      const ax = positions[a * 3];
+      const ay = positions[a * 3 + 1];
+      const az = positions[a * 3 + 2];
+      const bx = positions[b * 3];
+      const by = positions[b * 3 + 1];
+      const bz = positions[b * 3 + 2];
+      const cx = positions[c * 3];
+      const cy = positions[c * 3 + 1];
+      const cz = positions[c * 3 + 2];
+      const bary = new THREE.Vector3();
+      new THREE.Triangle(
+        new THREE.Vector3(ax, ay, az),
+        new THREE.Vector3(bx, by, bz),
+        new THREE.Vector3(cx, cy, cz)
+      ).getBarycoord(new THREE.Vector3(pointOut.point.x, pointOut.point.y, pointOut.point.z), bary);
+      if (!Number.isFinite(bary.x) || !Number.isFinite(bary.y) || !Number.isFinite(bary.z)) return null;
+      return {
+        meshKey: meshKey ?? "mesh",
+        faceIndex,
+        bary: [bary.x, bary.y, bary.z] as [number, number, number],
+        point: { ...pointOut.point },
+        uv: pointOut.uv ? { ...pointOut.uv } : undefined,
+      };
+    },
+    [activeCgalMesh, surfaceSampleSet, surfaceViewerKind]
+  );
+
+  const buildPathEndpointFromPoint = useCallback(
+    (pointOut: { meshKey?: string; vertexIndex?: number }) => {
+      if (!pointOut.meshKey || pointOut.vertexIndex == null) return null;
+      return { meshKey: pointOut.meshKey, vertexIndex: pointOut.vertexIndex };
+    },
+    []
+  );
+
+  const collectInteractionPointOutputs = useCallback(
+    (blockId: string) => {
+      const points: WorkbookPointOutput[] = [];
+      for (const entry of workbookGraph.orderedBlocks) {
+        if (entry.block.id === blockId) break;
+        const block = entry.block;
+        if (block.type !== "interaction") continue;
+        if (block.interaction?.kind !== "pick_point") continue;
+        const point = block.interaction?.point;
+        if (point) points.push(point);
+      }
+      return points;
+    },
+    [workbookGraph]
+  );
+
+  const resolveLatestCurveOutput = useCallback(
+    (blockId: string) => {
+      let latest: WorkbookCurveOutput | null = null;
+      for (const entry of workbookGraph.orderedBlocks) {
+        if (entry.block.id === blockId) break;
+        const block = entry.block;
+        if (block.type !== "interaction") continue;
+        if (block.interaction?.kind !== "draw_curve") continue;
+        const curve = block.interaction?.curve;
+        if (curve?.points?.length) latest = curve;
+      }
+      return latest;
+    },
+    [workbookGraph]
+  );
+
+  const resolveLatestDirectionOutput = useCallback(
+    (blockId: string) => {
+      let latest: WorkbookDirectionOutput | null = null;
+      for (const entry of workbookGraph.orderedBlocks) {
+        if (entry.block.id === blockId) break;
+        const block = entry.block;
+        if (block.type !== "interaction") continue;
+        if (block.interaction?.kind !== "pick_direction") continue;
+        const direction = block.interaction?.direction;
+        if (direction) latest = direction;
+      }
+      return latest;
+    },
+    [workbookGraph]
+  );
+
+  const resolveLatestMaskOutput = useCallback(
+    (blockId: string) => {
+      let latest: WorkbookMaskOutput | null = null;
+      for (const entry of workbookGraph.orderedBlocks) {
+        if (entry.block.id === blockId) break;
+        const block = entry.block;
+        if (block.type !== "interaction") continue;
+        if (block.interaction?.kind !== "select_region") continue;
+        const mask = block.interaction?.mask;
+        if (mask?.indices?.length) latest = mask;
+      }
+      return latest;
+    },
+    [workbookGraph]
+  );
+
+  const buildSelectionMaskFromIndices = useCallback(
+    (indices: number[]) => {
+      const samples = surfaceSampleSet?.samples;
+      if (!samples?.length) return null;
+      const selected = new Uint8Array(samples.length);
+      let count = 0;
+      for (const idx of indices) {
+        if (idx < 0 || idx >= selected.length) continue;
+        if (!selected[idx]) {
+          selected[idx] = 1;
+          count += 1;
+        }
+      }
+      return { selected, count };
+    },
+    [surfaceSampleSet]
+  );
+
+  const resolveInteractionPointPair = useCallback(
+    (blockId: string) => {
+      const points = collectInteractionPointOutputs(blockId);
+      if (points.length < 2) return null;
+      return {
+        start: points[points.length - 2],
+        end: points[points.length - 1],
+      };
+    },
+    [collectInteractionPointOutputs]
+  );
+
+  const buildDirectionOutput = useCallback(
+    (pointOut: { point: Vec3; normal: Vec3; tangentU: Vec3; tangentV: Vec3 }, angleDeg: number) => {
+      const angle = (angleDeg * Math.PI) / 180;
+      const dir = vNormalize(
+        vAdd(vScale(pointOut.tangentU, Math.cos(angle)), vScale(pointOut.tangentV, Math.sin(angle)))
+      );
+      return {
+        origin: { ...pointOut.point },
+        direction: { ...dir },
+        tangentU: { ...pointOut.tangentU },
+        tangentV: { ...pointOut.tangentV },
+      };
+    },
+    []
+  );
+
+  const restoreInteractionState = useCallback(() => {
+    const prev = interactionPrevRef.current;
+    if (!prev) return;
+    setProbeEnabled(prev.probeEnabled);
+    setSelectRegionEnabled(prev.selectRegionEnabled);
+    setInspectEnabled(prev.inspectEnabled);
+    setGeodesicHeatEnabled(prev.geodesicHeatEnabled);
+    setGeodesicPathEnabled(prev.geodesicPathEnabled);
+    setGeodesicDiskPickMode(prev.geodesicDiskPickMode);
+    interactionPrevRef.current = null;
+  }, []);
 
   const handleParamCurvature = useCallback((data: PrincipalCurvatureScalars | null) => {
     setParamProbeCurv(data);
@@ -3591,6 +4168,13 @@ case "mobius":
         title: "Compute",
         compute: { status: "idle", cache: {} },
       });
+    if (type === "interaction") {
+      return applyDefaultPorts({
+        ...base,
+        title: "Interaction",
+        interaction: { kind: "pick_point", status: "idle" },
+      });
+    }
     return applyDefaultPorts({ ...base, title: "Assert", assert: { expected: "", status: "pending" } });
   };
 
@@ -3744,6 +4328,446 @@ case "mobius":
     },
     [activeWorkbookId]
   );
+
+  const paramScrubTimersRef = useRef<Map<string, number>>(new Map());
+
+  const handleAddBlockParam = useCallback(
+    (stageId: WorkbookStageId, blockId: string, defId: string) => {
+      const def = paramDefById.get(defId);
+      if (!def || !activeWorkbookId) return;
+      const initial = readParamValue(defId) ?? def.defaultValue ?? (def.kind === "toggle" ? false : 0);
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params ?? { defs: [], values: {}, scrub: false, keyframes: [] };
+                          if (params.defs.some((p) => p.id === defId)) return b;
+                          return {
+                            ...b,
+                            params: {
+                              ...params,
+                              defs: [...params.defs, def],
+                              values: { ...params.values, [defId]: initial },
+                            },
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId, paramDefById, readParamValue]
+  );
+
+  const handleRemoveBlockParam = useCallback(
+    (stageId: WorkbookStageId, blockId: string, paramId: string) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params;
+                          if (!params) return b;
+                          const nextDefs = params.defs.filter((p) => p.id !== paramId);
+                          const nextValues = { ...params.values };
+                          delete nextValues[paramId];
+                          return {
+                            ...b,
+                            params: {
+                              ...params,
+                              defs: nextDefs,
+                              values: nextValues,
+                            },
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleUpdateBlockParam = useCallback(
+    (
+      stageId: WorkbookStageId,
+      blockId: string,
+      paramId: string,
+      rawValue: WorkbookParamValue,
+      scrub: boolean
+    ) => {
+      if (!activeWorkbookId) return;
+      const def = paramDefById.get(paramId);
+      let value = rawValue;
+      if (def?.kind === "number") {
+        const num = typeof rawValue === "number" ? rawValue : Number(rawValue);
+        if (Number.isFinite(num)) {
+          const min = def.min ?? num;
+          const max = def.max ?? num;
+          value = Math.min(max, Math.max(min, num));
+        }
+      }
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params ?? { defs: [], values: {}, scrub: false, keyframes: [] };
+                          return {
+                            ...b,
+                            params: {
+                              ...params,
+                              values: { ...params.values, [paramId]: value },
+                            },
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+
+      if (scrub) {
+        const key = `${blockId}:${paramId}`;
+        const existing = paramScrubTimersRef.current.get(key);
+        if (existing) window.clearTimeout(existing);
+        const timeout = window.setTimeout(() => {
+          applyParamValue(paramId, value);
+          paramScrubTimersRef.current.delete(key);
+        }, 60);
+        paramScrubTimersRef.current.set(key, timeout);
+      }
+    },
+    [activeWorkbookId, applyParamValue, paramDefById]
+  );
+
+  const handleToggleParamScrub = useCallback(
+    (stageId: WorkbookStageId, blockId: string, scrub: boolean) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params ?? { defs: [], values: {}, scrub: false, keyframes: [] };
+                          return { ...b, params: { ...params, scrub } };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleApplyParams = useCallback(
+    (_stageId: WorkbookStageId, blockId: string) => {
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      const params = meta?.block.params;
+      if (!params) return;
+      Object.entries(params.values).forEach(([paramId, value]) => {
+        applyParamValue(paramId, value);
+      });
+    },
+    [applyParamValue, workbookGraph]
+  );
+
+  const handleAddKeyframe = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params ?? { defs: [], values: {}, scrub: false, keyframes: [] };
+                          const nextKeyframes = [...(params.keyframes ?? [])];
+                          nextKeyframes.push({
+                            id: makeId(),
+                            label: `Keyframe ${nextKeyframes.length + 1}`,
+                            values: { ...params.values },
+                            createdAt: Date.now(),
+                          });
+                          return { ...b, params: { ...params, keyframes: nextKeyframes } };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleRemoveKeyframe = useCallback(
+    (stageId: WorkbookStageId, blockId: string, keyframeId: string) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const params = b.params;
+                          if (!params?.keyframes?.length) return b;
+                          return {
+                            ...b,
+                            params: {
+                              ...params,
+                              keyframes: params.keyframes.filter((kf) => kf.id !== keyframeId),
+                            },
+                          };
+                        }),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleUpdateInteraction = useCallback(
+    (stageId: WorkbookStageId, blockId: string, patch: Partial<NonNullable<WorkbookBlock["interaction"]>>) => {
+      if (!activeWorkbookId) return;
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id === activeWorkbookId
+            ? {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id === stageId
+                    ? {
+                        ...s,
+                        blocks: s.blocks.map((b) =>
+                          b.id === blockId
+                            ? { ...b, interaction: { ...(b.interaction ?? { kind: "pick_point" }), ...patch } }
+                            : b
+                        ),
+                      }
+                    : s
+                ),
+              }
+            : w
+        )
+      );
+    },
+    [activeWorkbookId]
+  );
+
+  const handleUpdateInteractionDirection = useCallback(
+    (stageId: WorkbookStageId, blockId: string, angle: number) => {
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      const point = meta?.block.interaction?.point ?? null;
+      const safeAngle = Number.isFinite(angle) ? Math.max(0, Math.min(360, angle)) : 0;
+      if (!point) {
+        handleUpdateInteraction(stageId, blockId, { directionAngle: safeAngle });
+        return;
+      }
+      const basis = buildTangentBasis(point.normal);
+      const tangentU = point.tangentU ?? basis.t1;
+      const tangentV = point.tangentV ?? basis.t2;
+      const direction = buildDirectionOutput(
+        { point: point.point, normal: point.normal, tangentU, tangentV },
+        safeAngle
+      );
+      handleUpdateInteraction(stageId, blockId, {
+        directionAngle: safeAngle,
+        point: { ...point, tangentU, tangentV },
+        direction,
+      });
+    },
+    [buildDirectionOutput, handleUpdateInteraction, workbookGraph]
+  );
+
+  const handleArmInteraction = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      if (!activeWorkbookId) return;
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      const kind = meta?.block.interaction?.kind ?? "pick_point";
+      interactionPrevRef.current = {
+        probeEnabled,
+        selectRegionEnabled,
+        inspectEnabled,
+        geodesicHeatEnabled,
+        geodesicPathEnabled,
+        geodesicDiskPickMode,
+      };
+      if (geodesicHeatEnabled) setGeodesicHeatEnabled(false);
+      if (geodesicPathEnabled) setGeodesicPathEnabled(false);
+      if (geodesicDiskPickMode) setGeodesicDiskPickMode(false);
+      if (inspectEnabled) setInspectEnabled(false);
+      if (kind === "select_region") {
+        setSelectRegionEnabled(true);
+        setProbeEnabled(false);
+      } else {
+        setSelectRegionEnabled(false);
+        setProbeEnabled(true);
+      }
+      setActiveInteraction({ stageId, blockId, kind });
+      handleUpdateInteraction(stageId, blockId, { status: "armed", summary: "Waiting for pick..." });
+    },
+    [
+      activeWorkbookId,
+      handleUpdateInteraction,
+      inspectEnabled,
+      probeEnabled,
+      selectRegionEnabled,
+      geodesicHeatEnabled,
+      geodesicPathEnabled,
+      geodesicDiskPickMode,
+      workbookGraph,
+    ]
+  );
+
+  const handleFinishInteraction = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      if (!meta?.block.interaction) return;
+      handleUpdateInteraction(stageId, blockId, { status: "captured", summary: "Curve captured." });
+      setActiveInteraction((prev) => (prev?.blockId === blockId ? null : prev));
+      restoreInteractionState();
+    },
+    [handleUpdateInteraction, restoreInteractionState, workbookGraph]
+  );
+
+  const handleClearInteraction = useCallback(
+    (stageId: WorkbookStageId, blockId: string) => {
+      handleUpdateInteraction(stageId, blockId, {
+        status: "idle",
+        summary: "",
+        point: null,
+        curve: null,
+        mask: null,
+        direction: null,
+        points: [],
+        directionAngle: 0,
+      });
+      setActiveInteraction((prev) => (prev?.blockId === blockId ? null : prev));
+      restoreInteractionState();
+    },
+    [handleUpdateInteraction, restoreInteractionState]
+  );
+
+  useEffect(() => {
+    if (!activeInteraction || !probeInfo) return;
+    const meta = workbookGraph.blockMetaById.get(activeInteraction.blockId);
+    if (!meta) return;
+    const { stageId, blockId, kind } = activeInteraction;
+    if (kind === "pick_point") {
+      const pointOut = buildPointOutput(probeInfo);
+      handleUpdateInteraction(stageId, blockId, {
+        status: "captured",
+        summary: "Point captured.",
+        point: pointOut,
+      });
+      setActiveInteraction(null);
+      restoreInteractionState();
+      return;
+    }
+    if (kind === "pick_direction") {
+      const pointOut = buildPointOutput(probeInfo);
+      const angle = meta.block.interaction?.directionAngle ?? 0;
+      const direction = buildDirectionOutput(
+        {
+          point: pointOut.point,
+          normal: pointOut.normal,
+          tangentU: pointOut.tangentU ?? { x: 1, y: 0, z: 0 },
+          tangentV: pointOut.tangentV ?? { x: 0, y: 1, z: 0 },
+        },
+        angle
+      );
+      handleUpdateInteraction(stageId, blockId, {
+        status: "captured",
+        summary: "Direction captured.",
+        point: pointOut,
+        direction,
+        directionAngle: angle,
+      });
+      setActiveInteraction(null);
+      restoreInteractionState();
+      return;
+    }
+    if (kind === "draw_curve") {
+      const existing = meta.block.interaction?.points ?? [];
+      const nextPoints = [...existing, { ...probeInfo.point }];
+      handleUpdateInteraction(stageId, blockId, {
+        status: "armed",
+        summary: `Curve points: ${nextPoints.length}`,
+        points: nextPoints,
+        curve: { points: nextPoints },
+      });
+      return;
+    }
+  }, [
+    activeInteraction,
+    buildDirectionOutput,
+    buildPointOutput,
+    handleUpdateInteraction,
+    probeInfo,
+    probeStamp,
+    restoreInteractionState,
+    workbookGraph,
+  ]);
 
   const handleToggleVisualizeLive = useCallback(
     (stageId: WorkbookStageId, blockId: string, live: boolean) => {
@@ -4105,6 +5129,43 @@ case "mobius":
     complexMapGridOpacity,
     complexMapGridThickness,
   ]);
+
+  const workbookCurveOverlayGroups = useMemo(() => {
+    if (!workbookCurveOverlay?.length) return null;
+    return [
+      {
+        lines: workbookCurveOverlay,
+        color: 0x16a34a,
+        opacity: 0.9,
+        radiusScale: 1.15,
+      },
+    ];
+  }, [workbookCurveOverlay]);
+
+  const workbookDirectionOverlayGroups = useMemo(() => {
+    if (!workbookDirectionOverlay?.length) return null;
+    return [
+      {
+        lines: workbookDirectionOverlay,
+        color: 0xf97316,
+        opacity: 0.95,
+        radiusScale: 1.25,
+      },
+    ];
+  }, [workbookDirectionOverlay]);
+
+  const combinedOverlayPolylineGroups = useMemo(() => {
+    const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
+    if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
+    if (workbookCurveOverlayGroups?.length) groups.push(...workbookCurveOverlayGroups);
+    if (workbookDirectionOverlayGroups?.length) groups.push(...workbookDirectionOverlayGroups);
+    return groups.length ? groups : null;
+  }, [complexMapOverlayPolylineGroups, workbookCurveOverlayGroups, workbookDirectionOverlayGroups]);
+
+  const compareOverlayPolylineGroups = useMemo(() => {
+    if (!compareIgnoreWorkbookOverlays) return combinedOverlayPolylineGroups;
+    return complexMapOverlayPolylineGroups?.length ? complexMapOverlayPolylineGroups : null;
+  }, [compareIgnoreWorkbookOverlays, combinedOverlayPolylineGroups, complexMapOverlayPolylineGroups]);
 
   const handleBuildComplexMapSweep = useCallback(() => {
     const res = buildComplexMapSweep(complexMapSpec);
@@ -4515,13 +5576,6 @@ case "mobius":
       setSurfaceMeshWeldBusy(false);
     }
   }, [handleChangeViewerKind, surfaceMeshWeldBusy, surfaceMeshData, surfaceMeshWeldTolerance, setMeshDataset]);
-
-  const activeCgalMesh = useMemo(() => {
-    if (!cgalMeshState) return null;
-    if (cgalMeshState.surfaceId !== activeEqSurfaceId) return null;
-    if (cgalMeshState.expr !== activeImplicitExpr) return null;
-    return cgalMeshState;
-  }, [cgalMeshState, activeEqSurfaceId, activeImplicitExpr]);
 
   const buildActiveMeshLabel = useCallback(() => {
     const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
@@ -5454,6 +6508,7 @@ case "mobius":
         selectionRadius,
         selectionUseUV,
       });
+      setSelectionMaskOverride(null);
       if (payload.sampleIndex != null && payload.meshKey && payload.vertexIndex != null) {
         setSelectionSeed({
           sampleIndex: payload.sampleIndex,
@@ -5743,6 +6798,7 @@ case "mobius":
     setSelection(null);
     setSelectionMask(null);
     setSelectionSeed(null);
+    setSelectionMaskOverride(null);
   }, []);
 
   const handleRefreshSelectionStats = useCallback(() => {
@@ -5751,6 +6807,7 @@ case "mobius":
 
   const handleGaussSelection = useCallback((selection: GaussCapSelection) => {
     console.log("[App] gauss cap selection", selection);
+    setSelectionMaskOverride(null);
     setSelection(selection);
   }, []);
 
@@ -5774,6 +6831,10 @@ case "mobius":
   }, [gaussPoints]);
 
   useEffect(() => {
+    if (selectionMaskOverride) {
+      setSelectionMask(selectionMaskOverride);
+      return;
+    }
     if (!surfaceSampleSet || !selection) {
       setSelectionMask(null);
       console.log("[App] selection cleared", {
@@ -5826,7 +6887,7 @@ case "mobius":
       radius: selection.kind === "surfaceDisk" ? selection.radius : undefined,
     });
     setSelectionMask(mask);
-  }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency, selectionStatsToken]);
+  }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency, selectionStatsToken, selectionMaskOverride]);
 
   const selectionIndices = useMemo(() => {
     if (!selectionMask?.selected?.length) return [];
@@ -5837,6 +6898,32 @@ case "mobius":
     }
     return indices;
   }, [selectionMask]);
+
+  useEffect(() => {
+    if (!activeInteraction || activeInteraction.kind !== "select_region") return;
+    if (!selectionMask?.count || !selectionIndices.length) return;
+    const meta = workbookGraph.blockMetaById.get(activeInteraction.blockId);
+    if (!meta) return;
+    handleUpdateInteraction(activeInteraction.stageId, activeInteraction.blockId, {
+      status: "captured",
+      summary: `Selected ${selectionMask.count} samples.`,
+      mask: {
+        meshKey: selectionSeed?.meshKey,
+        indices: selectionIndices,
+        count: selectionMask.count,
+      },
+    });
+    setActiveInteraction(null);
+    restoreInteractionState();
+  }, [
+    activeInteraction,
+    handleUpdateInteraction,
+    restoreInteractionState,
+    selectionIndices,
+    selectionMask,
+    selectionSeed?.meshKey,
+    workbookGraph,
+  ]);
 
   const selectionBaseArrays = useMemo(() => {
     if (!surfaceSampleSet?.samples?.length) return null;
@@ -6190,7 +7277,8 @@ case "mobius":
     setGeodesicDiskPhiKey(null);
   }, [geodesicDiskMethod]);
 
-  const handleRunGeodesicHeat = useCallback(async () => {
+  const handleRunGeodesicHeat = useCallback(
+    async (override?: { start: GeodesicHeatEndpoint; end: GeodesicHeatEndpoint }) => {
     setGeodesicHeatMessage(null);
     setGeodesicHeatPolylines(null);
     setGeodesicHeatLength(null);
@@ -6198,6 +7286,8 @@ case "mobius":
     setGeodesicHeatMeshToken(null);
     setGeodesicHeatMeshKey(null);
 
+    const resolvedStart = override?.start ?? geodesicHeatStart;
+    const resolvedEnd = override?.end ?? geodesicHeatEnd;
     const isImplicitHeat = surfaceViewerKind === "implicit";
     const isGraphHeat = surfaceViewerKind === "graph" && isGraphSurface(activeEqSurfaceId);
     const isParamHeat = surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass";
@@ -6220,7 +7310,7 @@ case "mobius":
       return;
     }
 
-    if (!geodesicHeatStart || !geodesicHeatEnd) {
+    if (!resolvedStart || !resolvedEnd) {
       const msg = isImplicitHeat
         ? "Pick two points on the CGAL mesh."
         : isGraphHeat
@@ -6230,15 +7320,15 @@ case "mobius":
       return;
     }
 
-    if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
+    if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
       setGeodesicHeatMessage("Pick both points on the same mesh.");
       return;
     }
 
     if (isGraphHeat && geodesicHeatUseContinuous) {
       const domain = activeGraphDomain ?? getDefaultGraphSpan(activeEqSurfaceId);
-      const start2D = { x: geodesicHeatStart.point.x, y: geodesicHeatStart.point.z };
-      const end2D = { x: geodesicHeatEnd.point.x, y: geodesicHeatEnd.point.z };
+      const start2D = { x: resolvedStart.point.x, y: resolvedStart.point.z };
+      const end2D = { x: resolvedEnd.point.x, y: resolvedEnd.point.z };
       setGeodesicHeatBusy(true);
       try {
         const res = solveContinuousGraphGeodesic({
@@ -6269,11 +7359,11 @@ case "mobius":
         setGeodesicHeatMessage("Param geodesic state not ready.");
         return;
       }
-      if (!geodesicHeatStart.uv || !geodesicHeatEnd.uv) {
+      if (!resolvedStart.uv || !resolvedEnd.uv) {
         setGeodesicHeatMessage("Pick two points on the param mesh (UV required).");
         return;
       }
-      if (paramState.meshKey && paramState.meshKey !== geodesicHeatStart.meshKey) {
+      if (paramState.meshKey && paramState.meshKey !== resolvedStart.meshKey) {
         setGeodesicHeatMessage("Param mesh changed; repick the endpoints.");
         return;
       }
@@ -6281,12 +7371,12 @@ case "mobius":
       try {
         const res = solveContinuousParamGeodesic({
           paramFunc: paramState.paramFunc,
-          startUV: geodesicHeatStart.uv,
-          endUV: geodesicHeatEnd.uv,
+          startUV: resolvedStart.uv,
+          endUV: resolvedEnd.uv,
           domain: paramState.domain,
           wrap: paramState.wrap,
-          startPoint: geodesicHeatStart.point,
-          endPoint: geodesicHeatEnd.point,
+          startPoint: resolvedStart.point,
+          endPoint: resolvedEnd.point,
           maxSteps: 2400,
         });
         if (!res.ok) {
@@ -6316,7 +7406,7 @@ case "mobius":
       positions = pos;
       indices = idx;
     } else {
-      const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicHeatStart.meshKey)
+      const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === resolvedStart.meshKey)
         ?? surfaceSampleSet?.meshData?.[0];
       heatMeshKey = meshData?.key ?? null;
       const pos = meshData?.positions;
@@ -6342,8 +7432,8 @@ case "mobius":
       });
       const res = await runGeodesicHeat({
         mesh: { V: heatMesh.V, F: heatMesh.F },
-        source: { face: geodesicHeatStart.faceIndex, bary: geodesicHeatStart.bary },
-        target: { face: geodesicHeatEnd.faceIndex, bary: geodesicHeatEnd.bary },
+        source: { face: resolvedStart.faceIndex, bary: resolvedStart.bary },
+        target: { face: resolvedEnd.faceIndex, bary: resolvedEnd.bary },
         options: {
           t_factor: 1.0,
           step_factor: 0.25,
@@ -6375,7 +7465,8 @@ case "mobius":
     } finally {
       setGeodesicHeatBusy(false);
     }
-  }, [
+  },
+  [
     activeCgalMesh,
     activeEqSurfaceId,
     activeGraphDomain,
@@ -6429,6 +7520,21 @@ case "mobius":
           if (outputs.geodesicHeat.meshKey != null) setGeodesicHeatMeshKey(outputs.geodesicHeat.meshKey);
           if (outputs.geodesicHeat.message != null) setGeodesicHeatMessage(outputs.geodesicHeat.message);
         }
+        if (outputs.curveOverlay) {
+          setWorkbookCurveOverlay(outputs.curveOverlay.polylines ?? null);
+        }
+        if (outputs.directionOverlay) {
+          setWorkbookDirectionOverlay(outputs.directionOverlay.polylines ?? null);
+        }
+        if (outputs.selectionMask?.indices?.length) {
+          const mask = buildSelectionMaskFromIndices(outputs.selectionMask.indices);
+          if (mask) {
+            setSelection(null);
+            setSelectionSeed(null);
+            setSelectionMaskOverride(mask);
+            setSelectionMask(mask);
+          }
+        }
       };
 
       const inputHash =
@@ -6453,6 +7559,12 @@ case "mobius":
           },
         });
         return;
+      }
+
+      if (block?.params?.values) {
+        Object.entries(block.params.values).forEach(([paramId, value]) => {
+          applyParamValue(paramId, value);
+        });
       }
 
       let status: "ok" | "stale" | "failed" = "ok";
@@ -6487,6 +7599,67 @@ case "mobius":
           }
           applyViewPatch(patch);
           outputs = { viewPatch: patch };
+        } else if (resolvedOperator === "curve_overlay") {
+          const curve = resolveLatestCurveOutput(blockId);
+          if (!curve?.points?.length) {
+            status = "stale";
+            summary = "Draw a curve before running.";
+          } else {
+            const polylines: PolylineSet = [curve.points];
+            setWorkbookCurveOverlay(polylines);
+            outputs = { curveOverlay: { polylines } };
+            summary = "Curve overlay applied.";
+          }
+        } else if (resolvedOperator === "direction_overlay") {
+          const directionOut = resolveLatestDirectionOutput(blockId);
+          if (!directionOut) {
+            status = "stale";
+            summary = "Pick a direction before running.";
+          } else {
+            const bbox = surfaceSampleSet?.bbox ?? null;
+            const size = bbox ? bbox.getSize(new THREE.Vector3()).length() : null;
+            let domainSize: number | null = null;
+            if (surfaceViewerKind === "graph") {
+              domainSize = Math.hypot(activeGraphDomain.xSpan, activeGraphDomain.ySpan);
+            } else if (surfaceViewerKind === "implicit") {
+              domainSize = Math.hypot(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
+            } else if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+              const uSpan = activeParamLikeDomain
+                ? Math.abs(activeParamLikeDomain.uMax - activeParamLikeDomain.uMin)
+                : 1;
+              const vSpan = activeParamLikeDomain
+                ? Math.abs(activeParamLikeDomain.vMax - activeParamLikeDomain.vMin)
+                : 1;
+              domainSize = Math.hypot(uSpan, vSpan);
+            }
+            const base = size ?? domainSize ?? 2;
+            const length = Math.max(0.2, base * 0.25);
+            const dir = vNormalize(directionOut.direction);
+            const end = vAdd(directionOut.origin, vScale(dir, length));
+            const polylines: PolylineSet = [[directionOut.origin, end]];
+            setWorkbookDirectionOverlay(polylines);
+            outputs = { directionOverlay: { polylines } };
+            summary = "Direction overlay applied.";
+          }
+        } else if (resolvedOperator === "selection_overlay") {
+          const maskOut = resolveLatestMaskOutput(blockId);
+          if (!maskOut?.indices?.length) {
+            status = "stale";
+            summary = "Select a region before running.";
+          } else {
+            const mask = buildSelectionMaskFromIndices(maskOut.indices);
+            if (!mask) {
+              status = "stale";
+              summary = "Selection overlay requires sampled surface.";
+            } else {
+              setSelection(null);
+              setSelectionSeed(null);
+              setSelectionMaskOverride(mask);
+              setSelectionMask(mask);
+              outputs = { selectionMask: maskOut };
+              summary = `Selection overlay applied (${mask.count} samples).`;
+            }
+          }
         } else if (resolvedOperator === "curvature_field") {
           const patch: WorkbookComputeOutputs["viewPatch"] = {
             colorMode: surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "gaussian" : "curvature",
@@ -6498,18 +7671,78 @@ case "mobius":
           summary = "Curvature coloring + principal directions enabled.";
         } else if (resolvedOperator === "geodesic_heat") {
           setGeodesicHeatEnabled(true);
-          if (!geodesicHeatAvailable) {
-            status = "stale";
-            summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
-          } else if (!geodesicHeatStart || !geodesicHeatEnd) {
-            status = "stale";
-            summary = "Pick two points on the surface before running.";
-          } else if (geodesicHeatStart.meshKey !== geodesicHeatEnd.meshKey) {
-            status = "stale";
-            summary = "Pick both points on the same mesh.";
-          } else {
-            summary = "Geodesic heat path requested.";
-            handleRunGeodesicHeat();
+          const pointPair = resolveInteractionPointPair(blockId);
+          let resolvedStart = geodesicHeatStart;
+          let resolvedEnd = geodesicHeatEnd;
+          let usingInteraction = false;
+
+          if (pointPair) {
+            const start = buildHeatEndpointFromPoint(pointPair.start);
+            const end = buildHeatEndpointFromPoint(pointPair.end);
+            if (!start || !end) {
+              status = "stale";
+              summary = "Pick points on the surface mesh (PickPoint outputs missing mesh data).";
+            } else {
+              resolvedStart = start;
+              resolvedEnd = end;
+              usingInteraction = true;
+            }
+          }
+
+          if (status === "ok") {
+            if (!geodesicHeatAvailable) {
+              status = "stale";
+              summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
+            } else if (!resolvedStart || !resolvedEnd) {
+              status = "stale";
+              summary = pointPair
+                ? "Need two PickPoint outputs before running."
+                : "Pick two points on the surface before running.";
+            } else if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
+              status = "stale";
+              summary = "Pick both points on the same mesh.";
+            } else {
+              summary = usingInteraction ? "Geodesic heat path from PickPoint outputs." : "Geodesic heat path requested.";
+              setGeodesicHeatStart(resolvedStart);
+              setGeodesicHeatEnd(resolvedEnd);
+              handleRunGeodesicHeat({ start: resolvedStart, end: resolvedEnd });
+            }
+          }
+        } else if (resolvedOperator === "geodesic_path") {
+          setGeodesicPathEnabled(true);
+          const pointPair = resolveInteractionPointPair(blockId);
+          let resolvedStart = geodesicPathStart;
+          let resolvedEnd = geodesicPathEnd;
+          let usingInteraction = false;
+
+          if (pointPair) {
+            const start = buildPathEndpointFromPoint(pointPair.start);
+            const end = buildPathEndpointFromPoint(pointPair.end);
+            if (!start || !end) {
+              status = "stale";
+              summary = "Pick points on the surface mesh (PickPoint outputs missing vertex data).";
+            } else {
+              resolvedStart = start;
+              resolvedEnd = end;
+              usingInteraction = true;
+            }
+          }
+
+          if (status === "ok") {
+            if (!resolvedStart || !resolvedEnd) {
+              status = "stale";
+              summary = pointPair
+                ? "Need two PickPoint outputs before running."
+                : "Pick two points on the surface before running.";
+            } else if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
+              status = "stale";
+              summary = "Pick both points on the same mesh.";
+            } else {
+              summary = usingInteraction ? "Geodesic path from PickPoint outputs." : "Geodesic path requested.";
+              setGeodesicPathStart(resolvedStart);
+              setGeodesicPathEnd(resolvedEnd);
+              computeGeodesicPath(resolvedStart, resolvedEnd);
+            }
           }
         } else if (resolvedOperator === "principal_dirs") {
           const patch: WorkbookComputeOutputs["viewPatch"] = {
@@ -6590,22 +7823,47 @@ case "mobius":
     },
     [
       activeWorkbookId,
+      activeGraphDomain,
+      activeImplicitDomain,
+      activeParamLikeDomain,
+      applyParamValue,
+      buildHeatEndpointFromPoint,
+      buildPathEndpointFromPoint,
+      buildSelectionMaskFromIndices,
+      computeGeodesicPath,
       currentDatasetRef,
       datasetKind,
       geodesicHeatAvailable,
       geodesicHeatEnd,
       geodesicHeatStart,
       geodesicHeatUnavailableReason,
+      geodesicPathEnd,
+      geodesicPathStart,
       handleRunGeodesicHeat,
       handleUpdateWorkbookBlock,
+      resolveInteractionPointPair,
+      resolveLatestCurveOutput,
+      resolveLatestDirectionOutput,
+      resolveLatestMaskOutput,
+      setSelection,
+      setSelectionSeed,
       setColorMode,
       setGeodesicHeatEnabled,
+      setGeodesicHeatEnd,
       setGeodesicHeatLength,
       setGeodesicHeatMessage,
       setGeodesicHeatMeshKey,
       setGeodesicHeatMeshToken,
       setGeodesicHeatPhi,
       setGeodesicHeatPolylines,
+      setGeodesicHeatStart,
+      setGeodesicPathEnabled,
+      setGeodesicPathEnd,
+      setGeodesicPathStart,
+      setSelectionMask,
+      setSelectionMaskOverride,
+      setWorkbookCurveOverlay,
+      setWorkbookDirectionOverlay,
       setShowContours,
       setShowChartGrid,
       setShowPrincipalDirections,
@@ -6615,6 +7873,7 @@ case "mobius":
       setShowProbeTangents,
       setShowWireframe,
       setProbeEnabled,
+      surfaceSampleSet,
       surfaceViewerKind,
       workbookGraph,
     ]
@@ -7634,10 +8893,12 @@ case "mobius":
               onApplyWeierstrassPreset={applyWeierstrassPreset}
               onApplySuggestedDomain={applySuggestedDomain}
               compareEnabled={compareEnabled}
+              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
                 if (rightPanelTab !== "workbook") setCameraSync(null);
               }}
+              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
               compareSurfaceId={compareSurfaceId}
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
@@ -8392,6 +9653,7 @@ case "mobius":
                             geodesicHeatPolylines={geodesicHeatPolylines}
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
+                            overlayPolylineGroups={combinedOverlayPolylineGroups}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                             onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -8515,7 +9777,7 @@ case "mobius":
                         overlayHeatmapEnabled={complexMapHeatmapActive}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
-                        overlayPolylineGroups={complexMapOverlayPolylineGroups}
+                        overlayPolylineGroups={combinedOverlayPolylineGroups}
                         overlayPointSets={complexMapOverlayPointsActive}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
@@ -8551,6 +9813,7 @@ case "mobius":
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               paramDomain={activeParamDomain}
+                              overlayPolylineGroups={compareOverlayPolylineGroups}
                               probeEnabled={false}
                               showProbeNormal={false}
                               showProbeTangentPlane={false}
@@ -8592,6 +9855,7 @@ case "mobius":
                               graphDomain={activeGraphDomain}
                               showBoundingBox={showBoundingBox}
                               resetToken={cameraResetToken}
+                              overlayPolylineGroups={compareOverlayPolylineGroups}
                               graphProbeXY={null}
                               graphProbeToken={0}
                               implicitProbeXYZ={null}
@@ -8802,6 +10066,25 @@ case "mobius":
                   onRunComputeStage={handleRunComputeStage}
                   onRunAllStale={handleRunAllStale}
                   onRunFromBlock={handleRunFromBlock}
+                  onClearWorkbookSelection={() => {
+                    setSelectionMaskOverride(null);
+                    setSelectionMask(null);
+                    setSelection(null);
+                    setSelectionSeed(null);
+                  }}
+                  paramCatalog={paramCatalog}
+                  onAddBlockParam={handleAddBlockParam}
+                  onRemoveBlockParam={handleRemoveBlockParam}
+                  onUpdateBlockParam={handleUpdateBlockParam}
+                  onToggleParamScrub={handleToggleParamScrub}
+                  onApplyParams={handleApplyParams}
+                  onAddKeyframe={handleAddKeyframe}
+                  onRemoveKeyframe={handleRemoveKeyframe}
+                  onUpdateInteraction={handleUpdateInteraction}
+                  onUpdateInteractionDirection={handleUpdateInteractionDirection}
+                  onArmInteraction={handleArmInteraction}
+                  onFinishInteraction={handleFinishInteraction}
+                  onClearInteraction={handleClearInteraction}
                   onExportJson={handleExportWorkbooks}
                   onImportJson={handleImportWorkbooks}
                   currentDatasetRef={currentDatasetRef}
@@ -9021,7 +10304,9 @@ type SurfacesControlsProps = {
   onApplyWeierstrassPreset: (preset: WeierstrassPreset) => void;
   onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
   compareEnabled: boolean;
+  compareIgnoreWorkbookOverlays: boolean;
   onToggleCompare: () => void;
+  onToggleCompareIgnoreWorkbookOverlays: () => void;
   compareSurfaceId: SurfaceId;
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
@@ -9041,7 +10326,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onApplyWeierstrassPreset,
   onApplySuggestedDomain,
   compareEnabled,
+  compareIgnoreWorkbookOverlays,
   onToggleCompare,
+  onToggleCompareIgnoreWorkbookOverlays,
   compareSurfaceId,
   onChangeCompareSurface,
   compareParamId,
@@ -9260,7 +10547,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
           <input
             type="checkbox"
@@ -9270,6 +10557,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           />
           Compare
         </label>
+        {compareEnabled && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={compareIgnoreWorkbookOverlays}
+              onChange={onToggleCompareIgnoreWorkbookOverlays}
+            />
+            Ignore workbook overlays
+          </label>
+        )}
       </div>
 
       {compareEnabled && viewerKind !== "mesh" && viewerKind !== "complex" && !isVolume && (

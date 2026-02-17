@@ -725,3 +725,92 @@ PR4 — Visualize blocks control the viewer
 - Capture current view (camera + toggles + selected overlays)
 - Jump to view on block click
 - Mini thumbnail preview (optional)
+
+PR2 — Parameter controls inside blocks
+
+Add params
+
+- Add any block (Compute, Visualize, Interaction, etc.).
+- In the block’s Parameters section, pick a param from Add param….
+
+Scrub mode (live)
+
+- Toggle Scrub mode on.
+- Drag sliders → the view updates live (throttled).
+- Turn scrub off to edit without updating, then click Apply params.
+
+Keyframes
+
+- Set desired params.
+- Click Save keyframe.
+- Click Play to cycle keyframes (mini animation). Click again to stop.
+- Use Apply on a keyframe to jump to it. Delete removes it.
+
+Currently available params
+
+- graphResolution, paramResolution, implicitResolution
+- implicitDomainSize
+- wireframe, contours, chartGrid, probe
+- colorMode, colorPalette
+- selectionRadius
+
+PR3 — Interaction blocks
+
+Add an interaction block
+
+- Add block → Interact.
+- Choose type: Pick point, Draw curve, Select region, or Pick direction.
+
+How to use interaction outputs
+
+PickPoint → geodesic heat / path
+
+1. Add two Interaction blocks set to Pick point, and capture two points.
+2. Add a Compute block and choose Geodesic heat or Geodesic path.
+3. Click Run operator. It will use the latest two PickPoint outputs upstream.
+
+DrawCurve → curve overlay
+
+1. Add an Interaction block set to Draw curve.
+2. Click Arm pick, click on the surface to add points, then Finish curve.
+3. Add a Compute block → Curve overlay and Run operator.
+
+SelectRegion → selection overlay
+
+1. Add an Interaction block set to Select region.
+2. Click Arm pick, select on the surface.
+3. Add a Compute block → Selection overlay and Run operator.
+4. Use Clear workbook selection to drop the overlay and return to normal selection.
+
+PickDirection → direction overlay
+
+1. Add an Interaction block set to Pick direction.
+2. Click Arm pick to capture a point, then adjust the direction angle slider.
+3. Add a Compute block → Direction overlay and Run operator.
+
+Capture
+
+- Click Arm pick, then click in the viewer.
+- Pick point: captures point + normal + tangent basis (stored).
+- Pick direction: captures point + tangent basis + direction angle.
+- Draw curve: each click adds a point; click Finish curve when done.
+- Select region: enable and click in viewer; selection mask is captured.
+
+Clear
+
+- Click Clear to reset the captured output.
+
+What’s missing (not wired yet)
+
+- Compute operators read PickPoint outputs for geodesic heat/path (latest two points).
+- DrawCurve can drive the Curve overlay compute operator.
+- SelectRegion can drive the Selection overlay compute operator.
+- PickDirection can drive the Direction overlay compute operator.
+
+If you want it to actually drive compute
+
+Tell me which behavior you want first, for example:
+
+- Geodesic heat uses picked points as endpoints.
+- Geodesic path uses picked points on the mesh.
+- A new compute op: “Geodesics from picked point”.

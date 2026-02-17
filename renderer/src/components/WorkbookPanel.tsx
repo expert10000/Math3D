@@ -6,6 +6,9 @@ import type {
   WorkbookBlock,
   WorkbookBlockType,
   WorkbookViewSnapshot,
+  WorkbookParamDef,
+  WorkbookParamValue,
+  WorkbookInteractionKind,
 } from "../workbook/workbookModel";
 import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
 
@@ -15,6 +18,7 @@ type WorkbookPanelProps = {
   activeStageId: WorkbookStageId;
   computeStatusById: Record<string, "ok" | "stale" | "failed">;
   workbookStatus: "ok" | "stale" | "failed";
+  paramCatalog: WorkbookParamDef[];
   onSelectWorkbook: (id: string) => void;
   onCreateWorkbook: () => void;
   onDuplicateWorkbook: (id: string) => void;
@@ -32,6 +36,29 @@ type WorkbookPanelProps = {
   onRunComputeStage: (stageId: WorkbookStageId) => void;
   onRunAllStale: () => void;
   onRunFromBlock: (stageId: WorkbookStageId, blockId: string) => void;
+  onClearWorkbookSelection: () => void;
+  onAddBlockParam: (stageId: WorkbookStageId, blockId: string, defId: string) => void;
+  onRemoveBlockParam: (stageId: WorkbookStageId, blockId: string, paramId: string) => void;
+  onUpdateBlockParam: (
+    stageId: WorkbookStageId,
+    blockId: string,
+    paramId: string,
+    value: WorkbookParamValue,
+    scrub: boolean
+  ) => void;
+  onToggleParamScrub: (stageId: WorkbookStageId, blockId: string, scrub: boolean) => void;
+  onApplyParams: (stageId: WorkbookStageId, blockId: string) => void;
+  onAddKeyframe: (stageId: WorkbookStageId, blockId: string) => void;
+  onRemoveKeyframe: (stageId: WorkbookStageId, blockId: string, keyframeId: string) => void;
+  onUpdateInteraction: (
+    stageId: WorkbookStageId,
+    blockId: string,
+    patch: Partial<NonNullable<WorkbookBlock["interaction"]>>
+  ) => void;
+  onUpdateInteractionDirection: (stageId: WorkbookStageId, blockId: string, angle: number) => void;
+  onArmInteraction: (stageId: WorkbookStageId, blockId: string) => void;
+  onFinishInteraction: (stageId: WorkbookStageId, blockId: string) => void;
+  onClearInteraction: (stageId: WorkbookStageId, blockId: string) => void;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
   currentDatasetRef: string;
@@ -43,6 +70,7 @@ const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
   formula: "Formula",
   visualize: "Visualize",
   compute: "Compute",
+  interaction: "Interact",
   assert: "Assert",
 };
 
@@ -51,6 +79,7 @@ const BLOCK_ACCENT: Record<WorkbookBlockType, string> = {
   formula: "#6b4b1f",
   visualize: "#1f3556",
   compute: "#0f766e",
+  interaction: "#7c3aed",
   assert: "#9a3412",
 };
 const STATUS_COLORS: Record<string, string> = {
@@ -63,8 +92,12 @@ const STATUS_COLORS: Record<string, string> = {
 
 const COMPUTE_OPERATORS = [
   { id: "chart_grid", label: "Chart grid + coords" },
+  { id: "curve_overlay", label: "Curve overlay" },
+  { id: "direction_overlay", label: "Direction overlay" },
+  { id: "selection_overlay", label: "Selection overlay" },
   { id: "curvature_field", label: "Curvature field" },
   { id: "geodesic_heat", label: "Geodesic heat" },
+  { id: "geodesic_path", label: "Geodesic path" },
   { id: "principal_dirs", label: "Principal directions" },
 ];
 
@@ -89,12 +122,26 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onRunComputeStage,
   onRunAllStale,
   onRunFromBlock,
+  onClearWorkbookSelection,
+  onAddBlockParam,
+  onRemoveBlockParam,
+  onUpdateBlockParam,
+  onToggleParamScrub,
+  onApplyParams,
+  onAddKeyframe,
+  onRemoveKeyframe,
+  onUpdateInteraction,
+  onUpdateInteractionDirection,
+  onArmInteraction,
+  onFinishInteraction,
+  onClearInteraction,
   onExportJson,
   onImportJson,
   currentDatasetRef,
   cameraReady,
   computeStatusById,
   workbookStatus,
+  paramCatalog,
 }) => {
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -179,6 +226,52 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     }
   };
 
+  const formatParamValue = (value: WorkbookParamValue, def: WorkbookParamDef) => {
+    if (def.kind === "number") {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return Number.isFinite(def.step) && def.step
+          ? value.toFixed(Math.max(0, Math.ceil(-Math.log10(def.step))))
+          : value.toFixed(3);
+      }
+      return String(value ?? "");
+    }
+    if (def.kind === "toggle") return value ? "on" : "off";
+    return String(value ?? "");
+  };
+
+  const handleTogglePlay = (stageId: WorkbookStageId, block: WorkbookBlock) => {
+    const existing = playingRef.current.get(block.id);
+    if (existing) {
+      window.clearInterval(existing);
+      playingRef.current.delete(block.id);
+      return;
+    }
+    const keyframes = block.params?.keyframes ?? [];
+    if (!keyframes.length) return;
+    let idx = 0;
+    const tick = () => {
+      const frame = keyframes[idx % keyframes.length];
+      if (!frame) return;
+      Object.entries(frame.values).forEach(([paramId, value]) => {
+        onUpdateBlockParam(stageId, block.id, paramId, value, true);
+      });
+      onApplyParams(stageId, block.id);
+      idx += 1;
+    };
+    tick();
+    const interval = window.setInterval(tick, 900);
+    playingRef.current.set(block.id, interval);
+  };
+
+  const playingRef = useRef<Map<string, number>>(new Map());
+  useEffect(
+    () => () => {
+      playingRef.current.forEach((id) => window.clearInterval(id));
+      playingRef.current.clear();
+    },
+    []
+  );
+
   return (
     <section>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -205,6 +298,13 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button
             type="button"
+            onClick={onClearWorkbookSelection}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Clear workbook selection
+          </button>
+          <button
+            type="button"
             onClick={() => onRunComputeStage(activeStageId)}
             disabled={activeStageId !== "compute" || !hasComputeBlocks}
             style={{ padding: "2px 8px", fontSize: 11 }}
@@ -221,6 +321,25 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           </button>
         </div>
       </div>
+      <details style={{ marginBottom: 10 }}>
+        <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>How to use interaction blocks</summary>
+        <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div>PickPoint → Geodesic heat/path</div>
+          <div>1. Add two Interact blocks set to Pick point, then capture two points.</div>
+          <div>2. Add a Compute block → Geodesic heat or Geodesic path.</div>
+          <div>3. Click Run operator (uses the latest two PickPoint outputs).</div>
+          <div>DrawCurve → Curve overlay</div>
+          <div>1. Add an Interact block set to Draw curve. Arm pick, click to add points, then Finish curve.</div>
+          <div>2. Add a Compute block → Curve overlay and Run operator.</div>
+          <div>SelectRegion → Selection overlay</div>
+          <div>1. Add an Interact block set to Select region. Arm pick, select on the surface.</div>
+          <div>2. Add a Compute block → Selection overlay and Run operator.</div>
+          <div>3. Use Clear workbook selection to drop the overlay.</div>
+          <div>PickDirection → Direction overlay</div>
+          <div>1. Add an Interact block set to Pick direction. Arm pick, then adjust the angle slider.</div>
+          <div>2. Add a Compute block → Direction overlay and Run operator.</div>
+        </div>
+      </details>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         <label style={{ fontSize: 11, fontWeight: 700 }}>
@@ -594,6 +713,102 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 </div>
               )}
 
+              {block.type === "interaction" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700 }}>
+                    Interaction
+                    <select
+                      value={block.interaction?.kind ?? "pick_point"}
+                      onChange={(e) =>
+                        onUpdateInteraction(activeStageId, block.id, {
+                          kind: e.target.value as WorkbookInteractionKind,
+                          status: "idle",
+                          summary: "",
+                          point: null,
+                          curve: null,
+                          mask: null,
+                          direction: null,
+                          points: [],
+                          directionAngle: 0,
+                        })
+                      }
+                      style={{ width: "100%", marginTop: 4 }}
+                    >
+                      <option value="pick_point">Pick point</option>
+                      <option value="draw_curve">Draw curve</option>
+                      <option value="select_region">Select region</option>
+                      <option value="pick_direction">Pick direction</option>
+                    </select>
+                  </label>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => onArmInteraction(activeStageId, block.id)}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      Arm pick
+                    </button>
+                    {block.interaction?.kind === "draw_curve" && (
+                      <button
+                        type="button"
+                        onClick={() => onFinishInteraction(activeStageId, block.id)}
+                        style={{ padding: "4px 8px" }}
+                      >
+                        Finish curve
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onClearInteraction(activeStageId, block.id)}
+                      style={{ padding: "4px 8px" }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {block.interaction?.kind === "pick_direction" && (
+                    <label style={{ fontSize: 11, fontWeight: 700 }}>
+                      Direction angle
+                      <input
+                        type="range"
+                        min={0}
+                        max={360}
+                        step={1}
+                        value={block.interaction?.directionAngle ?? 0}
+                        onChange={(e) =>
+                          onUpdateInteractionDirection(activeStageId, block.id, Number(e.target.value))
+                        }
+                      />
+                    </label>
+                  )}
+                  <div style={{ fontSize: 11, opacity: 0.75 }}>
+                    Status: <strong>{block.interaction?.status ?? "idle"}</strong>
+                  </div>
+                  {block.interaction?.summary && (
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>{block.interaction.summary}</div>
+                  )}
+                  {block.interaction?.point && (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      p = ({block.interaction.point.point.x.toFixed(3)}, {block.interaction.point.point.y.toFixed(3)}, {block.interaction.point.point.z.toFixed(3)})
+                    </div>
+                  )}
+                  {block.interaction?.curve && (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      Curve points: <strong>{block.interaction.curve.points.length}</strong>
+                    </div>
+                  )}
+                  {block.interaction?.mask && (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      Selected: <strong>{block.interaction.mask.count}</strong>
+                    </div>
+                  )}
+                  {block.interaction?.direction && (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      dir = ({block.interaction.direction.direction.x.toFixed(3)}, {block.interaction.direction.direction.y.toFixed(3)}, {block.interaction.direction.direction.z.toFixed(3)})
+                    </div>
+                  )}
+                </div>
+              )}
+
               {block.type === "assert" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <textarea
@@ -625,6 +840,172 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   </label>
                 </div>
               )}
+
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px dashed #e5e7eb" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Parameters</div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (!id) return;
+                      onAddBlockParam(activeStageId, block.id, id);
+                      e.currentTarget.value = "";
+                    }}
+                    style={{ fontSize: 11 }}
+                  >
+                    <option value="">Add param...</option>
+                    {paramCatalog
+                      .filter((def) => !(block.params?.defs ?? []).some((p) => p.id === def.id))
+                      .map((def) => (
+                        <option key={def.id} value={def.id}>
+                          {def.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {(block.params?.defs?.length ?? 0) > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                    {block.params?.defs.map((def) => {
+                      const value = block.params?.values?.[def.id] ?? def.defaultValue ?? (def.kind === "toggle" ? false : 0);
+                      return (
+                        <div key={def.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: 11, fontWeight: 700 }}>{def.label}</span>
+                            <button
+                              type="button"
+                              onClick={() => onRemoveBlockParam(activeStageId, block.id, def.id)}
+                              style={{ padding: "2px 6px", fontSize: 10 }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          {def.kind === "toggle" && (
+                            <label style={{ fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(value)}
+                                onChange={(e) =>
+                                  onUpdateBlockParam(activeStageId, block.id, def.id, e.target.checked, !!block.params?.scrub)
+                                }
+                                style={{ marginRight: 6 }}
+                              />
+                              {formatParamValue(value, def)}
+                            </label>
+                          )}
+                          {def.kind === "select" && (
+                            <select
+                              value={String(value)}
+                              onChange={(e) =>
+                                onUpdateBlockParam(activeStageId, block.id, def.id, e.target.value, !!block.params?.scrub)
+                              }
+                              style={{ fontSize: 11 }}
+                            >
+                              {(def.options ?? []).map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {def.kind === "number" && (
+                            <>
+                              <input
+                                type="range"
+                                value={typeof value === "number" && Number.isFinite(value) ? value : Number(def.defaultValue ?? 0)}
+                                min={def.min ?? 0}
+                                max={def.max ?? 1}
+                                step={def.step ?? 0.01}
+                                onChange={(e) =>
+                                  onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), !!block.params?.scrub)
+                                }
+                              />
+                              <input
+                                type="number"
+                                value={typeof value === "number" && Number.isFinite(value) ? value : Number(def.defaultValue ?? 0)}
+                                min={def.min ?? 0}
+                                max={def.max ?? 1}
+                                step={def.step ?? 0.01}
+                                onChange={(e) =>
+                                  onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), false)
+                                }
+                                style={{ fontSize: 11 }}
+                              />
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <label style={{ fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!block.params?.scrub}
+                          onChange={(e) => onToggleParamScrub(activeStageId, block.id, e.target.checked)}
+                          style={{ marginRight: 6 }}
+                        />
+                        Scrub mode
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => onApplyParams(activeStageId, block.id)}
+                        style={{ padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Apply params
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => onAddKeyframe(activeStageId, block.id)}
+                        style={{ padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Save keyframe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePlay(activeStageId, block)}
+                        style={{ padding: "2px 8px", fontSize: 11 }}
+                      >
+                        {playingRef.current.has(block.id) ? "Stop" : "Play"}
+                      </button>
+                    </div>
+                    {(block.params?.keyframes?.length ?? 0) > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {block.params?.keyframes?.map((kf, kIdx) => (
+                          <div key={kf.id} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <div style={{ fontSize: 10, opacity: 0.7 }}>{kf.label ?? `Keyframe ${kIdx + 1}`}</div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                Object.entries(kf.values).forEach(([paramId, value]) => {
+                                  onUpdateBlockParam(activeStageId, block.id, paramId, value, false);
+                                });
+                                onApplyParams(activeStageId, block.id);
+                              }}
+                              style={{ padding: "2px 6px", fontSize: 10 }}
+                            >
+                              Apply
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onRemoveKeyframe(activeStageId, block.id, kf.id)}
+                              style={{ padding: "2px 6px", fontSize: 10 }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6 }}>
+                    No params yet. Add one to control the view or dataset.
+                  </div>
+                )}
+              </div>
             </div>
           ))
         ) : (
