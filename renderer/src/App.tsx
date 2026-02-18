@@ -144,6 +144,7 @@ import {
   type WorkbookParamValue,
   type WorkbookCurveOutput,
   type WorkbookPointOutput,
+  type WorkbookSnapshotSlot,
 } from "./workbook/workbookModel";
 /* ---------------- App modes ---------------- */
 
@@ -178,6 +179,7 @@ const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
 const COMPARE_IGNORE_OVERLAYS_KEY = "math3d.compare.ignoreWorkbookOverlays.v1";
+const COMPARE_CAMERA_SYNC_KEY = "math3d.compare.cameraSync.v1";
 const WORKBOOK_STAGE_IDS: WorkbookStageId[] = ["define", "compute", "visualize", "explain"];
 const isWorkbookStageId = (value: string | null): value is WorkbookStageId =>
   !!value && WORKBOOK_STAGE_IDS.includes(value as WorkbookStageId);
@@ -934,9 +936,42 @@ function makeId() {
   return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
 }
 
+const resolveVisualizeSnapshot = (
+  visualize: WorkbookBlock["visualize"] | undefined,
+  slot: WorkbookSnapshotSlot
+): WorkbookViewSnapshot | null => {
+  if (!visualize) return null;
+  if (slot === "A") return visualize.snapshotA ?? visualize.snapshot ?? null;
+  return visualize.snapshotB ?? null;
+};
+
+function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
+  return raw.map((wb) => ({
+    ...wb,
+    stages: wb.stages.map((stage) => ({
+      ...stage,
+      blocks: stage.blocks.map((block) => {
+        if (block.type !== "visualize") return block;
+        const visualize = block.visualize ?? { live: true };
+        const snapshotA = visualize.snapshotA ?? visualize.snapshot ?? null;
+        const snapshotB = visualize.snapshotB ?? null;
+        if (visualize.snapshotA === snapshotA && visualize.snapshotB === snapshotB) return block;
+        return {
+          ...block,
+          visualize: {
+            ...visualize,
+            snapshotA,
+            snapshotB,
+          },
+        };
+      }),
+    })),
+  }));
+}
+
 function loadWorkbooks(): Workbook[] {
   const raw = safeParseArray<Workbook>(localStorage.getItem(WORKBOOK_STORAGE_KEY));
-  if (raw.length > 0) return raw;
+  if (raw.length > 0) return normalizeWorkbooks(raw);
   return [createDefaultWorkbook(makeId)];
 }
 
@@ -1164,6 +1199,7 @@ const App: React.FC = () => {
     stageId: WorkbookStageId;
     blockId: string;
     snapshot: WorkbookViewSnapshot;
+    slot: WorkbookSnapshotSlot;
   } | null>(null);
   const [activeInteraction, setActiveInteraction] = useState<{
     stageId: WorkbookStageId;
@@ -1183,6 +1219,10 @@ const App: React.FC = () => {
     if (activeWorkbookId && workbooks.some((w) => w.id === activeWorkbookId)) return;
     setActiveWorkbookId(workbooks[0]?.id ?? null);
   }, [workbooks, activeWorkbookId]);
+
+  useEffect(() => {
+    setCompareBlockId(null);
+  }, [activeWorkbookId]);
 
   useEffect(() => {
     saveArray(WORKBOOK_STORAGE_KEY, workbooks);
@@ -2667,6 +2707,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return false;
     }
   });
+  const [compareCameraSync, setCompareCameraSync] = useState(() => {
+    try {
+      const raw = localStorage.getItem(COMPARE_CAMERA_SYNC_KEY);
+      return raw !== "0" && raw !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [compareBlockId, setCompareBlockId] = useState<string | null>(null);
   const [selectionMaskOverride, setSelectionMaskOverride] = useState<SelectionMask | null>(null);
   const [workbookDirectionOverlay, setWorkbookDirectionOverlay] = useState<PolylineSet | null>(null);
 
@@ -2677,9 +2726,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       // ignore
     }
   }, [compareIgnoreWorkbookOverlays]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(COMPARE_CAMERA_SYNC_KEY, compareCameraSync ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [compareCameraSync]);
   const [cameraSync, setCameraSync] = useState<CameraSyncState | null>(null);
   const [cameraOverride, setCameraOverride] = useState<CameraSyncState | null>(null);
   const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
+  const [compareCameraOverride, setCompareCameraOverride] = useState<CameraSyncState | null>(null);
+  const [compareCameraOverrideToken, setCompareCameraOverrideToken] = useState(0);
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
@@ -3068,6 +3126,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     implicitSurfaceId,
   ]);
   const cameraSyncEnabled = compareEnabled || rightPanelTab === "workbook";
+  const compareCameraSyncEnabled = compareEnabled && compareCameraSync;
   const workbookGraph = useMemo(() => {
     if (!activeWorkbook) {
       return {
@@ -3123,7 +3182,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       visualize: block.visualize
         ? {
             live: block.visualize.live,
-            snapshot: block.visualize.snapshot ?? null,
+            snapshotA: resolveVisualizeSnapshot(block.visualize, "A"),
+            snapshotB: resolveVisualizeSnapshot(block.visualize, "B"),
             notes: block.visualize.notes ?? "",
           }
         : null,
@@ -3270,6 +3330,46 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (statuses.some((status) => status === "stale")) return "stale";
     return "ok";
   }, [computeStatusById]);
+
+  const compareBlock = useMemo(() => {
+    if (!activeWorkbook) return null;
+    const visualizeBlocks = activeWorkbook.stages
+      .flatMap((stage) => stage.blocks)
+      .filter((block) => block.type === "visualize");
+    if (!visualizeBlocks.length) return null;
+    const byId = compareBlockId ? visualizeBlocks.find((block) => block.id === compareBlockId) : null;
+    if (byId) return byId;
+    const withSnapshots = visualizeBlocks.find((block) => {
+      const snapA = resolveVisualizeSnapshot(block.visualize, "A");
+      const snapB = resolveVisualizeSnapshot(block.visualize, "B");
+      return !!snapA || !!snapB;
+    });
+    return withSnapshots ?? visualizeBlocks[0];
+  }, [activeWorkbook, compareBlockId]);
+
+  const compareSnapshotA = useMemo(
+    () => (compareBlock ? resolveVisualizeSnapshot(compareBlock.visualize, "A") : null),
+    [compareBlock]
+  );
+  const compareSnapshotB = useMemo(
+    () => (compareBlock ? resolveVisualizeSnapshot(compareBlock.visualize, "B") : null),
+    [compareBlock]
+  );
+
+  useEffect(() => {
+    if (!compareEnabled) {
+      setCompareCameraOverride(null);
+      return;
+    }
+    if (compareSnapshotA?.camera) {
+      setCameraOverride(compareSnapshotA.camera);
+      setCameraOverrideToken((t) => t + 1);
+    }
+    if (compareSnapshotB?.camera) {
+      setCompareCameraOverride(compareSnapshotB.camera);
+      setCompareCameraOverrideToken((t) => t + 1);
+    }
+  }, [compareEnabled, compareSnapshotA?.camera, compareSnapshotB?.camera]);
 
   const activeGraphDomain = useMemo(
     () =>
@@ -3469,6 +3569,78 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     surfaceViewerKind === "weierstrass" ? weierstrassResolution : paramResolution;
   const isWeierstrassViewer = surfaceViewerKind === "weierstrass";
   const paramSurfaceIdForView: ParamSurfaceId = isWeierstrassViewer ? "weierstrass" : paramSurfaceId;
+
+  const baseOverlaySettings = useMemo(
+    () => ({
+      colorMode,
+      colorPalette,
+      showWireframe,
+      showContours,
+      showChartGrid,
+      showBoundingBox,
+      showPlanes,
+    }),
+    [colorMode, colorPalette, showWireframe, showContours, showChartGrid, showBoundingBox, showPlanes]
+  );
+
+  const overlaySettingsForSnapshot = useCallback(
+    (snapshot: WorkbookViewSnapshot | null) => ({
+      colorMode: snapshot?.colorMode ?? baseOverlaySettings.colorMode,
+      colorPalette: snapshot?.colorPalette ?? baseOverlaySettings.colorPalette,
+      showWireframe: snapshot?.showWireframe ?? baseOverlaySettings.showWireframe,
+      showContours: snapshot?.showContours ?? baseOverlaySettings.showContours,
+      showChartGrid: snapshot?.showChartGrid ?? baseOverlaySettings.showChartGrid,
+      showBoundingBox: snapshot?.showBoundingBox ?? baseOverlaySettings.showBoundingBox,
+      showPlanes: snapshot?.showPlanes ?? baseOverlaySettings.showPlanes,
+    }),
+    [baseOverlaySettings]
+  );
+
+  const compareOverlayA = useMemo(
+    () => overlaySettingsForSnapshot(compareSnapshotA),
+    [compareSnapshotA, overlaySettingsForSnapshot]
+  );
+  const compareOverlayB = useMemo(
+    () => overlaySettingsForSnapshot(compareSnapshotB),
+    [compareSnapshotB, overlaySettingsForSnapshot]
+  );
+
+  const resolveSnapshotSurfaceId = useCallback(
+    (snapshot: WorkbookViewSnapshot | null, fallback: SurfaceId) => {
+      if (!snapshot || snapshot.viewerKind !== surfaceViewerKind) return fallback;
+      if (surfaceViewerKind === "graph" && snapshot.surfaceId && isGraphSurface(snapshot.surfaceId)) {
+        return snapshot.surfaceId;
+      }
+      if (surfaceViewerKind === "implicit" && snapshot.surfaceId && !isGraphSurface(snapshot.surfaceId)) {
+        return snapshot.surfaceId;
+      }
+      return fallback;
+    },
+    [surfaceViewerKind]
+  );
+
+  const resolveSnapshotParamId = useCallback(
+    (snapshot: WorkbookViewSnapshot | null, fallback: ParamSurfaceId) => {
+      if (!snapshot || snapshot.viewerKind !== "param") return fallback;
+      return snapshot.paramId ?? fallback;
+    },
+    []
+  );
+
+  const primarySurfaceId = compareEnabled
+    ? resolveSnapshotSurfaceId(compareSnapshotA, activeEqSurfaceId)
+    : activeEqSurfaceId;
+  const secondarySurfaceId = compareEnabled
+    ? resolveSnapshotSurfaceId(compareSnapshotB, compareSurfaceId)
+    : compareSurfaceId;
+  const primaryParamId = compareEnabled
+    ? resolveSnapshotParamId(compareSnapshotA, paramSurfaceIdForView)
+    : paramSurfaceIdForView;
+  const secondaryParamId = compareEnabled
+    ? resolveSnapshotParamId(compareSnapshotB, compareParamId)
+    : compareParamId;
+  const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
+  const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
 
   useEffect(() => {
     if (!isGraphSurface(graphSurfaceId)) return;
@@ -4161,7 +4333,11 @@ case "mobius":
     if (type === "text") return applyDefaultPorts({ ...base, title: "Text", text: "" });
     if (type === "formula") return applyDefaultPorts({ ...base, title: "Formula", formula: "" });
     if (type === "visualize")
-      return applyDefaultPorts({ ...base, title: "View", visualize: { live: true, snapshot: null } });
+      return applyDefaultPorts({
+        ...base,
+        title: "View",
+        visualize: { live: true, snapshotA: null, snapshotB: null },
+      });
     if (type === "compute")
       return applyDefaultPorts({
         ...base,
@@ -4215,7 +4391,7 @@ case "mobius":
         return next;
       });
     },
-    [activeWorkbookId]
+    [activeWorkbookId, compareBlockId]
   );
 
   const handleRenameWorkbook = useCallback((id: string, title: string) => {
@@ -4288,6 +4464,7 @@ case "mobius":
   const handleRemoveWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
       if (!activeWorkbookId) return;
+      if (compareBlockId === blockId) setCompareBlockId(null);
       setWorkbooks((prev) =>
         prev.map((w) =>
           w.id === activeWorkbookId
@@ -4783,13 +4960,14 @@ case "mobius":
                     ? {
                         ...s,
                         blocks: s.blocks.map((b) =>
-                          b.id === blockId
+                              b.id === blockId
                             ? {
                                 ...b,
                                 visualize: {
                                   ...(b.visualize ?? { live }),
                                   live,
-                                  snapshot: live ? null : b.visualize?.snapshot ?? null,
+                                  snapshotA: live ? null : resolveVisualizeSnapshot(b.visualize, "A"),
+                                  snapshotB: live ? null : resolveVisualizeSnapshot(b.visualize, "B"),
                                 },
                               }
                             : b
@@ -4877,9 +5055,10 @@ case "mobius":
   ]);
 
   const handleCaptureVisualize = useCallback(
-    (stageId: WorkbookStageId, blockId: string) => {
+    (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => {
       const snapshot = buildViewerSnapshot();
       if (!activeWorkbookId) return;
+      setCompareBlockId(blockId);
       setWorkbooks((prev) =>
         prev.map((w) =>
           w.id === activeWorkbookId
@@ -4890,21 +5069,25 @@ case "mobius":
                   s.id === stageId
                     ? {
                         ...s,
-                        blocks: s.blocks.map((b) =>
-                          b.id === blockId
-                            ? {
-                                ...b,
-                                visualize: {
-                                  ...(b.visualize ?? { live: false }),
-                                  live: false,
-                                  snapshot: {
-                                    ...snapshot,
-                                    thumbnail: b.visualize?.snapshot?.thumbnail ?? null,
-                                  },
-                                },
-                              }
-                            : b
-                        ),
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const prevSnapshotA = resolveVisualizeSnapshot(b.visualize, "A");
+                          const prevSnapshotB = resolveVisualizeSnapshot(b.visualize, "B");
+                          const nextSnapshot = {
+                            ...snapshot,
+                            thumbnail:
+                              (slot === "A" ? prevSnapshotA?.thumbnail : prevSnapshotB?.thumbnail) ?? null,
+                          };
+                          return {
+                            ...b,
+                            visualize: {
+                              ...(b.visualize ?? { live: false }),
+                              live: false,
+                              snapshotA: slot === "A" ? nextSnapshot : prevSnapshotA,
+                              snapshotB: slot === "B" ? nextSnapshot : prevSnapshotB,
+                            },
+                          };
+                        }),
                       }
                     : s
                 ),
@@ -4912,7 +5095,7 @@ case "mobius":
             : w
         )
       );
-      setPendingThumbnailCapture({ stageId, blockId, snapshot });
+      setPendingThumbnailCapture({ stageId, blockId, snapshot, slot });
       setWorkbookCaptureToken((t) => t + 1);
     },
     [activeWorkbookId, buildViewerSnapshot]
@@ -4921,7 +5104,7 @@ case "mobius":
   const handleWorkbookThumbnail = useCallback(
     (dataUrl: string | null) => {
       if (!pendingThumbnailCapture || !activeWorkbookId) return;
-      const { stageId, blockId, snapshot } = pendingThumbnailCapture;
+      const { stageId, blockId, snapshot, slot } = pendingThumbnailCapture;
       setPendingThumbnailCapture(null);
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4933,21 +5116,24 @@ case "mobius":
                   s.id === stageId
                     ? {
                         ...s,
-                        blocks: s.blocks.map((b) =>
-                          b.id === blockId
-                            ? {
-                                ...b,
-                                visualize: {
-                                  ...(b.visualize ?? { live: false }),
-                                  live: false,
-                                  snapshot: {
-                                    ...snapshot,
-                                    thumbnail: dataUrl ?? snapshot.thumbnail ?? null,
-                                  },
-                                },
-                              }
-                            : b
-                        ),
+                        blocks: s.blocks.map((b) => {
+                          if (b.id !== blockId) return b;
+                          const prevSnapshotA = resolveVisualizeSnapshot(b.visualize, "A");
+                          const prevSnapshotB = resolveVisualizeSnapshot(b.visualize, "B");
+                          const nextSnapshot = {
+                            ...snapshot,
+                            thumbnail: dataUrl ?? snapshot.thumbnail ?? null,
+                          };
+                          return {
+                            ...b,
+                            visualize: {
+                              ...(b.visualize ?? { live: false }),
+                              live: false,
+                              snapshotA: slot === "A" ? nextSnapshot : prevSnapshotA,
+                              snapshotB: slot === "B" ? nextSnapshot : prevSnapshotB,
+                            },
+                          };
+                        }),
                       }
                     : s
                 ),
@@ -4960,7 +5146,8 @@ case "mobius":
   );
 
   const handleApplyVisualize = useCallback(
-    (snapshot: WorkbookViewSnapshot) => {
+    (snapshot: WorkbookViewSnapshot, blockId?: string) => {
+      if (blockId) setCompareBlockId(blockId);
       if (snapshot.datasetKind === "volume") {
         setDatasetKind("volume");
       } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
@@ -5032,6 +5219,7 @@ case "mobius":
       setVolumeIsoValue,
       setVolumeShowIsosurface,
       setVolumeShowStreamlines,
+      setCompareBlockId,
     ]
   );
 
@@ -5061,12 +5249,13 @@ case "mobius":
           ? parsed.workbooks
           : [];
       if (!nextWorkbooks.length) return;
-      setWorkbooks(nextWorkbooks);
+      const normalized = normalizeWorkbooks(nextWorkbooks);
+      setWorkbooks(normalized);
       const nextActive =
         typeof parsed?.activeWorkbookId === "string" &&
-        nextWorkbooks.some((w) => w.id === parsed.activeWorkbookId)
+        normalized.some((w) => w.id === parsed.activeWorkbookId)
           ? parsed.activeWorkbookId
-          : nextWorkbooks[0].id;
+          : normalized[0].id;
       setActiveWorkbookId(nextActive);
       if (isWorkbookStageId(parsed?.activeStageId)) setActiveStageId(parsed.activeStageId);
     } catch {
@@ -8894,11 +9083,13 @@ case "mobius":
               onApplySuggestedDomain={applySuggestedDomain}
               compareEnabled={compareEnabled}
               compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+              compareCameraSync={compareCameraSync}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
                 if (rightPanelTab !== "workbook") setCameraSync(null);
               }}
               onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
               compareSurfaceId={compareSurfaceId}
               onChangeCompareSurface={setCompareSurfaceId}
               compareParamId={compareParamId}
@@ -9548,20 +9739,20 @@ case "mobius":
                       <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
-                            surfaceId={paramSurfaceIdForView}
+                            surfaceId={primaryParamId}
                             customX={paramXExpr}
                             customY={paramYExpr}
                             customZ={paramZExpr}
-                            wireframe={showWireframe}
-                            showPlanes={showPlanes}
+                            wireframe={primaryOverlay.showWireframe}
+                            showPlanes={primaryOverlay.showPlanes}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
                             materialOpacity={materialOpacity}
                             paramResolution={activeParamLikeResolution}
-                            colorMode={colorMode}
-                            colorPalette={colorPalette}
-                            showChartGrid={showChartGrid}
+                            colorMode={primaryOverlay.colorMode}
+                            colorPalette={primaryOverlay.colorPalette}
+                            showChartGrid={primaryOverlay.showChartGrid}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
@@ -9602,7 +9793,7 @@ case "mobius":
                             ridgeValleyDecimate={ridgeValleyDecimate}
                             ridgeValleyMaxCurves={ridgeValleyMaxCurves}
                             ridgeValleyMinConf={ridgeValleyMinConf}
-                            showBoundingBox={showBoundingBox}
+                            showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             onProbe={handleProbe}
                             onParamCurvature={handleParamCurvature}
@@ -9673,7 +9864,7 @@ case "mobius":
                           />
                         ) : (
                         <SurfaceViewer
-                              surfaceId={activeEqSurfaceId}
+                              surfaceId={primarySurfaceId}
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
                             implicitMeshOverride={activeCgalMesh}
@@ -9682,23 +9873,23 @@ case "mobius":
                             }
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
-                            wireframe={showWireframe}
-                            showPlanes={showPlanes}
+                            wireframe={primaryOverlay.showWireframe}
+                            showPlanes={primaryOverlay.showPlanes}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
                             materialOpacity={materialOpacity}
                             graphResolution={graphResolution}
                             implicitResolution={implicitResolution}
-                            implicitDomainSize={implicitDomainSizeFor(activeEqSurfaceId)}
-                            colorMode={colorMode}
-                            colorPalette={colorPalette}
-                            showChartGrid={showChartGrid}
+                            implicitDomainSize={implicitDomainSizeFor(primarySurfaceId)}
+                            colorMode={primaryOverlay.colorMode}
+                            colorPalette={primaryOverlay.colorPalette}
+                            showChartGrid={primaryOverlay.showChartGrid}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
                             graphDomain={activeGraphDomain}
-                            showBoundingBox={showBoundingBox}
+                            showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
@@ -9739,7 +9930,7 @@ case "mobius":
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
                             // contours (remove if SurfaceViewer doesn't support yet)
-                            showContours={showContours}
+                            showContours={primaryOverlay.showContours}
                             contourCount={contourCount}
                             isCameraLeader={cameraSyncEnabled}
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
@@ -9792,24 +9983,24 @@ case "mobius":
                         )}
                       </div>
 
-                      {compareEnabled && (
+                          {compareEnabled && (
                         <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
                           {surfaceViewerKind === "param" ? (
                             <ParamSurfaceViewer
-                              surfaceId={compareParamId}
+                              surfaceId={secondaryParamId}
                               customX={paramXExpr}
                               customY={paramYExpr}
                               customZ={paramZExpr}
-                              wireframe={showWireframe}
-                              showPlanes={showPlanes}
+                              wireframe={secondaryOverlay.showWireframe}
+                              showPlanes={secondaryOverlay.showPlanes}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
                               materialMetalness={materialMetalness}
                               materialOpacity={materialOpacity}
                               paramResolution={paramResolution}
-                              colorMode={colorMode}
-                              colorPalette={colorPalette}
-                              showChartGrid={showChartGrid}
+                              colorMode={secondaryOverlay.colorMode}
+                              colorPalette={secondaryOverlay.colorPalette}
+                              showChartGrid={secondaryOverlay.showChartGrid}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               paramDomain={activeParamDomain}
@@ -9823,37 +10014,39 @@ case "mobius":
                               showPrincipalLines={false}
                               showPrincipalGlyphs={false}
                               showCurvatureLines={false}
-                            showBoundingBox={showBoundingBox}
+                            showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               onSetCustomX={setParamXExpr}
                               onSetCustomY={setParamYExpr}
                               onSetCustomZ={setParamZExpr}
                               isCameraLeader={false}
-                              cameraSync={cameraSync}
+                              cameraSync={compareCameraSyncEnabled ? cameraSync : null}
+                              cameraOverride={compareCameraOverride}
+                              cameraOverrideToken={compareCameraOverrideToken}
                             />
                           ) : (
                             <SurfaceViewer
-                              surfaceId={compareSurfaceId}
+                              surfaceId={secondarySurfaceId}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
                               surfaceMeshOverride={
                                 surfaceViewerKind === "mesh" || surfaceViewerKind === "complex" ? surfaceMeshData : null
                               }
                               sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
-                              wireframe={showWireframe}
-                              showPlanes={showPlanes}
+                              wireframe={secondaryOverlay.showWireframe}
+                              showPlanes={secondaryOverlay.showPlanes}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
                               materialMetalness={materialMetalness}
                               materialOpacity={materialOpacity}
                               graphResolution={graphResolution}
                               implicitResolution={implicitResolution}
-                              implicitDomainSize={implicitDomainSizeFor(compareSurfaceId)}
-                              colorMode={colorMode}
-                              colorPalette={colorPalette}
+                              implicitDomainSize={implicitDomainSizeFor(secondarySurfaceId)}
+                              colorMode={secondaryOverlay.colorMode}
+                              colorPalette={secondaryOverlay.colorPalette}
                               implicitOverlay={implicitOverlay}
                               graphDomain={activeGraphDomain}
-                              showBoundingBox={showBoundingBox}
+                              showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               overlayPolylineGroups={compareOverlayPolylineGroups}
                               graphProbeXY={null}
@@ -9870,13 +10063,15 @@ case "mobius":
                               showPrincipalGlyphs={false}
                               showCurvatureLines={false}
                               // contours (remove if SurfaceViewer doesn't support yet)
-                              showContours={showContours}
+                              showContours={secondaryOverlay.showContours}
                               contourCount={contourCount}
-                              showChartGrid={showChartGrid}
+                              showChartGrid={secondaryOverlay.showChartGrid}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               isCameraLeader={false}
-                              cameraSync={cameraSync}
+                              cameraSync={compareCameraSyncEnabled ? cameraSync : null}
+                              cameraOverride={compareCameraOverride}
+                              cameraOverrideToken={compareCameraOverrideToken}
                             />
                           )}
                         </div>
@@ -10305,8 +10500,10 @@ type SurfacesControlsProps = {
   onApplySuggestedDomain: (preset: WeierstrassPreset) => void;
   compareEnabled: boolean;
   compareIgnoreWorkbookOverlays: boolean;
+  compareCameraSync: boolean;
   onToggleCompare: () => void;
   onToggleCompareIgnoreWorkbookOverlays: () => void;
+  onToggleCompareCameraSync: () => void;
   compareSurfaceId: SurfaceId;
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
@@ -10327,8 +10524,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onApplySuggestedDomain,
   compareEnabled,
   compareIgnoreWorkbookOverlays,
+  compareCameraSync,
   onToggleCompare,
   onToggleCompareIgnoreWorkbookOverlays,
+  onToggleCompareCameraSync,
   compareSurfaceId,
   onChangeCompareSurface,
   compareParamId,
@@ -10558,14 +10757,24 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           Compare
         </label>
         {compareEnabled && (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-            <input
-              type="checkbox"
-              checked={compareIgnoreWorkbookOverlays}
-              onChange={onToggleCompareIgnoreWorkbookOverlays}
-            />
-            Ignore workbook overlays
-          </label>
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={compareCameraSync}
+                onChange={onToggleCompareCameraSync}
+              />
+              Sync cameras
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={compareIgnoreWorkbookOverlays}
+                onChange={onToggleCompareIgnoreWorkbookOverlays}
+              />
+              Ignore workbook overlays
+            </label>
+          </>
         )}
       </div>
 

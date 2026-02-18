@@ -450,14 +450,20 @@ viewer, enabling quick targeting for probes or custom evaluations.
 
 ### Compare mode
 
-The compare mode provides a side-by-side view with synchronized cameras. This is useful for
+The compare mode provides a side-by-side view with optional camera sync. This is useful for
 studying variations between related surfaces, parameter choices, or expression tweaks.
 
 Key behaviors:
 
-- A leader view drives camera updates in the compare view.
-- Both views share lighting/material settings for consistent analysis.
+- Toggle camera sync on/off from the Compare controls.
+- Each pane uses independent overlay/color settings captured per snapshot.
 - Compare mode is available for implicit, graph, and parametric modes.
+
+Quick workflow:
+
+- Open Workbook → Visualize block.
+- Capture A (left) and Capture B (right) snapshots.
+- Enable Compare and use Jump A / Jump B to align a pane to a snapshot.
 
 Examples of use cases:
 
@@ -682,8 +688,9 @@ PR A - Workbook scaffolding
 
 PR B - Visualize blocks control the viewer
 - Capture current view (camera + toggles + selected overlays)
-- Jump to view on block click
-- Mini thumbnail preview (optional)
+- Capture A/B snapshots for compare mode
+- Jump to view (block click + Jump A/B buttons)
+- Mini thumbnail preview (optional, per snapshot)
 
 PR C - Compute blocks (operator-based, no arbitrary code)
 - Chart: coords readout + grid overlay

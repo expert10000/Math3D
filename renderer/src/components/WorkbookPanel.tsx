@@ -9,6 +9,7 @@ import type {
   WorkbookParamDef,
   WorkbookParamValue,
   WorkbookInteractionKind,
+  WorkbookSnapshotSlot,
 } from "../workbook/workbookModel";
 import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
 
@@ -29,8 +30,8 @@ type WorkbookPanelProps = {
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
-  onCaptureVisualize: (stageId: WorkbookStageId, blockId: string) => void;
-  onApplyVisualize: (snapshot: WorkbookViewSnapshot) => void;
+  onCaptureVisualize: (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => void;
+  onApplyVisualize: (snapshot: WorkbookViewSnapshot, blockId?: string) => void;
   onToggleVisualizeLive: (stageId: WorkbookStageId, blockId: string, live: boolean) => void;
   onRunComputeBlock: (stageId: WorkbookStageId, blockId: string, operatorId?: string) => void;
   onRunComputeStage: (stageId: WorkbookStageId) => void;
@@ -237,6 +238,12 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     }
     if (def.kind === "toggle") return value ? "on" : "off";
     return String(value ?? "");
+  };
+
+  const resolveVisualizeSnapshot = (block: WorkbookBlock, slot: WorkbookSnapshotSlot) => {
+    if (block.type !== "visualize") return null;
+    if (slot === "A") return block.visualize?.snapshotA ?? block.visualize?.snapshot ?? null;
+    return block.visualize?.snapshotB ?? null;
   };
 
   const handleTogglePlay = (stageId: WorkbookStageId, block: WorkbookBlock) => {
@@ -509,15 +516,18 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
                 borderLeft: `4px solid ${BLOCK_ACCENT[block.type]}`,
                 cursor:
-                  block.type === "visualize" && block.visualize?.snapshot ? "pointer" : "default",
+                  block.type === "visualize" &&
+                  (resolveVisualizeSnapshot(block, "A") || resolveVisualizeSnapshot(block, "B"))
+                    ? "pointer"
+                    : "default",
               }}
               onClick={(e) => {
                 if (block.type !== "visualize") return;
-                const snap = block.visualize?.snapshot;
+                const snap = resolveVisualizeSnapshot(block, "A") ?? resolveVisualizeSnapshot(block, "B");
                 if (!snap) return;
                 const tag = (e.target as HTMLElement).tagName;
                 if (["INPUT", "TEXTAREA", "BUTTON", "SELECT", "OPTION", "A"].includes(tag)) return;
-                onApplyVisualize(snap);
+                onApplyVisualize(snap, block.id);
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
@@ -581,67 +591,122 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
               {block.type === "visualize" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {block.visualize?.snapshot?.thumbnail && (
-                    <img
-                      src={block.visualize.snapshot.thumbnail}
-                      alt="Snapshot thumbnail"
-                      style={{
-                        width: "100%",
-                        borderRadius: 8,
-                        border: "1px solid #e5e7eb",
-                        background: "#f8fafc",
-                      }}
-                    />
-                  )}
-                  <div style={{ fontSize: 11, opacity: 0.75 }}>
-                    Dataset:{" "}
-                    <strong>{block.visualize?.snapshot?.datasetRef ?? currentDatasetRef}</strong>
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => onCaptureVisualize(activeStageId, block.id)}
-                      style={{ padding: "4px 8px" }}
-                    >
-                      Capture current view
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const snap = block.visualize?.snapshot;
-                        if (snap) onApplyVisualize(snap);
-                      }}
-                      disabled={!block.visualize?.snapshot}
-                      style={{ padding: "4px 8px" }}
-                    >
-                      Jump to view
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onToggleVisualizeLive(activeStageId, block.id, !(block.visualize?.live ?? true))
-                      }
-                      style={{ padding: "4px 8px" }}
-                    >
-                      {block.visualize?.live ? "Live" : "Frozen"}
-                    </button>
-                  </div>
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>
-                    {block.visualize?.snapshot
-                      ? `Captured ${new Date(block.visualize.snapshot.capturedAt).toLocaleString()}`
-                      : "No snapshot yet."}
-                  </div>
-                  <textarea
-                    value={block.visualize?.notes ?? ""}
-                    onChange={(e) =>
-                      onUpdateBlock(activeStageId, block.id, {
-                        visualize: { ...(block.visualize ?? { live: true }), notes: e.target.value },
-                      })
-                    }
-                    rows={3}
-                    placeholder="Notes on this view..."
-                    style={{ width: "100%", padding: 6, fontSize: 12 }}
-                  />
+                  {(() => {
+                    const snapA = resolveVisualizeSnapshot(block, "A");
+                    const snapB = resolveVisualizeSnapshot(block, "B");
+                    const datasetRef = snapA?.datasetRef ?? snapB?.datasetRef ?? currentDatasetRef;
+                    const live = block.visualize?.live ?? true;
+                    return (
+                      <>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {([
+                            { slot: "A" as const, snap: snapA },
+                            { slot: "B" as const, snap: snapB },
+                          ] as const).map(({ slot, snap }) => (
+                            <div
+                              key={slot}
+                              style={{
+                                borderRadius: 8,
+                                border: "1px solid #e5e7eb",
+                                background: "#f8fafc",
+                                padding: 6,
+                              }}
+                            >
+                              <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                                Snapshot {slot}
+                              </div>
+                              {snap?.thumbnail ? (
+                                <img
+                                  src={snap.thumbnail}
+                                  alt={`Snapshot ${slot}`}
+                                  style={{
+                                    width: "100%",
+                                    borderRadius: 6,
+                                    border: "1px solid #e5e7eb",
+                                    background: "#fff",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    height: 96,
+                                    borderRadius: 6,
+                                    border: "1px dashed #cbd5f5",
+                                    background: "#fff",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 10,
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  No thumbnail
+                                </div>
+                              )}
+                              <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
+                                {snap
+                                  ? `Captured ${new Date(snap.capturedAt).toLocaleString()}`
+                                  : `No snapshot ${slot} yet.`}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                          Dataset: <strong>{datasetRef}</strong>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => onCaptureVisualize(activeStageId, block.id, "A")}
+                            style={{ padding: "4px 8px" }}
+                          >
+                            Capture A
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => snapA && onApplyVisualize(snapA, block.id)}
+                            disabled={!snapA}
+                            style={{ padding: "4px 8px" }}
+                          >
+                            Jump A
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onCaptureVisualize(activeStageId, block.id, "B")}
+                            style={{ padding: "4px 8px" }}
+                          >
+                            Capture B
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => snapB && onApplyVisualize(snapB, block.id)}
+                            disabled={!snapB}
+                            style={{ padding: "4px 8px" }}
+                          >
+                            Jump B
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onToggleVisualizeLive(activeStageId, block.id, !live)}
+                            style={{ padding: "4px 8px" }}
+                          >
+                            {live ? "Live" : "Frozen"}
+                          </button>
+                        </div>
+                        <textarea
+                          value={block.visualize?.notes ?? ""}
+                          onChange={(e) =>
+                            onUpdateBlock(activeStageId, block.id, {
+                              visualize: { ...(block.visualize ?? { live: true }), notes: e.target.value },
+                            })
+                          }
+                          rows={3}
+                          placeholder="Notes on this view..."
+                          style={{ width: "100%", padding: 6, fontSize: 12 }}
+                        />
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 

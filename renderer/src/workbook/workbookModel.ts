@@ -145,6 +145,8 @@ export type WorkbookViewSnapshot = {
   capturedAt: number;
 };
 
+export type WorkbookSnapshotSlot = "A" | "B";
+
 export type WorkbookComputeOutputs = {
   viewPatch?: {
     colorMode?: ColorMode;
@@ -196,6 +198,8 @@ export type WorkbookBlock = {
   visualize?: {
     live: boolean;
     snapshot?: WorkbookViewSnapshot | null;
+    snapshotA?: WorkbookViewSnapshot | null;
+    snapshotB?: WorkbookViewSnapshot | null;
     notes?: string;
   };
   compute?: {
@@ -277,7 +281,7 @@ export function createDefaultWorkbook(makeId: () => string): Workbook {
             title: "Base view",
             inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
             outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
-            visualize: { live: true, snapshot: null },
+            visualize: { live: true, snapshotA: null, snapshotB: null },
           },
         ],
       },
