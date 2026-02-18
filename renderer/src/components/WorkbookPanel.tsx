@@ -12,6 +12,9 @@ import type {
   WorkbookSnapshotSlot,
 } from "../workbook/workbookModel";
 import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
+import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
+import { computeMeanEdgeLength } from "../mesh/meshOps";
+import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 type WorkbookPanelProps = {
   workbooks: Workbook[];
@@ -31,7 +34,7 @@ type WorkbookPanelProps = {
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
   onCaptureVisualize: (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => void;
-  onApplyVisualize: (snapshot: WorkbookViewSnapshot, blockId?: string) => void;
+  onApplyVisualize: (snapshot: WorkbookViewSnapshot, blockId?: string, slot?: WorkbookSnapshotSlot) => void;
   onToggleVisualizeLive: (stageId: WorkbookStageId, blockId: string, live: boolean) => void;
   onRunComputeBlock: (stageId: WorkbookStageId, blockId: string, operatorId?: string) => void;
   onRunComputeStage: (stageId: WorkbookStageId) => void;
@@ -64,6 +67,8 @@ type WorkbookPanelProps = {
   onImportJson: (raw: string) => void;
   currentDatasetRef: string;
   cameraReady: boolean;
+  ghostOverlaysEnabled: boolean;
+  onToggleGhostOverlays: (enabled: boolean) => void;
 };
 
 const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
@@ -89,6 +94,319 @@ const STATUS_COLORS: Record<string, string> = {
   fail: "#b91c1c",
   failed: "#b91c1c",
   pending: "#1f2937",
+};
+
+type SnapshotMeshStats = {
+  vertexCount: number;
+  faceCount: number;
+  area: number;
+  meanEdgeLength: number;
+  bboxMin: [number, number, number];
+  bboxMax: [number, number, number];
+  bboxDiag: number;
+};
+
+type SnapshotStatsResult = {
+  stats?: SnapshotMeshStats;
+  error?: string;
+};
+
+const formatNum = (value: number | null | undefined, digits = 3) => {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return value.toFixed(digits);
+};
+
+const computeMeshStats = (mesh: SurfaceMeshData): SnapshotMeshStats => {
+  const positions = mesh.positions;
+  const indices = mesh.indices;
+  const vertexCount = Math.floor(positions.length / 3);
+  const faceCount = indices ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+
+  for (let i = 0; i < vertexCount; i++) {
+    const idx = i * 3;
+    const x = positions[idx];
+    const y = positions[idx + 1];
+    const z = positions[idx + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+
+  const bboxMin: [number, number, number] = [minX, minY, minZ];
+  const bboxMax: [number, number, number] = [maxX, maxY, maxZ];
+  const dx = maxX - minX;
+  const dy = maxY - minY;
+  const dz = maxZ - minZ;
+  const bboxDiag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+  let area = 0;
+  const triCount = indices ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  for (let t = 0; t < triCount; t++) {
+    const a = indices ? Number(indices[t * 3]) : t * 3;
+    const b = indices ? Number(indices[t * 3 + 1]) : t * 3 + 1;
+    const c = indices ? Number(indices[t * 3 + 2]) : t * 3 + 2;
+    if (a < 0 || b < 0 || c < 0 || a >= vertexCount || b >= vertexCount || c >= vertexCount) continue;
+    const ax = positions[a * 3];
+    const ay = positions[a * 3 + 1];
+    const az = positions[a * 3 + 2];
+    const bx = positions[b * 3];
+    const by = positions[b * 3 + 1];
+    const bz = positions[b * 3 + 2];
+    const cx = positions[c * 3];
+    const cy = positions[c * 3 + 1];
+    const cz = positions[c * 3 + 2];
+    if (
+      !Number.isFinite(ax) ||
+      !Number.isFinite(ay) ||
+      !Number.isFinite(az) ||
+      !Number.isFinite(bx) ||
+      !Number.isFinite(by) ||
+      !Number.isFinite(bz) ||
+      !Number.isFinite(cx) ||
+      !Number.isFinite(cy) ||
+      !Number.isFinite(cz)
+    ) {
+      continue;
+    }
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abz = bz - az;
+    const acx = cx - ax;
+    const acy = cy - ay;
+    const acz = cz - az;
+    const crossX = aby * acz - abz * acy;
+    const crossY = abz * acx - abx * acz;
+    const crossZ = abx * acy - aby * acx;
+    const triArea = 0.5 * Math.hypot(crossX, crossY, crossZ);
+    if (Number.isFinite(triArea)) area += triArea;
+  }
+
+  const meanEdgeLength = computeMeanEdgeLength(mesh).meanEdgeLength ?? 0;
+
+  return {
+    vertexCount,
+    faceCount,
+    area,
+    meanEdgeLength,
+    bboxMin,
+    bboxMax,
+    bboxDiag,
+  };
+};
+
+const buildMeshFromSnapshot = (snapshot: WorkbookViewSnapshot): { mesh?: SurfaceMeshData; error?: string } => {
+  if (snapshot.viewerKind === "graph") {
+    if (!snapshot.surfaceId) return { error: "Missing graph surface id." };
+    const domain = snapshot.graphDomain ?? { xSpan: 2, ySpan: 2 };
+    const resolution = Math.max(20, Math.round(snapshot.graphResolution ?? 80));
+    const result = bakeGraphSurface({
+      surfaceId: snapshot.surfaceId,
+      graphExpr: snapshot.graphExpr ?? "x*x - y*y",
+      domain,
+      resolution,
+      label: `Graph ${snapshot.surfaceId}`,
+    });
+    if ("error" in result) return { error: result.error };
+    return { mesh: result.mesh };
+  }
+  if (snapshot.viewerKind === "param") {
+    if (!snapshot.paramId) return { error: "Missing param surface id." };
+    const domain = snapshot.paramDomain ?? { uMin: -1, uMax: 1, vMin: -1, vMax: 1 };
+    const resolution = Math.max(20, Math.round(snapshot.paramResolution ?? 120));
+    const result = bakeParamSurface({
+      surfaceId: snapshot.paramId,
+      domain,
+      resolution,
+      label: `Param ${snapshot.paramId}`,
+      customX: snapshot.paramXExpr,
+      customY: snapshot.paramYExpr,
+      customZ: snapshot.paramZExpr,
+    });
+    if ("error" in result) return { error: result.error };
+    return { mesh: result.mesh };
+  }
+  if (snapshot.viewerKind === "weierstrass") {
+    const domain = snapshot.weierstrassDomain ?? { uMin: -1, uMax: 1, vMin: -1, vMax: 1 };
+    const resolution = Math.max(20, Math.round(snapshot.weierstrassResolution ?? 180));
+    const result = bakeWeierstrassSurface({
+      gExpr: snapshot.weierstrassGExpr ?? "z",
+      phiExpr: snapshot.weierstrassPhiExpr ?? "1",
+      domain,
+      resolution,
+      label: "Weierstrass",
+      recenterRescale: snapshot.weierstrassRecenter ?? false,
+    });
+    if ("error" in result) return { error: result.error };
+    return { mesh: result.mesh };
+  }
+  return { error: "Diff stats are available for graph/param/Weierstrass snapshots only." };
+};
+
+const buildSnapshotStats = (snapshot: WorkbookViewSnapshot | null): SnapshotStatsResult => {
+  if (!snapshot) return { error: "Missing snapshot." };
+  const built = buildMeshFromSnapshot(snapshot);
+  if (built.error || !built.mesh) return { error: built.error ?? "No mesh data." };
+  return { stats: computeMeshStats(built.mesh) };
+};
+
+const DIFF_FIELDS: Array<{ key: keyof WorkbookViewSnapshot; label: string }> = [
+  { key: "datasetRef", label: "Dataset" },
+  { key: "viewerKind", label: "Viewer" },
+  { key: "surfaceId", label: "Surface" },
+  { key: "paramId", label: "Param surface" },
+  { key: "graphExpr", label: "Graph expr" },
+  { key: "implicitExpr", label: "Implicit expr" },
+  { key: "paramXExpr", label: "Param X" },
+  { key: "paramYExpr", label: "Param Y" },
+  { key: "paramZExpr", label: "Param Z" },
+  { key: "weierstrassGExpr", label: "Weierstrass g" },
+  { key: "weierstrassPhiExpr", label: "Weierstrass φ" },
+  { key: "graphDomain", label: "Graph domain" },
+  { key: "implicitDomain", label: "Implicit domain" },
+  { key: "paramDomain", label: "Param domain" },
+  { key: "weierstrassDomain", label: "Weierstrass domain" },
+  { key: "graphResolution", label: "Graph resolution" },
+  { key: "implicitResolution", label: "Implicit resolution" },
+  { key: "paramResolution", label: "Param resolution" },
+  { key: "weierstrassResolution", label: "Weierstrass resolution" },
+  { key: "colorMode", label: "Color mode" },
+  { key: "colorPalette", label: "Palette" },
+  { key: "showWireframe", label: "Wireframe" },
+  { key: "showContours", label: "Contours" },
+  { key: "showChartGrid", label: "Chart grid" },
+  { key: "probeEnabled", label: "Probe" },
+  { key: "showPrincipalDirections", label: "Principal dirs" },
+  { key: "showPrincipalGlyphs", label: "Principal glyphs" },
+  { key: "showPrincipalLines", label: "Principal lines" },
+  { key: "showCurvatureLines", label: "Curvature lines" },
+  { key: "showRidges", label: "Ridges" },
+  { key: "showValleys", label: "Valleys" },
+  { key: "showGaussMap", label: "Gauss map" },
+  { key: "showBoundingBox", label: "Bounding box" },
+  { key: "showPlanes", label: "Planes" },
+];
+
+const formatSnapshotValue = (key: keyof WorkbookViewSnapshot, value: unknown) => {
+  if (value == null) return "—";
+  if (typeof value === "boolean") return value ? "on" : "off";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "—";
+  if (typeof value === "string") return value;
+  if (key === "graphDomain" || key === "implicitDomain") {
+    const v = value as { xSpan: number; ySpan: number };
+    return `xSpan=${formatNum(v?.xSpan)} · ySpan=${formatNum(v?.ySpan)}`;
+  }
+  if (key === "paramDomain" || key === "weierstrassDomain") {
+    const v = value as { uMin: number; uMax: number; vMin: number; vMax: number };
+    return `u=[${formatNum(v?.uMin)}, ${formatNum(v?.uMax)}], v=[${formatNum(v?.vMin)}, ${formatNum(v?.vMax)}]`;
+  }
+  return JSON.stringify(value);
+};
+
+const VisualizeDiffPanel: React.FC<{
+  snapA: WorkbookViewSnapshot | null;
+  snapB: WorkbookViewSnapshot | null;
+}> = ({ snapA, snapB }) => {
+  const diffRows = useMemo(() => {
+    if (!snapA || !snapB) return [];
+    const rows: Array<{ label: string; a: string; b: string }> = [];
+    for (const field of DIFF_FIELDS) {
+      const aVal = (snapA as any)?.[field.key];
+      const bVal = (snapB as any)?.[field.key];
+      if (aVal == null && bVal == null) continue;
+      const aStr = formatSnapshotValue(field.key, aVal);
+      const bStr = formatSnapshotValue(field.key, bVal);
+      const same =
+        typeof aVal === "object" || typeof bVal === "object" ? JSON.stringify(aVal) === JSON.stringify(bVal) : aVal === bVal;
+      if (same) continue;
+      rows.push({ label: field.label, a: aStr, b: bStr });
+    }
+    return rows;
+  }, [snapA, snapB]);
+
+  const statsA = useMemo(() => buildSnapshotStats(snapA), [snapA]);
+  const statsB = useMemo(() => buildSnapshotStats(snapB), [snapB]);
+
+  const statRow = (label: string, a?: number, b?: number) => {
+    const delta = a != null && b != null ? b - a : null;
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
+        <div style={{ fontWeight: 600 }}>{label}</div>
+        <div>{formatNum(a)}</div>
+        <div>{formatNum(b)}</div>
+        <div>{delta == null ? "—" : formatNum(delta)}</div>
+      </div>
+    );
+  };
+
+  if (!snapA || !snapB) {
+    return (
+      <div style={{ fontSize: 11, opacity: 0.7 }}>
+        Capture both A and B to compute a diff.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700 }}>Diff (A → B)</div>
+      {diffRows.length ? (
+        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 6, fontSize: 11 }}>
+          {diffRows.map((row, idx) => (
+            <React.Fragment key={`${row.label}-${idx}`}>
+              <div style={{ fontWeight: 600 }}>{row.label}</div>
+              <div>{row.a}</div>
+              <div>{row.b}</div>
+            </React.Fragment>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, opacity: 0.7 }}>No visible setting changes.</div>
+      )}
+
+      <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4 }}>Geometry stats</div>
+      {(statsA.error || statsB.error) && (
+        <div style={{ fontSize: 11, color: "#9a3412" }}>
+          {statsA.error || statsB.error}
+        </div>
+      )}
+      {statsA.stats && statsB.stats && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6, fontWeight: 700 }}>
+            <div>Metric</div>
+            <div>A</div>
+            <div>B</div>
+            <div>Δ</div>
+          </div>
+          {statRow("Area", statsA.stats.area, statsB.stats.area)}
+          {statRow("Mean edge", statsA.stats.meanEdgeLength, statsB.stats.meanEdgeLength)}
+          {statRow("BBox diag", statsA.stats.bboxDiag, statsB.stats.bboxDiag)}
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
+            <div style={{ fontWeight: 600 }}>Vertices</div>
+            <div>{statsA.stats.vertexCount}</div>
+            <div>{statsB.stats.vertexCount}</div>
+            <div>{statsB.stats.vertexCount - statsA.stats.vertexCount}</div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
+            <div style={{ fontWeight: 600 }}>Faces</div>
+            <div>{statsA.stats.faceCount}</div>
+            <div>{statsB.stats.faceCount}</div>
+            <div>{statsB.stats.faceCount - statsA.stats.faceCount}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const COMPUTE_OPERATORS = [
@@ -143,6 +461,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   computeStatusById,
   workbookStatus,
   paramCatalog,
+  ghostOverlaysEnabled,
+  onToggleGhostOverlays,
 }) => {
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -288,9 +608,19 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         </button>
       </div>
 
-      <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 10 }}>
-        Current view: <strong>{currentDatasetRef}</strong>
-        {cameraReady ? " · camera ready" : " · camera pending"}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          Current view: <strong>{currentDatasetRef}</strong>
+          {cameraReady ? " · camera ready" : " · camera pending"}
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+          <input
+            type="checkbox"
+            checked={ghostOverlaysEnabled}
+            onChange={(e) => onToggleGhostOverlays(e.target.checked)}
+          />
+          Ghost overlays
+        </label>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -523,11 +853,14 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               }}
               onClick={(e) => {
                 if (block.type !== "visualize") return;
-                const snap = resolveVisualizeSnapshot(block, "A") ?? resolveVisualizeSnapshot(block, "B");
+                const snapA = resolveVisualizeSnapshot(block, "A");
+                const snapB = resolveVisualizeSnapshot(block, "B");
+                const snap = snapA ?? snapB;
                 if (!snap) return;
+                const slot = snapA ? "A" : "B";
                 const tag = (e.target as HTMLElement).tagName;
                 if (["INPUT", "TEXTAREA", "BUTTON", "SELECT", "OPTION", "A"].includes(tag)) return;
-                onApplyVisualize(snap, block.id);
+                onApplyVisualize(snap, block.id, slot);
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
@@ -664,7 +997,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => snapA && onApplyVisualize(snapA, block.id)}
+                            onClick={() => snapA && onApplyVisualize(snapA, block.id, "A")}
                             disabled={!snapA}
                             style={{ padding: "4px 8px" }}
                           >
@@ -679,7 +1012,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           </button>
                           <button
                             type="button"
-                            onClick={() => snapB && onApplyVisualize(snapB, block.id)}
+                            onClick={() => snapB && onApplyVisualize(snapB, block.id, "B")}
                             disabled={!snapB}
                             style={{ padding: "4px 8px" }}
                           >
@@ -704,6 +1037,15 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           placeholder="Notes on this view..."
                           style={{ width: "100%", padding: 6, fontSize: 12 }}
                         />
+                        <div
+                          style={{
+                            borderTop: "1px solid #e5e7eb",
+                            paddingTop: 8,
+                            marginTop: 4,
+                          }}
+                        >
+                          <VisualizeDiffPanel snapA={snapA} snapB={snapB} />
+                        </div>
                       </>
                     );
                   })()}

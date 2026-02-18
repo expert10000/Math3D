@@ -471,6 +471,44 @@ Examples of use cases:
 - Compare two graph expressions with only one parameter changed.
 - Contrast implicit torus vs parametric torus.
 
+### Snapshot diff + ghost overlays
+
+Visualize blocks now support **snapshot diff** (visual diff, not git diff). This makes it
+clear *what changed* between A and B when comparing two views.
+
+What the diff shows:
+
+- **Settings diff**: a compact A→B table listing only the fields that changed (dataset,
+  viewer kind, surface/param id, expressions, domains, resolutions, and overlay toggles).
+- **Geometry diff stats** (graph/param/Weierstrass snapshots):
+  - `Area` (triangle surface area sum)
+  - `Mean edge length`
+  - `BBox diagonal`
+  - Vertex/face counts
+  - Each stat shows A, B, and Δ (B − A)
+
+Limits and scope:
+
+- Geometry stats currently run for **graph**, **param**, and **Weierstrass** snapshots only.
+  Implicit / mesh / volume snapshots show a gentle “unsupported” note for now.
+- Diff stats are recomputed from the snapshot’s stored settings (expressions, domains,
+  resolution) so they remain stable even if the live viewer changes later.
+
+Diff heatmap (graph-only):
+
+- In Compare mode, enable **Diff heatmap** to overlay `|ΔK|` (absolute Gaussian curvature
+  difference) on the **left** pane.
+- Requires **both** snapshots to be graph surfaces; the toggle auto‑disables otherwise.
+- The diff heatmap temporarily overrides other heatmap overlays for clarity.
+
+Ghost overlays:
+
+- When you run a new **Curve overlay** or **Direction overlay** from a Compute block,
+  the previous overlay is retained as a **ghost** (faint, low‑opacity) so you can see what
+  changed without losing context.
+- Toggle **Ghost overlays** in the Workbook header.
+- Only workbook curve/direction overlays are ghosted (selection masks are unchanged).
+
 ### Command console
 
 An inline command interface supports quick changes without hunting through controls:

@@ -178,6 +178,7 @@ const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
 const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
+const WORKBOOK_GHOST_OVERLAYS_KEY = "math3d.workbook.ghostOverlays.v1";
 const COMPARE_IGNORE_OVERLAYS_KEY = "math3d.compare.ignoreWorkbookOverlays.v1";
 const COMPARE_CAMERA_SYNC_KEY = "math3d.compare.cameraSync.v1";
 const WORKBOOK_STAGE_IDS: WorkbookStageId[] = ["define", "compute", "visualize", "explain"];
@@ -1207,6 +1208,25 @@ const App: React.FC = () => {
     kind: WorkbookInteractionKind;
   } | null>(null);
   const [workbookCurveOverlay, setWorkbookCurveOverlay] = useState<PolylineSet | null>(null);
+  const [workbookDirectionOverlay, setWorkbookDirectionOverlay] = useState<PolylineSet | null>(null);
+  const [workbookCurveOverlayGhost, setWorkbookCurveOverlayGhost] = useState<PolylineSet | null>(null);
+  const [workbookDirectionOverlayGhost, setWorkbookDirectionOverlayGhost] = useState<PolylineSet | null>(null);
+  const [workbookGhostOverlaysEnabled, setWorkbookGhostOverlaysEnabled] = useState(() => {
+    const raw = localStorage.getItem(WORKBOOK_GHOST_OVERLAYS_KEY);
+    return raw === "1";
+  });
+  const applyWorkbookCurveOverlay = useCallback((next: PolylineSet | null) => {
+    setWorkbookCurveOverlay((prev) => {
+      if (prev && prev !== next) setWorkbookCurveOverlayGhost(prev);
+      return next;
+    });
+  }, []);
+  const applyWorkbookDirectionOverlay = useCallback((next: PolylineSet | null) => {
+    setWorkbookDirectionOverlay((prev) => {
+      if (prev && prev !== next) setWorkbookDirectionOverlayGhost(prev);
+      return next;
+    });
+  }, []);
   const interactionPrevRef = useRef<{
     probeEnabled: boolean;
     selectRegionEnabled: boolean;
@@ -1222,6 +1242,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setCompareBlockId(null);
+    setCompareUseSnapshotA(false);
+    setCompareUseSnapshotB(false);
   }, [activeWorkbookId]);
 
   useEffect(() => {
@@ -1251,6 +1273,14 @@ const App: React.FC = () => {
       // ignore
     }
   }, [rightPanelTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(WORKBOOK_GHOST_OVERLAYS_KEY, workbookGhostOverlaysEnabled ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [workbookGhostOverlaysEnabled]);
 
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -2716,8 +2746,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
   });
   const [compareBlockId, setCompareBlockId] = useState<string | null>(null);
+  const [compareUseSnapshotA, setCompareUseSnapshotA] = useState(false);
+  const [compareUseSnapshotB, setCompareUseSnapshotB] = useState(false);
+  const [compareDiffHeatmapEnabled, setCompareDiffHeatmapEnabled] = useState(false);
   const [selectionMaskOverride, setSelectionMaskOverride] = useState<SelectionMask | null>(null);
-  const [workbookDirectionOverlay, setWorkbookDirectionOverlay] = useState<PolylineSet | null>(null);
 
   useEffect(() => {
     try {
@@ -3355,21 +3387,68 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     () => (compareBlock ? resolveVisualizeSnapshot(compareBlock.visualize, "B") : null),
     [compareBlock]
   );
+  const activeSnapshotA = compareEnabled && compareUseSnapshotA ? compareSnapshotA : null;
+  const activeSnapshotB = compareEnabled && compareUseSnapshotB ? compareSnapshotB : null;
+
+  const compareDiffHeatmapAvailable = useMemo(() => {
+    if (!compareSnapshotA || !compareSnapshotB) return false;
+    if (surfaceViewerKind !== "graph") return false;
+    if (!compareSnapshotA.surfaceId || !compareSnapshotB.surfaceId) return false;
+    return isGraphSurface(compareSnapshotA.surfaceId) && isGraphSurface(compareSnapshotB.surfaceId);
+  }, [compareSnapshotA, compareSnapshotB, surfaceViewerKind]);
+
+  const compareDiffHeatmapValues = useMemo(() => {
+    if (!compareDiffHeatmapEnabled) return null;
+    if (!compareDiffHeatmapAvailable) return null;
+    if (!surfaceSampleSet?.samples?.length) return null;
+    const surfaceIdA = compareSnapshotA?.surfaceId;
+    const surfaceIdB = compareSnapshotB?.surfaceId;
+    if (!surfaceIdA || !surfaceIdB) return null;
+    const exprA = compareSnapshotA?.graphExpr ?? graphExpr;
+    const exprB = compareSnapshotB?.graphExpr ?? graphExpr;
+    const samples = surfaceSampleSet.samples;
+    const values = new Float32Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i];
+      const curvA = computeGraphInvariantsFromProbe(surfaceIdA, exprA, sample.position);
+      const curvB = computeGraphInvariantsFromProbe(surfaceIdB, exprB, sample.position);
+      const KA = curvA?.K ?? NaN;
+      const KB = curvB?.K ?? NaN;
+      values[i] = Number.isFinite(KA) && Number.isFinite(KB) ? Math.abs(KB - KA) : NaN;
+    }
+    return values;
+  }, [
+    compareDiffHeatmapEnabled,
+    compareDiffHeatmapAvailable,
+    compareSnapshotA?.surfaceId,
+    compareSnapshotB?.surfaceId,
+    compareSnapshotA?.graphExpr,
+    compareSnapshotB?.graphExpr,
+    graphExpr,
+    surfaceSampleSet,
+  ]);
+  const compareDiffHeatmapActive = !!compareDiffHeatmapValues?.length;
+
+  useEffect(() => {
+    if (compareDiffHeatmapEnabled && !compareDiffHeatmapAvailable) {
+      setCompareDiffHeatmapEnabled(false);
+    }
+  }, [compareDiffHeatmapEnabled, compareDiffHeatmapAvailable]);
 
   useEffect(() => {
     if (!compareEnabled) {
       setCompareCameraOverride(null);
       return;
     }
-    if (compareSnapshotA?.camera) {
-      setCameraOverride(compareSnapshotA.camera);
+    if (activeSnapshotA?.camera) {
+      setCameraOverride(activeSnapshotA.camera);
       setCameraOverrideToken((t) => t + 1);
     }
-    if (compareSnapshotB?.camera) {
-      setCompareCameraOverride(compareSnapshotB.camera);
+    if (activeSnapshotB?.camera) {
+      setCompareCameraOverride(activeSnapshotB.camera);
       setCompareCameraOverrideToken((t) => t + 1);
     }
-  }, [compareEnabled, compareSnapshotA?.camera, compareSnapshotB?.camera]);
+  }, [compareEnabled, activeSnapshotA?.camera, activeSnapshotB?.camera]);
 
   const activeGraphDomain = useMemo(
     () =>
@@ -3597,12 +3676,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
 
   const compareOverlayA = useMemo(
-    () => overlaySettingsForSnapshot(compareSnapshotA),
-    [compareSnapshotA, overlaySettingsForSnapshot]
+    () => overlaySettingsForSnapshot(activeSnapshotA),
+    [activeSnapshotA, overlaySettingsForSnapshot]
   );
   const compareOverlayB = useMemo(
-    () => overlaySettingsForSnapshot(compareSnapshotB),
-    [compareSnapshotB, overlaySettingsForSnapshot]
+    () => overlaySettingsForSnapshot(activeSnapshotB),
+    [activeSnapshotB, overlaySettingsForSnapshot]
   );
 
   const resolveSnapshotSurfaceId = useCallback(
@@ -3628,16 +3707,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
 
   const primarySurfaceId = compareEnabled
-    ? resolveSnapshotSurfaceId(compareSnapshotA, activeEqSurfaceId)
+    ? resolveSnapshotSurfaceId(activeSnapshotA, activeEqSurfaceId)
     : activeEqSurfaceId;
   const secondarySurfaceId = compareEnabled
-    ? resolveSnapshotSurfaceId(compareSnapshotB, compareSurfaceId)
+    ? resolveSnapshotSurfaceId(activeSnapshotB, compareSurfaceId)
     : compareSurfaceId;
   const primaryParamId = compareEnabled
-    ? resolveSnapshotParamId(compareSnapshotA, paramSurfaceIdForView)
+    ? resolveSnapshotParamId(activeSnapshotA, paramSurfaceIdForView)
     : paramSurfaceIdForView;
   const secondaryParamId = compareEnabled
-    ? resolveSnapshotParamId(compareSnapshotB, compareParamId)
+    ? resolveSnapshotParamId(activeSnapshotB, compareParamId)
     : compareParamId;
   const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
   const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
@@ -3684,7 +3763,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (compareIgnoreWorkbookOverlays) {
       setCompareIgnoreWorkbookOverlays(false);
     }
-  }, [compareEnabled, compareIgnoreWorkbookOverlays]);
+    if (compareUseSnapshotA) setCompareUseSnapshotA(false);
+    if (compareUseSnapshotB) setCompareUseSnapshotB(false);
+    if (compareDiffHeatmapEnabled) setCompareDiffHeatmapEnabled(false);
+  }, [
+    compareEnabled,
+    compareIgnoreWorkbookOverlays,
+    compareUseSnapshotA,
+    compareUseSnapshotB,
+    compareDiffHeatmapEnabled,
+  ]);
 
   useEffect(() => {
     saveArray("mathapp.domainPresets.graph.v1", graphDomainPresets);
@@ -4301,6 +4389,7 @@ case "mobius":
     setDatasetKind("surface");
     setSurfaceViewerKind("param");
     setParamSurfaceId(id);
+    if (compareEnabled) setCompareUseSnapshotA(false);
   };
 
   const handlePickEqSurface = (id: SurfaceId) => {
@@ -4312,6 +4401,7 @@ case "mobius":
       setSurfaceViewerKind("implicit");
       setImplicitSurfaceId(id);
     }
+    if (compareEnabled) setCompareUseSnapshotA(false);
   };
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
@@ -4997,6 +5087,22 @@ case "mobius":
       viewerKind: surfaceViewerKind,
       surfaceId: activeEqSurfaceId,
       paramId: paramSurfaceId,
+      graphExpr: surfaceViewerKind === "graph" ? graphExpr : undefined,
+      implicitExpr: surfaceViewerKind === "implicit" ? activeImplicitExpr : undefined,
+      paramXExpr: surfaceViewerKind === "param" ? paramXExpr : undefined,
+      paramYExpr: surfaceViewerKind === "param" ? paramYExpr : undefined,
+      paramZExpr: surfaceViewerKind === "param" ? paramZExpr : undefined,
+      weierstrassGExpr: surfaceViewerKind === "weierstrass" ? weierstrassGExpr : undefined,
+      weierstrassPhiExpr: surfaceViewerKind === "weierstrass" ? weierstrassPhiExpr : undefined,
+      weierstrassRecenter: surfaceViewerKind === "weierstrass" ? weierstrassRecenter : undefined,
+      graphDomain: surfaceViewerKind === "graph" ? activeGraphDomain : undefined,
+      implicitDomain: surfaceViewerKind === "implicit" ? activeImplicitDomain : undefined,
+      paramDomain: surfaceViewerKind === "param" ? activeParamDomain : undefined,
+      weierstrassDomain: surfaceViewerKind === "weierstrass" ? activeWeierstrassDomain : undefined,
+      graphResolution: surfaceViewerKind === "graph" ? graphResolution : undefined,
+      implicitResolution: surfaceViewerKind === "implicit" ? implicitResolution : undefined,
+      paramResolution: surfaceViewerKind === "param" ? paramResolution : undefined,
+      weierstrassResolution: surfaceViewerKind === "weierstrass" ? weierstrassResolution : undefined,
       colorMode,
       colorPalette,
       showWireframe,
@@ -5030,6 +5136,22 @@ case "mobius":
     surfaceViewerKind,
     activeEqSurfaceId,
     paramSurfaceId,
+    graphExpr,
+    activeImplicitExpr,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassRecenter,
+    activeGraphDomain,
+    activeImplicitDomain,
+    activeParamDomain,
+    activeWeierstrassDomain,
+    graphResolution,
+    implicitResolution,
+    paramResolution,
+    weierstrassResolution,
     colorMode,
     colorPalette,
     showWireframe,
@@ -5146,8 +5268,10 @@ case "mobius":
   );
 
   const handleApplyVisualize = useCallback(
-    (snapshot: WorkbookViewSnapshot, blockId?: string) => {
+    (snapshot: WorkbookViewSnapshot, blockId?: string, slot?: WorkbookSnapshotSlot) => {
       if (blockId) setCompareBlockId(blockId);
+      if (slot === "A") setCompareUseSnapshotA(true);
+      if (slot === "B") setCompareUseSnapshotB(true);
       if (snapshot.datasetKind === "volume") {
         setDatasetKind("volume");
       } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
@@ -5161,6 +5285,48 @@ case "mobius":
         if (snapshot.surfaceId) setGraphSurfaceId(snapshot.surfaceId);
       } else if (snapshot.viewerKind === "implicit") {
         if (snapshot.surfaceId) setImplicitSurfaceId(snapshot.surfaceId);
+      }
+
+      if (snapshot.graphExpr != null) setGraphExpr(snapshot.graphExpr);
+      if (snapshot.implicitExpr != null) setImplicitExpr(snapshot.implicitExpr);
+      if (snapshot.paramXExpr != null) setParamXExpr(snapshot.paramXExpr);
+      if (snapshot.paramYExpr != null) setParamYExpr(snapshot.paramYExpr);
+      if (snapshot.paramZExpr != null) setParamZExpr(snapshot.paramZExpr);
+      if (snapshot.weierstrassGExpr != null) setWeierstrassGExpr(snapshot.weierstrassGExpr);
+      if (snapshot.weierstrassPhiExpr != null) setWeierstrassPhiExpr(snapshot.weierstrassPhiExpr);
+      if (snapshot.weierstrassRecenter != null) setWeierstrassRecenter(snapshot.weierstrassRecenter);
+      if (snapshot.graphResolution != null) setGraphResolution(Math.max(10, Math.round(snapshot.graphResolution)));
+      if (snapshot.implicitResolution != null) setImplicitResolution(Math.max(8, Math.round(snapshot.implicitResolution)));
+      if (snapshot.paramResolution != null) setParamResolution(Math.max(10, Math.round(snapshot.paramResolution)));
+      if (snapshot.weierstrassResolution != null) {
+        setWeierstrassResolution(Math.max(10, Math.round(snapshot.weierstrassResolution)));
+      }
+      if (snapshot.graphDomain && snapshot.surfaceId && isGraphSurface(snapshot.surfaceId)) {
+        setGraphDomains((prev) => ({
+          ...prev,
+          [snapshot.surfaceId]: normalizeGraphDomain(snapshot.graphDomain, getDefaultGraphSpan(snapshot.surfaceId)),
+        }));
+      }
+      if (snapshot.implicitDomain && snapshot.surfaceId && isImplicitSurface(snapshot.surfaceId)) {
+        setImplicitDomains((prev) => ({
+          ...prev,
+          [snapshot.surfaceId]: normalizeImplicitDomain(
+            snapshot.implicitDomain,
+            getDefaultImplicitDomain(snapshot.surfaceId)
+          ),
+        }));
+      }
+      if (snapshot.paramDomain && snapshot.paramId) {
+        setParamDomains((prev) => ({
+          ...prev,
+          [snapshot.paramId]: normalizeParamDomain(
+            snapshot.paramDomain,
+            getParamDomainPreviewBounds(snapshot.paramId)
+          ),
+        }));
+      }
+      if (snapshot.weierstrassDomain) {
+        setWeierstrassDomain(normalizeParamDomain(snapshot.weierstrassDomain, WEIERSTRASS_DEFAULTS.domain));
       }
 
       if (snapshot.colorMode) setColorMode(snapshot.colorMode);
@@ -5197,6 +5363,22 @@ case "mobius":
       setParamSurfaceId,
       setGraphSurfaceId,
       setImplicitSurfaceId,
+      setGraphExpr,
+      setImplicitExpr,
+      setParamXExpr,
+      setParamYExpr,
+      setParamZExpr,
+      setWeierstrassGExpr,
+      setWeierstrassPhiExpr,
+      setWeierstrassRecenter,
+      setGraphResolution,
+      setImplicitResolution,
+      setParamResolution,
+      setWeierstrassResolution,
+      setGraphDomains,
+      setImplicitDomains,
+      setParamDomains,
+      setWeierstrassDomain,
       setColorMode,
       setColorPalette,
       setShowWireframe,
@@ -5220,6 +5402,8 @@ case "mobius":
       setVolumeShowIsosurface,
       setVolumeShowStreamlines,
       setCompareBlockId,
+      setCompareUseSnapshotA,
+      setCompareUseSnapshotB,
     ]
   );
 
@@ -5331,6 +5515,18 @@ case "mobius":
     ];
   }, [workbookCurveOverlay]);
 
+  const workbookCurveOverlayGhostGroups = useMemo(() => {
+    if (!workbookGhostOverlaysEnabled || !workbookCurveOverlayGhost?.length) return null;
+    return [
+      {
+        lines: workbookCurveOverlayGhost,
+        color: 0x16a34a,
+        opacity: 0.2,
+        radiusScale: 1.05,
+      },
+    ];
+  }, [workbookCurveOverlayGhost, workbookGhostOverlaysEnabled]);
+
   const workbookDirectionOverlayGroups = useMemo(() => {
     if (!workbookDirectionOverlay?.length) return null;
     return [
@@ -5343,13 +5539,33 @@ case "mobius":
     ];
   }, [workbookDirectionOverlay]);
 
+  const workbookDirectionOverlayGhostGroups = useMemo(() => {
+    if (!workbookGhostOverlaysEnabled || !workbookDirectionOverlayGhost?.length) return null;
+    return [
+      {
+        lines: workbookDirectionOverlayGhost,
+        color: 0xf97316,
+        opacity: 0.2,
+        radiusScale: 1.1,
+      },
+    ];
+  }, [workbookDirectionOverlayGhost, workbookGhostOverlaysEnabled]);
+
   const combinedOverlayPolylineGroups = useMemo(() => {
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
+    if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
+    if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
     if (workbookCurveOverlayGroups?.length) groups.push(...workbookCurveOverlayGroups);
     if (workbookDirectionOverlayGroups?.length) groups.push(...workbookDirectionOverlayGroups);
     return groups.length ? groups : null;
-  }, [complexMapOverlayPolylineGroups, workbookCurveOverlayGroups, workbookDirectionOverlayGroups]);
+  }, [
+    complexMapOverlayPolylineGroups,
+    workbookCurveOverlayGhostGroups,
+    workbookDirectionOverlayGhostGroups,
+    workbookCurveOverlayGroups,
+    workbookDirectionOverlayGroups,
+  ]);
 
   const compareOverlayPolylineGroups = useMemo(() => {
     if (!compareIgnoreWorkbookOverlays) return combinedOverlayPolylineGroups;
@@ -7710,10 +7926,10 @@ case "mobius":
           if (outputs.geodesicHeat.message != null) setGeodesicHeatMessage(outputs.geodesicHeat.message);
         }
         if (outputs.curveOverlay) {
-          setWorkbookCurveOverlay(outputs.curveOverlay.polylines ?? null);
+          applyWorkbookCurveOverlay(outputs.curveOverlay.polylines ?? null);
         }
         if (outputs.directionOverlay) {
-          setWorkbookDirectionOverlay(outputs.directionOverlay.polylines ?? null);
+          applyWorkbookDirectionOverlay(outputs.directionOverlay.polylines ?? null);
         }
         if (outputs.selectionMask?.indices?.length) {
           const mask = buildSelectionMaskFromIndices(outputs.selectionMask.indices);
@@ -7795,7 +8011,7 @@ case "mobius":
             summary = "Draw a curve before running.";
           } else {
             const polylines: PolylineSet = [curve.points];
-            setWorkbookCurveOverlay(polylines);
+            applyWorkbookCurveOverlay(polylines);
             outputs = { curveOverlay: { polylines } };
             summary = "Curve overlay applied.";
           }
@@ -7826,7 +8042,7 @@ case "mobius":
             const dir = vNormalize(directionOut.direction);
             const end = vAdd(directionOut.origin, vScale(dir, length));
             const polylines: PolylineSet = [[directionOut.origin, end]];
-            setWorkbookDirectionOverlay(polylines);
+            applyWorkbookDirectionOverlay(polylines);
             outputs = { directionOverlay: { polylines } };
             summary = "Direction overlay applied.";
           }
@@ -8051,8 +8267,8 @@ case "mobius":
       setGeodesicPathStart,
       setSelectionMask,
       setSelectionMaskOverride,
-      setWorkbookCurveOverlay,
-      setWorkbookDirectionOverlay,
+      applyWorkbookCurveOverlay,
+      applyWorkbookDirectionOverlay,
       setShowContours,
       setShowChartGrid,
       setShowPrincipalDirections,
@@ -9084,16 +9300,25 @@ case "mobius":
               compareEnabled={compareEnabled}
               compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
               compareCameraSync={compareCameraSync}
+              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
                 if (rightPanelTab !== "workbook") setCameraSync(null);
               }}
               onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
               onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
               compareSurfaceId={compareSurfaceId}
-              onChangeCompareSurface={setCompareSurfaceId}
+              onChangeCompareSurface={(id) => {
+                setCompareSurfaceId(id);
+                setCompareUseSnapshotB(false);
+              }}
               compareParamId={compareParamId}
-              onChangeCompareParamId={setCompareParamId}
+              onChangeCompareParamId={(id) => {
+                setCompareParamId(id);
+                setCompareUseSnapshotB(false);
+              }}
             />
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -9964,8 +10189,14 @@ case "mobius":
                         geodesicHeatPolylines={geodesicHeatPolylines}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                        overlayHeatmapValues={complexMapHeatmapActive ? complexMapDistortionValues3d : null}
-                        overlayHeatmapEnabled={complexMapHeatmapActive}
+                        overlayHeatmapValues={
+                          compareDiffHeatmapActive
+                            ? compareDiffHeatmapValues
+                            : complexMapHeatmapActive
+                            ? complexMapDistortionValues3d
+                            : null
+                        }
+                        overlayHeatmapEnabled={compareDiffHeatmapActive || complexMapHeatmapActive}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
                         overlayPolylineGroups={combinedOverlayPolylineGroups}
@@ -10284,6 +10515,8 @@ case "mobius":
                   onImportJson={handleImportWorkbooks}
                   currentDatasetRef={currentDatasetRef}
                   cameraReady={!!cameraSync}
+                  ghostOverlaysEnabled={workbookGhostOverlaysEnabled}
+                  onToggleGhostOverlays={(next) => setWorkbookGhostOverlaysEnabled(next)}
                 />
               )}
             </div>
@@ -10501,9 +10734,12 @@ type SurfacesControlsProps = {
   compareEnabled: boolean;
   compareIgnoreWorkbookOverlays: boolean;
   compareCameraSync: boolean;
+  compareDiffHeatmapEnabled: boolean;
+  compareDiffHeatmapAvailable: boolean;
   onToggleCompare: () => void;
   onToggleCompareIgnoreWorkbookOverlays: () => void;
   onToggleCompareCameraSync: () => void;
+  onToggleCompareDiffHeatmap: () => void;
   compareSurfaceId: SurfaceId;
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
@@ -10525,9 +10761,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   compareEnabled,
   compareIgnoreWorkbookOverlays,
   compareCameraSync,
+  compareDiffHeatmapEnabled,
+  compareDiffHeatmapAvailable,
   onToggleCompare,
   onToggleCompareIgnoreWorkbookOverlays,
   onToggleCompareCameraSync,
+  onToggleCompareDiffHeatmap,
   compareSurfaceId,
   onChangeCompareSurface,
   compareParamId,
@@ -10765,6 +11004,18 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 onChange={onToggleCompareCameraSync}
               />
               Sync cameras
+            </label>
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+              title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
+            >
+              <input
+                type="checkbox"
+                checked={compareDiffHeatmapEnabled}
+                onChange={onToggleCompareDiffHeatmap}
+                disabled={!compareDiffHeatmapAvailable}
+              />
+              Diff heatmap
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
               <input
