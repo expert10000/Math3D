@@ -128,6 +128,9 @@ import {
 import { buildSliceSeeds } from "./scene/volume/streamlines";
 import {
   createDefaultWorkbook,
+  createWorkbookFromTemplate,
+  WORKBOOK_TEMPLATES,
+  WORKBOOK_PROBLEM_PACKS,
   type Workbook,
   type WorkbookBlock,
   type WorkbookBlockType,
@@ -4448,6 +4451,28 @@ case "mobius":
     const wb = createDefaultWorkbook(makeId);
     setWorkbooks((prev) => [wb, ...prev]);
     setActiveWorkbookId(wb.id);
+    setActiveStageId("define");
+  }, []);
+
+  const handleCreateWorkbookFromTemplate = useCallback((templateId: string) => {
+    const wb = createWorkbookFromTemplate(templateId, makeId);
+    if (!wb) return;
+    setWorkbooks((prev) => [wb, ...prev]);
+    setActiveWorkbookId(wb.id);
+    setActiveStageId("define");
+  }, []);
+
+  const handleCreateWorkbooksFromPack = useCallback((packId: string) => {
+    const pack = WORKBOOK_PROBLEM_PACKS.find((p) => p.id === packId);
+    if (!pack) return;
+    const created: Workbook[] = [];
+    for (const templateId of pack.templateIds) {
+      const wb = createWorkbookFromTemplate(templateId, makeId);
+      if (wb) created.push(wb);
+    }
+    if (!created.length) return;
+    setWorkbooks((prev) => [...created, ...prev]);
+    setActiveWorkbookId(created[0].id);
     setActiveStageId("define");
   }, []);
 
@@ -10477,6 +10502,8 @@ case "mobius":
                   workbookStatus={workbookStatus}
                   onSelectWorkbook={setActiveWorkbookId}
                   onCreateWorkbook={handleCreateWorkbook}
+                  onCreateWorkbookFromTemplate={handleCreateWorkbookFromTemplate}
+                  onCreateWorkbooksFromPack={handleCreateWorkbooksFromPack}
                   onDuplicateWorkbook={handleDuplicateWorkbook}
                   onDeleteWorkbook={handleDeleteWorkbook}
                   onRenameWorkbook={handleRenameWorkbook}
@@ -10517,6 +10544,8 @@ case "mobius":
                   cameraReady={!!cameraSync}
                   ghostOverlaysEnabled={workbookGhostOverlaysEnabled}
                   onToggleGhostOverlays={(next) => setWorkbookGhostOverlaysEnabled(next)}
+                  templates={WORKBOOK_TEMPLATES}
+                  problemPacks={WORKBOOK_PROBLEM_PACKS}
                 />
               )}
             </div>

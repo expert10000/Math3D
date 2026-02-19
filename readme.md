@@ -509,6 +509,33 @@ Ghost overlays:
 - Toggle **Ghost overlays** in the Workbook header.
 - Only workbook curve/direction overlays are ghosted (selection masks are unchanged).
 
+### Templates + problem packs
+
+Math3D ships with a template library so you can spin up structured workbooks quickly.
+
+How to use:
+
+- Open **Workbook** → expand **Templates & problem packs**.
+- Search by keyword or click tag chips (e.g., `geodesics`, `atlas`, `curvature`).
+- Click **Use template** to create a new workbook from that template.
+- Click **Create all templates** on a problem pack to add all its templates at once.
+
+Built‑in templates (examples):
+
+- **Compute curvature** — curvature field + interpretation.
+- **Geodesics from point** — heat method + shortest path.
+- **Chart + basis** — chart grid and tangent basis.
+- **Transport demo** — direction overlay workflow.
+- **Selection + stats** — selection overlay + curvature context.
+- **Principal directions** — curvature + principal direction glyphs.
+- **Curve overlay demo** — draw curves with ghost overlays.
+
+Problem packs bundle templates with metadata:
+
+- Topic, difficulty, and prerequisites.
+- Required operators and suggested stages.
+- Tags for filtering in the library browser.
+
 ### Command console
 
 An inline command interface supports quick changes without hunting through controls:

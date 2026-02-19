@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { uiStyles as styles } from "../uiStyles";
 import type {
   Workbook,
@@ -10,6 +10,8 @@ import type {
   WorkbookParamValue,
   WorkbookInteractionKind,
   WorkbookSnapshotSlot,
+  WorkbookTemplateSpec,
+  WorkbookProblemPack,
 } from "../workbook/workbookModel";
 import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
@@ -25,6 +27,8 @@ type WorkbookPanelProps = {
   paramCatalog: WorkbookParamDef[];
   onSelectWorkbook: (id: string) => void;
   onCreateWorkbook: () => void;
+  onCreateWorkbookFromTemplate: (templateId: string) => void;
+  onCreateWorkbooksFromPack: (packId: string) => void;
   onDuplicateWorkbook: (id: string) => void;
   onDeleteWorkbook: (id: string) => void;
   onRenameWorkbook: (id: string, title: string) => void;
@@ -69,6 +73,8 @@ type WorkbookPanelProps = {
   cameraReady: boolean;
   ghostOverlaysEnabled: boolean;
   onToggleGhostOverlays: (enabled: boolean) => void;
+  templates: WorkbookTemplateSpec[];
+  problemPacks: WorkbookProblemPack[];
 };
 
 const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
@@ -426,6 +432,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   activeStageId,
   onSelectWorkbook,
   onCreateWorkbook,
+  onCreateWorkbookFromTemplate,
+  onCreateWorkbooksFromPack,
   onDuplicateWorkbook,
   onDeleteWorkbook,
   onRenameWorkbook,
@@ -463,6 +471,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   paramCatalog,
   ghostOverlaysEnabled,
   onToggleGhostOverlays,
+  templates,
+  problemPacks,
 }) => {
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -474,6 +484,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   );
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [libraryTags, setLibraryTags] = useState<string[]>([]);
   const issueCursorRef = useRef(0);
 
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
@@ -518,6 +530,33 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     () =>
       outlineItems.filter((item) => item.status.state === "stale" || item.status.state === "fail"),
     [outlineItems]
+  );
+  const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
+  const allLibraryTags = useMemo(() => {
+    const set = new Set<string>();
+    templates.forEach((t) => t.tags.forEach((tag) => set.add(tag)));
+    problemPacks.forEach((p) => p.tags.forEach((tag) => set.add(tag)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [templates, problemPacks]);
+  const matchesLibrary = useCallback(
+    (title: string, description: string, tags: string[]) => {
+      const q = libraryQuery.trim().toLowerCase();
+      if (q) {
+        const hay = `${title} ${description} ${tags.join(" ")}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (!libraryTags.length) return true;
+      return libraryTags.some((tag) => tags.includes(tag));
+    },
+    [libraryQuery, libraryTags]
+  );
+  const filteredTemplates = useMemo(
+    () => templates.filter((t) => matchesLibrary(t.title, t.description, t.tags)),
+    [templates, matchesLibrary]
+  );
+  const filteredPacks = useMemo(
+    () => problemPacks.filter((p) => matchesLibrary(p.title, p.description, p.tags)),
+    [problemPacks, matchesLibrary]
   );
   const hasStale = useMemo(
     () => Object.values(computeStatusById).some((status) => status === "stale"),
@@ -742,6 +781,202 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           />
         </div>
       </div>
+
+      <details style={{ marginBottom: 10 }}>
+        <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          Templates & problem packs
+        </summary>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+          <input
+            type="text"
+            value={libraryQuery}
+            onChange={(e) => setLibraryQuery(e.target.value)}
+            placeholder="Search templates and packs..."
+            style={{ padding: "4px 6px", fontSize: 12 }}
+          />
+          {allLibraryTags.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {allLibraryTags.map((tag) => {
+                const active = libraryTags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => {
+                      setLibraryTags((prev) =>
+                        prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                      );
+                    }}
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      border: "1px solid " + (active ? "#1f3556" : "#e2e8f0"),
+                      background: active ? "#e6f0ff" : "#fff",
+                      color: active ? "#1f3556" : "#475569",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+              {libraryTags.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setLibraryTags([])}
+                  style={{ padding: "2px 8px", fontSize: 10 }}
+                >
+                  Clear tags
+                </button>
+              )}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Templates</div>
+          {filteredTemplates.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filteredTemplates.map((t) => (
+                <div
+                  key={t.id}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 8,
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{t.title}</div>
+                    <button
+                      type="button"
+                      onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                      style={{ padding: "2px 8px", fontSize: 11 }}
+                    >
+                      Use template
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.8 }}>{t.description}</div>
+                  {t.requiredOperators?.length ? (
+                    <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
+                      Required operators: {t.requiredOperators.join(", ")}
+                    </div>
+                  ) : null}
+                  {t.suggestedStages?.length ? (
+                    <div style={{ fontSize: 10, opacity: 0.7 }}>
+                      Suggested stages: {t.suggestedStages.join(", ")}
+                    </div>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                    {t.tags.map((tag) => (
+                      <span
+                        key={`${t.id}-${tag}`}
+                        style={{
+                          padding: "1px 6px",
+                          borderRadius: 999,
+                          background: "#f1f5f9",
+                          fontSize: 10,
+                          color: "#334155",
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.65 }}>No templates match the filter.</div>
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 6 }}>Problem packs</div>
+          {filteredPacks.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filteredPacks.map((pack) => {
+                const packTemplates = pack.templateIds
+                  .map((id) => templateById.get(id))
+                  .filter(Boolean) as WorkbookTemplateSpec[];
+                return (
+                  <div
+                    key={pack.id}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: 8,
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{pack.title}</div>
+                      <button
+                        type="button"
+                        onClick={() => onCreateWorkbooksFromPack(pack.id)}
+                        style={{ padding: "2px 8px", fontSize: 11 }}
+                      >
+                        Create all templates
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.8 }}>{pack.description}</div>
+                    <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
+                      Topic: {pack.topic} · Difficulty: {pack.difficulty}
+                    </div>
+                    {pack.prerequisites.length > 0 && (
+                      <div style={{ fontSize: 10, opacity: 0.7 }}>
+                        Prerequisites: {pack.prerequisites.join(", ")}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10, opacity: 0.7 }}>
+                      Required operators: {pack.requiredOperators.join(", ")}
+                    </div>
+                    <div style={{ fontSize: 10, opacity: 0.7 }}>
+                      Suggested stages: {pack.suggestedStages.join(", ")}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                      {pack.tags.map((tag) => (
+                        <span
+                          key={`${pack.id}-${tag}`}
+                          style={{
+                            padding: "1px 6px",
+                            borderRadius: 999,
+                            background: "#f1f5f9",
+                            fontSize: 10,
+                            color: "#334155",
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                    {packTemplates.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                        {packTemplates.map((t) => (
+                          <div
+                            key={`${pack.id}-${t.id}`}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+                          >
+                            <div style={{ fontSize: 11 }}>{t.title}</div>
+                            <button
+                              type="button"
+                              onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                              style={{ padding: "2px 8px", fontSize: 11 }}
+                            >
+                              Use template
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.65 }}>No problem packs match the filter.</div>
+          )}
+        </div>
+      </details>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         {WORKBOOK_STAGE_ORDER.map((stage, idx) => (
