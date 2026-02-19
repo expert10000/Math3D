@@ -182,6 +182,18 @@ const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
 const WORKBOOK_GHOST_OVERLAYS_KEY = "math3d.workbook.ghostOverlays.v1";
+type WorkbookReplayPayload = {
+  workbooks: Workbook[];
+  activeWorkbookId?: string | null;
+  activeStageId?: WorkbookStageId;
+};
+const REPLAY_PAYLOAD: WorkbookReplayPayload | null = (() => {
+  const anyWin = globalThis as any;
+  const payload = anyWin?.__MATH3D_REPLAY__;
+  if (!payload || !Array.isArray(payload.workbooks)) return null;
+  return payload as WorkbookReplayPayload;
+})();
+const IS_REPLAY_MODE = !!REPLAY_PAYLOAD;
 const COMPARE_IGNORE_OVERLAYS_KEY = "math3d.compare.ignoreWorkbookOverlays.v1";
 const COMPARE_CAMERA_SYNC_KEY = "math3d.compare.cameraSync.v1";
 const WORKBOOK_STAGE_IDS: WorkbookStageId[] = ["define", "compute", "visualize", "explain"];
@@ -974,6 +986,7 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
 }
 
 function loadWorkbooks(): Workbook[] {
+  if (REPLAY_PAYLOAD?.workbooks?.length) return normalizeWorkbooks(REPLAY_PAYLOAD.workbooks);
   const raw = safeParseArray<Workbook>(localStorage.getItem(WORKBOOK_STORAGE_KEY));
   if (raw.length > 0) return normalizeWorkbooks(raw);
   return [createDefaultWorkbook(makeId)];
@@ -992,6 +1005,404 @@ function sanitizeFileBase(label: string, fallback: string) {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return cleaned || fallback;
 }
+
+const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
+  text: "Text",
+  formula: "Formula",
+  visualize: "Visualize",
+  compute: "Compute",
+  interaction: "Interact",
+  assert: "Assert",
+};
+
+const formatExportTimestamp = (ts: number) => {
+  if (!Number.isFinite(ts)) return "unknown";
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return new Date(ts).toISOString();
+  }
+};
+
+const formatSpan = (value: number) => (Number.isFinite(value) ? value.toFixed(2) : "?");
+
+const formatSpanDomain = (domain?: { xSpan: number; ySpan: number }) =>
+  domain ? `x±${formatSpan(domain.xSpan)} y±${formatSpan(domain.ySpan)}` : null;
+
+const formatParamDomain = (domain?: { uMin: number; uMax: number; vMin: number; vMax: number }) =>
+  domain
+    ? `u:${formatSpan(domain.uMin)}..${formatSpan(domain.uMax)} v:${formatSpan(domain.vMin)}..${formatSpan(domain.vMax)}`
+    : null;
+
+const buildSnapshotDetails = (snapshot: WorkbookViewSnapshot) => {
+  const details: string[] = [];
+  if (snapshot.datasetRef) details.push(`Dataset: ${snapshot.datasetRef}`);
+  if (snapshot.datasetKind) details.push(`Dataset kind: ${snapshot.datasetKind}`);
+  if (snapshot.viewerKind) details.push(`Viewer: ${snapshot.viewerKind}`);
+  if (snapshot.surfaceId) details.push(`Surface: ${snapshot.surfaceId}`);
+  if (snapshot.paramId) details.push(`Param surface: ${snapshot.paramId}`);
+  if (snapshot.graphExpr) details.push(`Graph: ${snapshot.graphExpr}`);
+  if (snapshot.implicitExpr) details.push(`Implicit: ${snapshot.implicitExpr}`);
+  if (snapshot.paramXExpr || snapshot.paramYExpr || snapshot.paramZExpr) {
+    details.push(
+      `Param: x=${snapshot.paramXExpr ?? "?"}, y=${snapshot.paramYExpr ?? "?"}, z=${snapshot.paramZExpr ?? "?"}`
+    );
+  }
+  if (snapshot.weierstrassGExpr || snapshot.weierstrassPhiExpr) {
+    details.push(
+      `Weierstrass: g=${snapshot.weierstrassGExpr ?? "?"}, phi=${snapshot.weierstrassPhiExpr ?? "?"}`
+    );
+  }
+  const graphDomain = formatSpanDomain(snapshot.graphDomain);
+  if (graphDomain) details.push(`Graph domain: ${graphDomain}`);
+  const implicitDomain = formatSpanDomain(snapshot.implicitDomain);
+  if (implicitDomain) details.push(`Implicit domain: ${implicitDomain}`);
+  const paramDomain = formatParamDomain(snapshot.paramDomain);
+  if (paramDomain) details.push(`Param domain: ${paramDomain}`);
+  const weierstrassDomain = formatParamDomain(snapshot.weierstrassDomain);
+  if (weierstrassDomain) details.push(`Weierstrass domain: ${weierstrassDomain}`);
+  if (snapshot.graphResolution) details.push(`Graph resolution: ${snapshot.graphResolution}`);
+  if (snapshot.implicitResolution) details.push(`Implicit resolution: ${snapshot.implicitResolution}`);
+  if (snapshot.paramResolution) details.push(`Param resolution: ${snapshot.paramResolution}`);
+  if (snapshot.weierstrassResolution) details.push(`Weierstrass resolution: ${snapshot.weierstrassResolution}`);
+  if (snapshot.colorMode) details.push(`Color mode: ${snapshot.colorMode}`);
+  if (snapshot.colorPalette) details.push(`Color palette: ${snapshot.colorPalette}`);
+  return details;
+};
+
+const downloadTextFile = (contents: string, filename: string, mime = "text/plain") => {
+  const blob = new Blob([contents], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string | null) => {
+  const exportedAt = formatExportTimestamp(Date.now());
+  if (!workbooks.length) {
+    return ["# Math3D Workbook Export", `_Exported ${exportedAt}_`, "_No workbooks available._"].join("\n\n");
+  }
+  const multi = workbooks.length > 1;
+  const lines: string[] = [];
+  if (multi) {
+    lines.push("# Math3D Workbook Export");
+    lines.push(`_Exported ${exportedAt}_`);
+  }
+  workbooks.forEach((workbook) => {
+    const titleLine = `${multi ? "##" : "#"} ${workbook.title}${workbook.id === activeWorkbookId ? " (active)" : ""}`;
+    lines.push(titleLine);
+    if (!multi) lines.push(`_Exported ${exportedAt}_`);
+    lines.push(`_Last updated ${formatExportTimestamp(workbook.updatedAt)}_`);
+
+    workbook.stages.forEach((stage, stageIndex) => {
+      lines.push(`${multi ? "###" : "##"} ${stageIndex + 1}. ${stage.title}`);
+      if (!stage.blocks.length) {
+        lines.push("_No blocks in this stage._");
+        return;
+      }
+      stage.blocks.forEach((block, blockIndex) => {
+        const blockLabel = WORKBOOK_EXPORT_BLOCK_LABELS[block.type];
+        const blockTitle = block.title || blockLabel;
+        lines.push(`${multi ? "####" : "###"} ${stageIndex + 1}.${blockIndex + 1} ${blockTitle}`);
+        lines.push(`Type: ${blockLabel}`);
+        if (block.type === "text") {
+          lines.push(block.text?.trim() ? block.text : "_(No text)_");
+        } else if (block.type === "formula") {
+          lines.push("```");
+          lines.push(block.formula ?? "");
+          lines.push("```");
+        } else if (block.type === "compute") {
+          lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
+          if (block.compute?.status) lines.push(`Status: ${block.compute.status}`);
+          if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
+        } else if (block.type === "interaction") {
+          if (block.interaction?.kind) lines.push(`Interaction: ${block.interaction.kind}`);
+          if (block.interaction?.summary) lines.push(`Summary: ${block.interaction.summary}`);
+        } else if (block.type === "assert") {
+          if (block.assert?.expected) lines.push(`Expected: ${block.assert.expected}`);
+          if (block.assert?.status) lines.push(`Status: ${block.assert.status}`);
+        } else if (block.type === "visualize") {
+          const note = block.visualize?.notes?.trim();
+          if (note) lines.push(`> ${note}`);
+          const snapshots: { label: string; snap: WorkbookViewSnapshot | null }[] = [
+            { label: "A", snap: resolveVisualizeSnapshot(block.visualize, "A") },
+            { label: "B", snap: resolveVisualizeSnapshot(block.visualize, "B") },
+          ];
+          snapshots.forEach(({ label, snap }) => {
+            lines.push(`**Snapshot ${label}**`);
+            if (snap?.thumbnail) {
+              lines.push(`![Snapshot ${label}](${snap.thumbnail})`);
+            } else {
+              lines.push("_(No thumbnail)_");
+            }
+            if (snap) {
+              lines.push(`Captured: ${formatExportTimestamp(snap.capturedAt)}`);
+              const details = buildSnapshotDetails(snap);
+              if (details.length) lines.push(details.map((d) => `- ${d}`).join("\n"));
+            }
+          });
+        }
+        const params = block.params;
+        if (params?.defs?.length) {
+          const paramSummary = params.defs
+            .map((def) => {
+              const value = params.values?.[def.id] ?? def.defaultValue ?? "";
+              return `${def.label}=${String(value)}`;
+            })
+            .join(", ");
+          if (paramSummary) lines.push(`Params: ${paramSummary}`);
+        }
+      });
+    });
+  });
+  return lines.join("\n\n");
+};
+
+const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null) => {
+  const exportedAt = formatExportTimestamp(Date.now());
+  const multi = workbooks.length > 1;
+  const hasWorkbooks = workbooks.length > 0;
+  const bookTitle = multi ? "Math3D Workbook Export" : workbooks[0]?.title ?? "Math3D Workbook Export";
+  const styles = `
+    :root { color-scheme: light; }
+    body { margin: 0; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; background: #f8fafc; color: #0f172a; }
+    .report { max-width: 980px; margin: 0 auto; padding: 24px 28px 40px; }
+    .report h1 { margin: 0 0 6px; font-size: 26px; }
+    .report h2 { margin: 24px 0 8px; font-size: 22px; }
+    .report h3 { margin: 16px 0 6px; font-size: 18px; color: #1e293b; }
+    .meta { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+    .workbook { margin-top: 20px; }
+    .stage { margin-top: 12px; }
+    .block { margin-top: 12px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+    .block-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .block-title { font-size: 14px; font-weight: 700; }
+    .block-type { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; }
+    .block-body { margin-top: 8px; font-size: 12px; color: #1e293b; }
+    .block-body pre { margin: 0; white-space: pre-wrap; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+    .snapshot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 8px; }
+    .snapshot { border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; background: #f8fafc; }
+    .snapshot-title { font-size: 11px; font-weight: 700; color: #334155; margin-bottom: 6px; }
+    .snapshot img { width: 100%; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; }
+    .snapshot .missing { height: 120px; border-radius: 8px; border: 1px dashed #cbd5f5; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #64748b; }
+    .caption { font-size: 11px; color: #475569; margin-top: 6px; }
+    ul.details { margin: 6px 0 0; padding-left: 18px; font-size: 11px; color: #475569; }
+    .note { font-size: 12px; color: #334155; background: #f1f5f9; border-radius: 8px; padding: 6px 8px; }
+    @media print {
+      body { background: #fff; }
+      .block { break-inside: avoid; }
+      .snapshot { break-inside: avoid; }
+    }
+  `;
+
+  const snapshotHtml = (snap: WorkbookViewSnapshot | null, label: string) => {
+    if (!snap) {
+      return `
+        <div class="snapshot">
+          <div class="snapshot-title">Snapshot ${label}</div>
+          <div class="missing">No snapshot</div>
+        </div>
+      `;
+    }
+    const details = buildSnapshotDetails(snap);
+    const detailList = details.length
+      ? `<ul class="details">${details.map((d) => `<li>${escapeHtml(d)}</li>`).join("")}</ul>`
+      : "";
+    const caption = `Captured ${formatExportTimestamp(snap.capturedAt)}`;
+    const image = snap.thumbnail
+      ? `<img src="${snap.thumbnail}" alt="Snapshot ${label}" />`
+      : `<div class="missing">No thumbnail</div>`;
+    return `
+      <div class="snapshot">
+        <div class="snapshot-title">Snapshot ${label}</div>
+        ${image}
+        <div class="caption">${escapeHtml(caption)}</div>
+        ${detailList}
+      </div>
+    `;
+  };
+
+  const blocksHtml = (blocks: Workbook["stages"][number]["blocks"]) =>
+    blocks
+      .map((block, blockIndex) => {
+        const blockLabel = WORKBOOK_EXPORT_BLOCK_LABELS[block.type];
+        const blockTitle = block.title || blockLabel;
+        const paramsState = block.params;
+        const params =
+          paramsState?.defs?.length
+            ? `<div class="meta">Params: ${escapeHtml(
+                paramsState.defs
+                  .map((def) => {
+                    const value = paramsState.values?.[def.id] ?? def.defaultValue ?? "";
+                    return `${def.label}=${String(value)}`;
+                  })
+                  .join(", ")
+              )}</div>`
+            : "";
+        let body = "";
+        if (block.type === "text") {
+          body = `<div class="block-body"><pre>${escapeHtml(block.text ?? "")}</pre></div>`;
+        } else if (block.type === "formula") {
+          body = `<div class="block-body"><pre>${escapeHtml(block.formula ?? "")}</pre></div>`;
+        } else if (block.type === "compute") {
+          body = `<div class="block-body">
+            <div>Operator: ${escapeHtml(block.compute?.operatorId ?? "—")}</div>
+            ${block.compute?.status ? `<div>Status: ${escapeHtml(block.compute.status)}</div>` : ""}
+            ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
+          </div>`;
+        } else if (block.type === "interaction") {
+          body = `<div class="block-body">
+            ${block.interaction?.kind ? `<div>Interaction: ${escapeHtml(block.interaction.kind)}</div>` : ""}
+            ${block.interaction?.summary ? `<div>Summary: ${escapeHtml(block.interaction.summary)}</div>` : ""}
+          </div>`;
+        } else if (block.type === "assert") {
+          body = `<div class="block-body">
+            ${block.assert?.expected ? `<div>Expected: ${escapeHtml(block.assert.expected)}</div>` : ""}
+            ${block.assert?.status ? `<div>Status: ${escapeHtml(block.assert.status)}</div>` : ""}
+          </div>`;
+        } else if (block.type === "visualize") {
+          const note = block.visualize?.notes?.trim();
+          const snapA = resolveVisualizeSnapshot(block.visualize, "A");
+          const snapB = resolveVisualizeSnapshot(block.visualize, "B");
+          body = `<div class="block-body">
+            ${note ? `<div class="note">${escapeHtml(note)}</div>` : ""}
+            <div class="snapshot-grid">
+              ${snapshotHtml(snapA, "A")}
+              ${snapshotHtml(snapB, "B")}
+            </div>
+          </div>`;
+        }
+        return `
+          <div class="block">
+            <div class="block-header">
+              <div class="block-title">${escapeHtml(`${blockIndex + 1}. ${blockTitle}`)}</div>
+              <div class="block-type">${escapeHtml(blockLabel)}</div>
+            </div>
+            ${params}
+            ${body}
+          </div>
+        `;
+      })
+      .join("");
+
+  const workbooksHtml = hasWorkbooks
+    ? workbooks
+        .map((workbook, idx) => {
+          const title = escapeHtml(
+            `${workbook.title}${workbook.id === activeWorkbookId ? " (active)" : ""}`
+          );
+          const heading = multi ? `<h2>${idx + 1}. ${title}</h2>` : `<h1>${title}</h1>`;
+          const updated = `<div class="meta">Last updated ${escapeHtml(formatExportTimestamp(workbook.updatedAt))}</div>`;
+          const stages = workbook.stages
+            .map(
+              (stage, stageIndex) => `
+                <div class="stage">
+                  <h3>${stageIndex + 1}. ${escapeHtml(stage.title)}</h3>
+                  ${stage.blocks.length ? blocksHtml(stage.blocks) : `<div class="meta">No blocks.</div>`}
+                </div>
+              `
+            )
+            .join("");
+          return `<section class="workbook">${heading}${updated}${stages}</section>`;
+        })
+        .join("")
+    : `<div class="meta">No workbooks available.</div>`;
+
+  const header = multi
+    ? `<h1>${escapeHtml(bookTitle)}</h1><div class="meta">Exported ${escapeHtml(exportedAt)}</div>`
+    : `<div class="meta">Exported ${escapeHtml(exportedAt)}</div>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(bookTitle)}</title>
+    <style>${styles}</style>
+  </head>
+  <body>
+    <div class="report">
+      ${header}
+      ${workbooksHtml}
+    </div>
+  </body>
+</html>`;
+};
+
+type ReplayAssetBundle =
+  | { inline: true; cssText: string; jsText: string }
+  | { inline: false; cssLinks: string[]; scriptLinks: string[]; inlineStyles: string };
+
+const collectReplayAssets = async (): Promise<ReplayAssetBundle> => {
+  const inlineStyles = Array.from(document.querySelectorAll("style"))
+    .map((node) => node.textContent ?? "")
+    .filter(Boolean)
+    .join("\n");
+  const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+    .map((node) => (node as HTMLLinkElement).href)
+    .filter(Boolean);
+  const scriptLinks = Array.from(document.querySelectorAll('script[type="module"][src]'))
+    .map((node) => (node as HTMLScriptElement).src)
+    .filter(Boolean);
+
+  const fetchText = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+    return res.text();
+  };
+
+  try {
+    const cssTexts = await Promise.all(cssLinks.map(fetchText));
+    const jsTexts = await Promise.all(scriptLinks.map(fetchText));
+    return {
+      inline: true,
+      cssText: [inlineStyles, ...cssTexts].filter(Boolean).join("\n"),
+      jsText: jsTexts.join("\n\n"),
+    };
+  } catch {
+    return { inline: false, cssLinks, scriptLinks, inlineStyles };
+  }
+};
+
+const buildReplayHtml = (payload: WorkbookReplayPayload, assets: ReplayAssetBundle, title: string) => {
+  const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+  const safeTitle = escapeHtml(title);
+  const headParts: string[] = [];
+  if (assets.inline) {
+    headParts.push(`<style>${assets.cssText}</style>`);
+  } else {
+    if (assets.inlineStyles) headParts.push(`<style>${assets.inlineStyles}</style>`);
+    headParts.push(...assets.cssLinks.map((href) => `<link rel="stylesheet" href="${href}">`));
+  }
+  const scriptTag = assets.inline
+    ? `<script type="module">${assets.jsText.replace(/<\/script>/gi, "<\\/script>")}</script>`
+    : assets.scriptLinks.map((src) => `<script type="module" src="${src}"></script>`).join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    ${headParts.join("\n")}
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>window.__MATH3D_REPLAY__ = ${payloadJson};</script>
+    ${scriptTag}
+  </body>
+</html>`;
+};
 
 function autoLabelParamDomain(p: ParamDomain) {
   return `u:${p.uMin.toFixed(2)}..${p.uMax.toFixed(2)} v:${p.vMin.toFixed(2)}..${p.vMax.toFixed(2)}`;
@@ -1175,9 +1586,10 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 /* ---------------- App ---------------- */
 
 const App: React.FC = () => {
-  const [mode, setMode] = useState<Mode>("mobius");
+  const [mode, setMode] = useState<Mode>(IS_REPLAY_MODE ? "surfaces" : "mobius");
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     const api = window.appMenu;
     if (!api?.onModeChange) return;
     return api.onModeChange((next) => {
@@ -1187,14 +1599,17 @@ const App: React.FC = () => {
   }, []);
   const samples = 800;
   const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
+    if (IS_REPLAY_MODE) return "workbook";
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
-  const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() =>
-    localStorage.getItem(WORKBOOK_ACTIVE_KEY)
-  );
+  const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
+    if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
+    return localStorage.getItem(WORKBOOK_ACTIVE_KEY);
+  });
   const [activeStageId, setActiveStageId] = useState<WorkbookStageId>(() => {
+    if (isWorkbookStageId(REPLAY_PAYLOAD?.activeStageId ?? null)) return REPLAY_PAYLOAD?.activeStageId ?? "define";
     const saved = localStorage.getItem(WORKBOOK_STAGE_KEY);
     return isWorkbookStageId(saved) ? saved : "define";
   });
@@ -1250,10 +1665,12 @@ const App: React.FC = () => {
   }, [activeWorkbookId]);
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     saveArray(WORKBOOK_STORAGE_KEY, workbooks);
   }, [workbooks]);
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     try {
       if (activeWorkbookId) localStorage.setItem(WORKBOOK_ACTIVE_KEY, activeWorkbookId);
     } catch {
@@ -1262,6 +1679,7 @@ const App: React.FC = () => {
   }, [activeWorkbookId]);
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     try {
       localStorage.setItem(WORKBOOK_STAGE_KEY, activeStageId);
     } catch {
@@ -1270,6 +1688,7 @@ const App: React.FC = () => {
   }, [activeStageId]);
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     try {
       localStorage.setItem(WORKBOOK_PANEL_KEY, rightPanelTab);
     } catch {
@@ -1278,6 +1697,7 @@ const App: React.FC = () => {
   }, [rightPanelTab]);
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     try {
       localStorage.setItem(WORKBOOK_GHOST_OVERLAYS_KEY, workbookGhostOverlaysEnabled ? "1" : "0");
     } catch {
@@ -4448,6 +4868,7 @@ case "mobius":
   };
 
   const handleCreateWorkbook = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
     const wb = createDefaultWorkbook(makeId);
     setWorkbooks((prev) => [wb, ...prev]);
     setActiveWorkbookId(wb.id);
@@ -4455,6 +4876,7 @@ case "mobius":
   }, []);
 
   const handleCreateWorkbookFromTemplate = useCallback((templateId: string) => {
+    if (IS_REPLAY_MODE) return;
     const wb = createWorkbookFromTemplate(templateId, makeId);
     if (!wb) return;
     setWorkbooks((prev) => [wb, ...prev]);
@@ -4463,6 +4885,7 @@ case "mobius":
   }, []);
 
   const handleCreateWorkbooksFromPack = useCallback((packId: string) => {
+    if (IS_REPLAY_MODE) return;
     const pack = WORKBOOK_PROBLEM_PACKS.find((p) => p.id === packId);
     if (!pack) return;
     const created: Workbook[] = [];
@@ -4478,6 +4901,7 @@ case "mobius":
 
   const handleDuplicateWorkbook = useCallback(
     (id: string) => {
+      if (IS_REPLAY_MODE) return;
       const base = workbooks.find((w) => w.id === id);
       if (!base) return;
       const copy: Workbook = {
@@ -4498,6 +4922,7 @@ case "mobius":
 
   const handleDeleteWorkbook = useCallback(
     (id: string) => {
+      if (IS_REPLAY_MODE) return;
       setWorkbooks((prev) => {
         const next = prev.filter((w) => w.id !== id);
         if (activeWorkbookId === id) {
@@ -4510,6 +4935,7 @@ case "mobius":
   );
 
   const handleRenameWorkbook = useCallback((id: string, title: string) => {
+    if (IS_REPLAY_MODE) return;
     setWorkbooks((prev) =>
       prev.map((w) => (w.id === id ? { ...w, title, updatedAt: Date.now() } : w))
     );
@@ -4517,6 +4943,7 @@ case "mobius":
 
   const handleAddWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, type: WorkbookBlockType) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       const block = makeWorkbookBlock(type);
       setWorkbooks((prev) =>
@@ -4538,6 +4965,7 @@ case "mobius":
 
   const handleUpdateWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4578,6 +5006,7 @@ case "mobius":
 
   const handleRemoveWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       if (compareBlockId === blockId) setCompareBlockId(null);
       setWorkbooks((prev) =>
@@ -4599,6 +5028,7 @@ case "mobius":
 
   const handleMoveWorkbookBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) => {
@@ -4625,6 +5055,7 @@ case "mobius":
 
   const handleAddBlockParam = useCallback(
     (stageId: WorkbookStageId, blockId: string, defId: string) => {
+      if (IS_REPLAY_MODE) return;
       const def = paramDefById.get(defId);
       if (!def || !activeWorkbookId) return;
       const initial = readParamValue(defId) ?? def.defaultValue ?? (def.kind === "toggle" ? false : 0);
@@ -4664,6 +5095,7 @@ case "mobius":
 
   const handleRemoveBlockParam = useCallback(
     (stageId: WorkbookStageId, blockId: string, paramId: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4710,6 +5142,7 @@ case "mobius":
       rawValue: WorkbookParamValue,
       scrub: boolean
     ) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       const def = paramDefById.get(paramId);
       let value = rawValue;
@@ -4766,6 +5199,7 @@ case "mobius":
 
   const handleToggleParamScrub = useCallback(
     (stageId: WorkbookStageId, blockId: string, scrub: boolean) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4807,6 +5241,7 @@ case "mobius":
 
   const handleAddKeyframe = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4843,6 +5278,7 @@ case "mobius":
 
   const handleRemoveKeyframe = useCallback(
     (stageId: WorkbookStageId, blockId: string, keyframeId: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4879,6 +5315,7 @@ case "mobius":
 
   const handleUpdateInteraction = useCallback(
     (stageId: WorkbookStageId, blockId: string, patch: Partial<NonNullable<WorkbookBlock["interaction"]>>) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -4908,6 +5345,7 @@ case "mobius":
 
   const handleUpdateInteractionDirection = useCallback(
     (stageId: WorkbookStageId, blockId: string, angle: number) => {
+      if (IS_REPLAY_MODE) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
       const point = meta?.block.interaction?.point ?? null;
       const safeAngle = Number.isFinite(angle) ? Math.max(0, Math.min(360, angle)) : 0;
@@ -4933,6 +5371,7 @@ case "mobius":
 
   const handleArmInteraction = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
       const kind = meta?.block.interaction?.kind ?? "pick_point";
@@ -4973,6 +5412,7 @@ case "mobius":
 
   const handleFinishInteraction = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
       if (!meta?.block.interaction) return;
       handleUpdateInteraction(stageId, blockId, { status: "captured", summary: "Curve captured." });
@@ -4984,6 +5424,7 @@ case "mobius":
 
   const handleClearInteraction = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       handleUpdateInteraction(stageId, blockId, {
         status: "idle",
         summary: "",
@@ -5001,6 +5442,7 @@ case "mobius":
   );
 
   useEffect(() => {
+    if (IS_REPLAY_MODE) return;
     if (!activeInteraction || !probeInfo) return;
     const meta = workbookGraph.blockMetaById.get(activeInteraction.blockId);
     if (!meta) return;
@@ -5063,6 +5505,7 @@ case "mobius":
 
   const handleToggleVisualizeLive = useCallback(
     (stageId: WorkbookStageId, blockId: string, live: boolean) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       setWorkbooks((prev) =>
         prev.map((w) =>
@@ -5203,6 +5646,7 @@ case "mobius":
 
   const handleCaptureVisualize = useCallback(
     (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => {
+      if (IS_REPLAY_MODE) return;
       const snapshot = buildViewerSnapshot();
       if (!activeWorkbookId) return;
       setCompareBlockId(blockId);
@@ -5250,6 +5694,7 @@ case "mobius":
 
   const handleWorkbookThumbnail = useCallback(
     (dataUrl: string | null) => {
+      if (IS_REPLAY_MODE) return;
       if (!pendingThumbnailCapture || !activeWorkbookId) return;
       const { stageId, blockId, snapshot, slot } = pendingThumbnailCapture;
       setPendingThumbnailCapture(null);
@@ -5440,16 +5885,58 @@ case "mobius":
       workbooks,
     };
     const json = JSON.stringify(payload, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadTextFile(
+      json,
+      `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.json`,
+      "application/json"
+    );
   }, [workbooks, activeWorkbookId, activeStageId]);
 
+  const handleExportWorkbooksMarkdown = useCallback(() => {
+    const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId);
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    downloadTextFile(markdown, `${base}-${new Date().toISOString().slice(0, 10)}.md`, "text/markdown");
+  }, [workbooks, activeWorkbookId, activeWorkbook]);
+
+  const handleExportWorkbooksPdf = useCallback(() => {
+    const html = buildWorkbooksReportHtml(workbooks, activeWorkbookId);
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    const opened = window.open("", "_blank");
+    if (!opened) {
+      downloadTextFile(html, `${base}-${new Date().toISOString().slice(0, 10)}.html`, "text/html");
+      return;
+    }
+    opened.document.open();
+    opened.document.write(html);
+    opened.document.close();
+    opened.focus();
+    opened.print();
+  }, [workbooks, activeWorkbookId, activeWorkbook]);
+
+  const handleExportWorkbooksReplayHtml = useCallback(async () => {
+    const payload: WorkbookReplayPayload = {
+      workbooks,
+      activeWorkbookId,
+      activeStageId,
+    };
+    const assets = await collectReplayAssets();
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    const title = workbooks.length > 1 ? "Math3D Workbook Export" : activeWorkbook?.title ?? "Math3D Workbook";
+    const html = buildReplayHtml(payload, assets, title);
+    downloadTextFile(html, `${base}-${new Date().toISOString().slice(0, 10)}-replay.html`, "text/html");
+  }, [workbooks, activeWorkbookId, activeStageId, activeWorkbook]);
+
   const handleImportWorkbooks = useCallback((raw: string) => {
+    if (IS_REPLAY_MODE) return;
     try {
       const parsed = JSON.parse(raw);
       const nextWorkbooks: Workbook[] = Array.isArray(parsed)
@@ -6069,6 +6556,7 @@ case "mobius":
   );
 
   const getImplicitBakeWorker = useCallback(() => {
+    if (IS_REPLAY_MODE) return null;
     if (!implicitBakeWorkerRef.current) {
       implicitBakeWorkerRef.current = new Worker(new URL("./workers/implicitBakeWorker.ts", import.meta.url), {
         type: "module",
@@ -6079,6 +6567,7 @@ case "mobius":
 
   useEffect(() => {
     const worker = getImplicitBakeWorker();
+    if (!worker) return;
     const handleMessage = (event: MessageEvent<any>) => {
       const msg = event.data;
       if (!msg || msg.jobId !== implicitBakeJobRef.current) return;
@@ -6333,6 +6822,10 @@ case "mobius":
   }, []);
 
   const handleBakeImplicit = useCallback(() => {
+    if (IS_REPLAY_MODE) {
+      setImplicitBakeError("Implicit bake is disabled in replay mode.");
+      return;
+    }
     if (implicitBakeBusy) return;
     setImplicitBakeError(null);
 
@@ -6364,6 +6857,12 @@ case "mobius":
     implicitBakeKeyRef.current = key;
 
     const worker = getImplicitBakeWorker();
+    if (!worker) {
+      setImplicitBakeError("Implicit bake is disabled in replay mode.");
+      setImplicitBakeBusy(false);
+      setImplicitBakePhase("idle");
+      return;
+    }
     worker.postMessage({
       type: "bake",
       jobId,
@@ -7913,6 +8412,7 @@ case "mobius":
 
   const handleRunComputeBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
+      if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
       const block = meta?.block;
@@ -8311,6 +8811,7 @@ case "mobius":
 
   const handleRunComputeStage = useCallback(
     (stageId: WorkbookStageId) => {
+      if (IS_REPLAY_MODE) return;
       const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
       ids.forEach((id) => {
         const meta = workbookGraph.blockMetaById.get(id);
@@ -8321,6 +8822,7 @@ case "mobius":
   );
 
   const handleRunAllStale = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
     Object.entries(computeStatusById).forEach(([id, status]) => {
       if (status !== "stale") return;
       const meta = workbookGraph.blockMetaById.get(id);
@@ -8331,6 +8833,7 @@ case "mobius":
 
   const handleRunFromBlock = useCallback(
     (stageId: WorkbookStageId, blockId: string) => {
+      if (IS_REPLAY_MODE) return;
       const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
       const startIdx = ids.indexOf(blockId);
       if (startIdx < 0) return;
@@ -10539,7 +11042,11 @@ case "mobius":
                   onFinishInteraction={handleFinishInteraction}
                   onClearInteraction={handleClearInteraction}
                   onExportJson={handleExportWorkbooks}
+                  onExportMarkdown={handleExportWorkbooksMarkdown}
+                  onExportPdf={handleExportWorkbooksPdf}
+                  onExportReplayHtml={handleExportWorkbooksReplayHtml}
                   onImportJson={handleImportWorkbooks}
+                  readOnly={IS_REPLAY_MODE}
                   currentDatasetRef={currentDatasetRef}
                   cameraReady={!!cameraSync}
                   ghostOverlaysEnabled={workbookGhostOverlaysEnabled}

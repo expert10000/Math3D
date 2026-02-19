@@ -536,6 +536,22 @@ Problem packs bundle templates with metadata:
 - Required operators and suggested stages.
 - Tags for filtering in the library browser.
 
+### Exports (Markdown / PDF / replay HTML)
+
+Workbook exports preserve meaning by bundling the visual record with the narrative.
+
+How to use:
+
+- In **Workbook**, use the export buttons next to the workbook controls.
+- **Export Markdown** creates a static report with stage/block text plus Visualize snapshots (A/B thumbnails + captions).
+- **Export PDF** opens a print-friendly report; use the print dialog to "Save as PDF".
+- **Export Replay HTML** generates a standalone HTML file that embeds the workbook JSON and launches Math3D in read-only replay mode.
+
+Notes:
+
+- Replay mode disables edits and compute runs, but you can still orbit the camera and jump to snapshots.
+- If the replay export cannot inline assets (dev builds), keep the HTML next to the app's built assets so the linked scripts/styles resolve.
+
 ### Command console
 
 An inline command interface supports quick changes without hunting through controls:

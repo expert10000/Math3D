@@ -68,7 +68,11 @@ type WorkbookPanelProps = {
   onFinishInteraction: (stageId: WorkbookStageId, blockId: string) => void;
   onClearInteraction: (stageId: WorkbookStageId, blockId: string) => void;
   onExportJson: () => void;
+  onExportMarkdown: () => void;
+  onExportPdf: () => void;
+  onExportReplayHtml: () => void;
   onImportJson: (raw: string) => void;
+  readOnly: boolean;
   currentDatasetRef: string;
   cameraReady: boolean;
   ghostOverlaysEnabled: boolean;
@@ -463,7 +467,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onFinishInteraction,
   onClearInteraction,
   onExportJson,
+  onExportMarkdown,
+  onExportPdf,
+  onExportReplayHtml,
   onImportJson,
+  readOnly,
   currentDatasetRef,
   cameraReady,
   computeStatusById,
@@ -606,6 +614,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   };
 
   const handleTogglePlay = (stageId: WorkbookStageId, block: WorkbookBlock) => {
+    if (readOnly) return;
     const existing = playingRef.current.get(block.id);
     if (existing) {
       window.clearInterval(existing);
@@ -642,7 +651,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     <section>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2 style={styles.h2}>Workbook</h2>
-        <button type="button" onClick={onCreateWorkbook} style={{ padding: "4px 8px" }}>
+        <button type="button" onClick={onCreateWorkbook} disabled={readOnly} style={{ padding: "4px 8px" }}>
           New
         </button>
       </div>
@@ -682,7 +691,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <button
             type="button"
             onClick={() => onRunComputeStage(activeStageId)}
-            disabled={activeStageId !== "compute" || !hasComputeBlocks}
+            disabled={readOnly || activeStageId !== "compute" || !hasComputeBlocks}
             style={{ padding: "2px 8px", fontSize: 11 }}
           >
             Run stage
@@ -690,7 +699,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <button
             type="button"
             onClick={onRunAllStale}
-            disabled={!hasStale}
+            disabled={readOnly || !hasStale}
             style={{ padding: "2px 8px", fontSize: 11 }}
           >
             Run all stale
@@ -738,6 +747,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
             value={activeWorkbook.title}
             onChange={(e) => onRenameWorkbook(activeWorkbook.id, e.target.value)}
             placeholder="Workbook title"
+            disabled={readOnly}
             style={{ padding: "4px 6px", fontSize: 12 }}
           />
         )}
@@ -745,7 +755,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <button
             type="button"
             onClick={() => activeWorkbook && onDuplicateWorkbook(activeWorkbook.id)}
-            disabled={!activeWorkbook}
+            disabled={readOnly || !activeWorkbook}
             style={{ padding: "4px 8px" }}
           >
             Duplicate
@@ -753,7 +763,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <button
             type="button"
             onClick={() => activeWorkbook && onDeleteWorkbook(activeWorkbook.id)}
-            disabled={!activeWorkbook}
+            disabled={readOnly || !activeWorkbook}
             style={{ padding: "4px 8px" }}
           >
             Delete
@@ -761,9 +771,19 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <button type="button" onClick={onExportJson} style={{ padding: "4px 8px" }}>
             Export JSON
           </button>
+          <button type="button" onClick={onExportMarkdown} style={{ padding: "4px 8px" }}>
+            Export Markdown
+          </button>
+          <button type="button" onClick={onExportPdf} style={{ padding: "4px 8px" }}>
+            Export PDF
+          </button>
+          <button type="button" onClick={onExportReplayHtml} style={{ padding: "4px 8px" }}>
+            Export Replay HTML
+          </button>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
+            disabled={readOnly}
             style={{ padding: "4px 8px" }}
           >
             Import JSON
@@ -772,6 +792,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
             ref={fileRef}
             type="file"
             accept=".json,application/json"
+            disabled={readOnly}
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -852,6 +873,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                      disabled={readOnly}
                       style={{ padding: "2px 8px", fontSize: 11 }}
                     >
                       Use template
@@ -913,6 +935,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => onCreateWorkbooksFromPack(pack.id)}
+                        disabled={readOnly}
                         style={{ padding: "2px 8px", fontSize: 11 }}
                       >
                         Create all templates
@@ -960,6 +983,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                             <button
                               type="button"
                               onClick={() => onCreateWorkbookFromTemplate(t.id)}
+                              disabled={readOnly}
                               style={{ padding: "2px 8px", fontSize: 11 }}
                             >
                               Use template
@@ -1106,7 +1130,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => onMoveBlock(activeStageId, block.id, -1)}
-                    disabled={idx === 0}
+                    disabled={readOnly || idx === 0}
                     style={{ padding: "2px 6px", fontSize: 11 }}
                   >
                     Up
@@ -1114,7 +1138,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => onMoveBlock(activeStageId, block.id, 1)}
-                    disabled={idx === activeStage.blocks.length - 1}
+                    disabled={readOnly || idx === activeStage.blocks.length - 1}
                     style={{ padding: "2px 6px", fontSize: 11 }}
                   >
                     Down
@@ -1122,6 +1146,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => onRemoveBlock(activeStageId, block.id)}
+                    disabled={readOnly}
                     style={{ padding: "2px 6px", fontSize: 11 }}
                   >
                     Delete
@@ -1134,6 +1159,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 value={block.title}
                 onChange={(e) => onUpdateBlock(activeStageId, block.id, { title: e.target.value })}
                 placeholder="Block title"
+                disabled={readOnly}
                 style={{ width: "100%", marginBottom: 8, padding: "4px 6px", fontSize: 12 }}
               />
 
@@ -1143,6 +1169,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   onChange={(e) => onUpdateBlock(activeStageId, block.id, { text: e.target.value })}
                   rows={4}
                   placeholder="Markdown text..."
+                  disabled={readOnly}
                   style={{ width: "100%", padding: 6, fontSize: 12, fontFamily: "inherit" }}
                 />
               )}
@@ -1153,6 +1180,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   onChange={(e) => onUpdateBlock(activeStageId, block.id, { formula: e.target.value })}
                   rows={3}
                   placeholder="LaTeX or formula..."
+                  disabled={readOnly}
                   style={{ width: "100%", padding: 6, fontSize: 12, fontFamily: "monospace" }}
                 />
               )}
@@ -1226,6 +1254,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => onCaptureVisualize(activeStageId, block.id, "A")}
+                            disabled={readOnly}
                             style={{ padding: "4px 8px" }}
                           >
                             Capture A
@@ -1241,6 +1270,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => onCaptureVisualize(activeStageId, block.id, "B")}
+                            disabled={readOnly}
                             style={{ padding: "4px 8px" }}
                           >
                             Capture B
@@ -1256,6 +1286,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => onToggleVisualizeLive(activeStageId, block.id, !live)}
+                            disabled={readOnly}
                             style={{ padding: "4px 8px" }}
                           >
                             {live ? "Live" : "Frozen"}
@@ -1270,6 +1301,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           }
                           rows={3}
                           placeholder="Notes on this view..."
+                          disabled={readOnly}
                           style={{ width: "100%", padding: 6, fontSize: 12 }}
                         />
                         <div
@@ -1298,6 +1330,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           compute: { ...(block.compute ?? { status: "idle" }), operatorId: e.target.value },
                         })
                       }
+                      disabled={readOnly}
                       style={{ width: "100%", marginTop: 4 }}
                     >
                       <option value="">Select an operator</option>
@@ -1312,7 +1345,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onRunComputeBlock(activeStageId, block.id, block.compute?.operatorId)}
-                      disabled={!block.compute?.operatorId}
+                      disabled={readOnly || !block.compute?.operatorId}
                       style={{ padding: "4px 8px" }}
                     >
                       Run operator
@@ -1320,7 +1353,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onRunFromBlock(activeStageId, block.id)}
-                      disabled={!block.compute?.operatorId}
+                      disabled={readOnly || !block.compute?.operatorId}
                       style={{ padding: "4px 8px" }}
                     >
                       Run from here
@@ -1374,6 +1407,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           directionAngle: 0,
                         })
                       }
+                      disabled={readOnly}
                       style={{ width: "100%", marginTop: 4 }}
                     >
                       <option value="pick_point">Pick point</option>
@@ -1386,6 +1420,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onArmInteraction(activeStageId, block.id)}
+                      disabled={readOnly}
                       style={{ padding: "4px 8px" }}
                     >
                       Arm pick
@@ -1394,6 +1429,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => onFinishInteraction(activeStageId, block.id)}
+                        disabled={readOnly}
                         style={{ padding: "4px 8px" }}
                       >
                         Finish curve
@@ -1402,6 +1438,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onClearInteraction(activeStageId, block.id)}
+                      disabled={readOnly}
                       style={{ padding: "4px 8px" }}
                     >
                       Clear
@@ -1419,6 +1456,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                         onChange={(e) =>
                           onUpdateInteractionDirection(activeStageId, block.id, Number(e.target.value))
                         }
+                        disabled={readOnly}
                       />
                     </label>
                   )}
@@ -1462,6 +1500,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     }
                     rows={3}
                     placeholder="Expected values or checks..."
+                    disabled={readOnly}
                     style={{ width: "100%", padding: 6, fontSize: 12 }}
                   />
                   <label style={{ fontSize: 11, fontWeight: 700 }}>
@@ -1473,6 +1512,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           assert: { ...(block.assert ?? { expected: "" }), status: e.target.value as any },
                         })
                       }
+                      disabled={readOnly}
                       style={{ width: "100%", marginTop: 4 }}
                     >
                       <option value="pending">Pending</option>
@@ -1494,6 +1534,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       onAddBlockParam(activeStageId, block.id, id);
                       e.currentTarget.value = "";
                     }}
+                    disabled={readOnly}
                     style={{ fontSize: 11 }}
                   >
                     <option value="">Add param...</option>
@@ -1518,6 +1559,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                             <button
                               type="button"
                               onClick={() => onRemoveBlockParam(activeStageId, block.id, def.id)}
+                              disabled={readOnly}
                               style={{ padding: "2px 6px", fontSize: 10 }}
                             >
                               Remove
@@ -1531,6 +1573,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 onChange={(e) =>
                                   onUpdateBlockParam(activeStageId, block.id, def.id, e.target.checked, !!block.params?.scrub)
                                 }
+                                disabled={readOnly}
                                 style={{ marginRight: 6 }}
                               />
                               {formatParamValue(value, def)}
@@ -1542,6 +1585,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                               onChange={(e) =>
                                 onUpdateBlockParam(activeStageId, block.id, def.id, e.target.value, !!block.params?.scrub)
                               }
+                              disabled={readOnly}
                               style={{ fontSize: 11 }}
                             >
                               {(def.options ?? []).map((opt) => (
@@ -1562,6 +1606,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 onChange={(e) =>
                                   onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), !!block.params?.scrub)
                                 }
+                                disabled={readOnly}
                               />
                               <input
                                 type="number"
@@ -1572,6 +1617,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 onChange={(e) =>
                                   onUpdateBlockParam(activeStageId, block.id, def.id, Number(e.target.value), false)
                                 }
+                                disabled={readOnly}
                                 style={{ fontSize: 11 }}
                               />
                             </>
@@ -1585,6 +1631,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           type="checkbox"
                           checked={!!block.params?.scrub}
                           onChange={(e) => onToggleParamScrub(activeStageId, block.id, e.target.checked)}
+                          disabled={readOnly}
                           style={{ marginRight: 6 }}
                         />
                         Scrub mode
@@ -1592,6 +1639,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => onApplyParams(activeStageId, block.id)}
+                        disabled={readOnly}
                         style={{ padding: "2px 8px", fontSize: 11 }}
                       >
                         Apply params
@@ -1601,6 +1649,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => onAddKeyframe(activeStageId, block.id)}
+                        disabled={readOnly}
                         style={{ padding: "2px 8px", fontSize: 11 }}
                       >
                         Save keyframe
@@ -1608,6 +1657,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       <button
                         type="button"
                         onClick={() => handleTogglePlay(activeStageId, block)}
+                        disabled={readOnly}
                         style={{ padding: "2px 8px", fontSize: 11 }}
                       >
                         {playingRef.current.has(block.id) ? "Stop" : "Play"}
@@ -1626,6 +1676,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                                 });
                                 onApplyParams(activeStageId, block.id);
                               }}
+                              disabled={readOnly}
                               style={{ padding: "2px 6px", fontSize: 10 }}
                             >
                               Apply
@@ -1633,6 +1684,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                             <button
                               type="button"
                               onClick={() => onRemoveKeyframe(activeStageId, block.id, kf.id)}
+                              disabled={readOnly}
                               style={{ padding: "2px 6px", fontSize: 10 }}
                             >
                               Delete
@@ -1665,6 +1717,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               key={type}
               type="button"
               onClick={() => onAddBlock(activeStageId, type)}
+              disabled={readOnly}
               style={{ padding: "4px 8px" }}
             >
               {BLOCK_TYPE_LABELS[type]}
