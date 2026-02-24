@@ -7,8 +7,15 @@ export type SurfaceScalarField = {
   values: Float32Array | number[];
 };
 
+export type SurfaceVectorField = {
+  name: string;
+  values: Float32Array | number[];
+  itemSize?: number;
+};
+
 export type SurfaceFields = {
   scalars?: SurfaceScalarField[];
+  vectors?: SurfaceVectorField[];
 };
 
 export type MeshDataset = {
@@ -51,4 +58,5 @@ export type Dataset = MeshDataset | VolumeDataset;
 export type SurfaceDerivedView =
   | { kind: "polylines"; data: PolylineSet }
   | { kind: "scalarField"; data: SurfaceScalarField }
+  | { kind: "vectorField"; data: SurfaceVectorField }
   | { kind: "image"; data: Image2D };

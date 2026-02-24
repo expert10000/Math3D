@@ -162,7 +162,7 @@ function makeZFunction(expr: string | undefined): (x: number, y: number) => numb
 }
 
 // get f(x,y) for the graph_* surfaces
-function getGraphFunction(
+export function getGraphFunction(
   surfaceId: SurfaceId,
   graphExpr?: string
 ): ((x: number, y: number) => number) | null {

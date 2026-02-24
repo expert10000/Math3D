@@ -14,6 +14,7 @@ import type {
   WorkbookProblemPack,
 } from "../workbook/workbookModel";
 import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
+import { WORKBOOK_OPERATOR_CATALOG } from "../workbook/operatorRegistry";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
 import { computeMeanEdgeLength } from "../mesh/meshOps";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
@@ -105,6 +106,10 @@ const STATUS_COLORS: Record<string, string> = {
   failed: "#b91c1c",
   pending: "#1f2937",
 };
+
+const WORKBOOK_OPERATOR_BY_ID = new Map(
+  WORKBOOK_OPERATOR_CATALOG.map((op) => [op.id, op])
+);
 
 type SnapshotMeshStats = {
   vertexCount: number;
@@ -419,17 +424,6 @@ const VisualizeDiffPanel: React.FC<{
   );
 };
 
-const COMPUTE_OPERATORS = [
-  { id: "chart_grid", label: "Chart grid + coords" },
-  { id: "curve_overlay", label: "Curve overlay" },
-  { id: "direction_overlay", label: "Direction overlay" },
-  { id: "selection_overlay", label: "Selection overlay" },
-  { id: "curvature_field", label: "Curvature field" },
-  { id: "geodesic_heat", label: "Geodesic heat" },
-  { id: "geodesic_path", label: "Geodesic path" },
-  { id: "principal_dirs", label: "Principal directions" },
-];
-
 export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   workbooks,
   activeWorkbookId,
@@ -499,7 +493,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
     if (block.type === "compute") {
       const derived = computeStatusById[block.id];
-      const status = derived ?? block.compute?.status ?? "idle";
+      const status = derived ?? block.compute?.lastRun?.status ?? block.compute?.status ?? "idle";
       if (status === "failed") return { state: "fail", label: "failed" };
       if (status === "ok") return { state: "ok", label: "ok" };
       return { state: "stale", label: status === "idle" ? "stale" : status };
@@ -1319,74 +1313,108 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 </div>
               )}
 
-              {block.type === "compute" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700 }}>
-                    Operator
-                    <select
-                      value={block.compute?.operatorId ?? ""}
-                      onChange={(e) =>
-                        onUpdateBlock(activeStageId, block.id, {
-                          compute: { ...(block.compute ?? { status: "idle" }), operatorId: e.target.value },
-                        })
-                      }
-                      disabled={readOnly}
-                      style={{ width: "100%", marginTop: 4 }}
-                    >
-                      <option value="">Select an operator</option>
-                      {COMPUTE_OPERATORS.map((op) => (
-                        <option key={op.id} value={op.id}>
-                          {op.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                    <button
-                      type="button"
-                      onClick={() => onRunComputeBlock(activeStageId, block.id, block.compute?.operatorId)}
-                      disabled={readOnly || !block.compute?.operatorId}
-                      style={{ padding: "4px 8px" }}
-                    >
-                      Run operator
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRunFromBlock(activeStageId, block.id)}
-                      disabled={readOnly || !block.compute?.operatorId}
-                      style={{ padding: "4px 8px" }}
-                    >
-                      Run from here
-                    </button>
-                    {(() => {
-                      const st = getBlockStatus(block);
-                      return (
-                        <span
+              {block.type === "compute" &&
+                (() => {
+                  const selectedOperatorId = block.compute?.operatorId ?? "";
+                  const operatorSpec = selectedOperatorId
+                    ? WORKBOOK_OPERATOR_BY_ID.get(selectedOperatorId)
+                    : undefined;
+                  const operatorOptions = WORKBOOK_OPERATOR_CATALOG.filter(
+                    (op) => !op.hidden || op.id === selectedOperatorId
+                  );
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700 }}>
+                        Operator
+                        <select
+                          value={selectedOperatorId}
+                          onChange={(e) =>
+                            onUpdateBlock(activeStageId, block.id, {
+                              compute: { ...(block.compute ?? { status: "idle" }), operatorId: e.target.value },
+                            })
+                          }
+                          disabled={readOnly}
+                          style={{ width: "100%", marginTop: 4 }}
+                        >
+                          <option value="">Select an operator</option>
+                          {operatorOptions.map((op) => (
+                            <option key={op.id} value={op.id}>
+                              {op.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {operatorSpec?.hint?.length ? (
+                        <div
                           style={{
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            background: `${STATUS_COLORS[st.state]}22`,
-                            color: STATUS_COLORS[st.state],
-                            fontWeight: 700,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #e2e8f0",
+                            background: "#f8fafc",
                             fontSize: 10,
-                            textTransform: "uppercase",
+                            color: "#334155",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
                           }}
                         >
-                          {st.label}
-                        </span>
-                      );
-                    })()}
-                    {block.compute?.datasetRef && (
-                      <span style={{ fontSize: 10, opacity: 0.6 }}>
-                        {block.compute.datasetRef}
-                      </span>
-                    )}
-                  </div>
-                  {block.compute?.summary && (
-                    <div style={{ fontSize: 11, opacity: 0.7 }}>{block.compute.summary}</div>
-                  )}
-                </div>
-              )}
+                          <div style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                            Quick hint
+                          </div>
+                          {operatorSpec.hint.map((line, idx) => (
+                            <div key={`${operatorSpec.id}-hint-${idx}`} style={{ opacity: 0.85 }}>
+                              {line}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => onRunComputeBlock(activeStageId, block.id, block.compute?.operatorId)}
+                          disabled={readOnly || !block.compute?.operatorId}
+                          style={{ padding: "4px 8px" }}
+                        >
+                          Run operator
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRunFromBlock(activeStageId, block.id)}
+                          disabled={readOnly || !block.compute?.operatorId}
+                          style={{ padding: "4px 8px" }}
+                        >
+                          Run from here
+                        </button>
+                        {(() => {
+                          const st = getBlockStatus(block);
+                          return (
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                background: `${STATUS_COLORS[st.state]}22`,
+                                color: STATUS_COLORS[st.state],
+                                fontWeight: 700,
+                                fontSize: 10,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              {st.label}
+                            </span>
+                          );
+                        })()}
+                        {block.compute?.datasetRef && (
+                          <span style={{ fontSize: 10, opacity: 0.6 }}>
+                            {block.compute.datasetRef}
+                          </span>
+                        )}
+                      </div>
+                      {block.compute?.summary && (
+                        <div style={{ fontSize: 11, opacity: 0.7 }}>{block.compute.summary}</div>
+                      )}
+                    </div>
+                  );
+                })()}
 
               {block.type === "interaction" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

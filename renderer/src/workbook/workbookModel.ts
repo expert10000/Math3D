@@ -106,6 +106,42 @@ export type WorkbookInteractionData = {
   directionAngle?: number;
 };
 
+export type WorkbookComputeRunStatus = "ok" | "stale" | "failed";
+export type WorkbookComputeTiming = {
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+};
+export type WorkbookComputeRun = {
+  inputHash: string;
+  status: WorkbookComputeRunStatus;
+  logs?: string[];
+  timing?: WorkbookComputeTiming;
+};
+export type WorkbookComputeInputRef = {
+  portId: string;
+  type: WorkbookValueType;
+  optional?: boolean;
+  missing?: boolean;
+  value?: string;
+  fromBlockId?: string;
+  fromBlockIds?: string[];
+  outputHash?: string;
+  outputHashes?: string[];
+};
+export type WorkbookPathEndpoint = {
+  meshKey?: string;
+  vertexIndex?: number;
+};
+export type WorkbookGeodesicPathOutput = {
+  indices: number[] | null;
+  length: number | null;
+  message?: string | null;
+  debugInfo?: string | null;
+  start?: WorkbookPathEndpoint | null;
+  end?: WorkbookPathEndpoint | null;
+};
+
 export type WorkbookCameraState = {
   position: { x: number; y: number; z: number };
   target: { x: number; y: number; z: number };
@@ -191,6 +227,7 @@ export type WorkbookComputeOutputs = {
     polylines: { x: number; y: number; z: number }[][] | null;
   };
   selectionMask?: WorkbookMaskOutput | null;
+  geodesicPath?: WorkbookGeodesicPathOutput;
 };
 
 export type WorkbookComputeCacheEntry = {
@@ -199,6 +236,8 @@ export type WorkbookComputeCacheEntry = {
   status: "ok" | "failed";
   summary?: string;
   outputs?: WorkbookComputeOutputs;
+  logs?: string[];
+  timing?: WorkbookComputeTiming;
   createdAt: number;
 };
 
@@ -220,6 +259,9 @@ export type WorkbookBlock = {
   };
   compute?: {
     operatorId?: string;
+    inputs?: WorkbookComputeInputRef[];
+    outputs?: WorkbookComputeOutputs;
+    lastRun?: WorkbookComputeRun;
     status?: "idle" | "ok" | "stale" | "failed";
     summary?: string;
     datasetRef?: string;
@@ -383,7 +425,14 @@ const buildBlockFromSpec = (spec: WorkbookTemplateBlockSpec, makeId: () => strin
   if (spec.type === "compute")
     return {
       ...base,
-      compute: { status: "stale", operatorId: spec.computeOperatorId, cache: {} },
+      compute: {
+        status: "stale",
+        operatorId: spec.computeOperatorId,
+        inputs: [],
+        outputs: undefined,
+        lastRun: undefined,
+        cache: {},
+      },
     };
   if (spec.type === "interaction")
     return {
@@ -421,7 +470,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
     title: "Compute curvature",
     description: "Enable curvature coloring and interpret K/H/k1/k2 with a focused compute block.",
     tags: ["curvature", "gauss map", "analysis"],
-    requiredOperators: ["curvature_field"],
+    requiredOperators: ["surface.curvature"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     stages: [
       {
@@ -445,7 +494,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
           {
             type: "compute",
             title: "Curvature field",
-            computeOperatorId: "curvature_field",
+            computeOperatorId: "surface.curvature",
           },
         ],
       },
@@ -476,7 +525,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
     title: "Geodesics from point",
     description: "Pick two points and compute a geodesic heat path and a shortest path.",
     tags: ["geodesics", "paths", "distance"],
-    requiredOperators: ["geodesic_heat", "geodesic_path"],
+    requiredOperators: ["surface.geodesicDistance", "geodesic_path"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     stages: [
       {
@@ -494,7 +543,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
         blocks: [
           { type: "interaction", title: "Pick start point", interactionKind: "pick_point" },
           { type: "interaction", title: "Pick end point", interactionKind: "pick_point" },
-          { type: "compute", title: "Geodesic heat", computeOperatorId: "geodesic_heat" },
+          { type: "compute", title: "Geodesic heat", computeOperatorId: "surface.geodesicDistance" },
           { type: "compute", title: "Geodesic path", computeOperatorId: "geodesic_path" },
         ],
       },
@@ -616,7 +665,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
         blocks: [
           { type: "interaction", title: "Select region", interactionKind: "select_region" },
           { type: "compute", title: "Selection overlay", computeOperatorId: "selection_overlay" },
-          { type: "compute", title: "Curvature field", computeOperatorId: "curvature_field" },
+          { type: "compute", title: "Curvature field", computeOperatorId: "surface.curvature" },
         ],
       },
       {
@@ -642,7 +691,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
     title: "Principal directions",
     description: "Overlay principal direction glyphs and interpret curvature directions.",
     tags: ["principal directions", "curvature", "analysis"],
-    requiredOperators: ["principal_dirs", "curvature_field"],
+    requiredOperators: ["principal_dirs", "surface.curvature"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     stages: [
       {
@@ -654,7 +703,7 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
       {
         id: "compute",
         blocks: [
-          { type: "compute", title: "Curvature field", computeOperatorId: "curvature_field" },
+          { type: "compute", title: "Curvature field", computeOperatorId: "surface.curvature" },
           { type: "compute", title: "Principal directions", computeOperatorId: "principal_dirs" },
         ],
       },
@@ -717,7 +766,7 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     topic: "Minimal surfaces",
     difficulty: "intermediate",
     prerequisites: ["Basic parametric surfaces", "Weierstrass mode"],
-    requiredOperators: ["curvature_field", "chart_grid"],
+    requiredOperators: ["surface.curvature", "chart_grid"],
     suggestedStages: ["define", "visualize", "compute", "explain"],
     tags: ["minimal surfaces", "weierstrass", "curvature"],
     templateIds: ["compute_curvature", "chart_and_basis"],
@@ -729,7 +778,7 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     topic: "Geodesics",
     difficulty: "intermediate",
     prerequisites: ["Surface sampling", "Mesh-based geodesics"],
-    requiredOperators: ["geodesic_heat", "geodesic_path"],
+    requiredOperators: ["surface.geodesicDistance", "geodesic_path"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["geodesics", "paths", "distance"],
     templateIds: ["geodesics_from_point", "transport_demo"],
@@ -741,7 +790,7 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     topic: "Gauss map",
     difficulty: "intro",
     prerequisites: ["Basic curvature intuition"],
-    requiredOperators: ["curvature_field", "chart_grid"],
+    requiredOperators: ["surface.curvature", "chart_grid"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["gauss map", "curvature"],
     templateIds: ["compute_curvature", "chart_and_basis"],
@@ -765,7 +814,7 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     topic: "Selection",
     difficulty: "intro",
     prerequisites: ["Selection tools"],
-    requiredOperators: ["selection_overlay", "curvature_field", "curve_overlay"],
+    requiredOperators: ["selection_overlay", "surface.curvature", "curve_overlay"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["selection", "overlays", "curves"],
     templateIds: ["selection_stats", "curve_overlay_demo"],
@@ -777,7 +826,7 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     topic: "Principal directions",
     difficulty: "intermediate",
     prerequisites: ["Curvature basics"],
-    requiredOperators: ["curvature_field", "principal_dirs"],
+    requiredOperators: ["surface.curvature", "principal_dirs"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["principal directions", "curvature"],
     templateIds: ["principal_directions"],

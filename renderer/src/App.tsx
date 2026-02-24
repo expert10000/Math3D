@@ -70,10 +70,19 @@ import {
 } from "./math/paramGeodesicContinuous";
 
 import type { MobiusParams } from "./math/mobius";
-import { computeGraphInvariantsFromProbe, type CurvatureData } from "./math/surfaceInvariants";
+import { computeGraphInvariantsFromProbe, getGraphFunction, type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
 import { WEIERSTRASS_PRESETS, type WeierstrassPreset } from "./math/weierstrassPresets";
+import {
+  buildMeshNeighborhood,
+  sampleGraphAt,
+  sampleMeshAt,
+  sampleParamAt,
+  type SurfaceQuery,
+  type SurfaceQueryPick,
+  type SurfaceQuerySample,
+} from "./math/surfaceQuery";
 import {
   buildSurfaceMeshFromGeometry,
   loadSurfaceMeshFromFile,
@@ -90,7 +99,14 @@ import {
   computeVertexNormals,
   validateMesh,
 } from "./mesh/meshOps";
-import type { DatasetKind, MeshDataset, VolumeDataset, VectorGrid } from "./scene/datasets";
+import type {
+  DatasetKind,
+  MeshDataset,
+  SurfaceScalarField,
+  SurfaceVectorField,
+  VolumeDataset,
+  VectorGrid,
+} from "./scene/datasets";
 import type { PolylineSet } from "./scene/renderPrimitives";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "./math/bakeSurface";
 import {
@@ -140,6 +156,9 @@ import {
   type WorkbookValueType,
   type WorkbookComputeCacheEntry,
   type WorkbookComputeOutputs,
+  type WorkbookComputeInputRef,
+  type WorkbookComputeRunStatus,
+  type WorkbookPathEndpoint,
   type WorkbookInteractionKind,
   type WorkbookDirectionOutput,
   type WorkbookMaskOutput,
@@ -149,6 +168,13 @@ import {
   type WorkbookPointOutput,
   type WorkbookSnapshotSlot,
 } from "./workbook/workbookModel";
+import {
+  BASE_COMPUTE_INPUTS,
+  type WorkbookOperatorSpec,
+  WORKBOOK_OPERATOR_CATALOG,
+  WORKBOOK_OPERATOR_REGISTRY,
+  createOperatorRegistry,
+} from "./workbook/operatorRegistry";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
@@ -186,6 +212,20 @@ type WorkbookReplayPayload = {
   workbooks: Workbook[];
   activeWorkbookId?: string | null;
   activeStageId?: WorkbookStageId;
+};
+type WorkbookOperatorRunContext = {
+  blockId: string;
+  operatorId: string;
+  inputRefs: WorkbookComputeInputRef[];
+};
+type WorkbookOperatorRunResult = {
+  status: WorkbookComputeRunStatus;
+  summary?: string;
+  outputs?: WorkbookComputeOutputs;
+  logs?: string[];
+};
+type WorkbookOperatorRunner = WorkbookOperatorSpec & {
+  run: (ctx: WorkbookOperatorRunContext) => Promise<WorkbookOperatorRunResult> | WorkbookOperatorRunResult;
 };
 const REPLAY_PAYLOAD: WorkbookReplayPayload | null = (() => {
   const anyWin = globalThis as any;
@@ -967,19 +1007,47 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
     stages: wb.stages.map((stage) => ({
       ...stage,
       blocks: stage.blocks.map((block) => {
-        if (block.type !== "visualize") return block;
-        const visualize = block.visualize ?? { live: true };
-        const snapshotA = visualize.snapshotA ?? visualize.snapshot ?? null;
-        const snapshotB = visualize.snapshotB ?? null;
-        if (visualize.snapshotA === snapshotA && visualize.snapshotB === snapshotB) return block;
-        return {
-          ...block,
-          visualize: {
-            ...visualize,
-            snapshotA,
-            snapshotB,
-          },
-        };
+        if (block.type === "visualize") {
+          const visualize = block.visualize ?? { live: true };
+          const snapshotA = visualize.snapshotA ?? visualize.snapshot ?? null;
+          const snapshotB = visualize.snapshotB ?? null;
+          if (visualize.snapshotA === snapshotA && visualize.snapshotB === snapshotB) return block;
+          return {
+            ...block,
+            visualize: {
+              ...visualize,
+              snapshotA,
+              snapshotB,
+            },
+          };
+        }
+        if (block.type === "compute") {
+          const compute = block.compute ?? {};
+          const cache = compute.cache ?? {};
+          let lastRun = compute.lastRun;
+          if (!lastRun && compute.inputHash) {
+            const status =
+              compute.status === "failed" ? "failed" : compute.status === "ok" ? "ok" : "stale";
+            lastRun = {
+              inputHash: compute.inputHash,
+              status,
+              logs: compute.summary ? [compute.summary] : undefined,
+              timing: compute.lastRunAt
+                ? { startedAt: compute.lastRunAt, endedAt: compute.lastRunAt, durationMs: 0 }
+                : undefined,
+            };
+          }
+          return {
+            ...block,
+            compute: {
+              ...compute,
+              inputs: compute.inputs ?? [],
+              cache,
+              lastRun,
+            },
+          };
+        }
+        return block;
       }),
     })),
   }));
@@ -1124,7 +1192,7 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
           lines.push("```");
         } else if (block.type === "compute") {
           lines.push(`Operator: ${block.compute?.operatorId ?? "—"}`);
-          if (block.compute?.status) lines.push(`Status: ${block.compute.status}`);
+          if (block.compute?.lastRun?.status) lines.push(`Status: ${block.compute.lastRun.status}`);
           if (block.compute?.summary) lines.push(`Summary: ${block.compute.summary}`);
         } else if (block.type === "interaction") {
           if (block.interaction?.kind) lines.push(`Interaction: ${block.interaction.kind}`);
@@ -1257,7 +1325,7 @@ const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: strin
         } else if (block.type === "compute") {
           body = `<div class="block-body">
             <div>Operator: ${escapeHtml(block.compute?.operatorId ?? "—")}</div>
-            ${block.compute?.status ? `<div>Status: ${escapeHtml(block.compute.status)}</div>` : ""}
+            ${block.compute?.lastRun?.status ? `<div>Status: ${escapeHtml(block.compute.lastRun.status)}</div>` : ""}
             ${block.compute?.summary ? `<div>Summary: ${escapeHtml(block.compute.summary)}</div>` : ""}
           </div>`;
         } else if (block.type === "interaction") {
@@ -1434,6 +1502,18 @@ const buildTangentBasis = (normal: Vec3) => {
   return { t1, t2 };
 };
 
+const buildTangentBasisFromDerivatives = (du: Vec3, dv: Vec3, normal?: Vec3) => {
+  const t1 = vNormalize(du);
+  if (vLen(t1) < 1e-8) return null;
+  let t2 = vSub(dv, vScale(t1, vDot(dv, t1)));
+  t2 = vNormalize(t2);
+  if (vLen(t2) < 1e-8 && normal) {
+    t2 = vNormalize(vCross(normal, t1));
+  }
+  if (vLen(t2) < 1e-8) return null;
+  return { t1, t2 };
+};
+
 const stableStringify = (value: unknown) => {
   const seen = new WeakSet();
   const walk = (val: any): any => {
@@ -1502,27 +1582,6 @@ const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
   { id: "selectionRadius", label: "Selection radius", kind: "number", min: 0.05, max: 3, step: 0.05, defaultValue: 0.4 },
 ];
 
-const BASE_COMPUTE_INPUTS: WorkbookPort[] = [
-  { id: "dataset", label: "Dataset", type: "dataset" },
-  { id: "formula", label: "Formula", type: "formula", optional: true },
-  { id: "overlay", label: "Overlay", type: "overlay", optional: true },
-  { id: "curve", label: "Curve", type: "curve", optional: true },
-  { id: "points", label: "Points", type: "points", optional: true },
-  { id: "mask", label: "Mask", type: "mask", optional: true },
-  { id: "vector", label: "Vector", type: "vector", optional: true },
-];
-const GEODESIC_INPUTS: WorkbookPort[] = [...BASE_COMPUTE_INPUTS];
-const COMPUTE_OPERATOR_OUTPUTS: Record<string, WorkbookPort[]> = {
-  chart_grid: [{ id: "overlay", label: "Overlay", type: "overlay" }],
-  curve_overlay: [{ id: "curve", label: "Curve", type: "curve" }],
-  direction_overlay: [{ id: "curve", label: "Curve", type: "curve" }],
-  selection_overlay: [{ id: "mask", label: "Mask", type: "mask" }],
-  curvature_field: [{ id: "overlay", label: "Overlay", type: "overlay" }],
-  geodesic_heat: [{ id: "curve", label: "Curve", type: "curve" }],
-  geodesic_path: [{ id: "curve", label: "Curve", type: "curve" }],
-  principal_dirs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
-};
-
 const getInteractionPorts = (
   kind?: WorkbookInteractionKind | null
 ): { inputs: WorkbookPort[]; outputs: WorkbookPort[] } => {
@@ -1548,8 +1607,9 @@ const getInteractionPorts = (
 };
 
 const getComputePorts = (operatorId?: string) => {
-  const outputs = operatorId ? COMPUTE_OPERATOR_OUTPUTS[operatorId] ?? [] : [];
-  const inputs = operatorId === "geodesic_heat" ? GEODESIC_INPUTS : BASE_COMPUTE_INPUTS;
+  const spec = WORKBOOK_OPERATOR_REGISTRY.get(operatorId ?? null);
+  const outputs = spec?.outputs ?? [];
+  const inputs = spec?.inputs ?? BASE_COMPUTE_INPUTS;
   return { inputs, outputs };
 };
 
@@ -3547,6 +3607,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (cgalMeshState.expr !== activeImplicitExpr) return null;
     return cgalMeshState;
   }, [cgalMeshState, activeEqSurfaceId, activeImplicitExpr]);
+  const activeCgalMeshData = useMemo(() => {
+    if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) return null;
+    const mesh: SurfaceMeshData = {
+      label: "CGAL mesh",
+      positions: Float32Array.from(activeCgalMesh.positions),
+      indices: Uint32Array.from(activeCgalMesh.indices),
+      normals: null,
+      uvs: null,
+      source: "surface",
+    };
+    return applySurfaceMeshOps(mesh);
+  }, [activeCgalMesh]);
   const surfaceMeshLabel = surfaceMeshData?.label ?? "SurfaceMesh";
   const surfaceMeshStats = useMemo(() => {
     if (!surfaceMeshData?.positions?.length) return null;
@@ -3589,6 +3661,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         blockMetaById: new Map<string, { stageId: WorkbookStageId; index: number; block: WorkbookBlock }>(),
         dependenciesById: new Map<string, string[]>(),
         downstreamById: new Map<string, string[]>(),
+        inputRefsById: new Map<string, WorkbookComputeInputRef[]>(),
         inputHashById: new Map<string, string>(),
         outputHashById: new Map<string, string>(),
         computeStatusById: new Map<string, "ok" | "stale" | "failed">(),
@@ -3624,6 +3697,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
     const dependenciesById = new Map<string, string[]>();
     const downstreamById = new Map<string, string[]>();
+    const inputRefsById = new Map<string, WorkbookComputeInputRef[]>();
     const inputHashById = new Map<string, string>();
     const outputHashById = new Map<string, string>();
     const computeStatusById = new Map<string, "ok" | "stale" | "failed">();
@@ -3683,9 +3757,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       const { block } = entry;
       const { inputs, outputs } = resolveBlockPorts(block);
       const deps = new Set<string>();
-      const inputTokens = inputs.map((input) => {
+      const inputRefs: WorkbookComputeInputRef[] = inputs.map((input) => {
         if (input.type === "dataset") {
-          return { type: input.type, value: currentDatasetRef };
+          return { portId: input.id, type: input.type, value: currentDatasetRef };
         }
         if (input.type === "points") {
           const items = outputByType.get("points") ?? [];
@@ -3693,19 +3767,25 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
             const pair = items.slice(-2);
             pair.forEach((item) => deps.add(item.blockId));
             return {
+              portId: input.id,
               type: input.type,
-              from: pair.map((item) => item.blockId),
-              hash: pair.map((item) => item.hash),
+              fromBlockIds: pair.map((item) => item.blockId),
+              outputHashes: pair.map((item) => item.hash),
             };
           }
-          return { type: input.type, missing: true, optional: !!input.optional };
+          return { portId: input.id, type: input.type, missing: true, optional: !!input.optional };
         }
         const upstream = findLatestOutput(input.type);
         if (upstream) {
           deps.add(upstream.blockId);
-          return { type: input.type, from: upstream.blockId, hash: upstream.hash };
+          return {
+            portId: input.id,
+            type: input.type,
+            fromBlockId: upstream.blockId,
+            outputHash: upstream.hash,
+          };
         }
-        return { type: input.type, missing: true, optional: !!input.optional };
+        return { portId: input.id, type: input.type, missing: true, optional: !!input.optional };
       });
       const depList = Array.from(deps);
       dependenciesById.set(block.id, depList);
@@ -3716,9 +3796,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           operatorId,
           datasetRef: currentDatasetRef,
           viewerKind: surfaceViewerKind,
-          inputs: inputTokens,
+          inputs: inputRefs,
           params: block.params?.values ?? null,
         });
+        inputRefsById.set(block.id, inputRefs);
         inputHashById.set(block.id, inputHash);
         const cacheEntry = block.compute?.cache?.[inputHash];
         let status: "ok" | "stale" | "failed" = "stale";
@@ -3728,9 +3809,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           status = "ok";
         } else if (!operatorId) {
           status = "stale";
-        } else if (block.compute?.status === "failed" && block.compute?.inputHash === inputHash) {
+        } else if (block.compute?.lastRun?.status === "failed" && block.compute?.lastRun?.inputHash === inputHash) {
           status = "failed";
-        } else if (block.compute?.status === "ok" && block.compute?.inputHash === inputHash) {
+        } else if (block.compute?.lastRun?.status === "ok" && block.compute?.lastRun?.inputHash === inputHash) {
           status = "ok";
         }
         computeStatusById.set(block.id, status);
@@ -3765,6 +3846,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       blockMetaById,
       dependenciesById,
       downstreamById,
+      inputRefsById,
       inputHashById,
       outputHashById,
       computeStatusById,
@@ -4399,9 +4481,140 @@ case "mobius":
     [surfaceViewerKind, activeEqSurfaceId, graphExpr, buildComplexMapProbe]
   );
 
+  const sampleSurfaceAtPoint = useCallback(
+    (pick: SurfaceQueryPick): SurfaceQuerySample | null => {
+      if (datasetKind === "mesh" || surfaceViewerKind === "mesh") {
+        if (!surfaceMeshData) return null;
+        return sampleMeshAt({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+      }
+      if (surfaceViewerKind === "implicit") {
+        if (!activeCgalMeshData) return null;
+        return sampleMeshAt({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+      }
+      if (surfaceViewerKind === "graph") {
+        const fn = getGraphFunction(activeEqSurfaceId, graphExpr);
+        if (!fn) return null;
+        const xy = pick.xy ?? { x: pick.point.x, y: pick.point.z };
+        const span = Math.max(1e-6, Math.max(activeGraphDomain.xSpan, activeGraphDomain.ySpan));
+        const h = Math.max(1e-5, span * 1e-3);
+        return sampleGraphAt({ f: fn, x: xy.x, y: xy.y, h });
+      }
+      if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+        const state = paramGeodesicStateRef.current;
+        if (!state || !pick.uv) return null;
+        const spanU = Math.max(1e-6, Math.abs(state.domain.uMax - state.domain.uMin));
+        const spanV = Math.max(1e-6, Math.abs(state.domain.vMax - state.domain.vMin));
+        const du = Math.max(1e-5, spanU * 1e-3);
+        const dv = Math.max(1e-5, spanV * 1e-3);
+        return sampleParamAt({
+          paramFunc: state.paramFunc,
+          u: pick.uv.u,
+          v: pick.uv.v,
+          domain: state.domain,
+          du,
+          dv,
+        });
+      }
+      return null;
+    },
+    [
+      activeEqSurfaceId,
+      activeGraphDomain.xSpan,
+      activeGraphDomain.ySpan,
+      activeCgalMeshData,
+      datasetKind,
+      graphExpr,
+      surfaceMeshData,
+      surfaceViewerKind,
+    ]
+  );
+
+  const sampleSurfaceNeighborhood = useCallback(
+    (pick: SurfaceQueryPick) => {
+      if (datasetKind === "mesh" || surfaceViewerKind === "mesh") {
+        if (!surfaceMeshData) return null;
+        return buildMeshNeighborhood({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+      }
+      if (surfaceViewerKind === "implicit") {
+        if (!activeCgalMeshData) return null;
+        return buildMeshNeighborhood({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+      }
+      return null;
+    },
+    [activeCgalMeshData, datasetKind, surfaceMeshData, surfaceViewerKind]
+  );
+
+  const graphCurvatures = useMemo(() => {
+    if (!surfaceSampleSet?.samples?.length) return null;
+    if (surfaceViewerKind !== "graph" || !isGraphSurface(activeEqSurfaceId)) return null;
+    const count = surfaceSampleSet.samples.length;
+    const K = new Float32Array(count);
+    const H = new Float32Array(count);
+    const k1 = new Float32Array(count);
+    const k2 = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const sample = surfaceSampleSet.samples[i];
+      const curv = computeGraphInvariantsFromProbe(activeEqSurfaceId, graphExpr, sample.position);
+      if (curv) {
+        K[i] = curv.K;
+        H[i] = curv.H;
+        k1[i] = curv.k1;
+        k2[i] = curv.k2;
+      } else {
+        K[i] = NaN;
+        H[i] = NaN;
+        k1[i] = NaN;
+        k2[i] = NaN;
+      }
+    }
+    return { K, H, k1, k2 };
+  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+
+  const surfaceScalarFields = useMemo(() => {
+    const map = new Map<string, SurfaceScalarField>();
+    const meshScalars = meshDataset?.fields?.scalars;
+    if (meshScalars?.length) {
+      meshScalars.forEach((field) => map.set(field.name, field));
+    }
+    const curvatures = surfaceSampleSet?.curvatures ?? graphCurvatures;
+    if (curvatures) {
+      map.set("K", { name: "K", values: curvatures.K });
+      map.set("H", { name: "H", values: curvatures.H });
+      map.set("k1", { name: "k1", values: curvatures.k1 });
+      map.set("k2", { name: "k2", values: curvatures.k2 });
+    }
+    return map;
+  }, [graphCurvatures, meshDataset?.fields?.scalars, surfaceSampleSet?.curvatures]);
+
+  const surfaceVectorFields = useMemo(() => {
+    const map = new Map<string, SurfaceVectorField>();
+    const meshVectors = meshDataset?.fields?.vectors;
+    if (meshVectors?.length) {
+      meshVectors.forEach((field) => map.set(field.name, field));
+    }
+    return map;
+  }, [meshDataset?.fields?.vectors]);
+
+  const surfaceQuery = useMemo<SurfaceQuery>(() => {
+    const kind: SurfaceQuery["kind"] =
+      datasetKind === "mesh" || surfaceViewerKind === "mesh" || surfaceViewerKind === "complex"
+        ? "mesh"
+        : surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass"
+          ? surfaceViewerKind
+          : surfaceViewerKind === "graph"
+            ? "graph"
+            : "implicit";
+    return {
+      kind,
+      sampleAt: sampleSurfaceAtPoint,
+      neighborhood: sampleSurfaceNeighborhood,
+      scalarField: (name: string) => surfaceScalarFields.get(name) ?? null,
+      vectorField: (name: string) => surfaceVectorFields.get(name) ?? null,
+    };
+  }, [datasetKind, sampleSurfaceAtPoint, sampleSurfaceNeighborhood, surfaceScalarFields, surfaceVectorFields, surfaceViewerKind]);
+
   const buildPointOutput = useCallback((info: ProbeInfo) => {
     const normal = info.normal;
-    const basis = buildTangentBasis(normal);
     let meshKey: string | undefined = undefined;
     let vertexIndex: number | undefined = undefined;
     if (surfaceViewerKind === "implicit" && activeCgalMesh?.positions?.length) {
@@ -4442,40 +4655,50 @@ case "mobius":
         vertexIndex = sample.vertexIndex ?? bestIdx;
       }
     }
+    const sample = surfaceQuery.sampleAt({
+      point: info.point,
+      uv: info.uv,
+      xy: info.xy,
+      vertexIndex,
+    });
+    let tangentU: Vec3;
+    let tangentV: Vec3;
+    if (sample) {
+      const basis = buildTangentBasisFromDerivatives(sample.du, sample.dv, sample.normal);
+      if (basis) {
+        tangentU = basis.t1;
+        tangentV = basis.t2;
+      } else {
+        const fallback = buildTangentBasis(normal);
+        tangentU = fallback.t1;
+        tangentV = fallback.t2;
+      }
+    } else {
+      const fallback = buildTangentBasis(normal);
+      tangentU = fallback.t1;
+      tangentV = fallback.t2;
+    }
     return {
       point: { ...info.point },
       normal: { ...normal },
       uv: info.uv ? { ...info.uv } : undefined,
       xy: info.xy ? { ...info.xy } : undefined,
-      tangentU: { ...basis.t1 },
-      tangentV: { ...basis.t2 },
+      tangentU: { ...tangentU },
+      tangentV: { ...tangentV },
       meshKey,
       vertexIndex,
     };
-  }, [activeCgalMesh, surfaceSampleSet, surfaceViewerKind]);
+  }, [activeCgalMesh, surfaceQuery, surfaceSampleSet, surfaceViewerKind]);
 
   const buildHeatEndpointFromPoint = useCallback(
     (pointOut: { point: { x: number; y: number; z: number }; uv?: { u: number; v: number }; meshKey?: string; vertexIndex?: number }) => {
       const vertexIndex = pointOut.vertexIndex;
       if (vertexIndex == null) return null;
-      let positions: ArrayLike<number> | null = null;
-      let indices: ArrayLike<number> | null = null;
-      let meshKey = pointOut.meshKey ?? null;
-      if (surfaceViewerKind === "implicit" && activeCgalMesh?.positions?.length && activeCgalMesh.indices?.length) {
-        positions = activeCgalMesh.positions;
-        indices = activeCgalMesh.indices;
-        meshKey = "cgal";
-      } else if (surfaceSampleSet?.meshData?.length) {
-        const mesh =
-          (meshKey && surfaceSampleSet.meshData.find((m) => m.key === meshKey)) ??
-          surfaceSampleSet.meshData[0];
-        if (mesh) {
-          positions = mesh.positions;
-          indices = mesh.indices ?? null;
-          meshKey = mesh.key;
-        }
-      }
-      if (!positions) return null;
+      const meshInfo = resolveGeodesicMesh(pointOut.meshKey ?? null);
+      if (!meshInfo) return null;
+      const positions = meshInfo.positions;
+      const indices = meshInfo.indices ?? null;
+      const meshKey = meshInfo.meshKey ?? pointOut.meshKey ?? "mesh";
       const triCount = indices ? Math.floor(indices.length / 3) : Math.floor(positions.length / 9);
       let faceIndex = -1;
       let a = 0;
@@ -4529,7 +4752,7 @@ case "mobius":
         uv: pointOut.uv ? { ...pointOut.uv } : undefined,
       };
     },
-    [activeCgalMesh, surfaceSampleSet, surfaceViewerKind]
+    [resolveGeodesicMesh]
   );
 
   const buildPathEndpointFromPoint = useCallback(
@@ -4538,6 +4761,48 @@ case "mobius":
       return { meshKey: pointOut.meshKey, vertexIndex: pointOut.vertexIndex };
     },
     []
+  );
+
+  const resolveGeodesicMesh = useCallback(
+    (preferredMeshKey?: string | null) => {
+      if (surfaceViewerKind === "implicit") {
+        if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) return null;
+        return {
+          positions: activeCgalMesh.positions,
+          indices: activeCgalMesh.indices,
+          meshKey: preferredMeshKey ?? "cgal",
+          meshToken: cgalMeshToken,
+        };
+      }
+      const meshes = surfaceSampleSet?.meshData ?? [];
+      if (!meshes.length) return null;
+      const mesh =
+        (preferredMeshKey && meshes.find((m) => m.key === preferredMeshKey)) ?? meshes[0];
+      if (!mesh?.positions?.length) return null;
+      return {
+        positions: mesh.positions,
+        indices: mesh.indices ?? null,
+        meshKey: mesh.key,
+        meshToken: null,
+      };
+    },
+    [activeCgalMesh, cgalMeshToken, surfaceSampleSet, surfaceViewerKind]
+  );
+
+  const resolveLatestPointOutput = useCallback(
+    (blockId: string) => {
+      let latest: WorkbookPointOutput | null = null;
+      for (const entry of workbookGraph.orderedBlocks) {
+        if (entry.block.id === blockId) break;
+        const block = entry.block;
+        if (block.type !== "interaction") continue;
+        if (block.interaction?.kind !== "pick_point") continue;
+        const point = block.interaction?.point;
+        if (point) latest = point;
+      }
+      return latest;
+    },
+    [workbookGraph]
   );
 
   const collectInteractionPointOutputs = useCallback(
@@ -4630,6 +4895,17 @@ case "mobius":
         start: points[points.length - 2],
         end: points[points.length - 1],
       };
+    },
+    [collectInteractionPointOutputs]
+  );
+
+  const resolveInteractionPointSeeds = useCallback(
+    (blockId: string) => {
+      const points = collectInteractionPointOutputs(blockId);
+      if (!points.length) return null;
+      const seed = points[points.length - 1];
+      const target = points.length > 1 ? points[points.length - 2] : null;
+      return { seed, target };
     },
     [collectInteractionPointOutputs]
   );
@@ -4855,7 +5131,7 @@ case "mobius":
       return applyDefaultPorts({
         ...base,
         title: "Compute",
-        compute: { status: "idle", cache: {} },
+        compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, cache: {} },
       });
     if (type === "interaction") {
       return applyDefaultPorts({
@@ -7200,21 +7476,23 @@ case "mobius":
     []
   );
 
-  const computeGeodesicPath = useCallback(
-    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
-      setGeodesicPathIndices(null);
-      setGeodesicPathLength(null);
-      setGeodesicPathMessage(null);
-      setGeodesicPathDebugInfo(null);
+  const computeGeodesicPathResult = useCallback(
+    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint): WorkbookComputeOutputs["geodesicPath"] => {
+      const startOut: WorkbookPathEndpoint = { meshKey: start.meshKey, vertexIndex: start.vertexIndex };
+      const endOut: WorkbookPathEndpoint = { meshKey: end.meshKey, vertexIndex: end.vertexIndex };
+      let indices: number[] | null = null;
+      let length: number | null = null;
+      let message: string | null = null;
+      let debugInfo: string | null = null;
 
       if (start.meshKey !== end.meshKey) {
-        setGeodesicPathMessage("Start/End on different meshes.");
-        return;
+        message = "Start/End on different meshes.";
+        return { indices, length, message, debugInfo, start: startOut, end: endOut };
       }
       const adj = geodesicAdjacency.get(start.meshKey);
       if (!adj) {
-        setGeodesicPathMessage("No mesh adjacency available.");
-        return;
+        message = "No mesh adjacency available.";
+        return { indices, length, message, debugInfo, start: startOut, end: endOut };
       }
       const vertexToMerged = adj.vertexToMerged;
       const mergedToVertex = adj.mergedToVertex;
@@ -7223,8 +7501,8 @@ case "mobius":
       const startIndex = vertexToMerged ? vertexToMerged[start.vertexIndex] : start.vertexIndex;
       const endIndex = vertexToMerged ? vertexToMerged[end.vertexIndex] : end.vertexIndex;
       if (startIndex == null || endIndex == null) {
-        setGeodesicPathMessage("Start/End outside mesh bounds.");
-        return;
+        message = "Start/End outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: startOut, end: endOut };
       }
       if (
         startIndex < 0 ||
@@ -7232,15 +7510,15 @@ case "mobius":
         startIndex >= adj.neighbors.length ||
         endIndex >= adj.neighbors.length
       ) {
-        setGeodesicPathMessage("Start/End outside mesh bounds.");
-        return;
+        message = "Start/End outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: startOut, end: endOut };
       }
 
       const allowed = buildAllowedVertexMask(start.meshKey, adj.neighbors.length, vertexToMerged);
       if (geodesicPathConstrain) {
         if (!allowed || !allowed[startIndex] || !allowed[endIndex]) {
-          setGeodesicPathMessage("Start/End not in selection.");
-          return;
+          message = "Start/End not in selection.";
+          return { indices, length, message, debugInfo, start: startOut, end: endOut };
         }
       }
 
@@ -7251,12 +7529,12 @@ case "mobius":
         allowed,
         targetIndex: endIndex,
       });
-      const length = dist[endIndex];
+      const distLength = dist[endIndex];
       const path = reconstructPath(prev, startIndex, endIndex);
-      if (!path.length || !Number.isFinite(length)) {
-        setGeodesicPathMessage("No path found.");
+      if (!path.length || !Number.isFinite(distLength)) {
+        message = "No path found.";
         if (geodesicPathDebug) {
-          const debugInfo = formatGeodesicDebugInfo({
+          debugInfo = formatGeodesicDebugInfo({
             neighbors: adj.neighbors,
             weights: adj.weights,
             dist,
@@ -7264,7 +7542,6 @@ case "mobius":
             endIndex,
             vertexToMerged,
           });
-          setGeodesicPathDebugInfo(debugInfo);
           console.log("[geodesic] no path", {
             meshKey: start.meshKey,
             startIndex,
@@ -7272,7 +7549,7 @@ case "mobius":
             debugInfo,
           });
         }
-        return;
+        return { indices, length, message, debugInfo, start: startOut, end: endOut };
       }
 
       let mappedPath = mergedToVertex ? path.map((idx) => mergedToVertex[idx]) : path;
@@ -7296,7 +7573,7 @@ case "mobius":
         if (expanded[expanded.length - 1] !== endRaw) expanded.push(endRaw);
         mappedPath = expanded;
       }
-      let resolvedLength = length;
+      let resolvedLength = distLength;
       const mesh = surfaceSampleSet?.meshData?.find((m) => m.key === start.meshKey);
       const positions = mesh?.positions;
       if (positions && positions.length >= 3) {
@@ -7361,10 +7638,10 @@ case "mobius":
           }
         }
       }
-      setGeodesicPathIndices(mappedPath);
-      setGeodesicPathLength(resolvedLength);
+      indices = mappedPath;
+      length = resolvedLength;
       if (geodesicPathDebug) {
-        const debugInfo = formatGeodesicDebugInfo({
+        debugInfo = formatGeodesicDebugInfo({
           neighbors: adj.neighbors,
           weights: adj.weights,
           dist,
@@ -7372,8 +7649,8 @@ case "mobius":
           endIndex,
           vertexToMerged,
         });
-        setGeodesicPathDebugInfo(debugInfo);
       }
+      return { indices, length, message, debugInfo, start: startOut, end: endOut };
     },
     [
       buildAllowedVertexMask,
@@ -7386,6 +7663,37 @@ case "mobius":
       activeEqSurfaceId,
       surfaceViewerKind,
       surfaceSampleSet,
+    ]
+  );
+
+  const applyGeodesicPathResult = useCallback(
+    (result?: WorkbookComputeOutputs["geodesicPath"]) => {
+      if (!result) return;
+      setGeodesicPathIndices(result.indices ?? null);
+      setGeodesicPathLength(result.length ?? null);
+      setGeodesicPathMessage(result.message ?? null);
+      setGeodesicPathDebugInfo(result.debugInfo ?? null);
+      if (result.start) setGeodesicPathStart(result.start as GeodesicPathEndpoint);
+      if (result.end) setGeodesicPathEnd(result.end as GeodesicPathEndpoint);
+    },
+    [
+      setGeodesicPathEnd,
+      setGeodesicPathIndices,
+      setGeodesicPathLength,
+      setGeodesicPathMessage,
+      setGeodesicPathDebugInfo,
+      setGeodesicPathStart,
+    ]
+  );
+
+  const computeGeodesicPath = useCallback(
+    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
+      const result = computeGeodesicPathResult(start, end);
+      applyGeodesicPathResult(result);
+    },
+    [
+      applyGeodesicPathResult,
+      computeGeodesicPathResult,
     ]
   );
 
@@ -7874,30 +8182,28 @@ case "mobius":
 
   const selectionCurvatures = useMemo(() => {
     if (!surfaceSampleSet?.samples?.length) return null;
-    if (surfaceSampleSet.curvatures) return surfaceSampleSet.curvatures;
-    if (surfaceViewerKind !== "graph" || !isGraphSurface(activeEqSurfaceId)) return null;
     const count = surfaceSampleSet.samples.length;
-    const K = new Float32Array(count);
-    const H = new Float32Array(count);
-    const k1 = new Float32Array(count);
-    const k2 = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      const sample = surfaceSampleSet.samples[i];
-      const curv = computeGraphInvariantsFromProbe(activeEqSurfaceId, graphExpr, sample.position);
-      if (curv) {
-        K[i] = curv.K;
-        H[i] = curv.H;
-        k1[i] = curv.k1;
-        k2[i] = curv.k2;
-      } else {
-        K[i] = NaN;
-        H[i] = NaN;
-        k1[i] = NaN;
-        k2[i] = NaN;
-      }
-    }
-    return { K, H, k1, k2 };
-  }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
+    const readField = (name: string): Float32Array | null => {
+      const field = surfaceQuery.scalarField?.(name);
+      if (!field) return null;
+      const values = field.values;
+      if (!values || values.length !== count) return null;
+      return values instanceof Float32Array ? values : Float32Array.from(values);
+    };
+    const K = readField("K");
+    const H = readField("H");
+    const k1 = readField("k1");
+    const k2 = readField("k2");
+    if (!K && !H && !k1 && !k2) return null;
+
+    const fill = () => new Float32Array(count).fill(Number.NaN);
+    return {
+      K: K ?? fill(),
+      H: H ?? fill(),
+      k1: k1 ?? fill(),
+      k2: k2 ?? fill(),
+    };
+  }, [surfaceQuery, surfaceSampleSet]);
 
   const inspectMetrics = useMemo(() => {
     if (inspectIdx == null || !selectionCurvatures) return null;
@@ -7977,11 +8283,12 @@ case "mobius":
   const geodesicDiskPhiActive = useMemo(() => {
     if (!geodesicDiskPhi || !geodesicDiskPhiMethod) return false;
     if (geodesicDiskPhiMethod !== geodesicDiskMethod) return false;
-    if (surfaceViewerKind === "implicit") {
-      return geodesicDiskPhiMeshToken === cgalMeshToken;
+    if (geodesicDiskPhiMeshToken != null && geodesicDiskPhiMeshToken !== cgalMeshToken) return false;
+    if (geodesicDiskPhiMeshKey) {
+      const match = !!surfaceSampleSet?.meshData?.some((m) => m.key === geodesicDiskPhiMeshKey);
+      if (match) return true;
     }
-    if (!geodesicDiskPhiMeshKey) return false;
-    return !!surfaceSampleSet?.meshData?.some((m) => m.key === geodesicDiskPhiMeshKey);
+    return geodesicDiskPhiMeshToken != null;
   }, [
     geodesicDiskPhi,
     geodesicDiskPhiMethod,
@@ -7989,22 +8296,15 @@ case "mobius":
     geodesicDiskPhiMeshKey,
     geodesicDiskPhiMeshToken,
     cgalMeshToken,
-    surfaceViewerKind,
     surfaceSampleSet?.meshData,
   ]);
 
   const geodesicDiskMeshData = useMemo(() => {
     if (!geodesicDiskCenter) return null;
-    if (surfaceViewerKind === "implicit") {
-      const positions = activeCgalMesh?.positions ?? null;
-      const indices = activeCgalMesh?.indices ?? null;
-      if (!positions || positions.length < 3 || !indices || indices.length < 3) return null;
-      return { positions, indices };
-    }
-    const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === geodesicDiskCenter.meshKey);
-    if (!meshData) return null;
-    return { positions: meshData.positions, indices: meshData.indices ?? null };
-  }, [geodesicDiskCenter, surfaceViewerKind, activeCgalMesh, surfaceSampleSet?.meshData]);
+    const meshInfo = resolveGeodesicMesh(geodesicDiskCenter.meshKey ?? null);
+    if (!meshInfo?.positions) return null;
+    return { positions: meshInfo.positions, indices: meshInfo.indices ?? null };
+  }, [geodesicDiskCenter, resolveGeodesicMesh]);
 
   const geodesicDiskResult = useMemo(() => {
     if (!geodesicDiskEnabled || !geodesicDiskPhiActive || !geodesicDiskMeshData || !geodesicDiskPhi) {
@@ -8089,46 +8389,22 @@ case "mobius":
       alive = false;
     };
   }, [surfaceViewerKind]);
-  const geodesicHeatGraphAvailable =
-    surfaceViewerKind === "graph" &&
-    isGraphSurface(activeEqSurfaceId) &&
-    !!surfaceSampleSet?.meshData?.length;
-  const geodesicHeatParamAvailable =
-    (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") &&
-    !!surfaceSampleSet?.meshData?.length;
-  const geodesicHeatMeshAvailable =
-    (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") && !!surfaceSampleSet?.meshData?.length;
-  const geodesicHeatAvailable =
-    (surfaceViewerKind === "implicit" && !!activeCgalMesh) ||
-    geodesicHeatGraphAvailable ||
-    geodesicHeatParamAvailable ||
-    geodesicHeatMeshAvailable;
-  const geodesicHeatHeatmapAllowed =
-    (surfaceViewerKind === "implicit" ||
-      surfaceViewerKind === "graph" ||
-      surfaceViewerKind === "param" ||
-      surfaceViewerKind === "weierstrass" ||
-      surfaceViewerKind === "mesh" ||
-      surfaceViewerKind === "complex") &&
-    !geodesicHeatUseContinuous;
+  const geodesicHeatMeshInfo = useMemo(() => resolveGeodesicMesh(null), [resolveGeodesicMesh]);
+  const geodesicHeatMeshAvailable = !!geodesicHeatMeshInfo;
+  const geodesicHeatContinuousAllowed =
+    surfaceQuery.kind === "graph" || surfaceQuery.kind === "param" || surfaceQuery.kind === "weierstrass";
+  const geodesicHeatAvailable = geodesicHeatMeshAvailable || geodesicHeatContinuousAllowed;
+  const geodesicHeatHeatmapAllowed = geodesicHeatMeshAvailable && !geodesicHeatUseContinuous;
   const geodesicHeatHeatmapActive = useMemo(() => {
     if (!geodesicHeatHeatmapAllowed) return false;
     if (!geodesicHeatShowHeatmap || !geodesicHeatPhi?.length) return false;
-    if (surfaceViewerKind === "implicit") {
-      return geodesicHeatMeshToken === cgalMeshToken;
-    }
-    if (
-      surfaceViewerKind === "graph" ||
-      surfaceViewerKind === "param" ||
-      surfaceViewerKind === "weierstrass" ||
-      surfaceViewerKind === "mesh" ||
-      surfaceViewerKind === "complex"
-    ) {
-      if (!geodesicHeatMeshKey) return false;
+    if (geodesicHeatMeshToken != null && geodesicHeatMeshToken !== cgalMeshToken) return false;
+    if (geodesicHeatMeshKey) {
       const meshes = surfaceSampleSet?.meshData;
-      return !!meshes?.some((m) => m.key === geodesicHeatMeshKey);
+      const match = !!meshes?.some((m) => m.key === geodesicHeatMeshKey);
+      if (match) return true;
     }
-    return false;
+    return geodesicHeatMeshToken != null;
   }, [
     geodesicHeatShowHeatmap,
     geodesicHeatPhi,
@@ -8136,24 +8412,23 @@ case "mobius":
     geodesicHeatMeshKey,
     geodesicHeatHeatmapAllowed,
     cgalMeshToken,
-    surfaceViewerKind,
     surfaceSampleSet?.meshData,
   ]);
   const geodesicHeatHeatmapValues = geodesicHeatHeatmapActive ? geodesicHeatPhi : null;
   const geodesicHeatUnavailableReason = useMemo(() => {
     if (geodesicHeatAvailable) return "";
-    if (surfaceViewerKind === "implicit") return "Run CGAL mesh first";
-    if (surfaceViewerKind === "graph") {
+    if (surfaceQuery.kind === "implicit") return "Run CGAL mesh first";
+    if (surfaceQuery.kind === "graph") {
       return "Graph mesh not ready";
     }
-    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+    if (surfaceQuery.kind === "param" || surfaceQuery.kind === "weierstrass") {
       return "Param mesh not ready";
     }
-    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
+    if (surfaceQuery.kind === "mesh") {
       return "Surface mesh not ready";
     }
     return "Heat path only available in implicit, graph, param/weierstrass, or mesh";
-  }, [activeEqSurfaceId, geodesicHeatAvailable, surfaceViewerKind]);
+  }, [geodesicHeatAvailable, surfaceQuery.kind]);
   const geodesicHeatHeatmapReason = useMemo(() => {
     if (geodesicHeatHeatmapAllowed) return "";
     if (geodesicHeatUseContinuous) return "Heatmap requires mesh heat (disable continuous ODE)";
@@ -8162,16 +8437,16 @@ case "mobius":
   const geodesicDiskAvailable = geodesicHeatAvailable;
   const geodesicDiskUnavailableReason = useMemo(() => {
     if (geodesicDiskAvailable) return "";
-    if (surfaceViewerKind === "implicit") return "Run CGAL mesh first";
-    if (surfaceViewerKind === "graph") return "Graph mesh not ready";
-    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+    if (surfaceQuery.kind === "implicit") return "Run CGAL mesh first";
+    if (surfaceQuery.kind === "graph") return "Graph mesh not ready";
+    if (surfaceQuery.kind === "param" || surfaceQuery.kind === "weierstrass") {
       return "Param mesh not ready";
     }
-    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
+    if (surfaceQuery.kind === "mesh") {
       return "Surface mesh not ready";
     }
     return "Disk only available in implicit, graph, param/weierstrass, or mesh";
-  }, [geodesicDiskAvailable, surfaceViewerKind]);
+  }, [geodesicDiskAvailable, surfaceQuery.kind]);
 
   useEffect(() => {
     if (!geodesicHeatAvailable) setGeodesicHeatEnabled(false);
@@ -8188,14 +8463,10 @@ case "mobius":
     }
   }, [geodesicHeatHeatmapAllowed, geodesicHeatShowHeatmap]);
   useEffect(() => {
-    const allowed =
-      surfaceViewerKind === "graph" ||
-      surfaceViewerKind === "param" ||
-      surfaceViewerKind === "weierstrass";
-    if (!allowed && geodesicHeatUseContinuous) {
+    if (!geodesicHeatContinuousAllowed && geodesicHeatUseContinuous) {
       setGeodesicHeatUseContinuous(false);
     }
-  }, [surfaceViewerKind, geodesicHeatUseContinuous]);
+  }, [geodesicHeatContinuousAllowed, geodesicHeatUseContinuous]);
   useEffect(() => {
     if (!geodesicDiskAutoUpdate) return;
     setGeodesicDiskRadiusApplied(geodesicDiskRadius);
@@ -8206,212 +8477,719 @@ case "mobius":
     setGeodesicDiskPhiKey(null);
   }, [geodesicDiskMethod]);
 
+  const computeGeodesicHeatResult = useCallback(
+    async (params: {
+      start: GeodesicHeatEndpoint | null;
+      end: GeodesicHeatEndpoint | null;
+    }): Promise<WorkbookOperatorRunResult> => {
+      const { start, end } = params;
+      const kind = surfaceQuery.kind;
+      const isGraphHeat = kind === "graph";
+      const isParamHeat = kind === "param" || kind === "weierstrass";
+      const wantPhi = geodesicHeatShowHeatmap && !geodesicHeatUseContinuous;
+
+      if (!geodesicHeatAvailable) {
+        return {
+          status: "stale",
+          summary: geodesicHeatUnavailableReason || "Heat path not available yet.",
+        };
+      }
+
+      if (!start || !end) {
+        const msg =
+          kind === "implicit"
+            ? "Pick two points on the CGAL mesh."
+            : kind === "graph"
+              ? "Pick two points on the graph mesh."
+              : kind === "param" || kind === "weierstrass"
+                ? "Pick two points on the param mesh."
+                : "Pick two points on the surface mesh.";
+        return { status: "stale", summary: msg };
+      }
+
+      if (start.meshKey !== end.meshKey) {
+        return { status: "stale", summary: "Pick both points on the same mesh." };
+      }
+
+      if (isGraphHeat && geodesicHeatUseContinuous) {
+        const domain = activeGraphDomain ?? getDefaultGraphSpan(activeEqSurfaceId);
+        const start2D = { x: start.point.x, y: start.point.z };
+        const end2D = { x: end.point.x, y: end.point.z };
+        setGeodesicHeatBusy(true);
+        try {
+          const res = solveContinuousGraphGeodesic({
+            surfaceId: activeEqSurfaceId,
+            graphExpr,
+            start: start2D,
+            end: end2D,
+            domain,
+            maxSteps: 2400,
+          });
+          if (!res.ok) {
+            return { status: "failed", summary: res.error ?? "Heat path failed." };
+          }
+          return {
+            status: "ok",
+            summary: "Geodesic heat path computed.",
+            outputs: {
+              geodesicHeat: {
+                polylines: res.polyline?.length ? [res.polyline] : null,
+                length: Number.isFinite(res.length) ? res.length : null,
+                phi: null,
+                meshToken: null,
+                meshKey: null,
+              },
+            },
+          };
+        } catch (e: any) {
+          return { status: "failed", summary: e?.message ?? String(e) };
+        } finally {
+          setGeodesicHeatBusy(false);
+        }
+      }
+
+      if (isParamHeat && geodesicHeatUseContinuous) {
+        const paramState = paramGeodesicStateRef.current;
+        if (!paramState) {
+          return { status: "stale", summary: "Param geodesic state not ready." };
+        }
+        if (!start.uv || !end.uv) {
+          return { status: "stale", summary: "Pick two points on the param mesh (UV required)." };
+        }
+        if (paramState.meshKey && paramState.meshKey !== start.meshKey) {
+          return { status: "stale", summary: "Param mesh changed; repick the endpoints." };
+        }
+        setGeodesicHeatBusy(true);
+        try {
+          const res = solveContinuousParamGeodesic({
+            paramFunc: paramState.paramFunc,
+            startUV: start.uv,
+            endUV: end.uv,
+            domain: paramState.domain,
+            wrap: paramState.wrap,
+            startPoint: start.point,
+            endPoint: end.point,
+            maxSteps: 2400,
+          });
+          if (!res.ok) {
+            return { status: "failed", summary: res.error ?? "Heat path failed." };
+          }
+          return {
+            status: "ok",
+            summary: "Geodesic heat path computed.",
+            outputs: {
+              geodesicHeat: {
+                polylines: res.polyline?.length ? [res.polyline] : null,
+                length: Number.isFinite(res.length) ? res.length : null,
+                phi: null,
+                meshToken: null,
+                meshKey: null,
+              },
+            },
+          };
+        } catch (e: any) {
+          return { status: "failed", summary: e?.message ?? String(e) };
+        } finally {
+          setGeodesicHeatBusy(false);
+        }
+      }
+
+      const meshInfo = resolveGeodesicMesh(start.meshKey ?? null);
+      if (!meshInfo?.positions) {
+        return { status: "stale", summary: geodesicHeatUnavailableReason || "Mesh data missing." };
+      }
+      const positions = meshInfo.positions;
+      const indices = meshInfo.indices ?? null;
+      const heatMeshKey = meshInfo.meshKey ?? null;
+
+      setGeodesicHeatBusy(true);
+      try {
+        const heatMesh = buildHeatMesh({
+          positions,
+          indices,
+          meshKey: meshInfo.meshToken != null ? null : heatMeshKey,
+        });
+        const res = await runGeodesicHeat({
+          mesh: { V: heatMesh.V, F: heatMesh.F },
+          source: { face: start.faceIndex, bary: start.bary },
+          target: { face: end.faceIndex, bary: end.bary },
+          options: {
+            t_factor: 1.0,
+            step_factor: 0.25,
+            max_steps: 8000,
+            stop_eps: 1e-4,
+            return_phi: wantPhi,
+          },
+        });
+
+        if (!res.ok) {
+          return { status: "failed", summary: res.error ?? "Heat path failed." };
+        }
+
+        const pts = res.polyline.map((p) => ({ x: p[0], y: p[1], z: p[2] }));
+        let phi: number[] | null = null;
+        let meshToken: number | null = null;
+        let meshKey: string | null = heatMeshKey;
+        if (wantPhi && res.phi_vertex?.length) {
+          const expanded = heatMesh.expandPhi(res.phi_vertex);
+          phi = Array.from(expanded);
+          if (meshInfo.meshToken != null) {
+            meshToken = meshInfo.meshToken;
+          } else {
+            meshKey = heatMeshKey;
+          }
+        }
+
+        return {
+          status: "ok",
+          summary: "Geodesic heat path computed.",
+          outputs: {
+            geodesicHeat: {
+              polylines: pts.length ? [pts] : null,
+              length: Number.isFinite(res.length) ? res.length : null,
+              phi,
+              meshToken,
+              meshKey,
+              message: null,
+            },
+          },
+        };
+      } catch (e: any) {
+        return { status: "failed", summary: e?.message ?? String(e) };
+      } finally {
+        setGeodesicHeatBusy(false);
+      }
+    },
+    [
+      activeEqSurfaceId,
+      activeGraphDomain,
+      buildHeatMesh,
+      geodesicHeatAvailable,
+      geodesicHeatShowHeatmap,
+      geodesicHeatUnavailableReason,
+      geodesicHeatUseContinuous,
+      graphExpr,
+      resolveGeodesicMesh,
+      surfaceQuery,
+    ]
+  );
+
   const handleRunGeodesicHeat = useCallback(
     async (override?: { start: GeodesicHeatEndpoint; end: GeodesicHeatEndpoint }) => {
-    setGeodesicHeatMessage(null);
-    setGeodesicHeatPolylines(null);
-    setGeodesicHeatLength(null);
-    setGeodesicHeatPhi(null);
-    setGeodesicHeatMeshToken(null);
-    setGeodesicHeatMeshKey(null);
+      setGeodesicHeatMessage(null);
+      setGeodesicHeatPolylines(null);
+      setGeodesicHeatLength(null);
+      setGeodesicHeatPhi(null);
+      setGeodesicHeatMeshToken(null);
+      setGeodesicHeatMeshKey(null);
 
-    const resolvedStart = override?.start ?? geodesicHeatStart;
-    const resolvedEnd = override?.end ?? geodesicHeatEnd;
-    const isImplicitHeat = surfaceViewerKind === "implicit";
-    const isGraphHeat = surfaceViewerKind === "graph" && isGraphSurface(activeEqSurfaceId);
-    const isParamHeat = surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass";
-    const wantPhi = geodesicHeatShowHeatmap && !geodesicHeatUseContinuous;
-    if (!isImplicitHeat && !isGraphHeat && !isParamHeat) {
-      setGeodesicHeatMessage("Heat path is available only in implicit, graph, or param mode.");
-      return;
-    }
-
-    if (isImplicitHeat && !activeCgalMesh) {
-      setGeodesicHeatMessage("Run CGAL mesh first.");
-      return;
-    }
-    if (isGraphHeat && !surfaceSampleSet?.meshData?.length) {
-      setGeodesicHeatMessage("Graph mesh not ready.");
-      return;
-    }
-    if (isParamHeat && !surfaceSampleSet?.meshData?.length) {
-      setGeodesicHeatMessage("Param mesh not ready.");
-      return;
-    }
-
-    if (!resolvedStart || !resolvedEnd) {
-      const msg = isImplicitHeat
-        ? "Pick two points on the CGAL mesh."
-        : isGraphHeat
-          ? "Pick two points on the graph mesh."
-          : "Pick two points on the param mesh.";
-      setGeodesicHeatMessage(msg);
-      return;
-    }
-
-    if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
-      setGeodesicHeatMessage("Pick both points on the same mesh.");
-      return;
-    }
-
-    if (isGraphHeat && geodesicHeatUseContinuous) {
-      const domain = activeGraphDomain ?? getDefaultGraphSpan(activeEqSurfaceId);
-      const start2D = { x: resolvedStart.point.x, y: resolvedStart.point.z };
-      const end2D = { x: resolvedEnd.point.x, y: resolvedEnd.point.z };
-      setGeodesicHeatBusy(true);
-      try {
-        const res = solveContinuousGraphGeodesic({
-          surfaceId: activeEqSurfaceId,
-          graphExpr,
-          start: start2D,
-          end: end2D,
-          domain,
-          maxSteps: 2400,
-        });
-        if (!res.ok) {
-          setGeodesicHeatMessage(res.error);
-          return;
+      const resolvedStart = override?.start ?? geodesicHeatStart;
+      const resolvedEnd = override?.end ?? geodesicHeatEnd;
+      const result = await computeGeodesicHeatResult({ start: resolvedStart, end: resolvedEnd });
+      if (result.status === "ok" && result.outputs?.geodesicHeat) {
+        setGeodesicHeatEnabled(true);
+        setGeodesicHeatPolylines(result.outputs.geodesicHeat.polylines ?? null);
+        setGeodesicHeatLength(result.outputs.geodesicHeat.length ?? null);
+        setGeodesicHeatPhi(result.outputs.geodesicHeat.phi ?? null);
+        setGeodesicHeatMeshToken(result.outputs.geodesicHeat.meshToken ?? null);
+        setGeodesicHeatMeshKey(result.outputs.geodesicHeat.meshKey ?? null);
+        if (result.outputs.geodesicHeat.message) {
+          setGeodesicHeatMessage(result.outputs.geodesicHeat.message);
         }
-        setGeodesicHeatPolylines(res.polyline?.length ? [res.polyline] : null);
-        setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
-      } catch (e: any) {
-        setGeodesicHeatMessage(e?.message ?? String(e));
-      } finally {
-        setGeodesicHeatBusy(false);
+        return;
       }
-      return;
-    }
+      if (result.summary) setGeodesicHeatMessage(result.summary);
+    },
+    [computeGeodesicHeatResult, geodesicHeatEnd, geodesicHeatStart]
+  );
 
-    if (isParamHeat && geodesicHeatUseContinuous) {
-      const paramState = paramGeodesicStateRef.current;
-      if (!paramState) {
-        setGeodesicHeatMessage("Param geodesic state not ready.");
-        return;
+  const applyViewPatch = useCallback(
+    (patch?: WorkbookComputeOutputs["viewPatch"]) => {
+      if (!patch) return;
+      if (patch.colorMode) setColorMode(patch.colorMode);
+      if (patch.showWireframe != null) setShowWireframe(patch.showWireframe);
+      if (patch.showContours != null) setShowContours(patch.showContours);
+      if (patch.showChartGrid != null) setShowChartGrid(patch.showChartGrid);
+      if (patch.probeEnabled != null) setProbeEnabled(patch.probeEnabled);
+      if (patch.showProbeNormal != null) setShowProbeNormal(patch.showProbeNormal);
+      if (patch.showProbeTangentPlane != null) setShowProbeTangentPlane(patch.showProbeTangentPlane);
+      if (patch.showProbeTangents != null) setShowProbeTangents(patch.showProbeTangents);
+      if (patch.showPrincipalDirections != null) setShowPrincipalDirections(patch.showPrincipalDirections);
+      if (patch.showPrincipalGlyphs != null) setShowPrincipalGlyphs(patch.showPrincipalGlyphs);
+    },
+    [
+      setColorMode,
+      setProbeEnabled,
+      setShowChartGrid,
+      setShowContours,
+      setShowPrincipalDirections,
+      setShowPrincipalGlyphs,
+      setShowProbeNormal,
+      setShowProbeTangentPlane,
+      setShowProbeTangents,
+      setShowWireframe,
+    ]
+  );
+
+  const applyComputeOutputs = useCallback(
+    (outputs?: WorkbookComputeOutputs) => {
+      if (!outputs) return;
+      applyViewPatch(outputs.viewPatch);
+      if (outputs.geodesicHeat) {
+        setGeodesicHeatEnabled(true);
+        setGeodesicHeatPolylines(outputs.geodesicHeat.polylines ?? null);
+        setGeodesicHeatLength(outputs.geodesicHeat.length ?? null);
+        if (outputs.geodesicHeat.phi != null) setGeodesicHeatPhi(outputs.geodesicHeat.phi ?? null);
+        if (outputs.geodesicHeat.meshToken != null) setGeodesicHeatMeshToken(outputs.geodesicHeat.meshToken);
+        if (outputs.geodesicHeat.meshKey != null) setGeodesicHeatMeshKey(outputs.geodesicHeat.meshKey);
+        setGeodesicHeatMessage(outputs.geodesicHeat.message ?? null);
       }
-      if (!resolvedStart.uv || !resolvedEnd.uv) {
-        setGeodesicHeatMessage("Pick two points on the param mesh (UV required).");
-        return;
+      if (outputs.geodesicPath) {
+        setGeodesicPathEnabled(true);
+        applyGeodesicPathResult(outputs.geodesicPath);
       }
-      if (paramState.meshKey && paramState.meshKey !== resolvedStart.meshKey) {
-        setGeodesicHeatMessage("Param mesh changed; repick the endpoints.");
-        return;
+      if (outputs.curveOverlay) {
+        applyWorkbookCurveOverlay(outputs.curveOverlay.polylines ?? null);
       }
-      setGeodesicHeatBusy(true);
-      try {
-        const res = solveContinuousParamGeodesic({
-          paramFunc: paramState.paramFunc,
-          startUV: resolvedStart.uv,
-          endUV: resolvedEnd.uv,
-          domain: paramState.domain,
-          wrap: paramState.wrap,
-          startPoint: resolvedStart.point,
-          endPoint: resolvedEnd.point,
-          maxSteps: 2400,
-        });
-        if (!res.ok) {
-          setGeodesicHeatMessage(res.error);
-          return;
+      if (outputs.directionOverlay) {
+        applyWorkbookDirectionOverlay(outputs.directionOverlay.polylines ?? null);
+      }
+      if (outputs.selectionMask?.indices?.length) {
+        const mask = buildSelectionMaskFromIndices(outputs.selectionMask.indices);
+        if (mask) {
+          setSelection(null);
+          setSelectionSeed(null);
+          setSelectionMaskOverride(mask);
+          setSelectionMask(mask);
         }
-        setGeodesicHeatPolylines(res.polyline?.length ? [res.polyline] : null);
-        setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
-      } catch (e: any) {
-        setGeodesicHeatMessage(e?.message ?? String(e));
-      } finally {
-        setGeodesicHeatBusy(false);
       }
-      return;
-    }
+    },
+    [
+      applyGeodesicPathResult,
+      applyViewPatch,
+      applyWorkbookCurveOverlay,
+      applyWorkbookDirectionOverlay,
+      buildSelectionMaskFromIndices,
+      setGeodesicHeatEnabled,
+      setGeodesicHeatLength,
+      setGeodesicHeatMeshKey,
+      setGeodesicHeatMeshToken,
+      setGeodesicHeatMessage,
+      setGeodesicHeatPhi,
+      setGeodesicHeatPolylines,
+      setGeodesicPathEnabled,
+      setSelection,
+      setSelectionMask,
+      setSelectionMaskOverride,
+      setSelectionSeed,
+    ]
+  );
 
-    let positions: ArrayLike<number> | null = null;
-    let indices: ArrayLike<number> | null = null;
-    let heatMeshKey: string | null = null;
-    if (isImplicitHeat) {
-      const pos = activeCgalMesh?.positions ?? null;
-      const idx = activeCgalMesh?.indices ?? null;
-      if (!pos || pos.length < 3 || !idx || idx.length < 3) {
-        setGeodesicHeatMessage("CGAL mesh data missing.");
-        return;
+  const runPointInfoOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const pointOut = resolveLatestPointOutput(ctx.blockId);
+      const fallback = probeInfo ? buildPointOutput(probeInfo) : null;
+      const pick = pointOut ?? fallback;
+      if (!pick) {
+        return { status: "stale", summary: "Pick a point before running." };
       }
-      positions = pos;
-      indices = idx;
-    } else {
-      const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === resolvedStart.meshKey)
-        ?? surfaceSampleSet?.meshData?.[0];
-      heatMeshKey = meshData?.key ?? null;
-      const pos = meshData?.positions;
-      const idx = meshData?.indices ?? null;
-      if (!pos || pos.length < 3) {
-        setGeodesicHeatMessage(isGraphHeat ? "Graph mesh data missing." : "Param mesh data missing.");
-        return;
-      }
-      positions = pos;
-      indices = idx;
-    }
-
-    setGeodesicHeatBusy(true);
-    try {
-      if (!positions) {
-        setGeodesicHeatMessage("Mesh data missing.");
-        return;
-      }
-      const heatMesh = buildHeatMesh({
-        positions,
-        indices,
-        meshKey: isImplicitHeat ? null : heatMeshKey,
+      const sample = surfaceQuery.sampleAt({
+        point: pick.point,
+        uv: pick.uv,
+        xy: pick.xy,
+        vertexIndex: pick.vertexIndex,
       });
-      const res = await runGeodesicHeat({
-        mesh: { V: heatMesh.V, F: heatMesh.F },
-        source: { face: resolvedStart.faceIndex, bary: resolvedStart.bary },
-        target: { face: resolvedEnd.faceIndex, bary: resolvedEnd.bary },
-        options: {
-          t_factor: 1.0,
-          step_factor: 0.25,
-          max_steps: 8000,
-          stop_eps: 1e-4,
-          return_phi: wantPhi,
-        },
-      });
-
-      if (!res.ok) {
-        setGeodesicHeatMessage(res.error ?? "Heat path failed.");
-        return;
+      if (!sample) {
+        return { status: "stale", summary: "Point info not available for this surface yet." };
       }
 
-      const pts = res.polyline.map((p) => ({ x: p[0], y: p[1], z: p[2] }));
-      setGeodesicHeatPolylines(pts.length ? [pts] : null);
-      setGeodesicHeatLength(Number.isFinite(res.length) ? res.length : null);
-      if (wantPhi && res.phi_vertex?.length) {
-        const expanded = heatMesh.expandPhi(res.phi_vertex);
-        setGeodesicHeatPhi(Array.from(expanded));
-        if (isImplicitHeat) {
-          setGeodesicHeatMeshToken(cgalMeshToken);
+      const neighborhood = surfaceQuery.neighborhood({
+        point: pick.point,
+        vertexIndex: pick.vertexIndex,
+      });
+      const neighborInfo = neighborhood?.neighbors?.length
+        ? ` neighbors=${neighborhood.neighbors.length}`
+        : "";
+
+      const summary = [
+        `p=${fmt3(sample.point)}`,
+        `n=${fmt3(sample.normal)}`,
+        `du=${fmt3(sample.du)}`,
+        `dv=${fmt3(sample.dv)}`,
+        `E=${fmt(sample.metric.E)}`,
+        `F=${fmt(sample.metric.F)}`,
+        `G=${fmt(sample.metric.G)}`,
+        `|dA|=${fmt(sample.areaElem)}`,
+      ].join(" ");
+      return {
+        status: "ok",
+        summary: summary + neighborInfo,
+      };
+    },
+    [
+      buildPointOutput,
+      probeInfo,
+      resolveLatestPointOutput,
+      surfaceQuery,
+    ]
+  );
+
+  const runChartPointInfoOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const info = runPointInfoOperator(ctx);
+      const chart = runChartGridOperator(ctx);
+      const outputs = chart.outputs ?? {};
+      const summary = info.summary ? `${info.summary} | ${chart.summary ?? ""}` : chart.summary ?? "";
+      return {
+        status: info.status === "ok" ? "ok" : info.status,
+        summary: summary.trim() || info.summary || chart.summary || "",
+        outputs,
+        logs: info.logs,
+      };
+    },
+    [runChartGridOperator, runPointInfoOperator]
+  );
+
+  const runChartGridOperator = useCallback(
+    (_ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const patch: WorkbookComputeOutputs["viewPatch"] = {
+        probeEnabled: true,
+        showProbeNormal: true,
+        showProbeTangentPlane: true,
+        showProbeTangents: true,
+      };
+      let summary = "Chart grid + probe enabled.";
+      if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+        patch.showChartGrid = true;
+        summary = "Chart grid (iso-u/iso-v) + probe enabled.";
+      } else if (surfaceViewerKind === "graph") {
+        patch.showChartGrid = true;
+        summary = "Chart grid (iso-x/iso-y) + probe enabled.";
+      } else {
+        patch.showWireframe = true;
+        if (surfaceViewerKind === "implicit") {
+          patch.showContours = true;
+          summary = "Wireframe + contours + probe enabled.";
         } else {
-          setGeodesicHeatMeshKey(heatMeshKey);
+          summary = "Wireframe + probe enabled.";
         }
       }
-    } catch (e: any) {
-      setGeodesicHeatMessage(e?.message ?? String(e));
-    } finally {
-      setGeodesicHeatBusy(false);
-    }
-  },
-  [
-    activeCgalMesh,
-    activeEqSurfaceId,
-    activeGraphDomain,
-    buildHeatMesh,
-    cgalMeshToken,
-    geodesicHeatShowHeatmap,
-    geodesicHeatUseContinuous,
-    geodesicHeatEnd,
-    geodesicHeatStart,
-    graphExpr,
-    surfaceSampleSet,
-    surfaceViewerKind,
+      return { status: "ok", summary, outputs: { viewPatch: patch } };
+    },
+    [surfaceViewerKind]
+  );
+
+  const runCurveOverlayOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const curve = resolveLatestCurveOutput(ctx.blockId);
+      if (!curve?.points?.length) {
+        return { status: "stale", summary: "Draw a curve before running." };
+      }
+      const polylines: PolylineSet = [curve.points];
+      return {
+        status: "ok",
+        summary: "Curve overlay applied.",
+        outputs: { curveOverlay: { polylines } },
+      };
+    },
+    [resolveLatestCurveOutput]
+  );
+
+  const runDirectionOverlayOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const directionOut = resolveLatestDirectionOutput(ctx.blockId);
+      if (!directionOut) {
+        return { status: "stale", summary: "Pick a direction before running." };
+      }
+      const bbox = surfaceSampleSet?.bbox ?? null;
+      const size = bbox ? bbox.getSize(new THREE.Vector3()).length() : null;
+      let domainSize: number | null = null;
+      if (surfaceViewerKind === "graph") {
+        domainSize = Math.hypot(activeGraphDomain.xSpan, activeGraphDomain.ySpan);
+      } else if (surfaceViewerKind === "implicit") {
+        domainSize = Math.hypot(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
+      } else if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+        const uSpan = activeParamLikeDomain ? Math.abs(activeParamLikeDomain.uMax - activeParamLikeDomain.uMin) : 1;
+        const vSpan = activeParamLikeDomain ? Math.abs(activeParamLikeDomain.vMax - activeParamLikeDomain.vMin) : 1;
+        domainSize = Math.hypot(uSpan, vSpan);
+      }
+      const base = size ?? domainSize ?? 2;
+      const length = Math.max(0.2, base * 0.25);
+      const dir = vNormalize(directionOut.direction);
+      const end = vAdd(directionOut.origin, vScale(dir, length));
+      const polylines: PolylineSet = [[directionOut.origin, end]];
+      return {
+        status: "ok",
+        summary: "Direction overlay applied.",
+        outputs: { directionOverlay: { polylines } },
+      };
+    },
+    [
+      activeGraphDomain,
+      activeImplicitDomain,
+      activeParamLikeDomain,
+      resolveLatestDirectionOutput,
+      surfaceSampleSet,
+      surfaceViewerKind,
+    ]
+  );
+
+  const runSelectionOverlayOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const maskOut = resolveLatestMaskOutput(ctx.blockId);
+      if (!maskOut?.indices?.length) {
+        return { status: "stale", summary: "Select a region before running." };
+      }
+      const mask = buildSelectionMaskFromIndices(maskOut.indices);
+      if (!mask) {
+        return { status: "stale", summary: "Selection overlay requires sampled surface." };
+      }
+      return {
+        status: "ok",
+        summary: `Selection overlay applied (${mask.count} samples).`,
+        outputs: { selectionMask: maskOut },
+      };
+    },
+    [buildSelectionMaskFromIndices, resolveLatestMaskOutput]
+  );
+
+  const runCurvatureFieldOperator = useCallback(
+    (_ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const patch: WorkbookComputeOutputs["viewPatch"] = {
+        colorMode: surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "gaussian" : "curvature",
+        showPrincipalDirections: true,
+        showPrincipalGlyphs: true,
+      };
+      return {
+        status: "ok",
+        summary: "Curvature coloring + principal directions enabled.",
+        outputs: { viewPatch: patch },
+      };
+    },
+    [surfaceViewerKind]
+  );
+
+  const runSurfaceCurvatureOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      return runCurvatureFieldOperator(ctx);
+    },
+    [runCurvatureFieldOperator]
+  );
+
+  const runGeodesicHeatOperator = useCallback(
+    async (ctx: WorkbookOperatorRunContext): Promise<WorkbookOperatorRunResult> => {
+      const pointPair = resolveInteractionPointPair(ctx.blockId);
+      let resolvedStart = geodesicHeatStart;
+      let resolvedEnd = geodesicHeatEnd;
+      let usingInteraction = false;
+
+      if (pointPair) {
+        const start = buildHeatEndpointFromPoint(pointPair.start);
+        const end = buildHeatEndpointFromPoint(pointPair.end);
+        if (!start || !end) {
+          return {
+            status: "stale",
+            summary: "Pick points on the surface mesh (PickPoint outputs missing mesh data).",
+          };
+        }
+        resolvedStart = start;
+        resolvedEnd = end;
+        usingInteraction = true;
+      }
+
+      if (!resolvedStart || !resolvedEnd) {
+        return {
+          status: "stale",
+          summary: pointPair ? "Need two PickPoint outputs before running." : "Pick two points on the surface before running.",
+        };
+      }
+      if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
+        return { status: "stale", summary: "Pick both points on the same mesh." };
+      }
+
+      setGeodesicHeatStart(resolvedStart);
+      setGeodesicHeatEnd(resolvedEnd);
+      const result = await computeGeodesicHeatResult({ start: resolvedStart, end: resolvedEnd });
+      if (result.status === "ok" && usingInteraction) {
+        return {
+          ...result,
+          summary: "Geodesic heat path from PickPoint outputs.",
+        };
+      }
+      return result;
+    },
+    [
+      buildHeatEndpointFromPoint,
+      computeGeodesicHeatResult,
+      geodesicHeatEnd,
+      geodesicHeatStart,
+      resolveInteractionPointPair,
+      setGeodesicHeatEnd,
+      setGeodesicHeatStart,
+    ]
+  );
+
+  const runGeodesicDistanceOperator = useCallback(
+    async (ctx: WorkbookOperatorRunContext): Promise<WorkbookOperatorRunResult> => {
+      const seeds = resolveInteractionPointSeeds(ctx.blockId);
+      const fallback = probeInfo ? buildPointOutput(probeInfo) : null;
+      const seedPoint = seeds?.seed ?? fallback;
+      if (!seedPoint) {
+        return { status: "stale", summary: "Pick a point before running." };
+      }
+
+      const start = buildHeatEndpointFromPoint(seedPoint);
+      if (!start) {
+        return {
+          status: "stale",
+          summary: "Pick points on the surface mesh (PickPoint outputs missing mesh data).",
+        };
+      }
+      const targetPoint = seeds?.target;
+      const end = targetPoint ? buildHeatEndpointFromPoint(targetPoint) : start;
+      if (!end) {
+        return { status: "stale", summary: "Target point missing mesh data." };
+      }
+
+      setGeodesicHeatShowHeatmap(true);
+      setGeodesicHeatUseContinuous(false);
+      setGeodesicHeatStart(start);
+      setGeodesicHeatEnd(end);
+
+      const result = await computeGeodesicHeatResult({ start, end });
+      if (result.status === "ok") {
+        return {
+          ...result,
+          summary: targetPoint
+            ? "Geodesic distance + shortest path computed."
+            : "Geodesic distance computed from seed.",
+        };
+      }
+      return result;
+    },
+    [
+      buildHeatEndpointFromPoint,
+      buildPointOutput,
+      computeGeodesicHeatResult,
+      probeInfo,
+      resolveInteractionPointSeeds,
+      setGeodesicHeatEnd,
+      setGeodesicHeatShowHeatmap,
+      setGeodesicHeatStart,
+      setGeodesicHeatUseContinuous,
+    ]
+  );
+
+  const runGeodesicPathOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const pointPair = resolveInteractionPointPair(ctx.blockId);
+      let resolvedStart = geodesicPathStart;
+      let resolvedEnd = geodesicPathEnd;
+      let usingInteraction = false;
+
+      if (pointPair) {
+        const start = buildPathEndpointFromPoint(pointPair.start);
+        const end = buildPathEndpointFromPoint(pointPair.end);
+        if (!start || !end) {
+          return {
+            status: "stale",
+            summary: "Pick points on the surface mesh (PickPoint outputs missing vertex data).",
+          };
+        }
+        resolvedStart = start;
+        resolvedEnd = end;
+        usingInteraction = true;
+      }
+
+      if (!resolvedStart || !resolvedEnd) {
+        return {
+          status: "stale",
+          summary: pointPair ? "Need two PickPoint outputs before running." : "Pick two points on the surface before running.",
+        };
+      }
+      if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
+        return { status: "stale", summary: "Pick both points on the same mesh." };
+      }
+
+      const pathResult = computeGeodesicPathResult(resolvedStart, resolvedEnd);
+      const ok = !!pathResult?.indices?.length;
+      const summary = ok
+        ? usingInteraction
+          ? "Geodesic path from PickPoint outputs."
+          : "Geodesic path computed."
+        : pathResult?.message ?? "No path found.";
+      return {
+        status: ok ? "ok" : "stale",
+        summary,
+        outputs: { geodesicPath: pathResult },
+      };
+    },
+    [
+      buildPathEndpointFromPoint,
+      computeGeodesicPathResult,
+      geodesicPathEnd,
+      geodesicPathStart,
+      resolveInteractionPointPair,
+    ]
+  );
+
+  const runPrincipalDirsOperator = useCallback(
+    (_ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const patch: WorkbookComputeOutputs["viewPatch"] = {
+        showPrincipalDirections: true,
+        showPrincipalGlyphs: true,
+      };
+      return {
+        status: "ok",
+        summary: "Principal direction glyphs enabled.",
+        outputs: { viewPatch: patch },
+      };
+    },
+    []
+  );
+
+  const computeOperatorRegistry = useMemo(() => {
+    const runners: Record<string, WorkbookOperatorRunner["run"]> = {
+      "chart.pointInfo": runChartPointInfoOperator,
+      "surface.curvature": runSurfaceCurvatureOperator,
+      "surface.geodesicDistance": runGeodesicDistanceOperator,
+      point_info: runPointInfoOperator,
+      chart_grid: runChartGridOperator,
+      curve_overlay: runCurveOverlayOperator,
+      direction_overlay: runDirectionOverlayOperator,
+      selection_overlay: runSelectionOverlayOperator,
+      curvature_field: runCurvatureFieldOperator,
+      geodesic_heat: runGeodesicHeatOperator,
+      geodesic_path: runGeodesicPathOperator,
+      principal_dirs: runPrincipalDirsOperator,
+    };
+    const entries: WorkbookOperatorRunner[] = WORKBOOK_OPERATOR_CATALOG.map((spec) => ({
+      ...spec,
+      run:
+        runners[spec.id] ??
+        (() => ({
+          status: "failed",
+          summary: "Unknown operator.",
+        })),
+    }));
+    return createOperatorRegistry(entries);
+  }, [
+    runPointInfoOperator,
+    runChartGridOperator,
+    runChartPointInfoOperator,
+    runCurveOverlayOperator,
+    runCurvatureFieldOperator,
+    runSurfaceCurvatureOperator,
+    runDirectionOverlayOperator,
+    runGeodesicDistanceOperator,
+    runGeodesicHeatOperator,
+    runGeodesicPathOperator,
+    runPrincipalDirsOperator,
+    runSelectionOverlayOperator,
   ]);
 
   const handleRunComputeBlock = useCallback(
-    (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
+    async (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
       if (IS_REPLAY_MODE) return;
       if (!activeWorkbookId) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
@@ -8424,70 +9202,80 @@ case "mobius":
         return;
       }
 
-      const applyViewPatch = (patch?: WorkbookComputeOutputs["viewPatch"]) => {
-        if (!patch) return;
-        if (patch.colorMode) setColorMode(patch.colorMode);
-        if (patch.showWireframe != null) setShowWireframe(patch.showWireframe);
-        if (patch.showContours != null) setShowContours(patch.showContours);
-        if (patch.showChartGrid != null) setShowChartGrid(patch.showChartGrid);
-        if (patch.probeEnabled != null) setProbeEnabled(patch.probeEnabled);
-        if (patch.showProbeNormal != null) setShowProbeNormal(patch.showProbeNormal);
-        if (patch.showProbeTangentPlane != null) setShowProbeTangentPlane(patch.showProbeTangentPlane);
-        if (patch.showProbeTangents != null) setShowProbeTangents(patch.showProbeTangents);
-        if (patch.showPrincipalDirections != null) setShowPrincipalDirections(patch.showPrincipalDirections);
-        if (patch.showPrincipalGlyphs != null) setShowPrincipalGlyphs(patch.showPrincipalGlyphs);
-      };
+      const operator = computeOperatorRegistry.get(resolvedOperator);
+      if (!operator) {
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          compute: { status: "failed", summary: "Unknown operator." },
+        });
+        return;
+      }
+      if (datasetKind === "volume") {
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          compute: { status: "failed", summary: "Compute operators target surface datasets (switch off Volume)." },
+        });
+        return;
+      }
 
-      const applyComputeOutputs = (outputs?: WorkbookComputeOutputs) => {
-        if (!outputs) return;
-        applyViewPatch(outputs.viewPatch);
-        if (outputs.geodesicHeat) {
-          setGeodesicHeatEnabled(true);
-          setGeodesicHeatPolylines(outputs.geodesicHeat.polylines ?? null);
-          setGeodesicHeatLength(outputs.geodesicHeat.length ?? null);
-          if (outputs.geodesicHeat.phi != null) setGeodesicHeatPhi(outputs.geodesicHeat.phi ?? null);
-          if (outputs.geodesicHeat.meshToken != null) setGeodesicHeatMeshToken(outputs.geodesicHeat.meshToken);
-          if (outputs.geodesicHeat.meshKey != null) setGeodesicHeatMeshKey(outputs.geodesicHeat.meshKey);
-          if (outputs.geodesicHeat.message != null) setGeodesicHeatMessage(outputs.geodesicHeat.message);
-        }
-        if (outputs.curveOverlay) {
-          applyWorkbookCurveOverlay(outputs.curveOverlay.polylines ?? null);
-        }
-        if (outputs.directionOverlay) {
-          applyWorkbookDirectionOverlay(outputs.directionOverlay.polylines ?? null);
-        }
-        if (outputs.selectionMask?.indices?.length) {
-          const mask = buildSelectionMaskFromIndices(outputs.selectionMask.indices);
-          if (mask) {
-            setSelection(null);
-            setSelectionSeed(null);
-            setSelectionMaskOverride(mask);
-            setSelectionMask(mask);
-          }
-        }
-      };
-
+      const inputRefs = workbookGraph.inputRefsById.get(blockId) ?? [];
       const inputHash =
         workbookGraph.inputHashById.get(blockId) ??
         hashValue({
           operatorId: resolvedOperator,
           datasetRef: currentDatasetRef,
           viewerKind: surfaceViewerKind,
-          inputs: [],
+          inputs: inputRefs,
+          params: block?.params?.values ?? null,
         });
       const cacheEntry = block?.compute?.cache?.[inputHash];
       if (cacheEntry?.status === "ok") {
-        applyComputeOutputs(cacheEntry.outputs);
-        handleUpdateWorkbookBlock(stageId, blockId, {
-          compute: {
-            status: "ok",
-            summary: cacheEntry.summary ?? "Cached output applied.",
-            datasetRef: currentDatasetRef,
-            lastRunAt: Date.now(),
-            inputHash,
-            outputHash: cacheEntry.outputHash,
-          },
-        });
+        if (cacheEntry.outputs) applyComputeOutputs(cacheEntry.outputs);
+        const now = Date.now();
+        const summary = cacheEntry.summary ?? "Cached output applied.";
+        const logs = cacheEntry.logs ?? (summary ? [summary] : undefined);
+        const timing = cacheEntry.timing ?? { startedAt: now, endedAt: now, durationMs: 0 };
+        setWorkbooks((prev) =>
+          prev.map((w) =>
+            w.id === activeWorkbookId
+              ? {
+                  ...w,
+                  updatedAt: now,
+                  stages: w.stages.map((s) =>
+                    s.id === stageId
+                      ? {
+                          ...s,
+                          blocks: s.blocks.map((b) =>
+                            b.id === blockId
+                              ? {
+                                  ...b,
+                                  compute: {
+                                    ...(b.compute ?? {}),
+                                    operatorId: resolvedOperator,
+                                    inputs: inputRefs,
+                                    outputs: cacheEntry.outputs ?? b.compute?.outputs,
+                                    lastRun: {
+                                      inputHash,
+                                      status: "ok",
+                                      logs,
+                                      timing,
+                                    },
+                                    status: "ok",
+                                    summary,
+                                    datasetRef: currentDatasetRef,
+                                    lastRunAt: now,
+                                    inputHash,
+                                    outputHash: cacheEntry.outputHash,
+                                    cache: block?.compute?.cache ?? {},
+                                  },
+                                }
+                              : b
+                          ),
+                        }
+                      : s
+                  ),
+                }
+              : w
+          )
+        );
         return;
       }
 
@@ -8497,195 +9285,21 @@ case "mobius":
         });
       }
 
-      let status: "ok" | "stale" | "failed" = "ok";
-      let summary = "";
-      let outputs: WorkbookComputeOutputs | undefined;
+      const startedAt = Date.now();
+      let result: WorkbookOperatorRunResult;
+      try {
+        result = await operator.run({ blockId, operatorId: resolvedOperator, inputRefs });
+      } catch (e: any) {
+        result = { status: "failed", summary: e?.message ?? String(e) };
+      }
+      const endedAt = Date.now();
+      const timing = { startedAt, endedAt, durationMs: Math.max(0, endedAt - startedAt) };
+      const status = result.status;
+      const summary = result.summary ?? "";
+      const outputs = result.outputs;
 
-      if (datasetKind === "volume") {
-        status = "failed";
-        summary = "Compute operators target surface datasets (switch off Volume).";
-      } else {
-        if (resolvedOperator === "chart_grid") {
-          const patch: WorkbookComputeOutputs["viewPatch"] = {
-            probeEnabled: true,
-            showProbeNormal: true,
-            showProbeTangentPlane: true,
-            showProbeTangents: true,
-          };
-          if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-            patch.showChartGrid = true;
-            summary = "Chart grid (iso-u/iso-v) + probe enabled.";
-          } else if (surfaceViewerKind === "graph") {
-            patch.showChartGrid = true;
-            summary = "Chart grid (iso-x/iso-y) + probe enabled.";
-          } else {
-            patch.showWireframe = true;
-            if (surfaceViewerKind === "implicit") {
-              patch.showContours = true;
-              summary = "Wireframe + contours + probe enabled.";
-            } else {
-              summary = "Wireframe + probe enabled.";
-            }
-          }
-          applyViewPatch(patch);
-          outputs = { viewPatch: patch };
-        } else if (resolvedOperator === "curve_overlay") {
-          const curve = resolveLatestCurveOutput(blockId);
-          if (!curve?.points?.length) {
-            status = "stale";
-            summary = "Draw a curve before running.";
-          } else {
-            const polylines: PolylineSet = [curve.points];
-            applyWorkbookCurveOverlay(polylines);
-            outputs = { curveOverlay: { polylines } };
-            summary = "Curve overlay applied.";
-          }
-        } else if (resolvedOperator === "direction_overlay") {
-          const directionOut = resolveLatestDirectionOutput(blockId);
-          if (!directionOut) {
-            status = "stale";
-            summary = "Pick a direction before running.";
-          } else {
-            const bbox = surfaceSampleSet?.bbox ?? null;
-            const size = bbox ? bbox.getSize(new THREE.Vector3()).length() : null;
-            let domainSize: number | null = null;
-            if (surfaceViewerKind === "graph") {
-              domainSize = Math.hypot(activeGraphDomain.xSpan, activeGraphDomain.ySpan);
-            } else if (surfaceViewerKind === "implicit") {
-              domainSize = Math.hypot(activeImplicitDomain.xSpan, activeImplicitDomain.ySpan);
-            } else if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-              const uSpan = activeParamLikeDomain
-                ? Math.abs(activeParamLikeDomain.uMax - activeParamLikeDomain.uMin)
-                : 1;
-              const vSpan = activeParamLikeDomain
-                ? Math.abs(activeParamLikeDomain.vMax - activeParamLikeDomain.vMin)
-                : 1;
-              domainSize = Math.hypot(uSpan, vSpan);
-            }
-            const base = size ?? domainSize ?? 2;
-            const length = Math.max(0.2, base * 0.25);
-            const dir = vNormalize(directionOut.direction);
-            const end = vAdd(directionOut.origin, vScale(dir, length));
-            const polylines: PolylineSet = [[directionOut.origin, end]];
-            applyWorkbookDirectionOverlay(polylines);
-            outputs = { directionOverlay: { polylines } };
-            summary = "Direction overlay applied.";
-          }
-        } else if (resolvedOperator === "selection_overlay") {
-          const maskOut = resolveLatestMaskOutput(blockId);
-          if (!maskOut?.indices?.length) {
-            status = "stale";
-            summary = "Select a region before running.";
-          } else {
-            const mask = buildSelectionMaskFromIndices(maskOut.indices);
-            if (!mask) {
-              status = "stale";
-              summary = "Selection overlay requires sampled surface.";
-            } else {
-              setSelection(null);
-              setSelectionSeed(null);
-              setSelectionMaskOverride(mask);
-              setSelectionMask(mask);
-              outputs = { selectionMask: maskOut };
-              summary = `Selection overlay applied (${mask.count} samples).`;
-            }
-          }
-        } else if (resolvedOperator === "curvature_field") {
-          const patch: WorkbookComputeOutputs["viewPatch"] = {
-            colorMode: surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? "gaussian" : "curvature",
-            showPrincipalDirections: true,
-            showPrincipalGlyphs: true,
-          };
-          applyViewPatch(patch);
-          outputs = { viewPatch: patch };
-          summary = "Curvature coloring + principal directions enabled.";
-        } else if (resolvedOperator === "geodesic_heat") {
-          setGeodesicHeatEnabled(true);
-          const pointPair = resolveInteractionPointPair(blockId);
-          let resolvedStart = geodesicHeatStart;
-          let resolvedEnd = geodesicHeatEnd;
-          let usingInteraction = false;
-
-          if (pointPair) {
-            const start = buildHeatEndpointFromPoint(pointPair.start);
-            const end = buildHeatEndpointFromPoint(pointPair.end);
-            if (!start || !end) {
-              status = "stale";
-              summary = "Pick points on the surface mesh (PickPoint outputs missing mesh data).";
-            } else {
-              resolvedStart = start;
-              resolvedEnd = end;
-              usingInteraction = true;
-            }
-          }
-
-          if (status === "ok") {
-            if (!geodesicHeatAvailable) {
-              status = "stale";
-              summary = geodesicHeatUnavailableReason || "Heat path not available yet.";
-            } else if (!resolvedStart || !resolvedEnd) {
-              status = "stale";
-              summary = pointPair
-                ? "Need two PickPoint outputs before running."
-                : "Pick two points on the surface before running.";
-            } else if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
-              status = "stale";
-              summary = "Pick both points on the same mesh.";
-            } else {
-              summary = usingInteraction ? "Geodesic heat path from PickPoint outputs." : "Geodesic heat path requested.";
-              setGeodesicHeatStart(resolvedStart);
-              setGeodesicHeatEnd(resolvedEnd);
-              handleRunGeodesicHeat({ start: resolvedStart, end: resolvedEnd });
-            }
-          }
-        } else if (resolvedOperator === "geodesic_path") {
-          setGeodesicPathEnabled(true);
-          const pointPair = resolveInteractionPointPair(blockId);
-          let resolvedStart = geodesicPathStart;
-          let resolvedEnd = geodesicPathEnd;
-          let usingInteraction = false;
-
-          if (pointPair) {
-            const start = buildPathEndpointFromPoint(pointPair.start);
-            const end = buildPathEndpointFromPoint(pointPair.end);
-            if (!start || !end) {
-              status = "stale";
-              summary = "Pick points on the surface mesh (PickPoint outputs missing vertex data).";
-            } else {
-              resolvedStart = start;
-              resolvedEnd = end;
-              usingInteraction = true;
-            }
-          }
-
-          if (status === "ok") {
-            if (!resolvedStart || !resolvedEnd) {
-              status = "stale";
-              summary = pointPair
-                ? "Need two PickPoint outputs before running."
-                : "Pick two points on the surface before running.";
-            } else if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
-              status = "stale";
-              summary = "Pick both points on the same mesh.";
-            } else {
-              summary = usingInteraction ? "Geodesic path from PickPoint outputs." : "Geodesic path requested.";
-              setGeodesicPathStart(resolvedStart);
-              setGeodesicPathEnd(resolvedEnd);
-              computeGeodesicPath(resolvedStart, resolvedEnd);
-            }
-          }
-        } else if (resolvedOperator === "principal_dirs") {
-          const patch: WorkbookComputeOutputs["viewPatch"] = {
-            showPrincipalDirections: true,
-            showPrincipalGlyphs: true,
-          };
-          applyViewPatch(patch);
-          outputs = { viewPatch: patch };
-          summary = "Principal direction glyphs enabled.";
-        } else {
-          status = "failed";
-          summary = "Unknown operator.";
-        }
+      if (status === "ok" && outputs) {
+        applyComputeOutputs(outputs);
       }
 
       const outputHash = hashValue({ operatorId: resolvedOperator, inputHash, outputs: outputs ?? null });
@@ -8699,7 +9313,9 @@ case "mobius":
           status: status === "ok" ? "ok" : "failed",
           summary,
           outputs,
-          createdAt: Date.now(),
+          logs: result.logs ?? (summary ? [summary] : undefined),
+          timing,
+          createdAt: endedAt,
         };
       }
       const cacheEntries = Object.values(cache);
@@ -8715,12 +9331,14 @@ case "mobius":
         Object.assign(cache, pruned);
       }
 
+      const nextOutputs = status === "ok" ? outputs : block?.compute?.outputs;
+      const logs = result.logs ?? (summary ? [summary] : undefined);
       setWorkbooks((prev) =>
         prev.map((w) =>
           w.id === activeWorkbookId
             ? {
                 ...w,
-                updatedAt: Date.now(),
+                updatedAt: endedAt,
                 stages: w.stages.map((s) =>
                   s.id === stageId
                     ? {
@@ -8732,10 +9350,18 @@ case "mobius":
                                 compute: {
                                   ...(b.compute ?? {}),
                                   operatorId: resolvedOperator,
+                                  inputs: inputRefs,
+                                  outputs: nextOutputs,
+                                  lastRun: {
+                                    inputHash,
+                                    status,
+                                    logs,
+                                    timing,
+                                  },
                                   status,
                                   summary,
                                   datasetRef: currentDatasetRef,
-                                  lastRunAt: Date.now(),
+                                  lastRunAt: endedAt,
                                   inputHash,
                                   outputHash,
                                   cache,
@@ -8753,96 +9379,53 @@ case "mobius":
     },
     [
       activeWorkbookId,
-      activeGraphDomain,
-      activeImplicitDomain,
-      activeParamLikeDomain,
+      applyComputeOutputs,
       applyParamValue,
-      buildHeatEndpointFromPoint,
-      buildPathEndpointFromPoint,
-      buildSelectionMaskFromIndices,
-      computeGeodesicPath,
+      computeOperatorRegistry,
       currentDatasetRef,
       datasetKind,
-      geodesicHeatAvailable,
-      geodesicHeatEnd,
-      geodesicHeatStart,
-      geodesicHeatUnavailableReason,
-      geodesicPathEnd,
-      geodesicPathStart,
-      handleRunGeodesicHeat,
       handleUpdateWorkbookBlock,
-      resolveInteractionPointPair,
-      resolveLatestCurveOutput,
-      resolveLatestDirectionOutput,
-      resolveLatestMaskOutput,
-      setSelection,
-      setSelectionSeed,
-      setColorMode,
-      setGeodesicHeatEnabled,
-      setGeodesicHeatEnd,
-      setGeodesicHeatLength,
-      setGeodesicHeatMessage,
-      setGeodesicHeatMeshKey,
-      setGeodesicHeatMeshToken,
-      setGeodesicHeatPhi,
-      setGeodesicHeatPolylines,
-      setGeodesicHeatStart,
-      setGeodesicPathEnabled,
-      setGeodesicPathEnd,
-      setGeodesicPathStart,
-      setSelectionMask,
-      setSelectionMaskOverride,
-      applyWorkbookCurveOverlay,
-      applyWorkbookDirectionOverlay,
-      setShowContours,
-      setShowChartGrid,
-      setShowPrincipalDirections,
-      setShowPrincipalGlyphs,
-      setShowProbeNormal,
-      setShowProbeTangentPlane,
-      setShowProbeTangents,
-      setShowWireframe,
-      setProbeEnabled,
-      surfaceSampleSet,
       surfaceViewerKind,
       workbookGraph,
     ]
   );
 
   const handleRunComputeStage = useCallback(
-    (stageId: WorkbookStageId) => {
+    async (stageId: WorkbookStageId) => {
       if (IS_REPLAY_MODE) return;
       const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
-      ids.forEach((id) => {
+      for (const id of ids) {
         const meta = workbookGraph.blockMetaById.get(id);
-        handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
-      });
+        await handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
+      }
     },
     [handleRunComputeBlock, workbookGraph]
   );
 
-  const handleRunAllStale = useCallback(() => {
+  const handleRunAllStale = useCallback(async () => {
     if (IS_REPLAY_MODE) return;
-    Object.entries(computeStatusById).forEach(([id, status]) => {
-      if (status !== "stale") return;
+    for (const [id, status] of Object.entries(computeStatusById)) {
+      if (status !== "stale") continue;
       const meta = workbookGraph.blockMetaById.get(id);
-      if (!meta) return;
-      handleRunComputeBlock(meta.stageId, id, meta.block.compute?.operatorId);
-    });
+      if (!meta) continue;
+      await handleRunComputeBlock(meta.stageId, id, meta.block.compute?.operatorId);
+    }
   }, [computeStatusById, handleRunComputeBlock, workbookGraph]);
 
   const handleRunFromBlock = useCallback(
-    (stageId: WorkbookStageId, blockId: string) => {
+    async (stageId: WorkbookStageId, blockId: string) => {
       if (IS_REPLAY_MODE) return;
       const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
       const startIdx = ids.indexOf(blockId);
       if (startIdx < 0) return;
-      ids.slice(startIdx).forEach((id) => {
+      for (const id of ids.slice(startIdx)) {
+        const status = computeStatusById[id];
+        if (status === "ok") continue;
         const meta = workbookGraph.blockMetaById.get(id);
-        handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
-      });
+        await handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
+      }
     },
-    [handleRunComputeBlock, workbookGraph]
+    [computeStatusById, handleRunComputeBlock, workbookGraph]
   );
 
   const handleRecomputeGeodesicDisk = useCallback(
@@ -8859,32 +9442,14 @@ case "mobius":
         return;
       }
 
-      const isImplicitDisk = surfaceViewerKind === "implicit";
-      let positions: ArrayLike<number> | null = null;
-      let indices: ArrayLike<number> | null = null;
-      let meshKey = center.meshKey;
-
-      if (isImplicitDisk) {
-        const pos = activeCgalMesh?.positions ?? null;
-        const idx = activeCgalMesh?.indices ?? null;
-        if (!pos || pos.length < 3 || !idx || idx.length < 3) {
-          setGeodesicDiskMessage("CGAL mesh data missing.");
-          return;
-        }
-        positions = pos;
-        indices = idx;
-      } else {
-        const meshData = surfaceSampleSet?.meshData?.find((m) => m.key === center.meshKey);
-        if (!meshData || !meshData.positions || meshData.positions.length < 3) {
-          setGeodesicDiskMessage(
-            surfaceViewerKind === "graph" ? "Graph mesh data missing." : "Param mesh data missing."
-          );
-          return;
-        }
-        positions = meshData.positions;
-        indices = meshData.indices ?? null;
-        meshKey = meshData.key;
+      const meshInfo = resolveGeodesicMesh(center.meshKey ?? null);
+      if (!meshInfo?.positions) {
+        setGeodesicDiskMessage(geodesicDiskUnavailableReason || "Mesh data missing.");
+        return;
       }
+      const positions = meshInfo.positions;
+      const indices = meshInfo.indices ?? null;
+      const meshKey = meshInfo.meshKey ?? center.meshKey ?? "mesh";
 
       const clampBary = (raw: [number, number, number]) => {
         const c0 = Math.max(0, raw[0]);
@@ -8905,7 +9470,7 @@ case "mobius":
           : center.bary
       );
       const baryKey = bary.map((v) => v.toFixed(6)).join(",");
-      const meshTokenKey = isImplicitDisk ? String(cgalMeshToken) : "mesh";
+      const meshTokenKey = meshInfo.meshToken != null ? String(meshInfo.meshToken) : "mesh";
       const cacheKey = [
         geodesicDiskMethod,
         meshKey,
@@ -8926,7 +9491,7 @@ case "mobius":
         setGeodesicDiskPhi(cached);
         setGeodesicDiskPhiMethod(geodesicDiskMethod);
         setGeodesicDiskPhiMeshKey(meshKey);
-        setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+        setGeodesicDiskPhiMeshToken(meshInfo.meshToken ?? null);
         setGeodesicDiskPhiKey(cacheKey);
         if (!geodesicDiskAutoUpdate) {
           setGeodesicDiskRadiusApplied(geodesicDiskRadius);
@@ -8966,7 +9531,7 @@ case "mobius":
           const heatMesh = buildHeatMesh({
             positions,
             indices,
-            meshKey: isImplicitDisk ? null : meshKey,
+            meshKey: meshInfo.meshToken != null ? null : meshKey,
           });
           const res = await runGeodesicHeat({
             mesh: { V: heatMesh.V, F: heatMesh.F },
@@ -9058,7 +9623,7 @@ case "mobius":
           setGeodesicDiskPhi(phi);
           setGeodesicDiskPhiMethod("heat");
           setGeodesicDiskPhiMeshKey(meshKey);
-          setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+          setGeodesicDiskPhiMeshToken(meshInfo.meshToken ?? null);
           setGeodesicDiskPhiKey(cacheKey);
         } else {
           const meshAdj = geodesicAdjacency.get(meshKey) ?? geodesicAdjacency.get(center.meshKey);
@@ -9097,7 +9662,7 @@ case "mobius":
           setGeodesicDiskPhi(phi);
           setGeodesicDiskPhiMethod("dijkstra");
           setGeodesicDiskPhiMeshKey(meshKey);
-          setGeodesicDiskPhiMeshToken(isImplicitDisk ? cgalMeshToken : null);
+          setGeodesicDiskPhiMeshToken(meshInfo.meshToken ?? null);
           setGeodesicDiskPhiKey(cacheKey);
         }
         if (!geodesicDiskAutoUpdate) {
@@ -9110,9 +9675,7 @@ case "mobius":
       }
     },
     [
-      activeCgalMesh,
       buildHeatMesh,
-      cgalMeshToken,
       geodesicAdjacency,
       geodesicDiskAutoUpdate,
       geodesicDiskAvailable,
@@ -9122,8 +9685,7 @@ case "mobius":
       geodesicDiskPhiKey,
       geodesicDiskRadius,
       geodesicDiskUnavailableReason,
-      surfaceSampleSet?.meshData,
-      surfaceViewerKind,
+      resolveGeodesicMesh,
     ]
   );
 

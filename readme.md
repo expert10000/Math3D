@@ -732,6 +732,35 @@ PR5 - Nice extras (optional)
 - Export baked mesh (GLB/OBJ)
 - Decimate / smooth / weld vertices
 
+How to use PR3–PR5 + SurfaceQuery updates
+
+Implicit baker (PR3)
+1. Switch to an implicit surface.
+2. In the left panel, set bounds and resolution for the implicit bake.
+3. Run the bake and wait for progress to complete.
+4. Use “Convert to Mesh…” in the SurfaceMesh panel to switch to the baked mesh dataset.
+
+Worker + progress + caching (PR4)
+1. Run the implicit baker at higher resolutions and watch the progress indicator.
+2. Re‑run with the same settings to verify the cache hit.
+3. If you change bounds or resolution, expect a fresh bake.
+
+Mesh extras (PR5)
+1. With a mesh dataset active, use the SurfaceMesh panel to export `GLB` or `OBJ`.
+2. Use `Weld vertices` with a small tolerance to collapse duplicate vertices.
+3. Use VTK `Smooth` or `Decimate` when available for cleanup.
+
+Workbook compute + Point info (SurfaceQuery)
+1. Add an Interaction block set to Pick point and capture a point on any surface type.
+2. Add a Compute block and choose `Point info`.
+3. Click Run operator to read `p, du, dv, normal, metric, areaElem` for the picked point.
+4. Curvature stats (K/H/k1/k2) now come from surface fields when available and fall back to graph sampling.
+
+Developer note (SurfaceQuery + fields)
+1. SurfaceQuery lives in `renderer/src/math/surfaceQuery.ts`.
+2. Mesh datasets can provide scalar/vector fields via `MeshDataset.fields` in `renderer/src/scene/datasets.ts`.
+3. The App builds a surfaceQuery with `sampleAt`, `neighborhood`, `scalarField`, and `vectorField` accessors.
+
 PR7 - Riemann sphere mode (stereographic)
 
 Visualize w on the sphere via stereographic projection:
@@ -899,8 +928,57 @@ What’s missing (not wired yet)
 
 If you want it to actually drive compute
 
-Tell me which behavior you want first, for example:
+PR3 — The first 3 calculations that make Workbooks “click”
+
+Start with stuff that is visual + teachable + fast.
+
+(A) Point Info + Chart Grid
+
+Operator: `chart.pointInfo`
+
+- Input: Picked point
+- Output: chart coords `(u, v)` (or local chart coords), tangent basis `(e1, e2)`, normal `n`
+- Render: tiny tangent frame glyph at the point + optional iso-grid overlay
+
+(B) Curvature Field + Principal Directions
+
+Operator: `surface.curvature`
+
+- Output fields: `K` (Gaussian), `H` (mean), `k1`, `k2`, principal directions
+- Render:
+- heatmap for `K` or `H`
+- line-field glyphs for principal directions
+- optional: integrate a few curvature lines from chosen seeds (later PR)
+
+Why now: it immediately turns any surface into a “math object” you can interrogate.
+
+(C) Geodesic Distance / Heat Method
+
+Operator: `surface.geodesicDistance`
+
+- Input: one or more seed points (from PickPoint block)
+- Output: scalar distance field + optional extracted geodesic polylines to targets
+- Render: distance heatmap + polyline tubes
+
+Acceptance: workbook can show “pick point → compute geodesic distance → visualize shortest paths”.
+
+
 
 - Geodesic heat uses picked points as endpoints.
 - Geodesic path uses picked points on the mesh.
 - A new compute op: “Geodesics from picked point”.
+
+
+Check stale detection + run-from-here
+
+Open the Workbook tab.
+Add:
+an Interact block (Pick point) twice,
+a Compute block set to Geodesic path,
+another Compute block set to Curvature field.
+Click Run operator on both compute blocks once (so they’re OK).
+Change a parameter on a block (e.g., add a param to the Curvature block like colorMode and tweak it).
+You should see downstream compute blocks marked STALE.
+Click Run from here on the first stale compute block.
+Only that block and downstream stale ones should re-run.
+Upstream OK blocks should stay OK.
