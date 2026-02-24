@@ -982,6 +982,27 @@ Done when
 
 - Workbook demo: PickPoint → GeodesicDistance → Visualize + Curvature(K) → Visualize.
 
+PR4 — Field calculus v1 (grad/div/Laplacian) + vector field viz
+
+- `grad(scalar)` → tangent vector field
+- `div(vector)` → scalar field
+- `laplacian(scalar)` → scalar field
+- Render: arrows (downsample), later streamlines
+
+Done when
+
+- Example: `K → grad(K)` renders sensible tangent arrows.
+
+PR5 — Interaction-to-math: DrawCurve → Parallel transport
+
+- Interaction block: `DrawCurve` outputs polyline on surface
+- Compute: `parallelTransport(curve, initialVec)` outputs vectors along curve
+- Render: vectors along curve + optional “twist” visualization
+
+Done when
+
+- You can demonstrate holonomy / transport effects in a workbook.
+
 
 
 - Geodesic heat uses picked points as endpoints.

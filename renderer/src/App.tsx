@@ -6810,6 +6810,29 @@ case "mobius":
     complexMapGridThickness,
   ]);
 
+  const workbookCurveDraftOverlay = useMemo<PolylineSet | null>(() => {
+    if (!activeInteraction || activeInteraction.kind !== "draw_curve") return null;
+    const meta = workbookGraph.blockMetaById.get(activeInteraction.blockId);
+    const points =
+      meta?.block.interaction?.points ??
+      meta?.block.interaction?.curve?.points ??
+      [];
+    if (!points.length) return null;
+    return [points];
+  }, [activeInteraction, workbookGraph]);
+
+  const workbookCurveDraftOverlayGroups = useMemo(() => {
+    if (!workbookCurveDraftOverlay?.length) return null;
+    return [
+      {
+        lines: workbookCurveDraftOverlay,
+        color: 0x2563eb,
+        opacity: 0.85,
+        radiusScale: 1.3,
+      },
+    ];
+  }, [workbookCurveDraftOverlay]);
+
   const workbookCurveOverlayGroups = useMemo(() => {
     if (!workbookCurveOverlay?.length) return null;
     return [
@@ -6888,6 +6911,7 @@ case "mobius":
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
     if (workbookVectorFieldOverlayGhostGroups?.length) groups.push(...workbookVectorFieldOverlayGhostGroups);
+    if (workbookCurveDraftOverlayGroups?.length) groups.push(...workbookCurveDraftOverlayGroups);
     if (workbookCurveOverlayGroups?.length) groups.push(...workbookCurveOverlayGroups);
     if (workbookDirectionOverlayGroups?.length) groups.push(...workbookDirectionOverlayGroups);
     if (workbookVectorFieldOverlayGroups?.length) groups.push(...workbookVectorFieldOverlayGroups);
@@ -6897,6 +6921,7 @@ case "mobius":
     workbookCurveOverlayGhostGroups,
     workbookDirectionOverlayGhostGroups,
     workbookVectorFieldOverlayGhostGroups,
+    workbookCurveDraftOverlayGroups,
     workbookCurveOverlayGroups,
     workbookDirectionOverlayGroups,
     workbookVectorFieldOverlayGroups,

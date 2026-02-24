@@ -114,6 +114,52 @@ Geodesic distance (heat)
 3. Add a Compute block → Geodesic distance (heat).
 4. Click Run operator.
 
+### PR4 — Field calculus v1 (grad/div/Laplacian) + vector field viz
+
+- `grad(scalar)` → tangent vector field
+- `div(vector)` → scalar field
+- `laplacian(scalar)` → scalar field
+- Render: arrows (downsample), later streamlines
+
+Done when
+
+- Example: `K → grad(K)` renders sensible tangent arrows.
+
+Workbook steps
+
+Grad (scalar → vector field)
+1. Add a Compute block → Grad (scalar → vector field).
+2. Optional: set Scalar field (defaults to K), Vector density, Vector scale.
+3. Click Run operator to render tangent arrows.
+
+Div (vector → scalar field)
+1. Add a Compute block → Div (vector → scalar field).
+2. Optional: set Vector field (defaults to grad(K)).
+3. Click Run operator to compute the scalar field (heatmap appears when vertex-aligned).
+
+Laplacian (scalar → scalar field)
+1. Add a Compute block → Laplacian (scalar → scalar field).
+2. Optional: set Scalar field (defaults to K).
+3. Click Run operator to compute the scalar field (heatmap appears when vertex-aligned).
+
+### PR5 — Interaction-to-math: DrawCurve → Parallel transport
+
+- Interaction block: `DrawCurve` outputs polyline on surface
+- Compute: `parallelTransport(curve, initialVec)` outputs vectors along curve
+- Render: vectors along curve + optional “twist” visualization
+
+Done when
+
+- You can demonstrate holonomy / transport effects in a workbook.
+
+Workbook steps
+
+Parallel transport (curve)
+1. Add an Interact block → Draw curve and capture a curve.
+2. Optional: add an Interact block → Pick direction to set the initial vector.
+3. Add a Compute block → Parallel transport (curve).
+4. Click Run operator to render vectors along the curve.
+
 ### Visualize blocks (snapshots and compare)
 1. Capture A and Capture B store a full view snapshot (camera, surface, expressions, domains, resolution, and overlays).
 2. Jump A and Jump B restore the viewer to a stored snapshot.
