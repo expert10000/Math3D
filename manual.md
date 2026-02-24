@@ -72,6 +72,48 @@
 11. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
 12. Principal directions: turns on principal direction glyphs.
 
+### PR3 — First 3 “killer” calculations (workbook suddenly feels real)
+
+A) Point Info + Chart Grid
+
+- Input: PickPoint
+- Output: chart coords, tangent basis, normal, metric summary
+- Render: tangent frame glyph + optional iso-grid (polylines)
+
+B) Curvature Field + Principal Directions
+
+- Output fields: K, H, k1, k2, principal directions
+- Render: heatmap + glyphs / short line field (downsampled)
+
+C) Geodesic Distance (heat method)
+
+- Input: one/many seed points
+- Output: distance scalar field + optional extracted geodesic polylines to targets
+- Render: heatmap + tubes (you already have polyline tubes)
+
+Done when
+
+- Workbook demo: PickPoint → GeodesicDistance → Visualize + Curvature(K) → Visualize.
+
+Workbook steps
+
+Point info + chart grid
+1. Add an Interact block → Pick point.
+2. Click Arm pick, then click the surface.
+3. Add a Compute block → Point info + chart grid.
+4. Click Run operator.
+
+Curvature field + principal directions
+1. Add a Compute block → Curvature field + principal directions.
+2. Click Run operator.
+3. Optional: add a Visualize block and Capture A.
+
+Geodesic distance (heat)
+1. Add an Interact block → Pick point and capture a seed point.
+2. Optional: add a second Pick point if you want a target.
+3. Add a Compute block → Geodesic distance (heat).
+4. Click Run operator.
+
 ### Visualize blocks (snapshots and compare)
 1. Capture A and Capture B store a full view snapshot (camera, surface, expressions, domains, resolution, and overlays).
 2. Jump A and Jump B restore the viewer to a stored snapshot.
@@ -137,3 +179,24 @@
 3. Vector calculus: Compute -> Grad, then Compute -> Div or Laplacian with the gradient field.
 4. Overlay review: Draw curve or Pick direction, then Compute -> Curve overlay or Direction overlay; toggle Ghost overlays to compare iterations.
 5. Transport demo: Draw curve, optionally Pick direction, then Compute -> Parallel transport (curve) to visualize twisting along the path.
+
+### SurfaceQuery v1 (unified geometry API)
+What you add
+- A unified query interface that operators use instead of branching per dataset.
+- `sampleAt(chartCoord | pick)` -> `{ p, du, dv, n, metric, areaElem }`.
+- `tangentBasis(pick)` -> `{ e1, e2, n }`.
+- `neighborhood(pick)` -> local neighborhood / adjacency (mesh).
+- `projectToChart(pick)` -> chart coordinates + validity.
+
+Implement for
+- Param/Weierstrass: evaluate `S(u,v)` plus finite-difference derivatives (or analytic when available).
+- Explicit: `(x, y, f(x,y))` plus finite differences.
+- Mesh: local tangent-plane chart around the picked point (PCA / normal + local axes).
+
+Done when
+- A single `Point info` operator works on all surface kinds with identical output shape.
+
+Chart coordinates
+- Graph surfaces return `(x, y)`.
+- Param/Weierstrass surfaces return `(u, v)` when UV is known.
+- Mesh/implicit surfaces return local tangent-plane `(u, v)` around the picked point.

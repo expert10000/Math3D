@@ -80,9 +80,11 @@ import {
   sampleGraphAt,
   sampleMeshAt,
   sampleParamAt,
+  type SurfaceQueryChartCoord,
   type SurfaceQuery,
   type SurfaceQueryPick,
   type SurfaceQuerySample,
+  type SurfaceQueryTangentBasis,
 } from "./math/surfaceQuery";
 import {
   buildSurfaceMeshFromGeometry,
@@ -1033,6 +1035,7 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
               inputHash: compute.inputHash,
               status,
               logs: compute.summary ? [compute.summary] : undefined,
+              cacheHit: false,
               timing: compute.lastRunAt
                 ? { startedAt: compute.lastRunAt, endedAt: compute.lastRunAt, durationMs: 0 }
                 : undefined,
@@ -4887,8 +4890,20 @@ case "mobius":
         return sampleMeshAt({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
       }
       if (surfaceViewerKind === "implicit") {
-        if (!activeCgalMeshData) return null;
-        return sampleMeshAt({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+        if (activeCgalMeshData) {
+          return sampleMeshAt({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+        }
+        const fallback = surfaceSampleSet?.meshData?.[0];
+        if (!fallback?.positions?.length) return null;
+        const mesh: SurfaceMeshData = {
+          label: "Implicit mesh",
+          positions: fallback.positions,
+          indices: (fallback.indices as Uint32Array) ?? null,
+          normals: null,
+          uvs: null,
+          source: "surface",
+        };
+        return sampleMeshAt({ mesh, vertexIndex: pick.vertexIndex, point: pick.point });
       }
       if (surfaceViewerKind === "graph") {
         const fn = getGraphFunction(activeEqSurfaceId, graphExpr);
@@ -4923,6 +4938,7 @@ case "mobius":
       activeCgalMeshData,
       datasetKind,
       graphExpr,
+      surfaceSampleSet?.meshData,
       surfaceMeshData,
       surfaceViewerKind,
     ]
@@ -4935,12 +4951,90 @@ case "mobius":
         return buildMeshNeighborhood({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
       }
       if (surfaceViewerKind === "implicit") {
-        if (!activeCgalMeshData) return null;
-        return buildMeshNeighborhood({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+        if (activeCgalMeshData) {
+          return buildMeshNeighborhood({ mesh: activeCgalMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
+        }
+        const fallback = surfaceSampleSet?.meshData?.[0];
+        if (!fallback?.positions?.length) return null;
+        const mesh: SurfaceMeshData = {
+          label: "Implicit mesh",
+          positions: fallback.positions,
+          indices: (fallback.indices as Uint32Array) ?? null,
+          normals: null,
+          uvs: null,
+          source: "surface",
+        };
+        return buildMeshNeighborhood({ mesh, vertexIndex: pick.vertexIndex, point: pick.point });
       }
       return null;
     },
-    [activeCgalMeshData, datasetKind, surfaceMeshData, surfaceViewerKind]
+    [activeCgalMeshData, datasetKind, surfaceMeshData, surfaceSampleSet?.meshData, surfaceViewerKind]
+  );
+
+  const resolveTangentBasis = useCallback(
+    (pick: SurfaceQueryPick): SurfaceQueryTangentBasis | null => {
+      const sample = sampleSurfaceAtPoint(pick);
+      if (sample) {
+        const basis = buildTangentBasisFromDerivatives(sample.du, sample.dv, sample.normal);
+        if (basis) return { tangentU: basis.t1, tangentV: basis.t2, normal: sample.normal };
+        const fallback = buildTangentBasis(sample.normal);
+        return { tangentU: fallback.t1, tangentV: fallback.t2, normal: sample.normal };
+      }
+      const neighborhood = sampleSurfaceNeighborhood(pick);
+      if (!neighborhood) return null;
+      return { tangentU: neighborhood.tangentU, tangentV: neighborhood.tangentV, normal: neighborhood.normal };
+    },
+    [sampleSurfaceAtPoint, sampleSurfaceNeighborhood]
+  );
+
+  const projectToChart = useCallback(
+    (pick: SurfaceQueryPick): SurfaceQueryChartCoord | null => {
+      if (surfaceViewerKind === "graph") {
+        const xy = pick.xy ?? { x: pick.point.x, y: pick.point.z };
+        if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+          return { u: 0, v: 0, valid: false, kind: "xy" };
+        }
+        const valid =
+          Math.abs(xy.x) <= activeGraphDomain.xSpan && Math.abs(xy.y) <= activeGraphDomain.ySpan;
+        return { u: xy.x, v: xy.y, valid, kind: "xy" };
+      }
+
+      if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+        const uv = pick.uv;
+        if (!uv || !Number.isFinite(uv.u) || !Number.isFinite(uv.v)) {
+          return { u: 0, v: 0, valid: false, kind: "uv" };
+        }
+        const domain = activeParamLikeDomain;
+        const valid =
+          !!domain &&
+          uv.u >= domain.uMin &&
+          uv.u <= domain.uMax &&
+          uv.v >= domain.vMin &&
+          uv.v <= domain.vMax;
+        return { u: uv.u, v: uv.v, valid, kind: "uv" };
+      }
+
+      const neighborhood = sampleSurfaceNeighborhood(pick);
+      if (!neighborhood) {
+        return { u: 0, v: 0, valid: false, kind: "local" };
+      }
+      const origin = neighborhood.origin;
+      const diff = vSub(pick.point ?? origin, origin);
+      const u = vDot(diff, neighborhood.tangentU);
+      const v = vDot(diff, neighborhood.tangentV);
+      const valid = Number.isFinite(u) && Number.isFinite(v);
+      return { u: valid ? u : 0, v: valid ? v : 0, valid, kind: "local" };
+    },
+    [
+      activeGraphDomain.xSpan,
+      activeGraphDomain.ySpan,
+      activeParamLikeDomain?.uMin,
+      activeParamLikeDomain?.uMax,
+      activeParamLikeDomain?.vMin,
+      activeParamLikeDomain?.vMax,
+      sampleSurfaceNeighborhood,
+      surfaceViewerKind,
+    ]
   );
 
   const graphCurvatures = useMemo(() => {
@@ -5015,10 +5109,21 @@ case "mobius":
       kind,
       sampleAt: sampleSurfaceAtPoint,
       neighborhood: sampleSurfaceNeighborhood,
+      tangentBasis: resolveTangentBasis,
+      projectToChart,
       scalarField: (name: string) => surfaceScalarFields.get(name) ?? null,
       vectorField: (name: string) => surfaceVectorFields.get(name) ?? null,
     };
-  }, [datasetKind, sampleSurfaceAtPoint, sampleSurfaceNeighborhood, surfaceScalarFields, surfaceVectorFields, surfaceViewerKind]);
+  }, [
+    datasetKind,
+    projectToChart,
+    resolveTangentBasis,
+    sampleSurfaceAtPoint,
+    sampleSurfaceNeighborhood,
+    surfaceScalarFields,
+    surfaceVectorFields,
+    surfaceViewerKind,
+  ]);
 
   const buildPointOutput = useCallback((info: ProbeInfo) => {
     const normal = info.normal;
@@ -5097,6 +5202,33 @@ case "mobius":
     };
   }, [activeCgalMesh, surfaceQuery, surfaceSampleSet, surfaceViewerKind]);
 
+  const resolveGeodesicMesh = useCallback(
+    (preferredMeshKey?: string | null) => {
+      if (surfaceViewerKind === "implicit") {
+        if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) return null;
+        return {
+          positions: activeCgalMesh.positions,
+          indices: activeCgalMesh.indices,
+          meshKey: preferredMeshKey ?? "cgal",
+          meshToken: cgalMeshToken,
+        };
+      }
+      const meshes = surfaceSampleSet?.meshData ?? [];
+      if (!meshes.length) return null;
+      const mesh = preferredMeshKey
+        ? meshes.find((m) => m.key === preferredMeshKey) ?? meshes[0]
+        : meshes[0];
+      if (!mesh?.positions?.length) return null;
+      return {
+        positions: mesh.positions,
+        indices: mesh.indices ?? null,
+        meshKey: mesh.key,
+        meshToken: null,
+      };
+    },
+    [activeCgalMesh, cgalMeshToken, surfaceSampleSet, surfaceViewerKind]
+  );
+
   const buildHeatEndpointFromPoint = useCallback(
     (pointOut: { point: { x: number; y: number; z: number }; uv?: { u: number; v: number }; meshKey?: string; vertexIndex?: number }) => {
       const vertexIndex = pointOut.vertexIndex;
@@ -5168,32 +5300,6 @@ case "mobius":
       return { meshKey: pointOut.meshKey, vertexIndex: pointOut.vertexIndex };
     },
     []
-  );
-
-  const resolveGeodesicMesh = useCallback(
-    (preferredMeshKey?: string | null) => {
-      if (surfaceViewerKind === "implicit") {
-        if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) return null;
-        return {
-          positions: activeCgalMesh.positions,
-          indices: activeCgalMesh.indices,
-          meshKey: preferredMeshKey ?? "cgal",
-          meshToken: cgalMeshToken,
-        };
-      }
-      const meshes = surfaceSampleSet?.meshData ?? [];
-      if (!meshes.length) return null;
-      const mesh =
-        (preferredMeshKey && meshes.find((m) => m.key === preferredMeshKey)) ?? meshes[0];
-      if (!mesh?.positions?.length) return null;
-      return {
-        positions: mesh.positions,
-        indices: mesh.indices ?? null,
-        meshKey: mesh.key,
-        meshToken: null,
-      };
-    },
-    [activeCgalMesh, cgalMeshToken, surfaceSampleSet, surfaceViewerKind]
   );
 
   const resolveLatestPointOutput = useCallback(
@@ -6455,26 +6561,32 @@ case "mobius":
         setWeierstrassResolution(Math.max(10, Math.round(snapshot.weierstrassResolution)));
       }
       if (snapshot.graphDomain && snapshot.surfaceId && isGraphSurface(snapshot.surfaceId)) {
+        const surfaceId = snapshot.surfaceId;
+        const graphDomain = snapshot.graphDomain;
         setGraphDomains((prev) => ({
           ...prev,
-          [snapshot.surfaceId]: normalizeGraphDomain(snapshot.graphDomain, getDefaultGraphSpan(snapshot.surfaceId)),
+          [surfaceId]: normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId)),
         }));
       }
       if (snapshot.implicitDomain && snapshot.surfaceId && isImplicitSurface(snapshot.surfaceId)) {
+        const surfaceId = snapshot.surfaceId;
+        const implicitDomain = snapshot.implicitDomain;
         setImplicitDomains((prev) => ({
           ...prev,
-          [snapshot.surfaceId]: normalizeImplicitDomain(
-            snapshot.implicitDomain,
-            getDefaultImplicitDomain(snapshot.surfaceId)
+          [surfaceId]: normalizeImplicitDomain(
+            implicitDomain,
+            getDefaultImplicitDomain(surfaceId)
           ),
         }));
       }
       if (snapshot.paramDomain && snapshot.paramId) {
+        const paramId = snapshot.paramId;
+        const paramDomain = snapshot.paramDomain;
         setParamDomains((prev) => ({
           ...prev,
-          [snapshot.paramId]: normalizeParamDomain(
-            snapshot.paramDomain,
-            getParamDomainPreviewBounds(snapshot.paramId)
+          [paramId]: normalizeParamDomain(
+            paramDomain,
+            getParamDomainPreviewBounds(paramId)
           ),
         }));
       }
@@ -9289,71 +9401,6 @@ case "mobius":
     [readBlockParamValue, surfaceQuery, surfaceSampleSet]
   );
 
-  const runPointInfoOperator = useCallback(
-    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
-      const pointOut = resolveLatestPointOutput(ctx.blockId);
-      const fallback = probeInfo ? buildPointOutput(probeInfo) : null;
-      const pick = pointOut ?? fallback;
-      if (!pick) {
-        return { status: "stale", summary: "Pick a point before running." };
-      }
-      const sample = surfaceQuery.sampleAt({
-        point: pick.point,
-        uv: pick.uv,
-        xy: pick.xy,
-        vertexIndex: pick.vertexIndex,
-      });
-      if (!sample) {
-        return { status: "stale", summary: "Point info not available for this surface yet." };
-      }
-
-      const neighborhood = surfaceQuery.neighborhood({
-        point: pick.point,
-        vertexIndex: pick.vertexIndex,
-      });
-      const neighborInfo = neighborhood?.neighbors?.length
-        ? ` neighbors=${neighborhood.neighbors.length}`
-        : "";
-
-      const summary = [
-        `p=${fmt3(sample.point)}`,
-        `n=${fmt3(sample.normal)}`,
-        `du=${fmt3(sample.du)}`,
-        `dv=${fmt3(sample.dv)}`,
-        `E=${fmt(sample.metric.E)}`,
-        `F=${fmt(sample.metric.F)}`,
-        `G=${fmt(sample.metric.G)}`,
-        `|dA|=${fmt(sample.areaElem)}`,
-      ].join(" ");
-      return {
-        status: "ok",
-        summary: summary + neighborInfo,
-      };
-    },
-    [
-      buildPointOutput,
-      probeInfo,
-      resolveLatestPointOutput,
-      surfaceQuery,
-    ]
-  );
-
-  const runChartPointInfoOperator = useCallback(
-    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
-      const info = runPointInfoOperator(ctx);
-      const chart = runChartGridOperator(ctx);
-      const outputs = chart.outputs ?? {};
-      const summary = info.summary ? `${info.summary} | ${chart.summary ?? ""}` : chart.summary ?? "";
-      return {
-        status: info.status === "ok" ? "ok" : info.status,
-        summary: summary.trim() || info.summary || chart.summary || "",
-        outputs,
-        logs: info.logs,
-      };
-    },
-    [runChartGridOperator, runPointInfoOperator]
-  );
-
   const runChartGridOperator = useCallback(
     (_ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
       const patch: WorkbookComputeOutputs["viewPatch"] = {
@@ -9381,6 +9428,110 @@ case "mobius":
       return { status: "ok", summary, outputs: { viewPatch: patch } };
     },
     [surfaceViewerKind]
+  );
+
+  const runPointInfoOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const pointOut = resolveLatestPointOutput(ctx.blockId);
+      const fallback = probeInfo ? buildPointOutput(probeInfo) : null;
+      const pick = pointOut ?? fallback;
+      if (!pick) {
+        return { status: "stale", summary: "Pick a point before running." };
+      }
+      const sample = surfaceQuery.sampleAt({
+        point: pick.point,
+        uv: pick.uv,
+        xy: pick.xy,
+        vertexIndex: pick.vertexIndex,
+      });
+      if (!sample) {
+        return { status: "stale", summary: "Point info not available for this surface yet." };
+      }
+
+      const chart = surfaceQuery.projectToChart({
+        point: pick.point,
+        uv: pick.uv,
+        xy: pick.xy,
+        vertexIndex: pick.vertexIndex,
+      });
+      const chartLabel = chart
+        ? `${chart.kind}(${fmt(chart.u)}, ${fmt(chart.v)})${chart.valid ? "" : " invalid"}`
+        : "unknown";
+
+      const basisFromDerivatives = buildTangentBasisFromDerivatives(sample.du, sample.dv, sample.normal);
+      const basisFromQuery = basisFromDerivatives
+        ? null
+        : surfaceQuery.tangentBasis({
+            point: pick.point,
+            uv: pick.uv,
+            xy: pick.xy,
+            vertexIndex: pick.vertexIndex,
+          });
+      const basis = basisFromDerivatives
+        ? { t1: basisFromDerivatives.t1, t2: basisFromDerivatives.t2 }
+        : basisFromQuery
+          ? { t1: basisFromQuery.tangentU, t2: basisFromQuery.tangentV }
+          : buildTangentBasis(sample.normal);
+
+      const neighborhood = surfaceQuery.neighborhood({
+        point: pick.point,
+        vertexIndex: pick.vertexIndex,
+      });
+      const neighborInfo = neighborhood?.neighbors?.length
+        ? ` neighbors=${neighborhood.neighbors.length}`
+        : "";
+
+      const summary = [
+        `chart=${chartLabel}`,
+        `p=${fmt3(sample.point)}`,
+        `n=${fmt3(sample.normal)}`,
+        `e1=${fmt3(basis.t1)}`,
+        `e2=${fmt3(basis.t2)}`,
+        `E=${fmt(sample.metric.E)}`,
+        `F=${fmt(sample.metric.F)}`,
+        `G=${fmt(sample.metric.G)}`,
+        `|dA|=${fmt(sample.areaElem)}`,
+      ].join(" ");
+      const logs = [
+        `chart: ${chartLabel}`,
+        `p: ${fmt3(sample.point)}`,
+        `n: ${fmt3(sample.normal)}`,
+        `e1: ${fmt3(basis.t1)}`,
+        `e2: ${fmt3(basis.t2)}`,
+        `du: ${fmt3(sample.du)}`,
+        `dv: ${fmt3(sample.dv)}`,
+        `metric: E=${fmt(sample.metric.E)} F=${fmt(sample.metric.F)} G=${fmt(sample.metric.G)}`,
+        `areaElem: ${fmt(sample.areaElem)}`,
+      ];
+      if (neighborInfo) logs.push(`neighbors: ${neighborhood?.neighbors?.length ?? 0}`);
+      return {
+        status: "ok",
+        summary: summary + neighborInfo,
+        logs,
+      };
+    },
+    [
+      buildPointOutput,
+      probeInfo,
+      resolveLatestPointOutput,
+      surfaceQuery,
+    ]
+  );
+
+  const runChartPointInfoOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const info = runPointInfoOperator(ctx);
+      const chart = runChartGridOperator(ctx);
+      const outputs = chart.outputs ?? {};
+      const summary = info.summary ? `${info.summary} | ${chart.summary ?? ""}` : chart.summary ?? "";
+      return {
+        status: info.status === "ok" ? "ok" : info.status,
+        summary: summary.trim() || info.summary || chart.summary || "",
+        outputs,
+        logs: info.logs,
+      };
+    },
+    [runChartGridOperator, runPointInfoOperator]
   );
 
   const runCurveOverlayOperator = useCallback(
@@ -10088,6 +10239,7 @@ case "mobius":
                                       status: "ok",
                                       logs,
                                       timing,
+                                      cacheHit: true,
                                     },
                                     status: "ok",
                                     summary,
@@ -10188,6 +10340,7 @@ case "mobius":
                                     status,
                                     logs,
                                     timing,
+                                    cacheHit: false,
                                   },
                                   status,
                                   summary,

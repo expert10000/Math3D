@@ -117,6 +117,7 @@ export type WorkbookComputeRun = {
   status: WorkbookComputeRunStatus;
   logs?: string[];
   timing?: WorkbookComputeTiming;
+  cacheHit?: boolean;
 };
 export type WorkbookComputeInputRef = {
   portId: string;

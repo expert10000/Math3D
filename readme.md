@@ -718,6 +718,23 @@ Next Steps
 
 Run the app and sanity‑check: Z/W/3D linked picks, distortion heatmap + surface color, and grid thickness/opacity + tube overlays.
 
+PR2 - SurfaceQuery v1 (one geometry API for param/explicit/mesh)
+
+What you add
+- A unified query interface that operators use instead of branching per dataset.
+- `sampleAt(chartCoord | pick)` -> `{ p, du, dv, n, metric, areaElem }`.
+- `tangentBasis(pick)` -> `{ e1, e2, n }`.
+- `neighborhood(pick)` -> local neighborhood / adjacency (mesh).
+- `projectToChart(pick)` -> chart coordinates + validity.
+
+Implement for
+- Param/Weierstrass: evaluate `S(u,v)` + finite-diff derivatives (or analytic if available).
+- Explicit: `(x, y, f(x,y))` + finite diffs.
+- Mesh: local tangent-plane chart around picked point (PCA / normal + local axes).
+
+Done when
+- A single `Point info` operator works on all surface kinds with identical output shape.
+
 PR3 - Implicit baker
 
 - Marching cubes + normals
@@ -942,39 +959,28 @@ What’s missing (not wired yet)
 
 If you want it to actually drive compute
 
-PR3 — The first 3 calculations that make Workbooks “click”
+PR3 — First 3 “killer” calculations (workbook suddenly feels real)
 
-Start with stuff that is visual + teachable + fast.
+A) Point Info + Chart Grid
 
-(A) Point Info + Chart Grid
+- Input: PickPoint
+- Output: chart coords, tangent basis, normal, metric summary
+- Render: tangent frame glyph + optional iso-grid (polylines)
 
-Operator: `chart.pointInfo`
+B) Curvature Field + Principal Directions
 
-- Input: Picked point
-- Output: chart coords `(u, v)` (or local chart coords), tangent basis `(e1, e2)`, normal `n`
-- Render: tiny tangent frame glyph at the point + optional iso-grid overlay
+- Output fields: K, H, k1, k2, principal directions
+- Render: heatmap + glyphs / short line field (downsampled)
 
-(B) Curvature Field + Principal Directions
+C) Geodesic Distance (heat method)
 
-Operator: `surface.curvature`
+- Input: one/many seed points
+- Output: distance scalar field + optional extracted geodesic polylines to targets
+- Render: heatmap + tubes (you already have polyline tubes)
 
-- Output fields: `K` (Gaussian), `H` (mean), `k1`, `k2`, principal directions
-- Render:
-- heatmap for `K` or `H`
-- line-field glyphs for principal directions
-- optional: integrate a few curvature lines from chosen seeds (later PR)
+Done when
 
-Why now: it immediately turns any surface into a “math object” you can interrogate.
-
-(C) Geodesic Distance / Heat Method
-
-Operator: `surface.geodesicDistance`
-
-- Input: one or more seed points (from PickPoint block)
-- Output: scalar distance field + optional extracted geodesic polylines to targets
-- Render: distance heatmap + polyline tubes
-
-Acceptance: workbook can show “pick point → compute geodesic distance → visualize shortest paths”.
+- Workbook demo: PickPoint → GeodesicDistance → Visualize + Curvature(K) → Visualize.
 
 
 
@@ -996,3 +1002,8 @@ You should see downstream compute blocks marked STALE.
 Click Run from here on the first stale compute block.
 Only that block and downstream stale ones should re-run.
 Upstream OK blocks should stay OK.
+
+
+Cache hit badge + input hash tooltip
+Log/timing panel per compute block
+Mini “Cache hit” indicator in the Compute block header

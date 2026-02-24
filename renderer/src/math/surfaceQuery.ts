@@ -17,6 +17,19 @@ export type SurfaceQuerySample = {
   areaElem: number;
 };
 
+export type SurfaceQueryTangentBasis = {
+  tangentU: Vec3;
+  tangentV: Vec3;
+  normal: Vec3;
+};
+
+export type SurfaceQueryChartCoord = {
+  u: number;
+  v: number;
+  valid: boolean;
+  kind: "xy" | "uv" | "local";
+};
+
 export type SurfaceQueryNeighborhood = {
   origin: Vec3;
   normal: Vec3;
@@ -39,6 +52,8 @@ export type SurfaceQuery = {
   kind: SurfaceQueryKind;
   sampleAt: (pick: SurfaceQueryPick) => SurfaceQuerySample | null;
   neighborhood: (pick: SurfaceQueryPick) => SurfaceQueryNeighborhood | null;
+  tangentBasis: (pick: SurfaceQueryPick) => SurfaceQueryTangentBasis | null;
+  projectToChart: (pick: SurfaceQueryPick) => SurfaceQueryChartCoord | null;
   scalarField?: (name: string) => SurfaceScalarField | null;
   vectorField?: (name: string) => SurfaceVectorField | null;
 };

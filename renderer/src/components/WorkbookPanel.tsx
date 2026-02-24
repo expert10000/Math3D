@@ -1117,8 +1117,24 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#111827" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#111827" }}>
                   {BLOCK_TYPE_LABELS[block.type]}
+                  {block.type === "compute" && block.compute?.lastRun?.cacheHit && (
+                    <span
+                      style={{
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        background: "#ecfeff",
+                        color: "#0e7490",
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: 0.4,
+                      }}
+                      title={`Cached output used${block.compute?.lastRun?.inputHash ? ` (input ${block.compute.lastRun.inputHash})` : ""}`}
+                    >
+                      CACHE
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <button
@@ -1319,6 +1335,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   const operatorSpec = selectedOperatorId
                     ? WORKBOOK_OPERATOR_BY_ID.get(selectedOperatorId)
                     : undefined;
+                  const lastRun = block.compute?.lastRun;
+                  const inputHash = lastRun?.inputHash;
+                  const cacheHit = !!lastRun?.cacheHit;
                   const operatorOptions = WORKBOOK_OPERATOR_CATALOG.filter(
                     (op) => !op.hidden || op.id === selectedOperatorId
                   );
@@ -1403,6 +1422,38 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                             </span>
                           );
                         })()}
+                        {cacheHit && (
+                          <span
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              background: "#ecfeff",
+                              color: "#0e7490",
+                              fontWeight: 700,
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                            }}
+                            title={inputHash ? `Input hash: ${inputHash}` : "Cache hit"}
+                          >
+                            Cache hit
+                          </span>
+                        )}
+                        {inputHash && (
+                          <span
+                            style={{
+                              padding: "2px 6px",
+                              borderRadius: 999,
+                              background: "#f1f5f9",
+                              color: "#475569",
+                              fontWeight: 700,
+                              fontSize: 9,
+                              letterSpacing: 0.4,
+                            }}
+                            title={`Input hash: ${inputHash}`}
+                          >
+                            HASH
+                          </span>
+                        )}
                         {block.compute?.datasetRef && (
                           <span style={{ fontSize: 10, opacity: 0.6 }}>
                             {block.compute.datasetRef}
@@ -1411,6 +1462,47 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                       </div>
                       {block.compute?.summary && (
                         <div style={{ fontSize: 11, opacity: 0.7 }}>{block.compute.summary}</div>
+                      )}
+                      {lastRun && (
+                        <div
+                          style={{
+                            marginTop: 6,
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #e2e8f0",
+                            background: "#f8fafc",
+                            fontSize: 10,
+                            color: "#334155",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                            Run details
+                          </div>
+                          <div>Status: {lastRun.status}</div>
+                          {lastRun.timing?.endedAt && (
+                            <div>Last run: {new Date(lastRun.timing.endedAt).toLocaleString()}</div>
+                          )}
+                          {lastRun.timing?.durationMs != null && (
+                            <div>Duration: {Math.max(0, Math.round(lastRun.timing.durationMs))} ms</div>
+                          )}
+                          {inputHash && <div title={`Input hash: ${inputHash}`}>Input hash: {inputHash}</div>}
+                          {lastRun.logs?.length ? (
+                            <pre
+                              style={{
+                                margin: 0,
+                                whiteSpace: "pre-wrap",
+                                fontFamily: "SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace",
+                                fontSize: 10,
+                                color: "#0f172a",
+                              }}
+                            >
+                              {lastRun.logs.join("\n")}
+                            </pre>
+                          ) : null}
+                        </div>
                       )}
                     </div>
                   );
