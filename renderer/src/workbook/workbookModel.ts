@@ -606,22 +606,23 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
   {
     id: "transport_demo",
     title: "Transport demo",
-    description: "Pick a direction and overlay transported directions along the surface.",
+    description: "Draw a curve and transport a direction field along it.",
     tags: ["transport", "direction field", "geodesics"],
-    requiredOperators: ["direction_overlay"],
+    requiredOperators: ["surface.parallelTransport"],
     suggestedStages: ["define", "compute", "visualize", "explain"],
     stages: [
       {
         id: "define",
         blocks: [
-          { type: "text", title: "Goal", text: "Compare direction fields after transport." },
+          { type: "text", title: "Goal", text: "Transport a tangent direction along a curve and compare twisting." },
         ],
       },
       {
         id: "compute",
         blocks: [
+          { type: "interaction", title: "Draw curve", interactionKind: "draw_curve" },
           { type: "interaction", title: "Pick direction", interactionKind: "pick_direction" },
-          { type: "compute", title: "Direction overlay", computeOperatorId: "direction_overlay" },
+          { type: "compute", title: "Parallel transport", computeOperatorId: "surface.parallelTransport" },
         ],
       },
       {

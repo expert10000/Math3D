@@ -65,11 +65,12 @@
 4. Geodesic path: computes a shortest path between two picked points on the same mesh.
 5. Curve overlay: renders the latest Draw curve output as a polyline overlay.
 6. Direction overlay: draws a direction arrow from the latest Pick direction output.
-7. Selection overlay: visualizes the latest Select region output as a selection mask.
-8. Grad (scalar -> vector field): computes a gradient field and draws tangent arrows.
-9. Div (vector -> scalar field): computes divergence and stores a scalar field; enables heatmap when full vertex samples are available.
-10. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
-11. Principal directions: turns on principal direction glyphs.
+7. Parallel transport (curve): transports a picked tangent direction along the latest Draw curve and renders vectors along it.
+8. Selection overlay: visualizes the latest Select region output as a selection mask.
+9. Grad (scalar -> vector field): computes a gradient field and draws tangent arrows.
+10. Div (vector -> scalar field): computes divergence and stores a scalar field; enables heatmap when full vertex samples are available.
+11. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
+12. Principal directions: turns on principal direction glyphs.
 
 ### Visualize blocks (snapshots and compare)
 1. Capture A and Capture B store a full view snapshot (camera, surface, expressions, domains, resolution, and overlays).
@@ -135,3 +136,4 @@
 2. Curvature study: Compute -> Curvature field + principal directions, then capture Visualize snapshots.
 3. Vector calculus: Compute -> Grad, then Compute -> Div or Laplacian with the gradient field.
 4. Overlay review: Draw curve or Pick direction, then Compute -> Curve overlay or Direction overlay; toggle Ghost overlays to compare iterations.
+5. Transport demo: Draw curve, optionally Pick direction, then Compute -> Parallel transport (curve) to visualize twisting along the path.

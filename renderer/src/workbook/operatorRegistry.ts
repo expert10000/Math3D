@@ -72,6 +72,17 @@ export const WORKBOOK_OPERATOR_CATALOG: WorkbookOperatorSpec[] = [
     ],
   },
   {
+    id: "surface.parallelTransport",
+    label: "Parallel transport (curve)",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [],
+    hint: [
+      "Use after Draw curve + Pick direction (optional).",
+      "Transports the picked tangent direction along the curve.",
+      "Renders vectors along the curve.",
+    ],
+  },
+  {
     id: "field.grad",
     label: "Grad (scalar → vector field)",
     inputs: FIELD_SCALAR_INPUTS,

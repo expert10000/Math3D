@@ -525,7 +525,7 @@ Built‑in templates (examples):
 - **Compute curvature** — curvature field + interpretation.
 - **Geodesics from point** — heat method + shortest path.
 - **Chart + basis** — chart grid and tangent basis.
-- **Transport demo** — direction overlay workflow.
+- **Transport demo** — parallel transport along a drawn curve.
 - **Selection + stats** — selection overlay + curvature context.
 - **Principal directions** — curvature + principal direction glyphs.
 - **Curve overlay demo** — draw curves with ghost overlays.
@@ -900,6 +900,13 @@ DrawCurve → curve overlay
 1. Add an Interaction block set to Draw curve.
 2. Click Arm pick, click on the surface to add points, then Finish curve.
 3. Add a Compute block → Curve overlay and Run operator.
+
+DrawCurve + PickDirection → parallel transport
+
+1. Add an Interaction block set to Draw curve.
+2. Click Arm pick, click on the surface to add points, then Finish curve.
+3. Add an Interaction block set to Pick direction and capture a tangent direction (optional; falls back to curve tangent).
+4. Add a Compute block → Parallel transport (curve) and Run operator.
 
 SelectRegion → selection overlay
 

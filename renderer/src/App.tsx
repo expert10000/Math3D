@@ -1494,6 +1494,19 @@ const vNormalize = (v: Vec3): Vec3 => {
   const len = vLen(v);
   return len > 1e-12 ? vScale(v, 1 / len) : { x: 0, y: 0, z: 0 };
 };
+const vProjectOnPlane = (v: Vec3, normal: Vec3): Vec3 => {
+  const dot = vDot(v, normal);
+  return vSub(v, vScale(normal, dot));
+};
+const vRotateAroundAxis = (v: Vec3, axis: Vec3, angle: number): Vec3 => {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const term1 = vScale(v, c);
+  const term2 = vScale(vCross(axis, v), s);
+  const term3 = vScale(axis, vDot(axis, v) * (1 - c));
+  return vAdd(vAdd(term1, term2), term3);
+};
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const buildTangentBasis = (normal: Vec3) => {
   const n = vNormalize(normal);
@@ -9425,6 +9438,189 @@ case "mobius":
     ]
   );
 
+  const runParallelTransportOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      const curve = resolveLatestCurveOutput(ctx.blockId);
+      if (!curve?.points?.length || curve.points.length < 2) {
+        return { status: "stale", summary: "Draw a curve before running." };
+      }
+
+      const directionOut = resolveLatestDirectionOutput(ctx.blockId);
+      const points: Vec3[] = curve.points.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+
+      const resolveNearestSample = (point: Vec3) => {
+        const samples = surfaceSampleSet?.samples;
+        if (!samples?.length) return null;
+        let best: { sample: (typeof samples)[number]; d2: number } | null = null;
+        for (const sample of samples) {
+          const dx = sample.position.x - point.x;
+          const dy = sample.position.y - point.y;
+          const dz = sample.position.z - point.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          if (!Number.isFinite(d2)) continue;
+          if (!best || d2 < best.d2) best = { sample, d2 };
+        }
+        return best?.sample ?? null;
+      };
+
+      const resolveNormalAt = (point: Vec3): Vec3 | null => {
+        let sample: SurfaceQuerySample | null = null;
+        if (surfaceViewerKind === "graph") {
+          sample = surfaceQuery.sampleAt({ point, xy: { x: point.x, y: point.z } });
+        } else if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+          const nearest = resolveNearestSample(point);
+          if (nearest?.uv) {
+            sample = surfaceQuery.sampleAt({ point, uv: { ...nearest.uv } });
+          }
+        } else {
+          sample = surfaceQuery.sampleAt({ point });
+        }
+        if (sample?.normal && isFiniteVec3(sample.normal as Vec3)) {
+          return vNormalize(sample.normal as Vec3);
+        }
+        const nearest = resolveNearestSample(point);
+        if (nearest?.normal && isFiniteVec3(nearest.normal as Vec3)) {
+          return vNormalize(nearest.normal as Vec3);
+        }
+        return null;
+      };
+
+      const normals: Array<Vec3 | null> = new Array(points.length).fill(null);
+      let prevNormal: Vec3 | null = null;
+      for (let i = 0; i < points.length; i += 1) {
+        let normal = resolveNormalAt(points[i]);
+        if (normal && prevNormal && vDot(normal, prevNormal) < 0) {
+          normal = vScale(normal, -1);
+        }
+        normals[i] = normal;
+        if (normal) prevNormal = normal;
+      }
+      let lastValid: Vec3 | null = null;
+      for (let i = 0; i < normals.length; i += 1) {
+        if (!normals[i] && lastValid) normals[i] = lastValid;
+        if (normals[i]) lastValid = normals[i] as Vec3;
+      }
+      let nextValid: Vec3 | null = null;
+      for (let i = normals.length - 1; i >= 0; i -= 1) {
+        if (!normals[i] && nextValid) normals[i] = nextValid;
+        if (normals[i]) nextValid = normals[i] as Vec3;
+      }
+      if (!normals.some((n) => n)) {
+        return { status: "stale", summary: "Surface normals not ready yet." };
+      }
+
+      const tangents: Vec3[] = [];
+      let curveLen = 0;
+      for (let i = 0; i < points.length; i += 1) {
+        const prev = i > 0 ? points[i - 1] : points[i];
+        const next = i + 1 < points.length ? points[i + 1] : points[i];
+        const delta = vSub(next, prev);
+        const len = vLen(delta);
+        if (i > 0) curveLen += vLen(vSub(points[i], points[i - 1]));
+        if (len > 1e-8) {
+          tangents[i] = vScale(delta, 1 / len);
+        } else {
+          tangents[i] = tangents[i - 1] ?? { x: 1, y: 0, z: 0 };
+        }
+      }
+
+      const n0 = (normals[0] ?? { x: 0, y: 1, z: 0 }) as Vec3;
+      const initialRaw = directionOut?.direction ?? tangents[0];
+      let v0 = vProjectOnPlane(initialRaw, n0);
+      if (vLen(v0) < 1e-8) v0 = vProjectOnPlane(tangents[0], n0);
+      if (vLen(v0) < 1e-8) v0 = buildTangentBasis(n0).t1;
+      v0 = vNormalize(v0);
+
+      const vectors: Vec3[] = new Array(points.length);
+      vectors[0] = v0;
+      for (let i = 1; i < points.length; i += 1) {
+        const nPrev = (normals[i - 1] ?? n0) as Vec3;
+        const nCurr = (normals[i] ?? nPrev) as Vec3;
+        let vPrev = vectors[i - 1] ?? v0;
+        let vNext = vPrev;
+        const dot = vDot(nPrev, nCurr);
+        const axis = vCross(nPrev, nCurr);
+        const axisLen = vLen(axis);
+        if (axisLen > 1e-8 && Number.isFinite(dot)) {
+          const angle = Math.acos(clamp(dot, -1, 1));
+          vNext = vRotateAroundAxis(vPrev, vScale(axis, 1 / axisLen), angle);
+        }
+        vNext = vProjectOnPlane(vNext, nCurr);
+        if (vLen(vNext) < 1e-8) vNext = vProjectOnPlane(tangents[i], nCurr);
+        if (vLen(vNext) < 1e-8) vNext = buildTangentBasis(nCurr).t1;
+        vectors[i] = vNormalize(vNext);
+      }
+
+      const maxVectors = Math.max(4, Math.round(Number(readBlockParamValue(ctx.blockId, "vectorDensity", 200))));
+      const stride = Math.max(1, Math.floor(points.length / maxVectors));
+      const scale = Math.max(0.05, Number(readBlockParamValue(ctx.blockId, "vectorScale", 1)));
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+      for (const p of points) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        minZ = Math.min(minZ, p.z);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+        maxZ = Math.max(maxZ, p.z);
+      }
+      const bboxDiag = Math.hypot(maxX - minX, maxY - minY, maxZ - minZ);
+      const sizeHint =
+        surfaceSampleSet?.bbox?.getSize(new THREE.Vector3()).length() ??
+        (Number.isFinite(bboxDiag) && bboxDiag > 0 ? bboxDiag : 1);
+      const avgSeg = points.length > 1 ? curveLen / (points.length - 1) : sizeHint * 0.05;
+      const baseLen = Math.max(avgSeg * 0.9, sizeHint * 0.03) * scale;
+      const minLen = sizeHint * 0.01;
+      const maxLen = sizeHint * 0.2;
+      const arrowLen = clamp(baseLen, minLen, maxLen);
+
+      const lines: PolylineSet = [];
+      let arrowCount = 0;
+      for (let i = 0; i < points.length; i += stride) {
+        const dir = vectors[i];
+        if (!dir || vLen(dir) < 1e-8) continue;
+        const start = points[i];
+        const end = vAdd(start, vScale(dir, arrowLen));
+        lines.push([start, end]);
+
+        const normal = normals[i] ?? n0;
+        if (normal && isFiniteVec3(normal)) {
+          const side = vCross(normal, dir);
+          const sideLen = vLen(side);
+          if (sideLen > 1e-6) {
+            const sideUnit = vScale(side, 1 / sideLen);
+            const headLen = arrowLen * 0.3;
+            const headWidth = headLen * 0.6;
+            const basePt = vSub(end, vScale(dir, headLen));
+            lines.push([end, vAdd(basePt, vScale(sideUnit, headWidth))]);
+            lines.push([end, vAdd(basePt, vScale(sideUnit, -headWidth))]);
+          }
+        }
+        arrowCount += 1;
+      }
+
+      applyWorkbookVectorFieldOverlay(lines.length ? lines : null);
+      const originLabel = directionOut ? "picked direction" : "curve tangent";
+      return {
+        status: "ok",
+        summary: `Transported ${originLabel} along curve (${arrowCount} vectors).`,
+      };
+    },
+    [
+      applyWorkbookVectorFieldOverlay,
+      readBlockParamValue,
+      resolveLatestCurveOutput,
+      resolveLatestDirectionOutput,
+      surfaceQuery,
+      surfaceSampleSet,
+      surfaceViewerKind,
+    ]
+  );
+
   const runSelectionOverlayOperator = useCallback(
     (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
       const maskOut = resolveLatestMaskOutput(ctx.blockId);
@@ -9776,6 +9972,7 @@ case "mobius":
       "chart.pointInfo": runChartPointInfoOperator,
       "surface.curvature": runSurfaceCurvatureOperator,
       "surface.geodesicDistance": runGeodesicDistanceOperator,
+      "surface.parallelTransport": runParallelTransportOperator,
       "field.grad": runFieldGradOperator,
       "field.div": runFieldDivOperator,
       "field.laplacian": runFieldLaplacianOperator,
@@ -9801,16 +9998,17 @@ case "mobius":
     return createOperatorRegistry(entries);
   }, [
     runPointInfoOperator,
-    runChartGridOperator,
-    runChartPointInfoOperator,
-    runCurveOverlayOperator,
-    runCurvatureFieldOperator,
-    runSurfaceCurvatureOperator,
-    runDirectionOverlayOperator,
-    runGeodesicDistanceOperator,
-    runGeodesicHeatOperator,
-    runGeodesicPathOperator,
-    runFieldGradOperator,
+      runChartGridOperator,
+      runChartPointInfoOperator,
+      runCurveOverlayOperator,
+      runCurvatureFieldOperator,
+      runSurfaceCurvatureOperator,
+      runDirectionOverlayOperator,
+      runParallelTransportOperator,
+      runGeodesicDistanceOperator,
+      runGeodesicHeatOperator,
+      runGeodesicPathOperator,
+      runFieldGradOperator,
     runFieldDivOperator,
     runFieldLaplacianOperator,
     runPrincipalDirsOperator,
