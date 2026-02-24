@@ -30,6 +30,14 @@ export const BASE_COMPUTE_INPUTS: WorkbookPort[] = [
 ];
 
 export const GEODESIC_INPUTS: WorkbookPort[] = [...BASE_COMPUTE_INPUTS];
+export const FIELD_SCALAR_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "scalar", label: "Scalar", type: "scalar", optional: true },
+];
+export const FIELD_VECTOR_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "vector", label: "Vector", type: "vector", optional: true },
+];
 
 export const WORKBOOK_OPERATOR_CATALOG: WorkbookOperatorSpec[] = [
   {
@@ -61,6 +69,36 @@ export const WORKBOOK_OPERATOR_CATALOG: WorkbookOperatorSpec[] = [
     hint: [
       "Pick a seed point first. Optional second pick sets target.",
       "Outputs heatmap + shortest path polyline.",
+    ],
+  },
+  {
+    id: "field.grad",
+    label: "Grad (scalar → vector field)",
+    inputs: FIELD_SCALAR_INPUTS,
+    outputs: [{ id: "vector", label: "Vector", type: "vector" }],
+    hint: [
+      "Uses scalar field (defaults to K).",
+      "Renders tangent arrows (downsampled).",
+    ],
+  },
+  {
+    id: "field.div",
+    label: "Div (vector → scalar field)",
+    inputs: FIELD_VECTOR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Uses vector field (defaults to grad(K)).",
+      "Stores scalar field for reuse.",
+    ],
+  },
+  {
+    id: "field.laplacian",
+    label: "Laplacian (scalar → scalar field)",
+    inputs: FIELD_SCALAR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Equivalent to div(grad(scalar)).",
+      "Stores scalar field for reuse.",
     ],
   },
   {

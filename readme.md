@@ -756,6 +756,13 @@ Workbook compute + Point info (SurfaceQuery)
 3. Click Run operator to read `p, du, dv, normal, metric, areaElem` for the picked point.
 4. Curvature stats (K/H/k1/k2) now come from surface fields when available and fall back to graph sampling.
 
+Differential operators (grad/div/laplacian)
+1. Add a Compute block and choose `Grad (scalar → vector field)`, `Div (vector → scalar field)`, or `Laplacian (scalar → scalar field)`.
+2. For `Grad`, pick a scalar field (defaults to `K`) and optionally set `Vector density` and `Vector scale`. Run to render downsampled tangent arrows (e.g. `K → grad(K)`).
+3. For `Div`, either connect a vector output from an earlier Grad block or choose the `Vector field` param (defaults to `grad(K)`), then run to compute a scalar field.
+4. For `Laplacian`, choose a scalar field (defaults to `K`) and run; this computes `div(grad(scalar))`.
+5. When the surface samples match the mesh vertices, `Div` and `Laplacian` also enable a heatmap for the computed scalar field.
+
 Developer note (SurfaceQuery + fields)
 1. SurfaceQuery lives in `renderer/src/math/surfaceQuery.ts`.
 2. Mesh datasets can provide scalar/vector fields via `MeshDataset.fields` in `renderer/src/scene/datasets.ts`.

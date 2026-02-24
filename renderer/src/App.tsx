@@ -64,6 +64,7 @@ import {
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
 import { marchingSquares } from "./math/marchingSquares";
+import { buildVertexAdjacency } from "./math/curvatureLines";
 import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
@@ -1514,6 +1515,332 @@ const buildTangentBasisFromDerivatives = (du: Vec3, dv: Vec3, normal?: Vec3) => 
   return { t1, t2 };
 };
 
+const isFiniteVec3 = (v: Vec3) => Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+
+const buildSampleNeighbors = (set: SurfaceSampleSet | null) => {
+  if (!set?.samples?.length) return null;
+  const sampleCount = set.samples.length;
+  const neighborsBySample: number[][] = Array.from({ length: sampleCount }, () => []);
+  if (!set.meshData?.length) return neighborsBySample;
+
+  const sampleByMesh = new Map<string, Map<number, number>>();
+  for (let i = 0; i < sampleCount; i++) {
+    const sample = set.samples[i];
+    if (!sample.meshKey || sample.vertexIndex == null) continue;
+    let map = sampleByMesh.get(sample.meshKey);
+    if (!map) {
+      map = new Map<number, number>();
+      sampleByMesh.set(sample.meshKey, map);
+    }
+    map.set(sample.vertexIndex, i);
+  }
+
+  for (const mesh of set.meshData) {
+    const map = sampleByMesh.get(mesh.key);
+    if (!map) continue;
+    const vertexCount = Math.floor(mesh.positions.length / 3);
+    const adjacency = buildVertexAdjacency(mesh.indices ?? null, vertexCount, mesh.positions);
+    map.forEach((sampleIdx, vertexIdx) => {
+      const nbrs = adjacency[vertexIdx] ?? [];
+      if (!nbrs.length) return;
+      const mapped: number[] = [];
+      for (const nIdx of nbrs) {
+        const sampleNeighbor = map.get(nIdx);
+        if (sampleNeighbor != null) mapped.push(sampleNeighbor);
+      }
+      neighborsBySample[sampleIdx] = mapped;
+    });
+  }
+
+  return neighborsBySample;
+};
+
+const resolveScalarValuesForSamples = (
+  field: SurfaceScalarField | null,
+  samples: SurfaceSampleSet["samples"]
+) => {
+  if (!field) return null;
+  const values = field.values;
+  if (!values?.length) return null;
+  const count = samples.length;
+  if (values.length === count) {
+    return values instanceof Float32Array ? values : Float32Array.from(values);
+  }
+  let maxVertex = -1;
+  for (const sample of samples) {
+    if (typeof sample.vertexIndex !== "number") return null;
+    if (sample.vertexIndex > maxVertex) maxVertex = sample.vertexIndex;
+  }
+  if (maxVertex < 0 || values.length <= maxVertex) return null;
+  const mapped = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const idx = samples[i].vertexIndex ?? -1;
+    mapped[i] = idx >= 0 && idx < values.length ? Number(values[idx]) : Number.NaN;
+  }
+  return mapped;
+};
+
+const resolveVectorValuesForSamples = (
+  field: SurfaceVectorField | null,
+  samples: SurfaceSampleSet["samples"]
+) => {
+  if (!field) return null;
+  const values = field.values;
+  const itemSize = field.itemSize ?? 3;
+  if (!values?.length || itemSize !== 3) return null;
+  const count = samples.length;
+  if (values.length === count * itemSize) {
+    return values instanceof Float32Array ? values : Float32Array.from(values);
+  }
+  let maxVertex = -1;
+  for (const sample of samples) {
+    if (typeof sample.vertexIndex !== "number") return null;
+    if (sample.vertexIndex > maxVertex) maxVertex = sample.vertexIndex;
+  }
+  if (maxVertex < 0 || values.length <= maxVertex * itemSize + 2) return null;
+  const mapped = new Float32Array(count * itemSize);
+  for (let i = 0; i < count; i++) {
+    const idx = samples[i].vertexIndex ?? -1;
+    if (idx < 0) {
+      mapped[i * itemSize] = Number.NaN;
+      mapped[i * itemSize + 1] = Number.NaN;
+      mapped[i * itemSize + 2] = Number.NaN;
+      continue;
+    }
+    const base = idx * itemSize;
+    const outBase = i * itemSize;
+    mapped[outBase] = Number(values[base]);
+    mapped[outBase + 1] = Number(values[base + 1]);
+    mapped[outBase + 2] = Number(values[base + 2]);
+  }
+  return mapped;
+};
+
+const computeGradientComponents = (
+  index: number,
+  values: Float32Array,
+  samples: SurfaceSampleSet["samples"],
+  neighborsBySample: number[][]
+) => {
+  if (index < 0 || index >= samples.length) return null;
+  const center = samples[index];
+  const centerVal = values[index];
+  if (!Number.isFinite(centerVal)) return null;
+  const normal = center.normal as Vec3;
+  if (!isFiniteVec3(normal)) return null;
+  const basis = buildTangentBasis(normal);
+  const t1 = basis.t1;
+  const t2 = basis.t2;
+  const neighbors = neighborsBySample[index] ?? [];
+  if (neighbors.length < 2) return null;
+
+  let a11 = 0;
+  let a12 = 0;
+  let a22 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  let used = 0;
+
+  const p0 = center.position;
+  for (const nbr of neighbors) {
+    if (nbr < 0 || nbr >= samples.length) continue;
+    const v = values[nbr];
+    if (!Number.isFinite(v)) continue;
+    const p1 = samples[nbr].position;
+    const dx = p1.x - p0.x;
+    const dy = p1.y - p0.y;
+    const dz = p1.z - p0.z;
+    const dn = dx * normal.x + dy * normal.y + dz * normal.z;
+    const tx = dx - dn * normal.x;
+    const ty = dy - dn * normal.y;
+    const tz = dz - dn * normal.z;
+    const u = tx * t1.x + ty * t1.y + tz * t1.z;
+    const w = tx * t2.x + ty * t2.y + tz * t2.z;
+    const r2 = u * u + w * w;
+    if (!Number.isFinite(r2) || r2 < 1e-12) continue;
+    const ds = v - centerVal;
+    const weight = 1 / r2;
+    a11 += weight * u * u;
+    a12 += weight * u * w;
+    a22 += weight * w * w;
+    b1 += weight * ds * u;
+    b2 += weight * ds * w;
+    used += 1;
+  }
+
+  if (used < 2) return null;
+  const det = a11 * a22 - a12 * a12;
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  const gx = (b1 * a22 - b2 * a12) / det;
+  const gy = (b2 * a11 - b1 * a12) / det;
+  if (!Number.isFinite(gx) || !Number.isFinite(gy)) return null;
+  return { gx, gy, t1, t2 };
+};
+
+const computeGradientField = (
+  samples: SurfaceSampleSet["samples"],
+  values: Float32Array,
+  neighborsBySample: number[][]
+) => {
+  const count = samples.length;
+  const out = new Float32Array(count * 3);
+  let valid = 0;
+  for (let i = 0; i < count; i++) {
+    const comps = computeGradientComponents(i, values, samples, neighborsBySample);
+    if (!comps) {
+      out[i * 3] = Number.NaN;
+      out[i * 3 + 1] = Number.NaN;
+      out[i * 3 + 2] = Number.NaN;
+      continue;
+    }
+    const { gx, gy, t1, t2 } = comps;
+    const vx = t1.x * gx + t2.x * gy;
+    const vy = t1.y * gx + t2.y * gy;
+    const vz = t1.z * gx + t2.z * gy;
+    out[i * 3] = vx;
+    out[i * 3 + 1] = vy;
+    out[i * 3 + 2] = vz;
+    valid += 1;
+  }
+  return { vectors: out, validCount: valid };
+};
+
+const computeDivergenceField = (
+  samples: SurfaceSampleSet["samples"],
+  vectors: Float32Array,
+  neighborsBySample: number[][]
+) => {
+  const count = samples.length;
+  const fx = new Float32Array(count);
+  const fy = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const vx = vectors[base];
+    const vy = vectors[base + 1];
+    const vz = vectors[base + 2];
+    if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) {
+      fx[i] = Number.NaN;
+      fy[i] = Number.NaN;
+      continue;
+    }
+    const normal = samples[i].normal as Vec3;
+    if (!isFiniteVec3(normal)) {
+      fx[i] = Number.NaN;
+      fy[i] = Number.NaN;
+      continue;
+    }
+    const basis = buildTangentBasis(normal);
+    const dot = vx * normal.x + vy * normal.y + vz * normal.z;
+    const tx = vx - dot * normal.x;
+    const ty = vy - dot * normal.y;
+    const tz = vz - dot * normal.z;
+    fx[i] = tx * basis.t1.x + ty * basis.t1.y + tz * basis.t1.z;
+    fy[i] = tx * basis.t2.x + ty * basis.t2.y + tz * basis.t2.z;
+  }
+
+  const out = new Float32Array(count);
+  let valid = 0;
+  for (let i = 0; i < count; i++) {
+    const gradFx = computeGradientComponents(i, fx, samples, neighborsBySample);
+    const gradFy = computeGradientComponents(i, fy, samples, neighborsBySample);
+    if (!gradFx || !gradFy) {
+      out[i] = Number.NaN;
+      continue;
+    }
+    out[i] = gradFx.gx + gradFy.gy;
+    if (Number.isFinite(out[i])) valid += 1;
+  }
+  return { scalars: out, validCount: valid };
+};
+
+const buildVectorFieldArrows = (opts: {
+  samples: SurfaceSampleSet["samples"];
+  vectors: Float32Array;
+  maxArrows: number;
+  scale: number;
+  sizeHint: number;
+}) => {
+  const { samples, vectors, maxArrows, scale, sizeHint } = opts;
+  const count = samples.length;
+  if (!count) return { lines: [], count: 0 };
+  const safeMax = Math.max(10, Math.min(count, Math.round(maxArrows)));
+  const stride = Math.max(1, Math.floor(count / safeMax));
+
+  let sum = 0;
+  let samplesUsed = 0;
+  for (let i = 0; i < count; i += stride) {
+    const base = i * 3;
+    const vx = vectors[base];
+    const vy = vectors[base + 1];
+    const vz = vectors[base + 2];
+    if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) continue;
+    const len = Math.hypot(vx, vy, vz);
+    if (!Number.isFinite(len) || len < 1e-8) continue;
+    sum += len;
+    samplesUsed += 1;
+  }
+  const avgLen = samplesUsed > 0 ? sum / samplesUsed : 1;
+  const baseLen = Math.max(1e-4, sizeHint * 0.08) * Math.max(0.05, scale);
+  const minLen = sizeHint * 0.008;
+  const maxLen = sizeHint * 0.22;
+
+  const lines: PolylineSet = [];
+  let arrowCount = 0;
+  for (let i = 0; i < count; i += stride) {
+    const base = i * 3;
+    const vx = vectors[base];
+    const vy = vectors[base + 1];
+    const vz = vectors[base + 2];
+    if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) continue;
+    const len = Math.hypot(vx, vy, vz);
+    if (!Number.isFinite(len) || len < 1e-8) continue;
+    const dir = { x: vx / len, y: vy / len, z: vz / len };
+    const mag = baseLen * (len / Math.max(1e-6, avgLen));
+    const arrowLen = Math.max(minLen, Math.min(maxLen, mag));
+    const start = samples[i].position;
+    const end = {
+      x: start.x + dir.x * arrowLen,
+      y: start.y + dir.y * arrowLen,
+      z: start.z + dir.z * arrowLen,
+    };
+    lines.push([start, end]);
+
+    const normal = samples[i].normal as Vec3;
+    if (isFiniteVec3(normal)) {
+      const side = vCross(normal, dir);
+      const sideLen = vLen(side);
+      if (sideLen > 1e-6) {
+        const sideUnit = vScale(side, 1 / sideLen);
+        const headLen = arrowLen * 0.28;
+        const headWidth = headLen * 0.6;
+        const basePt = {
+          x: end.x - dir.x * headLen,
+          y: end.y - dir.y * headLen,
+          z: end.z - dir.z * headLen,
+        };
+        lines.push([
+          end,
+          {
+            x: basePt.x + sideUnit.x * headWidth,
+            y: basePt.y + sideUnit.y * headWidth,
+            z: basePt.z + sideUnit.z * headWidth,
+          },
+        ]);
+        lines.push([
+          end,
+          {
+            x: basePt.x - sideUnit.x * headWidth,
+            y: basePt.y - sideUnit.y * headWidth,
+            z: basePt.z - sideUnit.z * headWidth,
+          },
+        ]);
+      }
+    }
+    arrowCount += 1;
+  }
+  return { lines, count: arrowCount };
+};
+
 const stableStringify = (value: unknown) => {
   const seen = new WeakSet();
   const walk = (val: any): any => {
@@ -1579,6 +1906,32 @@ const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
     ],
     defaultValue: "blueRed",
   },
+  {
+    id: "scalarField",
+    label: "Scalar field",
+    kind: "select",
+    options: [
+      { value: "K", label: "K (Gaussian)" },
+      { value: "H", label: "H (mean)" },
+      { value: "k1", label: "k1" },
+      { value: "k2", label: "k2" },
+    ],
+    defaultValue: "K",
+  },
+  {
+    id: "vectorField",
+    label: "Vector field",
+    kind: "select",
+    options: [
+      { value: "grad(K)", label: "grad(K)" },
+      { value: "grad(H)", label: "grad(H)" },
+      { value: "grad(k1)", label: "grad(k1)" },
+      { value: "grad(k2)", label: "grad(k2)" },
+    ],
+    defaultValue: "grad(K)",
+  },
+  { id: "vectorDensity", label: "Vector density", kind: "number", min: 50, max: 4000, step: 50, defaultValue: 800 },
+  { id: "vectorScale", label: "Vector scale", kind: "number", min: 0.1, max: 5, step: 0.1, defaultValue: 1 },
   { id: "selectionRadius", label: "Selection radius", kind: "number", min: 0.05, max: 3, step: 0.05, defaultValue: 0.4 },
 ];
 
@@ -1687,8 +2040,16 @@ const App: React.FC = () => {
   } | null>(null);
   const [workbookCurveOverlay, setWorkbookCurveOverlay] = useState<PolylineSet | null>(null);
   const [workbookDirectionOverlay, setWorkbookDirectionOverlay] = useState<PolylineSet | null>(null);
+  const [workbookVectorFieldOverlay, setWorkbookVectorFieldOverlay] = useState<PolylineSet | null>(null);
   const [workbookCurveOverlayGhost, setWorkbookCurveOverlayGhost] = useState<PolylineSet | null>(null);
   const [workbookDirectionOverlayGhost, setWorkbookDirectionOverlayGhost] = useState<PolylineSet | null>(null);
+  const [workbookVectorFieldOverlayGhost, setWorkbookVectorFieldOverlayGhost] = useState<PolylineSet | null>(null);
+  const [workbookHeatmapValues, setWorkbookHeatmapValues] = useState<ArrayLike<number> | null>(null);
+  const [workbookHeatmapEnabled, setWorkbookHeatmapEnabled] = useState(false);
+  const workbookScalarFieldByBlockRef = useRef<Map<string, SurfaceScalarField>>(new Map());
+  const workbookVectorFieldByBlockRef = useRef<Map<string, SurfaceVectorField>>(new Map());
+  const [workbookScalarFields, setWorkbookScalarFields] = useState<Map<string, SurfaceScalarField>>(new Map());
+  const [workbookVectorFields, setWorkbookVectorFields] = useState<Map<string, SurfaceVectorField>>(new Map());
   const [workbookGhostOverlaysEnabled, setWorkbookGhostOverlaysEnabled] = useState(() => {
     const raw = localStorage.getItem(WORKBOOK_GHOST_OVERLAYS_KEY);
     return raw === "1";
@@ -1702,6 +2063,12 @@ const App: React.FC = () => {
   const applyWorkbookDirectionOverlay = useCallback((next: PolylineSet | null) => {
     setWorkbookDirectionOverlay((prev) => {
       if (prev && prev !== next) setWorkbookDirectionOverlayGhost(prev);
+      return next;
+    });
+  }, []);
+  const applyWorkbookVectorFieldOverlay = useCallback((next: PolylineSet | null) => {
+    setWorkbookVectorFieldOverlay((prev) => {
+      if (prev && prev !== next) setWorkbookVectorFieldOverlayGhost(prev);
       return next;
     });
   }, []);
@@ -3312,6 +3679,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [datasetKind]);
   const [gaussHoverIndex, setGaussHoverIndex] = useState<number | null>(null);
   const [surfaceSampleSet, setSurfaceSampleSet] = useState<SurfaceSampleSet | null>(null);
+  useEffect(() => {
+    workbookScalarFieldByBlockRef.current.clear();
+    workbookVectorFieldByBlockRef.current.clear();
+    setWorkbookScalarFields(new Map());
+    setWorkbookVectorFields(new Map());
+    setWorkbookVectorFieldOverlay(null);
+    setWorkbookVectorFieldOverlayGhost(null);
+    setWorkbookHeatmapValues(null);
+    setWorkbookHeatmapEnabled(false);
+  }, [surfaceSampleSet]);
   const [selection, setSelection] = useState<RegionSelection | null>(null);
   const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
   const [selectionRadius, setSelectionRadius] = useState(0.4);
@@ -3933,6 +4310,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     surfaceSampleSet,
   ]);
   const compareDiffHeatmapActive = !!compareDiffHeatmapValues?.length;
+  const workbookHeatmapActive = !!workbookHeatmapEnabled && !!workbookHeatmapValues?.length;
+  const overlayHeatmapValues = compareDiffHeatmapActive
+    ? compareDiffHeatmapValues
+    : complexMapHeatmapActive
+      ? complexMapDistortionValues3d
+      : !compareIgnoreWorkbookOverlays && workbookHeatmapActive
+        ? workbookHeatmapValues
+        : null;
+  const overlayHeatmapEnabled = !!overlayHeatmapValues?.length;
 
   useEffect(() => {
     if (compareDiffHeatmapEnabled && !compareDiffHeatmapAvailable) {
@@ -4570,6 +4956,8 @@ case "mobius":
     return { K, H, k1, k2 };
   }, [surfaceSampleSet, surfaceViewerKind, activeEqSurfaceId, graphExpr]);
 
+  const sampleNeighbors = useMemo(() => buildSampleNeighbors(surfaceSampleSet), [surfaceSampleSet]);
+
   const surfaceScalarFields = useMemo(() => {
     const map = new Map<string, SurfaceScalarField>();
     const meshScalars = meshDataset?.fields?.scalars;
@@ -4583,8 +4971,11 @@ case "mobius":
       map.set("k1", { name: "k1", values: curvatures.k1 });
       map.set("k2", { name: "k2", values: curvatures.k2 });
     }
+    if (workbookScalarFields.size) {
+      workbookScalarFields.forEach((field, name) => map.set(name, field));
+    }
     return map;
-  }, [graphCurvatures, meshDataset?.fields?.scalars, surfaceSampleSet?.curvatures]);
+  }, [graphCurvatures, meshDataset?.fields?.scalars, surfaceSampleSet?.curvatures, workbookScalarFields]);
 
   const surfaceVectorFields = useMemo(() => {
     const map = new Map<string, SurfaceVectorField>();
@@ -4592,8 +4983,11 @@ case "mobius":
     if (meshVectors?.length) {
       meshVectors.forEach((field) => map.set(field.name, field));
     }
+    if (workbookVectorFields.size) {
+      workbookVectorFields.forEach((field, name) => map.set(name, field));
+    }
     return map;
-  }, [meshDataset?.fields?.vectors]);
+  }, [meshDataset?.fields?.vectors, workbookVectorFields]);
 
   const surfaceQuery = useMemo<SurfaceQuery>(() => {
     const kind: SurfaceQuery["kind"] =
@@ -6339,20 +6733,48 @@ case "mobius":
     ];
   }, [workbookDirectionOverlayGhost, workbookGhostOverlaysEnabled]);
 
+  const workbookVectorFieldOverlayGroups = useMemo(() => {
+    if (!workbookVectorFieldOverlay?.length) return null;
+    return [
+      {
+        lines: workbookVectorFieldOverlay,
+        color: 0x0ea5e9,
+        opacity: 0.95,
+        radiusScale: 0.9,
+      },
+    ];
+  }, [workbookVectorFieldOverlay]);
+
+  const workbookVectorFieldOverlayGhostGroups = useMemo(() => {
+    if (!workbookGhostOverlaysEnabled || !workbookVectorFieldOverlayGhost?.length) return null;
+    return [
+      {
+        lines: workbookVectorFieldOverlayGhost,
+        color: 0x0ea5e9,
+        opacity: 0.2,
+        radiusScale: 0.8,
+      },
+    ];
+  }, [workbookVectorFieldOverlayGhost, workbookGhostOverlaysEnabled]);
+
   const combinedOverlayPolylineGroups = useMemo(() => {
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
+    if (workbookVectorFieldOverlayGhostGroups?.length) groups.push(...workbookVectorFieldOverlayGhostGroups);
     if (workbookCurveOverlayGroups?.length) groups.push(...workbookCurveOverlayGroups);
     if (workbookDirectionOverlayGroups?.length) groups.push(...workbookDirectionOverlayGroups);
+    if (workbookVectorFieldOverlayGroups?.length) groups.push(...workbookVectorFieldOverlayGroups);
     return groups.length ? groups : null;
   }, [
     complexMapOverlayPolylineGroups,
     workbookCurveOverlayGhostGroups,
     workbookDirectionOverlayGhostGroups,
+    workbookVectorFieldOverlayGhostGroups,
     workbookCurveOverlayGroups,
     workbookDirectionOverlayGroups,
+    workbookVectorFieldOverlayGroups,
   ]);
 
   const compareOverlayPolylineGroups = useMemo(() => {
@@ -8785,6 +9207,75 @@ case "mobius":
     ]
   );
 
+  const readBlockParamValue = useCallback(
+    (blockId: string, paramId: string, fallback: WorkbookParamValue) => {
+      const block = workbookGraph.blockMetaById.get(blockId)?.block;
+      const raw = block?.params?.values?.[paramId];
+      return raw ?? fallback;
+    },
+    [workbookGraph]
+  );
+
+  const registerWorkbookScalarField = useCallback((blockId: string, field: SurfaceScalarField) => {
+    workbookScalarFieldByBlockRef.current.set(blockId, field);
+    setWorkbookScalarFields((prev) => {
+      const next = new Map(prev);
+      next.set(field.name, field);
+      return next;
+    });
+  }, []);
+
+  const registerWorkbookVectorField = useCallback((blockId: string, field: SurfaceVectorField) => {
+    workbookVectorFieldByBlockRef.current.set(blockId, field);
+    setWorkbookVectorFields((prev) => {
+      const next = new Map(prev);
+      next.set(field.name, field);
+      return next;
+    });
+  }, []);
+
+  const resolveScalarFieldInput = useCallback(
+    (ctx: WorkbookOperatorRunContext) => {
+      if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
+      const input = ctx.inputRefs.find((ref) => ref.type === "scalar" && ref.fromBlockId);
+      if (input?.fromBlockId) {
+        const field = workbookScalarFieldByBlockRef.current.get(input.fromBlockId) ?? null;
+        if (field) {
+          const values = resolveScalarValuesForSamples(field, surfaceSampleSet.samples);
+          if (values) return { field, values, name: field.name };
+        }
+      }
+      const fallbackName = String(readBlockParamValue(ctx.blockId, "scalarField", "K"));
+      const field = surfaceQuery.scalarField?.(fallbackName) ?? null;
+      if (!field) return { error: `Scalar field "${fallbackName}" not available.` };
+      const values = resolveScalarValuesForSamples(field, surfaceSampleSet.samples);
+      if (!values) return { error: `Scalar field "${fallbackName}" has incompatible size.` };
+      return { field, values, name: field.name ?? fallbackName };
+    },
+    [readBlockParamValue, surfaceQuery, surfaceSampleSet]
+  );
+
+  const resolveVectorFieldInput = useCallback(
+    (ctx: WorkbookOperatorRunContext) => {
+      if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
+      const input = ctx.inputRefs.find((ref) => ref.type === "vector" && ref.fromBlockId);
+      if (input?.fromBlockId) {
+        const field = workbookVectorFieldByBlockRef.current.get(input.fromBlockId) ?? null;
+        if (field) {
+          const values = resolveVectorValuesForSamples(field, surfaceSampleSet.samples);
+          if (values) return { field, values, name: field.name };
+        }
+      }
+      const fallbackName = String(readBlockParamValue(ctx.blockId, "vectorField", "grad(K)"));
+      const field = surfaceQuery.vectorField?.(fallbackName) ?? null;
+      if (!field) return { error: `Vector field "${fallbackName}" not available.` };
+      const values = resolveVectorValuesForSamples(field, surfaceSampleSet.samples);
+      if (!values) return { error: `Vector field "${fallbackName}" has incompatible size.` };
+      return { field, values, name: field.name ?? fallbackName };
+    },
+    [readBlockParamValue, surfaceQuery, surfaceSampleSet]
+  );
+
   const runPointInfoOperator = useCallback(
     (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
       const pointOut = resolveLatestPointOutput(ctx.blockId);
@@ -8976,6 +9467,138 @@ case "mobius":
     [runCurvatureFieldOperator]
   );
 
+  const runFieldGradOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      if (!surfaceSampleSet?.samples?.length) {
+        return { status: "stale", summary: "Surface samples not ready." };
+      }
+      if (!sampleNeighbors) {
+        return { status: "stale", summary: "Surface adjacency not ready." };
+      }
+      const scalarInput = resolveScalarFieldInput(ctx);
+      if ("error" in scalarInput) {
+        return { status: "stale", summary: scalarInput.error };
+      }
+      const { values, name } = scalarInput;
+      const gradient = computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const fieldName = `grad(${name})`;
+      const field: SurfaceVectorField = { name: fieldName, values: gradient.vectors, itemSize: 3 };
+      registerWorkbookVectorField(ctx.blockId, field);
+
+      const density = Number(readBlockParamValue(ctx.blockId, "vectorDensity", 800));
+      const scale = Number(readBlockParamValue(ctx.blockId, "vectorScale", 1));
+      const sizeHint = surfaceSampleSet.bbox
+        ? surfaceSampleSet.bbox.getSize(new THREE.Vector3()).length()
+        : 3;
+      const arrows = buildVectorFieldArrows({
+        samples: surfaceSampleSet.samples,
+        vectors: gradient.vectors,
+        maxArrows: density,
+        scale,
+        sizeHint: sizeHint || 3,
+      });
+      applyWorkbookVectorFieldOverlay(arrows.lines.length ? arrows.lines : null);
+
+      const summary = `grad(${name}) arrows (${arrows.count})`;
+      return { status: "ok", summary };
+    },
+    [
+      applyWorkbookVectorFieldOverlay,
+      readBlockParamValue,
+      registerWorkbookVectorField,
+      resolveScalarFieldInput,
+      sampleNeighbors,
+      surfaceSampleSet,
+    ]
+  );
+
+  const runFieldDivOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      if (!surfaceSampleSet?.samples?.length) {
+        return { status: "stale", summary: "Surface samples not ready." };
+      }
+      if (!sampleNeighbors) {
+        return { status: "stale", summary: "Surface adjacency not ready." };
+      }
+      const vectorInput = resolveVectorFieldInput(ctx);
+      if ("error" in vectorInput) {
+        return { status: "stale", summary: vectorInput.error };
+      }
+      const { values, name } = vectorInput;
+      const divergence = computeDivergenceField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const fieldName = `div(${name})`;
+      const field: SurfaceScalarField = { name: fieldName, values: divergence.scalars };
+      registerWorkbookScalarField(ctx.blockId, field);
+      const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+      const vertexCount =
+        meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+      const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+      if (heatmapOk) {
+        setWorkbookHeatmapValues(divergence.scalars);
+        setWorkbookHeatmapEnabled(true);
+      } else {
+        setWorkbookHeatmapValues(null);
+        setWorkbookHeatmapEnabled(false);
+      }
+      const summary = heatmapOk
+        ? `div(${name}) heatmap`
+        : `div(${name}) computed (heatmap requires full vertex samples)`;
+      return { status: "ok", summary };
+    },
+    [
+      registerWorkbookScalarField,
+      resolveVectorFieldInput,
+      sampleNeighbors,
+      surfaceSampleSet,
+      setWorkbookHeatmapEnabled,
+      setWorkbookHeatmapValues,
+    ]
+  );
+
+  const runFieldLaplacianOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      if (!surfaceSampleSet?.samples?.length) {
+        return { status: "stale", summary: "Surface samples not ready." };
+      }
+      if (!sampleNeighbors) {
+        return { status: "stale", summary: "Surface adjacency not ready." };
+      }
+      const scalarInput = resolveScalarFieldInput(ctx);
+      if ("error" in scalarInput) {
+        return { status: "stale", summary: scalarInput.error };
+      }
+      const { values, name } = scalarInput;
+      const gradient = computeGradientField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const laplacian = computeDivergenceField(surfaceSampleSet.samples, gradient.vectors, sampleNeighbors);
+      const fieldName = `laplacian(${name})`;
+      const field: SurfaceScalarField = { name: fieldName, values: laplacian.scalars };
+      registerWorkbookScalarField(ctx.blockId, field);
+      const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+      const vertexCount =
+        meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+      const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+      if (heatmapOk) {
+        setWorkbookHeatmapValues(laplacian.scalars);
+        setWorkbookHeatmapEnabled(true);
+      } else {
+        setWorkbookHeatmapValues(null);
+        setWorkbookHeatmapEnabled(false);
+      }
+      const summary = heatmapOk
+        ? `laplacian(${name}) heatmap`
+        : `laplacian(${name}) computed (heatmap requires full vertex samples)`;
+      return { status: "ok", summary };
+    },
+    [
+      registerWorkbookScalarField,
+      resolveScalarFieldInput,
+      sampleNeighbors,
+      surfaceSampleSet,
+      setWorkbookHeatmapEnabled,
+      setWorkbookHeatmapValues,
+    ]
+  );
+
   const runGeodesicHeatOperator = useCallback(
     async (ctx: WorkbookOperatorRunContext): Promise<WorkbookOperatorRunResult> => {
       const pointPair = resolveInteractionPointPair(ctx.blockId);
@@ -9153,6 +9776,9 @@ case "mobius":
       "chart.pointInfo": runChartPointInfoOperator,
       "surface.curvature": runSurfaceCurvatureOperator,
       "surface.geodesicDistance": runGeodesicDistanceOperator,
+      "field.grad": runFieldGradOperator,
+      "field.div": runFieldDivOperator,
+      "field.laplacian": runFieldLaplacianOperator,
       point_info: runPointInfoOperator,
       chart_grid: runChartGridOperator,
       curve_overlay: runCurveOverlayOperator,
@@ -9184,6 +9810,9 @@ case "mobius":
     runGeodesicDistanceOperator,
     runGeodesicHeatOperator,
     runGeodesicPathOperator,
+    runFieldGradOperator,
+    runFieldDivOperator,
+    runFieldLaplacianOperator,
     runPrincipalDirsOperator,
     runSelectionOverlayOperator,
   ]);
@@ -9226,8 +9855,12 @@ case "mobius":
           inputs: inputRefs,
           params: block?.params?.values ?? null,
         });
+      const bypassCache =
+        resolvedOperator === "field.grad" ||
+        resolvedOperator === "field.div" ||
+        resolvedOperator === "field.laplacian";
       const cacheEntry = block?.compute?.cache?.[inputHash];
-      if (cacheEntry?.status === "ok") {
+      if (!bypassCache && cacheEntry?.status === "ok") {
         if (cacheEntry.outputs) applyComputeOutputs(cacheEntry.outputs);
         const now = Date.now();
         const summary = cacheEntry.summary ?? "Cached output applied.";
@@ -11279,14 +11912,8 @@ case "mobius":
                         geodesicHeatPolylines={geodesicHeatPolylines}
                         geodesicHeatmapValues={geodesicHeatHeatmapValues}
                         geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
-                        overlayHeatmapValues={
-                          compareDiffHeatmapActive
-                            ? compareDiffHeatmapValues
-                            : complexMapHeatmapActive
-                            ? complexMapDistortionValues3d
-                            : null
-                        }
-                        overlayHeatmapEnabled={compareDiffHeatmapActive || complexMapHeatmapActive}
+                        overlayHeatmapValues={overlayHeatmapValues}
+                        overlayHeatmapEnabled={overlayHeatmapEnabled}
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
                         overlayPolylineGroups={combinedOverlayPolylineGroups}
