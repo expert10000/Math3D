@@ -25,6 +25,7 @@ import {
   type ColorMode,
   type ProbeInfo,
 } from "./components/SurfaceViewer";
+import { GeometryViewer } from "./components/GeometryViewer";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
@@ -35,6 +36,9 @@ import { renderMobius } from "./d3/MobiusRenderer";
 import { renderChebyshev } from "./d3/ChebyshevRenderer";
 import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer";
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
+
+import { buildDemoPyramidScene } from "./geometry/demoScene";
+import type { GeometryScene } from "./geometry/types";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -180,7 +184,7 @@ import {
 } from "./workbook/operatorRegistry";
 /* ---------------- App modes ---------------- */
 
-type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces";
+type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
@@ -201,7 +205,7 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
-const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces"];
+const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "geometry"];
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
@@ -2016,6 +2020,26 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>(IS_REPLAY_MODE ? "surfaces" : "mobius");
+  const [geometryScene] = useState<GeometryScene>(() => buildDemoPyramidScene());
+  const [geometryWireframe, setGeometryWireframe] = useState(false);
+  const [geometryOpacity, setGeometryOpacity] = useState(0.8);
+  const [geometryResetToken, setGeometryResetToken] = useState(0);
+  const geometryStats = useMemo(() => {
+    const pointCount = geometryScene.points?.length ?? 0;
+    const segmentCount = geometryScene.segments?.length ?? 0;
+    const triangleCount = geometryScene.triangles?.length ?? 0;
+    const polygonCount = geometryScene.polygons?.length ?? 0;
+    const polyhedronCount = geometryScene.polyhedra?.length ?? 0;
+    const polyhedronFaces = geometryScene.polyhedra?.reduce((sum, p) => sum + p.faces.length, 0) ?? 0;
+    return {
+      pointCount,
+      segmentCount,
+      triangleCount,
+      polygonCount,
+      polyhedronCount,
+      polyhedronFaces,
+    };
+  }, [geometryScene]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -4777,7 +4801,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // root style
   const rootStyle: React.CSSProperties =
-    mode === "surfaces" ? { ...styles.appRoot, maxWidth: "none", width: "100%", margin: 0 } : styles.appRoot;
+    mode === "surfaces" || mode === "geometry"
+      ? { ...styles.appRoot, maxWidth: "none", width: "100%", margin: 0 }
+      : styles.appRoot;
 
 
 const mobiusEffectiveParams = useMemo(() => {
@@ -11378,6 +11404,9 @@ case "mobius":
           <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
             Surfaces
           </TabButton>
+          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
+            Geometry
+          </TabButton>
         </div>
 
         <div style={styles.controls}>
@@ -11419,6 +11448,31 @@ case "mobius":
                 setCompareUseSnapshotB(false);
               }}
             />
+          ) : mode === "geometry" ? (
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={geometryWireframe}
+                  onChange={(e) => setGeometryWireframe(e.target.checked)}
+                />
+                Wireframe
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Opacity
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1}
+                  step={0.05}
+                  value={geometryOpacity}
+                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                />
+              </label>
+              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
+                Reset camera
+              </button>
+            </div>
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
               <div
@@ -11438,7 +11492,7 @@ case "mobius":
       <div
         style={{
           ...styles.wrap,
-          ...(mode === "surfaces"
+          ...(mode === "surfaces" || mode === "geometry"
             ? {
               maxWidth: "100%",
               width: "100%",
@@ -12620,6 +12674,58 @@ case "mobius":
                   problemPacks={WORKBOOK_PROBLEM_PACKS}
                 />
               )}
+            </div>
+          </div>
+        ) : mode === "geometry" ? (
+          <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 400 }}>
+            {/* LEFT */}
+            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+              <section>
+                <h2 style={styles.h2}>Geometry Viewer</h2>
+                <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+                  Construction primitives rendered as meshes + overlays.
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Points</div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto 1fr",
+                    gap: "4px 8px",
+                    fontSize: 12,
+                    fontFamily: "monospace",
+                  }}
+                >
+                  {(geometryScene.points ?? []).map((p) => {
+                    const key = p.id ?? p.label ?? `${p.x},${p.y},${p.z}`;
+                    return (
+                      <React.Fragment key={key}>
+                        <div>{p.label ?? "•"}</div>
+                        <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
+                  {geometryStats.pointCount} points · {geometryStats.segmentCount} segments · {geometryStats.triangleCount} triangles ·{" "}
+                  {geometryStats.polygonCount} polygons · {geometryStats.polyhedronFaces} polyhedron faces
+                </div>
+              </section>
+            </div>
+
+            <div onMouseDown={startDragLeft} style={splitterStyle} />
+
+            {/* RIGHT */}
+            <div style={styles.stack}>
+              <div style={{ flex: 1, minHeight: 400 }}>
+                <GeometryViewer
+                  scene={geometryScene}
+                  wireframe={geometryWireframe}
+                  materialOpacity={geometryOpacity}
+                  resetToken={geometryResetToken}
+                />
+              </div>
             </div>
           </div>
         ) : (
