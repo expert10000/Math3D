@@ -74,6 +74,27 @@ export type OverlayPolylineGroup = {
   opacity?: number;
   radiusScale?: number;
 };
+export type OverlayLabel = {
+  text: string;
+  position: { x: number; y: number; z: number };
+  color?: number;
+  size?: number;
+  opacity?: number;
+};
+export type OverlayLabelSet = {
+  labels: OverlayLabel[];
+  font?: string;
+  color?: number;
+  opacity?: number;
+  size?: number;
+};
+export type OverlayMeshGroup = {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+  color: number;
+  opacity?: number;
+  doubleSided?: boolean;
+};
 
 const DBG_COLORS = false;
 const TAU = Math.PI * 2;
@@ -85,8 +106,15 @@ function disposeObject3D(obj: THREE.Object3D) {
   }
   const mat = anyObj.material as THREE.Material | THREE.Material[] | undefined;
   if (mat) {
-    if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-    else mat.dispose();
+    const disposeMat = (m: THREE.Material) => {
+      const anyMat = m as any;
+      if (anyMat?.map && typeof anyMat.map.dispose === "function") {
+        anyMat.map.dispose();
+      }
+      m.dispose();
+    };
+    if (Array.isArray(mat)) mat.forEach((m) => disposeMat(m));
+    else disposeMat(mat);
   }
 }
 
@@ -915,6 +943,8 @@ type Props = {
   overlayPolylinesColor?: number;
   overlayPolylineGroups?: OverlayPolylineGroup[] | null;
   overlayPointSets?: OverlayPointSet[] | null;
+  overlayMeshGroups?: OverlayMeshGroup[] | null;
+  overlayLabelSets?: OverlayLabelSet[] | null;
   geodesicDiskEnabled?: boolean;
   geodesicDiskPickEnabled?: boolean;
   onGeodesicDiskPick?: (info: {
@@ -1069,6 +1099,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     overlayPolylinesColor = 0x2a7bff,
     overlayPolylineGroups = null,
     overlayPointSets = null,
+    overlayMeshGroups = null,
+    overlayLabelSets = null,
     geodesicDiskEnabled = false,
     geodesicDiskPickEnabled = false,
     geodesicDiskCenter = null,
@@ -1108,6 +1140,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
   const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
+  const overlayMeshGroupsRef = useRef<THREE.Group | null>(null);
+  const overlayLabelSetsRef = useRef<THREE.Group | null>(null);
   const chartGridRef = useRef<THREE.Group | null>(null);
   const viewGizmoRef = useRef<THREE.Group | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
@@ -4633,6 +4667,120 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(group);
     geodesicHeatLineRef.current = group;
   }, [geodesicHeatEnd, geodesicHeatPolylines, geodesicHeatStart, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayMeshGroupsRef.current) {
+      scene.remove(overlayMeshGroupsRef.current);
+      overlayMeshGroupsRef.current.traverse(disposeObject3D);
+      overlayMeshGroupsRef.current = null;
+    }
+
+    if (!overlayMeshGroups?.length) return;
+
+    const group = new THREE.Group();
+    for (const entry of overlayMeshGroups) {
+      if (!entry?.positions || entry.positions.length < 9) continue;
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.BufferAttribute(Float32Array.from(entry.positions), 3));
+      if (entry.indices && entry.indices.length >= 3) {
+        geom.setIndex(Array.from(entry.indices));
+      }
+      geom.computeVertexNormals();
+      const opacity = entry.opacity ?? 1;
+      const mat = new THREE.MeshBasicMaterial({
+        color: entry.color,
+        transparent: opacity < 1,
+        opacity,
+        depthTest: false,
+        depthWrite: false,
+        side: entry.doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.renderOrder = 220;
+      mesh.frustumCulled = false;
+      group.add(mesh);
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayMeshGroupsRef.current = group;
+  }, [overlayMeshGroups, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (overlayLabelSetsRef.current) {
+      scene.remove(overlayLabelSetsRef.current);
+      overlayLabelSetsRef.current.traverse(disposeObject3D);
+      overlayLabelSetsRef.current = null;
+    }
+
+    if (!overlayLabelSets?.length) return;
+
+    const group = new THREE.Group();
+    const sizeHint = radiusRef.current || 3;
+    const baseSize = Math.max(0.08, (sizeHint / 26) * 0.8);
+    const toCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
+
+    for (const set of overlayLabelSets) {
+      if (!set?.labels?.length) continue;
+      const baseColor = set.color ?? 0xffffff;
+      const baseOpacity = set.opacity ?? 0.9;
+      const baseFont = set.font ?? "600 32px Georgia, \"Times New Roman\", serif";
+      const baseScale = (set.size ?? 1) * baseSize;
+
+      for (const label of set.labels) {
+        if (!label?.text) continue;
+        const font = set.font ?? baseFont;
+        const color = label.color ?? baseColor;
+        const opacity = label.opacity ?? baseOpacity;
+        const size = (label.size ?? 1) * baseScale;
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        const fontSize = Math.max(18, Math.round(32 * (label.size ?? 1)));
+        const pad = Math.ceil(fontSize * 0.4);
+        const fontWithSize = font.replace(/\d+px/, `${fontSize}px`);
+        ctx.font = fontWithSize;
+        const metrics = ctx.measureText(label.text);
+        const width = Math.max(2, Math.ceil(metrics.width + pad * 2));
+        const height = Math.max(2, Math.ceil(fontSize * 1.4 + pad * 2));
+        canvas.width = width;
+        canvas.height = height;
+        ctx.font = fontWithSize;
+        ctx.fillStyle = toCss(color);
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+        ctx.fillText(label.text, width / 2, height / 2);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        const mat = new THREE.SpriteMaterial({
+          map: texture,
+          transparent: true,
+          opacity,
+          depthTest: false,
+          depthWrite: false,
+        });
+        const sprite = new THREE.Sprite(mat);
+        const aspect = width / height;
+        sprite.scale.set(size * aspect, size, 1);
+        sprite.position.set(label.position.x, label.position.y, label.position.z);
+        sprite.renderOrder = 320;
+        sprite.frustumCulled = false;
+        group.add(sprite);
+      }
+    }
+
+    if (!group.children.length) return;
+    scene.add(group);
+    overlayLabelSetsRef.current = group;
+  }, [overlayLabelSets, sceneEpoch]);
 
   useEffect(() => {
     const scene = sceneRef.current;

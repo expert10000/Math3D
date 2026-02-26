@@ -2,6 +2,7 @@
 
 ## Changes (Latest changes)
 
+- Added a Geometry Viewer with construction primitives, constraints, stereometry analyzer (pyramid incenters + plane check), and face selection/highlight overlays.
 - Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
 - Added an implicit baker (marching cubes) with independent bounds + resolution controls, running in a worker with progress and caching for big grids.
 - Added SurfaceMesh exports (GLB/OBJ) plus a weld-vertices tool with tolerance control.

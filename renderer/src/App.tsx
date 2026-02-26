@@ -26,6 +26,7 @@ import {
   type ProbeInfo,
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
+import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
@@ -37,8 +38,10 @@ import { renderChebyshev } from "./d3/ChebyshevRenderer";
 import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer";
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
-import { buildDemoPyramidScene } from "./geometry/demoScene";
+import { buildDemoPyramidConstruction } from "./geometry/demoScene";
 import type { GeometryScene } from "./geometry/types";
+import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
+import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -378,6 +381,12 @@ const splitterStyle: React.CSSProperties = {
   cursor: "col-resize",
   alignSelf: "stretch",
   background: "linear-gradient(to right, transparent 0, #ddd 3px, transparent 6px)",
+};
+
+const GEOMETRY_BADGE_COLORS = {
+  ok: "#2e7d32",
+  fail: "#c62828",
+  invalid: "#6b7280",
 };
 
 const WEIERSTRASS_DEFAULTS = {
@@ -2020,7 +2029,76 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>(IS_REPLAY_MODE ? "surfaces" : "mobius");
-  const [geometryScene] = useState<GeometryScene>(() => buildDemoPyramidScene());
+  const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
+  const geometryScene: GeometryScene = geometryDemo.scene;
+  const geometryFaces = geometryDemo.faces ?? [];
+  const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
+  const geometryIncenterPlaneCheck = geometryDemo.incenterPlaneCheck ?? null;
+  const geometryFaceIncenterTolerance = geometryDemo.faceIncenterTolerance ?? 1e-3;
+  const [geometrySelectedFaceId, setGeometrySelectedFaceId] = useState<string | null>(
+    () => geometryFaces[0]?.id ?? null
+  );
+  const geometrySelectedFace = useMemo(
+    () => geometryFaces.find((face) => face.id === geometrySelectedFaceId) ?? null,
+    [geometryFaces, geometrySelectedFaceId]
+  );
+  const geometryHighlightPolygons = geometrySelectedFace ? [geometrySelectedFace.polygon] : null;
+  const geometrySelectedIncenter = useMemo(
+    () => geometryFaceIncenters.find((f) => f.faceId === geometrySelectedFaceId)?.incenter ?? null,
+    [geometryFaceIncenters, geometrySelectedFaceId]
+  );
+  const geometryHighlightPointSets = useMemo(
+    () =>
+      geometrySelectedIncenter
+        ? [
+            {
+              points: [geometrySelectedIncenter],
+              color: 0x16a34a,
+              size: 0.05,
+              opacity: 0.95,
+            },
+          ]
+        : null,
+    [geometrySelectedIncenter]
+  );
+  const geometryLabelSets = useMemo(() => {
+    const labels = geometryFaceIncenters
+      .filter((face) => face.incenter)
+      .map((face) => {
+        const residual = face.residual;
+        const residualText = residual == null ? "-" : formatConstraintValue(residual);
+        const status =
+          residual != null && residual <= geometryFaceIncenterTolerance ? "ok" : "fail";
+        const color = status === "ok" ? 0x2e7d32 : 0xc62828;
+        return {
+          text: `${face.label} delta=${residualText}`,
+          position: face.incenter as { x: number; y: number; z: number },
+          color,
+          size: 1,
+          opacity: 0.95,
+        };
+      });
+    return labels.length ? [{ labels }] : null;
+  }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
+  const handleGeometryPick = useCallback(
+    (info: { point: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }) => {
+      let best: { id: string; distance: number } | null = null;
+      for (const face of geometryFaces) {
+        const hit = pointInPolygonOnPlane(info.point, face.polygon, face.plane, 1e-3);
+        if (!hit || !hit.inside) continue;
+        const dist = Math.abs(hit.distance);
+        if (!best || dist < best.distance) {
+          best = { id: face.id, distance: dist };
+        }
+      }
+      if (best) setGeometrySelectedFaceId(best.id);
+    },
+    [geometryFaces]
+  );
+  const geometryConstraints = useMemo(
+    () => evaluateConstraints(geometryDemo.constraints),
+    [geometryDemo]
+  );
   const [geometryWireframe, setGeometryWireframe] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
@@ -12707,6 +12785,55 @@ case "mobius":
                   })}
                 </div>
 
+                <StereometryAnalyzerPanel
+                  faces={geometryFaces}
+                  faceIncenters={geometryFaceIncenters}
+                  planeCheck={geometryIncenterPlaneCheck}
+                  incenterTolerance={geometryFaceIncenterTolerance}
+                  selectedFaceId={geometrySelectedFaceId}
+                  onSelectFace={(id) => setGeometrySelectedFaceId(id)}
+                />
+
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {geometryConstraints.map((c) => {
+                      const color = GEOMETRY_BADGE_COLORS[c.status];
+                      return (
+                        <div
+                          key={c.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "auto 1fr auto",
+                            gap: 8,
+                            alignItems: "center",
+                            fontSize: 12,
+                          }}
+                        >
+                          <span
+                            style={{
+                              padding: "2px 8px",
+                              borderRadius: 999,
+                              background: `${color}22`,
+                              color,
+                              fontWeight: 700,
+                              fontSize: 10,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.3px",
+                            }}
+                          >
+                            {c.status}
+                          </span>
+                          <div>{c.label}</div>
+                          <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
+                            {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
                   {geometryStats.pointCount} points · {geometryStats.segmentCount} segments · {geometryStats.triangleCount} triangles ·{" "}
                   {geometryStats.polygonCount} polygons · {geometryStats.polyhedronFaces} polyhedron faces
@@ -12724,6 +12851,11 @@ case "mobius":
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
+                  highlightPolygons={geometryHighlightPolygons}
+                  highlightPointSets={geometryHighlightPointSets}
+                  overlayLabelSets={geometryLabelSets}
+                  pickEnabled={true}
+                  onPick={handleGeometryPick}
                 />
               </div>
             </div>

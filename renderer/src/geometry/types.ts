@@ -42,6 +42,8 @@ export type Triangle3 = {
 };
 
 export type Polygon3 = {
+  id?: string;
+  label?: string;
   vertices: Point3[];
   color?: number;
   opacity?: number;
