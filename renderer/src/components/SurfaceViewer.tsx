@@ -3602,8 +3602,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
               });
             }
           }
-        return;
-      }
+          return;
+        }
 
       if (probeEnabled) {
         applyProbe(point, normalWorld, xyDomain, uvDomain);

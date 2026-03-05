@@ -413,6 +413,14 @@ const clampNumber = (value: number, min: number, max: number) => Math.max(min, M
 
 const toSafeNumber = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback);
 
+type GeometryTransformPatch = {
+  position?: Partial<Vec3>;
+  rotation?: Partial<Vec3>;
+  scale?: Partial<Vec3>;
+};
+
+const axisPatch = (axis: keyof Vec3, value: number): Partial<Vec3> => ({ [axis]: value } as Partial<Vec3>);
+
 const toClampedInt = (value: number, fallback: number, min: number, max: number) =>
   clampNumber(Math.round(toSafeNumber(value, fallback)), min, max);
 
@@ -2194,39 +2202,6 @@ const App: React.FC = () => {
   const handleProceduralPick = useCallback((info: { meshKey?: string }) => {
     if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
   }, []);
-  const geometryDragRef = useRef<{
-    id: string;
-    startPosition: { x: number; y: number; z: number };
-  } | null>(null);
-  const handleProceduralDragStart = useCallback(
-    (info: { meshKey?: string }) => {
-      if (!info.meshKey) return;
-      const obj = geometryObjects.find((o) => o.id === info.meshKey);
-      if (!obj) return;
-      setGeometrySelectedObjectId(obj.id);
-      geometryDragRef.current = {
-        id: obj.id,
-        startPosition: { ...obj.transform.position },
-      };
-    },
-    [geometryObjects]
-  );
-  const handleProceduralDrag = useCallback(
-    (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
-      const drag = geometryDragRef.current;
-      if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
-      const nextPos = {
-        x: drag.startPosition.x + info.delta.x,
-        y: drag.startPosition.y + info.delta.y,
-        z: drag.startPosition.z + info.delta.z,
-      };
-      handleUpdateGeometryTransform(drag.id, { position: nextPos });
-    },
-    [handleUpdateGeometryTransform]
-  );
-  const handleProceduralDragEnd = useCallback(() => {
-    geometryDragRef.current = null;
-  }, []);
   const geometryConstraints = useMemo(
     () => evaluateConstraints(geometryDemo.constraints),
     [geometryDemo]
@@ -2295,7 +2270,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleUpdateGeometryTransform = useCallback(
-    (id: string, patch: Partial<GeometryObjectTransform>) => {
+    (id: string, patch: GeometryTransformPatch) => {
       setGeometryObjects((prev) =>
         prev.map((o) =>
           o.id === id
@@ -2313,6 +2288,40 @@ const App: React.FC = () => {
     },
     []
   );
+
+  const geometryDragRef = useRef<{
+    id: string;
+    startPosition: { x: number; y: number; z: number };
+  } | null>(null);
+  const handleProceduralDragStart = useCallback(
+    (info: { meshKey?: string }) => {
+      if (!info.meshKey) return;
+      const obj = geometryObjects.find((o) => o.id === info.meshKey);
+      if (!obj) return;
+      setGeometrySelectedObjectId(obj.id);
+      geometryDragRef.current = {
+        id: obj.id,
+        startPosition: { ...obj.transform.position },
+      };
+    },
+    [geometryObjects]
+  );
+  const handleProceduralDrag = useCallback(
+    (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
+      const drag = geometryDragRef.current;
+      if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
+      const nextPos = {
+        x: drag.startPosition.x + info.delta.x,
+        y: drag.startPosition.y + info.delta.y,
+        z: drag.startPosition.z + info.delta.z,
+      };
+      handleUpdateGeometryTransform(drag.id, { position: nextPos });
+    },
+    [handleUpdateGeometryTransform]
+  );
+  const handleProceduralDragEnd = useCallback(() => {
+    geometryDragRef.current = null;
+  }, []);
 
   const proceduralMeshSet = useMemo(() => {
     const cache = geometryObjectGeomCacheRef.current;
@@ -13482,7 +13491,7 @@ case "mobius":
                                 const v = Number(e.target.value);
                                 if (!Number.isFinite(v)) return;
                                 handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  position: { [axis]: v },
+                                  position: axisPatch(axis, v),
                                 });
                               }}
                             />
@@ -13499,7 +13508,7 @@ case "mobius":
                                 const v = Number(e.target.value);
                                 if (!Number.isFinite(v)) return;
                                 handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  rotation: { [axis]: v },
+                                  rotation: axisPatch(axis, v),
                                 });
                               }}
                             />
@@ -13516,7 +13525,7 @@ case "mobius":
                                 const v = Number(e.target.value);
                                 if (!Number.isFinite(v)) return;
                                 handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  scale: { [axis]: v },
+                                  scale: axisPatch(axis, v),
                                 });
                               }}
                             />
