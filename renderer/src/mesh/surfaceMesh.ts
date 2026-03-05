@@ -16,7 +16,8 @@ export type SurfaceMeshSource =
   | { kind: "polyhedronPreset"; id?: string; label?: string }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
-  | { kind: "csg" };
+  | { kind: "csg" }
+  | { kind: "proceduralObjects" };
 
 export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): string => {
   if (typeof source === "string") return source;
@@ -43,6 +44,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return "convex hull";
     case "csg":
       return "CSG";
+    case "proceduralObjects":
+      return "procedural objects";
     default:
       return "mesh";
   }

@@ -42,6 +42,17 @@ import { buildDemoPyramidConstruction } from "./geometry/demoScene";
 import type { GeometryScene } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
+import {
+  GEOMETRY_OBJECT_REGISTRY,
+  GEOMETRY_OBJECT_TYPES,
+  POLYHEDRON_FAMILY_OPTIONS,
+  POLYHEDRON_KIND_OPTIONS,
+  createGeometryObject,
+  type GeometryObject,
+  type GeometryObjectType,
+  type GeometryParamDef,
+  type GeometryObjectTransform,
+} from "./geometry/proceduralObjects";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -396,6 +407,77 @@ const GEOMETRY_BADGE_COLORS = {
   ok: "#2e7d32",
   fail: "#c62828",
   invalid: "#6b7280",
+};
+
+const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const toSafeNumber = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback);
+
+const toClampedInt = (value: number, fallback: number, min: number, max: number) =>
+  clampNumber(Math.round(toSafeNumber(value, fallback)), min, max);
+
+type PolyhedronCounts = { vertices: number; edges: number; faces: number; triangles: number };
+
+const PLATONIC_COUNTS: Record<string, PolyhedronCounts> = {
+  tetra: { vertices: 4, edges: 6, faces: 4, triangles: 4 },
+  cube: { vertices: 8, edges: 12, faces: 6, triangles: 12 },
+  octa: { vertices: 6, edges: 12, faces: 8, triangles: 8 },
+  dodeca: { vertices: 20, edges: 30, faces: 12, triangles: 36 },
+  icosa: { vertices: 12, edges: 30, faces: 20, triangles: 20 },
+};
+
+const getPolyhedronCounts = (family: string, params: Record<string, number | boolean | string>): PolyhedronCounts => {
+  if (family === "platonic") {
+    const kind = String(params.kind ?? "dodeca");
+    return PLATONIC_COUNTS[kind] ?? PLATONIC_COUNTS.dodeca;
+  }
+  if (family === "geodesic") {
+    const t = toClampedInt(Number(params.frequency ?? 2), 2, 1, 8);
+    const faces = 20 * t * t;
+    return { vertices: 10 * t * t + 2, edges: 30 * t * t, faces, triangles: faces };
+  }
+  const n = toClampedInt(Number(params.n ?? 6), 6, 3, 64);
+  if (family === "prism") {
+    return { vertices: 2 * n, edges: 3 * n, faces: n + 2, triangles: 4 * n - 4 };
+  }
+  if (family === "pyramid") {
+    return { vertices: n + 1, edges: 2 * n, faces: n + 1, triangles: 2 * n - 2 };
+  }
+  if (family === "bipyramid") {
+    return { vertices: n + 2, edges: 3 * n, faces: 2 * n, triangles: 2 * n };
+  }
+  if (family === "antiprism") {
+    return { vertices: 2 * n, edges: 4 * n, faces: 2 * n, triangles: 4 * n - 4 };
+  }
+  return PLATONIC_COUNTS.dodeca;
+};
+
+const buildGeometryTransformMatrix = (transform: GeometryObjectTransform) => {
+  const pos = transform.position;
+  const rot = transform.rotation;
+  const scale = transform.scale;
+  const safeScale = new THREE.Vector3(
+    toSafeNumber(scale.x, 1) || 1,
+    toSafeNumber(scale.y, 1) || 1,
+    toSafeNumber(scale.z, 1) || 1
+  );
+  safeScale.x = Math.max(1e-6, safeScale.x);
+  safeScale.y = Math.max(1e-6, safeScale.y);
+  safeScale.z = Math.max(1e-6, safeScale.z);
+  const euler = new THREE.Euler(
+    (toSafeNumber(rot.x, 0) * Math.PI) / 180,
+    (toSafeNumber(rot.y, 0) * Math.PI) / 180,
+    (toSafeNumber(rot.z, 0) * Math.PI) / 180,
+    "XYZ"
+  );
+  const quat = new THREE.Quaternion().setFromEuler(euler);
+  const mat = new THREE.Matrix4();
+  mat.compose(
+    new THREE.Vector3(toSafeNumber(pos.x, 0), toSafeNumber(pos.y, 0), toSafeNumber(pos.z, 0)),
+    quat,
+    safeScale
+  );
+  return mat;
 };
 
 const WEIERSTRASS_DEFAULTS = {
@@ -2039,8 +2121,8 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>(IS_REPLAY_MODE ? "surfaces" : "mobius");
+  const [geometryMode, setGeometryMode] = useState<"procedural" | "demo">("procedural");
   const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
-  const geometryScene: GeometryScene = geometryDemo.scene;
   const geometryFaces = geometryDemo.faces ?? [];
   const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
   const geometryIncenterPlaneCheck = geometryDemo.incenterPlaneCheck ?? null;
@@ -2091,7 +2173,11 @@ const App: React.FC = () => {
     return labels.length ? [{ labels }] : null;
   }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
   const handleGeometryPick = useCallback(
-    (info: { point: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }) => {
+    (info: {
+      point: { x: number; y: number; z: number };
+      normal: { x: number; y: number; z: number };
+      meshKey?: string;
+    }) => {
       let best: { id: string; distance: number } | null = null;
       for (const face of geometryFaces) {
         const hit = pointInPolygonOnPlane(info.point, face.polygon, face.plane, 1e-3);
@@ -2105,14 +2191,199 @@ const App: React.FC = () => {
     },
     [geometryFaces]
   );
+  const handleProceduralPick = useCallback((info: { meshKey?: string }) => {
+    if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
+  }, []);
+  const geometryDragRef = useRef<{
+    id: string;
+    startPosition: { x: number; y: number; z: number };
+  } | null>(null);
+  const handleProceduralDragStart = useCallback(
+    (info: { meshKey?: string }) => {
+      if (!info.meshKey) return;
+      const obj = geometryObjects.find((o) => o.id === info.meshKey);
+      if (!obj) return;
+      setGeometrySelectedObjectId(obj.id);
+      geometryDragRef.current = {
+        id: obj.id,
+        startPosition: { ...obj.transform.position },
+      };
+    },
+    [geometryObjects]
+  );
+  const handleProceduralDrag = useCallback(
+    (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
+      const drag = geometryDragRef.current;
+      if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
+      const nextPos = {
+        x: drag.startPosition.x + info.delta.x,
+        y: drag.startPosition.y + info.delta.y,
+        z: drag.startPosition.z + info.delta.z,
+      };
+      handleUpdateGeometryTransform(drag.id, { position: nextPos });
+    },
+    [handleUpdateGeometryTransform]
+  );
+  const handleProceduralDragEnd = useCallback(() => {
+    geometryDragRef.current = null;
+  }, []);
   const geometryConstraints = useMemo(
     () => evaluateConstraints(geometryDemo.constraints),
     [geometryDemo]
   );
+
+  const [geometryObjects, setGeometryObjects] = useState<GeometryObject[]>(() => {
+    const id = makeId();
+    return [createGeometryObject("box", id)];
+  });
+  const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
+  const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
+  const geometryObjectGeomCacheRef = useRef(
+    new Map<string, { key: string; geom: THREE.BufferGeometry }>()
+  );
+  const geometrySelectedObject = useMemo(
+    () => geometryObjects.find((o) => o.id === geometrySelectedObjectId) ?? null,
+    [geometryObjects, geometrySelectedObjectId]
+  );
+  const geometrySelectedPolyhedron = useMemo(() => {
+    if (!geometrySelectedObject || geometrySelectedObject.type !== "polyhedron") return null;
+    const family = String(geometrySelectedObject.params.family ?? "platonic");
+    return {
+      family,
+      counts: getPolyhedronCounts(family, geometrySelectedObject.params),
+    };
+  }, [geometrySelectedObject]);
+  useEffect(() => {
+    if (!geometryObjects.length) {
+      if (geometrySelectedObjectId) setGeometrySelectedObjectId(null);
+      return;
+    }
+    if (!geometrySelectedObjectId) {
+      setGeometrySelectedObjectId(geometryObjects[0].id);
+      return;
+    }
+    if (!geometryObjects.find((o) => o.id === geometrySelectedObjectId)) {
+      setGeometrySelectedObjectId(geometryObjects[0].id);
+    }
+  }, [geometryObjects, geometrySelectedObjectId]);
+
+  const handleAddGeometryObject = useCallback(() => {
+    const id = makeId();
+    const next = createGeometryObject(geometryNewObjectType, id);
+    setGeometryObjects((prev) => [next, ...prev]);
+    setGeometrySelectedObjectId(id);
+  }, [geometryNewObjectType]);
+
+  const handleRemoveGeometryObject = useCallback((id: string) => {
+    setGeometryObjects((prev) => prev.filter((o) => o.id !== id));
+  }, []);
+
+  const handleRenameGeometryObject = useCallback((id: string, name: string) => {
+    setGeometryObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
+  }, []);
+
+  const handleToggleGeometryObjectVisible = useCallback((id: string) => {
+    setGeometryObjects((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
+    );
+  }, []);
+
+  const handleUpdateGeometryParam = useCallback((id: string, key: string, value: number | boolean | string) => {
+    setGeometryObjects((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
+    );
+  }, []);
+
+  const handleUpdateGeometryTransform = useCallback(
+    (id: string, patch: Partial<GeometryObjectTransform>) => {
+      setGeometryObjects((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? {
+                ...o,
+                transform: {
+                  position: { ...o.transform.position, ...(patch.position ?? {}) },
+                  rotation: { ...o.transform.rotation, ...(patch.rotation ?? {}) },
+                  scale: { ...o.transform.scale, ...(patch.scale ?? {}) },
+                },
+              }
+            : o
+        )
+      );
+    },
+    []
+  );
+
+  const proceduralMeshSet = useMemo(() => {
+    const cache = geometryObjectGeomCacheRef.current;
+    const activeIds = new Set(geometryObjects.map((o) => o.id));
+    for (const [id, entry] of cache.entries()) {
+      if (!activeIds.has(id)) {
+        entry.geom.dispose();
+        cache.delete(id);
+      }
+    }
+
+    const meshes: Array<SurfaceMeshData & { id: string }> = [];
+    let vertCount = 0;
+    let triCount = 0;
+    for (const obj of geometryObjects) {
+      if (!obj.visible) continue;
+      const entry = GEOMETRY_OBJECT_REGISTRY[obj.type];
+      if (!entry) continue;
+      const key = `${obj.type}|${JSON.stringify(obj.params)}`;
+      const cached = cache.get(obj.id);
+      let base = cached?.key === key ? cached.geom : null;
+      if (!base) {
+        if (cached) cached.geom.dispose();
+        base = entry.build(obj.params);
+        cache.set(obj.id, { key, geom: base });
+      }
+      const geom = base.clone();
+      geom.applyMatrix4(buildGeometryTransformMatrix(obj.transform));
+      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+      if (!posAttr || posAttr.count < 3) continue;
+      const mesh = computeVertexNormals(
+        buildSurfaceMeshFromGeometry(
+          geom,
+          obj.name,
+          { kind: "proceduralObjects" },
+          { mergeVertices: false }
+        )
+      );
+      if (!mesh.positions.length) continue;
+      const meshVertCount = Math.floor(mesh.positions.length / 3);
+      vertCount += meshVertCount;
+      if (mesh.indices && mesh.indices.length >= 3) {
+        triCount += Math.floor(mesh.indices.length / 3);
+      } else {
+        triCount += Math.floor(meshVertCount / 3);
+      }
+      meshes.push({ ...mesh, id: obj.id, label: obj.name });
+    }
+
+    return { meshes, vertCount, triCount };
+  }, [geometryObjects]);
+
+  const proceduralScene: GeometryScene = useMemo(() => ({}), []);
+  const geometryScene: GeometryScene = geometryMode === "demo" ? geometryDemo.scene : proceduralScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const geometryStats = useMemo(() => {
+    if (geometryMode === "procedural") {
+      const objCount = geometryObjects.length;
+      const visibleCount = geometryObjects.filter((o) => o.visible).length;
+      const vertCount = proceduralMeshSet.vertCount ?? 0;
+      const triCount = proceduralMeshSet.triCount ?? 0;
+      return {
+        mode: "procedural" as const,
+        objectCount: objCount,
+        visibleCount,
+        vertCount,
+        triCount,
+      };
+    }
     const pointCount = geometryScene.points?.length ?? 0;
     const segmentCount = geometryScene.segments?.length ?? 0;
     const triangleCount = geometryScene.triangles?.length ?? 0;
@@ -2120,6 +2391,7 @@ const App: React.FC = () => {
     const polyhedronCount = geometryScene.polyhedra?.length ?? 0;
     const polyhedronFaces = geometryScene.polyhedra?.reduce((sum, p) => sum + p.faces.length, 0) ?? 0;
     return {
+      mode: "demo" as const,
       pointCount,
       segmentCount,
       triangleCount,
@@ -2127,7 +2399,7 @@ const App: React.FC = () => {
       polyhedronCount,
       polyhedronFaces,
     };
-  }, [geometryScene]);
+  }, [geometryMode, geometryObjects, geometryScene, proceduralMeshSet]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -8915,7 +9187,12 @@ case "mobius":
     return Object.keys(out).length ? out : null;
   }, [inspectIdx, selectionCurvatures]);
 
-  const handleInspectPick = useCallback((info: { index: number; point: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }) => {
+  const handleInspectPick = useCallback((info: {
+    index: number;
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => {
     setInspectIdx(info.index);
     setInspectPos(info.point);
     setInspectNormal(info.normal);
@@ -12780,82 +13057,595 @@ case "mobius":
               <section>
                 <h2 style={styles.h2}>Geometry Viewer</h2>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
-                  Construction primitives rendered as meshes + overlays.
+                  Procedural objects and classic construction scenes.
                 </div>
 
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Points</div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "auto 1fr",
-                    gap: "4px 8px",
-                    fontSize: 12,
-                    fontFamily: "monospace",
-                  }}
-                >
-                  {(geometryScene.points ?? []).map((p) => {
-                    const key = p.id ?? p.label ?? `${p.x},${p.y},${p.z}`;
-                    return (
-                      <React.Fragment key={key}>
-                        <div>{p.label ?? "•"}</div>
-                        <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
-                      </React.Fragment>
-                    );
-                  })}
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setGeometryMode("procedural")}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (geometryMode === "procedural" ? "#0a66c2" : "#ddd"),
+                      background: geometryMode === "procedural" ? "#e6f0ff" : "#fff",
+                      fontWeight: geometryMode === "procedural" ? 600 : 400,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Procedural
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGeometryMode("demo")}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (geometryMode === "demo" ? "#0a66c2" : "#ddd"),
+                      background: geometryMode === "demo" ? "#e6f0ff" : "#fff",
+                      fontWeight: geometryMode === "demo" ? 600 : 400,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Demo scene
+                  </button>
                 </div>
 
-                <StereometryAnalyzerPanel
-                  faces={geometryFaces}
-                  faceIncenters={geometryFaceIncenters}
-                  planeCheck={geometryIncenterPlaneCheck}
-                  incenterTolerance={geometryFaceIncenterTolerance}
-                  selectedFaceId={geometrySelectedFaceId}
-                  onSelectFace={(id) => setGeometrySelectedFaceId(id)}
-                />
+                {geometryMode === "procedural" ? (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Add object</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <select
+                        value={geometryNewObjectType}
+                        onChange={(e) => setGeometryNewObjectType(e.target.value as GeometryObjectType)}
+                        style={{ flex: 1, padding: "4px 6px" }}
+                      >
+                        {GEOMETRY_OBJECT_TYPES.map((type) => (
+                          <option key={type} value={type}>
+                            {GEOMETRY_OBJECT_REGISTRY[type]?.label ?? type}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={handleAddGeometryObject}>
+                        Add
+                      </button>
+                    </div>
 
-                <div style={{ marginTop: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    {geometryConstraints.map((c) => {
-                      const color = GEOMETRY_BADGE_COLORS[c.status];
-                      return (
-                        <div
-                          key={c.id}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "auto 1fr auto",
-                            gap: 8,
-                            alignItems: "center",
-                            fontSize: 12,
-                          }}
-                        >
-                          <span
+                    <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
+                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                      {geometryObjects.map((obj) => {
+                        const active = obj.id === geometrySelectedObjectId;
+                        const label = GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type;
+                        return (
+                          <div
+                            key={obj.id}
                             style={{
-                              padding: "2px 8px",
-                              borderRadius: 999,
-                              background: `${color}22`,
-                              color,
-                              fontWeight: 700,
-                              fontSize: 10,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.3px",
+                              display: "grid",
+                              gridTemplateColumns: "auto 1fr auto",
+                              gap: 8,
+                              alignItems: "center",
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
+                              background: active ? "#eef4ff" : "#fff",
                             }}
                           >
-                            {c.status}
-                          </span>
-                          <div>{c.label}</div>
-                          <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
-                            {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
+                            <input
+                              type="checkbox"
+                              checked={obj.visible}
+                              onChange={() => handleToggleGeometryObjectVisible(obj.id)}
+                              title="Show/Hide"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setGeometrySelectedObjectId(obj.id)}
+                              style={{
+                                textAlign: "left",
+                                background: "transparent",
+                                border: "none",
+                                padding: 0,
+                                cursor: "pointer",
+                                fontWeight: active ? 600 : 500,
+                              }}
+                            >
+                              {obj.name}
+                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{label}</span>
+                            </button>
+                            <button type="button" onClick={() => handleRemoveGeometryObject(obj.id)}>
+                              Delete
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {geometrySelectedObject && (
+                      <>
+                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
+                        <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600 }}>
+                            Name
+                            <input
+                              type="text"
+                              value={geometrySelectedObject.name}
+                              onChange={(e) =>
+                                handleRenameGeometryObject(geometrySelectedObject.id, e.target.value)
+                              }
+                              style={{ width: "100%", marginTop: 4 }}
+                            />
+                          </label>
+                          <div style={{ fontSize: 11, opacity: 0.7 }}>
+                            Type: {GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.label ?? geometrySelectedObject.type}
                           </div>
                         </div>
-                      );
-                    })}
+
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Parameters</div>
+                        {geometrySelectedObject.type === "polyhedron" ? (
+                          (() => {
+                            const polyFamily = geometrySelectedPolyhedron?.family ?? "platonic";
+                            const polyCounts = geometrySelectedPolyhedron?.counts ?? null;
+                            const paramValues = geometrySelectedObject.params;
+                            const showNFamily =
+                              polyFamily === "prism" ||
+                              polyFamily === "pyramid" ||
+                              polyFamily === "bipyramid" ||
+                              polyFamily === "antiprism";
+                            return (
+                              <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                                <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                  Family
+                                  <select
+                                    value={polyFamily}
+                                    onChange={(e) =>
+                                      handleUpdateGeometryParam(
+                                        geometrySelectedObject.id,
+                                        "family",
+                                        e.target.value
+                                      )
+                                    }
+                                    style={{ width: "100%", marginTop: 4 }}
+                                  >
+                                    {POLYHEDRON_FAMILY_OPTIONS.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+
+                                {polyFamily === "platonic" && (
+                                  <>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Kind
+                                      <select
+                                        value={String(paramValues.kind ?? "dodeca")}
+                                        onChange={(e) =>
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "kind",
+                                            e.target.value
+                                          )
+                                        }
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      >
+                                        {POLYHEDRON_KIND_OPTIONS.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Radius
+                                      <input
+                                        type="number"
+                                        min={0.1}
+                                        max={10}
+                                        step={0.1}
+                                        value={Number(paramValues.radius ?? 1)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "radius",
+                                            clampNumber(raw, 0.1, 10)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+
+                                {showNFamily && (
+                                  <>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      n (sides)
+                                      <input
+                                        type="number"
+                                        min={3}
+                                        max={64}
+                                        step={1}
+                                        value={Number(paramValues.n ?? 6)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "n",
+                                            toClampedInt(raw, 6, 3, 64)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Radius
+                                      <input
+                                        type="number"
+                                        min={0.1}
+                                        max={10}
+                                        step={0.1}
+                                        value={Number(paramValues.radius ?? 1)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "radius",
+                                            clampNumber(raw, 0.1, 10)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Height
+                                      <input
+                                        type="number"
+                                        min={0.1}
+                                        max={20}
+                                        step={0.1}
+                                        value={Number(paramValues.height ?? 1.6)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "height",
+                                            clampNumber(raw, 0.1, 20)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+
+                                {polyFamily === "geodesic" && (
+                                  <>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Frequency (t)
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={8}
+                                        step={1}
+                                        value={Number(paramValues.frequency ?? 2)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "frequency",
+                                            toClampedInt(raw, 2, 1, 8)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Radius
+                                      <input
+                                        type="number"
+                                        min={0.1}
+                                        max={10}
+                                        step={0.1}
+                                        value={Number(paramValues.radius ?? 1)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "radius",
+                                            clampNumber(raw, 0.1, 10)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                  </>
+                                )}
+
+                                {polyCounts && (
+                                  <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                    <div style={{ fontWeight: 600, marginTop: 4 }}>Derived counts</div>
+                                    <div style={{ fontFamily: "monospace", marginTop: 2 }}>
+                                      V={polyCounts.vertices} · E={polyCounts.edges} · F={polyCounts.faces} · triangles=
+                                      {polyCounts.triangles}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                            {(GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.params ?? []).map(
+                              (param: GeometryParamDef) => {
+                                const value = geometrySelectedObject.params[param.id];
+                                if (param.kind === "toggle") {
+                                  return (
+                                    <label key={param.id} style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(value)}
+                                        onChange={(e) =>
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            param.id,
+                                            e.target.checked
+                                          )
+                                        }
+                                      />
+                                      {param.label}
+                                    </label>
+                                  );
+                                }
+                                if (param.kind === "select") {
+                                  return (
+                                    <label key={param.id} style={{ fontSize: 11, fontWeight: 600 }}>
+                                      {param.label}
+                                      <select
+                                        value={String(value ?? "")}
+                                        onChange={(e) =>
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            param.id,
+                                            e.target.value
+                                          )
+                                        }
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      >
+                                        {(param.options ?? []).map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                  );
+                                }
+                                return (
+                                  <label key={param.id} style={{ fontSize: 11, fontWeight: 600 }}>
+                                    {param.label}
+                                    <input
+                                      type="number"
+                                      min={param.min}
+                                      max={param.max}
+                                      step={param.step ?? 0.1}
+                                      value={typeof value === "number" ? value : Number(value ?? 0)}
+                                      onChange={(e) => {
+                                        const raw = Number(e.target.value);
+                                        if (!Number.isFinite(raw)) return;
+                                        const min = param.min ?? -Infinity;
+                                        const max = param.max ?? Infinity;
+                                        handleUpdateGeometryParam(
+                                          geometrySelectedObject.id,
+                                          param.id,
+                                          clampNumber(raw, min, max)
+                                        );
+                                      }}
+                                      style={{ width: "100%", marginTop: 4 }}
+                                    />
+                                  </label>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Transform</div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "60px 1fr 1fr 1fr",
+                            gap: "6px 8px",
+                            alignItems: "center",
+                            marginTop: 6,
+                          }}
+                        >
+                          <div />
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
+
+                          <div style={{ fontSize: 11 }}>Pos</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`pos-${axis}`}
+                              type="number"
+                              step={0.1}
+                              value={geometrySelectedObject.transform.position[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
+                                  position: { [axis]: v },
+                                });
+                              }}
+                            />
+                          ))}
+
+                          <div style={{ fontSize: 11 }}>Rot (deg)</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`rot-${axis}`}
+                              type="number"
+                              step={1}
+                              value={geometrySelectedObject.transform.rotation[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
+                                  rotation: { [axis]: v },
+                                });
+                              }}
+                            />
+                          ))}
+
+                          <div style={{ fontSize: 11 }}>Scale</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`scale-${axis}`}
+                              type="number"
+                              step={0.1}
+                              value={geometrySelectedObject.transform.scale[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
+                                  scale: { [axis]: v },
+                                });
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateGeometryTransform(geometrySelectedObject.id, {
+                                position: { x: 0, y: 0, z: 0 },
+                                rotation: { x: 0, y: 0, z: 0 },
+                                scale: { x: 1, y: 1, z: 1 },
+                              })
+                            }
+                          >
+                            Reset transform
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Points</div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr",
+                        gap: "4px 8px",
+                        fontSize: 12,
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {(geometryScene.points ?? []).map((p) => {
+                        const key = p.id ?? p.label ?? `${p.x},${p.y},${p.z}`;
+                        return (
+                          <React.Fragment key={key}>
+                            <div>{p.label ?? "•"}</div>
+                            <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+
+                    <StereometryAnalyzerPanel
+                      faces={geometryFaces}
+                      faceIncenters={geometryFaceIncenters}
+                      planeCheck={geometryIncenterPlaneCheck}
+                      incenterTolerance={geometryFaceIncenterTolerance}
+                      selectedFaceId={geometrySelectedFaceId}
+                      onSelectFace={(id) => setGeometrySelectedFaceId(id)}
+                    />
+
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {geometryConstraints.map((c) => {
+                          const color = GEOMETRY_BADGE_COLORS[c.status];
+                          return (
+                            <div
+                              key={c.id}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "auto 1fr auto",
+                                gap: 8,
+                                alignItems: "center",
+                                fontSize: 12,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  background: `${color}22`,
+                                  color,
+                                  fontWeight: 700,
+                                  fontSize: 10,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.3px",
+                                }}
+                              >
+                                {c.status}
+                              </span>
+                              <div>{c.label}</div>
+                              <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
+                                {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Render</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryWireframe}
+                        onChange={(e) => setGeometryWireframe(e.target.checked)}
+                      />
+                      Wireframe
+                    </label>
+                    <label style={{ fontSize: 11 }}>
+                      Opacity
+                      <input
+                        type="number"
+                        min={0.2}
+                        max={1}
+                        step={0.05}
+                        value={geometryOpacity}
+                        onChange={(e) => setGeometryOpacity(clampNumber(Number(e.target.value), 0.2, 1))}
+                        style={{ width: "100%", marginTop: 4 }}
+                      />
+                    </label>
+                    <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
+                      Reset view
+                    </button>
                   </div>
                 </div>
 
                 <div style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
-                  {geometryStats.pointCount} points · {geometryStats.segmentCount} segments · {geometryStats.triangleCount} triangles ·{" "}
-                  {geometryStats.polygonCount} polygons · {geometryStats.polyhedronFaces} polyhedron faces
+                  {geometryStats.mode === "procedural"
+                    ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                    : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                 </div>
               </section>
             </div>
@@ -12867,14 +13657,19 @@ case "mobius":
               <div style={{ flex: 1, minHeight: 400 }}>
                 <GeometryViewer
                   scene={geometryScene}
+                  meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
-                  highlightPolygons={geometryHighlightPolygons}
-                  highlightPointSets={geometryHighlightPointSets}
-                  overlayLabelSets={geometryLabelSets}
-                  pickEnabled={true}
-                  onPick={handleGeometryPick}
+                  highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
+                  highlightPointSets={geometryMode === "demo" ? geometryHighlightPointSets : null}
+                  overlayLabelSets={geometryMode === "demo" ? geometryLabelSets : null}
+                  dragEnabled={geometryMode === "procedural"}
+                  onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
+                  onDrag={geometryMode === "procedural" ? handleProceduralDrag : undefined}
+                  onDragEnd={geometryMode === "procedural" ? handleProceduralDragEnd : undefined}
+                  pickEnabled={geometryMode === "demo" || geometryMode === "procedural"}
+                  onPick={geometryMode === "demo" ? handleGeometryPick : handleProceduralPick}
                 />
               </div>
             </div>

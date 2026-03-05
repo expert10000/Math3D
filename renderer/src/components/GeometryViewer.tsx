@@ -5,9 +5,12 @@ import { buildGeometryRenderData } from "../geometry/render";
 import type { PolylineSet } from "../scene/renderPrimitives";
 import { polygonNormalFromVertices } from "../geometry/polyhedra";
 import { normalizeVec3, scaleVec3 } from "../geometry/vec";
+import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
 export type GeometryViewerProps = {
   scene: GeometryScene;
+  meshOverride?: SurfaceMeshData | null;
+  meshOverrides?: Array<SurfaceMeshData & { id?: string }> | null;
   colorMode?: ColorMode;
   wireframe?: boolean;
   materialOpacity?: number;
@@ -21,12 +24,35 @@ export type GeometryViewerProps = {
   highlightFillOffset?: number;
   highlightPointSets?: OverlayPointSet[] | null;
   overlayLabelSets?: OverlayLabelSet[] | null;
+  dragEnabled?: boolean;
+  onDragStart?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
+  onDrag?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    delta: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
+  onDragEnd?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
   pickEnabled?: boolean;
-  onPick?: (info: { point: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number } }) => void;
+  onPick?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   scene,
+  meshOverride = null,
+  meshOverrides = null,
   colorMode = "solid",
   wireframe = false,
   materialOpacity = 0.85,
@@ -40,6 +66,10 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   highlightFillOffset = 0.004,
   highlightPointSets,
   overlayLabelSets,
+  dragEnabled = false,
+  onDragStart,
+  onDrag,
+  onDragEnd,
   pickEnabled = false,
   onPick,
 }) => {
@@ -52,7 +82,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     [scene]
   );
 
-  const mesh = renderData.mesh;
+  const meshOverrideList = meshOverrides?.length ? meshOverrides : null;
+  const mesh = meshOverrideList ? null : meshOverride ?? renderData.mesh;
   const highlightGroups = useMemo(() => {
     if (!highlightPolygons?.length) return [];
     const lines: PolylineSet = [];
@@ -132,6 +163,20 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
             }
           : null
       }
+      surfaceMeshOverrides={
+        meshOverrideList
+          ? meshOverrideList.map((entry) => ({
+              id: entry.id,
+              positions: entry.positions,
+              indices: entry.indices,
+              normals: entry.normals ?? null,
+              uvs: entry.uvs ?? null,
+              adjacency: entry.adjacency ?? null,
+              meanEdgeLength: entry.meanEdgeLength ?? null,
+              validation: entry.validation ?? null,
+            }))
+          : null
+      }
       colorMode={colorMode}
       wireframe={wireframe}
       materialOpacity={materialOpacity}
@@ -142,11 +187,15 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       showContours={false}
       showBoundingBox={true}
       resetToken={resetToken}
+      dragEnabled={dragEnabled}
+      onDragStart={onDragStart}
+      onDrag={onDrag}
+      onDragEnd={onDragEnd}
       inspectEnabled={pickEnabled}
       onInspectPick={
         pickEnabled && onPick
           ? (info) => {
-              onPick({ point: info.point, normal: info.normal });
+              onPick({ point: info.point, normal: info.normal, meshKey: info.meshKey });
             }
           : undefined
       }

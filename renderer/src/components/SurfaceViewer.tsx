@@ -53,6 +53,7 @@ type ImplicitMeshOverride = {
 };
 
 type SurfaceMeshOverride = {
+  id?: string;
   positions: ArrayLike<number>;
   indices?: ArrayLike<number> | null;
   normals?: ArrayLike<number> | null;
@@ -825,6 +826,7 @@ type Props = {
   implicitExpr?: string;
   implicitMeshOverride?: ImplicitMeshOverride | null;
   surfaceMeshOverride?: SurfaceMeshOverride | null;
+  surfaceMeshOverrides?: SurfaceMeshOverride[] | null;
   implicitMeshToken?: number;
 
   wireframe?: boolean;
@@ -964,6 +966,7 @@ type Props = {
     index: number;
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
+    meshKey?: string;
   }) => void;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
@@ -971,6 +974,24 @@ type Props = {
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
   zoomToRegion?: boolean;
   zoomToRegionToken?: number;
+
+  dragEnabled?: boolean;
+  onDragStart?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
+  onDrag?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    delta: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
+  onDragEnd?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -1001,6 +1022,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     implicitExpr,
     implicitMeshOverride = null,
     surfaceMeshOverride = null,
+    surfaceMeshOverrides = null,
     implicitMeshToken,
 
     wireframe,
@@ -1115,6 +1137,10 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionSphere = null,
     zoomToRegion = false,
     zoomToRegionToken = 0,
+    dragEnabled = false,
+    onDragStart,
+    onDrag,
+    onDragEnd,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -1153,10 +1179,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
   const inspectEnabledRef = useRef(inspectEnabled);
+  const dragEnabledRef = useRef(dragEnabled);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
   const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
   const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
   const onInspectPickRef = useRef(onInspectPick);
+  const onDragStartRef = useRef(onDragStart);
+  const onDragRef = useRef(onDrag);
+  const onDragEndRef = useRef(onDragEnd);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
@@ -1191,6 +1221,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     size: number;
   } | null>(null);
   const lockSliceRestoreRef = useRef<{ rotate: boolean; pan: boolean; zoom: boolean } | null>(null);
+  const dragStateRef = useRef<{
+    pointerId: number;
+    meshKey?: string;
+    plane: THREE.Plane;
+    startPoint: THREE.Vector3;
+    lastPoint: THREE.Vector3;
+    normal: THREE.Vector3;
+  } | null>(null);
 
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
@@ -1261,6 +1299,18 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onInspectPickRef.current = onInspectPick;
   }, [onInspectPick]);
+  useEffect(() => {
+    dragEnabledRef.current = dragEnabled;
+  }, [dragEnabled]);
+  useEffect(() => {
+    onDragStartRef.current = onDragStart;
+  }, [onDragStart]);
+  useEffect(() => {
+    onDragRef.current = onDrag;
+  }, [onDrag]);
+  useEffect(() => {
+    onDragEndRef.current = onDragEnd;
+  }, [onDragEnd]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -2502,8 +2552,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const implicitRes = Math.max(18, Math.round(implicitResolution));
     const useImplicitOverride =
       !!implicitMeshOverride?.positions?.length && !!implicitMeshOverride?.indices?.length;
+    const hasSurfaceMeshOverrides =
+      surfaceId === "surface_mesh" &&
+      !!surfaceMeshOverrides?.some((override) => (override.positions?.length ?? 0) >= 3);
+    const useSurfaceMeshOverrides = surfaceId === "surface_mesh" && hasSurfaceMeshOverrides;
     const useSurfaceMeshOverride =
-      surfaceId === "surface_mesh" && !!surfaceMeshOverride?.positions?.length;
+      surfaceId === "surface_mesh" && !useSurfaceMeshOverrides && !!surfaceMeshOverride?.positions?.length;
 
     const makeMaterial = () =>
       new THREE.MeshStandardMaterial({
@@ -2549,13 +2603,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       return mesh;
     };
 
-    const makeSurfaceMeshOverrideMesh = () => {
+    const makeSurfaceMeshOverrideMesh = (override: SurfaceMeshOverride) => {
       const geom = new THREE.BufferGeometry();
-      const positions = surfaceMeshOverride?.positions ?? [];
-      const normals = surfaceMeshOverride?.normals ?? null;
-      const uvs = surfaceMeshOverride?.uvs ?? null;
-      const indices = surfaceMeshOverride?.indices ?? null;
-      const validation = surfaceMeshOverride?.validation ?? null;
+      const positions = override.positions ?? [];
+      const normals = override.normals ?? null;
+      const uvs = override.uvs ?? null;
+      const indices = override.indices ?? null;
+      const validation = override.validation ?? null;
       const nanNormals = validation?.stats?.nanNormals ?? 0;
 
       const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
@@ -2580,7 +2634,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
-      return new THREE.Mesh(geom, makeMaterial());
+      const mesh = new THREE.Mesh(geom, makeMaterial());
+      if (override.id) {
+        (mesh as any).userData.__surfaceMeshOverrideId = override.id;
+      }
+      return mesh;
+    };
+
+    const makeSurfaceMeshOverrideGroup = () => {
+      const group = new THREE.Group();
+      if (!surfaceMeshOverrides?.length) return group;
+      for (const override of surfaceMeshOverrides) {
+        if (!override?.positions || (override.positions.length ?? 0) < 3) continue;
+        group.add(makeSurfaceMeshOverrideMesh(override));
+      }
+      return group;
     };
 
     // Build an implicit surface by sampling f on a cubic grid and extracting the 0-isosurface.
@@ -2621,7 +2689,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const makeSurface = (id: SurfaceId): THREE.Object3D => {
         switch (id) {
           case "surface_mesh": {
-            if (useSurfaceMeshOverride) return makeSurfaceMeshOverrideMesh();
+            if (useSurfaceMeshOverrides) return makeSurfaceMeshOverrideGroup();
+            if (useSurfaceMeshOverride && surfaceMeshOverride) return makeSurfaceMeshOverrideMesh(surfaceMeshOverride);
             const geo = new THREE.SphereGeometry(1, 32, 24);
             if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
             return new THREE.Mesh(geo, makeMaterial());
@@ -2973,8 +3042,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           drawCount != null
             ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
             : (posAttr.array as Float32Array);
+        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
         meshData.push({
-          key: mesh.uuid,
+          key: meshKey,
           positions,
           indices: indexAttr ? indexAttr.array : null,
         });
@@ -2985,7 +3055,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         maxSamples: remainingSamples,
         includeUV: includeSamplesUV,
         startId: nextId,
-        meshKey: mesh.uuid,
+        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
       });
       if (!chunk.length) continue;
       aggregatedSamples.push(...chunk);
@@ -3309,7 +3379,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           !geodesicPathEnabledRef.current &&
           !geodesicHeatEnabledRef.current &&
           !geodesicDiskPickEnabledRef.current &&
-          !inspectEnabledRef.current
+          !inspectEnabledRef.current &&
+          !dragEnabledRef.current
         )
           return;
 
@@ -3345,6 +3416,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         hit = heatHit;
       }
       const point = hit.point.clone();
+      const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
 
       let normalWorld = new THREE.Vector3(0, 1, 0);
 
@@ -3476,29 +3548,60 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           return;
         }
 
+        if (dragEnabledRef.current && event.button === 0 && hitMeshKey) {
+          const planeNormal = new THREE.Vector3();
+          camera.getWorldDirection(planeNormal);
+          if (planeNormal.lengthSq() < 1e-8) planeNormal.set(0, 0, 1);
+          const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, point);
+          dragStateRef.current = {
+            pointerId: event.pointerId,
+            meshKey: hitMeshKey,
+            plane,
+            startPoint: point.clone(),
+            lastPoint: point.clone(),
+            normal: normalWorld.clone(),
+          };
+          const dragStartCb = onDragStartRef.current;
+          if (dragStartCb) {
+            dragStartCb({
+              point: { x: point.x, y: point.y, z: point.z },
+              normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+              meshKey: hitMeshKey,
+            });
+          }
+          if (renderer.domElement.setPointerCapture) {
+            renderer.domElement.setPointerCapture(event.pointerId);
+          }
+          const controls = controlsRef.current;
+          if (controls) controls.enabled = false;
+          return;
+        }
+
         if (inspectEnabledRef.current) {
           const inspectCb = onInspectPickRef.current;
           if (inspectCb) {
             const nearest = findNearestSample(point);
-          if (nearest) {
-            const inspectNormal = nearest.sample.normal.clone().normalize();
-            inspectCb({
-              index: nearest.index,
-              point: {
-                x: point.x,
-                y: point.y,
-                z: point.z,
-              },
-              normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
-            });
-          } else {
-            inspectCb({
-              index: -1,
-              point: { x: point.x, y: point.y, z: point.z },
-              normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
-            });
+            if (nearest) {
+              const inspectNormal = nearest.sample.normal.clone().normalize();
+              inspectCb({
+                index: nearest.index,
+                point: {
+                  x: point.x,
+                  y: point.y,
+                  z: point.z,
+                },
+                normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+                meshKey: hitMeshKey ?? nearest.sample.meshKey,
+              });
+            } else {
+              inspectCb({
+                index: -1,
+                point: { x: point.x, y: point.y, z: point.z },
+                normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+                meshKey: hitMeshKey ?? undefined,
+              });
+            }
           }
-        }
         return;
       }
 
@@ -3525,7 +3628,52 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
+    const handlePointerMove = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || event.pointerId !== dragState.pointerId) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      pointer.set(x, y);
+      raycaster.setFromCamera(pointer, camera);
+
+      const hitPoint = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
+      dragState.lastPoint.copy(hitPoint);
+      const delta = hitPoint.clone().sub(dragState.startPoint);
+      const dragCb = onDragRef.current;
+      if (dragCb) {
+        dragCb({
+          point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
+          normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
+          delta: { x: delta.x, y: delta.y, z: delta.z },
+          meshKey: dragState.meshKey,
+        });
+      }
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const dragState = dragStateRef.current;
+      if (!dragState || event.pointerId !== dragState.pointerId) return;
+      dragStateRef.current = null;
+      if (renderer.domElement.releasePointerCapture) {
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      }
+      const controls = controlsRef.current;
+      if (controls) controls.enabled = true;
+      const dragEndCb = onDragEndRef.current;
+      if (dragEndCb) {
+        dragEndCb({
+          point: { x: dragState.lastPoint.x, y: dragState.lastPoint.y, z: dragState.lastPoint.z },
+          normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
+          meshKey: dragState.meshKey,
+        });
+      }
+    };
+
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
 
     setSceneEpoch((v) => v + 1);
 
@@ -3633,6 +3781,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
+      renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
 
       if (isCameraLeader && onCameraSync) {
         controls.removeEventListener("change", emitCameraSync);
@@ -3767,12 +3917,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphProbeToken,
     implicitProbeXYZ,
     implicitProbeToken,
-      graphResolution,
-      implicitResolution,
+    graphResolution,
+    implicitResolution,
     implicitMeshToken,
     surfaceMeshOverride,
+    surfaceMeshOverrides,
     implicitDomainSize,
-      graphDomain?.xSpan,
+    graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
@@ -5191,6 +5342,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     implicitResolution,
     surfaceMeshOverride,
+    surfaceMeshOverrides,
     sceneEpoch,
   ]);
 
@@ -6020,6 +6172,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     implicitResolution,
     surfaceMeshOverride,
+    surfaceMeshOverrides,
     sceneEpoch,
   ]);
 
