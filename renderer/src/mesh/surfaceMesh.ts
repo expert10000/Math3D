@@ -5,7 +5,48 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { PLYLoader } from "three/examples/jsm/loaders/PLYLoader.js";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
-export type SurfaceMeshSource = "generated" | "imported" | "surface";
+export type MeshImportFormat = "stl" | "obj" | "ply" | "gltf" | "glb";
+
+export type SurfaceMeshSource =
+  | { kind: "import"; format?: MeshImportFormat; filename?: string }
+  | { kind: "bakedFromImplicit" }
+  | { kind: "bakedFromExplicit" }
+  | { kind: "bakedFromParam" }
+  | { kind: "bakedFromWeierstrass" }
+  | { kind: "polyhedronPreset"; id?: string; label?: string }
+  | { kind: "halfspaceIntersection" }
+  | { kind: "convexHull" }
+  | { kind: "csg" };
+
+export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): string => {
+  if (typeof source === "string") return source;
+  switch (source.kind) {
+    case "import": {
+      const fmt = source.format ? source.format.toUpperCase() : null;
+      return fmt ? `import (${fmt})` : "import";
+    }
+    case "bakedFromImplicit":
+      return "baked from implicit";
+    case "bakedFromExplicit":
+      return "baked from explicit";
+    case "bakedFromParam":
+      return "baked from param";
+    case "bakedFromWeierstrass":
+      return "baked from weierstrass";
+    case "polyhedronPreset": {
+      const label = source.label ?? source.id;
+      return label ? `preset: ${label}` : "preset";
+    }
+    case "halfspaceIntersection":
+      return "halfspace intersection";
+    case "convexHull":
+      return "convex hull";
+    case "csg":
+      return "CSG";
+    default:
+      return "mesh";
+  }
+};
 
 export type MeshValidation = {
   ok: boolean;
@@ -280,17 +321,22 @@ export async function loadSurfaceMeshFromFile(
   const name = file.name || "mesh";
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   const buffer = await file.arrayBuffer();
+  const importSource: SurfaceMeshSource = {
+    kind: "import",
+    format: ext as MeshImportFormat,
+    filename: name,
+  };
 
   if (ext === "stl") {
     const loader = new STLLoader();
     const geometry = loader.parse(buffer);
-    return buildSurfaceMeshFromGeometry(geometry, name, "imported", opts);
+    return buildSurfaceMeshFromGeometry(geometry, name, importSource, opts);
   }
 
   if (ext === "ply") {
     const loader = new PLYLoader();
     const geometry = loader.parse(buffer);
-    return buildSurfaceMeshFromGeometry(geometry, name, "imported", opts);
+    return buildSurfaceMeshFromGeometry(geometry, name, importSource, opts);
   }
 
   if (ext === "obj") {
@@ -298,7 +344,7 @@ export async function loadSurfaceMeshFromFile(
     const loader = new OBJLoader();
     const obj = loader.parse(text);
     const merged = mergeObjectGeometries(obj);
-    return buildSurfaceMeshFromGeometry(merged, name, "imported", opts);
+    return buildSurfaceMeshFromGeometry(merged, name, importSource, opts);
   }
 
   if (ext === "glb" || ext === "gltf") {
@@ -326,7 +372,7 @@ export async function loadSurfaceMeshFromFile(
       }
     }
     const merged = mergeObjectGeometries(gltf.scene);
-    return buildSurfaceMeshFromGeometry(merged, name, "imported", opts);
+    return buildSurfaceMeshFromGeometry(merged, name, importSource, opts);
   }
 
   throw new Error("Unsupported file format. Use STL, OBJ, PLY, or GLTF/GLB.");

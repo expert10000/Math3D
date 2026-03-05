@@ -95,6 +95,7 @@ import {
 } from "./math/surfaceQuery";
 import {
   buildSurfaceMeshFromGeometry,
+  formatSurfaceMeshSource,
   loadSurfaceMeshFromFile,
   mergeMeshData,
   weldSurfaceMeshVertices,
@@ -113,6 +114,7 @@ import type {
   DatasetKind,
   MeshDataset,
   SurfaceScalarField,
+  SurfaceType,
   SurfaceVectorField,
   VolumeDataset,
   VectorGrid,
@@ -199,6 +201,13 @@ const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
 ];
 const isSurfaceViewerKind = (value: string | undefined): value is SurfaceViewerKind =>
   !!value && SURFACE_VIEWER_KINDS.includes(value as SurfaceViewerKind);
+const surfaceTypeFromViewerKind = (value: SurfaceViewerKind): SurfaceType => {
+  if (value === "graph") return "explicit";
+  if (value === "implicit") return "implicit";
+  if (value === "param") return "param";
+  if (value === "weierstrass") return "weierstrass";
+  return "mesh";
+};
 type GraphDomain = { xSpan: number; ySpan: number };
 type ImplicitDomain = { xSpan: number; ySpan: number };
 type ImplicitBakeBounds = { xSpan: number; ySpan: number; zSpan: number };
@@ -360,7 +369,7 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
 };
 
 const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
-  mesh ? { kind: "mesh", mesh } : null;
+  mesh ? { kind: "surface", surfaceType: "mesh", mesh } : null;
 
 /* ---------------- constants ---------------- */
 
@@ -1123,6 +1132,7 @@ const buildSnapshotDetails = (snapshot: WorkbookViewSnapshot) => {
   const details: string[] = [];
   if (snapshot.datasetRef) details.push(`Dataset: ${snapshot.datasetRef}`);
   if (snapshot.datasetKind) details.push(`Dataset kind: ${snapshot.datasetKind}`);
+  if (snapshot.surfaceType) details.push(`Surface type: ${snapshot.surfaceType}`);
   if (snapshot.viewerKind) details.push(`Viewer: ${snapshot.viewerKind}`);
   if (snapshot.surfaceId) details.push(`Surface: ${snapshot.surfaceId}`);
   if (snapshot.paramId) details.push(`Param surface: ${snapshot.paramId}`);
@@ -2278,7 +2288,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [meshDataset, setMeshDatasetState] = useState<MeshDataset | null>(() => {
     const preset = SURFACE_MESH_PRESETS[0];
     try {
-      const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
+      const base = buildSurfaceMeshFromGeometry(
+        preset.build(),
+        preset.label,
+        { kind: "polyhedronPreset", id: preset.id, label: preset.label },
+        { mergeVertices: true }
+      );
       return toMeshDataset(applySurfaceMeshOps(base));
     } catch {
       return null;
@@ -2401,8 +2416,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const step = span > 0 ? span / 200 : 0.01;
     return { min, max, step };
   }, [volumeScalarRange]);
-  const activeDataset =
-    datasetKind === "volume" ? volumeDataset : datasetKind === "mesh" ? meshDataset : null;
+  const activeDataset = datasetKind === "volume" ? volumeDataset : null;
   const surfaceMeshData = meshDataset?.mesh ?? null;
   const [volumeSeedAxis, setVolumeSeedAxis] = useState<SliceAxis>("z");
   const [volumeSeedIndex, setVolumeSeedIndex] = useState(() =>
@@ -2686,7 +2700,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
     setMeshDatasetState(toMeshDataset(mesh));
-    setDatasetKind("mesh");
+    setDatasetKind("surface");
   }, []);
 
   // complex map sweep
@@ -4110,7 +4124,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       indices: Uint32Array.from(activeCgalMesh.indices),
       normals: null,
       uvs: null,
-      source: "surface",
+      source: { kind: "bakedFromImplicit" },
     };
     return applySurfaceMeshOps(mesh);
   }, [activeCgalMesh]);
@@ -4128,7 +4142,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       const label = volumeDatasetOverride?.label;
       return label ? `volume:${label}` : `volume:${volumePresetId}`;
     }
-    if (datasetKind === "mesh") {
+    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
       return `mesh:${surfaceMeshLabel}`;
     }
     if (surfaceViewerKind === "param") return `param:${paramSurfaceId}`;
@@ -4989,7 +5003,7 @@ case "mobius":
 
   const sampleSurfaceAtPoint = useCallback(
     (pick: SurfaceQueryPick): SurfaceQuerySample | null => {
-      if (datasetKind === "mesh" || surfaceViewerKind === "mesh") {
+      if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
         if (!surfaceMeshData) return null;
         return sampleMeshAt({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
       }
@@ -5005,7 +5019,7 @@ case "mobius":
           indices: (fallback.indices as Uint32Array) ?? null,
           normals: null,
           uvs: null,
-          source: "surface",
+          source: { kind: "bakedFromImplicit" },
         };
         return sampleMeshAt({ mesh, vertexIndex: pick.vertexIndex, point: pick.point });
       }
@@ -5040,7 +5054,6 @@ case "mobius":
       activeGraphDomain.xSpan,
       activeGraphDomain.ySpan,
       activeCgalMeshData,
-      datasetKind,
       graphExpr,
       surfaceSampleSet?.meshData,
       surfaceMeshData,
@@ -5050,7 +5063,7 @@ case "mobius":
 
   const sampleSurfaceNeighborhood = useCallback(
     (pick: SurfaceQueryPick) => {
-      if (datasetKind === "mesh" || surfaceViewerKind === "mesh") {
+      if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
         if (!surfaceMeshData) return null;
         return buildMeshNeighborhood({ mesh: surfaceMeshData, vertexIndex: pick.vertexIndex, point: pick.point });
       }
@@ -5066,13 +5079,13 @@ case "mobius":
           indices: (fallback.indices as Uint32Array) ?? null,
           normals: null,
           uvs: null,
-          source: "surface",
+          source: { kind: "bakedFromImplicit" },
         };
         return buildMeshNeighborhood({ mesh, vertexIndex: pick.vertexIndex, point: pick.point });
       }
       return null;
     },
-    [activeCgalMeshData, datasetKind, surfaceMeshData, surfaceSampleSet?.meshData, surfaceViewerKind]
+    [activeCgalMeshData, surfaceMeshData, surfaceSampleSet?.meshData, surfaceViewerKind]
   );
 
   const resolveTangentBasis = useCallback(
@@ -5202,7 +5215,7 @@ case "mobius":
 
   const surfaceQuery = useMemo<SurfaceQuery>(() => {
     const kind: SurfaceQuery["kind"] =
-      datasetKind === "mesh" || surfaceViewerKind === "mesh" || surfaceViewerKind === "complex"
+      surfaceViewerKind === "mesh" || surfaceViewerKind === "complex"
         ? "mesh"
         : surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass"
           ? surfaceViewerKind
@@ -5219,7 +5232,6 @@ case "mobius":
       vectorField: (name: string) => surfaceVectorFields.get(name) ?? null,
     };
   }, [
-    datasetKind,
     projectToChart,
     resolveTangentBasis,
     sampleSurfaceAtPoint,
@@ -5722,7 +5734,7 @@ case "mobius":
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
-    setDatasetKind(kind === "mesh" || kind === "complex" ? "mesh" : "surface");
+    setDatasetKind("surface");
     if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
@@ -6445,6 +6457,7 @@ case "mobius":
     return {
       datasetRef: currentDatasetRef,
       datasetKind,
+      surfaceType: datasetKind === "volume" ? undefined : surfaceTypeFromViewerKind(surfaceViewerKind),
       viewerKind: surfaceViewerKind,
       surfaceId: activeEqSurfaceId,
       paramId: paramSurfaceId,
@@ -6639,7 +6652,7 @@ case "mobius":
         setDatasetKind("volume");
       } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
         setSurfaceViewerKind(snapshot.viewerKind);
-        setDatasetKind(snapshot.viewerKind === "mesh" || snapshot.viewerKind === "complex" ? "mesh" : "surface");
+        setDatasetKind("surface");
       }
 
       if (snapshot.viewerKind === "param" || snapshot.viewerKind === "weierstrass") {
@@ -7060,7 +7073,7 @@ case "mobius":
       positions: res.build.positions,
       indices: res.build.indices,
       uvs: res.build.uvs,
-      source: "generated",
+      source: { kind: "bakedFromParam" },
     };
     setMeshDataset(applySurfaceMeshOps(next));
     setSurfaceMeshImportError(null);
@@ -7360,7 +7373,12 @@ case "mobius":
     const preset = SURFACE_MESH_PRESETS.find((p) => p.id === presetId);
     if (!preset) return;
     try {
-      const base = buildSurfaceMeshFromGeometry(preset.build(), preset.label, "generated", { mergeVertices: true });
+      const base = buildSurfaceMeshFromGeometry(
+        preset.build(),
+        preset.label,
+        { kind: "polyhedronPreset", id: preset.id, label: preset.label },
+        { mergeVertices: true }
+      );
       setMeshDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
       setSurfaceViewerKind("mesh");
@@ -7493,18 +7511,19 @@ case "mobius":
   const applyVtkResultToSurfaceMesh = useCallback(
     (labelSuffix: string, res: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array }) => {
       const label = `${buildActiveMeshLabel()} (${labelSuffix})`;
+      const source = surfaceMeshData?.source ?? { kind: "bakedFromImplicit" };
       const next: SurfaceMeshData = {
         label,
         positions: res.positions,
         indices: res.indices,
         normals: res.normals ?? null,
-        source: "surface",
+        source,
       };
       setMeshDataset(applySurfaceMeshOps(next));
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
     },
-    [buildActiveMeshLabel]
+    [buildActiveMeshLabel, surfaceMeshData?.source]
   );
 
   const getImplicitBakeWorker = useCallback(() => {
@@ -7544,7 +7563,7 @@ case "mobius":
           label,
           positions: msg.positions,
           indices: msg.indices,
-          source: "surface",
+          source: { kind: "bakedFromImplicit" },
         };
         const processed = applySurfaceMeshOps(next);
         const key = implicitBakeKeyRef.current ?? "";
@@ -7855,7 +7874,7 @@ case "mobius":
         label: buildActiveMeshLabel(),
         positions,
         indices,
-        source: "surface",
+        source: { kind: "bakedFromImplicit" },
       };
       setMeshDataset(applySurfaceMeshOps(next));
       handleChangeViewerKind("mesh");
@@ -13114,7 +13133,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
     const isVolume = datasetKind === "volume";
-    const isMesh = datasetKind === "mesh";
+    const isMesh = viewerKind === "mesh" || viewerKind === "complex";
     const isSurface = datasetKind === "surface";
 
   return (
@@ -13193,7 +13212,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         <button
           type="button"
             onClick={() => {
-              onChangeDatasetKind("mesh");
+              onChangeDatasetKind("surface");
               onChangeViewerKind("complex");
             }}
           style={{
@@ -13210,7 +13229,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         <button
           type="button"
             onClick={() => {
-              onChangeDatasetKind("mesh");
+              onChangeDatasetKind("surface");
               onChangeViewerKind("mesh");
             }}
           style={{
@@ -16484,7 +16503,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             )}
             {surfaceMeshSource && (
-              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>Source: {surfaceMeshSource}</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                Source: {formatSurfaceMeshSource(surfaceMeshSource)}
+              </div>
             )}
 
             <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Generate</div>
@@ -18798,7 +18819,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         {isMeshViewer && surfaceMeshStats && (
           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
             {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
-            {surfaceMeshSource ? ` · ${surfaceMeshSource}` : ""}
+            {surfaceMeshSource ? ` · ${formatSurfaceMeshSource(surfaceMeshSource)}` : ""}
           </div>
         )}
       </div>

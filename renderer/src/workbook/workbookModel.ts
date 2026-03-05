@@ -1,4 +1,4 @@
-import type { DatasetKind } from "../scene/datasets";
+import type { DatasetKind, SurfaceType } from "../scene/datasets";
 import type { SurfaceId, ColorMode } from "../components/SurfaceViewer";
 import type { ParamSurfaceId } from "../components/ParamSurfaceViewer";
 import type { ColorPalette } from "../components/colorPalette";
@@ -152,6 +152,7 @@ export type WorkbookCameraState = {
 export type WorkbookViewSnapshot = {
   datasetRef: string;
   datasetKind: DatasetKind;
+  surfaceType?: SurfaceType;
   viewerKind: string;
   surfaceId?: SurfaceId;
   paramId?: ParamSurfaceId;

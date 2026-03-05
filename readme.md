@@ -6,7 +6,7 @@
 - Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
 - Added an implicit baker (marching cubes) with independent bounds + resolution controls, running in a worker with progress and caching for big grids.
 - Added SurfaceMesh exports (GLB/OBJ) plus a weld-vertices tool with tolerance control.
-- Added MeshDataset plumbing and dataset switching to support SurfaceMesh as a first-class dataset type.
+- Added MeshDataset plumbing with `datasetKind: "surface"` + `surfaceType: "mesh"` (no separate mesh dataset kind).
 - Added graph/param/Weierstrass surface bakers (grid sampling + triangulation + invalid-point skipping).
 - Added a dedicated Complex map tab next to Weierstrass, with sweep output choices for Re/Im surfaces and 3D isolines; complex rebuilds can be live or manual.
 - Split SurfaceMesh controls into Surface vs Volume tabs (next to SurfaceMesh), moving dataset selection into the header tabs.
@@ -783,7 +783,7 @@ Differential operators (grad/div/laplacian)
 
 Developer note (SurfaceQuery + fields)
 1. SurfaceQuery lives in `renderer/src/math/surfaceQuery.ts`.
-2. Mesh datasets can provide scalar/vector fields via `MeshDataset.fields` in `renderer/src/scene/datasets.ts`.
+2. Mesh datasets (kind `"surface"` with `surfaceType: "mesh"`) can provide scalar/vector fields via `MeshDataset.fields` in `renderer/src/scene/datasets.ts`.
 3. The App builds a surfaceQuery with `sampleAt`, `neighborhood`, `scalarField`, and `vectorField` accessors.
 
 PR7 - Riemann sphere mode (stereographic)

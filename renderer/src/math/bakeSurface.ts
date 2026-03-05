@@ -436,7 +436,7 @@ export function bakeGraphSurface(params: {
       positions: grid.positions,
       indices: Uint32Array.from(indices),
       uvs: grid.uvs,
-      source: "surface",
+      source: { kind: "bakedFromExplicit" },
     },
   };
 }
@@ -471,7 +471,7 @@ export function bakeParamSurface(params: {
       positions: grid.positions,
       indices: Uint32Array.from(indices),
       uvs: grid.uvs,
-      source: "surface",
+      source: { kind: "bakedFromParam" },
     },
   };
 }
@@ -556,7 +556,7 @@ export function bakeWeierstrassSurface(params: {
       positions,
       indices: Uint32Array.from(indices),
       uvs,
-      source: "surface",
+      source: { kind: "bakedFromWeierstrass" },
     },
   };
 }

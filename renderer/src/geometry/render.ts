@@ -214,7 +214,7 @@ export const buildGeometryRenderData = (
       label: opts.label ?? "Geometry",
       positions: Float32Array.from(positions),
       indices: null,
-      source: "surface",
+      source: { kind: "polyhedronPreset", label: opts.label ?? "Geometry" },
     };
     mesh = computeVertexNormals(base);
   }
