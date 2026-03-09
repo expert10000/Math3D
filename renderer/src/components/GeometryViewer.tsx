@@ -1,5 +1,11 @@
 import React, { useMemo } from "react";
-import { SurfaceViewer, type ColorMode, type OverlayLabelSet, type OverlayPointSet } from "./SurfaceViewer";
+import {
+  SurfaceViewer,
+  type ColorMode,
+  type OverlayLabelSet,
+  type OverlayPointSet,
+  type OverlayPolylineGroup,
+} from "./SurfaceViewer";
 import type { GeometryScene, Polygon3 } from "../geometry/types";
 import { buildGeometryRenderData } from "../geometry/render";
 import type { PolylineSet } from "../scene/renderPrimitives";
@@ -10,11 +16,12 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 export type GeometryViewerProps = {
   scene: GeometryScene;
   meshOverride?: SurfaceMeshData | null;
-  meshOverrides?: Array<SurfaceMeshData & { id?: string }> | null;
+  meshOverrides?: Array<SurfaceMeshData & { id?: string; color?: number; opacity?: number; flatShading?: boolean }> | null;
   colorMode?: ColorMode;
   wireframe?: boolean;
   materialOpacity?: number;
   resetToken?: number;
+  extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
   highlightPolygons?: Polygon3[] | null;
   highlightColor?: number;
   highlightOpacity?: number;
@@ -41,6 +48,7 @@ export type GeometryViewerProps = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  onShiftWheelScale?: (info: { delta: number }) => void;
   pickEnabled?: boolean;
   onPick?: (info: {
     point: { x: number; y: number; z: number };
@@ -57,6 +65,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   wireframe = false,
   materialOpacity = 0.85,
   resetToken,
+  extraOverlayPolylineGroups = null,
   highlightPolygons,
   highlightColor = 0xf97316,
   highlightOpacity = 0.9,
@@ -70,6 +79,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onDragStart,
   onDrag,
   onDragEnd,
+  onShiftWheelScale,
   pickEnabled = false,
   onPick,
 }) => {
@@ -107,8 +117,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
     ];
   }, [highlightPolygons, highlightColor, highlightOpacity, highlightRadiusScale]);
   const overlayPolylineGroups = useMemo(
-    () => [...renderData.overlayPolylineGroups, ...highlightGroups],
-    [renderData.overlayPolylineGroups, highlightGroups]
+    () => [...renderData.overlayPolylineGroups, ...highlightGroups, ...(extraOverlayPolylineGroups ?? [])],
+    [renderData.overlayPolylineGroups, highlightGroups, extraOverlayPolylineGroups]
   );
   const overlayMeshGroups = useMemo(() => {
     if (!highlightPolygons?.length) return [];
@@ -174,6 +184,9 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
               adjacency: entry.adjacency ?? null,
               meanEdgeLength: entry.meanEdgeLength ?? null,
               validation: entry.validation ?? null,
+              color: entry.color,
+              opacity: entry.opacity,
+              flatShading: entry.flatShading,
             }))
           : null
       }
@@ -191,6 +204,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       onDragStart={onDragStart}
       onDrag={onDrag}
       onDragEnd={onDragEnd}
+      onShiftWheelScale={onShiftWheelScale}
       inspectEnabled={pickEnabled}
       onInspectPick={
         pickEnabled && onPick

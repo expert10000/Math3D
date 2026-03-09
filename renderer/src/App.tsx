@@ -23,6 +23,7 @@ import {
   SurfaceViewer,
   type SurfaceId,
   type ColorMode,
+  type OverlayPolylineGroup,
   type ProbeInfo,
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
@@ -435,9 +436,12 @@ const PLATONIC_COUNTS: Record<string, PolyhedronCounts> = {
 };
 
 const getPolyhedronCounts = (family: string, params: Record<string, number | boolean | string>): PolyhedronCounts => {
+  const subdivision = toClampedInt(Number(params.subdivision ?? 0), 0, 0, 5);
+  const triScale = Math.pow(4, subdivision);
   if (family === "platonic") {
     const kind = String(params.kind ?? "dodeca");
-    return PLATONIC_COUNTS[kind] ?? PLATONIC_COUNTS.dodeca;
+    const base = PLATONIC_COUNTS[kind] ?? PLATONIC_COUNTS.dodeca;
+    return { ...base, triangles: Math.max(1, Math.round(base.triangles * triScale)) };
   }
   if (family === "geodesic") {
     const t = toClampedInt(Number(params.frequency ?? 2), 2, 1, 8);
@@ -455,9 +459,119 @@ const getPolyhedronCounts = (family: string, params: Record<string, number | boo
     return { vertices: n + 2, edges: 3 * n, faces: 2 * n, triangles: 2 * n };
   }
   if (family === "antiprism") {
-    return { vertices: 2 * n, edges: 4 * n, faces: 2 * n, triangles: 4 * n - 4 };
+    return { vertices: 2 * n, edges: 4 * n, faces: 2 * n + 2, triangles: 4 * n - 4 };
   }
   return PLATONIC_COUNTS.dodeca;
+};
+
+const toHexColorString = (value: number | undefined, fallback = 0x8aa4ff) => {
+  const color = Number.isFinite(value) ? Number(value) : fallback;
+  const safe = Math.max(0, Math.min(0xffffff, Math.round(color)));
+  return `#${safe.toString(16).padStart(6, "0")}`;
+};
+
+const fromHexColorString = (value: string, fallback = 0x8aa4ff) => {
+  if (typeof value !== "string") return fallback;
+  const raw = value.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return fallback;
+  const parsed = Number.parseInt(raw, 16);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const buildMeshEdgePolylines = (
+  mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
+  includeCoplanar = true,
+  angleThresholdDeg = 2
+): PolylineSet => {
+  const positions = mesh.positions;
+  const vertCount = Math.floor(positions.length / 3);
+  if (!vertCount) return [];
+  const indices = mesh.indices;
+  const triCount = indices?.length ? Math.floor(indices.length / 3) : Math.floor(vertCount / 3);
+  if (!triCount) return [];
+
+  type EdgeInfo = {
+    a: number;
+    b: number;
+    n0?: { x: number; y: number; z: number };
+    n1?: { x: number; y: number; z: number };
+  };
+  const edgeMap = new Map<string, EdgeInfo>();
+  const cosThreshold = Math.cos((Math.max(0, angleThresholdDeg) * Math.PI) / 180);
+
+  const getPos = (idx: number) => {
+    const base = idx * 3;
+    return {
+      x: Number(positions[base] ?? 0),
+      y: Number(positions[base + 1] ?? 0),
+      z: Number(positions[base + 2] ?? 0),
+    };
+  };
+
+  const addEdge = (a: number, b: number, normal: { x: number; y: number; z: number } | null) => {
+    const i0 = Math.max(0, Math.min(a, b));
+    const i1 = Math.max(0, Math.max(a, b));
+    const key = `${i0}|${i1}`;
+    const prev = edgeMap.get(key);
+    if (!prev) {
+      edgeMap.set(key, { a: i0, b: i1, n0: normal ?? undefined });
+      return;
+    }
+    if (!prev.n1 && normal) prev.n1 = normal;
+  };
+
+  const triNormal = (ia: number, ib: number, ic: number) => {
+    const a = getPos(ia);
+    const b = getPos(ib);
+    const c = getPos(ic);
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const abz = b.z - a.z;
+    const acx = c.x - a.x;
+    const acy = c.y - a.y;
+    const acz = c.z - a.z;
+    const nx = aby * acz - abz * acy;
+    const ny = abz * acx - abx * acz;
+    const nz = abx * acy - aby * acx;
+    const len = Math.hypot(nx, ny, nz);
+    if (!Number.isFinite(len) || len <= 1e-12) return null;
+    return { x: nx / len, y: ny / len, z: nz / len };
+  };
+
+  for (let t = 0; t < triCount; t++) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    if (!Number.isFinite(ia) || !Number.isFinite(ib) || !Number.isFinite(ic)) continue;
+    if (ia < 0 || ib < 0 || ic < 0 || ia >= vertCount || ib >= vertCount || ic >= vertCount) continue;
+    const normal = triNormal(ia, ib, ic);
+    addEdge(ia, ib, normal);
+    addEdge(ib, ic, normal);
+    addEdge(ic, ia, normal);
+  }
+
+  const lines: PolylineSet = [];
+  for (const edge of edgeMap.values()) {
+    if (!includeCoplanar && edge.n0 && edge.n1) {
+      const dot = edge.n0.x * edge.n1.x + edge.n0.y * edge.n1.y + edge.n0.z * edge.n1.z;
+      if (dot >= cosThreshold) continue;
+    }
+    const a = getPos(edge.a);
+    const b = getPos(edge.b);
+    if (
+      !Number.isFinite(a.x) ||
+      !Number.isFinite(a.y) ||
+      !Number.isFinite(a.z) ||
+      !Number.isFinite(b.x) ||
+      !Number.isFinite(b.y) ||
+      !Number.isFinite(b.z)
+    ) {
+      continue;
+    }
+    lines.push([a, b]);
+  }
+  return lines;
 };
 
 const buildGeometryTransformMatrix = (transform: GeometryObjectTransform) => {
@@ -2180,6 +2294,11 @@ const App: React.FC = () => {
       });
     return labels.length ? [{ labels }] : null;
   }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
+  const [geometryProceduralPick, setGeometryProceduralPick] = useState<{
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  } | null>(null);
   const handleGeometryPick = useCallback(
     (info: {
       point: { x: number; y: number; z: number };
@@ -2199,7 +2318,16 @@ const App: React.FC = () => {
     },
     [geometryFaces]
   );
-  const handleProceduralPick = useCallback((info: { meshKey?: string }) => {
+  const handleProceduralPick = useCallback((info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => {
+    setGeometryProceduralPick({
+      point: info.point,
+      normal: info.normal,
+      meshKey: info.meshKey,
+    });
     if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
   }, []);
   const geometryConstraints = useMemo(
@@ -2213,6 +2341,7 @@ const App: React.FC = () => {
   });
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
+  const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -2269,6 +2398,17 @@ const App: React.FC = () => {
     );
   }, []);
 
+  const handleUpdateGeometryMaterial = useCallback(
+    (id: string, patch: Partial<GeometryObject["material"]>) => {
+      setGeometryObjects((prev) =>
+        prev.map((o) =>
+          o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
+        )
+      );
+    },
+    []
+  );
+
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
       setGeometryObjects((prev) =>
@@ -2288,6 +2428,20 @@ const App: React.FC = () => {
     },
     []
   );
+
+  const handleScaleAllGeometryObjects = useCallback((factor: number) => {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    setGeometryObjects((prev) =>
+      prev.map((o) => {
+        const nextScale = {
+          x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
+          y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
+          z: clampNumber(o.transform.scale.z * factor, 0.05, 20),
+        };
+        return { ...o, transform: { ...o.transform, scale: nextScale } };
+      })
+    );
+  }, []);
 
   const geometryDragRef = useRef<{
     id: string;
@@ -2323,6 +2477,15 @@ const App: React.FC = () => {
     geometryDragRef.current = null;
   }, []);
 
+  const handleGeometryShiftWheelScale = useCallback(
+    (info: { delta: number }) => {
+      if (geometryMode !== "procedural") return;
+      const factor = Math.exp(-info.delta * 0.002);
+      handleScaleAllGeometryObjects(factor);
+    },
+    [geometryMode, handleScaleAllGeometryObjects]
+  );
+
   const proceduralMeshSet = useMemo(() => {
     const cache = geometryObjectGeomCacheRef.current;
     const activeIds = new Set(geometryObjects.map((o) => o.id));
@@ -2333,7 +2496,7 @@ const App: React.FC = () => {
       }
     }
 
-    const meshes: Array<SurfaceMeshData & { id: string }> = [];
+    const meshes: Array<SurfaceMeshData & { id: string; color?: number; opacity?: number; flatShading?: boolean }> = [];
     let vertCount = 0;
     let triCount = 0;
     for (const obj of geometryObjects) {
@@ -2348,6 +2511,8 @@ const App: React.FC = () => {
         base = entry.build(obj.params);
         cache.set(obj.id, { key, geom: base });
       }
+      const smoothNormals =
+        obj.type === "polyhedron" ? Boolean(obj.params.smoothNormals ?? true) : true;
       const geom = base.clone();
       geom.applyMatrix4(buildGeometryTransformMatrix(obj.transform));
       const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
@@ -2368,11 +2533,57 @@ const App: React.FC = () => {
       } else {
         triCount += Math.floor(meshVertCount / 3);
       }
-      meshes.push({ ...mesh, id: obj.id, label: obj.name });
+      meshes.push({
+        ...mesh,
+        id: obj.id,
+        label: obj.name,
+        color: obj.material.color,
+        opacity: obj.material.opacity,
+        flatShading: !smoothNormals,
+      });
     }
 
     return { meshes, vertCount, triCount };
   }, [geometryObjects]);
+
+  const geometryProceduralOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const objectById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
+    const edgeLines: PolylineSet = [];
+    const selectedLines: PolylineSet = [];
+    for (const mesh of proceduralMeshSet.meshes) {
+      const obj = objectById.get(mesh.id);
+      if (!obj) continue;
+      const selected = geometrySelectedObjectId === mesh.id;
+      const isPoly = obj.type === "polyhedron";
+      const edgeDisplay = isPoly ? Boolean(obj.params.edgeDisplay ?? false) : false;
+      if (!selected && !edgeDisplay) continue;
+      const triangulate = isPoly ? Boolean(obj.params.triangulate ?? true) : true;
+      const lines = buildMeshEdgePolylines(mesh, triangulate, 2);
+      if (!lines.length) continue;
+      if (edgeDisplay) edgeLines.push(...lines);
+      if (selected) selectedLines.push(...lines);
+    }
+
+    const groups: OverlayPolylineGroup[] = [];
+    if (edgeLines.length) {
+      groups.push({
+        lines: edgeLines,
+        color: 0x334155,
+        opacity: 0.8,
+        radiusScale: 1.1,
+      });
+    }
+    if (selectedLines.length) {
+      groups.push({
+        lines: selectedLines,
+        color: 0xf97316,
+        opacity: 0.95,
+        radiusScale: 2.4,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [geometryMode, geometryObjects, geometrySelectedObjectId, proceduralMeshSet.meshes]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryScene: GeometryScene = geometryMode === "demo" ? geometryDemo.scene : proceduralScene;
@@ -2983,6 +3194,92 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setMeshDatasetState(toMeshDataset(mesh));
     setDatasetKind("surface");
   }, []);
+
+  const handleBakeSelectedGeometryObject = useCallback(() => {
+    setGeometryBakeError(null);
+    if (!geometrySelectedObjectId) {
+      setGeometryBakeError("Select an object to bake.");
+      return;
+    }
+    const obj = geometryObjects.find((entry) => entry.id === geometrySelectedObjectId) ?? null;
+    if (!obj) {
+      setGeometryBakeError("Selected object no longer exists.");
+      return;
+    }
+    const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === obj.id) ?? null;
+    if (!mesh) {
+      setGeometryBakeError("Selected object is hidden or has no mesh.");
+      return;
+    }
+    const source: SurfaceMeshSource = {
+      kind: "geometryObject",
+      objectId: obj.id,
+      objectName: obj.name,
+      params: { ...obj.params },
+      transform: {
+        position: { ...obj.transform.position },
+        rotation: { ...obj.transform.rotation },
+        scale: { ...obj.transform.scale },
+      },
+      material: { ...obj.material },
+    };
+    const baked: SurfaceMeshData = {
+      label: `${obj.name} (baked)`,
+      positions: Float32Array.from(mesh.positions),
+      indices: mesh.indices ? Uint32Array.from(mesh.indices) : null,
+      normals: mesh.normals ? Float32Array.from(mesh.normals) : null,
+      uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
+      source,
+    };
+    setMeshDataset(applySurfaceMeshOps(baked));
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+  }, [geometrySelectedObjectId, geometryObjects, proceduralMeshSet.meshes, setMeshDataset]);
+
+  const handleBakeAllGeometryObjects = useCallback(() => {
+    setGeometryBakeError(null);
+    const objectById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
+    const visibleMeshes = proceduralMeshSet.meshes
+      .map((mesh) => ({ mesh, obj: objectById.get(mesh.id) ?? null }))
+      .filter((entry) => !!entry.obj) as Array<{
+      mesh: SurfaceMeshData & { id: string };
+      obj: GeometryObject;
+    }>;
+    if (!visibleMeshes.length) {
+      setGeometryBakeError("No visible objects to bake.");
+      return;
+    }
+
+    const merged = mergeMeshData(
+      visibleMeshes.map((entry) => ({
+        positions: entry.mesh.positions,
+        indices: entry.mesh.indices,
+      }))
+    );
+    const source: SurfaceMeshSource = {
+      kind: "geometryObject",
+      objects: visibleMeshes.map((entry) => ({
+        objectId: entry.obj.id,
+        objectName: entry.obj.name,
+        params: { ...entry.obj.params },
+        transform: {
+          position: { ...entry.obj.transform.position },
+          rotation: { ...entry.obj.transform.rotation },
+          scale: { ...entry.obj.transform.scale },
+        },
+        material: { ...entry.obj.material },
+      })),
+    };
+    const baked: SurfaceMeshData = {
+      label: `Geometry objects (${visibleMeshes.length})`,
+      positions: merged.positions,
+      indices: merged.indices,
+      source,
+    };
+    setMeshDataset(applySurfaceMeshOps(baked));
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+  }, [geometryObjects, proceduralMeshSet.meshes, setMeshDataset]);
 
   // complex map sweep
   const [complexMapSpec, setComplexMapSpec] = useState<ComplexMapSweepSpec>(COMPLEX_MAP_DEFAULT_SPEC);
@@ -13168,6 +13465,32 @@ case "mobius":
                       })}
                     </div>
 
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Bake to MeshSurface</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={handleBakeSelectedGeometryObject}
+                          disabled={!geometrySelectedObjectId}
+                        >
+                          Bake selected
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBakeAllGeometryObjects}
+                          disabled={!proceduralMeshSet.meshes.length}
+                        >
+                          Bake all visible
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
+                        Applies world transforms. Geometry objects remain editable.
+                      </div>
+                      {geometryBakeError && (
+                        <div style={{ fontSize: 11, color: "#b42318", marginTop: 4 }}>{geometryBakeError}</div>
+                      )}
+                    </div>
+
                     {geometrySelectedObject && (
                       <>
                         <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
@@ -13259,6 +13582,26 @@ case "mobius":
                                             geometrySelectedObject.id,
                                             "radius",
                                             clampNumber(raw, 0.1, 10)
+                                          );
+                                        }}
+                                        style={{ width: "100%", marginTop: 4 }}
+                                      />
+                                    </label>
+                                    <label style={{ fontSize: 11, fontWeight: 600 }}>
+                                      Subdivision
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={5}
+                                        step={1}
+                                        value={Number(paramValues.subdivision ?? 0)}
+                                        onChange={(e) => {
+                                          const raw = Number(e.target.value);
+                                          if (!Number.isFinite(raw)) return;
+                                          handleUpdateGeometryParam(
+                                            geometrySelectedObject.id,
+                                            "subdivision",
+                                            toClampedInt(raw, 0, 0, 5)
                                           );
                                         }}
                                         style={{ width: "100%", marginTop: 4 }}
@@ -13376,6 +13719,60 @@ case "mobius":
                                     </label>
                                   </>
                                 )}
+
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    paddingTop: 6,
+                                    borderTop: "1px dashed #d8dee6",
+                                    display: "grid",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <div style={{ fontSize: 11, fontWeight: 700 }}>Options</div>
+                                  <label style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(paramValues.triangulate ?? true)}
+                                      onChange={(e) =>
+                                        handleUpdateGeometryParam(
+                                          geometrySelectedObject.id,
+                                          "triangulate",
+                                          e.target.checked
+                                        )
+                                      }
+                                    />
+                                    Triangulate
+                                  </label>
+                                  <label style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(paramValues.smoothNormals ?? true)}
+                                      onChange={(e) =>
+                                        handleUpdateGeometryParam(
+                                          geometrySelectedObject.id,
+                                          "smoothNormals",
+                                          e.target.checked
+                                        )
+                                      }
+                                    />
+                                    Smooth normals (off = flat)
+                                  </label>
+                                  <label style={{ display: "flex", gap: 6, fontSize: 11 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(paramValues.edgeDisplay ?? false)}
+                                      onChange={(e) =>
+                                        handleUpdateGeometryParam(
+                                          geometrySelectedObject.id,
+                                          "edgeDisplay",
+                                          e.target.checked
+                                        )
+                                      }
+                                    />
+                                    Edge display
+                                  </label>
+                                </div>
 
                                 {polyCounts && (
                                   <div style={{ fontSize: 11, opacity: 0.8 }}>
@@ -13545,6 +13942,55 @@ case "mobius":
                             Reset transform
                           </button>
                         </div>
+
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Material</div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            display: "grid",
+                            gridTemplateColumns: "80px 1fr",
+                            gap: "6px 8px",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: 11 }}>Color</div>
+                          <input
+                            type="color"
+                            value={toHexColorString(geometrySelectedObject.material.color, 0x8aa4ff)}
+                            onChange={(e) =>
+                              handleUpdateGeometryMaterial(geometrySelectedObject.id, {
+                                color: fromHexColorString(e.target.value, 0x8aa4ff),
+                              })
+                            }
+                          />
+                          <div style={{ fontSize: 11 }}>Opacity</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedObject.material.opacity ?? 1)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedObject.id, {
+                                opacity: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                        </div>
+                        {geometryProceduralPick?.meshKey === geometrySelectedObject.id && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              fontSize: 11,
+                              opacity: 0.75,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            Pick p={fmt3(geometryProceduralPick.point)} n={fmt3(geometryProceduralPick.normal)}
+                          </div>
+                        )}
                       </>
                     )}
                   </>
@@ -13667,6 +14113,7 @@ case "mobius":
                 <GeometryViewer
                   scene={geometryScene}
                   meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
+                  extraOverlayPolylineGroups={geometryMode === "procedural" ? geometryProceduralOverlayGroups : null}
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
@@ -13677,6 +14124,7 @@ case "mobius":
                   onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
                   onDrag={geometryMode === "procedural" ? handleProceduralDrag : undefined}
                   onDragEnd={geometryMode === "procedural" ? handleProceduralDragEnd : undefined}
+                  onShiftWheelScale={geometryMode === "procedural" ? handleGeometryShiftWheelScale : undefined}
                   pickEnabled={geometryMode === "demo" || geometryMode === "procedural"}
                   onPick={geometryMode === "demo" ? handleGeometryPick : handleProceduralPick}
                 />

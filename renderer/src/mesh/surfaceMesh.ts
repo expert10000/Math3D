@@ -13,6 +13,29 @@ export type SurfaceMeshSource =
   | { kind: "bakedFromExplicit" }
   | { kind: "bakedFromParam" }
   | { kind: "bakedFromWeierstrass" }
+  | {
+      kind: "geometryObject";
+      objectId?: string;
+      objectName?: string;
+      params?: Record<string, number | boolean | string>;
+      transform?: {
+        position: { x: number; y: number; z: number };
+        rotation: { x: number; y: number; z: number };
+        scale: { x: number; y: number; z: number };
+      };
+      material?: { color?: number; opacity?: number };
+      objects?: Array<{
+        objectId?: string;
+        objectName?: string;
+        params?: Record<string, number | boolean | string>;
+        transform?: {
+          position: { x: number; y: number; z: number };
+          rotation: { x: number; y: number; z: number };
+          scale: { x: number; y: number; z: number };
+        };
+        material?: { color?: number; opacity?: number };
+      }>;
+    }
   | { kind: "polyhedronPreset"; id?: string; label?: string }
   | { kind: "halfspaceIntersection" }
   | { kind: "convexHull" }
@@ -34,6 +57,11 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return "baked from param";
     case "bakedFromWeierstrass":
       return "baked from weierstrass";
+    case "geometryObject": {
+      if (source.objectName) return `geometry object: ${source.objectName}`;
+      if (source.objects?.length) return `geometry objects (${source.objects.length})`;
+      return "geometry object";
+    }
     case "polyhedronPreset": {
       const label = source.label ?? source.id;
       return label ? `preset: ${label}` : "preset";

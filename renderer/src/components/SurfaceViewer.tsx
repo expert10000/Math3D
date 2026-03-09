@@ -61,6 +61,10 @@ type SurfaceMeshOverride = {
   adjacency?: number[][] | null;
   meanEdgeLength?: number | null;
   validation?: MeshValidation | null;
+  color?: number;
+  opacity?: number;
+  wireframe?: boolean;
+  flatShading?: boolean;
 };
 
 export type OverlayPointSet = {
@@ -992,6 +996,7 @@ type Props = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  onShiftWheelScale?: (info: { delta: number }) => void;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -1141,6 +1146,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onDragStart,
     onDrag,
     onDragEnd,
+    onShiftWheelScale,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -1170,6 +1176,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const overlayLabelSetsRef = useRef<THREE.Group | null>(null);
   const chartGridRef = useRef<THREE.Group | null>(null);
   const viewGizmoRef = useRef<THREE.Group | null>(null);
+  const bboxHelperRef = useRef<THREE.Box3Helper | null>(null);
   const geodesicHeatMarkersRef = useRef<{ start: THREE.Mesh | null; end: THREE.Mesh | null }>({
     start: null,
     end: null,
@@ -1187,6 +1194,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onDragStartRef = useRef(onDragStart);
   const onDragRef = useRef(onDrag);
   const onDragEndRef = useRef(onDragEnd);
+  const onShiftWheelScaleRef = useRef(onShiftWheelScale);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
@@ -1311,6 +1319,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onDragEndRef.current = onDragEnd;
   }, [onDragEnd]);
+  useEffect(() => {
+    onShiftWheelScaleRef.current = onShiftWheelScale;
+  }, [onShiftWheelScale]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -1775,6 +1786,10 @@ useEffect(() => {
       if (anyO?.isMesh && anyO.geometry) {
         const mesh = anyO as THREE.Mesh;
         const geom = mesh.geometry as THREE.BufferGeometry;
+        const style = (mesh as any)?.userData?.__surfaceMeshOverrideStyle as
+          | { color?: number; opacity?: number; wireframe?: boolean; flatShading?: boolean }
+          | undefined;
+        const meshOpacity = clamp01((style?.opacity ?? 1) * materialOpacity);
         const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
         const heatmapOk =
           !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
@@ -1796,16 +1811,17 @@ useEffect(() => {
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         for (const m of mats) {
           if (!m) continue;
-          (m as any).wireframe = !!wireframe;
+          (m as any).wireframe = style?.wireframe ?? !!wireframe;
+          (m as any).flatShading = !!style?.flatShading;
           (m as any).vertexColors = heatmapOk || colorMode !== "solid";
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
-          (m as any).transparent = clamp01(materialOpacity) < 1;
-          (m as any).opacity = clamp01(materialOpacity);
+          (m as any).transparent = meshOpacity < 1;
+          (m as any).opacity = meshOpacity;
           if (heatmapOk) {
             (m as any).color?.set(0xffffff);
           } else if (colorMode === "solid") {
-            (m as any).color?.set(solidColorForPalette(colorPalette));
+            (m as any).color?.set(style?.color ?? solidColorForPalette(colorPalette));
           } else {
             (m as any).color?.set(0xffffff);
           }
@@ -2559,16 +2575,20 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const useSurfaceMeshOverride =
       surfaceId === "surface_mesh" && !useSurfaceMeshOverrides && !!surfaceMeshOverride?.positions?.length;
 
-    const makeMaterial = () =>
+    const makeMaterial = (override?: SurfaceMeshOverride) =>
       new THREE.MeshStandardMaterial({
-        color: colorMode === "solid" ? solidColorForPalette(colorPalette) : 0xffffff,
+        color:
+          colorMode === "solid"
+            ? override?.color ?? solidColorForPalette(colorPalette)
+            : 0xffffff,
         metalness: materialMetalness,
         roughness: materialRoughness,
         side: THREE.DoubleSide,
-        wireframe: !!wireframe,
+        wireframe: override?.wireframe ?? !!wireframe,
+        flatShading: !!override?.flatShading,
         vertexColors: colorMode !== "solid",
-        transparent: opacity < 1,
-        opacity,
+        transparent: clamp01((override?.opacity ?? 1) * materialOpacity) < 1,
+        opacity: clamp01((override?.opacity ?? 1) * materialOpacity),
       });
 
 
@@ -2634,10 +2654,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
 
       if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
-      const mesh = new THREE.Mesh(geom, makeMaterial());
+      const mesh = new THREE.Mesh(geom, makeMaterial(override));
       if (override.id) {
         (mesh as any).userData.__surfaceMeshOverrideId = override.id;
       }
+      (mesh as any).userData.__surfaceMeshOverrideStyle = {
+        color: override.color,
+        opacity: override.opacity,
+        wireframe: override.wireframe,
+        flatShading: override.flatShading,
+      };
       return mesh;
     };
 
@@ -3141,6 +3167,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     if (showBoundingBox) {
       const boxHelper = new THREE.Box3Helper(box, 0x999999);
       scene.add(boxHelper);
+      bboxHelperRef.current = boxHelper;
     }
 
     const viewGizmo = new THREE.Group();
@@ -3671,8 +3698,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
     };
 
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.shiftKey) return;
+      const cb = onShiftWheelScaleRef.current;
+      if (!cb) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cb({ delta: event.deltaY });
+    };
+
     renderer.domElement.addEventListener("pointerdown", handlePointerDown);
     renderer.domElement.addEventListener("pointermove", handlePointerMove);
+    renderer.domElement.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("pointerup", handlePointerUp);
 
     setSceneEpoch((v) => v + 1);
@@ -3782,6 +3819,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
       renderer.domElement.removeEventListener("pointermove", handlePointerMove);
+      renderer.domElement.removeEventListener("wheel", handleWheel);
       window.removeEventListener("pointerup", handlePointerUp);
 
       if (isCameraLeader && onCameraSync) {
@@ -3792,6 +3830,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       viewGizmo.traverse(disposeObject3D);
       scene.remove(viewGizmo);
       if (viewGizmoRef.current === viewGizmo) viewGizmoRef.current = null;
+
+      if (bboxHelperRef.current) {
+        scene.remove(bboxHelperRef.current);
+        bboxHelperRef.current.traverse(disposeObject3D);
+        bboxHelperRef.current = null;
+      }
 
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
@@ -3920,13 +3964,330 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphResolution,
     implicitResolution,
     implicitMeshToken,
-    surfaceMeshOverride,
-    surfaceMeshOverrides,
     implicitDomainSize,
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
+  ]);
+
+  useEffect(() => {
+    if (surfaceId !== "surface_mesh") return;
+    const scene = sceneRef.current;
+    const surfaceObj = surfaceObjRef.current;
+    if (!scene || !surfaceObj) return;
+
+    const hasOverrides =
+      !!surfaceMeshOverrides?.some((override) => (override.positions?.length ?? 0) >= 3);
+    const useOverrides = hasOverrides;
+    const useOverride = !useOverrides && !!surfaceMeshOverride?.positions?.length;
+    if (!useOverrides && !useOverride) return;
+
+    const makeMaterial = (override?: SurfaceMeshOverride) =>
+      new THREE.MeshStandardMaterial({
+        color:
+          colorMode === "solid"
+            ? override?.color ?? solidColorForPalette(colorPalette)
+            : 0xffffff,
+        metalness: materialMetalness,
+        roughness: materialRoughness,
+        side: THREE.DoubleSide,
+        wireframe: override?.wireframe ?? !!wireframe,
+        flatShading: !!override?.flatShading,
+        vertexColors: colorMode !== "solid",
+        transparent: clamp01((override?.opacity ?? 1) * materialOpacity) < 1,
+        opacity: clamp01((override?.opacity ?? 1) * materialOpacity),
+      });
+
+    const makeSurfaceMeshOverrideMesh = (override: SurfaceMeshOverride) => {
+      const geom = new THREE.BufferGeometry();
+      const positions = override.positions ?? [];
+      const normals = override.normals ?? null;
+      const uvs = override.uvs ?? null;
+      const indices = override.indices ?? null;
+      const validation = override.validation ?? null;
+      const nanNormals = validation?.stats?.nanNormals ?? 0;
+
+      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+
+      if (indices && indices.length >= 3) {
+        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
+        geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+      }
+
+      if (uvs && uvs.length >= 2) {
+        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
+        geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+      }
+
+      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      if (normalsOk) {
+        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
+        geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+      } else {
+        geom.computeVertexNormals();
+      }
+
+      if (colorMode !== "solid") applyVertexColors(geom, colorMode, colorPalette);
+      const mesh = new THREE.Mesh(geom, makeMaterial(override));
+      if (override.id) {
+        (mesh as any).userData.__surfaceMeshOverrideId = override.id;
+      }
+      (mesh as any).userData.__surfaceMeshOverrideStyle = {
+        color: override.color,
+        opacity: override.opacity,
+        wireframe: override.wireframe,
+        flatShading: override.flatShading,
+      };
+      return mesh;
+    };
+
+    const rebuildSurfaceObject = () => {
+      if (surfaceObjRef.current) {
+        scene.remove(surfaceObjRef.current);
+        surfaceObjRef.current.traverse(disposeObject3D);
+        surfaceObjRef.current = null;
+      }
+
+      let nextObj: THREE.Object3D | null = null;
+      if (useOverrides && surfaceMeshOverrides?.length) {
+        const group = new THREE.Group();
+        for (const override of surfaceMeshOverrides) {
+          if (!override?.positions || (override.positions.length ?? 0) < 3) continue;
+          group.add(makeSurfaceMeshOverrideMesh(override));
+        }
+        if (group.children.length) nextObj = group;
+      } else if (useOverride && surfaceMeshOverride) {
+        nextObj = makeSurfaceMeshOverrideMesh(surfaceMeshOverride);
+      }
+
+      if (!nextObj) return;
+      scene.add(nextObj);
+      surfaceObjRef.current = nextObj;
+    };
+
+    const updateGeometryFromOverride = (mesh: THREE.Mesh, override: SurfaceMeshOverride) => {
+      const geom = mesh.geometry as THREE.BufferGeometry;
+      const positions = override.positions ?? [];
+      const normals = override.normals ?? null;
+      const uvs = override.uvs ?? null;
+      const indices = override.indices ?? null;
+      const validation = override.validation ?? null;
+      const nanNormals = validation?.stats?.nanNormals ?? 0;
+
+      const posArray = positions instanceof Float32Array ? positions : Float32Array.from(positions);
+      const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
+      if (!posAttr || posAttr.array.length !== posArray.length) {
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(posArray, 3));
+      } else {
+        (posAttr.array as Float32Array).set(posArray);
+        posAttr.needsUpdate = true;
+      }
+
+      if (indices && indices.length >= 3) {
+        const idxArray = indices instanceof Uint32Array ? indices : Uint32Array.from(indices);
+        const idxAttr = geom.getIndex();
+        if (!idxAttr || (idxAttr.array as ArrayLike<number>).length !== idxArray.length) {
+          geom.setIndex(new THREE.BufferAttribute(idxArray, 1));
+        } else {
+          (idxAttr.array as Uint32Array).set(idxArray);
+          idxAttr.needsUpdate = true;
+        }
+      } else if (geom.getIndex()) {
+        geom.setIndex(null);
+      }
+
+      if (uvs && uvs.length >= 2) {
+        const uvArray = uvs instanceof Float32Array ? uvs : Float32Array.from(uvs);
+        const uvAttr = geom.getAttribute("uv") as THREE.BufferAttribute | null;
+        if (!uvAttr || uvAttr.array.length !== uvArray.length) {
+          geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvArray, 2));
+        } else {
+          (uvAttr.array as Float32Array).set(uvArray);
+          uvAttr.needsUpdate = true;
+        }
+      } else if (geom.getAttribute("uv")) {
+        geom.deleteAttribute("uv");
+      }
+
+      const normalsOk = !!normals && normals.length >= posArray.length && nanNormals === 0;
+      if (normalsOk) {
+        const nArray = normals instanceof Float32Array ? normals : Float32Array.from(normals);
+        const nAttr = geom.getAttribute("normal") as THREE.BufferAttribute | null;
+        if (!nAttr || nAttr.array.length !== nArray.length) {
+          geom.setAttribute("normal", new THREE.Float32BufferAttribute(nArray, 3));
+        } else {
+          (nAttr.array as Float32Array).set(nArray);
+          nAttr.needsUpdate = true;
+        }
+      } else {
+        geom.computeVertexNormals();
+      }
+
+      geom.computeBoundingBox();
+      geom.computeBoundingSphere();
+      const style = {
+        color: override.color,
+        opacity: override.opacity,
+        wireframe: override.wireframe,
+        flatShading: override.flatShading,
+      };
+      (mesh as any).userData.__surfaceMeshOverrideStyle = style;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (!m) continue;
+        (m as any).wireframe = style.wireframe ?? !!wireframe;
+        (m as any).flatShading = !!style.flatShading;
+        const styleOpacity = clamp01((style.opacity ?? 1) * materialOpacity);
+        (m as any).transparent = styleOpacity < 1;
+        (m as any).opacity = styleOpacity;
+        if (colorMode === "solid") {
+          (m as any).color?.set(style.color ?? solidColorForPalette(colorPalette));
+        }
+        m.needsUpdate = true;
+      }
+    };
+
+    const meshById = new Map<string, THREE.Mesh>();
+    surfaceObj.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh?.isMesh || !mesh.geometry) return;
+      const id = (mesh as any)?.userData?.__surfaceMeshOverrideId;
+      if (id) meshById.set(String(id), mesh);
+    });
+
+    let needsRebuild = false;
+    if (useOverrides && surfaceMeshOverrides) {
+      if (meshById.size !== surfaceMeshOverrides.length) {
+        needsRebuild = true;
+      } else {
+        for (const override of surfaceMeshOverrides) {
+          if (!override?.id || !meshById.has(String(override.id))) {
+            needsRebuild = true;
+            break;
+          }
+        }
+      }
+    } else if (useOverride) {
+      if (!surfaceObj || !(surfaceObj as any).isMesh) needsRebuild = true;
+    }
+
+    if (needsRebuild) {
+      rebuildSurfaceObject();
+    } else if (useOverrides && surfaceMeshOverrides) {
+      for (const override of surfaceMeshOverrides) {
+        if (!override?.id) continue;
+        const mesh = meshById.get(String(override.id));
+        if (mesh) updateGeometryFromOverride(mesh, override);
+      }
+    } else if (useOverride && surfaceMeshOverride && (surfaceObj as any)?.isMesh) {
+      updateGeometryFromOverride(surfaceObj as THREE.Mesh, surfaceMeshOverride);
+    }
+
+    const activeSurfaceObj = surfaceObjRef.current;
+    if (!activeSurfaceObj) return;
+
+    activeSurfaceObj.updateMatrixWorld(true);
+    const meshList: THREE.Mesh[] = [];
+    activeSurfaceObj.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.geometry) {
+        meshList.push(mesh);
+      }
+    });
+
+    const aggregatedSamples: SurfaceSampleSet["samples"] = [];
+    const meshData: SurfaceSampleSet["meshData"] = [];
+    let nextId = 0;
+    let remainingSamples = Math.max(1, Math.floor(sampleMaxPoints));
+    for (const mesh of meshList) {
+      if (!mesh.geometry || remainingSamples <= 0) continue;
+      mesh.updateMatrixWorld(true);
+      const posAttr = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+      if (posAttr) {
+        const indexAttr = mesh.geometry.getIndex();
+        const drawCount = getNonIndexedDrawCount(mesh.geometry as THREE.BufferGeometry, posAttr);
+        const positions =
+          drawCount != null
+            ? (posAttr.array as Float32Array).subarray(0, drawCount * 3)
+            : (posAttr.array as Float32Array);
+        const meshKey = (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid;
+        meshData.push({
+          key: meshKey,
+          positions,
+          indices: indexAttr ? indexAttr.array : null,
+        });
+      }
+      const { samples: chunk } = buildSurfaceSampleSetFromViewer({
+        geometry: mesh.geometry as THREE.BufferGeometry,
+        worldMatrix: mesh.matrixWorld,
+        maxSamples: remainingSamples,
+        includeUV: includeSamplesUV,
+        startId: nextId,
+        meshKey: (mesh as any)?.userData?.__surfaceMeshOverrideId ?? mesh.uuid,
+      });
+      if (!chunk.length) continue;
+      aggregatedSamples.push(...chunk);
+      nextId += chunk.length;
+      remainingSamples -= chunk.length;
+    }
+
+    let nextSampleSet: SurfaceSampleSet;
+    if (aggregatedSamples.length) {
+      const box = new THREE.Box3().setFromPoints(aggregatedSamples.map((s) => s.position));
+      nextSampleSet = {
+        samples: aggregatedSamples,
+        bbox: box,
+        center: box.getCenter(new THREE.Vector3()),
+        meshData,
+      };
+    } else {
+      nextSampleSet = { samples: [], meshData };
+    }
+    sampleSetRef.current = nextSampleSet;
+    onSampleSet?.(nextSampleSet);
+
+    const box = new THREE.Box3().setFromObject(activeSurfaceObj);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    centerRef.current.copy(center);
+
+    const sizeVec = new THREE.Vector3();
+    box.getSize(sizeVec);
+    radiusRef.current = sizeVec.length() * 0.5 || 3;
+
+    const viewGizmo = viewGizmoRef.current;
+    if (viewGizmo) viewGizmo.position.copy(center);
+
+    const existingBoxHelper = bboxHelperRef.current;
+    if (showBoundingBox) {
+      if (existingBoxHelper) {
+        existingBoxHelper.box.copy(box);
+      } else {
+        const helper = new THREE.Box3Helper(box, 0x999999);
+        scene.add(helper);
+        bboxHelperRef.current = helper;
+      }
+    } else if (existingBoxHelper) {
+      scene.remove(existingBoxHelper);
+      existingBoxHelper.traverse(disposeObject3D);
+      bboxHelperRef.current = null;
+    }
+  }, [
+    surfaceId,
+    surfaceMeshOverride,
+    surfaceMeshOverrides,
+    colorMode,
+    colorPalette,
+    wireframe,
+    materialOpacity,
+    materialMetalness,
+    materialRoughness,
+    includeSamplesUV,
+    sampleMaxPoints,
+    showBoundingBox,
+    onSampleSet,
   ]);
 
   useEffect(() => {
@@ -4876,6 +5237,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const sizeHint = radiusRef.current || 3;
     const baseSize = Math.max(0.08, (sizeHint / 26) * 0.8);
     const toCss = (color: number) => `#${color.toString(16).padStart(6, "0")}`;
+    const maxAniso = rendererRef.current?.capabilities?.getMaxAnisotropy?.() ?? 0;
 
     for (const set of overlayLabelSets) {
       if (!set?.labels?.length) continue;
@@ -4910,6 +5272,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         ctx.fillText(label.text, width / 2, height / 2);
 
         const texture = new THREE.CanvasTexture(canvas);
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        if (maxAniso > 0) texture.anisotropy = maxAniso;
         texture.needsUpdate = true;
         const mat = new THREE.SpriteMaterial({
           map: texture,

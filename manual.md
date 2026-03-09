@@ -72,6 +72,22 @@
 11. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
 12. Principal directions: turns on principal direction glyphs.
 
+### PR1.5 — Polyhedra creator
+- Added polyhedron options `triangulate`, `smoothNormals` (flat when off), `edgeDisplay`, plus `subdivision` for Platonic builds in `proceduralObjects.ts`.
+- Kept/showed derived `V/E/F + triangles`, with triangle complexity reacting to subdivision in `App.tsx`.
+- Added edge overlay generation (including selected outline) in `App.tsx`, wired through `GeometryViewer.tsx`.
+
+### PR2 — Bake to MeshSurface (non-destructive)
+- Added `Bake selected` and `Bake all visible` actions in `App.tsx`.
+- Implemented handlers that bake transformed procedural meshes, switch to mesh/surfaces view, and keep geometry objects intact in `App.tsx`.
+- Added provenance metadata source kind `geometryObject` with params/transform/material in `surfaceMesh.ts`.
+
+### PR2.2 — Picking + inspector
+- Viewport click now selects object and records pick data in inspector state in `App.tsx`.
+- Added selected-object outline highlight via overlay polylines in `App.tsx`.
+- Inspector now shows/edits params + transform + material, and shows last pick readout in `App.tsx`.
+- Per-object material/flat shading is respected in mesh override rendering in `SurfaceViewer.tsx`.
+
 ### PR3 — First 3 “killer” calculations (workbook suddenly feels real)
 
 A) Point Info + Chart Grid

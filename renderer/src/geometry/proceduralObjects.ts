@@ -401,7 +401,11 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
       n: 6,
       height: 1.6,
       radius: 1,
+      subdivision: 0,
       frequency: 2,
+      triangulate: true,
+      smoothNormals: true,
+      edgeDisplay: false,
     },
     params: [
       { id: "family", label: "Family", kind: "select", options: polyhedronFamilyOptions },
@@ -425,11 +429,15 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
         return buildGeodesicGeometry(Number(params.frequency ?? 2), radius);
       }
       const kind = String(params.kind ?? "dodeca");
-      if (kind === "tetra") return new THREE.TetrahedronGeometry(radius, 0);
-      if (kind === "cube") return new THREE.BoxGeometry(radius * 1.6, radius * 1.6, radius * 1.6, 1, 1, 1);
-      if (kind === "octa") return new THREE.OctahedronGeometry(radius, 0);
-      if (kind === "icosa") return new THREE.IcosahedronGeometry(radius, 0);
-      return new THREE.DodecahedronGeometry(radius, 0);
+      const subdivision = Math.max(0, Math.min(5, Math.round(Number(params.subdivision ?? 0))));
+      if (kind === "tetra") return new THREE.TetrahedronGeometry(radius, subdivision);
+      if (kind === "cube") {
+        const seg = Math.max(1, Math.pow(2, subdivision));
+        return new THREE.BoxGeometry(radius * 1.6, radius * 1.6, radius * 1.6, seg, seg, seg);
+      }
+      if (kind === "octa") return new THREE.OctahedronGeometry(radius, subdivision);
+      if (kind === "icosa") return new THREE.IcosahedronGeometry(radius, subdivision);
+      return new THREE.DodecahedronGeometry(radius, subdivision);
     },
   },
 };
@@ -454,7 +462,7 @@ export const createGeometryObject = (type: GeometryObjectType, id: string): Geom
       scale: { ...DEFAULT_TRANSFORM.scale },
     },
     visible: true,
-    material: { color: 0x8aa4ff, opacity: 0.9 },
+    material: { color: 0x8aa4ff, opacity: 1 },
     name: entry.label,
   };
 };
