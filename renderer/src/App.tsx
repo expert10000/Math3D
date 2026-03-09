@@ -117,7 +117,7 @@ import {
   type SurfaceMeshSource,
   type SurfaceMeshPreset,
 } from "./mesh/surfaceMesh";
-import { exportMeshToGLB, exportMeshToOBJ } from "./mesh/meshExport";
+import { exportMeshToGLB, exportMeshToOBJ, exportMeshToPLY } from "./mesh/meshExport";
 import {
   computeAdjacency,
   computeMeanEdgeLength,
@@ -386,6 +386,25 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
 const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
   mesh ? { kind: "surface", surfaceType: "mesh", mesh } : null;
 
+const cloneSurfaceMeshData = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
+  ...mesh,
+  label: labelOverride ?? mesh.label,
+  positions: Float32Array.from(mesh.positions),
+  indices: mesh.indices ? Uint32Array.from(mesh.indices) : null,
+  normals: mesh.normals ? Float32Array.from(mesh.normals) : null,
+  uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
+  adjacency: mesh.adjacency ? mesh.adjacency.map((row) => row.slice()) : null,
+  meanEdgeLength: mesh.meanEdgeLength ?? null,
+  validation: mesh.validation
+    ? {
+        ...mesh.validation,
+        errors: [...mesh.validation.errors],
+        warnings: [...mesh.validation.warnings],
+        stats: { ...mesh.validation.stats },
+      }
+    : null,
+});
+
 /* ---------------- constants ---------------- */
 
 
@@ -414,6 +433,7 @@ const GEOMETRY_BADGE_COLORS = {
 };
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const RAD_TO_DEG = 180 / Math.PI;
 
 const toSafeNumber = (value: number, fallback: number) => (Number.isFinite(value) ? value : fallback);
 
@@ -421,6 +441,15 @@ type GeometryTransformPatch = {
   position?: Partial<Vec3>;
   rotation?: Partial<Vec3>;
   scale?: Partial<Vec3>;
+};
+
+type GeometryDatasetMeshObject = {
+  id: string;
+  name: string;
+  mesh: SurfaceMeshData;
+  transform: GeometryObjectTransform;
+  visible: boolean;
+  material: GeometryObject["material"];
 };
 
 const axisPatch = (axis: keyof Vec3, value: number): Partial<Vec3> => ({ [axis]: value } as Partial<Vec3>);
@@ -2550,6 +2579,7 @@ const App: React.FC = () => {
     const id = makeId();
     return [createGeometryObject("box", id)];
   });
+  const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
@@ -2582,19 +2612,37 @@ const App: React.FC = () => {
       counts: getPolyhedronCounts(family, geometrySelectedObject.params),
     };
   }, [geometrySelectedObject]);
+  const geometrySceneObjectRows = useMemo(
+    () => [
+      ...geometryObjects.map((obj) => ({
+        id: obj.id,
+        visible: obj.visible,
+        name: obj.name,
+        label: GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type,
+      })),
+      ...geometryDatasetMeshObjects.map((obj) => ({
+        id: obj.id,
+        visible: obj.visible,
+        name: obj.name,
+        label: "Dataset mesh",
+      })),
+    ],
+    [geometryObjects, geometryDatasetMeshObjects]
+  );
   useEffect(() => {
-    if (!geometryObjects.length) {
+    const ids = [...geometryObjects.map((o) => o.id), ...geometryDatasetMeshObjects.map((o) => o.id)];
+    if (!ids.length) {
       if (geometrySelectedObjectId) setGeometrySelectedObjectId(null);
       return;
     }
     if (!geometrySelectedObjectId) {
-      setGeometrySelectedObjectId(geometryObjects[0].id);
+      setGeometrySelectedObjectId(ids[0]);
       return;
     }
-    if (!geometryObjects.find((o) => o.id === geometrySelectedObjectId)) {
-      setGeometrySelectedObjectId(geometryObjects[0].id);
+    if (!ids.includes(geometrySelectedObjectId)) {
+      setGeometrySelectedObjectId(ids[0]);
     }
-  }, [geometryObjects, geometrySelectedObjectId]);
+  }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId]);
 
   const handleAddGeometryObject = useCallback(() => {
     const id = makeId();
@@ -2605,14 +2653,19 @@ const App: React.FC = () => {
 
   const handleRemoveGeometryObject = useCallback((id: string) => {
     setGeometryObjects((prev) => prev.filter((o) => o.id !== id));
+    setGeometryDatasetMeshObjects((prev) => prev.filter((o) => o.id !== id));
   }, []);
 
   const handleRenameGeometryObject = useCallback((id: string, name: string) => {
     setGeometryObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
+    setGeometryDatasetMeshObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
   }, []);
 
   const handleToggleGeometryObjectVisible = useCallback((id: string) => {
     setGeometryObjects((prev) =>
+      prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
+    );
+    setGeometryDatasetMeshObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
     );
   }, []);
@@ -2630,6 +2683,11 @@ const App: React.FC = () => {
           o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
         )
       );
+      setGeometryDatasetMeshObjects((prev) =>
+        prev.map((o) =>
+          o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
+        )
+      );
     },
     []
   );
@@ -2637,6 +2695,20 @@ const App: React.FC = () => {
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
       setGeometryObjects((prev) =>
+        prev.map((o) =>
+          o.id === id
+            ? {
+                ...o,
+                transform: {
+                  position: { ...o.transform.position, ...(patch.position ?? {}) },
+                  rotation: { ...o.transform.rotation, ...(patch.rotation ?? {}) },
+                  scale: { ...o.transform.scale, ...(patch.scale ?? {}) },
+                },
+              }
+            : o
+        )
+      );
+      setGeometryDatasetMeshObjects((prev) =>
         prev.map((o) =>
           o.id === id
             ? {
@@ -2666,6 +2738,16 @@ const App: React.FC = () => {
         return { ...o, transform: { ...o.transform, scale: nextScale } };
       })
     );
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((o) => {
+        const nextScale = {
+          x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
+          y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
+          z: clampNumber(o.transform.scale.z * factor, 0.05, 20),
+        };
+        return { ...o, transform: { ...o.transform, scale: nextScale } };
+      })
+    );
   }, []);
 
   const geometryDragRef = useRef<{
@@ -2675,7 +2757,9 @@ const App: React.FC = () => {
   const handleProceduralDragStart = useCallback(
     (info: { meshKey?: string }) => {
       if (!info.meshKey) return;
-      const obj = geometryObjects.find((o) => o.id === info.meshKey);
+      const obj =
+        geometryObjects.find((o) => o.id === info.meshKey) ??
+        geometryDatasetMeshObjects.find((o) => o.id === info.meshKey);
       if (!obj) return;
       setGeometrySelectedObjectId(obj.id);
       geometryDragRef.current = {
@@ -2683,7 +2767,7 @@ const App: React.FC = () => {
         startPosition: { ...obj.transform.position },
       };
     },
-    [geometryObjects]
+    [geometryObjects, geometryDatasetMeshObjects]
   );
   const handleProceduralDrag = useCallback(
     (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
@@ -2809,22 +2893,54 @@ const App: React.FC = () => {
       });
     }
 
+    for (const obj of geometryDatasetMeshObjects) {
+      if (!obj.visible) continue;
+      let mesh = cloneSurfaceMeshData(obj.mesh, obj.name);
+      if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
+        mesh = computeVertexNormals(mesh);
+      }
+      if (!mesh.positions.length) continue;
+      const meshVertCount = Math.floor(mesh.positions.length / 3);
+      vertCount += meshVertCount;
+      if (mesh.indices && mesh.indices.length >= 3) {
+        triCount += Math.floor(mesh.indices.length / 3);
+      } else {
+        triCount += Math.floor(meshVertCount / 3);
+      }
+      meshes.push({
+        ...mesh,
+        id: obj.id,
+        label: obj.name,
+        color: obj.material.color,
+        opacity: obj.material.opacity,
+        flatShading: false,
+        transform: {
+          position: { ...obj.transform.position },
+          rotation: { ...obj.transform.rotation },
+          scale: { ...obj.transform.scale },
+        },
+      });
+    }
+
     return { meshes, vertCount, triCount };
-  }, [geometryObjects]);
+  }, [geometryObjects, geometryDatasetMeshObjects]);
 
   const geometryProceduralOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
-    const objectById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
+    const proceduralById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
+    const datasetById = new Map(geometryDatasetMeshObjects.map((obj) => [obj.id, obj]));
     const edgeLines: PolylineSet = [];
     const selectedLines: PolylineSet = [];
     for (const mesh of proceduralMeshSet.meshes) {
-      const obj = objectById.get(mesh.id);
+      const proceduralObj = proceduralById.get(mesh.id);
+      const datasetObj = datasetById.get(mesh.id);
+      const obj = proceduralObj ?? datasetObj;
       if (!obj) continue;
       const selected = geometrySelectedObjectId === mesh.id;
-      const isPoly = obj.type === "polyhedron";
-      const edgeDisplay = isPoly ? Boolean(obj.params.edgeDisplay ?? false) : false;
+      const isPoly = !!proceduralObj && proceduralObj.type === "polyhedron";
+      const edgeDisplay = isPoly ? Boolean(proceduralObj.params.edgeDisplay ?? false) : false;
       if (!selected && !edgeDisplay) continue;
-      const triangulate = isPoly ? Boolean(obj.params.triangulate ?? true) : true;
+      const triangulate = isPoly ? Boolean(proceduralObj.params.triangulate ?? true) : true;
       const lines = applyGeometryTransformToPolylineSet(
         buildMeshEdgePolylines(mesh, triangulate, 2),
         obj.transform
@@ -2852,7 +2968,13 @@ const App: React.FC = () => {
       });
     }
     return groups.length ? groups : null;
-  }, [geometryMode, geometryObjects, geometrySelectedObjectId, proceduralMeshSet.meshes]);
+  }, [
+    geometryMode,
+    geometryObjects,
+    geometryDatasetMeshObjects,
+    geometrySelectedObjectId,
+    proceduralMeshSet.meshes,
+  ]);
 
   const geometryProceduralFeatureOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
@@ -2956,8 +3078,10 @@ const App: React.FC = () => {
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const geometryStats = useMemo(() => {
     if (geometryMode === "procedural") {
-      const objCount = geometryObjects.length;
-      const visibleCount = geometryObjects.filter((o) => o.visible).length;
+      const objCount = geometryObjects.length + geometryDatasetMeshObjects.length;
+      const visibleCount =
+        geometryObjects.filter((o) => o.visible).length +
+        geometryDatasetMeshObjects.filter((o) => o.visible).length;
       const vertCount = proceduralMeshSet.vertCount ?? 0;
       const triCount = proceduralMeshSet.triCount ?? 0;
       return {
@@ -2983,7 +3107,7 @@ const App: React.FC = () => {
       polyhedronCount,
       polyhedronFaces,
     };
-  }, [geometryMode, geometryObjects, geometryScene, proceduralMeshSet]);
+  }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, proceduralMeshSet]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -3568,7 +3692,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       setGeometryBakeError("Select an object to bake.");
       return;
     }
-    const obj = geometryObjects.find((entry) => entry.id === geometrySelectedObjectId) ?? null;
+    const obj =
+      geometryObjects.find((entry) => entry.id === geometrySelectedObjectId) ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === geometrySelectedObjectId) ??
+      null;
     if (!obj) {
       setGeometryBakeError("Selected object no longer exists.");
       return;
@@ -3583,7 +3710,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       kind: "geometryObject",
       objectId: obj.id,
       objectName: obj.name,
-      params: { ...obj.params },
+      params: "params" in obj ? { ...obj.params } : { sourceKind: "datasetMeshObject" },
       transform: {
         position: { ...obj.transform.position },
         rotation: { ...obj.transform.rotation },
@@ -3592,7 +3719,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       material: { ...obj.material },
     };
     const baked: SurfaceMeshData = {
-      label: `${obj.name} (baked)`,
+      label: `${obj.name} (scene->dataset)`,
       positions: Float32Array.from(transformed.positions),
       indices: transformed.indices ? Uint32Array.from(transformed.indices) : null,
       normals: transformed.normals ? Float32Array.from(transformed.normals) : null,
@@ -3602,16 +3729,49 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setMeshDataset(applySurfaceMeshOps(baked));
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
-  }, [geometrySelectedObjectId, geometryObjects, proceduralMeshSet.meshes, setMeshDataset]);
+  }, [geometrySelectedObjectId, geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
 
   const handleBakeAllGeometryObjects = useCallback(() => {
     setGeometryBakeError(null);
-    const objectById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
+    const objectById = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        transform: GeometryObjectTransform;
+        material: GeometryObject["material"];
+        params: Record<string, number | boolean | string>;
+      }
+    >();
+    geometryObjects.forEach((obj) => {
+      objectById.set(obj.id, {
+        id: obj.id,
+        name: obj.name,
+        transform: obj.transform,
+        material: obj.material,
+        params: { ...obj.params },
+      });
+    });
+    geometryDatasetMeshObjects.forEach((obj) => {
+      objectById.set(obj.id, {
+        id: obj.id,
+        name: obj.name,
+        transform: obj.transform,
+        material: obj.material,
+        params: { sourceKind: "datasetMeshObject" },
+      });
+    });
     const visibleMeshes = proceduralMeshSet.meshes
       .map((mesh) => ({ mesh, obj: objectById.get(mesh.id) ?? null }))
       .filter((entry) => !!entry.obj) as Array<{
       mesh: SurfaceMeshData & { id: string };
-      obj: GeometryObject;
+      obj: {
+        id: string;
+        name: string;
+        transform: GeometryObjectTransform;
+        material: GeometryObject["material"];
+        params: Record<string, number | boolean | string>;
+      };
     }>;
     if (!visibleMeshes.length) {
       setGeometryBakeError("No visible objects to bake.");
@@ -3632,7 +3792,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       objects: visibleMeshes.map((entry) => ({
         objectId: entry.obj.id,
         objectName: entry.obj.name,
-        params: { ...entry.obj.params },
+        params: entry.obj.params,
         transform: {
           position: { ...entry.obj.transform.position },
           rotation: { ...entry.obj.transform.rotation },
@@ -3642,7 +3802,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       })),
     };
     const baked: SurfaceMeshData = {
-      label: `Geometry objects (${visibleMeshes.length})`,
+      label: `Scene objects (${visibleMeshes.length})`,
       positions: merged.positions,
       indices: merged.indices,
       source,
@@ -3650,7 +3810,36 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setMeshDataset(applySurfaceMeshOps(baked));
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
-  }, [geometryObjects, proceduralMeshSet.meshes, setMeshDataset]);
+  }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
+
+  const handleDatasetToGeometryScene = useCallback(() => {
+    setGeometryBakeError(null);
+    if (datasetKind === "volume") {
+      setGeometryBakeError("Dataset -> Scene works with surface mesh datasets only.");
+      return;
+    }
+    if (!surfaceMeshData?.positions?.length) {
+      setGeometryBakeError("Surface mesh dataset not ready.");
+      return;
+    }
+    const id = makeId();
+    const obj: GeometryDatasetMeshObject = {
+      id,
+      name: `${surfaceMeshData.label ?? "Surface mesh"} (scene)`,
+      mesh: cloneSurfaceMeshData(surfaceMeshData),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: { color: 0x8aa4ff, opacity: 1 },
+    };
+    setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
+    setGeometrySelectedObjectId(id);
+    setGeometryMode("procedural");
+    setMode("geometry");
+  }, [datasetKind, surfaceMeshData]);
 
   // complex map sweep
   const [complexMapSpec, setComplexMapSpec] = useState<ComplexMapSweepSpec>(COMPLEX_MAP_DEFAULT_SPEC);
@@ -8374,6 +8563,24 @@ case "mobius":
     }
   }, [surfaceMeshExportBusy, surfaceMeshData]);
 
+  const handleExportSurfaceMeshPly = useCallback(() => {
+    if (surfaceMeshExportBusy) return;
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshExportError("Surface mesh not ready yet.");
+      return;
+    }
+    setSurfaceMeshExportBusy(true);
+    setSurfaceMeshExportError(null);
+    try {
+      const base = sanitizeFileBase(surfaceMeshData.label ?? "surface_mesh", "surface_mesh");
+      exportMeshToPLY(surfaceMeshData, `${base}.ply`);
+    } catch (err: any) {
+      setSurfaceMeshExportError(err?.message ?? "PLY export failed.");
+    } finally {
+      setSurfaceMeshExportBusy(false);
+    }
+  }, [surfaceMeshExportBusy, surfaceMeshData]);
+
   const handleExportSurfaceMeshGlb = useCallback(async () => {
     if (surfaceMeshExportBusy) return;
     if (!surfaceMeshData?.positions?.length) {
@@ -12839,6 +13046,7 @@ case "mobius":
                   surfaceMeshNormalizeDiag={surfaceMeshNormalizeDiag}
                   surfaceMeshOpsError={surfaceMeshOpsError}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
+                  onExportSurfaceMeshPly={handleExportSurfaceMeshPly}
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
                   onChangeSurfaceMeshWeldTolerance={setSurfaceMeshWeldTolerance}
                   onWeldSurfaceMesh={handleWeldSurfaceMesh}
@@ -13988,9 +14196,8 @@ case "mobius":
 
                     <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
                     <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {geometryObjects.map((obj) => {
+                      {geometrySceneObjectRows.map((obj) => {
                         const active = obj.id === geometrySelectedObjectId;
-                        const label = GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type;
                         return (
                           <div
                             key={obj.id}
@@ -14024,7 +14231,7 @@ case "mobius":
                               }}
                             >
                               {obj.name}
-                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{label}</span>
+                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{obj.label}</span>
                             </button>
                             <button type="button" onClick={() => handleRemoveGeometryObject(obj.id)}>
                               Delete
@@ -14035,25 +14242,32 @@ case "mobius":
                     </div>
 
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Bake to MeshSurface</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Scene ↔ Dataset</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
                           onClick={handleBakeSelectedGeometryObject}
                           disabled={!geometrySelectedObjectId}
                         >
-                          Bake selected
+                          Scene → Dataset (selected)
                         </button>
                         <button
                           type="button"
                           onClick={handleBakeAllGeometryObjects}
                           disabled={!proceduralMeshSet.meshes.length}
                         >
-                          Bake all visible
+                          Scene → Dataset (all visible)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDatasetToGeometryScene}
+                          disabled={datasetKind === "volume" || !surfaceMeshData?.positions?.length}
+                        >
+                          Dataset → Scene
                         </button>
                       </div>
                       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
-                        Applies world transforms. Geometry objects remain editable.
+                        Compose scene meshes as one dataset, analyze, then spawn dataset mesh back into Geometry Viewer.
                       </div>
                       {geometryBakeError && (
                         <div style={{ fontSize: 11, color: "#b42318", marginTop: 4 }}>{geometryBakeError}</div>
@@ -15558,6 +15772,7 @@ type SurfacesLeftPanelProps = {
   surfaceMeshNormalizeDiag: number;
   surfaceMeshOpsError: string | null;
   onExportSurfaceMeshObj: () => void;
+  onExportSurfaceMeshPly: () => void;
   onExportSurfaceMeshGlb: () => void;
   onChangeSurfaceMeshWeldTolerance: (v: number) => void;
   onWeldSurfaceMesh: () => void;
@@ -16010,6 +16225,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshNormalizeDiag,
   surfaceMeshOpsError,
   onExportSurfaceMeshObj,
+  onExportSurfaceMeshPly,
   onExportSurfaceMeshGlb,
   onChangeSurfaceMeshWeldTolerance,
   onWeldSurfaceMesh,
@@ -18580,6 +18796,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </button>
               <button type="button" onClick={onExportSurfaceMeshObj} disabled={surfaceMeshExportBusy || !meshReady}>
                 {surfaceMeshExportBusy ? "Exporting..." : "Export OBJ"}
+              </button>
+              <button type="button" onClick={onExportSurfaceMeshPly} disabled={surfaceMeshExportBusy || !meshReady}>
+                {surfaceMeshExportBusy ? "Exporting..." : "Export PLY"}
               </button>
             </div>
             {surfaceMeshExportError && (

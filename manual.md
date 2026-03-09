@@ -72,6 +72,19 @@
 11. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
 12. Principal directions: turns on principal direction glyphs.
 
+### PR4 — Export/import loop (OBJ/PLY)
+- Added `Export PLY` alongside existing OBJ/GLB export in the Surface mesh panel.
+- Mesh files can be re-imported (`Load STL/OBJ/PLY/GLTF`) and keep geometry coordinates as exported, so orientation/scale round-trip reliably.
+- PLY export writes triangle faces directly from the current mesh dataset.
+
+### PR4.5 — Scene ↔ Dataset
+- Geometry panel now has a `Scene ↔ Dataset` block:
+  - `Scene → Dataset (selected)`
+  - `Scene → Dataset (all visible)`
+  - `Dataset → Scene`
+- `Dataset → Scene` spawns the active surface mesh dataset back into Geometry Viewer as an editable scene object.
+- Scene-composed objects can be analyzed as one mesh dataset and then brought back into Geometry mode.
+
 ### PR1.5 — Polyhedra creator
 - Added polyhedron options `triangulate`, `smoothNormals` (flat when off), `edgeDisplay`, plus `subdivision` for Platonic builds in `proceduralObjects.ts`.
 - Kept/showed derived `V/E/F + triangles`, with triangle complexity reacting to subdivision in `App.tsx`.
