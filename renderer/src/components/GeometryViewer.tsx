@@ -16,7 +16,19 @@ import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 export type GeometryViewerProps = {
   scene: GeometryScene;
   meshOverride?: SurfaceMeshData | null;
-  meshOverrides?: Array<SurfaceMeshData & { id?: string; color?: number; opacity?: number; flatShading?: boolean }> | null;
+  meshOverrides?: Array<
+    SurfaceMeshData & {
+      id?: string;
+      color?: number;
+      opacity?: number;
+      flatShading?: boolean;
+      transform?: {
+        position?: { x: number; y: number; z: number };
+        rotation?: { x: number; y: number; z: number };
+        scale?: { x: number; y: number; z: number };
+      };
+    }
+  > | null;
   colorMode?: ColorMode;
   wireframe?: boolean;
   materialOpacity?: number;
@@ -55,6 +67,19 @@ export type GeometryViewerProps = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  gizmoEnabled?: boolean;
+  gizmoMeshKey?: string | null;
+  gizmoMode?: "translate" | "rotate" | "scale";
+  gizmoSpace?: "world" | "local";
+  gizmoTranslationSnap?: number | null;
+  gizmoRotationSnapDeg?: number | null;
+  gizmoScaleSnap?: number | null;
+  onGizmoTransform?: (info: {
+    meshKey?: string;
+    position: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+    scale: { x: number; y: number; z: number };
+  }) => void;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -82,6 +107,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onShiftWheelScale,
   pickEnabled = false,
   onPick,
+  gizmoEnabled = false,
+  gizmoMeshKey = null,
+  gizmoMode = "translate",
+  gizmoSpace = "world",
+  gizmoTranslationSnap = null,
+  gizmoRotationSnapDeg = null,
+  gizmoScaleSnap = null,
+  onGizmoTransform,
 }) => {
   const renderData = useMemo(
     () =>
@@ -187,6 +220,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
               color: entry.color,
               opacity: entry.opacity,
               flatShading: entry.flatShading,
+              transform: entry.transform,
             }))
           : null
       }
@@ -205,6 +239,14 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       onDrag={onDrag}
       onDragEnd={onDragEnd}
       onShiftWheelScale={onShiftWheelScale}
+      gizmoEnabled={gizmoEnabled}
+      gizmoMeshKey={gizmoMeshKey}
+      gizmoMode={gizmoMode}
+      gizmoSpace={gizmoSpace}
+      gizmoTranslationSnap={gizmoTranslationSnap}
+      gizmoRotationSnapDeg={gizmoRotationSnapDeg}
+      gizmoScaleSnap={gizmoScaleSnap}
+      onGizmoTransform={onGizmoTransform}
       inspectEnabled={pickEnabled}
       onInspectPick={
         pickEnabled && onPick

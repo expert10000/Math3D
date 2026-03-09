@@ -452,3 +452,90 @@ export function validateMesh(mesh: SurfaceMeshData): SurfaceMeshData {
 
   return { ...mesh, validation };
 }
+
+export function subdivideSurfaceMesh(mesh: SurfaceMeshData, iterations = 1): SurfaceMeshData {
+  const safeIterations = Math.max(1, Math.min(4, Math.round(iterations)));
+  let positions =
+    mesh.positions instanceof Float32Array ? mesh.positions.slice() : Float32Array.from(mesh.positions);
+  let indices: Uint32Array | null =
+    mesh.indices && mesh.indices.length >= 3
+      ? mesh.indices instanceof Uint32Array
+        ? mesh.indices.slice()
+        : Uint32Array.from(mesh.indices)
+      : null;
+
+  for (let it = 0; it < safeIterations; it++) {
+    const vertexCount = Math.floor(positions.length / 3);
+    if (vertexCount < 3) break;
+    if (!indices || indices.length < 3) {
+      const triCount = Math.floor(vertexCount / 3);
+      const seq = new Uint32Array(triCount * 3);
+      for (let i = 0; i < triCount * 3; i++) seq[i] = i;
+      indices = seq;
+    }
+    if (!indices || indices.length < 3) break;
+    const triCount = Math.floor(indices.length / 3);
+    if (triCount <= 0) break;
+
+    const nextPositions: number[] = Array.from(positions);
+    const nextIndices: number[] = [];
+    const midpointMap = new Map<string, number>();
+
+    const midpointIndex = (a: number, b: number) => {
+      const i0 = Math.min(a, b);
+      const i1 = Math.max(a, b);
+      const key = `${i0}|${i1}`;
+      const existing = midpointMap.get(key);
+      if (existing != null) return existing;
+      const a3 = i0 * 3;
+      const b3 = i1 * 3;
+      const mx = (positions[a3] + positions[b3]) * 0.5;
+      const my = (positions[a3 + 1] + positions[b3 + 1]) * 0.5;
+      const mz = (positions[a3 + 2] + positions[b3 + 2]) * 0.5;
+      const idx = Math.floor(nextPositions.length / 3);
+      nextPositions.push(mx, my, mz);
+      midpointMap.set(key, idx);
+      return idx;
+    };
+
+    for (let t = 0; t < triCount; t++) {
+      const base = t * 3;
+      const a = Number(indices[base]);
+      const b = Number(indices[base + 1]);
+      const c = Number(indices[base + 2]);
+      if (
+        !Number.isInteger(a) ||
+        !Number.isInteger(b) ||
+        !Number.isInteger(c) ||
+        a < 0 ||
+        b < 0 ||
+        c < 0 ||
+        a >= vertexCount ||
+        b >= vertexCount ||
+        c >= vertexCount
+      ) {
+        continue;
+      }
+      const ab = midpointIndex(a, b);
+      const bc = midpointIndex(b, c);
+      const ca = midpointIndex(c, a);
+      nextIndices.push(a, ab, ca);
+      nextIndices.push(b, bc, ab);
+      nextIndices.push(c, ca, bc);
+      nextIndices.push(ab, bc, ca);
+    }
+
+    positions = Float32Array.from(nextPositions);
+    indices = Uint32Array.from(nextIndices);
+  }
+
+  return {
+    ...mesh,
+    positions,
+    indices,
+    normals: null,
+    adjacency: null,
+    meanEdgeLength: null,
+    validation: null,
+  };
+}

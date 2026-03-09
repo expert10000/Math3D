@@ -23,6 +23,8 @@ import {
   SurfaceViewer,
   type SurfaceId,
   type ColorMode,
+  type OverlayLabelSet,
+  type OverlayPointSet,
   type OverlayPolylineGroup,
   type ProbeInfo,
 } from "./components/SurfaceViewer";
@@ -120,6 +122,7 @@ import {
   computeAdjacency,
   computeMeanEdgeLength,
   computeVertexNormals,
+  subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
 import type {
@@ -600,6 +603,214 @@ const buildGeometryTransformMatrix = (transform: GeometryObjectTransform) => {
     safeScale
   );
   return mat;
+};
+
+const applyGeometryTransformToPolylineSet = (
+  lines: PolylineSet,
+  transform: GeometryObjectTransform
+): PolylineSet => {
+  if (!lines.length) return [];
+  const mat = buildGeometryTransformMatrix(transform);
+  return lines.map((line) =>
+    line.map((p) => {
+      const v = new THREE.Vector3(p.x, p.y, p.z).applyMatrix4(mat);
+      return { x: v.x, y: v.y, z: v.z };
+    })
+  );
+};
+
+const transformSurfaceMeshByGeometryTransform = (
+  mesh: SurfaceMeshData,
+  transform: GeometryObjectTransform
+): SurfaceMeshData => {
+  const mat = buildGeometryTransformMatrix(transform);
+  const positions = Float32Array.from(mesh.positions);
+  const tmp = new THREE.Vector3();
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    tmp.set(positions[i], positions[i + 1], positions[i + 2]).applyMatrix4(mat);
+    positions[i] = tmp.x;
+    positions[i + 1] = tmp.y;
+    positions[i + 2] = tmp.z;
+  }
+  return {
+    ...mesh,
+    positions,
+    indices: mesh.indices ? Uint32Array.from(mesh.indices) : null,
+    normals: null,
+    uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
+    adjacency: null,
+    meanEdgeLength: null,
+    validation: null,
+  };
+};
+
+type MeshFeatureAnalysis = {
+  sharpEdges: PolylineSet;
+  faceNormals: PolylineSet;
+  dihedralLabels: Array<{ text: string; position: { x: number; y: number; z: number } }>;
+  angleDefects: Array<{ point: { x: number; y: number; z: number }; defect: number }>;
+};
+
+const analyzeMeshFeatures = (
+  mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
+  dihedralThresholdDeg: number,
+  faceNormalScale: number
+): MeshFeatureAnalysis => {
+  const positions = mesh.positions;
+  const indices = mesh.indices ?? null;
+  const vertexCount = Math.floor(positions.length / 3);
+  const triCount = indices ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  if (!vertexCount || !triCount) {
+    return { sharpEdges: [], faceNormals: [], dihedralLabels: [], angleDefects: [] };
+  }
+
+  const getPos = (idx: number) => {
+    const base = idx * 3;
+    return new THREE.Vector3(
+      Number(positions[base] ?? 0),
+      Number(positions[base + 1] ?? 0),
+      Number(positions[base + 2] ?? 0)
+    );
+  };
+  const safeAcos = (value: number) => Math.acos(clampNumber(value, -1, 1));
+
+  const faceNormals: THREE.Vector3[] = new Array(triCount);
+  const faceCenters: THREE.Vector3[] = new Array(triCount);
+  const cornerIndices: Array<[number, number, number]> = [];
+  const vertexAngleSum = new Float64Array(vertexCount);
+  const boundaryVertex = new Uint8Array(vertexCount);
+
+  type EdgeInfo = { a: number; b: number; face0: number; face1: number | null };
+  const edges = new Map<string, EdgeInfo>();
+  const addEdge = (a: number, b: number, faceIndex: number) => {
+    const i0 = Math.min(a, b);
+    const i1 = Math.max(a, b);
+    const key = `${i0}|${i1}`;
+    const existing = edges.get(key);
+    if (!existing) {
+      edges.set(key, { a: i0, b: i1, face0: faceIndex, face1: null });
+      return;
+    }
+    if (existing.face1 == null) existing.face1 = faceIndex;
+  };
+
+  for (let t = 0; t < triCount; t++) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    if (
+      !Number.isInteger(ia) ||
+      !Number.isInteger(ib) ||
+      !Number.isInteger(ic) ||
+      ia < 0 ||
+      ib < 0 ||
+      ic < 0 ||
+      ia >= vertexCount ||
+      ib >= vertexCount ||
+      ic >= vertexCount
+    ) {
+      continue;
+    }
+    cornerIndices.push([ia, ib, ic]);
+
+    const a = getPos(ia);
+    const b = getPos(ib);
+    const c = getPos(ic);
+    const ab = b.clone().sub(a);
+    const ac = c.clone().sub(a);
+    const bc = c.clone().sub(b);
+    const normal = new THREE.Vector3().crossVectors(ab, ac);
+    const nLen = normal.length();
+    if (nLen <= 1e-12 || !Number.isFinite(nLen)) {
+      faceNormals[t] = new THREE.Vector3(0, 1, 0);
+    } else {
+      normal.multiplyScalar(1 / nLen);
+      faceNormals[t] = normal;
+    }
+    faceCenters[t] = a.clone().add(b).add(c).multiplyScalar(1 / 3);
+
+    const abDir = ab.clone().normalize();
+    const acDir = ac.clone().normalize();
+    const baDir = a.clone().sub(b).normalize();
+    const bcDir = bc.clone().normalize();
+    const caDir = a.clone().sub(c).normalize();
+    const cbDir = b.clone().sub(c).normalize();
+    if (Number.isFinite(abDir.lengthSq()) && Number.isFinite(acDir.lengthSq())) {
+      vertexAngleSum[ia] += safeAcos(abDir.dot(acDir));
+    }
+    if (Number.isFinite(baDir.lengthSq()) && Number.isFinite(bcDir.lengthSq())) {
+      vertexAngleSum[ib] += safeAcos(baDir.dot(bcDir));
+    }
+    if (Number.isFinite(caDir.lengthSq()) && Number.isFinite(cbDir.lengthSq())) {
+      vertexAngleSum[ic] += safeAcos(caDir.dot(cbDir));
+    }
+
+    addEdge(ia, ib, t);
+    addEdge(ib, ic, t);
+    addEdge(ic, ia, t);
+  }
+
+  const threshold = Math.max(0, Number(dihedralThresholdDeg) || 0);
+  const sharpEdges: PolylineSet = [];
+  const faceNormalLines: PolylineSet = [];
+  const dihedralLabels: Array<{ text: string; position: { x: number; y: number; z: number } }> = [];
+
+  if (faceNormalScale > 0) {
+    for (let t = 0; t < faceCenters.length; t++) {
+      const center = faceCenters[t];
+      const normal = faceNormals[t];
+      if (!center || !normal) continue;
+      const end = center.clone().addScaledVector(normal, faceNormalScale);
+      faceNormalLines.push(
+        [
+          { x: center.x, y: center.y, z: center.z },
+          { x: end.x, y: end.y, z: end.z },
+        ]
+      );
+    }
+  }
+
+  for (const edge of edges.values()) {
+    const a = getPos(edge.a);
+    const b = getPos(edge.b);
+    const isBoundary = edge.face1 == null;
+    if (isBoundary) {
+      boundaryVertex[edge.a] = 1;
+      boundaryVertex[edge.b] = 1;
+      sharpEdges.push([
+        { x: a.x, y: a.y, z: a.z },
+        { x: b.x, y: b.y, z: b.z },
+      ]);
+      continue;
+    }
+    const n0 = faceNormals[edge.face0];
+    const n1 = faceNormals[edge.face1!];
+    if (!n0 || !n1) continue;
+    const angleDeg = safeAcos(n0.dot(n1)) * RAD_TO_DEG;
+    if (angleDeg >= threshold) {
+      sharpEdges.push([
+        { x: a.x, y: a.y, z: a.z },
+        { x: b.x, y: b.y, z: b.z },
+      ]);
+    }
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    dihedralLabels.push({
+      text: `${angleDeg.toFixed(1)}deg`,
+      position: { x: mid.x, y: mid.y, z: mid.z },
+    });
+  }
+
+  const angleDefects: Array<{ point: { x: number; y: number; z: number }; defect: number }> = [];
+  for (let i = 0; i < vertexCount; i++) {
+    const expected = boundaryVertex[i] ? Math.PI : Math.PI * 2;
+    const defect = expected - vertexAngleSum[i];
+    if (!Number.isFinite(defect) || Math.abs(defect) < 1e-4) continue;
+    const p = getPos(i);
+    angleDefects.push({ point: { x: p.x, y: p.y, z: p.z }, defect });
+  }
+
+  return { sharpEdges, faceNormals: faceNormalLines, dihedralLabels, angleDefects };
 };
 
 const WEIERSTRASS_DEFAULTS = {
@@ -2342,6 +2553,20 @@ const App: React.FC = () => {
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
+  const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
+  const [geometryGizmoMode, setGeometryGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
+  const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<"world" | "local">("world");
+  const [geometrySnapMoveEnabled, setGeometrySnapMoveEnabled] = useState(false);
+  const [geometrySnapMoveStep, setGeometrySnapMoveStep] = useState(0.25);
+  const [geometrySnapRotateEnabled, setGeometrySnapRotateEnabled] = useState(false);
+  const [geometrySnapRotateStepDeg, setGeometrySnapRotateStepDeg] = useState(15);
+  const [geometrySnapScaleEnabled, setGeometrySnapScaleEnabled] = useState(false);
+  const [geometrySnapScaleStep, setGeometrySnapScaleStep] = useState(0.1);
+  const [geometryPolySharpEdgesEnabled, setGeometryPolySharpEdgesEnabled] = useState(false);
+  const [geometryPolyDihedralThresholdDeg, setGeometryPolyDihedralThresholdDeg] = useState(25);
+  const [geometryPolyAngleDefectEnabled, setGeometryPolyAngleDefectEnabled] = useState(false);
+  const [geometryPolyFaceNormalsEnabled, setGeometryPolyFaceNormalsEnabled] = useState(false);
+  const [geometryPolyDihedralReadoutsEnabled, setGeometryPolyDihedralReadoutsEnabled] = useState(false);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -2486,6 +2711,35 @@ const App: React.FC = () => {
     [geometryMode, handleScaleAllGeometryObjects]
   );
 
+  const handleProceduralGizmoTransform = useCallback(
+    (info: {
+      meshKey?: string;
+      position: { x: number; y: number; z: number };
+      rotation: { x: number; y: number; z: number };
+      scale: { x: number; y: number; z: number };
+    }) => {
+      if (!info.meshKey) return;
+      handleUpdateGeometryTransform(info.meshKey, {
+        position: {
+          x: info.position.x,
+          y: info.position.y,
+          z: info.position.z,
+        },
+        rotation: {
+          x: info.rotation.x,
+          y: info.rotation.y,
+          z: info.rotation.z,
+        },
+        scale: {
+          x: Math.max(1e-6, info.scale.x),
+          y: Math.max(1e-6, info.scale.y),
+          z: Math.max(1e-6, info.scale.z),
+        },
+      });
+    },
+    [handleUpdateGeometryTransform]
+  );
+
   const proceduralMeshSet = useMemo(() => {
     const cache = geometryObjectGeomCacheRef.current;
     const activeIds = new Set(geometryObjects.map((o) => o.id));
@@ -2496,7 +2750,15 @@ const App: React.FC = () => {
       }
     }
 
-    const meshes: Array<SurfaceMeshData & { id: string; color?: number; opacity?: number; flatShading?: boolean }> = [];
+    const meshes: Array<
+      SurfaceMeshData & {
+        id: string;
+        color?: number;
+        opacity?: number;
+        flatShading?: boolean;
+        transform: GeometryObjectTransform;
+      }
+    > = [];
     let vertCount = 0;
     let triCount = 0;
     for (const obj of geometryObjects) {
@@ -2514,7 +2776,6 @@ const App: React.FC = () => {
       const smoothNormals =
         obj.type === "polyhedron" ? Boolean(obj.params.smoothNormals ?? true) : true;
       const geom = base.clone();
-      geom.applyMatrix4(buildGeometryTransformMatrix(obj.transform));
       const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
       if (!posAttr || posAttr.count < 3) continue;
       const mesh = computeVertexNormals(
@@ -2540,6 +2801,11 @@ const App: React.FC = () => {
         color: obj.material.color,
         opacity: obj.material.opacity,
         flatShading: !smoothNormals,
+        transform: {
+          position: { ...obj.transform.position },
+          rotation: { ...obj.transform.rotation },
+          scale: { ...obj.transform.scale },
+        },
       });
     }
 
@@ -2559,7 +2825,10 @@ const App: React.FC = () => {
       const edgeDisplay = isPoly ? Boolean(obj.params.edgeDisplay ?? false) : false;
       if (!selected && !edgeDisplay) continue;
       const triangulate = isPoly ? Boolean(obj.params.triangulate ?? true) : true;
-      const lines = buildMeshEdgePolylines(mesh, triangulate, 2);
+      const lines = applyGeometryTransformToPolylineSet(
+        buildMeshEdgePolylines(mesh, triangulate, 2),
+        obj.transform
+      );
       if (!lines.length) continue;
       if (edgeDisplay) edgeLines.push(...lines);
       if (selected) selectedLines.push(...lines);
@@ -2584,6 +2853,101 @@ const App: React.FC = () => {
     }
     return groups.length ? groups : null;
   }, [geometryMode, geometryObjects, geometrySelectedObjectId, proceduralMeshSet.meshes]);
+
+  const geometryProceduralFeatureOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural" || !geometrySelectedObjectId) {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
+    const selectedObj = geometryObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null;
+    if (!selectedObj || selectedObj.type !== "polyhedron") {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
+    const selectedMesh = proceduralMeshSet.meshes.find((mesh) => mesh.id === selectedObj.id) ?? null;
+    if (!selectedMesh) return { groups: null, pointSets: null, labelSets: null };
+
+    const transformedMesh = transformSurfaceMeshByGeometryTransform(selectedMesh, selectedObj.transform);
+    const selectedRadius = Number(selectedObj.params.radius ?? 1);
+    const normalScale = Math.max(0.04, Number.isFinite(selectedRadius) ? selectedRadius : 1) * 0.2;
+    const analysis = analyzeMeshFeatures(
+      transformedMesh,
+      geometryPolyDihedralThresholdDeg,
+      geometryPolyFaceNormalsEnabled ? normalScale : 0
+    );
+
+    const groups: OverlayPolylineGroup[] = [];
+    if (geometryPolySharpEdgesEnabled && analysis.sharpEdges.length) {
+      groups.push({
+        lines: analysis.sharpEdges,
+        color: 0xf43f5e,
+        opacity: 0.95,
+        radiusScale: 2.1,
+      });
+    }
+    if (geometryPolyFaceNormalsEnabled && analysis.faceNormals.length) {
+      groups.push({
+        lines: analysis.faceNormals,
+        color: 0x0ea5e9,
+        opacity: 0.85,
+        radiusScale: 1.05,
+      });
+    }
+
+    const pointSets: OverlayPointSet[] = [];
+    if (geometryPolyAngleDefectEnabled && analysis.angleDefects.length) {
+      const positive = analysis.angleDefects.filter((entry) => entry.defect >= 0).map((entry) => entry.point);
+      const negative = analysis.angleDefects.filter((entry) => entry.defect < 0).map((entry) => entry.point);
+      if (positive.length) {
+        pointSets.push({
+          points: positive,
+          color: 0x16a34a,
+          size: 0.06,
+          opacity: 0.95,
+        });
+      }
+      if (negative.length) {
+        pointSets.push({
+          points: negative,
+          color: 0xdc2626,
+          size: 0.06,
+          opacity: 0.95,
+        });
+      }
+    }
+
+    let labelSets: OverlayLabelSet[] | null = null;
+    if (geometryPolyDihedralReadoutsEnabled && analysis.dihedralLabels.length) {
+      const labels = analysis.dihedralLabels.slice(0, 220).map((entry) => ({
+        text: entry.text,
+        position: entry.position,
+        color: 0x1f2937,
+        size: 0.9,
+        opacity: 0.95,
+      }));
+      if (labels.length) {
+        labelSets = [{ labels, size: 0.9 }];
+      }
+    }
+
+    return {
+      groups: groups.length ? groups : null,
+      pointSets: pointSets.length ? pointSets : null,
+      labelSets,
+    };
+  }, [
+    geometryMode,
+    geometryObjects,
+    geometrySelectedObjectId,
+    proceduralMeshSet.meshes,
+    geometryPolySharpEdgesEnabled,
+    geometryPolyDihedralThresholdDeg,
+    geometryPolyAngleDefectEnabled,
+    geometryPolyFaceNormalsEnabled,
+    geometryPolyDihedralReadoutsEnabled,
+  ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryScene: GeometryScene = geometryMode === "demo" ? geometryDemo.scene : proceduralScene;
@@ -3179,6 +3543,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfaceMeshWeldTolerance, setSurfaceMeshWeldTolerance] = useState(1e-4);
   const [surfaceMeshWeldBusy, setSurfaceMeshWeldBusy] = useState(false);
   const [surfaceMeshWeldError, setSurfaceMeshWeldError] = useState<string | null>(null);
+  const [surfaceMeshSubdivideIterations, setSurfaceMeshSubdivideIterations] = useState(1);
+  const [surfaceMeshNormalizeDiag, setSurfaceMeshNormalizeDiag] = useState(2);
+  const [surfaceMeshOpsError, setSurfaceMeshOpsError] = useState<string | null>(null);
   const [vtkBusy, setVtkBusy] = useState(false);
   const [vtkError, setVtkError] = useState<string | null>(null);
   const [vtkDecimateReduction, setVtkDecimateReduction] = useState(0.5);
@@ -3211,6 +3578,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       setGeometryBakeError("Selected object is hidden or has no mesh.");
       return;
     }
+    const transformed = transformSurfaceMeshByGeometryTransform(mesh, obj.transform);
     const source: SurfaceMeshSource = {
       kind: "geometryObject",
       objectId: obj.id,
@@ -3225,10 +3593,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     };
     const baked: SurfaceMeshData = {
       label: `${obj.name} (baked)`,
-      positions: Float32Array.from(mesh.positions),
-      indices: mesh.indices ? Uint32Array.from(mesh.indices) : null,
-      normals: mesh.normals ? Float32Array.from(mesh.normals) : null,
-      uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
+      positions: Float32Array.from(transformed.positions),
+      indices: transformed.indices ? Uint32Array.from(transformed.indices) : null,
+      normals: transformed.normals ? Float32Array.from(transformed.normals) : null,
+      uvs: transformed.uvs ? Float32Array.from(transformed.uvs) : null,
       source,
     };
     setMeshDataset(applySurfaceMeshOps(baked));
@@ -3251,10 +3619,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
 
     const merged = mergeMeshData(
-      visibleMeshes.map((entry) => ({
-        positions: entry.mesh.positions,
-        indices: entry.mesh.indices,
-      }))
+      visibleMeshes.map((entry) => {
+        const transformed = transformSurfaceMeshByGeometryTransform(entry.mesh, entry.obj.transform);
+        return {
+          positions: transformed.positions,
+          indices: transformed.indices,
+        };
+      })
     );
     const source: SurfaceMeshSource = {
       kind: "geometryObject",
@@ -8042,6 +8413,194 @@ case "mobius":
     }
   }, [handleChangeViewerKind, surfaceMeshWeldBusy, surfaceMeshData, surfaceMeshWeldTolerance, setMeshDataset]);
 
+  const handleTriangulateSurfaceMesh = useCallback(() => {
+    setSurfaceMeshOpsError(null);
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshOpsError("Surface mesh not ready yet.");
+      return;
+    }
+    const vertexCount = Math.floor(surfaceMeshData.positions.length / 3);
+    if (vertexCount < 3) {
+      setSurfaceMeshOpsError("Surface mesh has no triangles.");
+      return;
+    }
+    const triCount = Math.floor(vertexCount / 3);
+    const sequential = new Uint32Array(triCount * 3);
+    for (let i = 0; i < triCount * 3; i++) sequential[i] = i;
+    const next: SurfaceMeshData = {
+      ...surfaceMeshData,
+      label: `${surfaceMeshData.label ?? "Surface mesh"} (triangulated)`,
+      positions: Float32Array.from(surfaceMeshData.positions),
+      indices:
+        surfaceMeshData.indices && surfaceMeshData.indices.length >= 3
+          ? Uint32Array.from(surfaceMeshData.indices)
+          : sequential,
+      normals: null,
+      adjacency: null,
+      meanEdgeLength: null,
+      validation: null,
+    };
+    setMeshDataset(applySurfaceMeshOps(next));
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+
+  const handleRecomputeSurfaceMeshNormals = useCallback(() => {
+    setSurfaceMeshOpsError(null);
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshOpsError("Surface mesh not ready yet.");
+      return;
+    }
+    const next = computeVertexNormals({
+      ...surfaceMeshData,
+      positions: Float32Array.from(surfaceMeshData.positions),
+      indices: surfaceMeshData.indices ? Uint32Array.from(surfaceMeshData.indices) : null,
+      uvs: surfaceMeshData.uvs ? Float32Array.from(surfaceMeshData.uvs) : null,
+      normals: null,
+      adjacency: null,
+      meanEdgeLength: null,
+      validation: null,
+      label: `${surfaceMeshData.label ?? "Surface mesh"} (normals)`,
+    });
+    setMeshDataset(applySurfaceMeshOps(next));
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+
+  const handleSubdivideSurfaceMeshOp = useCallback(() => {
+    setSurfaceMeshOpsError(null);
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshOpsError("Surface mesh not ready yet.");
+      return;
+    }
+    const iterations = clampNumber(Math.round(surfaceMeshSubdivideIterations || 1), 1, 4);
+    try {
+      const next = subdivideSurfaceMesh(
+        {
+          ...surfaceMeshData,
+          positions: Float32Array.from(surfaceMeshData.positions),
+          indices: surfaceMeshData.indices ? Uint32Array.from(surfaceMeshData.indices) : null,
+          uvs: surfaceMeshData.uvs ? Float32Array.from(surfaceMeshData.uvs) : null,
+          normals: null,
+          adjacency: null,
+          meanEdgeLength: null,
+          validation: null,
+          label: `${surfaceMeshData.label ?? "Surface mesh"} (subdiv ${iterations})`,
+        },
+        iterations
+      );
+      setMeshDataset(applySurfaceMeshOps(next));
+      handleChangeViewerKind("mesh");
+    } catch (err: any) {
+      setSurfaceMeshOpsError(err?.message ?? "Subdivide failed.");
+    }
+  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshSubdivideIterations]);
+
+  const handleCenterSurfaceMesh = useCallback(() => {
+    setSurfaceMeshOpsError(null);
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshOpsError("Surface mesh not ready yet.");
+      return;
+    }
+    const positions = Float32Array.from(surfaceMeshData.positions);
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i + 2 < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      const z = positions[i + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+      setSurfaceMeshOpsError("Mesh bounds are invalid.");
+      return;
+    }
+    const cx = (minX + maxX) * 0.5;
+    const cy = (minY + maxY) * 0.5;
+    const cz = (minZ + maxZ) * 0.5;
+    for (let i = 0; i + 2 < positions.length; i += 3) {
+      positions[i] -= cx;
+      positions[i + 1] -= cy;
+      positions[i + 2] -= cz;
+    }
+    const next: SurfaceMeshData = {
+      ...surfaceMeshData,
+      label: `${surfaceMeshData.label ?? "Surface mesh"} (centered)`,
+      positions,
+      indices: surfaceMeshData.indices ? Uint32Array.from(surfaceMeshData.indices) : null,
+      uvs: surfaceMeshData.uvs ? Float32Array.from(surfaceMeshData.uvs) : null,
+      normals: null,
+      adjacency: null,
+      meanEdgeLength: null,
+      validation: null,
+    };
+    setMeshDataset(applySurfaceMeshOps(next));
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData]);
+
+  const handleNormalizeSurfaceMeshScale = useCallback(() => {
+    setSurfaceMeshOpsError(null);
+    if (!surfaceMeshData?.positions?.length) {
+      setSurfaceMeshOpsError("Surface mesh not ready yet.");
+      return;
+    }
+    const targetDiag = Math.max(1e-3, Number(surfaceMeshNormalizeDiag) || 2);
+    const positions = Float32Array.from(surfaceMeshData.positions);
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i + 2 < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      const z = positions[i + 2];
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+      setSurfaceMeshOpsError("Mesh bounds are invalid.");
+      return;
+    }
+    const dx = maxX - minX;
+    const dy = maxY - minY;
+    const dz = maxZ - minZ;
+    const diag = Math.hypot(dx, dy, dz);
+    if (!Number.isFinite(diag) || diag <= 1e-12) {
+      setSurfaceMeshOpsError("Mesh diagonal is too small.");
+      return;
+    }
+    const scale = targetDiag / diag;
+    for (let i = 0; i < positions.length; i++) positions[i] *= scale;
+    const next: SurfaceMeshData = {
+      ...surfaceMeshData,
+      label: `${surfaceMeshData.label ?? "Surface mesh"} (normalized)`,
+      positions,
+      indices: surfaceMeshData.indices ? Uint32Array.from(surfaceMeshData.indices) : null,
+      uvs: surfaceMeshData.uvs ? Float32Array.from(surfaceMeshData.uvs) : null,
+      normals: null,
+      adjacency: null,
+      meanEdgeLength: null,
+      validation: null,
+    };
+    setMeshDataset(applySurfaceMeshOps(next));
+    handleChangeViewerKind("mesh");
+  }, [handleChangeViewerKind, setMeshDataset, surfaceMeshData, surfaceMeshNormalizeDiag]);
+
   const buildActiveMeshLabel = useCallback(() => {
     const eqMeta = SURFACES_EQ_META.find((m) => m.id === activeEqSurfaceId);
     const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramSurfaceId);
@@ -12276,10 +12835,20 @@ case "mobius":
                   surfaceMeshWeldTolerance={surfaceMeshWeldTolerance}
                   surfaceMeshWeldBusy={surfaceMeshWeldBusy}
                   surfaceMeshWeldError={surfaceMeshWeldError}
+                  surfaceMeshSubdivideIterations={surfaceMeshSubdivideIterations}
+                  surfaceMeshNormalizeDiag={surfaceMeshNormalizeDiag}
+                  surfaceMeshOpsError={surfaceMeshOpsError}
                   onExportSurfaceMeshObj={handleExportSurfaceMeshObj}
                   onExportSurfaceMeshGlb={handleExportSurfaceMeshGlb}
                   onChangeSurfaceMeshWeldTolerance={setSurfaceMeshWeldTolerance}
                   onWeldSurfaceMesh={handleWeldSurfaceMesh}
+                  onTriangulateSurfaceMesh={handleTriangulateSurfaceMesh}
+                  onRecomputeSurfaceMeshNormals={handleRecomputeSurfaceMeshNormals}
+                  onChangeSurfaceMeshSubdivideIterations={setSurfaceMeshSubdivideIterations}
+                  onSubdivideSurfaceMesh={handleSubdivideSurfaceMeshOp}
+                  onCenterSurfaceMesh={handleCenterSurfaceMesh}
+                  onChangeSurfaceMeshNormalizeDiag={setSurfaceMeshNormalizeDiag}
+                  onNormalizeSurfaceMeshScale={handleNormalizeSurfaceMeshScale}
                   implicitBakeResolution={implicitBakeResolution}
                   implicitBakeBounds={safeImplicitBakeBounds}
                   implicitBakeBusy={implicitBakeBusy}
@@ -13491,6 +14060,104 @@ case "mobius":
                       )}
                     </div>
 
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gizmo + snapping</div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={geometryGizmoEnabled}
+                          onChange={(e) => setGeometryGizmoEnabled(e.target.checked)}
+                        />
+                        Enable transform gizmo
+                      </label>
+                      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                        <label style={{ fontSize: 11 }}>
+                          Mode
+                          <select
+                            value={geometryGizmoMode}
+                            onChange={(e) =>
+                              setGeometryGizmoMode(e.target.value as "translate" | "rotate" | "scale")
+                            }
+                            style={{ marginLeft: 6 }}
+                          >
+                            <option value="translate">Move</option>
+                            <option value="rotate">Rotate</option>
+                            <option value="scale">Scale</option>
+                          </select>
+                        </label>
+                        <label style={{ fontSize: 11 }}>
+                          Space
+                          <select
+                            value={geometryGizmoSpace}
+                            onChange={(e) => setGeometryGizmoSpace(e.target.value as "world" | "local")}
+                            style={{ marginLeft: 6 }}
+                          >
+                            <option value="world">World</option>
+                            <option value="local">Local</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometrySnapMoveEnabled}
+                            onChange={(e) => setGeometrySnapMoveEnabled(e.target.checked)}
+                          />
+                          Move snap
+                          <input
+                            type="number"
+                            min={0.001}
+                            step={0.05}
+                            value={geometrySnapMoveStep}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              if (Number.isFinite(v)) setGeometrySnapMoveStep(Math.max(0.001, v));
+                            }}
+                            style={{ width: 70 }}
+                          />
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometrySnapRotateEnabled}
+                            onChange={(e) => setGeometrySnapRotateEnabled(e.target.checked)}
+                          />
+                          Angle snap (deg)
+                          <input
+                            type="number"
+                            min={0.5}
+                            step={0.5}
+                            value={geometrySnapRotateStepDeg}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              if (Number.isFinite(v)) setGeometrySnapRotateStepDeg(Math.max(0.5, v));
+                            }}
+                            style={{ width: 70 }}
+                          />
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometrySnapScaleEnabled}
+                            onChange={(e) => setGeometrySnapScaleEnabled(e.target.checked)}
+                          />
+                          Scale snap
+                          <input
+                            type="number"
+                            min={0.001}
+                            step={0.05}
+                            value={geometrySnapScaleStep}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              if (Number.isFinite(v)) setGeometrySnapScaleStep(Math.max(0.001, v));
+                            }}
+                            style={{ width: 70 }}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
                     {geometrySelectedObject && (
                       <>
                         <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
@@ -13862,6 +14529,63 @@ case "mobius":
                           </div>
                         )}
 
+                        {geometrySelectedObject.type === "polyhedron" && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Feature overlays</div>
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={geometryPolySharpEdgesEnabled}
+                                  onChange={(e) => setGeometryPolySharpEdgesEnabled(e.target.checked)}
+                                />
+                                Sharp edges (dihedral)
+                              </label>
+                              <label style={{ fontSize: 11 }}>
+                                Dihedral threshold (deg)
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={180}
+                                  step={1}
+                                  value={geometryPolyDihedralThresholdDeg}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v)) {
+                                      setGeometryPolyDihedralThresholdDeg(clampNumber(v, 0, 180));
+                                    }
+                                  }}
+                                  style={{ width: 80, marginLeft: 6 }}
+                                />
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={geometryPolyAngleDefectEnabled}
+                                  onChange={(e) => setGeometryPolyAngleDefectEnabled(e.target.checked)}
+                                />
+                                Vertex angle defect
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={geometryPolyFaceNormalsEnabled}
+                                  onChange={(e) => setGeometryPolyFaceNormalsEnabled(e.target.checked)}
+                                />
+                                Face normals
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={geometryPolyDihedralReadoutsEnabled}
+                                  onChange={(e) => setGeometryPolyDihedralReadoutsEnabled(e.target.checked)}
+                                />
+                                Dihedral readouts
+                              </label>
+                            </div>
+                          </div>
+                        )}
+
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Transform</div>
                         <div
                           style={{
@@ -14113,18 +14837,41 @@ case "mobius":
                 <GeometryViewer
                   scene={geometryScene}
                   meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
-                  extraOverlayPolylineGroups={geometryMode === "procedural" ? geometryProceduralOverlayGroups : null}
+                  extraOverlayPolylineGroups={
+                    geometryMode === "procedural"
+                      ? [
+                          ...(geometryProceduralOverlayGroups ?? []),
+                          ...(geometryProceduralFeatureOverlays.groups ?? []),
+                        ]
+                      : null
+                  }
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
                   highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
-                  highlightPointSets={geometryMode === "demo" ? geometryHighlightPointSets : null}
-                  overlayLabelSets={geometryMode === "demo" ? geometryLabelSets : null}
-                  dragEnabled={geometryMode === "procedural"}
+                  highlightPointSets={
+                    geometryMode === "demo"
+                      ? geometryHighlightPointSets
+                      : geometryProceduralFeatureOverlays.pointSets
+                  }
+                  overlayLabelSets={
+                    geometryMode === "demo"
+                      ? geometryLabelSets
+                      : geometryProceduralFeatureOverlays.labelSets
+                  }
+                  dragEnabled={geometryMode === "procedural" && !geometryGizmoEnabled}
                   onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
                   onDrag={geometryMode === "procedural" ? handleProceduralDrag : undefined}
                   onDragEnd={geometryMode === "procedural" ? handleProceduralDragEnd : undefined}
                   onShiftWheelScale={geometryMode === "procedural" ? handleGeometryShiftWheelScale : undefined}
+                  gizmoEnabled={geometryMode === "procedural" && geometryGizmoEnabled}
+                  gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
+                  gizmoMode={geometryGizmoMode}
+                  gizmoSpace={geometryGizmoSpace}
+                  gizmoTranslationSnap={geometrySnapMoveEnabled ? geometrySnapMoveStep : null}
+                  gizmoRotationSnapDeg={geometrySnapRotateEnabled ? geometrySnapRotateStepDeg : null}
+                  gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
+                  onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={geometryMode === "demo" || geometryMode === "procedural"}
                   onPick={geometryMode === "demo" ? handleGeometryPick : handleProceduralPick}
                 />
@@ -14807,10 +15554,20 @@ type SurfacesLeftPanelProps = {
   surfaceMeshWeldTolerance: number;
   surfaceMeshWeldBusy: boolean;
   surfaceMeshWeldError: string | null;
+  surfaceMeshSubdivideIterations: number;
+  surfaceMeshNormalizeDiag: number;
+  surfaceMeshOpsError: string | null;
   onExportSurfaceMeshObj: () => void;
   onExportSurfaceMeshGlb: () => void;
   onChangeSurfaceMeshWeldTolerance: (v: number) => void;
   onWeldSurfaceMesh: () => void;
+  onTriangulateSurfaceMesh: () => void;
+  onRecomputeSurfaceMeshNormals: () => void;
+  onChangeSurfaceMeshSubdivideIterations: (v: number) => void;
+  onSubdivideSurfaceMesh: () => void;
+  onCenterSurfaceMesh: () => void;
+  onChangeSurfaceMeshNormalizeDiag: (v: number) => void;
+  onNormalizeSurfaceMeshScale: () => void;
   implicitBakeResolution: number;
   implicitBakeBounds: ImplicitBakeBounds;
   implicitBakeBusy: boolean;
@@ -15249,10 +16006,20 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshWeldTolerance,
   surfaceMeshWeldBusy,
   surfaceMeshWeldError,
+  surfaceMeshSubdivideIterations,
+  surfaceMeshNormalizeDiag,
+  surfaceMeshOpsError,
   onExportSurfaceMeshObj,
   onExportSurfaceMeshGlb,
   onChangeSurfaceMeshWeldTolerance,
   onWeldSurfaceMesh,
+  onTriangulateSurfaceMesh,
+  onRecomputeSurfaceMeshNormals,
+  onChangeSurfaceMeshSubdivideIterations,
+  onSubdivideSurfaceMesh,
+  onCenterSurfaceMesh,
+  onChangeSurfaceMeshNormalizeDiag,
+  onNormalizeSurfaceMeshScale,
   implicitBakeResolution,
   implicitBakeBounds,
   implicitBakeBusy,
@@ -17844,6 +18611,65 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
             {surfaceMeshWeldError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshWeldError}</div>
+            )}
+
+            <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Basic mesh ops</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              <button type="button" onClick={onTriangulateSurfaceMesh} disabled={!meshReady}>
+                Triangulate
+              </button>
+              <button type="button" onClick={onRecomputeSurfaceMeshNormals} disabled={!meshReady}>
+                Recompute normals
+              </button>
+              <button type="button" onClick={onCenterSurfaceMesh} disabled={!meshReady}>
+                Center
+              </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 11 }}>
+                Subdivide
+                <input
+                  type="number"
+                  min={1}
+                  max={4}
+                  step={1}
+                  value={surfaceMeshSubdivideIterations}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) {
+                      onChangeSurfaceMeshSubdivideIterations(clampNumber(Math.round(v), 1, 4));
+                    }
+                  }}
+                  style={{ width: 60, marginLeft: 6 }}
+                />
+              </label>
+              <button type="button" onClick={onSubdivideSurfaceMesh} disabled={!meshReady}>
+                Subdivide
+              </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+              <label style={{ fontSize: 11 }}>
+                Normalize diag
+                <input
+                  type="number"
+                  min={0.001}
+                  step={0.1}
+                  value={surfaceMeshNormalizeDiag}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    if (Number.isFinite(v)) {
+                      onChangeSurfaceMeshNormalizeDiag(Math.max(0.001, v));
+                    }
+                  }}
+                  style={{ width: 80, marginLeft: 6 }}
+                />
+              </label>
+              <button type="button" onClick={onNormalizeSurfaceMeshScale} disabled={!meshReady}>
+                Normalize scale
+              </button>
+            </div>
+            {surfaceMeshOpsError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{surfaceMeshOpsError}</div>
             )}
           </>
         )}

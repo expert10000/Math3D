@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
 import { MarchingCubes } from "three/examples/jsm/objects/MarchingCubes.js";
 import { buildGraphContours } from "../math/contours";
@@ -65,6 +66,43 @@ type SurfaceMeshOverride = {
   opacity?: number;
   wireframe?: boolean;
   flatShading?: boolean;
+  transform?: {
+    position?: { x: number; y: number; z: number };
+    rotation?: { x: number; y: number; z: number };
+    scale?: { x: number; y: number; z: number };
+  };
+};
+
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
+
+const applySurfaceMeshOverrideTransform = (
+  object: THREE.Object3D,
+  transform?: {
+    position?: { x: number; y: number; z: number };
+    rotation?: { x: number; y: number; z: number };
+    scale?: { x: number; y: number; z: number };
+  }
+) => {
+  const position = transform?.position;
+  const rotation = transform?.rotation;
+  const scale = transform?.scale;
+  object.position.set(
+    Number.isFinite(position?.x) ? Number(position?.x) : 0,
+    Number.isFinite(position?.y) ? Number(position?.y) : 0,
+    Number.isFinite(position?.z) ? Number(position?.z) : 0
+  );
+  object.rotation.set(
+    (Number.isFinite(rotation?.x) ? Number(rotation?.x) : 0) * DEG_TO_RAD,
+    (Number.isFinite(rotation?.y) ? Number(rotation?.y) : 0) * DEG_TO_RAD,
+    (Number.isFinite(rotation?.z) ? Number(rotation?.z) : 0) * DEG_TO_RAD
+  );
+  object.scale.set(
+    Math.max(1e-6, Number.isFinite(scale?.x) ? Number(scale?.x) : 1),
+    Math.max(1e-6, Number.isFinite(scale?.y) ? Number(scale?.y) : 1),
+    Math.max(1e-6, Number.isFinite(scale?.z) ? Number(scale?.z) : 1)
+  );
+  object.updateMatrixWorld(true);
 };
 
 export type OverlayPointSet = {
@@ -997,6 +1035,19 @@ type Props = {
     meshKey?: string;
   }) => void;
   onShiftWheelScale?: (info: { delta: number }) => void;
+  gizmoEnabled?: boolean;
+  gizmoMeshKey?: string | null;
+  gizmoMode?: "translate" | "rotate" | "scale";
+  gizmoSpace?: "world" | "local";
+  gizmoTranslationSnap?: number | null;
+  gizmoRotationSnapDeg?: number | null;
+  gizmoScaleSnap?: number | null;
+  onGizmoTransform?: (info: {
+    meshKey?: string;
+    position: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+    scale: { x: number; y: number; z: number };
+  }) => void;
 
   onSetGraphExpr?: (expr: string) => void;
   onSetImplicitExpr?: (expr: string) => void;
@@ -1147,6 +1198,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onDrag,
     onDragEnd,
     onShiftWheelScale,
+    gizmoEnabled = false,
+    gizmoMeshKey = null,
+    gizmoMode = "translate",
+    gizmoSpace = "world",
+    gizmoTranslationSnap = null,
+    gizmoRotationSnapDeg = null,
+    gizmoScaleSnap = null,
+    onGizmoTransform,
 
     onSetGraphExpr,
     onSetImplicitExpr,
@@ -1195,6 +1254,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onDragRef = useRef(onDrag);
   const onDragEndRef = useRef(onDragEnd);
   const onShiftWheelScaleRef = useRef(onShiftWheelScale);
+  const onGizmoTransformRef = useRef(onGizmoTransform);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
@@ -1261,6 +1321,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
+  const transformControlsRef = useRef<TransformControls | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -1322,6 +1383,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onShiftWheelScaleRef.current = onShiftWheelScale;
   }, [onShiftWheelScale]);
+  useEffect(() => {
+    onGizmoTransformRef.current = onGizmoTransform;
+  }, [onGizmoTransform]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -2480,8 +2544,29 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     controls.target.set(0, 0, 0);
     controls.screenSpacePanning = true;
 
+    const transformControls = new TransformControls(camera, renderer.domElement);
+    transformControls.enabled = false;
+    transformControls.visible = false;
+    transformControls.setMode(gizmoMode);
+    transformControls.setSpace(gizmoSpace);
+    transformControls.setTranslationSnap(
+      gizmoTranslationSnap != null && Number.isFinite(gizmoTranslationSnap) && gizmoTranslationSnap > 0
+        ? gizmoTranslationSnap
+        : null
+    );
+    transformControls.setRotationSnap(
+      gizmoRotationSnapDeg != null && Number.isFinite(gizmoRotationSnapDeg) && gizmoRotationSnapDeg > 0
+        ? gizmoRotationSnapDeg * DEG_TO_RAD
+        : null
+    );
+    transformControls.setScaleSnap(
+      gizmoScaleSnap != null && Number.isFinite(gizmoScaleSnap) && gizmoScaleSnap > 0 ? gizmoScaleSnap : null
+    );
+    scene.add(transformControls);
+
     cameraRef.current = camera;
     controlsRef.current = controls;
+    transformControlsRef.current = transformControls;
     zoomRestoreRef.current = null;
     zoomedToRegionRef.current = false;
     zoomTogglePrevRef.current = zoomToRegion;
@@ -2522,6 +2607,39 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       controls.addEventListener("change", emitCameraSync);
       emitCameraSync();
     }
+
+    const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
+      const dragging = !!event?.value;
+      const ctrls = controlsRef.current;
+      if (ctrls) ctrls.enabled = !dragging;
+    };
+    const handleGizmoObjectChange = () => {
+      const tc = transformControlsRef.current;
+      const cb = onGizmoTransformRef.current;
+      const target = tc?.object;
+      if (!cb || !target) return;
+      const meshKey = (target as any)?.userData?.__surfaceMeshOverrideId;
+      cb({
+        meshKey: meshKey != null ? String(meshKey) : undefined,
+        position: {
+          x: target.position.x,
+          y: target.position.y,
+          z: target.position.z,
+        },
+        rotation: {
+          x: target.rotation.x * RAD_TO_DEG,
+          y: target.rotation.y * RAD_TO_DEG,
+          z: target.rotation.z * RAD_TO_DEG,
+        },
+        scale: {
+          x: target.scale.x,
+          y: target.scale.y,
+          z: target.scale.z,
+        },
+      });
+    };
+    transformControls.addEventListener("dragging-changed", handleGizmoDraggingChanged);
+    transformControls.addEventListener("objectChange", handleGizmoObjectChange);
 
     if (lightPreset === "contrast") {
       scene.add(new THREE.AmbientLight(0xffffff, 0.18));
@@ -2664,6 +2782,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         wireframe: override.wireframe,
         flatShading: override.flatShading,
       };
+      applySurfaceMeshOverrideTransform(mesh, override.transform);
       return mesh;
     };
 
@@ -3411,6 +3530,11 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         )
           return;
 
+        const activeTransformControls = transformControlsRef.current;
+        if (activeTransformControls?.enabled && (activeTransformControls as any).dragging) {
+          return;
+        }
+
         console.log("[SurfaceViewer] pointer down", {
           selectRegionEnabled: selectRegionEnabledRef.current,
           probeEnabled,
@@ -3825,6 +3949,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (isCameraLeader && onCameraSync) {
         controls.removeEventListener("change", emitCameraSync);
       }
+      transformControls.removeEventListener("dragging-changed", handleGizmoDraggingChanged);
+      transformControls.removeEventListener("objectChange", handleGizmoObjectChange);
+      transformControls.detach();
+      scene.remove(transformControls);
+      transformControls.dispose();
+      if (transformControlsRef.current === transformControls) transformControlsRef.current = null;
       controls.dispose();
 
       viewGizmo.traverse(disposeObject3D);
@@ -3972,6 +4102,50 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   ]);
 
   useEffect(() => {
+    const tc = transformControlsRef.current;
+    if (!tc) return;
+    tc.setMode(gizmoMode);
+    tc.setSpace(gizmoSpace);
+    tc.setTranslationSnap(
+      gizmoTranslationSnap != null && Number.isFinite(gizmoTranslationSnap) && gizmoTranslationSnap > 0
+        ? gizmoTranslationSnap
+        : null
+    );
+    tc.setRotationSnap(
+      gizmoRotationSnapDeg != null && Number.isFinite(gizmoRotationSnapDeg) && gizmoRotationSnapDeg > 0
+        ? gizmoRotationSnapDeg * DEG_TO_RAD
+        : null
+    );
+    tc.setScaleSnap(
+      gizmoScaleSnap != null && Number.isFinite(gizmoScaleSnap) && gizmoScaleSnap > 0 ? gizmoScaleSnap : null
+    );
+  }, [gizmoMode, gizmoSpace, gizmoTranslationSnap, gizmoRotationSnapDeg, gizmoScaleSnap]);
+
+  useEffect(() => {
+    const tc = transformControlsRef.current;
+    tc?.detach();
+    if (!tc) return;
+    tc.enabled = false;
+    tc.visible = false;
+    if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
+    const root = surfaceObjRef.current;
+    if (!root) return;
+
+    let target: THREE.Object3D | null = null;
+    root.traverse((obj) => {
+      if (target) return;
+      const id = (obj as any)?.userData?.__surfaceMeshOverrideId;
+      if (id != null && String(id) === gizmoMeshKey && (obj as any)?.isMesh) {
+        target = obj;
+      }
+    });
+    if (!target) return;
+    tc.attach(target);
+    tc.enabled = true;
+    tc.visible = true;
+  }, [gizmoEnabled, gizmoMeshKey, surfaceId, sceneEpoch, surfaceMeshOverride, surfaceMeshOverrides]);
+
+  useEffect(() => {
     if (surfaceId !== "surface_mesh") return;
     const scene = sceneRef.current;
     const surfaceObj = surfaceObjRef.current;
@@ -4040,6 +4214,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         wireframe: override.wireframe,
         flatShading: override.flatShading,
       };
+      applySurfaceMeshOverrideTransform(mesh, override.transform);
       return mesh;
     };
 
@@ -4147,6 +4322,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
         m.needsUpdate = true;
       }
+      applySurfaceMeshOverrideTransform(mesh, override.transform);
     };
 
     const meshById = new Map<string, THREE.Mesh>();
@@ -4274,6 +4450,28 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       existingBoxHelper.traverse(disposeObject3D);
       bboxHelperRef.current = null;
     }
+
+    const tc = transformControlsRef.current;
+    tc?.detach();
+    if (tc) {
+      tc.enabled = false;
+      tc.visible = false;
+      if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
+        let target: THREE.Object3D | null = null;
+        activeSurfaceObj.traverse((obj) => {
+          if (target) return;
+          const id = (obj as any)?.userData?.__surfaceMeshOverrideId;
+          if (id != null && String(id) === gizmoMeshKey && (obj as any)?.isMesh) {
+            target = obj;
+          }
+        });
+        if (target) {
+          tc.attach(target);
+          tc.enabled = true;
+          tc.visible = true;
+        }
+      }
+    }
   }, [
     surfaceId,
     surfaceMeshOverride,
@@ -4288,6 +4486,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     sampleMaxPoints,
     showBoundingBox,
     onSampleSet,
+    gizmoEnabled,
+    gizmoMeshKey,
   ]);
 
   useEffect(() => {

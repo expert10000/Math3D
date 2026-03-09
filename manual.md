@@ -88,6 +88,21 @@
 - Inspector now shows/edits params + transform + material, and shows last pick readout in `App.tsx`.
 - Per-object material/flat shading is respected in mesh override rendering in `SurfaceViewer.tsx`.
 
+### PR2.4 — Gizmo + snapping
+- Added move/rotate/scale viewport gizmo for procedural geometry objects.
+- Added optional snapping controls for translation step, rotation angle, and scale step.
+- Gizmo updates the selected object transform live and stays synced with inspector transform fields.
+
+### PR3 (mesh ops) — Basic mesh ops on baked meshes
+- Added direct mesh tools in the Surface mesh panel: `Triangulate`, `Recompute normals`, `Subdivide`, `Center`, `Normalize scale`.
+- Existing `Weld vertices` remains available in the same workflow.
+- Subdivide uses simple midpoint triangle subdivision, then recomputes mesh-derived data (adjacency/mean edge length/validation).
+
+### PR3.5 — Edge/feature visualization for polyhedra
+- Added polyhedron feature overlays in geometry inspector: sharp edges by dihedral threshold, vertex angle defect markers, face normals, and dihedral readouts.
+- Feature overlays are computed from the selected polyhedron mesh and rendered as live overlay groups in the viewport.
+- Selected-object outline and optional edge display remain active and sync with feature overlays.
+
 ### PR3 — First 3 “killer” calculations (workbook suddenly feels real)
 
 A) Point Info + Chart Grid
