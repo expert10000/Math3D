@@ -11254,7 +11254,7 @@ case "mobius":
     }
     const scalarInput = resolveCalculusScalarSource(calculusScalarSource);
     if ("error" in scalarInput) {
-      setCalculusError(scalarInput.error);
+      setCalculusError(scalarInput.error ?? "Scalar source not available.");
       setCalculusStatus(null);
       return;
     }
@@ -11289,7 +11289,7 @@ case "mobius":
     }
     const vectorInput = resolveCalculusVectorSource(calculusVectorSource);
     if ("error" in vectorInput) {
-      setCalculusError(vectorInput.error);
+      setCalculusError(vectorInput.error ?? "Vector source not available.");
       setCalculusStatus(null);
       return;
     }
@@ -11333,7 +11333,7 @@ case "mobius":
     }
     const vectorInput = resolveCalculusVectorSource(calculusVectorSource);
     if ("error" in vectorInput) {
-      setCalculusError(vectorInput.error);
+      setCalculusError(vectorInput.error ?? "Vector source not available.");
       setCalculusStatus(null);
       return;
     }
