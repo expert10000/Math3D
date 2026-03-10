@@ -7385,61 +7385,132 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     if (!showChartGrid) return;
-    if (!isGraphId(surfaceId)) return;
-    const f = getGraphF();
-    const span = getGraphSpan(1.5, 1.5);
-    const xMax = span.xSpan;
-    const yMax = span.ySpan;
+
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
-    const steps = 120;
-
     const group = new THREE.Group();
     group.renderOrder = 150;
 
-    const addGrid = (axis: "x" | "y", count: number, color: number) => {
-      const positions: number[] = [];
-      const mat = new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.75,
-      });
-      const prev = new THREE.Vector3();
-      const cur = new THREE.Vector3();
-      for (let i = 0; i < count; i++) {
-        const t = count === 1 ? 0.5 : i / (count - 1);
-        const fixed = axis === "x" ? -xMax + 2 * xMax * t : -yMax + 2 * yMax * t;
-        let hasPrev = false;
-        for (let j = 0; j < steps; j++) {
-          const s = steps === 1 ? 0.5 : j / (steps - 1);
-          const x = axis === "x" ? fixed : -xMax + 2 * xMax * s;
-          const y = axis === "y" ? fixed : -yMax + 2 * yMax * s;
-          const z = f(x, y);
-          if (!Number.isFinite(z)) {
-            hasPrev = false;
-            continue;
+    if (isGraphId(surfaceId)) {
+      const f = getGraphF();
+      const span = getGraphSpan(1.5, 1.5);
+      const xMax = span.xSpan;
+      const yMax = span.ySpan;
+      const steps = 120;
+
+      const addGraphGrid = (axis: "x" | "y", count: number, color: number) => {
+        const positions: number[] = [];
+        const mat = new THREE.LineBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.75,
+        });
+        const prev = new THREE.Vector3();
+        const cur = new THREE.Vector3();
+        for (let i = 0; i < count; i++) {
+          const t = count === 1 ? 0.5 : i / (count - 1);
+          const fixed = axis === "x" ? -xMax + 2 * xMax * t : -yMax + 2 * yMax * t;
+          let hasPrev = false;
+          for (let j = 0; j < steps; j++) {
+            const s = steps === 1 ? 0.5 : j / (steps - 1);
+            const x = axis === "x" ? fixed : -xMax + 2 * xMax * s;
+            const y = axis === "y" ? fixed : -yMax + 2 * yMax * s;
+            const z = f(x, y);
+            if (!Number.isFinite(z)) {
+              hasPrev = false;
+              continue;
+            }
+            cur.set(x, z, y);
+            if (hasPrev) {
+              positions.push(prev.x, prev.y, prev.z, cur.x, cur.y, cur.z);
+            }
+            prev.copy(cur);
+            hasPrev = true;
           }
-          cur.set(x, z, y);
-          if (hasPrev) {
-            positions.push(prev.x, prev.y, prev.z, cur.x, cur.y, cur.z);
+        }
+        if (!positions.length) {
+          mat.dispose();
+          return;
+        }
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const lines = new THREE.LineSegments(geom, mat);
+        lines.renderOrder = 150;
+        group.add(lines);
+      };
+
+      addGraphGrid("x", uCount, 0x1f77b4);
+      addGraphGrid("y", vCount, 0xff7f0e);
+    } else {
+      const origin = probePointRef.current;
+      const normalRaw = probeNormalRef.current;
+      if (!origin || !normalRaw || normalRaw.lengthSq() < 1e-12) return;
+
+      const normal = normalRaw.clone().normalize();
+      const ref = Math.abs(normal.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+      let tangentU = new THREE.Vector3().crossVectors(ref, normal);
+      if (tangentU.lengthSq() < 1e-12) {
+        tangentU = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 0, 1), normal);
+      }
+      if (tangentU.lengthSq() < 1e-12) return;
+      tangentU.normalize();
+      const tangentV = new THREE.Vector3().crossVectors(normal, tangentU).normalize();
+
+      let patchRadius = 0.7;
+      const mesh = surfaceObjRef.current as THREE.Mesh | null;
+      const geom = mesh?.geometry as THREE.BufferGeometry | undefined;
+      if (geom) {
+        geom.computeBoundingBox();
+        const bbox = geom.boundingBox;
+        if (bbox) {
+          const diag = bbox.getSize(new THREE.Vector3()).length();
+          if (Number.isFinite(diag) && diag > 0) {
+            patchRadius = Math.max(0.2, diag * 0.12);
           }
-          prev.copy(cur);
-          hasPrev = true;
         }
       }
-      if (!positions.length) {
-        mat.dispose();
-        return;
-      }
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      const lines = new THREE.LineSegments(geom, mat);
-      lines.renderOrder = 150;
-      group.add(lines);
-    };
 
-    addGrid("x", uCount, 0x1f77b4);
-    addGrid("y", vCount, 0xff7f0e);
+      const steps = 48;
+      const addLocalGrid = (axis: "u" | "v", count: number, color: number) => {
+        const positions: number[] = [];
+        const mat = new THREE.LineBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.78,
+        });
+        const prev = new THREE.Vector3();
+        const cur = new THREE.Vector3();
+        for (let i = 0; i < count; i++) {
+          const t = count === 1 ? 0.5 : i / (count - 1);
+          const fixed = -patchRadius + 2 * patchRadius * t;
+          let hasPrev = false;
+          for (let j = 0; j < steps; j++) {
+            const s = steps === 1 ? 0.5 : j / (steps - 1);
+            const a = -patchRadius + 2 * patchRadius * s;
+            const u = axis === "u" ? fixed : a;
+            const v = axis === "v" ? fixed : a;
+            cur.copy(origin).addScaledVector(tangentU, u).addScaledVector(tangentV, v);
+            if (hasPrev) {
+              positions.push(prev.x, prev.y, prev.z, cur.x, cur.y, cur.z);
+            }
+            prev.copy(cur);
+            hasPrev = true;
+          }
+        }
+        if (!positions.length) {
+          mat.dispose();
+          return;
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        const lines = new THREE.LineSegments(geometry, mat);
+        lines.renderOrder = 150;
+        group.add(lines);
+      };
+
+      addLocalGrid("u", uCount, 0x1f77b4);
+      addLocalGrid("v", vCount, 0xff7f0e);
+    }
 
     if (group.children.length) {
       chartGridRef.current = group;
@@ -7447,7 +7518,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     } else {
       group.traverse(disposeObject3D);
     }
-  }, [showChartGrid, chartGridCountU, chartGridCountV, surfaceId, graphDomain?.xSpan, graphDomain?.ySpan, sceneEpoch]);
+  }, [
+    showChartGrid,
+    chartGridCountU,
+    chartGridCountV,
+    surfaceId,
+    graphDomain?.xSpan,
+    graphDomain?.ySpan,
+    probePointToken,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     if (!onCaptureThumbnail || !captureToken) return;

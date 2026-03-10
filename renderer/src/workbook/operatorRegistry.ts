@@ -103,6 +103,16 @@ export const WORKBOOK_OPERATOR_CATALOG: WorkbookOperatorSpec[] = [
     ],
   },
   {
+    id: "field.curl",
+    label: "Curl (vector → scalar field)",
+    inputs: FIELD_VECTOR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Uses vector field (defaults to grad(K)).",
+      "Computes normal-component curl on the surface.",
+    ],
+  },
+  {
     id: "field.laplacian",
     label: "Laplacian (scalar → scalar field)",
     inputs: FIELD_SCALAR_INPUTS,

@@ -206,6 +206,7 @@ import {
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
+type ChartMode = "auto" | "xy" | "uv" | "local";
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
   "graph",
@@ -2236,6 +2237,54 @@ const computeDivergenceField = (
   return { scalars: out, validCount: valid };
 };
 
+const computeCurlNormalField = (
+  samples: SurfaceSampleSet["samples"],
+  vectors: Float32Array,
+  neighborsBySample: number[][]
+) => {
+  const count = samples.length;
+  const fx = new Float32Array(count);
+  const fy = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    const base = i * 3;
+    const vx = vectors[base];
+    const vy = vectors[base + 1];
+    const vz = vectors[base + 2];
+    if (!Number.isFinite(vx) || !Number.isFinite(vy) || !Number.isFinite(vz)) {
+      fx[i] = Number.NaN;
+      fy[i] = Number.NaN;
+      continue;
+    }
+    const normal = samples[i].normal as Vec3;
+    if (!isFiniteVec3(normal)) {
+      fx[i] = Number.NaN;
+      fy[i] = Number.NaN;
+      continue;
+    }
+    const basis = buildTangentBasis(normal);
+    const dot = vx * normal.x + vy * normal.y + vz * normal.z;
+    const tx = vx - dot * normal.x;
+    const ty = vy - dot * normal.y;
+    const tz = vz - dot * normal.z;
+    fx[i] = tx * basis.t1.x + ty * basis.t1.y + tz * basis.t1.z;
+    fy[i] = tx * basis.t2.x + ty * basis.t2.y + tz * basis.t2.z;
+  }
+
+  const out = new Float32Array(count);
+  let valid = 0;
+  for (let i = 0; i < count; i++) {
+    const gradFx = computeGradientComponents(i, fx, samples, neighborsBySample);
+    const gradFy = computeGradientComponents(i, fy, samples, neighborsBySample);
+    if (!gradFx || !gradFy) {
+      out[i] = Number.NaN;
+      continue;
+    }
+    out[i] = gradFy.gx - gradFx.gy;
+    if (Number.isFinite(out[i])) valid += 1;
+  }
+  return { scalars: out, validCount: valid };
+};
+
 const buildVectorFieldArrows = (opts: {
   samples: SurfaceSampleSet["samples"];
   vectors: Float32Array;
@@ -2394,6 +2443,9 @@ const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
     label: "Scalar field",
     kind: "select",
     options: [
+      { value: "height", label: "height" },
+      { value: "radius", label: "radius" },
+      { value: "temperature", label: "temperature" },
       { value: "K", label: "K (Gaussian)" },
       { value: "H", label: "H (mean)" },
       { value: "k1", label: "k1" },
@@ -2406,6 +2458,9 @@ const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
     label: "Vector field",
     kind: "select",
     options: [
+      { value: "grad(height)", label: "grad(height)" },
+      { value: "grad(radius)", label: "grad(radius)" },
+      { value: "grad(temperature)", label: "grad(temperature)" },
       { value: "grad(K)", label: "grad(K)" },
       { value: "grad(H)", label: "grad(H)" },
       { value: "grad(k1)", label: "grad(k1)" },
@@ -4934,14 +4989,54 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // 3D visual toggles
   const [showWireframe, setShowWireframe] = useState(false);
   const [showChartGrid, setShowChartGrid] = useState(false);
-  const chartGridCountU = 11;
-  const chartGridCountV = 11;
+  const [chartGridDensity, setChartGridDensity] = useState(11);
+  const [chartMode, setChartMode] = useState<ChartMode>("auto");
+  const [chartCoordinateReadoutEnabled, setChartCoordinateReadoutEnabled] = useState(true);
+  const chartGridCountU = chartGridDensity;
+  const chartGridCountV = chartGridDensity;
   const [showPlanes, setShowPlanes] = useState(false);
   const [colorMode, setColorMode] = useState<ColorMode>("solid");
   const [colorPalette, setColorPalette] = useState<ColorPalette>("blueRed");
   const [showGaussMap, setShowGaussMap] = useState(false);
   const [gaussColorMode, setGaussColorMode] = useState<GaussColorMode>("components");
   const [gaussPoints, setGaussPoints] = useState<GaussPoint[]>([]);
+  const [calculusScalarFields, setCalculusScalarFields] = useState<Map<string, SurfaceScalarField>>(new Map());
+  const [calculusVectorFields, setCalculusVectorFields] = useState<Map<string, SurfaceVectorField>>(new Map());
+  const [calculusScalarSource, setCalculusScalarSource] = useState("height");
+  const [calculusVectorSource, setCalculusVectorSource] = useState("grad(height)");
+  const [calculusActiveVectorField, setCalculusActiveVectorField] = useState("grad(height)");
+  const [calculusCustomScalarExpr, setCalculusCustomScalarExpr] = useState("sin(x) + 0.5*cos(z)");
+  const [calculusVectorOverlayEnabled, setCalculusVectorOverlayEnabled] = useState(false);
+  const [calculusVectorDensity, setCalculusVectorDensity] = useState(800);
+  const [calculusVectorScale, setCalculusVectorScale] = useState(1);
+  const [calculusHeatmapValues, setCalculusHeatmapValues] = useState<ArrayLike<number> | null>(null);
+  const [calculusHeatmapEnabled, setCalculusHeatmapEnabled] = useState(false);
+  const [calculusStatus, setCalculusStatus] = useState<string | null>(null);
+  const [calculusError, setCalculusError] = useState<string | null>(null);
+  const activeChartKind = useMemo<Exclude<ChartMode, "auto">>(() => {
+    if (chartMode === "xy" && surfaceViewerKind === "graph") return "xy";
+    if (chartMode === "uv" && (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass")) return "uv";
+    if (
+      chartMode === "local" &&
+      (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex" || surfaceViewerKind === "implicit")
+    ) {
+      return "local";
+    }
+    if (surfaceViewerKind === "graph") return "xy";
+    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") return "uv";
+    return "local";
+  }, [chartMode, surfaceViewerKind]);
+  useEffect(() => {
+    const allowed: ChartMode[] =
+      surfaceViewerKind === "graph"
+        ? ["auto", "xy"]
+        : surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass"
+          ? ["auto", "uv"]
+          : ["auto", "local"];
+    if (!allowed.includes(chartMode)) {
+      setChartMode("auto");
+    }
+  }, [chartMode, surfaceViewerKind]);
   useEffect(() => {
     if (datasetKind !== "volume") return;
     setCompareEnabled(false);
@@ -4958,6 +5053,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setWorkbookVectorFieldOverlayGhost(null);
     setWorkbookHeatmapValues(null);
     setWorkbookHeatmapEnabled(false);
+    setCalculusScalarFields(new Map());
+    setCalculusVectorFields(new Map());
+    setCalculusHeatmapValues(null);
+    setCalculusHeatmapEnabled(false);
+    setCalculusVectorOverlayEnabled(false);
+    setCalculusStatus(null);
+    setCalculusError(null);
+    setCalculusVectorSource("grad(height)");
+    setCalculusActiveVectorField("grad(height)");
   }, [surfaceSampleSet]);
   const [selection, setSelection] = useState<RegionSelection | null>(null);
   const [selectionMask, setSelectionMask] = useState<SelectionMask | null>(null);
@@ -5581,10 +5685,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   ]);
   const compareDiffHeatmapActive = !!compareDiffHeatmapValues?.length;
   const workbookHeatmapActive = !!workbookHeatmapEnabled && !!workbookHeatmapValues?.length;
+  const calculusHeatmapActive = !!calculusHeatmapEnabled && !!calculusHeatmapValues?.length;
   const overlayHeatmapValues = compareDiffHeatmapActive
     ? compareDiffHeatmapValues
     : complexMapHeatmapActive
       ? complexMapDistortionValues3d
+      : calculusHeatmapActive
+        ? calculusHeatmapValues
       : !compareIgnoreWorkbookOverlays && workbookHeatmapActive
         ? workbookHeatmapValues
         : null;
@@ -6322,6 +6429,31 @@ case "mobius":
 
   const surfaceScalarFields = useMemo(() => {
     const map = new Map<string, SurfaceScalarField>();
+    if (surfaceSampleSet?.samples?.length) {
+      const samples = surfaceSampleSet.samples;
+      const height = new Float32Array(samples.length);
+      const radius = new Float32Array(samples.length);
+      const temperature = new Float32Array(samples.length);
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < samples.length; i++) {
+        const y = Number(samples[i].position.y);
+        if (!Number.isFinite(y)) continue;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+      const spanY = Number.isFinite(maxY - minY) && maxY > minY ? maxY - minY : 1;
+      for (let i = 0; i < samples.length; i++) {
+        const p = samples[i].position;
+        height[i] = Number(p.y);
+        radius[i] = Math.hypot(p.x, p.y, p.z);
+        const y = Number(p.y);
+        temperature[i] = Number.isFinite(y) ? (y - minY) / spanY : Number.NaN;
+      }
+      map.set("height", { name: "height", values: height });
+      map.set("radius", { name: "radius", values: radius });
+      map.set("temperature", { name: "temperature", values: temperature });
+    }
     const meshScalars = meshDataset?.fields?.scalars;
     if (meshScalars?.length) {
       meshScalars.forEach((field) => map.set(field.name, field));
@@ -6336,8 +6468,18 @@ case "mobius":
     if (workbookScalarFields.size) {
       workbookScalarFields.forEach((field, name) => map.set(name, field));
     }
+    if (calculusScalarFields.size) {
+      calculusScalarFields.forEach((field, name) => map.set(name, field));
+    }
     return map;
-  }, [graphCurvatures, meshDataset?.fields?.scalars, surfaceSampleSet?.curvatures, workbookScalarFields]);
+  }, [
+    calculusScalarFields,
+    graphCurvatures,
+    meshDataset?.fields?.scalars,
+    surfaceSampleSet,
+    surfaceSampleSet?.curvatures,
+    workbookScalarFields,
+  ]);
 
   const surfaceVectorFields = useMemo(() => {
     const map = new Map<string, SurfaceVectorField>();
@@ -6348,8 +6490,55 @@ case "mobius":
     if (workbookVectorFields.size) {
       workbookVectorFields.forEach((field, name) => map.set(name, field));
     }
+    if (calculusVectorFields.size) {
+      calculusVectorFields.forEach((field, name) => map.set(name, field));
+    }
     return map;
-  }, [meshDataset?.fields?.vectors, workbookVectorFields]);
+  }, [calculusVectorFields, meshDataset?.fields?.vectors, workbookVectorFields]);
+
+  const calculusScalarOptions = useMemo(() => {
+    const out: Array<{ value: string; label: string }> = [];
+    const seen = new Set<string>();
+    const add = (value: string, label: string) => {
+      const key = String(value).trim();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({ value: key, label });
+    };
+    add("height", "Height (y)");
+    add("radius", "Radius |p|");
+    add("temperature", "Temperature");
+    add("K", "K (Gaussian)");
+    add("H", "H (mean)");
+    add("k1", "k1");
+    add("k2", "k2");
+    const names = Array.from(surfaceScalarFields.keys()).sort((a, b) => a.localeCompare(b));
+    for (const name of names) add(name, name);
+    add("custom", "Custom expression");
+    return out;
+  }, [surfaceScalarFields]);
+
+  const calculusVectorOptions = useMemo(() => {
+    const names = Array.from(surfaceVectorFields.keys()).sort((a, b) => a.localeCompare(b));
+    return names.map((name) => ({ value: name, label: name }));
+  }, [surfaceVectorFields]);
+
+  useEffect(() => {
+    if (!calculusScalarOptions.length) return;
+    if (!calculusScalarOptions.some((opt) => opt.value === calculusScalarSource)) {
+      setCalculusScalarSource(calculusScalarOptions[0].value);
+    }
+  }, [calculusScalarOptions, calculusScalarSource]);
+
+  useEffect(() => {
+    if (!calculusVectorOptions.length) return;
+    if (!calculusVectorOptions.some((opt) => opt.value === calculusVectorSource)) {
+      setCalculusVectorSource(calculusVectorOptions[0].value);
+    }
+    if (!calculusVectorOptions.some((opt) => opt.value === calculusActiveVectorField)) {
+      setCalculusActiveVectorField(calculusVectorOptions[0].value);
+    }
+  }, [calculusActiveVectorField, calculusVectorOptions, calculusVectorSource]);
 
   const surfaceQuery = useMemo<SurfaceQuery>(() => {
     const kind: SurfaceQuery["kind"] =
@@ -6376,6 +6565,54 @@ case "mobius":
     sampleSurfaceNeighborhood,
     surfaceScalarFields,
     surfaceVectorFields,
+    surfaceViewerKind,
+  ]);
+
+  const chartCoordinateReadout = useMemo<SurfaceQueryChartCoord | null>(() => {
+    if (!probeInfo) return null;
+    if (activeChartKind === "xy") {
+      const xy = probeInfo.xy ?? { x: probeInfo.point.x, y: probeInfo.point.z };
+      const valid =
+        Number.isFinite(xy.x) &&
+        Number.isFinite(xy.y) &&
+        (surfaceViewerKind !== "graph" ||
+          (Math.abs(xy.x) <= activeGraphDomain.xSpan && Math.abs(xy.y) <= activeGraphDomain.ySpan));
+      return { kind: "xy", u: valid ? xy.x : 0, v: valid ? xy.y : 0, valid };
+    }
+    if (activeChartKind === "uv") {
+      const uv = probeInfo.uv;
+      if (!uv || !Number.isFinite(uv.u) || !Number.isFinite(uv.v)) {
+        return { kind: "uv", u: 0, v: 0, valid: false };
+      }
+      const domain = activeParamLikeDomain;
+      const valid =
+        !!domain &&
+        uv.u >= domain.uMin &&
+        uv.u <= domain.uMax &&
+        uv.v >= domain.vMin &&
+        uv.v <= domain.vMax;
+      return { kind: "uv", u: uv.u, v: uv.v, valid };
+    }
+    const neighborhood = sampleSurfaceNeighborhood({
+      point: probeInfo.point,
+      uv: probeInfo.uv,
+      xy: probeInfo.xy,
+    });
+    if (!neighborhood) {
+      return { kind: "local", u: 0, v: 0, valid: false };
+    }
+    const diff = vSub(probeInfo.point, neighborhood.origin);
+    const u = vDot(diff, neighborhood.tangentU);
+    const v = vDot(diff, neighborhood.tangentV);
+    const valid = Number.isFinite(u) && Number.isFinite(v);
+    return { kind: "local", u: valid ? u : 0, v: valid ? v : 0, valid };
+  }, [
+    probeInfo,
+    activeChartKind,
+    activeGraphDomain.xSpan,
+    activeGraphDomain.ySpan,
+    activeParamLikeDomain,
+    sampleSurfaceNeighborhood,
     surfaceViewerKind,
   ]);
 
@@ -8160,6 +8397,41 @@ case "mobius":
     ];
   }, [workbookVectorFieldOverlayGhost, workbookGhostOverlaysEnabled]);
 
+  const calculusVectorOverlayGroups = useMemo(() => {
+    if (!calculusVectorOverlayEnabled) return null;
+    if (!surfaceSampleSet?.samples?.length) return null;
+    const field = surfaceVectorFields.get(calculusActiveVectorField) ?? null;
+    if (!field) return null;
+    const vectors = resolveVectorValuesForSamples(field, surfaceSampleSet.samples);
+    if (!vectors) return null;
+    const density = clampNumber(Math.round(calculusVectorDensity), 20, 4000);
+    const scale = clampNumber(calculusVectorScale, 0.05, 6);
+    const sizeHint = surfaceSampleSet.bbox ? surfaceSampleSet.bbox.getSize(new THREE.Vector3()).length() : 3;
+    const arrows = buildVectorFieldArrows({
+      samples: surfaceSampleSet.samples,
+      vectors,
+      maxArrows: density,
+      scale,
+      sizeHint: sizeHint || 3,
+    });
+    if (!arrows.lines.length) return null;
+    return [
+      {
+        lines: arrows.lines,
+        color: 0x2563eb,
+        opacity: 0.95,
+        radiusScale: 0.9,
+      },
+    ];
+  }, [
+    calculusActiveVectorField,
+    calculusVectorDensity,
+    calculusVectorOverlayEnabled,
+    calculusVectorScale,
+    surfaceSampleSet,
+    surfaceVectorFields,
+  ]);
+
   const combinedOverlayPolylineGroups = useMemo(() => {
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
@@ -8170,8 +8442,10 @@ case "mobius":
     if (workbookCurveOverlayGroups?.length) groups.push(...workbookCurveOverlayGroups);
     if (workbookDirectionOverlayGroups?.length) groups.push(...workbookDirectionOverlayGroups);
     if (workbookVectorFieldOverlayGroups?.length) groups.push(...workbookVectorFieldOverlayGroups);
+    if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
   }, [
+    calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
     workbookCurveOverlayGhostGroups,
     workbookDirectionOverlayGhostGroups,
@@ -8184,8 +8458,16 @@ case "mobius":
 
   const compareOverlayPolylineGroups = useMemo(() => {
     if (!compareIgnoreWorkbookOverlays) return combinedOverlayPolylineGroups;
-    return complexMapOverlayPolylineGroups?.length ? complexMapOverlayPolylineGroups : null;
-  }, [compareIgnoreWorkbookOverlays, combinedOverlayPolylineGroups, complexMapOverlayPolylineGroups]);
+    const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
+    if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
+    if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
+    return groups.length ? groups : null;
+  }, [
+    calculusVectorOverlayGroups,
+    compareIgnoreWorkbookOverlays,
+    combinedOverlayPolylineGroups,
+    complexMapOverlayPolylineGroups,
+  ]);
 
   const handleBuildComplexMapSweep = useCallback(() => {
     const res = buildComplexMapSweep(complexMapSpec);
@@ -10856,6 +11138,232 @@ case "mobius":
     });
   }, []);
 
+  const registerCalculusScalarField = useCallback((field: SurfaceScalarField) => {
+    setCalculusScalarFields((prev) => {
+      const next = new Map(prev);
+      next.set(field.name, field);
+      return next;
+    });
+  }, []);
+
+  const registerCalculusVectorField = useCallback((field: SurfaceVectorField) => {
+    setCalculusVectorFields((prev) => {
+      const next = new Map(prev);
+      next.set(field.name, field);
+      return next;
+    });
+  }, []);
+
+  const resolveCalculusScalarSource = useCallback(
+    (source: string) => {
+      if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
+      const samples = surfaceSampleSet.samples;
+      const name = String(source || "").trim();
+      if (!name) return { error: "Pick a scalar source." };
+
+      if (name === "height") {
+        const values = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) values[i] = Number(samples[i].position.y);
+        return { name, values };
+      }
+
+      if (name === "radius") {
+        const values = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          const p = samples[i].position;
+          values[i] = Math.hypot(p.x, p.y, p.z);
+        }
+        return { name, values };
+      }
+
+      if (name === "temperature") {
+        const existing = surfaceQuery.scalarField?.("temperature") ?? null;
+        const mapped = resolveScalarValuesForSamples(existing, samples);
+        if (mapped) return { name: existing?.name ?? "temperature", values: mapped };
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (let i = 0; i < samples.length; i++) {
+          const y = Number(samples[i].position.y);
+          if (!Number.isFinite(y)) continue;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+        const span = Number.isFinite(maxY - minY) && maxY > minY ? maxY - minY : 1;
+        const values = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          const y = Number(samples[i].position.y);
+          values[i] = Number.isFinite(y) ? (y - minY) / span : Number.NaN;
+        }
+        return { name, values };
+      }
+
+      if (name === "custom") {
+        const src = (calculusCustomScalarExpr ?? "").trim();
+        if (!src) return { error: "Custom scalar expression is empty." };
+        const compiled = compileExpression(src, ["x", "y", "z", "u", "v"]);
+        if (compiled.error || !compiled.fn) {
+          const msg = compiled.error ? `${compiled.error.message} (col ${compiled.error.col})` : "Expression error.";
+          return { error: msg };
+        }
+        const fn = compiled.fn;
+        const values = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) {
+          const sample = samples[i];
+          const p = sample.position;
+          const u = sample.uv?.u ?? p.x;
+          const v = sample.uv?.v ?? p.z;
+          const value = fn({ x: p.x, y: p.y, z: p.z, u, v });
+          values[i] = Number.isFinite(value) ? value : Number.NaN;
+        }
+        return { name: `custom:${src}`, values };
+      }
+
+      const field = surfaceQuery.scalarField?.(name) ?? null;
+      if (!field) return { error: `Scalar field "${name}" not available.` };
+      const values = resolveScalarValuesForSamples(field, samples);
+      if (!values) return { error: `Scalar field "${name}" has incompatible size.` };
+      return { name: field.name ?? name, values };
+    },
+    [calculusCustomScalarExpr, surfaceQuery, surfaceSampleSet]
+  );
+
+  const resolveCalculusVectorSource = useCallback(
+    (source: string) => {
+      if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
+      const name = String(source || "").trim();
+      if (!name) return { error: "Pick a vector source." };
+      const field = surfaceQuery.vectorField?.(name) ?? null;
+      if (!field) return { error: `Vector field "${name}" not available.` };
+      const values = resolveVectorValuesForSamples(field, surfaceSampleSet.samples);
+      if (!values) return { error: `Vector field "${name}" has incompatible size.` };
+      return { name: field.name ?? name, values };
+    },
+    [surfaceQuery, surfaceSampleSet]
+  );
+
+  const runCalculusGradient = useCallback(() => {
+    if (!surfaceSampleSet?.samples?.length) {
+      setCalculusError("Surface samples not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    if (!sampleNeighbors) {
+      setCalculusError("Surface adjacency not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    const scalarInput = resolveCalculusScalarSource(calculusScalarSource);
+    if ("error" in scalarInput) {
+      setCalculusError(scalarInput.error);
+      setCalculusStatus(null);
+      return;
+    }
+    const gradient = computeGradientField(surfaceSampleSet.samples, scalarInput.values, sampleNeighbors);
+    const fieldName = `grad(${scalarInput.name})`;
+    registerCalculusVectorField({ name: fieldName, values: gradient.vectors, itemSize: 3 });
+    setCalculusVectorSource(fieldName);
+    setCalculusActiveVectorField(fieldName);
+    setCalculusVectorOverlayEnabled(true);
+    setCalculusHeatmapValues(null);
+    setCalculusHeatmapEnabled(false);
+    setCalculusError(null);
+    setCalculusStatus(`Computed ${fieldName} (${gradient.validCount}/${surfaceSampleSet.samples.length} samples).`);
+  }, [
+    calculusScalarSource,
+    registerCalculusVectorField,
+    resolveCalculusScalarSource,
+    sampleNeighbors,
+    surfaceSampleSet,
+  ]);
+
+  const runCalculusDivergence = useCallback(() => {
+    if (!surfaceSampleSet?.samples?.length) {
+      setCalculusError("Surface samples not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    if (!sampleNeighbors) {
+      setCalculusError("Surface adjacency not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    const vectorInput = resolveCalculusVectorSource(calculusVectorSource);
+    if ("error" in vectorInput) {
+      setCalculusError(vectorInput.error);
+      setCalculusStatus(null);
+      return;
+    }
+    const divergence = computeDivergenceField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
+    const fieldName = `div(${vectorInput.name})`;
+    registerCalculusScalarField({ name: fieldName, values: divergence.scalars });
+    const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+    const vertexCount = meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+    const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+    if (heatmapOk) {
+      setCalculusHeatmapValues(divergence.scalars);
+      setCalculusHeatmapEnabled(true);
+    } else {
+      setCalculusHeatmapValues(null);
+      setCalculusHeatmapEnabled(false);
+    }
+    setCalculusError(null);
+    setCalculusStatus(
+      heatmapOk
+        ? `Computed ${fieldName} + heatmap (${divergence.validCount}/${surfaceSampleSet.samples.length} samples).`
+        : `Computed ${fieldName} (${divergence.validCount}/${surfaceSampleSet.samples.length} samples).`
+    );
+  }, [
+    calculusVectorSource,
+    registerCalculusScalarField,
+    resolveCalculusVectorSource,
+    sampleNeighbors,
+    surfaceSampleSet,
+  ]);
+
+  const runCalculusCurl = useCallback(() => {
+    if (!surfaceSampleSet?.samples?.length) {
+      setCalculusError("Surface samples not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    if (!sampleNeighbors) {
+      setCalculusError("Surface adjacency not ready.");
+      setCalculusStatus(null);
+      return;
+    }
+    const vectorInput = resolveCalculusVectorSource(calculusVectorSource);
+    if ("error" in vectorInput) {
+      setCalculusError(vectorInput.error);
+      setCalculusStatus(null);
+      return;
+    }
+    const curl = computeCurlNormalField(surfaceSampleSet.samples, vectorInput.values, sampleNeighbors);
+    const fieldName = `curln(${vectorInput.name})`;
+    registerCalculusScalarField({ name: fieldName, values: curl.scalars });
+    const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+    const vertexCount = meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+    const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+    if (heatmapOk) {
+      setCalculusHeatmapValues(curl.scalars);
+      setCalculusHeatmapEnabled(true);
+    } else {
+      setCalculusHeatmapValues(null);
+      setCalculusHeatmapEnabled(false);
+    }
+    setCalculusError(null);
+    setCalculusStatus(
+      heatmapOk
+        ? `Computed ${fieldName} + heatmap (${curl.validCount}/${surfaceSampleSet.samples.length} samples).`
+        : `Computed ${fieldName} (${curl.validCount}/${surfaceSampleSet.samples.length} samples).`
+    );
+  }, [
+    calculusVectorSource,
+    registerCalculusScalarField,
+    resolveCalculusVectorSource,
+    sampleNeighbors,
+    surfaceSampleSet,
+  ]);
+
   const resolveScalarFieldInput = useCallback(
     (ctx: WorkbookOperatorRunContext) => {
       if (!surfaceSampleSet?.samples?.length) return { error: "Surface samples not ready." };
@@ -10914,12 +11422,12 @@ case "mobius":
         patch.showChartGrid = true;
         summary = "Chart grid (iso-x/iso-y) + probe enabled.";
       } else {
-        patch.showWireframe = true;
+        patch.showChartGrid = true;
         if (surfaceViewerKind === "implicit") {
           patch.showContours = true;
-          summary = "Wireframe + contours + probe enabled.";
+          summary = "Local chart patch + contours + probe enabled.";
         } else {
-          summary = "Wireframe + probe enabled.";
+          summary = "Local chart patch + probe enabled.";
         }
       }
       return { status: "ok", summary, outputs: { viewPatch: patch } };
@@ -11399,6 +11907,49 @@ case "mobius":
     ]
   );
 
+  const runFieldCurlOperator = useCallback(
+    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+      if (!surfaceSampleSet?.samples?.length) {
+        return { status: "stale", summary: "Surface samples not ready." };
+      }
+      if (!sampleNeighbors) {
+        return { status: "stale", summary: "Surface adjacency not ready." };
+      }
+      const vectorInput = resolveVectorFieldInput(ctx);
+      if ("error" in vectorInput) {
+        return { status: "stale", summary: vectorInput.error };
+      }
+      const { values, name } = vectorInput;
+      const curl = computeCurlNormalField(surfaceSampleSet.samples, values, sampleNeighbors);
+      const fieldName = `curln(${name})`;
+      const field: SurfaceScalarField = { name: fieldName, values: curl.scalars };
+      registerWorkbookScalarField(ctx.blockId, field);
+      const meshCount = surfaceSampleSet.meshData?.length ?? 0;
+      const vertexCount =
+        meshCount === 1 ? Math.floor((surfaceSampleSet.meshData?.[0].positions.length ?? 0) / 3) : 0;
+      const heatmapOk = meshCount === 1 && vertexCount === surfaceSampleSet.samples.length;
+      if (heatmapOk) {
+        setWorkbookHeatmapValues(curl.scalars);
+        setWorkbookHeatmapEnabled(true);
+      } else {
+        setWorkbookHeatmapValues(null);
+        setWorkbookHeatmapEnabled(false);
+      }
+      const summary = heatmapOk
+        ? `curln(${name}) heatmap`
+        : `curln(${name}) computed (heatmap requires full vertex samples)`;
+      return { status: "ok", summary };
+    },
+    [
+      registerWorkbookScalarField,
+      resolveVectorFieldInput,
+      sampleNeighbors,
+      surfaceSampleSet,
+      setWorkbookHeatmapEnabled,
+      setWorkbookHeatmapValues,
+    ]
+  );
+
   const runFieldLaplacianOperator = useCallback(
     (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
       if (!surfaceSampleSet?.samples?.length) {
@@ -11623,6 +12174,7 @@ case "mobius":
       "surface.parallelTransport": runParallelTransportOperator,
       "field.grad": runFieldGradOperator,
       "field.div": runFieldDivOperator,
+      "field.curl": runFieldCurlOperator,
       "field.laplacian": runFieldLaplacianOperator,
       point_info: runPointInfoOperator,
       chart_grid: runChartGridOperator,
@@ -11658,6 +12210,7 @@ case "mobius":
       runGeodesicPathOperator,
       runFieldGradOperator,
     runFieldDivOperator,
+    runFieldCurlOperator,
     runFieldLaplacianOperator,
     runPrincipalDirsOperator,
     runSelectionOverlayOperator,
@@ -11704,6 +12257,7 @@ case "mobius":
       const bypassCache =
         resolvedOperator === "field.grad" ||
         resolvedOperator === "field.div" ||
+        resolvedOperator === "field.curl" ||
         resolvedOperator === "field.laplacian";
       const cacheEntry = block?.compute?.cache?.[inputHash];
       if (!bypassCache && cacheEntry?.status === "ok") {
@@ -13205,6 +13759,15 @@ case "mobius":
                 onRecomputeDiagnostics={recomputeWeierstrassDiagnostics}
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
+                showChartGrid={showChartGrid}
+                onToggleChartGrid={() => setShowChartGrid((v) => !v)}
+                chartGridDensity={chartGridDensity}
+                onChangeChartGridDensity={setChartGridDensity}
+                chartMode={chartMode}
+                onChangeChartMode={setChartMode}
+                chartCoordinateReadoutEnabled={chartCoordinateReadoutEnabled}
+                onToggleChartCoordinateReadout={() => setChartCoordinateReadoutEnabled((v) => !v)}
+                chartCoordinateReadout={chartCoordinateReadout}
                 showPlanes={showPlanes}
                 onTogglePlanes={() => setShowPlanes((p) => !p)}
                 lightPreset={lightPreset}
@@ -13249,6 +13812,32 @@ case "mobius":
                 onChangePrincipalGlyphLength={setPrincipalGlyphLength}
                 principalGlyphMode={principalGlyphMode}
                 onChangePrincipalGlyphMode={setPrincipalGlyphMode}
+                calculusScalarOptions={calculusScalarOptions}
+                calculusScalarSource={calculusScalarSource}
+                onChangeCalculusScalarSource={setCalculusScalarSource}
+                calculusCustomScalarExpr={calculusCustomScalarExpr}
+                onChangeCalculusCustomScalarExpr={setCalculusCustomScalarExpr}
+                calculusVectorOptions={calculusVectorOptions}
+                calculusVectorSource={calculusVectorSource}
+                onChangeCalculusVectorSource={setCalculusVectorSource}
+                calculusActiveVectorField={calculusActiveVectorField}
+                onChangeCalculusActiveVectorField={setCalculusActiveVectorField}
+                calculusVectorOverlayEnabled={calculusVectorOverlayEnabled}
+                onToggleCalculusVectorOverlay={() => setCalculusVectorOverlayEnabled((v) => !v)}
+                calculusVectorDensity={calculusVectorDensity}
+                onChangeCalculusVectorDensity={setCalculusVectorDensity}
+                calculusVectorScale={calculusVectorScale}
+                onChangeCalculusVectorScale={setCalculusVectorScale}
+                calculusHeatmapEnabled={calculusHeatmapEnabled}
+                onClearCalculusHeatmap={() => {
+                  setCalculusHeatmapValues(null);
+                  setCalculusHeatmapEnabled(false);
+                }}
+                onRunCalculusGradient={runCalculusGradient}
+                onRunCalculusDivergence={runCalculusDivergence}
+                onRunCalculusCurl={runCalculusCurl}
+                calculusStatus={calculusStatus}
+                calculusError={calculusError}
                 showCurvatureLines={showCurvatureLines}
                 onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
                 curvatureLineField={curvatureLineField}
@@ -15928,6 +16517,15 @@ type SurfacesLeftPanelProps = {
 
   showWireframe: boolean;
   onToggleWireframe: () => void;
+  showChartGrid: boolean;
+  onToggleChartGrid: () => void;
+  chartGridDensity: number;
+  onChangeChartGridDensity: (value: number) => void;
+  chartMode: ChartMode;
+  onChangeChartMode: (mode: ChartMode) => void;
+  chartCoordinateReadoutEnabled: boolean;
+  onToggleChartCoordinateReadout: () => void;
+  chartCoordinateReadout: SurfaceQueryChartCoord | null;
   showPlanes: boolean;
   onTogglePlanes: () => void;
   lightPreset: "studio" | "soft" | "contrast" | "neutral" | "warm";
@@ -15974,6 +16572,29 @@ type SurfacesLeftPanelProps = {
   onChangePrincipalGlyphLength: (value: number) => void;
   principalGlyphMode: "both" | "d1";
   onChangePrincipalGlyphMode: (mode: "both" | "d1") => void;
+  calculusScalarOptions: Array<{ value: string; label: string }>;
+  calculusScalarSource: string;
+  onChangeCalculusScalarSource: (value: string) => void;
+  calculusCustomScalarExpr: string;
+  onChangeCalculusCustomScalarExpr: (value: string) => void;
+  calculusVectorOptions: Array<{ value: string; label: string }>;
+  calculusVectorSource: string;
+  onChangeCalculusVectorSource: (value: string) => void;
+  calculusActiveVectorField: string;
+  onChangeCalculusActiveVectorField: (value: string) => void;
+  calculusVectorOverlayEnabled: boolean;
+  onToggleCalculusVectorOverlay: () => void;
+  calculusVectorDensity: number;
+  onChangeCalculusVectorDensity: (value: number) => void;
+  calculusVectorScale: number;
+  onChangeCalculusVectorScale: (value: number) => void;
+  calculusHeatmapEnabled: boolean;
+  onClearCalculusHeatmap: () => void;
+  onRunCalculusGradient: () => void;
+  onRunCalculusDivergence: () => void;
+  onRunCalculusCurl: () => void;
+  calculusStatus: string | null;
+  calculusError: string | null;
   showCurvatureLines: boolean;
   onToggleCurvatureLines: () => void;
   curvatureLineField: "d1" | "d2";
@@ -16378,6 +16999,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   weierstrassError,
   showWireframe,
   onToggleWireframe,
+  showChartGrid,
+  onToggleChartGrid,
+  chartGridDensity,
+  onChangeChartGridDensity,
+  chartMode,
+  onChangeChartMode,
+  chartCoordinateReadoutEnabled,
+  onToggleChartCoordinateReadout,
+  chartCoordinateReadout,
   showPlanes,
   onTogglePlanes,
   lightPreset,
@@ -16422,6 +17052,29 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangePrincipalGlyphLength,
   principalGlyphMode,
   onChangePrincipalGlyphMode,
+  calculusScalarOptions,
+  calculusScalarSource,
+  onChangeCalculusScalarSource,
+  calculusCustomScalarExpr,
+  onChangeCalculusCustomScalarExpr,
+  calculusVectorOptions,
+  calculusVectorSource,
+  onChangeCalculusVectorSource,
+  calculusActiveVectorField,
+  onChangeCalculusActiveVectorField,
+  calculusVectorOverlayEnabled,
+  onToggleCalculusVectorOverlay,
+  calculusVectorDensity,
+  onChangeCalculusVectorDensity,
+  calculusVectorScale,
+  onChangeCalculusVectorScale,
+  calculusHeatmapEnabled,
+  onClearCalculusHeatmap,
+  onRunCalculusGradient,
+  onRunCalculusDivergence,
+  onRunCalculusCurl,
+  calculusStatus,
+  calculusError,
   showCurvatureLines,
   onToggleCurvatureLines,
   curvatureLineField,
@@ -16672,6 +17325,21 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       : canPhaseColor
         ? ["solid", "height", "radius", "phase"]
         : ["solid", "height", "radius"];
+  const chartModeOptions: Array<{ value: ChartMode; label: string }> =
+    viewerKind === "graph"
+      ? [
+          { value: "auto", label: "Auto (x,y)" },
+          { value: "xy", label: "(x,y)" },
+        ]
+      : viewerKind === "param" || viewerKind === "weierstrass"
+        ? [
+            { value: "auto", label: "Auto (u,v)" },
+            { value: "uv", label: "(u,v)" },
+          ]
+        : [
+            { value: "auto", label: "Auto (local)" },
+            { value: "local", label: "Local (xi,eta)" },
+          ];
   const volumeParamDefs = volumePreset.params ?? [];
   const volumeShowCustom = volumePresetId === "custom";
   const volumePresetOptions = VOLUME_PRESETS.filter((preset) => preset.id !== "custom");
@@ -18562,6 +19230,49 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} style={{ marginRight: 6 }} />
           Wireframe mesh
         </label>
+        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
+          <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} style={{ marginRight: 6 }} />
+          Show chart grid
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, marginTop: 4 }}>
+          Grid density
+          <input
+            type="number"
+            min={3}
+            max={41}
+            step={1}
+            value={chartGridDensity}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isFinite(v)) return;
+              onChangeChartGridDensity(clampInt(v, 3, 41));
+            }}
+            style={{ width: 64 }}
+          />
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          Active chart
+          <select
+            value={chartMode}
+            onChange={(e) => onChangeChartMode(e.target.value as ChartMode)}
+            style={{ fontSize: 11, padding: "2px 4px" }}
+          >
+            {chartModeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
+          <input
+            type="checkbox"
+            checked={chartCoordinateReadoutEnabled}
+            onChange={onToggleChartCoordinateReadout}
+            style={{ marginRight: 6 }}
+          />
+          Coordinate readout
+        </label>
         <label style={{ display: "block", cursor: "pointer" }}>
           <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} style={{ marginRight: 6 }} />
           Show coordinate planes (x=0, y=0, z=0)
@@ -19132,6 +19843,153 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             </div>
           )}
         </div>
+
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
+            Vector calculus (Track A)
+          </summary>
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span>Scalar source</span>
+              <select
+                value={calculusScalarSource}
+                onChange={(e) => onChangeCalculusScalarSource(e.target.value)}
+                style={{ fontSize: 11, padding: "2px 4px", minWidth: 150 }}
+              >
+                {calculusScalarOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {calculusScalarSource === "custom" && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>
+                  f(x,y,z,u,v)
+                </div>
+                <input
+                  type="text"
+                  value={calculusCustomScalarExpr}
+                  onChange={(e) => onChangeCalculusCustomScalarExpr(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "4px 6px",
+                    borderRadius: 6,
+                    border: "1px solid #d0d7de",
+                    fontFamily: "monospace",
+                    fontSize: 11,
+                  }}
+                />
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+              <button type="button" onClick={onRunCalculusGradient}>
+                Compute grad
+              </button>
+              <button type="button" onClick={onRunCalculusDivergence} disabled={!calculusVectorOptions.length}>
+                Compute div
+              </button>
+              <button type="button" onClick={onRunCalculusCurl} disabled={!calculusVectorOptions.length}>
+                Compute curl
+              </button>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <span>Vector source</span>
+              <select
+                value={calculusVectorSource}
+                onChange={(e) => onChangeCalculusVectorSource(e.target.value)}
+                style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
+                disabled={!calculusVectorOptions.length}
+              >
+                {calculusVectorOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "block", cursor: "pointer", marginBottom: 6 }}>
+              <input
+                type="checkbox"
+                checked={calculusVectorOverlayEnabled}
+                onChange={onToggleCalculusVectorOverlay}
+                style={{ marginRight: 6 }}
+              />
+              Show vector field overlay
+            </label>
+            <div style={{ marginLeft: 18, opacity: calculusVectorOverlayEnabled ? 1 : 0.7 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span>Active vector</span>
+                <select
+                  value={calculusActiveVectorField}
+                  onChange={(e) => onChangeCalculusActiveVectorField(e.target.value)}
+                  style={{ fontSize: 11, padding: "2px 4px", minWidth: 160 }}
+                  disabled={!calculusVectorOptions.length}
+                >
+                  {calculusVectorOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span>Density</span>
+                <input
+                  type="number"
+                  min={20}
+                  max={4000}
+                  step={20}
+                  value={calculusVectorDensity}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (!Number.isFinite(value)) return;
+                    onChangeCalculusVectorDensity(clampNumber(Math.round(value), 20, 4000));
+                  }}
+                  style={{ width: 84 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span>Scale</span>
+                <input
+                  type="number"
+                  min={0.05}
+                  max={6}
+                  step={0.05}
+                  value={calculusVectorScale}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (!Number.isFinite(value)) return;
+                    onChangeCalculusVectorScale(clampNumber(value, 0.05, 6));
+                  }}
+                  style={{ width: 84 }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+              <div style={{ fontSize: 11, opacity: 0.75 }}>
+                Heatmap: {calculusHeatmapEnabled ? "on" : "off"}
+              </div>
+              {calculusHeatmapEnabled && (
+                <button type="button" onClick={onClearCalculusHeatmap}>
+                  Clear heatmap
+                </button>
+              )}
+            </div>
+            {calculusStatus && (
+              <div style={{ fontSize: 11, color: "#0f5132", marginTop: 6 }}>
+                {calculusStatus}
+              </div>
+            )}
+            {calculusError && (
+              <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
+                {calculusError}
+              </div>
+            )}
+          </div>
+        </details>
 
         <details style={{ marginTop: 8 }} open={showCurvatureLines}>
           <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Curvature lines</summary>
@@ -20702,6 +21560,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   <b>u,v</b> ={" "}
                   <span style={{ fontFamily: "monospace" }}>
                     ({fmt(probeInfo.uv.u)}, {fmt(probeInfo.uv.v)})
+                  </span>
+                </div>
+              )}
+              {chartCoordinateReadoutEnabled && chartCoordinateReadout && (
+                <div style={{ fontSize: 12, marginBottom: 6 }}>
+                  <b>
+                    {chartCoordinateReadout.kind === "xy"
+                      ? "chart (x,y)"
+                      : chartCoordinateReadout.kind === "uv"
+                        ? "chart (u,v)"
+                        : "chart (xi,eta)"}
+                  </b>{" "}
+                  ={" "}
+                  <span style={{ fontFamily: "monospace" }}>
+                    ({fmt(chartCoordinateReadout.u)}, {fmt(chartCoordinateReadout.v)})
+                    {chartCoordinateReadout.valid ? "" : " invalid"}
                   </span>
                 </div>
               )}

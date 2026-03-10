@@ -15,6 +15,13 @@
 4. For `Laplacian`, choose a scalar field (defaults to `K`) and run; this computes `div(grad(scalar))`.
 5. When the surface samples match the mesh vertices, `Div` and `Laplacian` also enable a heatmap for the computed scalar field.
 
+## Track A (calculus panel): vector fields + grad/div/curl
+1. Open `Display & analysis` and expand `Vector calculus (Track A)`.
+2. Pick a scalar source (`Height`, `Radius`, `Temperature`, curvature fields, or `Custom expression`) and run `Compute grad`.
+3. Pick a vector source and run `Compute div` or `Compute curl` (normal-component curl).
+4. Enable `Show vector field overlay` to render arrows/tubes that are sampled on surface points and stay attached to the surface.
+5. Use `Density` and `Scale` to control overlay readability; clear heatmap with `Clear heatmap` when needed.
+
 ## Workbook reference (deep)
 
 ### Layout and navigation
@@ -69,8 +76,21 @@
 8. Selection overlay: visualizes the latest Select region output as a selection mask.
 9. Grad (scalar -> vector field): computes a gradient field and draws tangent arrows.
 10. Div (vector -> scalar field): computes divergence and stores a scalar field; enables heatmap when full vertex samples are available.
-11. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
-12. Principal directions: turns on principal direction glyphs.
+11. Curl (vector -> scalar field): computes normal-component curl and stores a scalar field; enables heatmap when full vertex samples are available.
+12. Laplacian (scalar -> scalar field): computes div(grad(scalar)) and stores a scalar field; enables heatmap when full vertex samples are available.
+13. Principal directions: turns on principal direction glyphs.
+
+### PR Charts v1 (coordinates)
+- Added chart controls in Surface mode: `Show chart grid`, `Grid density`, `Active chart`, and `Coordinate readout`.
+- Chart providers now cover:
+  - Graph/explicit surfaces: `(x,y)` chart
+  - Param/Weierstrass surfaces: `(u,v)` chart
+  - Mesh-like surfaces (`mesh`/`implicit`/`complex`): local tangent-plane chart `(xi,eta)` around the picked point
+- Added chart coordinate readout in probe theory view for the active chart kind.
+- Chart grid now renders reliably on all surface types:
+  - Graph: iso-x / iso-y curves on the surface
+  - Param/Weierstrass: iso-u / iso-v curves on the surface
+  - Mesh-like: local tangent-plane patch grid around the probe point
 
 ### PR4 — Export/import loop (OBJ/PLY)
 - Added `Export PLY` alongside existing OBJ/GLB export in the Surface mesh panel.
