@@ -75,14 +75,21 @@ type WorkbookPanelProps = {
   onImportJson: (raw: string) => void;
   onSaveWorkbook: () => void;
   onSaveWorkbookAs: () => void;
+  bundleAssetMode: "embedded" | "linked";
+  onChangeBundleAssetMode: (mode: "embedded" | "linked") => void;
   workbookDirty: boolean;
   lastManualSaveAt: number | null;
   autosaveAt: number | null;
   autosaveIntervalSec: number;
   snapshotAt: number | null;
+  snapshotHistory: Array<{ id: string; name: string; savedAt: number }>;
+  selectedSnapshotId: string | null;
+  onSelectSnapshot: (id: string) => void;
   onRestoreAutosave: () => void;
-  onCreateSnapshot: () => void;
+  onCreateSnapshot: (name?: string) => void;
   onRestoreSnapshot: () => void;
+  onRestoreSnapshotById: (id: string) => void;
+  onDeleteSnapshot: (id: string) => void;
   readOnly: boolean;
   currentDatasetRef: string;
   cameraReady: boolean;
@@ -477,14 +484,21 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onImportJson,
   onSaveWorkbook,
   onSaveWorkbookAs,
+  bundleAssetMode,
+  onChangeBundleAssetMode,
   workbookDirty,
   lastManualSaveAt,
   autosaveAt,
   autosaveIntervalSec,
   snapshotAt,
+  snapshotHistory,
+  selectedSnapshotId,
+  onSelectSnapshot,
   onRestoreAutosave,
   onCreateSnapshot,
   onRestoreSnapshot,
+  onRestoreSnapshotById,
+  onDeleteSnapshot,
   readOnly,
   currentDatasetRef,
   cameraReady,
@@ -509,6 +523,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryTags, setLibraryTags] = useState<string[]>([]);
   const [workspacePage, setWorkspacePage] = useState<"scene" | "datasets" | "analysis">("scene");
+  const [snapshotName, setSnapshotName] = useState("");
   const issueCursorRef = useRef(0);
 
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
@@ -801,10 +816,33 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               Export Replay HTML
             </button>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <span>Assets:</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                type="radio"
+                name="wb-assets-mode"
+                checked={bundleAssetMode === "embedded"}
+                onChange={() => onChangeBundleAssetMode("embedded")}
+                disabled={readOnly}
+              />
+              Embedded
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <input
+                type="radio"
+                name="wb-assets-mode"
+                checked={bundleAssetMode === "linked"}
+                onChange={() => onChangeBundleAssetMode("linked")}
+                disabled={readOnly}
+              />
+              Linked
+            </label>
+          </div>
           <input
             ref={fileRef}
             type="file"
-            accept=".json,application/json"
+            accept=".math3d,.json,application/json"
             disabled={readOnly}
             style={{ display: "none" }}
             onChange={(e) => {
@@ -838,21 +876,66 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           >
             Restore last autosave
           </button>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            value={snapshotName}
+            onChange={(e) => setSnapshotName(e.target.value)}
+            placeholder="Snapshot name"
+            disabled={readOnly}
+            style={{ minWidth: 180, padding: "2px 6px", fontSize: 11 }}
+          />
           <button
             type="button"
-            onClick={onCreateSnapshot}
+            onClick={() => {
+              onCreateSnapshot(snapshotName.trim() || undefined);
+              setSnapshotName("");
+            }}
             disabled={readOnly}
             style={{ padding: "2px 8px", fontSize: 11 }}
           >
             Snapshot
           </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            Switch
+            <select
+              value={selectedSnapshotId ?? ""}
+              onChange={(e) => onSelectSnapshot(e.target.value)}
+              disabled={readOnly || !snapshotHistory.length}
+              style={{ fontSize: 11, minWidth: 180 }}
+            >
+              <option value="">Select snapshot...</option>
+              {snapshotHistory.map((snap) => (
+                <option key={snap.id} value={snap.id}>
+                  {snap.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
-            onClick={onRestoreSnapshot}
-            disabled={readOnly || !snapshotAt}
+            onClick={() => {
+              if (selectedSnapshotId) {
+                onRestoreSnapshotById(selectedSnapshotId);
+                return;
+              }
+              onRestoreSnapshot();
+            }}
+            disabled={readOnly || (!snapshotAt && !selectedSnapshotId)}
             style={{ padding: "2px 8px", fontSize: 11 }}
           >
-            Restore snapshot
+            Restore selected
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!selectedSnapshotId) return;
+              onDeleteSnapshot(selectedSnapshotId);
+            }}
+            disabled={readOnly || !selectedSnapshotId}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Delete snapshot
           </button>
         </div>
         <div style={{ fontSize: 10, opacity: 0.75 }}>
@@ -864,6 +947,11 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           Autosave every {autosaveIntervalSec}s and on meaningful changes.
           {" "}
           Last autosave: {autosaveAt ? new Date(autosaveAt).toLocaleString() : "none"}.
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.75 }}>
+          Snapshots: {snapshotHistory.length}.
+          {" "}
+          Latest: {snapshotAt ? new Date(snapshotAt).toLocaleString() : "none"}.
         </div>
       </div>
 

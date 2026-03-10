@@ -245,20 +245,42 @@ const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
 const WORKBOOK_GHOST_OVERLAYS_KEY = "math3d.workbook.ghostOverlays.v1";
 const WORKBOOK_AUTOSAVE_KEY = "math3d.workbook.autosave.v1";
 const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
+const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
+const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
+const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
 const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
 const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
+const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
+const WORKBOOK_SNAPSHOT_HISTORY_LIMIT = 20;
+type WorkbookBundleAssetMode = "embedded" | "linked";
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
   activeWorkbookId?: string | null;
   activeStageId?: WorkbookStageId;
   workspace?: WorkbookWorkspaceState;
 };
+type WorkbookBundleEnvelope = {
+  version: 1;
+  format: "math3d-bundle";
+  extension: ".math3d";
+  savedAt: number;
+  assetMode: WorkbookBundleAssetMode;
+  payload: WorkbookReplayPayload;
+};
 type WorkbookStoredSession = {
   savedAt: number;
   payload: WorkbookReplayPayload;
+};
+type WorkbookAutosaveJournalEntry = WorkbookStoredSession & {
+  id: string;
+  hash: string;
+};
+type WorkbookNamedSnapshot = WorkbookStoredSession & {
+  id: string;
+  name: string;
 };
 type WorkbookEmbeddedMesh = {
   label: string;
@@ -1585,6 +1607,47 @@ function isWorkbookReplayPayload(value: unknown): value is WorkbookReplayPayload
   return Array.isArray(payload.workbooks);
 }
 
+function isWorkbookBundleEnvelope(value: unknown): value is WorkbookBundleEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const env = value as WorkbookBundleEnvelope;
+  return env.format === "math3d-bundle" && env.extension === ".math3d" && isWorkbookReplayPayload(env.payload);
+}
+
+const toLinkedWorkspace = (workspace: WorkbookWorkspaceState | undefined): WorkbookWorkspaceState | undefined => {
+  if (!workspace) return workspace;
+  return {
+    ...workspace,
+    datasets: {
+      ...workspace.datasets,
+      items: (workspace.datasets.items ?? []).map((item) => ({
+        ...item,
+        mesh: null,
+      })),
+    },
+  };
+};
+
+const ensureMath3dExtension = (fileName: string): string => {
+  const trimmed = fileName.trim();
+  if (!trimmed) return "workbook.math3d";
+  if (trimmed.toLowerCase().endsWith(".math3d")) return trimmed;
+  const noExt = trimmed.replace(/\.[^./\\]+$/, "");
+  return `${noExt}.math3d`;
+};
+
+const normalizeSnapshotHistory = (items: WorkbookNamedSnapshot[]): WorkbookNamedSnapshot[] =>
+  items
+    .filter(
+      (entry) =>
+        !!entry &&
+        typeof entry.id === "string" &&
+        typeof entry.name === "string" &&
+        Number.isFinite(entry.savedAt) &&
+        isWorkbookReplayPayload(entry.payload)
+    )
+    .sort((a, b) => b.savedAt - a.savedAt)
+    .slice(0, WORKBOOK_SNAPSHOT_HISTORY_LIMIT);
+
 type WeierstrassDiagnosticsSuccess = Extract<WeierstrassDriftResult, { drift: number }>;
 
 function isWeierstrassDiagnosticsSuccess(
@@ -1680,6 +1743,19 @@ function sanitizeFileBase(label: string, fallback: string) {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return cleaned || fallback;
 }
+
+const buildWorkbookBundleEnvelope = (
+  payload: WorkbookReplayPayload,
+  assetMode: WorkbookBundleAssetMode,
+  savedAt: number
+): WorkbookBundleEnvelope => ({
+  version: 1,
+  format: "math3d-bundle",
+  extension: ".math3d",
+  savedAt,
+  assetMode,
+  payload,
+});
 
 const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   text: "Text",
@@ -3343,12 +3419,39 @@ const App: React.FC = () => {
     const raw = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
     return raw && Number.isFinite(raw.savedAt) ? raw.savedAt : null;
   });
-  const [workbookSnapshotAt, setWorkbookSnapshotAt] = useState<number | null>(() => {
-    if (IS_REPLAY_MODE) return null;
-    const raw = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_SNAPSHOT_KEY));
-    return raw && Number.isFinite(raw.savedAt) ? raw.savedAt : null;
+  const [workbookBundleAssetMode, setWorkbookBundleAssetMode] = useState<WorkbookBundleAssetMode>(() => {
+    if (IS_REPLAY_MODE) return "embedded";
+    const raw = localStorage.getItem(WORKBOOK_BUNDLE_ASSET_MODE_KEY);
+    return raw === "linked" ? "linked" : "embedded";
   });
+  const [workbookSnapshots, setWorkbookSnapshots] = useState<WorkbookNamedSnapshot[]>(() => {
+    if (IS_REPLAY_MODE) return [];
+    const history = normalizeSnapshotHistory(
+      safeParseArray<WorkbookNamedSnapshot>(localStorage.getItem(WORKBOOK_SNAPSHOT_HISTORY_KEY))
+    );
+    if (history.length) return history;
+    const legacy = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_SNAPSHOT_KEY));
+    if (!legacy || !isWorkbookReplayPayload(legacy.payload)) return [];
+    return [
+      {
+        id: makeId(),
+        name: "Snapshot",
+        savedAt: Number.isFinite(legacy.savedAt) ? legacy.savedAt : Date.now(),
+        payload: legacy.payload,
+      },
+    ];
+  });
+  const [selectedWorkbookSnapshotId, setSelectedWorkbookSnapshotId] = useState<string | null>(() => {
+    if (IS_REPLAY_MODE) return null;
+    const history = normalizeSnapshotHistory(
+      safeParseArray<WorkbookNamedSnapshot>(localStorage.getItem(WORKBOOK_SNAPSHOT_HISTORY_KEY))
+    );
+    if (history.length) return history[0].id;
+    return null;
+  });
+  const workbookSnapshotAt = useMemo(() => workbookSnapshots[0]?.savedAt ?? null, [workbookSnapshots]);
   const workbookAutosaveHashRef = useRef("");
+  const recoveryPromptShownRef = useRef(false);
   const [workbookCaptureToken, setWorkbookCaptureToken] = useState(0);
   const [pendingThumbnailCapture, setPendingThumbnailCapture] = useState<{
     stageId: WorkbookStageId;
@@ -3454,6 +3557,25 @@ const App: React.FC = () => {
       // ignore
     }
   }, [workbookGhostOverlaysEnabled]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    try {
+      localStorage.setItem(WORKBOOK_BUNDLE_ASSET_MODE_KEY, workbookBundleAssetMode);
+    } catch {
+      // ignore
+    }
+  }, [workbookBundleAssetMode]);
+
+  useEffect(() => {
+    if (!workbookSnapshots.length) {
+      if (selectedWorkbookSnapshotId) setSelectedWorkbookSnapshotId(null);
+      return;
+    }
+    if (!selectedWorkbookSnapshotId || !workbookSnapshots.some((snap) => snap.id === selectedWorkbookSnapshotId)) {
+      setSelectedWorkbookSnapshotId(workbookSnapshots[0].id);
+    }
+  }, [workbookSnapshots, selectedWorkbookSnapshotId]);
 
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -8358,7 +8480,8 @@ case "mobius":
     ]
   );
 
-  const buildWorkbookWorkspaceState = useCallback((): WorkbookWorkspaceState => {
+  const buildWorkbookWorkspaceState = useCallback(
+    (embedAssets = true): WorkbookWorkspaceState => {
     const now = Date.now();
     const graphDomainCopy: Record<string, GraphDomain> = {};
     for (const [id, domain] of Object.entries(graphDomains)) {
@@ -8449,7 +8572,7 @@ case "mobius":
           label: meshDataset.mesh.label,
           source,
         },
-        mesh: serializeSurfaceMeshData(meshDataset.mesh),
+        mesh: embedAssets ? serializeSurfaceMeshData(meshDataset.mesh) : null,
         provenance: {
           source: source.kind,
           linkedObjectIds,
@@ -8600,92 +8723,94 @@ case "mobius":
         },
       },
     };
-  }, [
-    graphDomains,
-    implicitDomains,
-    paramDomains,
-    graphSurfaceId,
-    graphExpr,
-    graphResolution,
-    implicitSurfaceId,
-    implicitExpr,
-    implicitResolution,
-    paramSurfaceId,
-    paramXExpr,
-    paramYExpr,
-    paramZExpr,
-    paramResolution,
-    weierstrassGExpr,
-    weierstrassPhiExpr,
-    weierstrassDomain,
-    weierstrassResolution,
-    weierstrassRecenter,
-    meshDataset,
-    datasetKind,
-    volumeDatasetOverride,
-    volumePresetId,
-    volumeParamsResolved,
-    volumeDims,
-    volumeSamplingClamped,
-    volumeCustomExpr,
-    volumeShowIsosurface,
-    volumeIsoValue,
-    volumeViewMode,
-    volumeDistanceSigned,
-    workbooks,
-    geometryMode,
-    geometryObjects,
-    geometrySelectedObjectId,
-    currentDatasetRef,
-    showChartGrid,
-    chartGridDensity,
-    chartMode,
-    colorMode,
-    colorPalette,
-    showContours,
-    contourCount,
-    implicitOverlay,
-    showPrincipalDirections,
-    showPrincipalGlyphs,
-    showPrincipalLines,
-    showCurvatureLines,
-    showRidges,
-    showValleys,
-    showGaussMap,
-    showBoundingBox,
-    showPlanes,
-    calculusScalarSource,
-    calculusCustomScalarExpr,
-    workbookScalarFields,
-    calculusVectorOverlayEnabled,
-    calculusVectorSource,
-    calculusActiveVectorField,
-    calculusVectorDensity,
-    calculusVectorScale,
-    volumeShowStreamlines,
-    volumeVectorPresetId,
-    volumeStreamSeedGrid,
-    volumeStreamlineStepSizeOverride,
-    volumeStreamlineMaxSteps,
-    volumeStreamlineMaxLength,
-    workbookVectorFields,
-    geodesicPathEnabled,
-    geodesicPathConstrain,
-    geodesicPathSmooth,
-    geodesicHeatEnabled,
-    geodesicHeatUseContinuous,
-    geodesicHeatShowHeatmap,
-    geodesicDiskEnabled,
-    geodesicDiskRadius,
-    geodesicDiskAutoUpdate,
-    geodesicDiskShowBoundary,
-    geodesicDiskMethod,
-  ]);
+    },
+    [
+      graphDomains,
+      implicitDomains,
+      paramDomains,
+      graphSurfaceId,
+      graphExpr,
+      graphResolution,
+      implicitSurfaceId,
+      implicitExpr,
+      implicitResolution,
+      paramSurfaceId,
+      paramXExpr,
+      paramYExpr,
+      paramZExpr,
+      paramResolution,
+      weierstrassGExpr,
+      weierstrassPhiExpr,
+      weierstrassDomain,
+      weierstrassResolution,
+      weierstrassRecenter,
+      meshDataset,
+      datasetKind,
+      volumeDatasetOverride,
+      volumePresetId,
+      volumeParamsResolved,
+      volumeDims,
+      volumeSamplingClamped,
+      volumeCustomExpr,
+      volumeShowIsosurface,
+      volumeIsoValue,
+      volumeViewMode,
+      volumeDistanceSigned,
+      workbooks,
+      geometryMode,
+      geometryObjects,
+      geometrySelectedObjectId,
+      currentDatasetRef,
+      showChartGrid,
+      chartGridDensity,
+      chartMode,
+      colorMode,
+      colorPalette,
+      showContours,
+      contourCount,
+      implicitOverlay,
+      showPrincipalDirections,
+      showPrincipalGlyphs,
+      showPrincipalLines,
+      showCurvatureLines,
+      showRidges,
+      showValleys,
+      showGaussMap,
+      showBoundingBox,
+      showPlanes,
+      calculusScalarSource,
+      calculusCustomScalarExpr,
+      workbookScalarFields,
+      calculusVectorOverlayEnabled,
+      calculusVectorSource,
+      calculusActiveVectorField,
+      calculusVectorDensity,
+      calculusVectorScale,
+      volumeShowStreamlines,
+      volumeVectorPresetId,
+      volumeStreamSeedGrid,
+      volumeStreamlineStepSizeOverride,
+      volumeStreamlineMaxSteps,
+      volumeStreamlineMaxLength,
+      workbookVectorFields,
+      geodesicPathEnabled,
+      geodesicPathConstrain,
+      geodesicPathSmooth,
+      geodesicHeatEnabled,
+      geodesicHeatUseContinuous,
+      geodesicHeatShowHeatmap,
+      geodesicDiskEnabled,
+      geodesicDiskRadius,
+      geodesicDiskAutoUpdate,
+      geodesicDiskShowBoundary,
+      geodesicDiskMethod,
+    ]
+  );
 
   const workbookSessionPayloadWithWorkspace = useMemo<WorkbookReplayPayload>(
     () => ({
       ...workbookSessionPayload,
-      workspace: buildWorkbookWorkspaceState(),
+      workspace: buildWorkbookWorkspaceState(true),
     }),
     [workbookSessionPayload, buildWorkbookWorkspaceState]
   );
@@ -8697,6 +8822,25 @@ case "mobius":
   const workbookSessionHashWithWorkspace = useMemo(
     () => hashString(workbookSessionJsonWithWorkspace),
     [workbookSessionJsonWithWorkspace]
+  );
+  const workbookBundlePayload = useMemo<WorkbookReplayPayload>(
+    () =>
+      workbookBundleAssetMode === "embedded"
+        ? workbookSessionPayloadWithWorkspace
+        : {
+            ...workbookSessionPayloadWithWorkspace,
+            workspace: toLinkedWorkspace(workbookSessionPayloadWithWorkspace.workspace),
+          },
+    [workbookBundleAssetMode, workbookSessionPayloadWithWorkspace]
+  );
+  const workbookBundleJson = useMemo(
+    () =>
+      JSON.stringify(
+        buildWorkbookBundleEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
+        null,
+        2
+      ),
+    [workbookBundlePayload, workbookBundleAssetMode]
   );
 
   const markWorkbookManualSave = useCallback(
@@ -9039,6 +9183,25 @@ case "mobius":
     };
     try {
       localStorage.setItem(WORKBOOK_AUTOSAVE_KEY, JSON.stringify(entry));
+      const journal = safeParseArray<WorkbookAutosaveJournalEntry>(localStorage.getItem(WORKBOOK_AUTOSAVE_JOURNAL_KEY))
+        .filter(
+          (item) =>
+            !!item &&
+            typeof item.id === "string" &&
+            Number.isFinite(item.savedAt) &&
+            typeof item.hash === "string" &&
+            isWorkbookReplayPayload(item.payload)
+        );
+      journal.push({
+        id: makeId(),
+        savedAt: entry.savedAt,
+        hash: workbookSessionHashWithWorkspace,
+        payload: entry.payload,
+      });
+      localStorage.setItem(
+        WORKBOOK_AUTOSAVE_JOURNAL_KEY,
+        JSON.stringify(journal.slice(-WORKBOOK_AUTOSAVE_JOURNAL_LIMIT))
+      );
       setWorkbookAutosaveAt(entry.savedAt);
       workbookAutosaveHashRef.current = workbookSessionHashWithWorkspace;
     } catch {
@@ -9062,27 +9225,62 @@ case "mobius":
     return () => window.clearInterval(interval);
   }, [commitWorkbookAutosave]);
 
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    if (recoveryPromptShownRef.current) return;
+    recoveryPromptShownRef.current = true;
+    const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
+    if (!stored || !isWorkbookReplayPayload(stored.payload) || !Number.isFinite(stored.savedAt)) return;
+    const manualAt = workbookManualSaveAt ?? 0;
+    if (stored.savedAt <= manualAt) return;
+    const message = `Recover last autosave from ${new Date(stored.savedAt).toLocaleString()}?`;
+    if (!window.confirm(message)) return;
+    if (!applyWorkbookPayload(stored.payload)) return;
+    const restoredHash = hashString(JSON.stringify({ version: 1, ...stored.payload }, null, 2));
+    const recoveredName = workbookManualSaveName || "recovered-session.math3d";
+    markWorkbookManualSave(restoredHash, stored.savedAt, ensureMath3dExtension(recoveredName));
+  }, [applyWorkbookPayload, markWorkbookManualSave, workbookManualSaveAt, workbookManualSaveName]);
+
+  const persistWorkbookSnapshots = useCallback((next: WorkbookNamedSnapshot[]) => {
+    setWorkbookSnapshots(next);
+    if (IS_REPLAY_MODE) return;
+    try {
+      if (next.length) {
+        localStorage.setItem(WORKBOOK_SNAPSHOT_HISTORY_KEY, JSON.stringify(next));
+        localStorage.setItem(
+          WORKBOOK_SNAPSHOT_KEY,
+          JSON.stringify({ savedAt: next[0].savedAt, payload: next[0].payload } satisfies WorkbookStoredSession)
+        );
+      } else {
+        localStorage.removeItem(WORKBOOK_SNAPSHOT_HISTORY_KEY);
+        localStorage.removeItem(WORKBOOK_SNAPSHOT_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const handleSaveWorkbookAs = useCallback(() => {
     const base =
       workbooks.length > 1
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
-    const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadTextFile(workbookSessionJsonWithWorkspace, fileName, "application/json");
+    const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
+    downloadTextFile(workbookBundleJson, fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
-  }, [workbookSessionJsonWithWorkspace, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+  }, [workbookBundleJson, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
 
   const handleSaveWorkbook = useCallback(() => {
     const base =
       workbooks.length > 1
         ? "math3d-book"
         : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
-    const fileName =
-      workbookManualSaveName || `${base}-${new Date().toISOString().slice(0, 10)}.json`;
-    downloadTextFile(workbookSessionJsonWithWorkspace, fileName, "application/json");
+    const defaultName = `${base}-${new Date().toISOString().slice(0, 10)}.math3d`;
+    const fileName = ensureMath3dExtension(workbookManualSaveName || defaultName);
+    downloadTextFile(workbookBundleJson, fileName, "application/json");
     markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
   }, [
-    workbookSessionJsonWithWorkspace,
+    workbookBundleJson,
     workbookSessionHash,
     workbookManualSaveName,
     workbooks.length,
@@ -9090,30 +9288,59 @@ case "mobius":
     markWorkbookManualSave,
   ]);
 
-  const handleSnapshotWorkbookSession = useCallback(() => {
+  const handleSnapshotWorkbookSession = useCallback((name?: string) => {
     if (IS_REPLAY_MODE) return;
+    const savedAt = Date.now();
+    const cleanName = (name ?? "").trim();
     const entry: WorkbookStoredSession = {
-      savedAt: Date.now(),
+      savedAt,
       payload: workbookSessionPayloadWithWorkspace,
     };
-    try {
-      localStorage.setItem(WORKBOOK_SNAPSHOT_KEY, JSON.stringify(entry));
-      setWorkbookSnapshotAt(entry.savedAt);
-    } catch {
-      // ignore
-    }
-  }, [workbookSessionPayloadWithWorkspace]);
+    const named: WorkbookNamedSnapshot = {
+      id: makeId(),
+      name: cleanName || `Snapshot ${new Date(savedAt).toLocaleString()}`,
+      savedAt,
+      payload: entry.payload,
+    };
+    setSelectedWorkbookSnapshotId(named.id);
+    persistWorkbookSnapshots(
+      normalizeSnapshotHistory([named, ...workbookSnapshots]).slice(0, WORKBOOK_SNAPSHOT_HISTORY_LIMIT)
+    );
+  }, [persistWorkbookSnapshots, workbookSessionPayloadWithWorkspace, workbookSnapshots]);
+
+  const handleRestoreWorkbookSnapshotById = useCallback(
+    (snapshotId: string) => {
+      if (IS_REPLAY_MODE) return;
+      const found = workbookSnapshots.find((snap) => snap.id === snapshotId);
+      if (!found || !isWorkbookReplayPayload(found.payload)) return;
+      if (!applyWorkbookPayload(found.payload)) return;
+      const restoredHash = hashString(JSON.stringify({ version: 1, ...found.payload }, null, 2));
+      markWorkbookManualSave(restoredHash, found.savedAt, workbookManualSaveName || "restored-snapshot.math3d");
+    },
+    [workbookSnapshots, applyWorkbookPayload, markWorkbookManualSave, workbookManualSaveName]
+  );
+
+  const handleDeleteWorkbookSnapshot = useCallback(
+    (snapshotId: string) => {
+      if (IS_REPLAY_MODE) return;
+      const next = workbookSnapshots.filter((snap) => snap.id !== snapshotId);
+      persistWorkbookSnapshots(next);
+    },
+    [persistWorkbookSnapshots, workbookSnapshots]
+  );
 
   const handleRestoreWorkbookSnapshot = useCallback(() => {
     if (IS_REPLAY_MODE) return;
-    const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_SNAPSHOT_KEY));
-    if (!stored || !isWorkbookReplayPayload(stored.payload)) return;
-    if (!applyWorkbookPayload(stored.payload)) return;
-    const restoredHash = hashString(
-      JSON.stringify({ version: 1, ...stored.payload }, null, 2)
-    );
-    markWorkbookManualSave(restoredHash, Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now());
-  }, [applyWorkbookPayload, markWorkbookManualSave]);
+    const target = selectedWorkbookSnapshotId
+      ? workbookSnapshots.find((snap) => snap.id === selectedWorkbookSnapshotId) ?? workbookSnapshots[0]
+      : workbookSnapshots[0];
+    if (!target) return;
+    handleRestoreWorkbookSnapshotById(target.id);
+  }, [handleRestoreWorkbookSnapshotById, selectedWorkbookSnapshotId, workbookSnapshots]);
+
+  const handleSelectWorkbookSnapshot = useCallback((snapshotId: string) => {
+    setSelectedWorkbookSnapshotId(snapshotId || null);
+  }, []);
 
   const handleRestoreWorkbookAutosave = useCallback(() => {
     if (IS_REPLAY_MODE) return;
@@ -9128,11 +9355,11 @@ case "mobius":
 
   const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      workbookSessionJsonWithWorkspace,
-      `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.json`,
+      workbookBundleJson,
+      `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.math3d`,
       "application/json"
     );
-  }, [workbookSessionJsonWithWorkspace]);
+  }, [workbookBundleJson]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId);
@@ -9178,6 +9405,15 @@ case "mobius":
       if (IS_REPLAY_MODE) return;
       try {
         const parsed = JSON.parse(raw);
+        if (isWorkbookBundleEnvelope(parsed)) {
+          setWorkbookBundleAssetMode(parsed.assetMode === "linked" ? "linked" : "embedded");
+          applyWorkbookPayload(parsed.payload);
+          return;
+        }
+        if (parsed && typeof parsed === "object" && isWorkbookReplayPayload((parsed as any).payload)) {
+          applyWorkbookPayload((parsed as any).payload);
+          return;
+        }
         applyWorkbookPayload(parsed);
       } catch {
         // ignore
@@ -15653,14 +15889,25 @@ case "mobius":
                   onImportJson={handleImportWorkbooks}
                   onSaveWorkbook={handleSaveWorkbook}
                   onSaveWorkbookAs={handleSaveWorkbookAs}
+                  bundleAssetMode={workbookBundleAssetMode}
+                  onChangeBundleAssetMode={setWorkbookBundleAssetMode}
                   workbookDirty={workbookDirty}
                   lastManualSaveAt={workbookManualSaveAt}
                   autosaveAt={workbookAutosaveAt}
                   autosaveIntervalSec={WORKBOOK_AUTOSAVE_INTERVAL_SEC}
                   snapshotAt={workbookSnapshotAt}
+                  snapshotHistory={workbookSnapshots.map((snap) => ({
+                    id: snap.id,
+                    name: snap.name,
+                    savedAt: snap.savedAt,
+                  }))}
+                  selectedSnapshotId={selectedWorkbookSnapshotId}
+                  onSelectSnapshot={handleSelectWorkbookSnapshot}
                   onRestoreAutosave={handleRestoreWorkbookAutosave}
                   onCreateSnapshot={handleSnapshotWorkbookSession}
                   onRestoreSnapshot={handleRestoreWorkbookSnapshot}
+                  onRestoreSnapshotById={handleRestoreWorkbookSnapshotById}
+                  onDeleteSnapshot={handleDeleteWorkbookSnapshot}
                   readOnly={IS_REPLAY_MODE}
                   currentDatasetRef={currentDatasetRef}
                   cameraReady={!!cameraSync}

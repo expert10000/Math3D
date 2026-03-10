@@ -274,27 +274,33 @@ Parallel transport (curve)
 5. Templates and packs list required operators, suggested stages, difficulty, and tags.
 
 ### Export and replay
-1. Export JSON saves all workbooks plus the active workbook and stage.
-2. Export JSON also includes a `workspace` snapshot with Geometry, Datasets, and Analysis state.
+1. Save/Save As/Export use `.math3d` bundle files (JSON envelope + workbook payload).
+2. Bundle exports include a `workspace` snapshot with Geometry, Datasets, and Analysis state.
 3. Geometry persistence stores object definitions (type, params, transform, material, visibility, name, group), not triangle-only scene dumps.
-4. Dataset persistence stores compact recipes and provenance (`source`, linked object ids when available, timestamps/version); mesh datasets are embedded for v1 portability.
-5. Analysis persistence stores chart/grid settings, scalar/vector field settings, overlay/geodesic toggles, and compute recipes/cache metadata.
+4. Asset mode controls bundle behavior:
+   - Embedded: mesh payloads are written into the bundle for portability.
+   - Linked: mesh payloads are omitted; recipes/provenance remain.
+5. Dataset persistence stores compact recipes and provenance (`source`, linked object ids when available, timestamps/version).
 6. Export Markdown creates a static report with blocks and snapshots.
 7. Export PDF opens a print view; use the print dialog to save as PDF.
 8. Export Replay HTML creates a standalone read-only replay with embedded workbooks.
 9. Replay mode disables edits and compute runs but allows camera navigation and snapshot jumps.
+10. Analysis persistence stores chart/grid settings, scalar/vector field settings, overlay/geodesic toggles, and compute recipes/cache metadata.
 
-### Import JSON
-1. Import JSON replaces the current workbook list with the imported data.
+### Import bundle / JSON
+1. Open supports `.math3d` bundles and legacy `.json` workbook exports.
 2. Active workbook and stage IDs are restored when present.
 3. If `workspace` is present, Geometry objects, Dataset recipes, and Analysis state are restored.
+4. Importing a `.math3d` bundle also restores bundle asset mode (`embedded` or `linked`).
 
 ### Autosave, snapshot, and recovery
 1. Autosave runs every ~30 seconds and on meaningful workbook changes.
-2. Quick action Restore last autosave loads the last autosaved workbook session payload.
-3. Quick action Snapshot stores a manual checkpoint of the full workbook session.
-4. Quick action Restore snapshot loads that checkpoint.
-5. Session snapshot/restore is for the entire workbook payload; Visualize Capture A/B is for per-block view snapshots.
+2. Autosave writes a journal (bounded history) plus the latest autosave record.
+3. On restart, if autosave is newer than the last manual save, the app prompts to recover the session.
+4. Quick action Restore last autosave loads the last autosaved workbook session payload.
+5. Snapshot creates a named restore point for the full workbook session.
+6. Use the snapshot selector to switch and restore any saved snapshot, or delete stale snapshots.
+7. Session snapshot/restore is for the entire workbook payload; Visualize Capture A/B is for per-block view snapshots.
 
 ### Practical workflows
 1. Geodesic path: two Pick point interactions, then Compute -> Geodesic path.
