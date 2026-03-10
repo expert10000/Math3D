@@ -32,6 +32,7 @@ export type GeometryObject = {
   visible: boolean;
   material: GeometryObjectMaterial;
   name: string;
+  group?: string;
 };
 
 export type GeometryObjectRegistryEntry = {
@@ -464,5 +465,6 @@ export const createGeometryObject = (type: GeometryObjectType, id: string): Geom
     visible: true,
     material: { color: 0x8aa4ff, opacity: 1 },
     name: entry.label,
+    group: "default",
   };
 };

@@ -32,10 +32,11 @@
 5. Use the Outline to jump to any block and Next stale/failed to cycle through blocks that need attention.
 
 ### Workbooks (create, rename, manage)
-1. Click New to create a workbook.
+1. Use File actions in the Workbook panel: New Workbook, Open, Save, Save As, Recent, Export, Share bundle.
 2. Use the workbook selector to switch between workbooks.
 3. Rename in the title input. Duplicate or Delete from the action buttons.
-4. Workbook data is stored locally; export if you need to share or archive.
+4. The header dot is a dirty indicator: filled means unsaved changes vs last manual save.
+5. Workbook data is stored locally; export if you need to share or archive.
 
 ### Stages and intent
 1. Define: problem statement, formulas, assumptions, and setup.
@@ -274,14 +275,26 @@ Parallel transport (curve)
 
 ### Export and replay
 1. Export JSON saves all workbooks plus the active workbook and stage.
-2. Export Markdown creates a static report with blocks and snapshots.
-3. Export PDF opens a print view; use the print dialog to save as PDF.
-4. Export Replay HTML creates a standalone read-only replay with embedded workbooks.
-5. Replay mode disables edits and compute runs but allows camera navigation and snapshot jumps.
+2. Export JSON also includes a `workspace` snapshot with Geometry, Datasets, and Analysis state.
+3. Geometry persistence stores object definitions (type, params, transform, material, visibility, name, group), not triangle-only scene dumps.
+4. Dataset persistence stores compact recipes and provenance (`source`, linked object ids when available, timestamps/version); mesh datasets are embedded for v1 portability.
+5. Analysis persistence stores chart/grid settings, scalar/vector field settings, overlay/geodesic toggles, and compute recipes/cache metadata.
+6. Export Markdown creates a static report with blocks and snapshots.
+7. Export PDF opens a print view; use the print dialog to save as PDF.
+8. Export Replay HTML creates a standalone read-only replay with embedded workbooks.
+9. Replay mode disables edits and compute runs but allows camera navigation and snapshot jumps.
 
 ### Import JSON
 1. Import JSON replaces the current workbook list with the imported data.
-2. If the file includes active workbook and stage IDs, they are restored when possible.
+2. Active workbook and stage IDs are restored when present.
+3. If `workspace` is present, Geometry objects, Dataset recipes, and Analysis state are restored.
+
+### Autosave, snapshot, and recovery
+1. Autosave runs every ~30 seconds and on meaningful workbook changes.
+2. Quick action Restore last autosave loads the last autosaved workbook session payload.
+3. Quick action Snapshot stores a manual checkpoint of the full workbook session.
+4. Quick action Restore snapshot loads that checkpoint.
+5. Session snapshot/restore is for the entire workbook payload; Visualize Capture A/B is for per-block view snapshots.
 
 ### Practical workflows
 1. Geodesic path: two Pick point interactions, then Compute -> Geodesic path.

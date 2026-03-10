@@ -73,6 +73,16 @@ type WorkbookPanelProps = {
   onExportPdf: () => void;
   onExportReplayHtml: () => void;
   onImportJson: (raw: string) => void;
+  onSaveWorkbook: () => void;
+  onSaveWorkbookAs: () => void;
+  workbookDirty: boolean;
+  lastManualSaveAt: number | null;
+  autosaveAt: number | null;
+  autosaveIntervalSec: number;
+  snapshotAt: number | null;
+  onRestoreAutosave: () => void;
+  onCreateSnapshot: () => void;
+  onRestoreSnapshot: () => void;
   readOnly: boolean;
   currentDatasetRef: string;
   cameraReady: boolean;
@@ -465,6 +475,16 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onExportPdf,
   onExportReplayHtml,
   onImportJson,
+  onSaveWorkbook,
+  onSaveWorkbookAs,
+  workbookDirty,
+  lastManualSaveAt,
+  autosaveAt,
+  autosaveIntervalSec,
+  snapshotAt,
+  onRestoreAutosave,
+  onCreateSnapshot,
+  onRestoreSnapshot,
   readOnly,
   currentDatasetRef,
   cameraReady,
@@ -488,6 +508,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryTags, setLibraryTags] = useState<string[]>([]);
+  const [workspacePage, setWorkspacePage] = useState<"scene" | "datasets" | "analysis">("scene");
   const issueCursorRef = useRef(0);
 
   const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
@@ -568,6 +589,52 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     () => Object.keys(computeStatusById).length > 0,
     [computeStatusById]
   );
+  const workspaceSceneItems = useMemo(() => {
+    if (!activeWorkbook) return [];
+    const items: Array<{ stageTitle: string; title: string }> = [];
+    for (const stage of activeWorkbook.stages) {
+      for (const block of stage.blocks) {
+        if (block.type !== "visualize") continue;
+        items.push({
+          stageTitle: stage.title,
+          title: block.title || "View",
+        });
+      }
+    }
+    return items;
+  }, [activeWorkbook]);
+  const workspaceDatasetItems = useMemo(() => {
+    if (!activeWorkbook) return [];
+    const refs = new Set<string>();
+    for (const stage of activeWorkbook.stages) {
+      for (const block of stage.blocks) {
+        if (block.type === "visualize") {
+          const snapA = block.visualize?.snapshotA ?? block.visualize?.snapshot;
+          const snapB = block.visualize?.snapshotB;
+          if (snapA?.datasetRef) refs.add(snapA.datasetRef);
+          if (snapB?.datasetRef) refs.add(snapB.datasetRef);
+        }
+        if (block.type === "compute" && block.compute?.datasetRef) refs.add(block.compute.datasetRef);
+      }
+    }
+    if (currentDatasetRef) refs.add(currentDatasetRef);
+    return Array.from(refs);
+  }, [activeWorkbook, currentDatasetRef]);
+  const workspaceAnalysisItems = useMemo(() => {
+    if (!activeWorkbook) return [];
+    const overlays = new Set<string>();
+    for (const stage of activeWorkbook.stages) {
+      for (const block of stage.blocks) {
+        if (block.type !== "compute") continue;
+        if (block.compute?.outputs?.geodesicHeat?.polylines?.length) overlays.add("geodesic heat");
+        if (block.compute?.outputs?.curveOverlay?.polylines?.length) overlays.add("curve overlay");
+        if (block.compute?.outputs?.directionOverlay?.polylines?.length) overlays.add("direction overlay");
+        if (block.compute?.outputs?.selectionMask?.count) overlays.add("selection mask");
+        if (block.compute?.outputs?.geodesicPath?.indices?.length) overlays.add("geodesic path");
+      }
+    }
+    return Array.from(overlays);
+  }, [activeWorkbook]);
 
   useEffect(() => {
     if (!pendingScrollId) return;
@@ -643,11 +710,18 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
   return (
     <section>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
         <h2 style={styles.h2}>Workbook</h2>
-        <button type="button" onClick={onCreateWorkbook} disabled={readOnly} style={{ padding: "4px 8px" }}>
-          New
-        </button>
+        <div style={{ fontSize: 11, opacity: 0.85, display: "flex", alignItems: "center", gap: 6 }}>
+          <span>{activeWorkbook?.title ?? "Untitled workbook"}</span>
+          <span
+            aria-label={workbookDirty ? "Unsaved changes" : "Saved"}
+            title={workbookDirty ? "Unsaved changes" : "Saved"}
+            style={{ color: workbookDirty ? "#0f172a" : "#94a3b8", fontSize: 12, lineHeight: 1 }}
+          >
+            ●
+          </span>
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
@@ -663,6 +737,134 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           />
           Ghost overlays
         </label>
+      </div>
+
+      <details style={{ marginBottom: 10 }} open>
+        <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>File</summary>
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onCreateWorkbook} disabled={readOnly} style={{ padding: "4px 8px" }}>
+              New Workbook
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={readOnly}
+              style={{ padding: "4px 8px" }}
+            >
+              Open...
+            </button>
+            <button type="button" onClick={onSaveWorkbook} disabled={readOnly} style={{ padding: "4px 8px" }}>
+              Save
+            </button>
+            <button type="button" onClick={onSaveWorkbookAs} disabled={readOnly} style={{ padding: "4px 8px" }}>
+              Save As...
+            </button>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              Recent
+              <select
+                value=""
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) return;
+                  onSelectWorkbook(id);
+                  e.currentTarget.value = "";
+                }}
+                style={{ fontSize: 11 }}
+              >
+                <option value="">Select...</option>
+                {[...workbooks]
+                  .sort((a, b) => b.updatedAt - a.updatedAt)
+                  .slice(0, 10)
+                  .map((wb) => (
+                    <option key={wb.id} value={wb.id}>
+                      {wb.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button type="button" onClick={onExportJson} style={{ padding: "4px 8px" }}>
+              Export...
+            </button>
+            <button type="button" onClick={onExportReplayHtml} style={{ padding: "4px 8px" }}>
+              Share bundle...
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onExportMarkdown} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Export Markdown
+            </button>
+            <button type="button" onClick={onExportPdf} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Export PDF
+            </button>
+            <button type="button" onClick={onExportReplayHtml} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Export Replay HTML
+            </button>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            disabled={readOnly}
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImport(file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
+      </details>
+
+      <div
+        style={{
+          marginBottom: 10,
+          border: "1px solid #e5e7eb",
+          borderRadius: 10,
+          padding: 8,
+          background: "#f8fafc",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div style={{ fontSize: 11, fontWeight: 700 }}>Quick actions</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={onRestoreAutosave}
+            disabled={readOnly || !autosaveAt}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Restore last autosave
+          </button>
+          <button
+            type="button"
+            onClick={onCreateSnapshot}
+            disabled={readOnly}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Snapshot
+          </button>
+          <button
+            type="button"
+            onClick={onRestoreSnapshot}
+            disabled={readOnly || !snapshotAt}
+            style={{ padding: "2px 8px", fontSize: 11 }}
+          >
+            Restore snapshot
+          </button>
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.75 }}>
+          Last save: {lastManualSaveAt ? new Date(lastManualSaveAt).toLocaleString() : "not saved yet"}.
+          {" "}
+          {workbookDirty ? "Unsaved changes." : "Saved."}
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.75 }}>
+          Autosave every {autosaveIntervalSec}s and on meaningful changes.
+          {" "}
+          Last autosave: {autosaveAt ? new Date(autosaveAt).toLocaleString() : "none"}.
+        </div>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -762,38 +964,6 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           >
             Delete
           </button>
-          <button type="button" onClick={onExportJson} style={{ padding: "4px 8px" }}>
-            Export JSON
-          </button>
-          <button type="button" onClick={onExportMarkdown} style={{ padding: "4px 8px" }}>
-            Export Markdown
-          </button>
-          <button type="button" onClick={onExportPdf} style={{ padding: "4px 8px" }}>
-            Export PDF
-          </button>
-          <button type="button" onClick={onExportReplayHtml} style={{ padding: "4px 8px" }}>
-            Export Replay HTML
-          </button>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={readOnly}
-            style={{ padding: "4px 8px" }}
-          >
-            Import JSON
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".json,application/json"
-            disabled={readOnly}
-            style={{ display: "none" }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) handleImport(file);
-              e.currentTarget.value = "";
-            }}
-          />
         </div>
       </div>
 
@@ -995,6 +1165,80 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           )}
         </div>
       </details>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Pages</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {([
+            { id: "scene" as const, label: "Scene" },
+            { id: "datasets" as const, label: "Datasets" },
+            { id: "analysis" as const, label: "Analysis" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setWorkspacePage(tab.id)}
+              style={{
+                padding: "3px 10px",
+                borderRadius: 999,
+                border: "1px solid " + (workspacePage === tab.id ? "#1f3556" : "#d8d8d8"),
+                background: workspacePage === tab.id ? "#e6f0ff" : "#fff",
+                color: workspacePage === tab.id ? "#1f3556" : "#334155",
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+              aria-pressed={workspacePage === tab.id}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            padding: 8,
+            background: "#fff",
+            fontSize: 11,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Workspace tree</div>
+          {workspacePage === "scene" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontWeight: 600 }}>Scenes</div>
+              {workspaceSceneItems.length ? (
+                workspaceSceneItems.map((item, idx) => (
+                  <div key={`${item.stageTitle}-${item.title}-${idx}`}>
+                    {idx + 1}. {item.title} <span style={{ opacity: 0.65 }}>({item.stageTitle})</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ opacity: 0.65 }}>No scene blocks yet.</div>
+              )}
+            </div>
+          )}
+          {workspacePage === "datasets" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontWeight: 600 }}>Datasets</div>
+              {workspaceDatasetItems.length ? (
+                workspaceDatasetItems.map((ref) => <div key={ref}>{ref}</div>)
+              ) : (
+                <div style={{ opacity: 0.65 }}>No datasets captured yet.</div>
+              )}
+            </div>
+          )}
+          {workspacePage === "analysis" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontWeight: 600 }}>Overlays</div>
+              {workspaceAnalysisItems.length ? (
+                workspaceAnalysisItems.map((item) => <div key={item}>{item}</div>)
+              ) : (
+                <div style={{ opacity: 0.65 }}>No analysis overlays yet.</div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
         {WORKBOOK_STAGE_ORDER.map((stage, idx) => (

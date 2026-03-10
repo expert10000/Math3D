@@ -243,10 +243,122 @@ const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
 const WORKBOOK_STAGE_KEY = "math3d.workbooks.stage.v1";
 const WORKBOOK_PANEL_KEY = "math3d.workbooks.rightPanel.v1";
 const WORKBOOK_GHOST_OVERLAYS_KEY = "math3d.workbook.ghostOverlays.v1";
+const WORKBOOK_AUTOSAVE_KEY = "math3d.workbook.autosave.v1";
+const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
+const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
+const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
+const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
+const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
+const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
   activeWorkbookId?: string | null;
   activeStageId?: WorkbookStageId;
+  workspace?: WorkbookWorkspaceState;
+};
+type WorkbookStoredSession = {
+  savedAt: number;
+  payload: WorkbookReplayPayload;
+};
+type WorkbookEmbeddedMesh = {
+  label: string;
+  positions: number[];
+  indices: number[] | null;
+  normals?: number[] | null;
+  uvs?: number[] | null;
+  source: SurfaceMeshSource;
+};
+type WorkbookDatasetRecipe = {
+  id: string;
+  kind: "surface" | "volume";
+  source: string;
+  recipe: Record<string, unknown>;
+  mesh?: WorkbookEmbeddedMesh | null;
+  provenance: {
+    source: string;
+    linkedObjectIds?: string[];
+    createdAt: number;
+    version: number;
+  };
+};
+type WorkbookWorkspaceState = {
+  version: 1;
+  savedAt: number;
+  geometry: {
+    mode: "procedural" | "demo";
+    objects: GeometryObject[];
+    selectedObjectId: string | null;
+  };
+  datasets: {
+    currentDatasetRef: string;
+    items: WorkbookDatasetRecipe[];
+  };
+  analysis: {
+    chart: {
+      showChartGrid: boolean;
+      chartGridDensity: number;
+      chartMode: ChartMode;
+      graphDomains: Record<string, GraphDomain>;
+      implicitDomains: Record<string, ImplicitDomain>;
+      paramDomains: Record<string, ParamDomain>;
+    };
+    scalarFields: {
+      colorMode: ColorMode;
+      colorPalette: ColorPalette;
+      showContours: boolean;
+      contourCount: number;
+      implicitOverlay: "none" | "normals" | "curvature";
+      showPrincipalDirections: boolean;
+      showPrincipalGlyphs: boolean;
+      showPrincipalLines: boolean;
+      showCurvatureLines: boolean;
+      showRidges: boolean;
+      showValleys: boolean;
+      showGaussMap: boolean;
+      showBoundingBox: boolean;
+      showPlanes: boolean;
+      calculusScalarSource: string;
+      calculusCustomScalarExpr: string;
+      workbookScalarFieldNames: string[];
+    };
+    vectorFields: {
+      calculusVectorOverlayEnabled: boolean;
+      calculusVectorSource: string;
+      calculusActiveVectorField: string;
+      calculusVectorDensity: number;
+      calculusVectorScale: number;
+      volumeShowStreamlines: boolean;
+      volumeVectorPresetId: VectorPresetId;
+      volumeStreamSeedGrid: number;
+      volumeStreamlineStepSizeOverride: number | null;
+      volumeStreamlineMaxSteps: number;
+      volumeStreamlineMaxLength: number;
+      workbookVectorFieldNames: string[];
+    };
+    overlays: {
+      geodesicPathEnabled: boolean;
+      geodesicPathConstrain: boolean;
+      geodesicPathSmooth: boolean;
+      geodesicHeatEnabled: boolean;
+      geodesicHeatUseContinuous: boolean;
+      geodesicHeatShowHeatmap: boolean;
+      geodesicDiskEnabled: boolean;
+      geodesicDiskRadius: number;
+      geodesicDiskAutoUpdate: boolean;
+      geodesicDiskShowBoundary: boolean;
+      geodesicDiskMethod: "heat" | "dijkstra";
+      computeRecipes: Array<{
+        workbookId: string;
+        stageId: WorkbookStageId;
+        blockId: string;
+        operatorId: string;
+        inputRefs: WorkbookComputeInputRef[];
+        status: WorkbookComputeRunStatus;
+        outputKinds: string[];
+        cachedKeys: string[];
+      }>;
+    };
+  };
 };
 type WorkbookOperatorRunContext = {
   blockId: string;
@@ -404,6 +516,24 @@ const cloneSurfaceMeshData = (mesh: SurfaceMeshData, labelOverride?: string): Su
         stats: { ...mesh.validation.stats },
       }
     : null,
+});
+
+const serializeSurfaceMeshData = (mesh: SurfaceMeshData): WorkbookEmbeddedMesh => ({
+  label: mesh.label,
+  positions: Array.from(mesh.positions),
+  indices: mesh.indices ? Array.from(mesh.indices) : null,
+  normals: mesh.normals ? Array.from(mesh.normals) : null,
+  uvs: mesh.uvs ? Array.from(mesh.uvs) : null,
+  source: mesh.source,
+});
+
+const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData => ({
+  label: mesh.label,
+  positions: Float32Array.from(mesh.positions),
+  indices: mesh.indices ? Uint32Array.from(mesh.indices) : null,
+  normals: mesh.normals ? Float32Array.from(mesh.normals) : null,
+  uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
+  source: mesh.source,
 });
 
 /* ---------------- constants ---------------- */
@@ -1447,6 +1577,12 @@ function saveRecord<T>(key: string, record: Record<string, T>) {
   } catch {
     // ignore
   }
+}
+
+function isWorkbookReplayPayload(value: unknown): value is WorkbookReplayPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as WorkbookReplayPayload;
+  return Array.isArray(payload.workbooks);
 }
 
 type WeierstrassDiagnosticsSuccess = Extract<WeierstrassDriftResult, { drift: number }>;
@@ -3189,6 +3325,30 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_STAGE_KEY);
     return isWorkbookStageId(saved) ? saved : "define";
   });
+  const [workbookManualSaveHash, setWorkbookManualSaveHash] = useState<string>(() => {
+    if (IS_REPLAY_MODE) return "";
+    return localStorage.getItem(WORKBOOK_MANUAL_SAVE_HASH_KEY) ?? "";
+  });
+  const [workbookManualSaveAt, setWorkbookManualSaveAt] = useState<number | null>(() => {
+    if (IS_REPLAY_MODE) return null;
+    const raw = Number(localStorage.getItem(WORKBOOK_MANUAL_SAVE_AT_KEY));
+    return Number.isFinite(raw) && raw > 0 ? raw : null;
+  });
+  const [workbookManualSaveName, setWorkbookManualSaveName] = useState<string>(() => {
+    if (IS_REPLAY_MODE) return "";
+    return localStorage.getItem(WORKBOOK_MANUAL_SAVE_NAME_KEY) ?? "";
+  });
+  const [workbookAutosaveAt, setWorkbookAutosaveAt] = useState<number | null>(() => {
+    if (IS_REPLAY_MODE) return null;
+    const raw = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
+    return raw && Number.isFinite(raw.savedAt) ? raw.savedAt : null;
+  });
+  const [workbookSnapshotAt, setWorkbookSnapshotAt] = useState<number | null>(() => {
+    if (IS_REPLAY_MODE) return null;
+    const raw = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_SNAPSHOT_KEY));
+    return raw && Number.isFinite(raw.savedAt) ? raw.savedAt : null;
+  });
+  const workbookAutosaveHashRef = useRef("");
   const [workbookCaptureToken, setWorkbookCaptureToken] = useState(0);
   const [pendingThumbnailCapture, setPendingThumbnailCapture] = useState<{
     stageId: WorkbookStageId;
@@ -3299,6 +3459,40 @@ const App: React.FC = () => {
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
     [workbooks, activeWorkbookId]
   );
+  const workbookSessionPayload = useMemo<WorkbookReplayPayload>(
+    () => ({
+      workbooks,
+      activeWorkbookId,
+      activeStageId,
+    }),
+    [workbooks, activeWorkbookId, activeStageId]
+  );
+  const workbookSessionExportPayload = useMemo(
+    () => ({ version: 1 as const, ...workbookSessionPayload }),
+    [workbookSessionPayload]
+  );
+  const workbookSessionJson = useMemo(
+    () => JSON.stringify(workbookSessionExportPayload, null, 2),
+    [workbookSessionExportPayload]
+  );
+  const workbookSessionHash = useMemo(
+    () => hashString(workbookSessionJson),
+    [workbookSessionJson]
+  );
+  const workbookDirty = workbookManualSaveHash
+    ? workbookManualSaveHash !== workbookSessionHash
+    : true;
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    if (workbookManualSaveHash) return;
+    setWorkbookManualSaveHash(workbookSessionHash);
+    try {
+      localStorage.setItem(WORKBOOK_MANUAL_SAVE_HASH_KEY, workbookSessionHash);
+    } catch {
+      // ignore
+    }
+  }, [workbookManualSaveHash, workbookSessionHash]);
 
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
@@ -8164,20 +8358,781 @@ case "mobius":
     ]
   );
 
-  const handleExportWorkbooks = useCallback(() => {
-    const payload = {
+  const buildWorkbookWorkspaceState = useCallback((): WorkbookWorkspaceState => {
+    const now = Date.now();
+    const graphDomainCopy: Record<string, GraphDomain> = {};
+    for (const [id, domain] of Object.entries(graphDomains)) {
+      graphDomainCopy[id] = { xSpan: domain.xSpan, ySpan: domain.ySpan };
+    }
+    const implicitDomainCopy: Record<string, ImplicitDomain> = {};
+    for (const [id, domain] of Object.entries(implicitDomains)) {
+      implicitDomainCopy[id] = { xSpan: domain.xSpan, ySpan: domain.ySpan };
+    }
+    const paramDomainCopy: Record<string, ParamDomain> = {};
+    for (const [id, domain] of Object.entries(paramDomains)) {
+      paramDomainCopy[id] = {
+        uMin: domain.uMin,
+        uMax: domain.uMax,
+        vMin: domain.vMin,
+        vMax: domain.vMax,
+      };
+    }
+
+    const datasetItems: WorkbookDatasetRecipe[] = [
+      {
+        id: "surface:graph",
+        kind: "surface",
+        source: "explicit",
+        recipe: {
+          surfaceId: graphSurfaceId,
+          expr: graphExpr,
+          resolution: graphResolution,
+          domains: graphDomainCopy,
+        },
+        provenance: { source: "explicit", createdAt: now, version: 1 },
+      },
+      {
+        id: "surface:implicit",
+        kind: "surface",
+        source: "implicit",
+        recipe: {
+          surfaceId: implicitSurfaceId,
+          expr: implicitExpr,
+          resolution: implicitResolution,
+          domains: implicitDomainCopy,
+        },
+        provenance: { source: "implicit", createdAt: now, version: 1 },
+      },
+      {
+        id: "surface:param",
+        kind: "surface",
+        source: "param",
+        recipe: {
+          surfaceId: paramSurfaceId,
+          xExpr: paramXExpr,
+          yExpr: paramYExpr,
+          zExpr: paramZExpr,
+          resolution: paramResolution,
+          domains: paramDomainCopy,
+        },
+        provenance: { source: "param", createdAt: now, version: 1 },
+      },
+      {
+        id: "surface:weierstrass",
+        kind: "surface",
+        source: "weierstrass",
+        recipe: {
+          gExpr: weierstrassGExpr,
+          phiExpr: weierstrassPhiExpr,
+          domain: weierstrassDomain,
+          resolution: weierstrassResolution,
+          recenterRescale: weierstrassRecenter,
+        },
+        provenance: { source: "weierstrass", createdAt: now, version: 1 },
+      },
+    ];
+
+    if (meshDataset?.mesh) {
+      const source = meshDataset.mesh.source;
+      const linkedObjectIds =
+        source.kind === "geometryObject"
+          ? [
+              source.objectId,
+              ...(source.objects?.map((entry) => entry.objectId) ?? []),
+            ].filter((id): id is string => !!id)
+          : [];
+      datasetItems.push({
+        id: "surface:mesh",
+        kind: "surface",
+        source: source.kind,
+        recipe: {
+          label: meshDataset.mesh.label,
+          source,
+        },
+        mesh: serializeSurfaceMeshData(meshDataset.mesh),
+        provenance: {
+          source: source.kind,
+          linkedObjectIds,
+          createdAt: now,
+          version: 1,
+        },
+      });
+    }
+
+    if (datasetKind === "volume" || volumeDatasetOverride) {
+      datasetItems.push({
+        id: "volume:active",
+        kind: "volume",
+        source: volumeDatasetOverride ? "volumeOverride" : "volumePreset",
+        recipe: {
+          presetId: volumePresetId,
+          params: volumeParamsResolved,
+          dims: volumeDims,
+          sampling: volumeSamplingClamped,
+          customExpr: volumeCustomExpr,
+          showIsosurface: volumeShowIsosurface,
+          isoValue: volumeIsoValue,
+          viewMode: volumeViewMode,
+          distanceSigned: volumeDistanceSigned,
+        },
+        provenance: {
+          source: volumeDatasetOverride ? "volumeOverride" : "volumePreset",
+          createdAt: now,
+          version: 1,
+        },
+      });
+    }
+
+    const computeRecipes: WorkbookWorkspaceState["analysis"]["overlays"]["computeRecipes"] = [];
+    for (const workbook of workbooks) {
+      for (const stage of workbook.stages) {
+        for (const block of stage.blocks) {
+          if (block.type !== "compute" || !block.compute?.operatorId) continue;
+          const outputs = block.compute.outputs ?? {};
+          const outputKinds: string[] = [];
+          if (outputs.viewPatch) outputKinds.push("viewPatch");
+          if (outputs.geodesicHeat) outputKinds.push("geodesicHeat");
+          if (outputs.curveOverlay) outputKinds.push("curveOverlay");
+          if (outputs.directionOverlay) outputKinds.push("directionOverlay");
+          if (outputs.selectionMask) outputKinds.push("selectionMask");
+          if (outputs.geodesicPath) outputKinds.push("geodesicPath");
+          const status: WorkbookComputeRunStatus =
+            block.compute.lastRun?.status ??
+            (block.compute.status === "ok"
+              ? "ok"
+              : block.compute.status === "failed"
+                ? "failed"
+                : "stale");
+          computeRecipes.push({
+            workbookId: workbook.id,
+            stageId: stage.id,
+            blockId: block.id,
+            operatorId: block.compute.operatorId,
+            inputRefs: block.compute.inputs ?? [],
+            status,
+            outputKinds,
+            cachedKeys: Object.keys(block.compute.cache ?? {}),
+          });
+        }
+      }
+    }
+
+    return {
       version: 1,
-      activeWorkbookId,
-      activeStageId,
-      workbooks,
+      savedAt: now,
+      geometry: {
+        mode: geometryMode,
+        objects: geometryObjects.map((obj) => ({
+          id: obj.id,
+          type: obj.type,
+          params: { ...obj.params },
+          transform: {
+            position: { ...obj.transform.position },
+            rotation: { ...obj.transform.rotation },
+            scale: { ...obj.transform.scale },
+          },
+          visible: obj.visible,
+          material: { ...obj.material },
+          name: obj.name,
+          group: obj.group,
+        })),
+        selectedObjectId: geometrySelectedObjectId,
+      },
+      datasets: {
+        currentDatasetRef,
+        items: datasetItems,
+      },
+      analysis: {
+        chart: {
+          showChartGrid,
+          chartGridDensity,
+          chartMode,
+          graphDomains: graphDomainCopy,
+          implicitDomains: implicitDomainCopy,
+          paramDomains: paramDomainCopy,
+        },
+        scalarFields: {
+          colorMode,
+          colorPalette,
+          showContours,
+          contourCount,
+          implicitOverlay,
+          showPrincipalDirections,
+          showPrincipalGlyphs,
+          showPrincipalLines,
+          showCurvatureLines,
+          showRidges,
+          showValleys,
+          showGaussMap,
+          showBoundingBox,
+          showPlanes,
+          calculusScalarSource,
+          calculusCustomScalarExpr,
+          workbookScalarFieldNames: Array.from(workbookScalarFields.keys()),
+        },
+        vectorFields: {
+          calculusVectorOverlayEnabled,
+          calculusVectorSource,
+          calculusActiveVectorField,
+          calculusVectorDensity,
+          calculusVectorScale,
+          volumeShowStreamlines,
+          volumeVectorPresetId,
+          volumeStreamSeedGrid,
+          volumeStreamlineStepSizeOverride,
+          volumeStreamlineMaxSteps,
+          volumeStreamlineMaxLength,
+          workbookVectorFieldNames: Array.from(workbookVectorFields.keys()),
+        },
+        overlays: {
+          geodesicPathEnabled,
+          geodesicPathConstrain,
+          geodesicPathSmooth,
+          geodesicHeatEnabled,
+          geodesicHeatUseContinuous,
+          geodesicHeatShowHeatmap,
+          geodesicDiskEnabled,
+          geodesicDiskRadius,
+          geodesicDiskAutoUpdate,
+          geodesicDiskShowBoundary,
+          geodesicDiskMethod,
+          computeRecipes,
+        },
+      },
     };
-    const json = JSON.stringify(payload, null, 2);
+  }, [
+    graphDomains,
+    implicitDomains,
+    paramDomains,
+    graphSurfaceId,
+    graphExpr,
+    graphResolution,
+    implicitSurfaceId,
+    implicitExpr,
+    implicitResolution,
+    paramSurfaceId,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    paramResolution,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    weierstrassDomain,
+    weierstrassResolution,
+    weierstrassRecenter,
+    meshDataset,
+    datasetKind,
+    volumeDatasetOverride,
+    volumePresetId,
+    volumeParamsResolved,
+    volumeDims,
+    volumeSamplingClamped,
+    volumeCustomExpr,
+    volumeShowIsosurface,
+    volumeIsoValue,
+    volumeViewMode,
+    volumeDistanceSigned,
+    workbooks,
+    geometryMode,
+    geometryObjects,
+    geometrySelectedObjectId,
+    currentDatasetRef,
+    showChartGrid,
+    chartGridDensity,
+    chartMode,
+    colorMode,
+    colorPalette,
+    showContours,
+    contourCount,
+    implicitOverlay,
+    showPrincipalDirections,
+    showPrincipalGlyphs,
+    showPrincipalLines,
+    showCurvatureLines,
+    showRidges,
+    showValleys,
+    showGaussMap,
+    showBoundingBox,
+    showPlanes,
+    calculusScalarSource,
+    calculusCustomScalarExpr,
+    workbookScalarFields,
+    calculusVectorOverlayEnabled,
+    calculusVectorSource,
+    calculusActiveVectorField,
+    calculusVectorDensity,
+    calculusVectorScale,
+    volumeShowStreamlines,
+    volumeVectorPresetId,
+    volumeStreamSeedGrid,
+    volumeStreamlineStepSizeOverride,
+    volumeStreamlineMaxSteps,
+    volumeStreamlineMaxLength,
+    workbookVectorFields,
+    geodesicPathEnabled,
+    geodesicPathConstrain,
+    geodesicPathSmooth,
+    geodesicHeatEnabled,
+    geodesicHeatUseContinuous,
+    geodesicHeatShowHeatmap,
+    geodesicDiskEnabled,
+    geodesicDiskRadius,
+    geodesicDiskAutoUpdate,
+    geodesicDiskShowBoundary,
+    geodesicDiskMethod,
+  ]);
+
+  const workbookSessionPayloadWithWorkspace = useMemo<WorkbookReplayPayload>(
+    () => ({
+      ...workbookSessionPayload,
+      workspace: buildWorkbookWorkspaceState(),
+    }),
+    [workbookSessionPayload, buildWorkbookWorkspaceState]
+  );
+
+  const workbookSessionJsonWithWorkspace = useMemo(
+    () => JSON.stringify({ version: 1, ...workbookSessionPayloadWithWorkspace }, null, 2),
+    [workbookSessionPayloadWithWorkspace]
+  );
+  const workbookSessionHashWithWorkspace = useMemo(
+    () => hashString(workbookSessionJsonWithWorkspace),
+    [workbookSessionJsonWithWorkspace]
+  );
+
+  const markWorkbookManualSave = useCallback(
+    (hash: string, savedAt: number, fileName?: string) => {
+      if (IS_REPLAY_MODE) return;
+      setWorkbookManualSaveHash(hash);
+      setWorkbookManualSaveAt(savedAt);
+      try {
+        localStorage.setItem(WORKBOOK_MANUAL_SAVE_HASH_KEY, hash);
+        localStorage.setItem(WORKBOOK_MANUAL_SAVE_AT_KEY, String(savedAt));
+      } catch {
+        // ignore
+      }
+      if (fileName) {
+        setWorkbookManualSaveName(fileName);
+        try {
+          localStorage.setItem(WORKBOOK_MANUAL_SAVE_NAME_KEY, fileName);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    []
+  );
+
+  const applyWorkbookWorkspace = (workspace: WorkbookWorkspaceState | undefined) => {
+    if (!workspace || typeof workspace !== "object") return;
+
+    const geometry = workspace.geometry;
+    if (geometry && Array.isArray(geometry.objects)) {
+      const normalized = geometry.objects
+        .filter((obj) => obj && typeof obj.id === "string" && typeof obj.type === "string")
+        .map((obj) => ({
+          id: obj.id,
+          type: obj.type,
+          params: { ...(obj.params ?? {}) },
+          transform: {
+            position: {
+              x: Number((obj.transform as any)?.position?.x ?? 0),
+              y: Number((obj.transform as any)?.position?.y ?? 0),
+              z: Number((obj.transform as any)?.position?.z ?? 0),
+            },
+            rotation: {
+              x: Number((obj.transform as any)?.rotation?.x ?? 0),
+              y: Number((obj.transform as any)?.rotation?.y ?? 0),
+              z: Number((obj.transform as any)?.rotation?.z ?? 0),
+            },
+            scale: {
+              x: Number((obj.transform as any)?.scale?.x ?? 1),
+              y: Number((obj.transform as any)?.scale?.y ?? 1),
+              z: Number((obj.transform as any)?.scale?.z ?? 1),
+            },
+          },
+          visible: Boolean(obj.visible ?? true),
+          material: { ...(obj.material ?? {}) },
+          name: String(obj.name ?? obj.id),
+          group: typeof obj.group === "string" ? obj.group : "default",
+        })) as GeometryObject[];
+      if (normalized.length) {
+        setGeometryMode(geometry.mode === "demo" ? "demo" : "procedural");
+        setGeometryObjects(normalized);
+        setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
+      }
+    }
+
+    const datasetItems = workspace.datasets?.items ?? [];
+    const byId = new Map(datasetItems.map((item) => [item.id, item]));
+
+    const graphRecipe = byId.get("surface:graph")?.recipe as any;
+    if (graphRecipe) {
+      if (typeof graphRecipe.surfaceId === "string") setGraphSurfaceId(graphRecipe.surfaceId as SurfaceId);
+      if (typeof graphRecipe.expr === "string") setGraphExpr(graphRecipe.expr);
+      if (Number.isFinite(graphRecipe.resolution)) setGraphResolution(Math.max(10, Math.round(graphRecipe.resolution)));
+      if (graphRecipe.domains && typeof graphRecipe.domains === "object") {
+        const next: Record<string, GraphDomain> = {};
+        for (const [id, domain] of Object.entries(graphRecipe.domains as Record<string, any>)) {
+          next[id] = normalizeGraphDomain(
+            { xSpan: Number(domain?.xSpan), ySpan: Number(domain?.ySpan) },
+            getDefaultGraphSpan(id as SurfaceId)
+          );
+        }
+        setGraphDomains(next);
+      }
+    }
+
+    const implicitRecipe = byId.get("surface:implicit")?.recipe as any;
+    if (implicitRecipe) {
+      if (typeof implicitRecipe.surfaceId === "string") setImplicitSurfaceId(implicitRecipe.surfaceId as SurfaceId);
+      if (typeof implicitRecipe.expr === "string") setImplicitExpr(implicitRecipe.expr);
+      if (Number.isFinite(implicitRecipe.resolution)) {
+        setImplicitResolution(Math.max(8, Math.round(implicitRecipe.resolution)));
+      }
+      if (implicitRecipe.domains && typeof implicitRecipe.domains === "object") {
+        const next: Record<string, ImplicitDomain> = {};
+        for (const [id, domain] of Object.entries(implicitRecipe.domains as Record<string, any>)) {
+          next[id] = normalizeImplicitDomain(
+            { xSpan: Number(domain?.xSpan), ySpan: Number(domain?.ySpan) },
+            getDefaultImplicitDomain(id as SurfaceId)
+          );
+        }
+        setImplicitDomains(next);
+      }
+    }
+
+    const paramRecipe = byId.get("surface:param")?.recipe as any;
+    if (paramRecipe) {
+      if (typeof paramRecipe.surfaceId === "string") setParamSurfaceId(paramRecipe.surfaceId as ParamSurfaceId);
+      if (typeof paramRecipe.xExpr === "string") setParamXExpr(paramRecipe.xExpr);
+      if (typeof paramRecipe.yExpr === "string") setParamYExpr(paramRecipe.yExpr);
+      if (typeof paramRecipe.zExpr === "string") setParamZExpr(paramRecipe.zExpr);
+      if (Number.isFinite(paramRecipe.resolution)) setParamResolution(Math.max(10, Math.round(paramRecipe.resolution)));
+      if (paramRecipe.domains && typeof paramRecipe.domains === "object") {
+        const next: Record<string, ParamDomain> = {};
+        for (const [id, domain] of Object.entries(paramRecipe.domains as Record<string, any>)) {
+          next[id] = normalizeParamDomain(
+            {
+              uMin: Number(domain?.uMin),
+              uMax: Number(domain?.uMax),
+              vMin: Number(domain?.vMin),
+              vMax: Number(domain?.vMax),
+            },
+            getParamDomainPreviewBounds(id as ParamSurfaceId)
+          );
+        }
+        setParamDomains(next);
+      }
+    }
+
+    const weierstrassRecipe = byId.get("surface:weierstrass")?.recipe as any;
+    if (weierstrassRecipe) {
+      if (typeof weierstrassRecipe.gExpr === "string") setWeierstrassGExpr(weierstrassRecipe.gExpr);
+      if (typeof weierstrassRecipe.phiExpr === "string") setWeierstrassPhiExpr(weierstrassRecipe.phiExpr);
+      if (weierstrassRecipe.domain && typeof weierstrassRecipe.domain === "object") {
+        setWeierstrassDomain(
+          normalizeParamDomain(
+            {
+              uMin: Number((weierstrassRecipe.domain as any).uMin),
+              uMax: Number((weierstrassRecipe.domain as any).uMax),
+              vMin: Number((weierstrassRecipe.domain as any).vMin),
+              vMax: Number((weierstrassRecipe.domain as any).vMax),
+            },
+            WEIERSTRASS_DEFAULTS.domain
+          )
+        );
+      }
+      if (Number.isFinite(weierstrassRecipe.resolution)) {
+        setWeierstrassResolution(Math.max(10, Math.round(weierstrassRecipe.resolution)));
+      }
+      if (typeof weierstrassRecipe.recenterRescale === "boolean") {
+        setWeierstrassRecenter(weierstrassRecipe.recenterRescale);
+      }
+    }
+
+    const meshItem = byId.get("surface:mesh");
+    if (meshItem?.mesh) {
+      const mesh = applySurfaceMeshOps(deserializeSurfaceMeshData(meshItem.mesh));
+      setMeshDataset(mesh);
+      setSurfaceViewerKind("mesh");
+      setDatasetKind("surface");
+    }
+
+    const volumeRecipe = byId.get("volume:active")?.recipe as any;
+    if (volumeRecipe) {
+      if (
+        typeof volumeRecipe.presetId === "string" &&
+        VOLUME_PRESETS.some((preset) => preset.id === volumeRecipe.presetId)
+      ) {
+        setVolumePresetId(volumeRecipe.presetId as VolumePresetId);
+      }
+      if (
+        Array.isArray(volumeRecipe.dims) &&
+        volumeRecipe.dims.length === 3 &&
+        volumeRecipe.dims.every((v: unknown) => Number.isFinite(Number(v)))
+      ) {
+        setVolumeDims([
+          Math.max(8, Math.round(Number(volumeRecipe.dims[0]))),
+          Math.max(8, Math.round(Number(volumeRecipe.dims[1]))),
+          Math.max(8, Math.round(Number(volumeRecipe.dims[2]))),
+        ]);
+      }
+      if (volumeRecipe.params && typeof volumeRecipe.params === "object") {
+        setVolumeParams(volumeRecipe.params as VolumePresetParams);
+      }
+      if (typeof volumeRecipe.customExpr === "string") setVolumeCustomExpr(volumeRecipe.customExpr);
+      if (typeof volumeRecipe.showIsosurface === "boolean") setVolumeShowIsosurface(volumeRecipe.showIsosurface);
+      if (Number.isFinite(volumeRecipe.isoValue)) setVolumeIsoValue(Number(volumeRecipe.isoValue));
+      if (volumeRecipe.viewMode === "slices" || volumeRecipe.viewMode === "3d") {
+        setVolumeViewMode(volumeRecipe.viewMode);
+      }
+      if (typeof volumeRecipe.distanceSigned === "boolean") {
+        setVolumeDistanceSigned(volumeRecipe.distanceSigned);
+      }
+    }
+
+    const currentRef = workspace.datasets?.currentDatasetRef ?? "";
+    if (currentRef.startsWith("graph:")) {
+      setDatasetKind("surface");
+      setSurfaceViewerKind("graph");
+    } else if (currentRef.startsWith("implicit:")) {
+      setDatasetKind("surface");
+      setSurfaceViewerKind("implicit");
+    } else if (currentRef.startsWith("param:")) {
+      setDatasetKind("surface");
+      setSurfaceViewerKind("param");
+    } else if (currentRef.startsWith("weierstrass:")) {
+      setDatasetKind("surface");
+      setSurfaceViewerKind("weierstrass");
+    } else if (currentRef.startsWith("mesh:")) {
+      setDatasetKind("surface");
+      setSurfaceViewerKind("mesh");
+    } else if (currentRef.startsWith("volume:")) {
+      setDatasetKind("volume");
+    }
+
+    const chart = workspace.analysis?.chart;
+    if (chart) {
+      setShowChartGrid(Boolean(chart.showChartGrid));
+      if (Number.isFinite(chart.chartGridDensity)) {
+        setChartGridDensity(Math.max(2, Math.min(64, Math.round(chart.chartGridDensity))));
+      }
+      if (chart.chartMode === "auto" || chart.chartMode === "xy" || chart.chartMode === "uv" || chart.chartMode === "local") {
+        setChartMode(chart.chartMode);
+      }
+    }
+
+    const scalars = workspace.analysis?.scalarFields;
+    if (scalars) {
+      setColorMode(scalars.colorMode);
+      setColorPalette(scalars.colorPalette);
+      setShowContours(Boolean(scalars.showContours));
+      if (Number.isFinite(scalars.contourCount)) setContourCount(Math.max(2, Math.round(scalars.contourCount)));
+      if (scalars.implicitOverlay === "none" || scalars.implicitOverlay === "normals" || scalars.implicitOverlay === "curvature") {
+        setImplicitOverlay(scalars.implicitOverlay);
+      }
+      setShowPrincipalDirections(Boolean(scalars.showPrincipalDirections));
+      setShowPrincipalGlyphs(Boolean(scalars.showPrincipalGlyphs));
+      setShowPrincipalLines(Boolean(scalars.showPrincipalLines));
+      setShowCurvatureLines(Boolean(scalars.showCurvatureLines));
+      setShowRidges(Boolean(scalars.showRidges));
+      setShowValleys(Boolean(scalars.showValleys));
+      setShowGaussMap(Boolean(scalars.showGaussMap));
+      setShowBoundingBox(Boolean(scalars.showBoundingBox));
+      setShowPlanes(Boolean(scalars.showPlanes));
+      if (typeof scalars.calculusScalarSource === "string") setCalculusScalarSource(scalars.calculusScalarSource);
+      if (typeof scalars.calculusCustomScalarExpr === "string") setCalculusCustomScalarExpr(scalars.calculusCustomScalarExpr);
+    }
+
+    const vectors = workspace.analysis?.vectorFields;
+    if (vectors) {
+      setCalculusVectorOverlayEnabled(Boolean(vectors.calculusVectorOverlayEnabled));
+      if (typeof vectors.calculusVectorSource === "string") setCalculusVectorSource(vectors.calculusVectorSource);
+      if (typeof vectors.calculusActiveVectorField === "string") setCalculusActiveVectorField(vectors.calculusActiveVectorField);
+      if (Number.isFinite(vectors.calculusVectorDensity)) {
+        setCalculusVectorDensity(Math.max(10, Math.round(vectors.calculusVectorDensity)));
+      }
+      if (Number.isFinite(vectors.calculusVectorScale)) {
+        setCalculusVectorScale(Math.max(0.01, Number(vectors.calculusVectorScale)));
+      }
+      setVolumeShowStreamlines(Boolean(vectors.volumeShowStreamlines));
+      if (typeof vectors.volumeVectorPresetId === "string" && VECTOR_PRESETS.some((p) => p.id === vectors.volumeVectorPresetId)) {
+        setVolumeVectorPresetId(vectors.volumeVectorPresetId as VectorPresetId);
+      }
+      if (Number.isFinite(vectors.volumeStreamSeedGrid)) setVolumeStreamSeedGrid(Math.max(1, Math.round(vectors.volumeStreamSeedGrid)));
+      if (vectors.volumeStreamlineStepSizeOverride == null || Number.isFinite(vectors.volumeStreamlineStepSizeOverride)) {
+        setVolumeStreamlineStepSizeOverride(
+          vectors.volumeStreamlineStepSizeOverride == null ? null : Number(vectors.volumeStreamlineStepSizeOverride)
+        );
+      }
+      if (Number.isFinite(vectors.volumeStreamlineMaxSteps)) {
+        setVolumeStreamlineMaxSteps(Math.max(1, Math.round(vectors.volumeStreamlineMaxSteps)));
+      }
+    }
+
+    const overlays = workspace.analysis?.overlays;
+    if (overlays) {
+      setGeodesicPathEnabled(Boolean(overlays.geodesicPathEnabled));
+      setGeodesicPathConstrain(Boolean(overlays.geodesicPathConstrain));
+      setGeodesicPathSmooth(Boolean(overlays.geodesicPathSmooth));
+      setGeodesicHeatEnabled(Boolean(overlays.geodesicHeatEnabled));
+      setGeodesicHeatUseContinuous(Boolean(overlays.geodesicHeatUseContinuous));
+      setGeodesicHeatShowHeatmap(Boolean(overlays.geodesicHeatShowHeatmap));
+      setGeodesicDiskEnabled(Boolean(overlays.geodesicDiskEnabled));
+      if (Number.isFinite(overlays.geodesicDiskRadius)) setGeodesicDiskRadius(Number(overlays.geodesicDiskRadius));
+      setGeodesicDiskAutoUpdate(Boolean(overlays.geodesicDiskAutoUpdate));
+      setGeodesicDiskShowBoundary(Boolean(overlays.geodesicDiskShowBoundary));
+      if (overlays.geodesicDiskMethod === "heat" || overlays.geodesicDiskMethod === "dijkstra") {
+        setGeodesicDiskMethod(overlays.geodesicDiskMethod);
+      }
+    }
+  };
+
+  const applyWorkbookPayload = useCallback(
+    (raw: unknown) => {
+      if (IS_REPLAY_MODE) return false;
+      const parsed = raw as any;
+      const nextWorkbooks: Workbook[] = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray(parsed?.workbooks)
+          ? parsed.workbooks
+          : [];
+      if (!nextWorkbooks.length) return false;
+      const normalized = normalizeWorkbooks(nextWorkbooks);
+      setWorkbooks(normalized);
+      const nextActive =
+        typeof parsed?.activeWorkbookId === "string" &&
+        normalized.some((w) => w.id === parsed.activeWorkbookId)
+          ? parsed.activeWorkbookId
+          : normalized[0].id;
+      const nextStage = isWorkbookStageId(parsed?.activeStageId) ? parsed.activeStageId : "define";
+      setActiveWorkbookId(nextActive);
+      setActiveStageId(nextStage);
+      if (parsed?.workspace) {
+        applyWorkbookWorkspace(parsed.workspace as WorkbookWorkspaceState);
+      }
+      const nextHash = hashString(
+        JSON.stringify(
+          {
+            version: 1,
+            workbooks: normalized,
+            activeWorkbookId: nextActive,
+            activeStageId: nextStage,
+          },
+          null,
+          2
+        )
+      );
+      markWorkbookManualSave(nextHash, Date.now());
+      workbookAutosaveHashRef.current = nextHash;
+      return true;
+    },
+    [markWorkbookManualSave]
+  );
+
+  const commitWorkbookAutosave = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    if (workbookAutosaveHashRef.current === workbookSessionHashWithWorkspace) return;
+    const entry: WorkbookStoredSession = {
+      savedAt: Date.now(),
+      payload: workbookSessionPayloadWithWorkspace,
+    };
+    try {
+      localStorage.setItem(WORKBOOK_AUTOSAVE_KEY, JSON.stringify(entry));
+      setWorkbookAutosaveAt(entry.savedAt);
+      workbookAutosaveHashRef.current = workbookSessionHashWithWorkspace;
+    } catch {
+      // ignore
+    }
+  }, [workbookSessionPayloadWithWorkspace, workbookSessionHashWithWorkspace]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    const timer = window.setTimeout(() => {
+      commitWorkbookAutosave();
+    }, WORKBOOK_AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [commitWorkbookAutosave, workbookSessionHashWithWorkspace]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    const interval = window.setInterval(() => {
+      commitWorkbookAutosave();
+    }, WORKBOOK_AUTOSAVE_INTERVAL_SEC * 1000);
+    return () => window.clearInterval(interval);
+  }, [commitWorkbookAutosave]);
+
+  const handleSaveWorkbookAs = useCallback(() => {
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    const fileName = `${base}-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadTextFile(workbookSessionJsonWithWorkspace, fileName, "application/json");
+    markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
+  }, [workbookSessionJsonWithWorkspace, workbookSessionHash, workbooks.length, activeWorkbook, markWorkbookManualSave]);
+
+  const handleSaveWorkbook = useCallback(() => {
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    const fileName =
+      workbookManualSaveName || `${base}-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadTextFile(workbookSessionJsonWithWorkspace, fileName, "application/json");
+    markWorkbookManualSave(workbookSessionHash, Date.now(), fileName);
+  }, [
+    workbookSessionJsonWithWorkspace,
+    workbookSessionHash,
+    workbookManualSaveName,
+    workbooks.length,
+    activeWorkbook,
+    markWorkbookManualSave,
+  ]);
+
+  const handleSnapshotWorkbookSession = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    const entry: WorkbookStoredSession = {
+      savedAt: Date.now(),
+      payload: workbookSessionPayloadWithWorkspace,
+    };
+    try {
+      localStorage.setItem(WORKBOOK_SNAPSHOT_KEY, JSON.stringify(entry));
+      setWorkbookSnapshotAt(entry.savedAt);
+    } catch {
+      // ignore
+    }
+  }, [workbookSessionPayloadWithWorkspace]);
+
+  const handleRestoreWorkbookSnapshot = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_SNAPSHOT_KEY));
+    if (!stored || !isWorkbookReplayPayload(stored.payload)) return;
+    if (!applyWorkbookPayload(stored.payload)) return;
+    const restoredHash = hashString(
+      JSON.stringify({ version: 1, ...stored.payload }, null, 2)
+    );
+    markWorkbookManualSave(restoredHash, Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now());
+  }, [applyWorkbookPayload, markWorkbookManualSave]);
+
+  const handleRestoreWorkbookAutosave = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
+    if (!stored || !isWorkbookReplayPayload(stored.payload)) return;
+    if (!applyWorkbookPayload(stored.payload)) return;
+    const restoredHash = hashString(
+      JSON.stringify({ version: 1, ...stored.payload }, null, 2)
+    );
+    markWorkbookManualSave(restoredHash, Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now());
+  }, [applyWorkbookPayload, markWorkbookManualSave]);
+
+  const handleExportWorkbooks = useCallback(() => {
     downloadTextFile(
-      json,
+      workbookSessionJsonWithWorkspace,
       `math3d-workbooks-${new Date().toISOString().slice(0, 10)}.json`,
       "application/json"
     );
-  }, [workbooks, activeWorkbookId, activeStageId]);
+  }, [workbookSessionJsonWithWorkspace]);
 
   const handleExportWorkbooksMarkdown = useCallback(() => {
     const markdown = buildWorkbooksMarkdown(workbooks, activeWorkbookId);
@@ -8207,11 +9162,7 @@ case "mobius":
   }, [workbooks, activeWorkbookId, activeWorkbook]);
 
   const handleExportWorkbooksReplayHtml = useCallback(async () => {
-    const payload: WorkbookReplayPayload = {
-      workbooks,
-      activeWorkbookId,
-      activeStageId,
-    };
+    const payload: WorkbookReplayPayload = workbookSessionPayloadWithWorkspace;
     const assets = await collectReplayAssets();
     const base =
       workbooks.length > 1
@@ -8220,31 +9171,20 @@ case "mobius":
     const title = workbooks.length > 1 ? "Math3D Workbook Export" : activeWorkbook?.title ?? "Math3D Workbook";
     const html = buildReplayHtml(payload, assets, title);
     downloadTextFile(html, `${base}-${new Date().toISOString().slice(0, 10)}-replay.html`, "text/html");
-  }, [workbooks, activeWorkbookId, activeStageId, activeWorkbook]);
+  }, [workbookSessionPayloadWithWorkspace, workbooks.length, activeWorkbook]);
 
-  const handleImportWorkbooks = useCallback((raw: string) => {
-    if (IS_REPLAY_MODE) return;
-    try {
-      const parsed = JSON.parse(raw);
-      const nextWorkbooks: Workbook[] = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.workbooks)
-          ? parsed.workbooks
-          : [];
-      if (!nextWorkbooks.length) return;
-      const normalized = normalizeWorkbooks(nextWorkbooks);
-      setWorkbooks(normalized);
-      const nextActive =
-        typeof parsed?.activeWorkbookId === "string" &&
-        normalized.some((w) => w.id === parsed.activeWorkbookId)
-          ? parsed.activeWorkbookId
-          : normalized[0].id;
-      setActiveWorkbookId(nextActive);
-      if (isWorkbookStageId(parsed?.activeStageId)) setActiveStageId(parsed.activeStageId);
-    } catch {
-      // ignore
-    }
-  }, []);
+  const handleImportWorkbooks = useCallback(
+    (raw: string) => {
+      if (IS_REPLAY_MODE) return;
+      try {
+        const parsed = JSON.parse(raw);
+        applyWorkbookPayload(parsed);
+      } catch {
+        // ignore
+      }
+    },
+    [applyWorkbookPayload]
+  );
 
   const handleGaussPoints = useCallback(
     (points: GaussPoint[]) => {
@@ -14711,6 +15651,16 @@ case "mobius":
                   onExportPdf={handleExportWorkbooksPdf}
                   onExportReplayHtml={handleExportWorkbooksReplayHtml}
                   onImportJson={handleImportWorkbooks}
+                  onSaveWorkbook={handleSaveWorkbook}
+                  onSaveWorkbookAs={handleSaveWorkbookAs}
+                  workbookDirty={workbookDirty}
+                  lastManualSaveAt={workbookManualSaveAt}
+                  autosaveAt={workbookAutosaveAt}
+                  autosaveIntervalSec={WORKBOOK_AUTOSAVE_INTERVAL_SEC}
+                  snapshotAt={workbookSnapshotAt}
+                  onRestoreAutosave={handleRestoreWorkbookAutosave}
+                  onCreateSnapshot={handleSnapshotWorkbookSession}
+                  onRestoreSnapshot={handleRestoreWorkbookSnapshot}
                   readOnly={IS_REPLAY_MODE}
                   currentDatasetRef={currentDatasetRef}
                   cameraReady={!!cameraSync}
