@@ -15506,9 +15506,8 @@ case "mobius":
                 />
               )}
               {surfacesLeftTab === "tools" && (
-                <details style={{ marginTop: 10 }}>
-                  <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Advanced tools</summary>
-                  <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Advanced tools</div>
                 <SurfacesLeftPanel
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -15993,8 +15992,7 @@ case "mobius":
                 onChangeSelectedMetric={setSelectedMetric}
                 onRefreshSelectionStats={handleRefreshSelectionStats}
               />
-                  </div>
-                </details>
+                </div>
               )}
             </div>
 
@@ -18634,39 +18632,58 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Coloring</div>
-      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
-        Mode
-        <select value={colorMode} onChange={(e) => onChangeColorMode(e.target.value as ColorMode)}>
-          {colorModes.map((mode) => (
-            <option key={mode} value={mode}>
-              {mode}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
-        Palette
-        <select value={colorPalette} onChange={(e) => onChangeColorPalette(e.target.value as ColorPalette)}>
-          <option value="blueRed">blueRed</option>
-          <option value="rainbow">rainbow</option>
-          <option value="grayscale">grayscale</option>
-          <option value="redYellow">redYellow</option>
-        </select>
-      </label>
+      <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Mode</div>
+      <div style={pillRow}>
+        {colorModes.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => onChangeColorMode(mode)}
+            style={pill(colorMode === mode)}
+            aria-pressed={colorMode === mode}
+          >
+            {COLOR_MODE_LABELS[mode]}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Palette</div>
+      <div style={pillRow}>
+        {(
+          [
+            ["blueRed", "blue-red"],
+            ["rainbow", "rainbow"],
+            ["grayscale", "grayscale"],
+            ["redYellow", "red-yellow"],
+          ] as const
+        ).map(([palette, label]) => (
+          <button
+            key={palette}
+            type="button"
+            onClick={() => onChangeColorPalette(palette)}
+            style={pill(colorPalette === palette)}
+            aria-pressed={colorPalette === palette}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
 
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Lighting</div>
-      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
-        Preset
-        <select value={lightPreset} onChange={(e) => onChangeLightPreset(e.target.value as "studio" | "soft" | "contrast" | "neutral" | "warm")}>
-          <option value="studio">studio</option>
-          <option value="soft">soft</option>
-          <option value="contrast">contrast</option>
-          <option value="neutral">neutral</option>
-          <option value="warm">warm</option>
-        </select>
-      </label>
+      <div style={pillRow}>
+        {(["studio", "soft", "contrast", "neutral", "warm"] as const).map((preset) => (
+          <button
+            key={preset}
+            type="button"
+            onClick={() => onChangeLightPreset(preset)}
+            style={pill(lightPreset === preset)}
+            aria-pressed={lightPreset === preset}
+          >
+            {preset}
+          </button>
+        ))}
+      </div>
     </div>
 
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
@@ -19740,6 +19757,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
   const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk">("surface_mesh");
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
@@ -21667,9 +21685,27 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
       {wrapComplexAdvancedTools(
       <>
-      <details style={{ ...cardStyle, marginTop: 10 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>SurfaceMesh</summary>
-        <div style={{ marginTop: 8 }}>
+      <div style={{ display: "flex", gap: 6, marginTop: 10, marginBottom: 8 }}>
+        <button
+          type="button"
+          onClick={() => setMeshToolsTab("surface_mesh")}
+          style={pill(meshToolsTab === "surface_mesh")}
+          aria-pressed={meshToolsTab === "surface_mesh"}
+        >
+          SurfaceMesh
+        </button>
+        <button
+          type="button"
+          onClick={() => setMeshToolsTab("vtk")}
+          style={pill(meshToolsTab === "vtk")}
+          aria-pressed={meshToolsTab === "vtk"}
+        >
+          Python mesh ops (VTK)
+        </button>
+      </div>
+      {meshToolsTab === "surface_mesh" && (
+      <div style={{ ...cardStyle, marginTop: 0 }}>
+        <div style={{ marginTop: 0 }}>
         {viewerKind !== "mesh" ? (
           <>
             <button
@@ -22010,11 +22046,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>
         )}
         </div>
-      </details>
+      </div>
+      )}
 
-      <details style={{ ...cardStyle, marginTop: 10 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Python mesh ops (VTK)</summary>
-        <div style={{ marginTop: 8 }}>
+      {meshToolsTab === "vtk" && (
+      <div style={{ ...cardStyle, marginTop: 0 }}>
+        <div style={{ marginTop: 0 }}>
         {!vtkAvailable ? (
           <div style={{ fontSize: 11, color: "#666" }}>Mesh data not ready yet.</div>
         ) : (
@@ -22103,11 +22140,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         )}
         {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
-      </details>
+      </div>
+      )}
 
-      <details style={{ ...cardStyle, marginTop: 10 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Display & analysis</summary>
-        <div style={{ marginTop: 8, fontSize: 12 }}>
+      <div style={{ ...cardStyle, marginTop: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Display & analysis</div>
+        <div style={{ marginTop: 0, fontSize: 12 }}>
         <div style={{ marginTop: 0, fontSize: 12 }}>
           {(viewerKind === "param" ||
             viewerKind === "weierstrass" ||
@@ -23259,7 +23297,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           Reset camera view
         </button>
       </div>
-      </details>
+      </div>
       </>
       )}
 
