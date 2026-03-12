@@ -124,47 +124,116 @@ app.on("activate", () => {
 });
 
 function buildAppMenu(win: BrowserWindow) {
-  const sendMode = (mode: string) => {
+  const sendCommand = (command: string, payload?: unknown) => {
     if (win.isDestroyed()) return;
-    win.webContents.send("app:mode", mode);
+    win.webContents.send("app:menu-command", { command, payload });
   };
+  const action = (label: string, command: string, accelerator?: string): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    click: () => sendCommand(command),
+  });
 
   const template: MenuItemConstructorOptions[] = [
     {
       label: "File",
-      submenu: [{ role: "quit" }],
+      submenu: [
+        action("New workspace", "file:new-workspace", "CmdOrCtrl+N"),
+        action("Open workspace", "file:open-workspace", "CmdOrCtrl+O"),
+        {
+          label: "Open recent",
+          submenu: [
+            action("Open latest workspace", "file:open-recent-workspace"),
+          ],
+        },
+        { type: "separator" },
+        action("Save workspace", "file:save-workspace", "CmdOrCtrl+S"),
+        action("Save as", "file:save-workspace-as", "CmdOrCtrl+Shift+S"),
+        { type: "separator" },
+        action("Import mesh", "file:import-mesh"),
+        action("Export mesh", "file:export-mesh"),
+        action("Export screenshot", "file:export-screenshot", "CmdOrCtrl+Shift+E"),
+        { type: "separator" },
+        { label: "Exit", role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo", label: "Undo" },
+        { role: "redo", label: "Redo" },
+        { type: "separator" },
+        action("Copy equation/config", "edit:copy-equation-config", "CmdOrCtrl+Shift+C"),
+        action("Duplicate object", "edit:duplicate-object", "CmdOrCtrl+D"),
+        action("Delete object", "edit:delete-object", "Delete"),
+        { type: "separator" },
+        action("Preferences", "edit:preferences", "CmdOrCtrl+,"),
+      ],
     },
     {
       label: "View",
       submenu: [
-        {
-          label: "Mode",
-          submenu: [
-            { label: "Surfaces", click: () => sendMode("surfaces") },
-            { label: "Möbius map", click: () => sendMode("mobius") },
-            { label: "Chebyshev Tₙ", click: () => sendMode("chebyshev") },
-            { label: "Transform (z²)", click: () => sendMode("transform") },
-            { label: "Standard maps", click: () => sendMode("maps") },
-          ],
-        },
+        action("Reset camera", "view:reset-camera", "CmdOrCtrl+0"),
+        action("Front view", "view:front"),
+        action("Top view", "view:top"),
+        action("Right view", "view:right"),
         { type: "separator" },
-        { role: "reload" },
-        { role: "toggleDevTools" },
+        action("Toggle side panel", "view:toggle-side-panel"),
+        action("Toggle status bar", "view:toggle-status-bar"),
+        action("Toggle gizmo", "view:toggle-gizmo"),
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        { label: "Fullscreen", role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "Insert / Create",
+      submenu: [
+        action("New implicit surface", "insert:new-implicit-surface"),
+        action("New explicit graph", "insert:new-explicit-graph"),
+        action("New parametric surface", "insert:new-parametric-surface"),
+        action("New Weierstrass surface", "insert:new-weierstrass-surface"),
+        action("New complex map", "insert:new-complex-map"),
+        action("New mesh", "insert:new-mesh"),
+        action("New volume", "insert:new-volume"),
         { type: "separator" },
-        { role: "togglefullscreen" },
+        action("Add clipping plane", "insert:add-clipping-plane"),
+        action("Add chart grid", "insert:add-chart-grid"),
+        action("Add point / curve / vector", "insert:add-point-curve-vector"),
+      ],
+    },
+    {
+      label: "Analysis",
+      submenu: [
+        action("Curvature", "analysis:curvature"),
+        action("Principal directions", "analysis:principal-directions"),
+        action("Geodesics", "analysis:geodesics"),
+        action("Gradient / divergence / curl", "analysis:gradient-divergence-curl"),
+        action("Parallel transport", "analysis:parallel-transport"),
+        action("Slice / contour extraction", "analysis:slice-contour-extraction"),
+        action("Compare mode", "analysis:compare-mode"),
       ],
     },
     {
       label: "Window",
-      submenu: [{ role: "minimize" }, { role: "close" }],
+      submenu: [
+        { label: "Reload", role: "reload" },
+        { label: "Developer tools", role: "toggleDevTools" },
+        { type: "separator" },
+        action("Reset layout", "window:reset-layout"),
+        { type: "separator" },
+        { role: "minimize" },
+        { role: "close" },
+      ],
     },
     {
       label: "Help",
-      submenu: [{ role: "about" }],
+      submenu: [
+        action("Shortcuts", "help:shortcuts"),
+        action("Preset guide", "help:preset-guide"),
+        action("Surface formulas", "help:surface-formulas"),
+        { type: "separator" },
+        { label: "About", role: "about" },
+      ],
     },
   ];
 

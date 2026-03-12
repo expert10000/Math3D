@@ -221,6 +221,18 @@ contextBridge.exposeInMainWorld("appMenu", {
     ipcRenderer.on("app:mode", listener);
     return () => ipcRenderer.removeListener("app:mode", listener);
   },
+  onCommand: (handler: (command: string, payload?: unknown) => void) => {
+    const listener = (
+      _evt: Electron.IpcRendererEvent,
+      packet: { command?: string; payload?: unknown } | null | undefined
+    ) => {
+      const command = typeof packet?.command === "string" ? packet.command : "";
+      if (!command) return;
+      handler(command, packet?.payload);
+    };
+    ipcRenderer.on("app:menu-command", listener);
+    return () => ipcRenderer.removeListener("app:menu-command", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("appCapture", {

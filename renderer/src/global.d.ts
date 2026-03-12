@@ -209,6 +209,7 @@ declare global {
     };
     appMenu?: {
       onModeChange: (handler: (mode: string) => void) => () => void;
+      onCommand: (handler: (command: string, payload?: unknown) => void) => () => void;
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;

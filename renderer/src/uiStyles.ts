@@ -5,9 +5,10 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
   appRoot: {
     display: "flex",
     flexDirection: "column" as const,
-    height: "100vh",   // full window height
-    width: "100vw",
-    maxWidth: "100vw",
+    height: "100%",
+    minHeight: "100vh",
+    width: "100%",
+    maxWidth: "100%",
     margin: 0,
     color: "var(--text)",
     background: "transparent",
@@ -28,12 +29,15 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     border: "1px solid var(--border)",
     borderRadius: "var(--radius)",
     boxShadow: "var(--shadow-soft)",
-    overflow: "auto",
+    overflowY: "auto",
+    overflowX: "hidden",
+    minWidth: 0,
   },
 
   stack: {
     flex: "1 1 auto",
     minWidth: 0,
+    minHeight: 0,
     display: "flex",
     flexDirection: "column" as const,
     gap: 14,

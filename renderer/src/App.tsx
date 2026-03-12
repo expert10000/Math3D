@@ -3516,6 +3516,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
+  const [showRightPanel, setShowRightPanel] = useState(true);
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
@@ -6538,15 +6539,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [wPlaneShowRays, setWPlaneShowRays] = useState(false);
   const [screenshotBusy, setScreenshotBusy] = useState<"scene" | "window" | null>(null);
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
+  const [showStatusBar, setShowStatusBar] = useState(true);
 
   // resizable panels
-  const [leftWidth, setLeftWidth] = useState(260);
-  const minLeft = 200;
-  const maxLeft = 480;
+  const [leftWidth, setLeftWidth] = useState(320);
+  const minLeft = 240;
+  const maxLeft = 640;
 
-  const [rightWidth, setRightWidth] = useState(260);
-  const minRight = 200;
-  const maxRight = 480;
+  const [rightWidth, setRightWidth] = useState(320);
+  const minRight = 240;
+  const maxRight = 640;
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "tools" | "analysis"
   >("scene");
@@ -14686,6 +14688,364 @@ case "mobius":
     [runSurfaceCommand]
   );
 
+  const handleMenuCommand = useCallback(
+    async (command: string) => {
+      const notify = (message: string) => setScreenshotStatus(message);
+      const openFilePicker = (
+        accept: string,
+        onPick: (files: FileList) => void,
+        multiple = false
+      ) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = accept;
+        input.multiple = multiple;
+        input.onchange = () => {
+          if (input.files && input.files.length) onPick(input.files);
+        };
+        input.click();
+      };
+      const applyAxisView = (axis: "front" | "top" | "right") => {
+        const source =
+          cameraSync ??
+          cameraOverride ?? {
+            position: { x: 4, y: 3, z: 4 },
+            target: { x: 0, y: 0, z: 0 },
+            up: { x: 0, y: 1, z: 0 },
+          };
+        const dx = source.position.x - source.target.x;
+        const dy = source.position.y - source.target.y;
+        const dz = source.position.z - source.target.z;
+        const dist = Math.max(0.001, Math.hypot(dx, dy, dz));
+        const target = { ...source.target };
+        const position =
+          axis === "front"
+            ? { x: target.x, y: target.y, z: target.z + dist }
+            : axis === "top"
+              ? { x: target.x, y: target.y + dist, z: target.z }
+              : { x: target.x + dist, y: target.y, z: target.z };
+        const up = axis === "top" ? { x: 0, y: 0, z: -1 } : { x: 0, y: 1, z: 0 };
+        setMode("surfaces");
+        setCameraOverride({ position, target, up });
+        setCameraOverrideToken((t) => t + 1);
+      };
+
+      switch (command) {
+        case "file:new-workspace":
+          setMode("surfaces");
+          setShowRightPanel(true);
+          setRightPanelTab("workbook");
+          handleCreateWorkbook();
+          return;
+        case "file:open-workspace":
+          openFilePicker(".math3d,.json,application/json", (files) => {
+            const file = files[0];
+            if (!file) return;
+            void file
+              .text()
+              .then((raw) => handleImportWorkbooks(raw))
+              .catch((err) => notify(`Open workspace failed: ${String((err as any)?.message ?? err)}`));
+          });
+          return;
+        case "file:open-recent-workspace": {
+          if (!workbooks.length) {
+            notify("No recent workspace found.");
+            return;
+          }
+          const latest = [...workbooks].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+          if (!latest) {
+            notify("No recent workspace found.");
+            return;
+          }
+          setMode("surfaces");
+          setShowRightPanel(true);
+          setRightPanelTab("workbook");
+          setActiveWorkbookId(latest.id);
+          setActiveStageId("define");
+          notify(`Opened recent workspace: ${latest.title}`);
+          return;
+        }
+        case "file:save-workspace":
+          handleSaveWorkbook();
+          return;
+        case "file:save-workspace-as":
+          handleSaveWorkbookAs();
+          return;
+        case "file:import-mesh":
+          setMode("surfaces");
+          openFilePicker(".obj,.ply,.stl,.glb,.gltf,.off,.vtk,.vtp", (files) => {
+            void handleLoadSurfaceMeshFile(files);
+          });
+          return;
+        case "file:export-mesh":
+          handleExportSurfaceMeshObj();
+          return;
+        case "file:export-screenshot":
+          void handleScreenshot("window");
+          return;
+        case "edit:copy-equation-config": {
+          const payload = {
+            mode,
+            datasetKind,
+            viewerKind: surfaceViewerKind,
+            graph: {
+              surfaceId: activeEqSurfaceId,
+              expr: graphExpr,
+              domain: activeGraphDomain,
+              resolution: graphResolution,
+            },
+            implicit: {
+              surfaceId: activeEqSurfaceId,
+              expr: implicitExpr,
+              domain: activeImplicitDomain,
+              resolution: implicitResolution,
+            },
+            parametric: {
+              surfaceId: paramSurfaceId,
+              xExpr: paramXExpr,
+              yExpr: paramYExpr,
+              zExpr: paramZExpr,
+              domain: activeParamLikeDomain,
+              resolution: paramResolution,
+            },
+            volume: {
+              presetId: volumePresetId,
+              dims: volumeDims,
+            },
+          };
+          const text = JSON.stringify(payload, null, 2);
+          try {
+            await navigator.clipboard.writeText(text);
+            notify("Copied equation/config to clipboard.");
+          } catch {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.setAttribute("readonly", "true");
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textarea);
+            notify("Copied equation/config to clipboard.");
+          }
+          return;
+        }
+        case "edit:duplicate-object":
+          if (!geometrySelectedObjectId) {
+            notify("No geometry object selected to duplicate.");
+            return;
+          }
+          handleDuplicateGeometryObject(geometrySelectedObjectId);
+          return;
+        case "edit:delete-object":
+          if (!geometrySelectedObjectId) {
+            notify("No geometry object selected to delete.");
+            return;
+          }
+          handleRemoveGeometryObject(geometrySelectedObjectId);
+          return;
+        case "edit:preferences":
+          notify("Preferences panel is not implemented yet.");
+          return;
+        case "view:reset-camera":
+          setCameraResetToken((t) => t + 1);
+          setGeometryResetToken((t) => t + 1);
+          return;
+        case "view:front":
+          applyAxisView("front");
+          return;
+        case "view:top":
+          applyAxisView("top");
+          return;
+        case "view:right":
+          applyAxisView("right");
+          return;
+        case "view:toggle-side-panel":
+          setShowRightPanel((v) => !v);
+          return;
+        case "view:toggle-status-bar":
+          setShowStatusBar((v) => !v);
+          return;
+        case "view:toggle-gizmo":
+          setGeometryGizmoEnabled((v) => !v);
+          setVolumeCropGizmoEnabled((v) => !v);
+          return;
+        case "insert:new-implicit-surface":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("implicit");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-explicit-graph":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("graph");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-parametric-surface":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("param");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-weierstrass-surface":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("weierstrass");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-complex-map":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("complex");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-mesh":
+          setMode("surfaces");
+          setDatasetKind("surface");
+          setSurfaceViewerKind("mesh");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:new-volume":
+          setMode("surfaces");
+          setDatasetKind("volume");
+          setVolumeViewMode("slices");
+          setSurfacesLeftTab("scene");
+          return;
+        case "insert:add-clipping-plane":
+          setMode("surfaces");
+          setShowPlanes(true);
+          return;
+        case "insert:add-chart-grid":
+          setMode("surfaces");
+          setShowChartGrid(true);
+          return;
+        case "insert:add-point-curve-vector":
+          setMode("surfaces");
+          setSurfacesLeftTab("analysis");
+          setCalculusVectorOverlayEnabled(true);
+          return;
+        case "analysis:curvature":
+          setMode("surfaces");
+          setColorMode("curvature");
+          setSurfacesLeftTab("analysis");
+          return;
+        case "analysis:principal-directions":
+          setMode("surfaces");
+          setShowPrincipalDirections(true);
+          setSurfacesLeftTab("analysis");
+          return;
+        case "analysis:geodesics":
+          setMode("surfaces");
+          setGeodesicPathEnabled(true);
+          setGeodesicHeatEnabled(true);
+          setSurfacesLeftTab("analysis");
+          return;
+        case "analysis:gradient-divergence-curl":
+          setMode("surfaces");
+          setSurfacesLeftTab("analysis");
+          setCalculusVectorOverlayEnabled(true);
+          return;
+        case "analysis:parallel-transport":
+          notify("Parallel transport action is available via workbook compute operators.");
+          return;
+        case "analysis:slice-contour-extraction":
+          setMode("surfaces");
+          setDatasetKind("volume");
+          setVolumeViewMode("slices");
+          setVolumeContourEnabled(true);
+          setSurfacesLeftTab("analysis");
+          return;
+        case "analysis:compare-mode":
+          setMode("surfaces");
+          setCompareEnabled((v) => !v);
+          return;
+        case "window:reset-layout":
+          setLeftWidth(320);
+          setRightWidth(320);
+          setShowRightPanel(true);
+          setShowStatusBar(true);
+          setSurfacesLeftTab("scene");
+          setRightPanelTab("inspector");
+          return;
+        case "help:shortcuts":
+          notify("Shortcuts: Ctrl+N new workspace, Ctrl+O open, Ctrl+S save, Ctrl+D duplicate object.");
+          return;
+        case "help:preset-guide":
+          setMode("surfaces");
+          setSurfacesLeftTab("scene");
+          notify("Preset guide: use the left Scene/Object tabs and top preset rows in Surfaces mode.");
+          return;
+        case "help:surface-formulas":
+          setMode("surfaces");
+          setSurfacesLeftTab("scene");
+          notify("Surface formulas are available in the surface preset selectors and custom expression fields.");
+          return;
+        default:
+          notify(`Menu action not implemented: ${command}`);
+      }
+    },
+    [
+      activeEqSurfaceId,
+      activeGraphDomain,
+      activeImplicitDomain,
+      activeParamLikeDomain,
+      cameraOverride,
+      cameraSync,
+      datasetKind,
+      graphExpr,
+      graphResolution,
+      handleCreateWorkbook,
+      geometrySelectedObjectId,
+      handleDuplicateGeometryObject,
+      handleExportSurfaceMeshObj,
+      handleImportWorkbooks,
+      handleLoadSurfaceMeshFile,
+      handleRemoveGeometryObject,
+      handleSaveWorkbook,
+      handleSaveWorkbookAs,
+      handleScreenshot,
+      implicitExpr,
+      implicitResolution,
+      mode,
+      paramResolution,
+      paramSurfaceId,
+      paramXExpr,
+      paramYExpr,
+      paramZExpr,
+      setActiveStageId,
+      setCameraOverride,
+      setColorMode,
+      setDatasetKind,
+      setGeodesicHeatEnabled,
+      setGeodesicPathEnabled,
+      setGeometryResetToken,
+      setLeftWidth,
+      setMode,
+      setRightWidth,
+      setScreenshotStatus,
+      setShowChartGrid,
+      setShowPlanes,
+      setSurfaceViewerKind,
+      setVolumeContourEnabled,
+      setVolumeViewMode,
+      surfaceViewerKind,
+      volumeDims,
+      volumePresetId,
+      workbooks,
+    ]
+  );
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    const api = window.appMenu;
+    if (!api?.onCommand) return;
+    return api.onCommand((command) => {
+      void handleMenuCommand(command);
+    });
+  }, [handleMenuCommand]);
+
   useEffect(() => {
     if (!isDev || typeof window === "undefined") return;
 
@@ -15200,6 +15560,88 @@ case "mobius":
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleUpdateGeometryTransform(refId, patch);
   }, [handleUpdateGeometryTransform, unifiedSelectedNode]);
+  const handleIsolateUnifiedSelectedObject = useCallback(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    setGeometryObjects((prev) =>
+      prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
+        return { ...o, visible: o.id === refId };
+      })
+    );
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
+        return { ...o, visible: o.id === refId };
+      })
+    );
+  }, [geometryLockedObjectIds, unifiedSelectedNode]);
+  const handleShowAllUnifiedObjects = useCallback(() => {
+    setGeometryObjects((prev) =>
+      prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
+        return o.visible ? o : { ...o, visible: true };
+      })
+    );
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
+        return o.visible ? o : { ...o, visible: true };
+      })
+    );
+  }, [geometryLockedObjectIds]);
+  const handleExportUnifiedSelectedObject = useCallback(async () => {
+    if (surfaceMeshExportBusy) return;
+    setSurfaceMeshExportError(null);
+
+    if (unifiedSelectedSceneObject) {
+      setSurfaceMeshExportBusy(true);
+      try {
+        let baseMesh: SurfaceMeshData;
+        if ("type" in unifiedSelectedSceneObject) {
+          const entry = GEOMETRY_OBJECT_REGISTRY[unifiedSelectedSceneObject.type];
+          if (!entry) {
+            throw new Error("Selected object type is not registered.");
+          }
+          const geom = entry.build(unifiedSelectedSceneObject.params);
+          try {
+            baseMesh = buildSurfaceMeshFromGeometry(
+              geom,
+              unifiedSelectedSceneObject.name,
+              { kind: "proceduralObjects" },
+              { mergeVertices: false }
+            );
+          } finally {
+            geom.dispose();
+          }
+        } else {
+          baseMesh = cloneSurfaceMeshData(unifiedSelectedSceneObject.mesh, unifiedSelectedSceneObject.name);
+        }
+        const transformed = transformSurfaceMeshByGeometryTransform(
+          baseMesh,
+          unifiedSelectedSceneObject.transform
+        );
+        const base = sanitizeFileBase(unifiedSelectedSceneObject.name || "scene_object", "scene_object");
+        await exportMeshToGLB(transformed, `${base}.glb`);
+      } catch (err: any) {
+        setSurfaceMeshExportError(err?.message ?? "Selected object export failed.");
+      } finally {
+        setSurfaceMeshExportBusy(false);
+      }
+      return;
+    }
+
+    if (surfaceMeshData?.positions?.length) {
+      await handleExportSurfaceMeshGlb();
+      return;
+    }
+    setSurfaceMeshExportError("No selected object or active surface mesh to export.");
+  }, [
+    handleExportSurfaceMeshGlb,
+    surfaceMeshData,
+    surfaceMeshExportBusy,
+    unifiedSelectedSceneObject,
+  ]);
   const handleSendUnifiedObjectToCompare = useCallback(() => {
     if (datasetKind !== "surface" || !unifiedSelectedNode) return;
     if (unifiedSelectedNode.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
@@ -15248,6 +15690,12 @@ case "mobius":
   const unifiedCanNormals = unifiedCanSurfaceOps && (unifiedMeshReady || surfaceViewerKind === "implicit");
   const unifiedCanExport = unifiedCanSurfaceOps && unifiedMeshReady;
   const unifiedCanSendToCompare = datasetKind === "surface" && !!unifiedSelectedNode;
+  const unifiedCanIsolateSelected =
+    unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId;
+  const unifiedCanShowAllSceneObjects =
+    geometryObjects.some((o) => !o.visible && !geometryLockedObjectIds.has(o.id)) ||
+    geometryDatasetMeshObjects.some((o) => !o.visible && !geometryLockedObjectIds.has(o.id));
+  const unifiedCanExportSelectedObject = !!unifiedSelectedSceneObject || unifiedCanExport;
   const unifiedObjectTypeLabel = useMemo(() => {
     const t = unifiedSelectedNode?.type ?? "";
     if (!t) return "n/a";
@@ -15693,7 +16141,7 @@ case "mobius":
                 Window shot
               </button>
             </div>
-            {screenshotStatus && (
+            {showStatusBar && screenshotStatus && (
               <div
                 style={{
                   fontSize: 10,
@@ -15723,7 +16171,7 @@ case "mobius":
         }}
       >
         {mode === "surfaces" ? (
-          <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 400 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -15778,6 +16226,14 @@ case "mobius":
                   onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
                   canSendToCompare={unifiedCanSendToCompare}
                   onSendToCompare={handleSendUnifiedObjectToCompare}
+                  canExportSelectedObject={unifiedCanExportSelectedObject}
+                  onExportSelectedObject={() => {
+                    void handleExportUnifiedSelectedObject();
+                  }}
+                  canIsolateSelectedObject={unifiedCanIsolateSelected}
+                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
+                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
                 />
               )}
               {surfacesLeftTab === "inspect" && (
@@ -16321,13 +16777,13 @@ case "mobius":
             <div onMouseDown={startDragLeft} style={splitterStyle} />
 
             {/* MIDDLE */}
-            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
+            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
               <div
                 ref={surfaceSceneCaptureRef}
                 style={{
                   flex: 1,
-                  height: "80vh",
-                  minHeight: 360,
+                  height: "100%",
+                  minHeight: 0,
                   borderRadius: 12,
                   boxShadow: "0 0 0 1px #e0e0e0",
                   overflow: "hidden",
@@ -16888,9 +17344,10 @@ case "mobius":
               </div>
             </div>
 
-            <div onMouseDown={startDragRight} style={splitterStyle} />
+            {showRightPanel && <div onMouseDown={startDragRight} style={splitterStyle} />}
 
             {/* RIGHT */}
+            {showRightPanel && (
             <div style={{ ...styles.panelLeft, width: rightWidth, maxWidth: maxRight }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
                 {(["inspector", "workbook"] as const).map((tab) => (
@@ -17071,9 +17528,10 @@ case "mobius":
                 />
               )}
             </div>
+            )}
           </div>
         ) : mode === "geometry" ? (
-          <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 400 }}>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
               <section>
@@ -17994,7 +18452,7 @@ case "mobius":
 
             {/* RIGHT */}
             <div style={styles.stack}>
-              <div ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 400 }}>
+              <div ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
                 <GeometryViewer
                   scene={geometryScene}
                   meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
@@ -18664,13 +19122,14 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
             style={{
               width: "100%",
               textAlign: "left",
-              padding: "4px 6px",
-              marginLeft: depth * 14,
+              padding: `4px 6px 4px ${6 + depth * 14}px`,
               borderRadius: 6,
               border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
               background: active ? "#eef4ff" : "#fff",
               cursor: "pointer",
               fontSize: 11,
+              boxSizing: "border-box",
+              minWidth: 0,
             }}
             title={node.sourceDefinition}
           >
@@ -18690,7 +19149,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{title}</div>
       {nodes.length ? (
-        <div style={{ display: "grid", gap: 5, maxHeight: 280, overflow: "auto", paddingRight: 2 }}>
+        <div style={{ display: "grid", gap: 5, maxHeight: 280, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
           {renderTree(rootKey, 0)}
         </div>
       ) : (
@@ -18698,7 +19157,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
       )}
 
       {selected && (
-        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11 }}>
+        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11, overflowWrap: "anywhere" }}>
           <div>
             <strong>ID:</strong> <code>{selected.id}</code>
           </div>
@@ -18767,6 +19226,38 @@ type SurfacesObjectPanelProps = {
   onBakeToSurfaceMesh: () => void;
   canSendToCompare: boolean;
   onSendToCompare: () => void;
+  canExportSelectedObject: boolean;
+  onExportSelectedObject: () => void;
+  canIsolateSelectedObject: boolean;
+  onIsolateSelectedObject: () => void;
+  canShowAllSceneObjects: boolean;
+  onShowAllSceneObjects: () => void;
+};
+
+const OBJECT_CATEGORY_LABELS: Record<UnifiedObjectCategory, string> = {
+  sceneObject: "scene object",
+  surfaceDefinition: "surface definition",
+  dataset: "dataset",
+  derived: "derived",
+};
+
+const formatObjectParamValue = (
+  value: number | boolean | string | undefined,
+  def?: GeometryParamDef
+): string => {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return String(value);
+    return fmt(value);
+  }
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "string") {
+    if (def?.kind === "select" && Array.isArray(def.options)) {
+      const found = def.options.find((opt) => opt.value === value);
+      if (found) return `${found.label} (${value})`;
+    }
+    return value;
+  }
+  return "n/a";
 };
 
 const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
@@ -18790,19 +19281,80 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onBakeToSurfaceMesh,
   canSendToCompare,
   onSendToCompare,
+  canExportSelectedObject,
+  onExportSelectedObject,
+  canIsolateSelectedObject,
+  onIsolateSelectedObject,
+  canShowAllSceneObjects,
+  onShowAllSceneObjects,
 }) => {
   const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
+  const categoryLabel = selectedNode ? OBJECT_CATEGORY_LABELS[selectedNode.category] : "n/a";
+  const creationLabel = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    if (selectedNode.category === "sceneObject") {
+      if (selectedSceneObject && "type" in selectedSceneObject) {
+        const proceduralLabel =
+          GEOMETRY_OBJECT_REGISTRY[selectedSceneObject.type]?.label ?? selectedSceneObject.type;
+        return `procedural preset (${proceduralLabel})`;
+      }
+      if (selectedSceneObject && "mesh" in selectedSceneObject) {
+        return `dataset mesh object (${formatSurfaceMeshSource(selectedSceneObject.mesh.source)})`;
+      }
+      return "scene object";
+    }
+    if (selectedNode.category === "surfaceDefinition") return "active mathematical definition";
+    if (selectedNode.category === "dataset") return "dataset generated from source";
+    return "derived output from tools/analysis";
+  }, [selectedNode, selectedSceneObject]);
+  const sceneParamRows = useMemo(() => {
+    if (!selectedSceneObject || !("type" in selectedSceneObject)) return [] as Array<{ label: string; value: string }>;
+    const entry = GEOMETRY_OBJECT_REGISTRY[selectedSceneObject.type];
+    const seen = new Set<string>();
+    const rows: Array<{ label: string; value: string }> = [];
+    if (entry?.params?.length) {
+      for (const def of entry.params) {
+        seen.add(def.id);
+        const raw = selectedSceneObject.params[def.id];
+        if (raw == null) continue;
+        rows.push({ label: def.label, value: formatObjectParamValue(raw, def) });
+      }
+    }
+    for (const [key, raw] of Object.entries(selectedSceneObject.params)) {
+      if (seen.has(key)) continue;
+      rows.push({ label: key, value: formatObjectParamValue(raw) });
+    }
+    return rows;
+  }, [selectedSceneObject]);
+  const sceneMeshDetails = useMemo(() => {
+    if (!selectedSceneObject || !("mesh" in selectedSceneObject)) return null;
+    const mesh = selectedSceneObject.mesh;
+    const vertCount = Math.floor(mesh.positions.length / 3);
+    const triCount = mesh.indices?.length ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
+    const hasNormals = !!mesh.normals && mesh.normals.length >= mesh.positions.length;
+    return {
+      sourceLabel: formatSurfaceMeshSource(mesh.source),
+      vertCount,
+      triCount,
+      hasNormals,
+    };
+  }, [selectedSceneObject]);
+  const visibleActionLabel = selectedVisible ? "Hide" : "Show";
+
   return (
     <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object identity</div>
         {selectedNode ? (
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             <div><strong>Name:</strong> {selectedNode.name}</div>
+            <div><strong>Category:</strong> {categoryLabel}</div>
             <div><strong>Type:</strong> {objectTypeLabel}</div>
-            <div><strong>Preset / equation:</strong> {objectDefinitionLabel}</div>
+            <div><strong>Created from:</strong> {creationLabel}</div>
+            <div><strong>Definition:</strong> {objectDefinitionLabel}</div>
             <div><strong>Domain / ranges:</strong> {objectDomainLabel}</div>
             <div><strong>Resolution / sampling:</strong> {objectSamplingLabel}</div>
+            <div><strong>Display state:</strong> {selectedNode.displayState || "n/a"}</div>
             <div>
               <strong>Derived:</strong>{" "}
               {selectedNode.derivedProductIds.length
@@ -18813,6 +19365,25 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
               <div>
                 <strong>Mesh stats:</strong> {selectedSceneMeshStats.vertCount.toLocaleString()} verts,{" "}
                 {selectedSceneMeshStats.triCount.toLocaleString()} tris
+              </div>
+            )}
+            {sceneMeshDetails && (
+              <>
+                <div><strong>Mesh source:</strong> {sceneMeshDetails.sourceLabel}</div>
+                <div><strong>Topology:</strong> {sceneMeshDetails.vertCount.toLocaleString()} verts, {sceneMeshDetails.triCount.toLocaleString()} tris</div>
+                <div><strong>Normals:</strong> {sceneMeshDetails.hasNormals ? "present" : "missing"}</div>
+              </>
+            )}
+            {sceneParamRows.length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Parameters</div>
+                <div style={{ display: "grid", gap: 3 }}>
+                  {sceneParamRows.map((row) => (
+                    <div key={row.label}>
+                      <strong>{row.label}:</strong> {row.value}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -18915,6 +19486,23 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
             <button type="button" onClick={onDuplicateSelectedObject} disabled={selectedSceneObjectLocked}>
               Duplicate
             </button>
+            <button
+              type="button"
+              onClick={onToggleSelectedVisible}
+              disabled={selectedVisible == null || selectedSceneObjectLocked}
+            >
+              {visibleActionLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onIsolateSelectedObject}
+              disabled={!canIsolateSelectedObject || selectedSceneObjectLocked}
+            >
+              Isolate
+            </button>
+            <button type="button" onClick={onShowAllSceneObjects} disabled={!canShowAllSceneObjects}>
+              Show all
+            </button>
             <button type="button" onClick={onDeleteSelectedObject} disabled={selectedSceneObjectLocked}>
               Delete
             </button>
@@ -18927,6 +19515,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button type="button" onClick={onBakeToSurfaceMesh} disabled={!canBakeToSurfaceMesh}>
             Bake to SurfaceMesh
+          </button>
+          <button type="button" onClick={onExportSelectedObject} disabled={!canExportSelectedObject}>
+            Export selected (.glb)
           </button>
           <button type="button" onClick={onSendToCompare} disabled={!canSendToCompare}>
             Send to Compare
@@ -19920,19 +20511,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleWeierstrassRecenter,
   onResetWeierstrass,
   weierstrassError,
-  showWireframe,
-  onToggleWireframe,
-  showChartGrid,
-  onToggleChartGrid,
-  chartGridDensity,
-  onChangeChartGridDensity,
-  chartMode,
-  onChangeChartMode,
   chartCoordinateReadoutEnabled,
-  onToggleChartCoordinateReadout,
   chartCoordinateReadout,
-  showPlanes,
-  onTogglePlanes,
   lightPreset,
   onChangeLightPreset,
   materialRoughness,
@@ -19955,12 +20535,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeImplicitOverlay,
   probeEnabled,
   onToggleProbe,
-  showProbeNormal,
-  onToggleProbeNormal,
-  showProbeTangentPlane,
-  onToggleProbeTangentPlane,
-  showProbeTangents,
-  onToggleProbeTangents,
   showPrincipalDirections,
   onTogglePrincipalDirections,
   showPrincipalNormalPlanes,
@@ -20037,8 +20611,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeRidgeValleyMaxCurves,
   ridgeValleyMinConf,
   onChangeRidgeValleyMinConf,
-  showBoundingBox,
-  onToggleBoundingBox,
   showGaussMap,
   gaussColorMode,
   onChangeGaussColorMode,
@@ -20241,21 +20813,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   );
   const complexMapBranchCutDeg = (complexMapSpec.branchCutAngle * 180) / Math.PI;
   const colorModes: ColorMode[] = colorModesForSurfaceViewer(viewerKind, surfaceMeshLabel);
-  const chartModeOptions: Array<{ value: ChartMode; label: string }> =
-    viewerKind === "graph"
-      ? [
-          { value: "auto", label: "Auto (x,y)" },
-          { value: "xy", label: "(x,y)" },
-        ]
-      : viewerKind === "param" || viewerKind === "weierstrass"
-        ? [
-            { value: "auto", label: "Auto (u,v)" },
-            { value: "uv", label: "(u,v)" },
-          ]
-        : [
-            { value: "auto", label: "Auto (local)" },
-            { value: "local", label: "Local (xi,eta)" },
-          ];
   const volumeParamDefs = volumePreset.params ?? [];
   const volumeShowCustom = volumePresetId === "custom";
   const volumePresetOptions = VOLUME_PRESETS.filter((preset) => preset.id !== "custom");

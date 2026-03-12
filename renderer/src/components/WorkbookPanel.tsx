@@ -372,11 +372,11 @@ const VisualizeDiffPanel: React.FC<{
   const statRow = (label: string, a?: number, b?: number) => {
     const delta = a != null && b != null ? b - a : null;
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
-        <div style={{ fontWeight: 600 }}>{label}</div>
-        <div>{formatNum(a)}</div>
-        <div>{formatNum(b)}</div>
-        <div>{delta == null ? "—" : formatNum(delta)}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 120px) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6 }}>
+        <div style={{ fontWeight: 600, overflowWrap: "anywhere" }}>{label}</div>
+        <div style={{ overflowWrap: "anywhere" }}>{formatNum(a)}</div>
+        <div style={{ overflowWrap: "anywhere" }}>{formatNum(b)}</div>
+        <div style={{ overflowWrap: "anywhere" }}>{delta == null ? "—" : formatNum(delta)}</div>
       </div>
     );
   };
@@ -393,12 +393,12 @@ const VisualizeDiffPanel: React.FC<{
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 700 }}>Diff (A → B)</div>
       {diffRows.length ? (
-        <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr", gap: 6, fontSize: 11 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 120px) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, fontSize: 11 }}>
           {diffRows.map((row, idx) => (
             <React.Fragment key={`${row.label}-${idx}`}>
-              <div style={{ fontWeight: 600 }}>{row.label}</div>
-              <div>{row.a}</div>
-              <div>{row.b}</div>
+              <div style={{ fontWeight: 600, overflowWrap: "anywhere" }}>{row.label}</div>
+              <div style={{ overflowWrap: "anywhere" }}>{row.a}</div>
+              <div style={{ overflowWrap: "anywhere" }}>{row.b}</div>
             </React.Fragment>
           ))}
         </div>
@@ -414,7 +414,7 @@ const VisualizeDiffPanel: React.FC<{
       )}
       {statsA.stats && statsB.stats && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6, fontWeight: 700 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 120px) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6, fontWeight: 700 }}>
             <div>Metric</div>
             <div>A</div>
             <div>B</div>
@@ -423,13 +423,13 @@ const VisualizeDiffPanel: React.FC<{
           {statRow("Area", statsA.stats.area, statsB.stats.area)}
           {statRow("Mean edge", statsA.stats.meanEdgeLength, statsB.stats.meanEdgeLength)}
           {statRow("BBox diag", statsA.stats.bboxDiag, statsB.stats.bboxDiag)}
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 120px) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6 }}>
             <div style={{ fontWeight: 600 }}>Vertices</div>
             <div>{statsA.stats.vertexCount}</div>
             <div>{statsB.stats.vertexCount}</div>
             <div>{statsB.stats.vertexCount - statsA.stats.vertexCount}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr 1fr 1fr", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(88px, 120px) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 6 }}>
             <div style={{ fontWeight: 600 }}>Faces</div>
             <div>{statsA.stats.faceCount}</div>
             <div>{statsB.stats.faceCount}</div>
@@ -725,10 +725,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
   return (
     <section>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
         <h2 style={styles.h2}>Workbook</h2>
-        <div style={{ fontSize: 11, opacity: 0.85, display: "flex", alignItems: "center", gap: 6 }}>
-          <span>{activeWorkbook?.title ?? "Untitled workbook"}</span>
+        <div style={{ fontSize: 11, opacity: 0.85, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+          <span style={{ overflowWrap: "anywhere" }}>{activeWorkbook?.title ?? "Untitled workbook"}</span>
           <span
             aria-label={workbookDirty ? "Unsaved changes" : "Saved"}
             title={workbookDirty ? "Unsaved changes" : "Saved"}
@@ -739,8 +739,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontSize: 11, opacity: 0.75 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10, flexWrap: "wrap", minWidth: 0 }}>
+        <div style={{ fontSize: 11, opacity: 0.75, overflowWrap: "anywhere" }}>
           Current view: <strong>{currentDatasetRef}</strong>
           {cameraReady ? " · camera ready" : " · camera pending"}
         </div>
