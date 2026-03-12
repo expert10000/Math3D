@@ -162,6 +162,15 @@ export type VtkVolumeStreamlinesResponse =
   | { ok: true; lines: number[][][] }
   | { ok: false; error: string };
 
+export type AppCaptureScreenshotRequest = {
+  target: "scene" | "window";
+  rect?: { x: number; y: number; width: number; height: number };
+};
+
+export type AppCaptureScreenshotResponse =
+  | { ok: true; path: string; folder: string }
+  | { ok: false; error: string };
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -212,4 +221,9 @@ contextBridge.exposeInMainWorld("appMenu", {
     ipcRenderer.on("app:mode", listener);
     return () => ipcRenderer.removeListener("app:mode", listener);
   },
+});
+
+contextBridge.exposeInMainWorld("appCapture", {
+  captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
+    ipcRenderer.invoke("app:capture-screenshot", req),
 });

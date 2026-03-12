@@ -11,6 +11,29 @@ import * as fs from "node:fs";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 
+type CaptureRect = { x: number; y: number; width: number; height: number };
+type AppCaptureRequest = { target: "scene" | "window"; rect?: CaptureRect | null };
+type AppCaptureResponse =
+  | { ok: true; path: string; folder: string }
+  | { ok: false; error: string };
+
+const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
+  if (!value) return null;
+  const x = Math.max(0, Math.floor(Number(value.x)));
+  const y = Math.max(0, Math.floor(Number(value.y)));
+  const width = Math.max(0, Math.floor(Number(value.width)));
+  const height = Math.max(0, Math.floor(Number(value.height)));
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  return { x, y, width, height };
+};
+
+const screenshotStamp = () => {
+  const d = new Date();
+  const pad = (n: number, size = 2) => String(n).padStart(size, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`;
+};
+
 // Guard against running this entrypoint under plain Node (Electron APIs unavailable).
 if (!(app && typeof app.whenReady === "function")) {
   console.error("Electron app is not available. Run via the Electron runtime.");
@@ -53,6 +76,28 @@ app.whenReady().then(() => {
 
   registerCgalMeshIpc();
   registerVtkMeshIpc();
+
+  ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) {
+        return { ok: false, error: "Window not available." };
+      }
+      const target = req?.target === "scene" ? "scene" : "window";
+      const rect = target === "scene" ? toCaptureRect(req?.rect ?? null) : null;
+      if (target === "scene" && !rect) {
+        return { ok: false, error: "Scene capture area is not available." };
+      }
+      const image = rect ? await win.webContents.capturePage(rect) : await win.webContents.capturePage();
+      const outputFolder = path.resolve(process.cwd(), "output");
+      await fs.promises.mkdir(outputFolder, { recursive: true });
+      const filePath = path.join(outputFolder, `math3d-${target}-${screenshotStamp()}.png`);
+      await fs.promises.writeFile(filePath, image.toPNG());
+      return { ok: true, path: filePath, folder: outputFolder };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
 
 try {
     listPresets("graph");

@@ -2897,6 +2897,7 @@ const App: React.FC = () => {
     return [createGeometryObject("box", id)];
   });
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
+  const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
@@ -2960,6 +2961,21 @@ const App: React.FC = () => {
       setGeometrySelectedObjectId(ids[0]);
     }
   }, [geometryObjects, geometryDatasetMeshObjects, geometrySelectedObjectId]);
+  useEffect(() => {
+    const activeIds = new Set([...geometryObjects.map((o) => o.id), ...geometryDatasetMeshObjects.map((o) => o.id)]);
+    setGeometryLockedObjectIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (activeIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [geometryObjects, geometryDatasetMeshObjects]);
 
   const handleAddGeometryObject = useCallback(() => {
     const id = makeId();
@@ -2969,32 +2985,86 @@ const App: React.FC = () => {
   }, [geometryNewObjectType]);
 
   const handleRemoveGeometryObject = useCallback((id: string) => {
+    if (geometryLockedObjectIds.has(id)) return;
     setGeometryObjects((prev) => prev.filter((o) => o.id !== id));
     setGeometryDatasetMeshObjects((prev) => prev.filter((o) => o.id !== id));
+  }, [geometryLockedObjectIds]);
+
+  const handleToggleGeometryObjectLocked = useCallback((id: string) => {
+    setGeometryLockedObjectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
+
+  const handleDuplicateGeometryObject = useCallback((id: string) => {
+    if (geometryLockedObjectIds.has(id)) return;
+    const procedural = geometryObjects.find((o) => o.id === id);
+    if (procedural) {
+      const copyId = makeId();
+      const copy: GeometryObject = {
+        ...procedural,
+        id: copyId,
+        name: `${procedural.name} copy`,
+        params: { ...procedural.params },
+        transform: {
+          position: { ...procedural.transform.position, x: procedural.transform.position.x + 0.25 },
+          rotation: { ...procedural.transform.rotation },
+          scale: { ...procedural.transform.scale },
+        },
+        material: { ...procedural.material },
+      };
+      setGeometryObjects((prev) => [copy, ...prev]);
+      setGeometrySelectedObjectId(copyId);
+      return;
+    }
+    const datasetObj = geometryDatasetMeshObjects.find((o) => o.id === id);
+    if (!datasetObj) return;
+    const copyId = makeId();
+    const copy: GeometryDatasetMeshObject = {
+      ...datasetObj,
+      id: copyId,
+      name: `${datasetObj.name} copy`,
+      mesh: cloneSurfaceMeshData(datasetObj.mesh),
+      transform: {
+        position: { ...datasetObj.transform.position, x: datasetObj.transform.position.x + 0.25 },
+        rotation: { ...datasetObj.transform.rotation },
+        scale: { ...datasetObj.transform.scale },
+      },
+      material: { ...datasetObj.material },
+    };
+    setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
+    setGeometrySelectedObjectId(copyId);
+  }, [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects]);
 
   const handleRenameGeometryObject = useCallback((id: string, name: string) => {
+    if (geometryLockedObjectIds.has(id)) return;
     setGeometryObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
     setGeometryDatasetMeshObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
-  }, []);
+  }, [geometryLockedObjectIds]);
 
   const handleToggleGeometryObjectVisible = useCallback((id: string) => {
+    if (geometryLockedObjectIds.has(id)) return;
     setGeometryObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
     );
     setGeometryDatasetMeshObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
     );
-  }, []);
+  }, [geometryLockedObjectIds]);
 
   const handleUpdateGeometryParam = useCallback((id: string, key: string, value: number | boolean | string) => {
+    if (geometryLockedObjectIds.has(id)) return;
     setGeometryObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
     );
-  }, []);
+  }, [geometryLockedObjectIds]);
 
   const handleUpdateGeometryMaterial = useCallback(
     (id: string, patch: Partial<GeometryObject["material"]>) => {
+      if (geometryLockedObjectIds.has(id)) return;
       setGeometryObjects((prev) =>
         prev.map((o) =>
           o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
@@ -3006,11 +3076,12 @@ const App: React.FC = () => {
         )
       );
     },
-    []
+    [geometryLockedObjectIds]
   );
 
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
+      if (geometryLockedObjectIds.has(id)) return;
       setGeometryObjects((prev) =>
         prev.map((o) =>
           o.id === id
@@ -3040,13 +3111,14 @@ const App: React.FC = () => {
         )
       );
     },
-    []
+    [geometryLockedObjectIds]
   );
 
   const handleScaleAllGeometryObjects = useCallback((factor: number) => {
     if (!Number.isFinite(factor) || factor <= 0) return;
     setGeometryObjects((prev) =>
       prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
         const nextScale = {
           x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
           y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
@@ -3057,6 +3129,7 @@ const App: React.FC = () => {
     );
     setGeometryDatasetMeshObjects((prev) =>
       prev.map((o) => {
+        if (geometryLockedObjectIds.has(o.id)) return o;
         const nextScale = {
           x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
           y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
@@ -3065,7 +3138,7 @@ const App: React.FC = () => {
         return { ...o, transform: { ...o.transform, scale: nextScale } };
       })
     );
-  }, []);
+  }, [geometryLockedObjectIds]);
 
   const geometryDragRef = useRef<{
     id: string;
@@ -3074,6 +3147,7 @@ const App: React.FC = () => {
   const handleProceduralDragStart = useCallback(
     (info: { meshKey?: string }) => {
       if (!info.meshKey) return;
+      if (geometryLockedObjectIds.has(info.meshKey)) return;
       const obj =
         geometryObjects.find((o) => o.id === info.meshKey) ??
         geometryDatasetMeshObjects.find((o) => o.id === info.meshKey);
@@ -3084,7 +3158,7 @@ const App: React.FC = () => {
         startPosition: { ...obj.transform.position },
       };
     },
-    [geometryObjects, geometryDatasetMeshObjects]
+    [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects]
   );
   const handleProceduralDrag = useCallback(
     (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
@@ -3120,6 +3194,7 @@ const App: React.FC = () => {
       scale: { x: number; y: number; z: number };
     }) => {
       if (!info.meshKey) return;
+      if (geometryLockedObjectIds.has(info.meshKey)) return;
       handleUpdateGeometryTransform(info.meshKey, {
         position: {
           x: info.position.x,
@@ -3138,7 +3213,7 @@ const App: React.FC = () => {
         },
       });
     },
-    [handleUpdateGeometryTransform]
+    [geometryLockedObjectIds, handleUpdateGeometryTransform]
   );
 
   const proceduralMeshSet = useMemo(() => {
@@ -6456,9 +6531,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
   const wRef = useRef<PlanePlotHandle | null>(null);
+  const surfaceSceneCaptureRef = useRef<HTMLDivElement | null>(null);
+  const geometrySceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const [wPlaneDomainColor, setWPlaneDomainColor] = useState(true);
   const [wPlaneShowRings, setWPlaneShowRings] = useState(false);
   const [wPlaneShowRays, setWPlaneShowRays] = useState(false);
+  const [screenshotBusy, setScreenshotBusy] = useState<"scene" | "window" | null>(null);
+  const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
 
   // resizable panels
   const [leftWidth, setLeftWidth] = useState(260);
@@ -6469,7 +6548,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const minRight = 200;
   const maxRight = 480;
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
-    "scene" | "inspect" | "view" | "tools" | "analysis"
+    "scene" | "object" | "inspect" | "view" | "tools" | "analysis"
   >("scene");
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -6509,6 +6588,55 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
+  const getSceneCaptureRect = useCallback((): { x: number; y: number; width: number; height: number } | null => {
+    const el = mode === "surfaces"
+      ? surfaceSceneCaptureRef.current
+      : mode === "geometry"
+        ? geometrySceneCaptureRef.current
+        : null;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(0, Math.floor(rect.width));
+    const height = Math.max(0, Math.floor(rect.height));
+    if (width <= 0 || height <= 0) return null;
+    return {
+      x: Math.max(0, Math.floor(rect.left)),
+      y: Math.max(0, Math.floor(rect.top)),
+      width,
+      height,
+    };
+  }, [mode]);
+
+  const handleScreenshot = useCallback(
+    async (target: "scene" | "window") => {
+      if (!window.appCapture?.captureScreenshot) {
+        setScreenshotStatus("Screenshot API is unavailable.");
+        return;
+      }
+      setScreenshotBusy(target);
+      try {
+        const rect = target === "scene" ? getSceneCaptureRect() : undefined;
+        if (target === "scene" && !rect) {
+          setScreenshotStatus("Scene area is not visible.");
+          return;
+        }
+        const result = await window.appCapture.captureScreenshot(
+          target === "scene" ? { target, rect: rect ?? undefined } : { target }
+        );
+        if (result.ok) {
+          setScreenshotStatus(`Saved: ${result.path}`);
+        } else {
+          setScreenshotStatus(`Screenshot failed: ${result.error}`);
+        }
+      } catch (error: any) {
+        setScreenshotStatus(`Screenshot failed: ${String(error?.message ?? error)}`);
+      } finally {
+        setScreenshotBusy(null);
+      }
+    },
+    [getSceneCaptureRect]
+  );
 
   // root style
   const rootStyle: React.CSSProperties =
@@ -15022,11 +15150,78 @@ case "mobius":
     if (datasetObj) return !!datasetObj.visible;
     return null;
   }, [geometryObjects, geometryDatasetMeshObjects, unifiedSelectedNode]);
+  const unifiedSelectedSceneObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return null;
+    const procedural = geometryObjects.find((obj) => obj.id === refId);
+    if (procedural) return procedural;
+    return geometryDatasetMeshObjects.find((obj) => obj.id === refId) ?? null;
+  }, [geometryObjects, geometryDatasetMeshObjects, unifiedSelectedNode]);
+  const unifiedSelectedSceneLocked = !!(
+    unifiedSelectedSceneObject && geometryLockedObjectIds.has(unifiedSelectedSceneObject.id)
+  );
+  const unifiedSelectedSceneMeshStats = useMemo(() => {
+    if (!unifiedSelectedSceneObject) return null;
+    const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === unifiedSelectedSceneObject.id);
+    if (!mesh) return null;
+    const vertCount = Math.floor(mesh.positions.length / 3);
+    const triCount = mesh.indices && mesh.indices.length >= 3
+      ? Math.floor(mesh.indices.length / 3)
+      : Math.floor(vertCount / 3);
+    return { vertCount, triCount };
+  }, [proceduralMeshSet.meshes, unifiedSelectedSceneObject]);
   const handleToggleUnifiedSelectedVisible = useCallback(() => {
     const refId = unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleToggleGeometryObjectVisible(refId);
   }, [handleToggleGeometryObjectVisible, unifiedSelectedNode]);
+  const handleToggleUnifiedSelectedLocked = useCallback(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleToggleGeometryObjectLocked(refId);
+  }, [handleToggleGeometryObjectLocked, unifiedSelectedNode]);
+  const handleDuplicateUnifiedSelectedObject = useCallback(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleDuplicateGeometryObject(refId);
+  }, [handleDuplicateGeometryObject, unifiedSelectedNode]);
+  const handleDeleteUnifiedSelectedObject = useCallback(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleRemoveGeometryObject(refId);
+  }, [handleRemoveGeometryObject, unifiedSelectedNode]);
+  const handleRenameUnifiedSelectedObject = useCallback((name: string) => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleRenameGeometryObject(refId, name);
+  }, [handleRenameGeometryObject, unifiedSelectedNode]);
+  const handlePatchUnifiedSelectedTransform = useCallback((patch: GeometryTransformPatch) => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleUpdateGeometryTransform(refId, patch);
+  }, [handleUpdateGeometryTransform, unifiedSelectedNode]);
+  const handleSendUnifiedObjectToCompare = useCallback(() => {
+    if (datasetKind !== "surface" || !unifiedSelectedNode) return;
+    if (unifiedSelectedNode.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
+      const baked = bakeGeometryObjectToDatasetById(unifiedSelectedNode.objectRefId);
+      if (!baked) return;
+    }
+    if (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") {
+      setCompareSurfaceId(activeEqSurfaceId);
+    } else if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      setCompareParamId(paramSurfaceId);
+    }
+    setCompareUseSnapshotA(false);
+    setCompareUseSnapshotB(false);
+    setCompareEnabled(true);
+  }, [
+    datasetKind,
+    unifiedSelectedNode,
+    bakeGeometryObjectToDatasetById,
+    surfaceViewerKind,
+    activeEqSurfaceId,
+    paramSurfaceId,
+  ]);
 
   useEffect(() => {
     if (!unifiedObjectNodes.length) {
@@ -15052,6 +15247,88 @@ case "mobius":
   const unifiedCanPointCloud = unifiedMeshReady;
   const unifiedCanNormals = unifiedCanSurfaceOps && (unifiedMeshReady || surfaceViewerKind === "implicit");
   const unifiedCanExport = unifiedCanSurfaceOps && unifiedMeshReady;
+  const unifiedCanSendToCompare = datasetKind === "surface" && !!unifiedSelectedNode;
+  const unifiedObjectTypeLabel = useMemo(() => {
+    const t = unifiedSelectedNode?.type ?? "";
+    if (!t) return "n/a";
+    if (t.includes("implicit")) return "implicit";
+    if (t.includes("graph")) return "explicit";
+    if (t.includes("param")) return "param";
+    if (t.includes("weierstrass")) return "weierstrass";
+    if (t.includes("volume")) return "volume";
+    if (t.includes("mesh") || t.includes("scene/")) return "mesh";
+    return t;
+  }, [unifiedSelectedNode]);
+  const unifiedObjectDefinitionLabel = unifiedSelectedNode?.sourceDefinition || "n/a";
+  const unifiedObjectDomainLabel = useMemo(() => {
+    if (!unifiedSelectedNode) return "n/a";
+    if (unifiedSelectedNode.category === "sceneObject") {
+      return "World transform in XYZ coordinates.";
+    }
+    if (datasetKind === "volume") {
+      return `center=(${fmt(volumeSamplingClamped.center[0])}, ${fmt(volumeSamplingClamped.center[1])}, ${fmt(volumeSamplingClamped.center[2])}), extents=(${fmt(volumeSamplingClamped.extents[0])}, ${fmt(volumeSamplingClamped.extents[1])}, ${fmt(volumeSamplingClamped.extents[2])})`;
+    }
+    if (surfaceViewerKind === "implicit") {
+      return `x in [-${fmt(activeImplicitDomain.xSpan)}, ${fmt(activeImplicitDomain.xSpan)}], y in [-${fmt(activeImplicitDomain.ySpan)}, ${fmt(activeImplicitDomain.ySpan)}]`;
+    }
+    if (surfaceViewerKind === "graph") {
+      return `x in [-${fmt(activeGraphDomain.xSpan)}, ${fmt(activeGraphDomain.xSpan)}], y in [-${fmt(activeGraphDomain.ySpan)}, ${fmt(activeGraphDomain.ySpan)}]`;
+    }
+    if (surfaceViewerKind === "param") {
+      return `u in [${fmt(activeParamDomain.uMin)}, ${fmt(activeParamDomain.uMax)}], v in [${fmt(activeParamDomain.vMin)}, ${fmt(activeParamDomain.vMax)}]`;
+    }
+    if (surfaceViewerKind === "weierstrass") {
+      return `u in [${fmt(activeWeierstrassDomain.uMin)}, ${fmt(activeWeierstrassDomain.uMax)}], v in [${fmt(activeWeierstrassDomain.vMin)}, ${fmt(activeWeierstrassDomain.vMax)}]`;
+    }
+    return "Domain managed by active viewer.";
+  }, [
+    unifiedSelectedNode,
+    datasetKind,
+    volumeSamplingClamped.center,
+    volumeSamplingClamped.extents,
+    surfaceViewerKind,
+    activeImplicitDomain.xSpan,
+    activeImplicitDomain.ySpan,
+    activeGraphDomain.xSpan,
+    activeGraphDomain.ySpan,
+    activeParamDomain.uMin,
+    activeParamDomain.uMax,
+    activeParamDomain.vMin,
+    activeParamDomain.vMax,
+    activeWeierstrassDomain.uMin,
+    activeWeierstrassDomain.uMax,
+    activeWeierstrassDomain.vMin,
+    activeWeierstrassDomain.vMax,
+  ]);
+  const unifiedObjectSamplingLabel = useMemo(() => {
+    if (!unifiedSelectedNode) return "n/a";
+    if (unifiedSelectedSceneMeshStats) {
+      return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} verts, ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} tris`;
+    }
+    if (datasetKind === "volume") {
+      return `dims ${volumeDims[0]} x ${volumeDims[1]} x ${volumeDims[2]}, spacing ${fmt(volumeSamplingSpacing[0])}/${fmt(volumeSamplingSpacing[1])}/${fmt(volumeSamplingSpacing[2])}`;
+    }
+    if (surfaceViewerKind === "implicit") return `grid resolution ${implicitResolution}`;
+    if (surfaceViewerKind === "graph") return `grid resolution ${graphResolution}`;
+    if (surfaceViewerKind === "param") return `UV resolution ${paramResolution}`;
+    if (surfaceViewerKind === "weierstrass") return `UV resolution ${weierstrassResolution}`;
+    if (surfaceMeshStats) {
+      return `${surfaceMeshStats.vertCount.toLocaleString()} verts, ${surfaceMeshStats.triCount.toLocaleString()} tris`;
+    }
+    return "Sampling depends on active source.";
+  }, [
+    unifiedSelectedNode,
+    unifiedSelectedSceneMeshStats,
+    datasetKind,
+    volumeDims,
+    volumeSamplingSpacing,
+    surfaceViewerKind,
+    implicitResolution,
+    graphResolution,
+    paramResolution,
+    weierstrassResolution,
+    surfaceMeshStats,
+  ]);
 
   const runUnifiedPipelineAction = useCallback(
     (actionId: string) => {
@@ -15265,25 +15542,6 @@ case "mobius":
     return colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshLabel);
   }, [surfaceViewerKind, surfaceMeshLabel]);
 
-  const inspectChartModeOptions = useMemo<Array<{ value: ChartMode; label: string }>>(() => {
-    if (surfaceViewerKind === "graph") {
-      return [
-        { value: "auto", label: "Auto (x,y)" },
-        { value: "xy", label: "(x,y)" },
-      ];
-    }
-    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-      return [
-        { value: "auto", label: "Auto (u,v)" },
-        { value: "uv", label: "(u,v)" },
-      ];
-    }
-    return [
-      { value: "auto", label: "Auto (local)" },
-      { value: "local", label: "Local (xi,eta)" },
-    ];
-  }, [surfaceViewerKind]);
-
   return (
     <div style={rootStyle}>
       {isDev && devError && (
@@ -15417,6 +15675,39 @@ case "mobius":
               />
             </div>
           )}
+          <div style={{ ...styles.group, gridColumn: "span 3" }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("scene")}
+                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
+              >
+                Scene shot
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("window")}
+                disabled={screenshotBusy !== null}
+              >
+                Window shot
+              </button>
+            </div>
+            {screenshotStatus && (
+              <div
+                style={{
+                  fontSize: 10,
+                  opacity: 0.75,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={screenshotStatus}
+              >
+                {screenshotStatus}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -15436,7 +15727,7 @@ case "mobius":
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {(["scene", "inspect", "view", "tools", "analysis"] as const).map((tab) => (
+                {(["scene", "object", "inspect", "view", "tools", "analysis"] as const).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -15465,30 +15756,47 @@ case "mobius":
                   actions={unifiedPipelineActions}
                 />
               )}
-              {surfacesLeftTab === "inspect" && (
-                <SurfacesInspectPanel
+              {surfacesLeftTab === "object" && (
+                <SurfacesObjectPanel
                   selectedNode={unifiedSelectedNode}
                   nodeById={unifiedObjectModel.nodeById}
+                  selectedSceneObject={unifiedSelectedSceneObject}
+                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
                   selectedVisible={unifiedSelectedSceneVisible}
                   onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
+                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
+                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
+                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
+                  objectTypeLabel={unifiedObjectTypeLabel}
+                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
+                  objectDomainLabel={unifiedObjectDomainLabel}
+                  objectSamplingLabel={unifiedObjectSamplingLabel}
+                  canBakeToSurfaceMesh={unifiedCanBake}
+                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
+                  canSendToCompare={unifiedCanSendToCompare}
+                  onSendToCompare={handleSendUnifiedObjectToCompare}
+                />
+              )}
+              {surfacesLeftTab === "inspect" && (
+                <SurfacesInspectPanel
+                  inspectEnabled={inspectEnabled}
+                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                  onClearInspect={clearInspect}
+                  inspectIdx={inspectIdx}
+                  inspectPos={inspectPos}
+                  inspectNormal={inspectNormal}
+                  inspectMetrics={inspectMetrics}
                   probeEnabled={probeEnabled}
                   onToggleProbe={() => setProbeEnabled((v) => !v)}
-                  showChartGrid={showChartGrid}
-                  onToggleChartGrid={() => setShowChartGrid((v) => !v)}
-                  chartGridDensity={chartGridDensity}
-                  onChangeChartGridDensity={setChartGridDensity}
-                  chartMode={chartMode}
-                  chartModeOptions={inspectChartModeOptions}
-                  onChangeChartMode={setChartMode}
-                  chartCoordinateReadoutEnabled={chartCoordinateReadoutEnabled}
-                  onToggleChartCoordinateReadout={() => setChartCoordinateReadoutEnabled((v) => !v)}
                   showProbeNormal={showProbeNormal}
                   onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
                   showProbeTangentPlane={showProbeTangentPlane}
                   onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
                   showProbeTangents={showProbeTangents}
                   onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
-                  actions={unifiedPipelineActions}
                 />
               )}
               {surfacesLeftTab === "view" && (
@@ -16015,6 +16323,7 @@ case "mobius":
             {/* MIDDLE */}
             <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
               <div
+                ref={surfaceSceneCaptureRef}
                 style={{
                   flex: 1,
                   height: "80vh",
@@ -17685,7 +17994,7 @@ case "mobius":
 
             {/* RIGHT */}
             <div style={styles.stack}>
-              <div style={{ flex: 1, minHeight: 400 }}>
+              <div ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 400 }}>
                 <GeometryViewer
                   scene={geometryScene}
                   meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
@@ -18437,134 +18746,242 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   );
 };
 
-type SurfacesInspectPanelProps = {
+type SurfacesObjectPanelProps = {
   selectedNode: UnifiedObjectNode | null;
   nodeById: Map<string, UnifiedObjectNode>;
+  selectedSceneObject: GeometryObject | GeometryDatasetMeshObject | null;
+  selectedSceneObjectLocked: boolean;
+  selectedSceneMeshStats: { vertCount: number; triCount: number } | null;
   selectedVisible: boolean | null;
   onToggleSelectedVisible: () => void;
+  onToggleSelectedLocked: () => void;
+  onDuplicateSelectedObject: () => void;
+  onDeleteSelectedObject: () => void;
+  onRenameSelectedObject: (name: string) => void;
+  onPatchSelectedTransform: (patch: GeometryTransformPatch) => void;
+  objectTypeLabel: string;
+  objectDefinitionLabel: string;
+  objectDomainLabel: string;
+  objectSamplingLabel: string;
+  canBakeToSurfaceMesh: boolean;
+  onBakeToSurfaceMesh: () => void;
+  canSendToCompare: boolean;
+  onSendToCompare: () => void;
+};
+
+const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
+  selectedNode,
+  nodeById,
+  selectedSceneObject,
+  selectedSceneObjectLocked,
+  selectedSceneMeshStats,
+  selectedVisible,
+  onToggleSelectedVisible,
+  onToggleSelectedLocked,
+  onDuplicateSelectedObject,
+  onDeleteSelectedObject,
+  onRenameSelectedObject,
+  onPatchSelectedTransform,
+  objectTypeLabel,
+  objectDefinitionLabel,
+  objectDomainLabel,
+  objectSamplingLabel,
+  canBakeToSurfaceMesh,
+  onBakeToSurfaceMesh,
+  canSendToCompare,
+  onSendToCompare,
+}) => {
+  const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object</div>
+        {selectedNode ? (
+          <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div><strong>Name:</strong> {selectedNode.name}</div>
+            <div><strong>Type:</strong> {objectTypeLabel}</div>
+            <div><strong>Preset / equation:</strong> {objectDefinitionLabel}</div>
+            <div><strong>Domain / ranges:</strong> {objectDomainLabel}</div>
+            <div><strong>Resolution / sampling:</strong> {objectSamplingLabel}</div>
+            <div>
+              <strong>Derived:</strong>{" "}
+              {selectedNode.derivedProductIds.length
+                ? selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id).join(", ")
+                : "none"}
+            </div>
+            {selectedSceneMeshStats && (
+              <div>
+                <strong>Mesh stats:</strong> {selectedSceneMeshStats.vertCount.toLocaleString()} verts,{" "}
+                {selectedSceneMeshStats.triCount.toLocaleString()} tris
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, opacity: 0.75 }}>Select an item in Scene tab.</div>
+        )}
+      </div>
+
+      {selectedSceneObject && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Scene object</div>
+          <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
+            Name
+            <input
+              type="text"
+              value={selectedSceneObject.name}
+              onChange={(e) => onRenameSelectedObject(e.target.value)}
+              disabled={!canEditSceneObject}
+            />
+          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, marginBottom: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={!!selectedVisible}
+                onChange={onToggleSelectedVisible}
+                disabled={selectedVisible == null || selectedSceneObjectLocked}
+              />
+              Visible
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={selectedSceneObjectLocked} onChange={onToggleSelectedLocked} />
+              Lock
+            </label>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Transform</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "60px 1fr 1fr 1fr",
+              gap: "6px 8px",
+              alignItems: "center",
+            }}
+          >
+            <div />
+            <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
+            <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
+            <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
+
+            <div style={{ fontSize: 11 }}>Pos</div>
+            {(["x", "y", "z"] as const).map((axis) => (
+              <input
+                key={`obj-pos-${axis}`}
+                type="number"
+                step={0.1}
+                value={selectedSceneObject.transform.position[axis]}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  onPatchSelectedTransform({ position: axisPatch(axis, next) });
+                }}
+                disabled={!canEditSceneObject}
+              />
+            ))}
+
+            <div style={{ fontSize: 11 }}>Rot</div>
+            {(["x", "y", "z"] as const).map((axis) => (
+              <input
+                key={`obj-rot-${axis}`}
+                type="number"
+                step={1}
+                value={selectedSceneObject.transform.rotation[axis]}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  onPatchSelectedTransform({ rotation: axisPatch(axis, next) });
+                }}
+                disabled={!canEditSceneObject}
+              />
+            ))}
+
+            <div style={{ fontSize: 11 }}>Scale</div>
+            {(["x", "y", "z"] as const).map((axis) => (
+              <input
+                key={`obj-scale-${axis}`}
+                type="number"
+                step={0.1}
+                min={0.01}
+                value={selectedSceneObject.transform.scale[axis]}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (!Number.isFinite(next)) return;
+                  onPatchSelectedTransform({ scale: axisPatch(axis, Math.max(0.01, next)) });
+                }}
+                disabled={!canEditSceneObject}
+              />
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={onDuplicateSelectedObject} disabled={selectedSceneObjectLocked}>
+              Duplicate
+            </button>
+            <button type="button" onClick={onDeleteSelectedObject} disabled={selectedSceneObjectLocked}>
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Pipeline</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <button type="button" onClick={onBakeToSurfaceMesh} disabled={!canBakeToSurfaceMesh}>
+            Bake to SurfaceMesh
+          </button>
+          <button type="button" onClick={onSendToCompare} disabled={!canSendToCompare}>
+            Send to Compare
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type SurfacesInspectPanelProps = {
+  inspectEnabled: boolean;
+  onToggleInspectEnabled: () => void;
+  onClearInspect: () => void;
+  inspectIdx: number | null;
+  inspectPos: { x: number; y: number; z: number } | null;
+  inspectNormal: { x: number; y: number; z: number } | null;
+  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
   probeEnabled: boolean;
   onToggleProbe: () => void;
-  showChartGrid: boolean;
-  onToggleChartGrid: () => void;
-  chartGridDensity: number;
-  onChangeChartGridDensity: (value: number) => void;
-  chartMode: ChartMode;
-  chartModeOptions: Array<{ value: ChartMode; label: string }>;
-  onChangeChartMode: (mode: ChartMode) => void;
-  chartCoordinateReadoutEnabled: boolean;
-  onToggleChartCoordinateReadout: () => void;
   showProbeNormal: boolean;
   onToggleProbeNormal: () => void;
   showProbeTangentPlane: boolean;
   onToggleProbeTangentPlane: () => void;
   showProbeTangents: boolean;
   onToggleProbeTangents: () => void;
-  actions: UnifiedPipelineAction[];
 };
 
 const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
-  selectedNode,
-  nodeById,
-  selectedVisible,
-  onToggleSelectedVisible,
+  inspectEnabled,
+  onToggleInspectEnabled,
+  onClearInspect,
+  inspectIdx,
+  inspectPos,
+  inspectNormal,
+  inspectMetrics,
   probeEnabled,
   onToggleProbe,
-  showChartGrid,
-  onToggleChartGrid,
-  chartGridDensity,
-  onChangeChartGridDensity,
-  chartMode,
-  chartModeOptions,
-  onChangeChartMode,
-  chartCoordinateReadoutEnabled,
-  onToggleChartCoordinateReadout,
   showProbeNormal,
   onToggleProbeNormal,
   showProbeTangentPlane,
   onToggleProbeTangentPlane,
   showProbeTangents,
   onToggleProbeTangents,
-  actions,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Inspect</div>
-      {selectedNode ? (
-        <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
-          <div style={{ fontWeight: 700 }}>{selectedNode.name}</div>
-          <div>
-            <code>{selectedNode.type}</code>
-          </div>
-          <div>Source: {selectedNode.sourceDefinition}</div>
-          <div>Display: {selectedNode.displayState || "n/a"}</div>
-          <div>
-            Derived:{" "}
-            {selectedNode.derivedProductIds.length
-              ? selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id).join(", ")
-              : "none"}
-          </div>
-        </div>
-      ) : (
-        <div style={{ fontSize: 11, opacity: 0.75 }}>Select an item in Scene tab.</div>
-      )}
-    </div>
-
-    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Quick toggles</div>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Inspect controls</div>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input
-          type="checkbox"
-          checked={!!selectedVisible}
-          onChange={onToggleSelectedVisible}
-          disabled={selectedVisible == null}
-        />
-        Visible
+        <input type="checkbox" checked={inspectEnabled} onChange={onToggleInspectEnabled} />
+        Inspect mode (pick points)
       </label>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
         <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
         Probe mode
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} />
-        Chart grid
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        Grid density
-        <input
-          type="number"
-          min={3}
-          max={41}
-          step={1}
-          value={chartGridDensity}
-          onChange={(e) => {
-            const value = Number(e.target.value);
-            if (!Number.isFinite(value)) return;
-            onChangeChartGridDensity(Math.max(3, Math.min(41, Math.round(value))));
-          }}
-          style={{ width: 64 }}
-        />
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        Active chart
-        <select
-          value={chartMode}
-          onChange={(e) => onChangeChartMode(e.target.value as ChartMode)}
-          style={{ fontSize: 11, padding: "2px 4px" }}
-        >
-          {chartModeOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input
-          type="checkbox"
-          checked={chartCoordinateReadoutEnabled}
-          onChange={onToggleChartCoordinateReadout}
-        />
-        Coordinate readout
       </label>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
         <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} />
@@ -18578,24 +18995,53 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
         <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} />
         Tangent directions
       </label>
+      <div style={{ marginTop: 8 }}>
+        <button type="button" onClick={onClearInspect}>
+          Clear inspect
+        </button>
+      </div>
     </div>
 
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object actions</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {actions.map((action) => (
-          <button
-            key={action.id}
-            type="button"
-            onClick={action.onRun}
-            disabled={action.disabled}
-            title={action.hint}
-            style={{ padding: "4px 8px", fontSize: 11 }}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Picked point</div>
+      {inspectIdx != null && inspectPos && inspectNormal ? (
+        <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "70px 1fr", gap: "4px 8px" }}>
+          <div style={{ color: "#556" }}>Idx</div>
+          <div>{inspectIdx}</div>
+          <div style={{ color: "#556" }}>Pos</div>
+          <div>{fmt3(inspectPos)}</div>
+          <div style={{ color: "#556" }}>Normal</div>
+          <div>{fmt3(inspectNormal)}</div>
+          {inspectMetrics?.K != null && (
+            <>
+              <div style={{ color: "#556" }}>K</div>
+              <div>{fmt(inspectMetrics.K)}</div>
+            </>
+          )}
+          {inspectMetrics?.H != null && (
+            <>
+              <div style={{ color: "#556" }}>H</div>
+              <div>{fmt(inspectMetrics.H)}</div>
+            </>
+          )}
+          {inspectMetrics?.k1 != null && (
+            <>
+              <div style={{ color: "#556" }}>k1</div>
+              <div>{fmt(inspectMetrics.k1)}</div>
+            </>
+          )}
+          {inspectMetrics?.k2 != null && (
+            <>
+              <div style={{ color: "#556" }}>k2</div>
+              <div>{fmt(inspectMetrics.k2)}</div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          {inspectEnabled ? "Click the surface to inspect a point." : "Enable Inspect mode to start picking points."}
+        </div>
+      )}
     </div>
   </div>
 );

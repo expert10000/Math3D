@@ -174,6 +174,15 @@ declare global {
     | { ok: true; lines: number[][][] }
     | { ok: false; error: string };
 
+  type AppCaptureScreenshotRequest = {
+    target: "scene" | "window";
+    rect?: { x: number; y: number; width: number; height: number };
+  };
+
+  type AppCaptureScreenshotResponse =
+    | { ok: true; path: string; folder: string }
+    | { ok: false; error: string };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -200,6 +209,9 @@ declare global {
     };
     appMenu?: {
       onModeChange: (handler: (mode: string) => void) => () => void;
+    };
+    appCapture?: {
+      captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
     };
   }
 }
