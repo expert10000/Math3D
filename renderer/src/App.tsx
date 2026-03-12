@@ -605,6 +605,37 @@ type GeometryDatasetMeshObject = {
   material: GeometryObject["material"];
 };
 
+type UnifiedObjectCategory = "sceneObject" | "surfaceDefinition" | "dataset" | "derived";
+
+type UnifiedObjectNode = {
+  id: string;
+  name: string;
+  type: string;
+  sourceDefinition: string;
+  displayState: string;
+  parentId: string | null;
+  derivedProductIds: string[];
+  category: UnifiedObjectCategory;
+  objectRefId?: string;
+};
+
+type UnifiedManualDerived = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  type: string;
+  sourceDefinition: string;
+  displayState: string;
+};
+
+type UnifiedPipelineAction = {
+  id: string;
+  label: string;
+  disabled: boolean;
+  onRun: () => void;
+  hint?: string;
+};
+
 const axisPatch = (axis: keyof Vec3, value: number): Partial<Vec3> => ({ [axis]: value } as Partial<Vec3>);
 
 const toClampedInt = (value: number, fallback: number, min: number, max: number) =>
@@ -4057,24 +4088,20 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setDatasetKind("surface");
   }, []);
 
-  const handleBakeSelectedGeometryObject = useCallback(() => {
+  const bakeGeometryObjectToDatasetById = useCallback((objectId: string) => {
     setGeometryBakeError(null);
-    if (!geometrySelectedObjectId) {
-      setGeometryBakeError("Select an object to bake.");
-      return;
-    }
     const obj =
-      geometryObjects.find((entry) => entry.id === geometrySelectedObjectId) ??
-      geometryDatasetMeshObjects.find((entry) => entry.id === geometrySelectedObjectId) ??
+      geometryObjects.find((entry) => entry.id === objectId) ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === objectId) ??
       null;
     if (!obj) {
       setGeometryBakeError("Selected object no longer exists.");
-      return;
+      return false;
     }
     const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === obj.id) ?? null;
     if (!mesh) {
       setGeometryBakeError("Selected object is hidden or has no mesh.");
-      return;
+      return false;
     }
     const transformed = transformSurfaceMeshByGeometryTransform(mesh, obj.transform);
     const source: SurfaceMeshSource = {
@@ -4100,7 +4127,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setMeshDataset(applySurfaceMeshOps(baked));
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
-  }, [geometrySelectedObjectId, geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
+    return true;
+  }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
+
+  const handleBakeSelectedGeometryObject = useCallback(() => {
+    if (!geometrySelectedObjectId) {
+      setGeometryBakeError("Select an object to bake.");
+      return;
+    }
+    bakeGeometryObjectToDatasetById(geometrySelectedObjectId);
+  }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]);
 
   const handleBakeAllGeometryObjects = useCallback(() => {
     setGeometryBakeError(null);
@@ -6413,6 +6449,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(260);
   const minRight = 200;
   const maxRight = 480;
+  const [surfacesLeftTab, setSurfacesLeftTab] = useState<"scene" | "inspect" | "view" | "tools">("scene");
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -14529,6 +14566,715 @@ case "mobius":
     };
   }, [isDev]);
 
+  const [unifiedManualDerived, setUnifiedManualDerived] = useState<UnifiedManualDerived[]>([]);
+  const [unifiedTreeSelectedId, setUnifiedTreeSelectedId] = useState<string | null>(null);
+
+  const addUnifiedDerivedNode = useCallback((entry: Omit<UnifiedManualDerived, "id">) => {
+    setUnifiedManualDerived((prev) =>
+      [{ id: makeId(), ...entry }, ...prev].slice(0, 80)
+    );
+  }, []);
+
+  const unifiedObjectModel = useMemo(() => {
+    const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
+    const addRaw = (node: Omit<UnifiedObjectNode, "derivedProductIds">) => {
+      if (raw.some((entry) => entry.id === node.id)) return;
+      raw.push(node);
+    };
+
+    for (const obj of geometryObjects) {
+      addRaw({
+        id: `scene:${obj.id}`,
+        name: obj.name,
+        type: `scene/${obj.type}`,
+        sourceDefinition: `${GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type} ${JSON.stringify(obj.params)}`,
+        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
+        parentId: null,
+        category: "sceneObject",
+        objectRefId: obj.id,
+      });
+    }
+    for (const obj of geometryDatasetMeshObjects) {
+      const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
+      addRaw({
+        id: `scene:${obj.id}`,
+        name: obj.name,
+        type: "scene/dataset-mesh",
+        sourceDefinition: `${formatSurfaceMeshSource(obj.mesh.source)} (${meshStats})`,
+        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
+        parentId: null,
+        category: "sceneObject",
+        objectRefId: obj.id,
+      });
+    }
+
+    let activeDefinitionNodeId: string | null = null;
+    if (datasetKind === "surface") {
+      if (surfaceViewerKind === "implicit") {
+        activeDefinitionNodeId = `def:implicit:${activeEqSurfaceId}`;
+        addRaw({
+          id: activeDefinitionNodeId,
+          name: SURFACES_EQ_META.find((meta) => meta.id === activeEqSurfaceId)?.label ?? "Implicit surface",
+          type: "surface/implicit-definition",
+          sourceDefinition: `${activeImplicitExpr || "f(x,y,z)=0"}, domain +/-(${fmt(activeImplicitDomain.xSpan)}, ${fmt(activeImplicitDomain.ySpan)}), res ${implicitResolution}`,
+          displayState: "active",
+          parentId: null,
+          category: "surfaceDefinition",
+        });
+      } else if (surfaceViewerKind === "graph") {
+        activeDefinitionNodeId = `def:graph:${activeEqSurfaceId}`;
+        addRaw({
+          id: activeDefinitionNodeId,
+          name: SURFACES_EQ_META.find((meta) => meta.id === activeEqSurfaceId)?.label ?? "Graph surface",
+          type: "surface/graph-definition",
+          sourceDefinition: `${graphExpr || "z=f(x,y)"}, domain +/-(${fmt(activeGraphDomain.xSpan)}, ${fmt(activeGraphDomain.ySpan)}), res ${graphResolution}`,
+          displayState: "active",
+          parentId: null,
+          category: "surfaceDefinition",
+        });
+      } else if (surfaceViewerKind === "param") {
+        activeDefinitionNodeId = `def:param:${paramSurfaceId}`;
+        addRaw({
+          id: activeDefinitionNodeId,
+          name: PARAM_SURFACES_META.find((meta) => meta.id === paramSurfaceId)?.label ?? "Parametric surface",
+          type: "surface/param-definition",
+          sourceDefinition: `x=${paramXExpr || "x(u,v)"}, y=${paramYExpr || "y(u,v)"}, z=${paramZExpr || "z(u,v)"}, u in [${fmt(activeParamDomain.uMin)}, ${fmt(activeParamDomain.uMax)}], v in [${fmt(activeParamDomain.vMin)}, ${fmt(activeParamDomain.vMax)}], res ${paramResolution}`,
+          displayState: "active",
+          parentId: null,
+          category: "surfaceDefinition",
+        });
+      } else if (surfaceViewerKind === "weierstrass") {
+        activeDefinitionNodeId = "def:weierstrass";
+        addRaw({
+          id: activeDefinitionNodeId,
+          name: "Weierstrass surface",
+          type: "surface/weierstrass-definition",
+          sourceDefinition: `g=${weierstrassGExpr || "z"}, phi=${weierstrassPhiExpr || "1"}, u in [${fmt(activeWeierstrassDomain.uMin)}, ${fmt(activeWeierstrassDomain.uMax)}], v in [${fmt(activeWeierstrassDomain.vMin)}, ${fmt(activeWeierstrassDomain.vMax)}], res ${weierstrassResolution}`,
+          displayState: "active",
+          parentId: null,
+          category: "surfaceDefinition",
+        });
+      } else if (surfaceViewerKind === "complex") {
+        activeDefinitionNodeId = "def:complex-map";
+        addRaw({
+          id: activeDefinitionNodeId,
+          name: "Complex map sweep",
+          type: "surface/complex-definition",
+          sourceDefinition: `Re=${complexMapSpec.reExpr}, Im=${complexMapSpec.imExpr}`,
+          displayState: "active",
+          parentId: null,
+          category: "surfaceDefinition",
+        });
+      }
+    } else {
+      activeDefinitionNodeId = `def:volume:${volumePresetId}`;
+      const volumeExpr = volumePresetId === "custom" ? (volumeCustomExpr.trim() || volumePreset.formula) : volumePreset.formula;
+      addRaw({
+        id: activeDefinitionNodeId,
+        name: volumePreset.label,
+        type: "volume/definition",
+        sourceDefinition: `${volumeExpr}, dims ${volumeDims[0]}x${volumeDims[1]}x${volumeDims[2]}`,
+        displayState: "active",
+        parentId: null,
+        category: "surfaceDefinition",
+      });
+    }
+
+    let surfaceDatasetNodeId: string | null = null;
+    if (surfaceMeshData?.positions?.length) {
+      const source = surfaceMeshData.source;
+      let parentId: string | null = null;
+      if (source.kind === "geometryObject" && source.objectId) {
+        parentId = `scene:${source.objectId}`;
+      } else if (
+        source.kind === "bakedFromImplicit" ||
+        source.kind === "bakedFromExplicit" ||
+        source.kind === "bakedFromParam" ||
+        source.kind === "bakedFromWeierstrass"
+      ) {
+        const sourceNodeId = `def:source:${source.kind}`;
+        addRaw({
+          id: sourceNodeId,
+          name: formatSurfaceMeshSource(source),
+          type: "surface/source-definition",
+          sourceDefinition: formatSurfaceMeshSource(source),
+          displayState: "reference",
+          parentId: activeDefinitionNodeId,
+          category: "surfaceDefinition",
+        });
+        parentId = sourceNodeId;
+      } else {
+        parentId = activeDefinitionNodeId;
+      }
+      surfaceDatasetNodeId = "dataset:surface:active";
+      addRaw({
+        id: surfaceDatasetNodeId,
+        name: surfaceMeshData.label || "Surface mesh dataset",
+        type: "dataset/surface-mesh",
+        sourceDefinition: formatSurfaceMeshSource(surfaceMeshData.source),
+        displayState: `${surfaceViewerKind === "mesh" ? "shown" : "ready"}, ${surfaceMeshStats?.vertCount ?? 0} verts`,
+        parentId,
+        category: "dataset",
+      });
+    }
+
+    let volumeDatasetNodeId: string | null = null;
+    if (datasetKind === "volume" || volumeDatasetOverride) {
+      volumeDatasetNodeId = "dataset:volume:active";
+      const volumeLabel = volumeDatasetOverride?.label ?? `Volume: ${volumePreset.label}`;
+      const sourceDef = volumeDatasetOverride
+        ? volumeDatasetOverride.note ?? "Distance volume derived from surface mesh."
+        : volumePreset.formula;
+      addRaw({
+        id: volumeDatasetNodeId,
+        name: volumeLabel,
+        type: "dataset/volume-grid",
+        sourceDefinition: sourceDef,
+        displayState: datasetKind === "volume" ? "shown" : "ready",
+        parentId: volumeDatasetOverride?.sourceId === "surface_distance" ? surfaceDatasetNodeId : activeDefinitionNodeId,
+        category: "dataset",
+      });
+    }
+
+    const activeSurfaceParentId = surfaceDatasetNodeId ?? activeDefinitionNodeId;
+    if (activeSurfaceParentId) {
+      if (showWireframe) {
+        addRaw({
+          id: "derived:auto:wireframe",
+          name: "Wireframe",
+          type: "derived/wireframe",
+          sourceDefinition: "Surface edge overlay",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showChartGrid) {
+        addRaw({
+          id: "derived:auto:chart-grid",
+          name: "Chart grid",
+          type: "derived/chart-grid",
+          sourceDefinition: `Chart density ${chartGridDensity}`,
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (implicitOverlay === "normals") {
+        addRaw({
+          id: "derived:auto:normals",
+          name: "Normals",
+          type: "derived/normals",
+          sourceDefinition: "Finite-difference normals",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (colorMode === "curvature" || colorMode === "gaussian" || colorMode === "mean" || colorMode === "k1" || colorMode === "k2") {
+        addRaw({
+          id: "derived:auto:curvature-field",
+          name: "Curvature field",
+          type: "derived/curvature-field",
+          sourceDefinition: `Color mode ${colorMode}`,
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showPrincipalDirections) {
+        addRaw({
+          id: "derived:auto:principal-directions",
+          name: "Principal directions",
+          type: "derived/principal-directions",
+          sourceDefinition: "Direction field overlay",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showPrincipalLines) {
+        addRaw({
+          id: "derived:auto:principal-lines",
+          name: "Principal lines",
+          type: "derived/principal-lines",
+          sourceDefinition: "Integrated principal curves",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showCurvatureLines) {
+        addRaw({
+          id: "derived:auto:curvature-lines",
+          name: "Curvature lines",
+          type: "derived/curvature-lines",
+          sourceDefinition: "Integrated d1/d2 streamlines",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showRidges || showValleys) {
+        addRaw({
+          id: "derived:auto:ridge-valley",
+          name: "Ridges / valleys",
+          type: "derived/ridge-valley",
+          sourceDefinition: "Curvature extremal set",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (geodesicPathEnabled || geodesicHeatEnabled || geodesicDiskEnabled) {
+        addRaw({
+          id: "derived:auto:geodesics",
+          name: "Geodesic overlay",
+          type: "derived/geodesic",
+          sourceDefinition: "Path / heat / disk geodesics",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+      if (showPlanes) {
+        addRaw({
+          id: "derived:auto:slices",
+          name: "Slices / sections",
+          type: "derived/section",
+          sourceDefinition: "Plane intersection",
+          displayState: "visible",
+          parentId: activeSurfaceParentId,
+          category: "derived",
+        });
+      }
+    }
+
+    if (volumeDatasetNodeId) {
+      if (volumeViewMode === "slices") {
+        addRaw({
+          id: "derived:auto:volume-slices",
+          name: "Slices / sections",
+          type: "derived/volume-slices",
+          sourceDefinition: "Orthogonal slice views",
+          displayState: "visible",
+          parentId: volumeDatasetNodeId,
+          category: "derived",
+        });
+      }
+      if (volumeShowIsosurface) {
+        addRaw({
+          id: "derived:auto:volume-isosurface",
+          name: "Isosurface",
+          type: "derived/isosurface",
+          sourceDefinition: `iso=${Number.isFinite(volumeIsoValue) ? volumeIsoValue.toFixed(4) : String(volumeIsoValue)}`,
+          displayState: "visible",
+          parentId: volumeDatasetNodeId,
+          category: "derived",
+        });
+      }
+      if (volumeShowStreamlines) {
+        addRaw({
+          id: "derived:auto:volume-streamlines",
+          name: "Flow lines",
+          type: "derived/flow-lines",
+          sourceDefinition: `vector field ${volumeVectorPreset.label}`,
+          displayState: "visible",
+          parentId: volumeDatasetNodeId,
+          category: "derived",
+        });
+      }
+    }
+
+    for (const derived of unifiedManualDerived) {
+      addRaw({
+        id: `derived:manual:${derived.id}`,
+        name: derived.name,
+        type: derived.type,
+        sourceDefinition: derived.sourceDefinition,
+        displayState: derived.displayState,
+        parentId: derived.parentId,
+        category: "derived",
+      });
+    }
+
+    const idSet = new Set(raw.map((node) => node.id));
+    const normalized = raw.map((node) => ({
+      ...node,
+      parentId: node.parentId && idSet.has(node.parentId) ? node.parentId : null,
+    }));
+    const childrenByParent = new Map<string, string[]>();
+    for (const node of normalized) {
+      if (!node.parentId) continue;
+      const prev = childrenByParent.get(node.parentId);
+      if (prev) prev.push(node.id);
+      else childrenByParent.set(node.parentId, [node.id]);
+    }
+    const nodes: UnifiedObjectNode[] = normalized.map((node) => ({
+      ...node,
+      derivedProductIds: childrenByParent.get(node.id) ?? [],
+    }));
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const preferredId =
+      datasetKind === "volume"
+        ? volumeDatasetNodeId ?? activeDefinitionNodeId ?? nodes[0]?.id ?? null
+        : surfaceDatasetNodeId ?? activeDefinitionNodeId ?? nodes[0]?.id ?? null;
+    return {
+      nodes,
+      nodeById,
+      preferredId,
+      activeDefinitionNodeId,
+      activeDatasetNodeId: datasetKind === "volume" ? volumeDatasetNodeId : surfaceDatasetNodeId ?? activeDefinitionNodeId,
+    };
+  }, [
+    geometryObjects,
+    geometryDatasetMeshObjects,
+    datasetKind,
+    surfaceViewerKind,
+    activeEqSurfaceId,
+    activeImplicitExpr,
+    activeImplicitDomain.xSpan,
+    activeImplicitDomain.ySpan,
+    implicitResolution,
+    graphExpr,
+    activeGraphDomain.xSpan,
+    activeGraphDomain.ySpan,
+    graphResolution,
+    paramSurfaceId,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    activeParamDomain.uMin,
+    activeParamDomain.uMax,
+    activeParamDomain.vMin,
+    activeParamDomain.vMax,
+    paramResolution,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+    activeWeierstrassDomain.uMin,
+    activeWeierstrassDomain.uMax,
+    activeWeierstrassDomain.vMin,
+    activeWeierstrassDomain.vMax,
+    weierstrassResolution,
+    complexMapSpec.reExpr,
+    complexMapSpec.imExpr,
+    volumePresetId,
+    volumePreset.label,
+    volumePreset.formula,
+    volumeCustomExpr,
+    volumeDims,
+    volumeDatasetOverride,
+    surfaceMeshData,
+    surfaceMeshStats?.vertCount,
+    showWireframe,
+    showChartGrid,
+    chartGridDensity,
+    implicitOverlay,
+    colorMode,
+    showPrincipalDirections,
+    showPrincipalLines,
+    showCurvatureLines,
+    showRidges,
+    showValleys,
+    geodesicPathEnabled,
+    geodesicHeatEnabled,
+    geodesicDiskEnabled,
+    showPlanes,
+    volumeViewMode,
+    volumeShowIsosurface,
+    volumeShowStreamlines,
+    volumeIsoValue,
+    volumeVectorPreset.label,
+    unifiedManualDerived,
+  ]);
+
+  const unifiedObjectNodes = unifiedObjectModel.nodes;
+  const unifiedSelectedNode = unifiedTreeSelectedId
+    ? unifiedObjectModel.nodeById.get(unifiedTreeSelectedId) ?? null
+    : null;
+  const unifiedSelectedSceneVisible = useMemo(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return null;
+    const procedural = geometryObjects.find((obj) => obj.id === refId);
+    if (procedural) return !!procedural.visible;
+    const datasetObj = geometryDatasetMeshObjects.find((obj) => obj.id === refId);
+    if (datasetObj) return !!datasetObj.visible;
+    return null;
+  }, [geometryObjects, geometryDatasetMeshObjects, unifiedSelectedNode]);
+  const handleToggleUnifiedSelectedVisible = useCallback(() => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleToggleGeometryObjectVisible(refId);
+  }, [handleToggleGeometryObjectVisible, unifiedSelectedNode]);
+
+  useEffect(() => {
+    if (!unifiedObjectNodes.length) {
+      if (unifiedTreeSelectedId) setUnifiedTreeSelectedId(null);
+      return;
+    }
+    if (!unifiedTreeSelectedId || !unifiedObjectModel.nodeById.has(unifiedTreeSelectedId)) {
+      setUnifiedTreeSelectedId(unifiedObjectModel.preferredId ?? unifiedObjectNodes[0].id);
+    }
+  }, [unifiedObjectNodes, unifiedTreeSelectedId, unifiedObjectModel.nodeById, unifiedObjectModel.preferredId]);
+
+  useEffect(() => {
+    if (unifiedSelectedNode?.category !== "sceneObject" || !unifiedSelectedNode.objectRefId) return;
+    if (geometrySelectedObjectId === unifiedSelectedNode.objectRefId) return;
+    setGeometrySelectedObjectId(unifiedSelectedNode.objectRefId);
+  }, [geometrySelectedObjectId, unifiedSelectedNode]);
+
+  const unifiedCanBake =
+    (unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId) ||
+    (unifiedSelectedNode?.category === "surfaceDefinition" && datasetKind === "surface");
+  const unifiedCanSurfaceOps = datasetKind === "surface";
+  const unifiedMeshReady = !!surfaceMeshData?.positions?.length;
+  const unifiedCanPointCloud = unifiedMeshReady;
+  const unifiedCanNormals = unifiedCanSurfaceOps && (unifiedMeshReady || surfaceViewerKind === "implicit");
+  const unifiedCanExport = unifiedCanSurfaceOps && unifiedMeshReady;
+
+  const runUnifiedPipelineAction = useCallback(
+    (actionId: string) => {
+      const parentId =
+        unifiedSelectedNode?.id ?? unifiedObjectModel.activeDatasetNodeId ?? unifiedObjectModel.activeDefinitionNodeId ?? null;
+      if (actionId === "bake") {
+        if (unifiedSelectedNode?.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
+          bakeGeometryObjectToDatasetById(unifiedSelectedNode.objectRefId);
+          return;
+        }
+        if (datasetKind === "surface") {
+          handleConvertToMesh();
+        }
+        return;
+      }
+      if (actionId === "wireframe") {
+        if (!unifiedCanSurfaceOps) return;
+        setShowWireframe(true);
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Wireframe extract",
+          type: "derived/wireframe",
+          sourceDefinition: "Extracted edge wireframe from current surface.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "pointCloud") {
+        if (!unifiedCanPointCloud || !surfaceMeshData) return;
+        const pointCount = Math.floor(surfaceMeshData.positions.length / 3);
+        addUnifiedDerivedNode({
+          parentId,
+          name: `Point cloud (${pointCount})`,
+          type: "derived/point-cloud",
+          sourceDefinition: `Sampled mesh vertices from ${surfaceMeshData.label}.`,
+          displayState: "stored",
+        });
+        return;
+      }
+      if (actionId === "chartGrid") {
+        if (!unifiedCanSurfaceOps) return;
+        setShowChartGrid(true);
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Chart grid",
+          type: "derived/chart-grid",
+          sourceDefinition: "Computed chart grid overlay.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "normals") {
+        if (!unifiedCanNormals) return;
+        if (unifiedMeshReady) {
+          handleRecomputeSurfaceMeshNormals();
+        } else if (surfaceViewerKind === "implicit") {
+          setImplicitOverlay("normals");
+        }
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Normals",
+          type: "derived/normals",
+          sourceDefinition: unifiedMeshReady ? "Recomputed mesh vertex normals." : "Implicit normal field.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "curvature") {
+        if (!unifiedCanSurfaceOps) return;
+        if (surfaceViewerKind === "graph") setColorMode("curvature");
+        else setColorMode("gaussian");
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Curvature field",
+          type: "derived/curvature-field",
+          sourceDefinition: "Computed curvature scalar field.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "geodesic") {
+        if (!unifiedCanSurfaceOps) return;
+        setGeodesicPathEnabled(true);
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Geodesic overlay",
+          type: "derived/geodesic-overlay",
+          sourceDefinition: "Enabled geodesic path overlay tools.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "slice") {
+        if (datasetKind === "volume") {
+          setVolumeViewMode("slices");
+          addUnifiedDerivedNode({
+            parentId,
+            name: "Volume slices",
+            type: "derived/volume-slices",
+            sourceDefinition: "Enabled orthogonal section views.",
+            displayState: "visible",
+          });
+          return;
+        }
+        if (!unifiedCanSurfaceOps) return;
+        setShowPlanes(true);
+        addUnifiedDerivedNode({
+          parentId,
+          name: "Surface section",
+          type: "derived/surface-section",
+          sourceDefinition: "Enabled section/slice overlays.",
+          displayState: "visible",
+        });
+        return;
+      }
+      if (actionId === "export") {
+        if (!unifiedCanExport) return;
+        void handleExportSurfaceMeshGlb();
+      }
+    },
+    [
+      unifiedSelectedNode,
+      unifiedObjectModel.activeDatasetNodeId,
+      unifiedObjectModel.activeDefinitionNodeId,
+      bakeGeometryObjectToDatasetById,
+      datasetKind,
+      handleConvertToMesh,
+      unifiedCanSurfaceOps,
+      unifiedCanPointCloud,
+      surfaceMeshData,
+      unifiedCanNormals,
+      unifiedMeshReady,
+      handleRecomputeSurfaceMeshNormals,
+      surfaceViewerKind,
+      unifiedCanExport,
+      setVolumeViewMode,
+      addUnifiedDerivedNode,
+      handleExportSurfaceMeshGlb,
+    ]
+  );
+
+  const unifiedPipelineActions = useMemo<UnifiedPipelineAction[]>(
+    () => [
+      {
+        id: "bake",
+        label: "Bake to mesh",
+        disabled: !unifiedCanBake,
+        onRun: () => runUnifiedPipelineAction("bake"),
+      },
+      {
+        id: "wireframe",
+        label: "Extract wireframe",
+        disabled: !unifiedCanSurfaceOps,
+        onRun: () => runUnifiedPipelineAction("wireframe"),
+      },
+      {
+        id: "pointCloud",
+        label: "Extract point cloud",
+        disabled: !unifiedCanPointCloud,
+        onRun: () => runUnifiedPipelineAction("pointCloud"),
+      },
+      {
+        id: "chartGrid",
+        label: "Compute chart grid",
+        disabled: !unifiedCanSurfaceOps,
+        onRun: () => runUnifiedPipelineAction("chartGrid"),
+      },
+      {
+        id: "normals",
+        label: "Compute normals",
+        disabled: !unifiedCanNormals,
+        onRun: () => runUnifiedPipelineAction("normals"),
+      },
+      {
+        id: "curvature",
+        label: "Compute curvature field",
+        disabled: !unifiedCanSurfaceOps,
+        onRun: () => runUnifiedPipelineAction("curvature"),
+      },
+      {
+        id: "geodesic",
+        label: "Generate geodesic overlay",
+        disabled: !unifiedCanSurfaceOps,
+        onRun: () => runUnifiedPipelineAction("geodesic"),
+      },
+      {
+        id: "slice",
+        label: "Slice / section",
+        disabled: !(datasetKind === "volume" || unifiedCanSurfaceOps),
+        onRun: () => runUnifiedPipelineAction("slice"),
+      },
+      {
+        id: "export",
+        label: "Export",
+        disabled: !unifiedCanExport,
+        onRun: () => runUnifiedPipelineAction("export"),
+      },
+    ],
+    [
+      unifiedCanBake,
+      unifiedCanSurfaceOps,
+      unifiedCanPointCloud,
+      unifiedCanNormals,
+      unifiedCanExport,
+      datasetKind,
+      runUnifiedPipelineAction,
+    ]
+  );
+
+  const viewColorModes = useMemo<ColorMode[]>(() => {
+    const phaseAllowed =
+      (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
+      isComplexMapSurfaceLabel(surfaceMeshLabel);
+    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      return ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"];
+    }
+    if (surfaceViewerKind === "graph") {
+      return ["solid", "height", "radius", "curvature"];
+    }
+    if (phaseAllowed) {
+      return ["solid", "height", "radius", "phase"];
+    }
+    return ["solid", "height", "radius"];
+  }, [surfaceViewerKind, surfaceMeshLabel]);
+
+  const inspectChartModeOptions = useMemo<Array<{ value: ChartMode; label: string }>>(() => {
+    if (surfaceViewerKind === "graph") {
+      return [
+        { value: "auto", label: "Auto (x,y)" },
+        { value: "xy", label: "(x,y)" },
+      ];
+    }
+    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
+      return [
+        { value: "auto", label: "Auto (u,v)" },
+        { value: "uv", label: "(u,v)" },
+      ];
+    }
+    return [
+      { value: "auto", label: "Auto (local)" },
+      { value: "local", label: "Local (xi,eta)" },
+    ];
+  }, [surfaceViewerKind]);
+
   return (
     <div style={rootStyle}>
       {isDev && devError && (
@@ -14680,6 +15426,89 @@ case "mobius":
           <div style={{ flex: 1, display: "flex", flexDirection: "row", minHeight: 400 }}>
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                {(["scene", "inspect", "view", "tools"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setSurfacesLeftTab(tab)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
+                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
+                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              {surfacesLeftTab === "scene" && (
+                <UnifiedObjectTreePanel
+                  title="Scene / Dataset tree"
+                  nodes={unifiedObjectNodes}
+                  selectedId={unifiedTreeSelectedId}
+                  onSelect={setUnifiedTreeSelectedId}
+                  actions={unifiedPipelineActions}
+                />
+              )}
+              {surfacesLeftTab === "inspect" && (
+                <SurfacesInspectPanel
+                  selectedNode={unifiedSelectedNode}
+                  nodeById={unifiedObjectModel.nodeById}
+                  selectedVisible={unifiedSelectedSceneVisible}
+                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                  probeEnabled={probeEnabled}
+                  onToggleProbe={() => setProbeEnabled((v) => !v)}
+                  showChartGrid={showChartGrid}
+                  onToggleChartGrid={() => setShowChartGrid((v) => !v)}
+                  chartGridDensity={chartGridDensity}
+                  onChangeChartGridDensity={setChartGridDensity}
+                  chartMode={chartMode}
+                  chartModeOptions={inspectChartModeOptions}
+                  onChangeChartMode={setChartMode}
+                  chartCoordinateReadoutEnabled={chartCoordinateReadoutEnabled}
+                  onToggleChartCoordinateReadout={() => setChartCoordinateReadoutEnabled((v) => !v)}
+                  showProbeNormal={showProbeNormal}
+                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                  showProbeTangentPlane={showProbeTangentPlane}
+                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                  showProbeTangents={showProbeTangents}
+                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                  actions={unifiedPipelineActions}
+                />
+              )}
+              {surfacesLeftTab === "view" && (
+                <SurfacesViewPanel
+                  colorModes={viewColorModes}
+                  colorMode={colorMode}
+                  onChangeColorMode={setColorMode}
+                  colorPalette={colorPalette}
+                  onChangeColorPalette={setColorPalette}
+                  lightPreset={lightPreset}
+                  onChangeLightPreset={setLightPreset}
+                  materialRoughness={materialRoughness}
+                  onSetMaterialRoughness={setMaterialRoughness}
+                  materialMetalness={materialMetalness}
+                  onSetMaterialMetalness={setMaterialMetalness}
+                  materialOpacity={materialOpacity}
+                  onSetMaterialOpacity={setMaterialOpacity}
+                  showWireframe={showWireframe}
+                  onToggleWireframe={() => setShowWireframe((w) => !w)}
+                  showBoundingBox={showBoundingBox}
+                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                  showPlanes={showPlanes}
+                  onTogglePlanes={() => setShowPlanes((p) => !p)}
+                />
+              )}
+              {surfacesLeftTab === "tools" && (
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Advanced tools</summary>
+                  <div style={{ marginTop: 8 }}>
                 <SurfacesLeftPanel
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -15164,6 +15993,9 @@ case "mobius":
                 onChangeSelectedMetric={setSelectedMetric}
                 onRefreshSelectionStats={handleRefreshSelectionStats}
               />
+                  </div>
+                </details>
+              )}
             </div>
 
             <div onMouseDown={startDragLeft} style={splitterStyle} />
@@ -15979,6 +16811,14 @@ case "mobius":
                         Add
                       </button>
                     </div>
+
+                    <UnifiedObjectTreePanel
+                      title="Scene / Dataset tree"
+                      nodes={unifiedObjectNodes}
+                      selectedId={unifiedTreeSelectedId}
+                      onSelect={setUnifiedTreeSelectedId}
+                      actions={unifiedPipelineActions}
+                    />
 
                     <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
                     <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
@@ -17457,6 +18297,409 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, on
         {s.label}
       </button>
     ))}
+  </div>
+);
+
+type UnifiedObjectTreePanelProps = {
+  title?: string;
+  nodes: UnifiedObjectNode[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  actions: UnifiedPipelineAction[];
+};
+
+const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
+  title = "Scene / Dataset tree",
+  nodes,
+  selectedId,
+  onSelect,
+  actions,
+}) => {
+  const rootKey = "__root__";
+  const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const byParent = useMemo(() => {
+    const map = new Map<string, UnifiedObjectNode[]>();
+    for (const node of nodes) {
+      const key = node.parentId ?? rootKey;
+      const prev = map.get(key);
+      if (prev) prev.push(node);
+      else map.set(key, [node]);
+    }
+    return map;
+  }, [nodes]);
+  const selected = selectedId ? byId.get(selectedId) ?? null : null;
+
+  const renderTree = (parentId: string, depth: number): React.ReactNode => {
+    const rows = byParent.get(parentId) ?? [];
+    if (!rows.length) return null;
+    return rows.map((node) => {
+      const active = selectedId === node.id;
+      const state = node.displayState.trim();
+      return (
+        <div key={node.id}>
+          <button
+            type="button"
+            onClick={() => onSelect(node.id)}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "4px 6px",
+              marginLeft: depth * 14,
+              borderRadius: 6,
+              border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
+              background: active ? "#eef4ff" : "#fff",
+              cursor: "pointer",
+              fontSize: 11,
+            }}
+            title={node.sourceDefinition}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <span style={{ fontWeight: active ? 700 : 600 }}>{node.name}</span>
+              <span style={{ opacity: 0.7 }}>{node.type}</span>
+            </div>
+            {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
+          </button>
+          {renderTree(node.id, depth + 1)}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{title}</div>
+      {nodes.length ? (
+        <div style={{ display: "grid", gap: 5, maxHeight: 280, overflow: "auto", paddingRight: 2 }}>
+          {renderTree(rootKey, 0)}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, opacity: 0.75 }}>No objects yet.</div>
+      )}
+
+      {selected && (
+        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11 }}>
+          <div>
+            <strong>ID:</strong> <code>{selected.id}</code>
+          </div>
+          <div>
+            <strong>Name:</strong> {selected.name}
+          </div>
+          <div>
+            <strong>Type:</strong> {selected.type}
+          </div>
+          <div>
+            <strong>Source definition:</strong> {selected.sourceDefinition}
+          </div>
+          <div>
+            <strong>Display state:</strong> {selected.displayState || "n/a"}
+          </div>
+          <div>
+            <strong>Derived products:</strong>{" "}
+            {selected.derivedProductIds.length
+              ? selected.derivedProductIds
+                  .map((id) => byId.get(id)?.name ?? id)
+                  .join(", ")
+              : "none"}
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Derive / Bake / Convert</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              onClick={action.onRun}
+              disabled={action.disabled}
+              title={action.hint}
+              style={{ padding: "4px 8px", fontSize: 11 }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type SurfacesInspectPanelProps = {
+  selectedNode: UnifiedObjectNode | null;
+  nodeById: Map<string, UnifiedObjectNode>;
+  selectedVisible: boolean | null;
+  onToggleSelectedVisible: () => void;
+  probeEnabled: boolean;
+  onToggleProbe: () => void;
+  showChartGrid: boolean;
+  onToggleChartGrid: () => void;
+  chartGridDensity: number;
+  onChangeChartGridDensity: (value: number) => void;
+  chartMode: ChartMode;
+  chartModeOptions: Array<{ value: ChartMode; label: string }>;
+  onChangeChartMode: (mode: ChartMode) => void;
+  chartCoordinateReadoutEnabled: boolean;
+  onToggleChartCoordinateReadout: () => void;
+  showProbeNormal: boolean;
+  onToggleProbeNormal: () => void;
+  showProbeTangentPlane: boolean;
+  onToggleProbeTangentPlane: () => void;
+  showProbeTangents: boolean;
+  onToggleProbeTangents: () => void;
+  actions: UnifiedPipelineAction[];
+};
+
+const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
+  selectedNode,
+  nodeById,
+  selectedVisible,
+  onToggleSelectedVisible,
+  probeEnabled,
+  onToggleProbe,
+  showChartGrid,
+  onToggleChartGrid,
+  chartGridDensity,
+  onChangeChartGridDensity,
+  chartMode,
+  chartModeOptions,
+  onChangeChartMode,
+  chartCoordinateReadoutEnabled,
+  onToggleChartCoordinateReadout,
+  showProbeNormal,
+  onToggleProbeNormal,
+  showProbeTangentPlane,
+  onToggleProbeTangentPlane,
+  showProbeTangents,
+  onToggleProbeTangents,
+  actions,
+}) => (
+  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Inspect</div>
+      {selectedNode ? (
+        <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+          <div style={{ fontWeight: 700 }}>{selectedNode.name}</div>
+          <div>
+            <code>{selectedNode.type}</code>
+          </div>
+          <div>Source: {selectedNode.sourceDefinition}</div>
+          <div>Display: {selectedNode.displayState || "n/a"}</div>
+          <div>
+            Derived:{" "}
+            {selectedNode.derivedProductIds.length
+              ? selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id).join(", ")
+              : "none"}
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, opacity: 0.75 }}>Select an item in Scene tab.</div>
+      )}
+    </div>
+
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Quick toggles</div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input
+          type="checkbox"
+          checked={!!selectedVisible}
+          onChange={onToggleSelectedVisible}
+          disabled={selectedVisible == null}
+        />
+        Visible
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
+        Probe mode
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} />
+        Chart grid
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        Grid density
+        <input
+          type="number"
+          min={3}
+          max={41}
+          step={1}
+          value={chartGridDensity}
+          onChange={(e) => {
+            const value = Number(e.target.value);
+            if (!Number.isFinite(value)) return;
+            onChangeChartGridDensity(Math.max(3, Math.min(41, Math.round(value))));
+          }}
+          style={{ width: 64 }}
+        />
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        Active chart
+        <select
+          value={chartMode}
+          onChange={(e) => onChangeChartMode(e.target.value as ChartMode)}
+          style={{ fontSize: 11, padding: "2px 4px" }}
+        >
+          {chartModeOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input
+          type="checkbox"
+          checked={chartCoordinateReadoutEnabled}
+          onChange={onToggleChartCoordinateReadout}
+        />
+        Coordinate readout
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} />
+        Normal arrow
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input type="checkbox" checked={showProbeTangentPlane} onChange={onToggleProbeTangentPlane} />
+        Tangent plane
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+        <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} />
+        Tangent directions
+      </label>
+    </div>
+
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object actions</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            onClick={action.onRun}
+            disabled={action.disabled}
+            title={action.hint}
+            style={{ padding: "4px 8px", fontSize: 11 }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
+type SurfacesViewPanelProps = {
+  colorModes: ColorMode[];
+  colorMode: ColorMode;
+  onChangeColorMode: (mode: ColorMode) => void;
+  colorPalette: ColorPalette;
+  onChangeColorPalette: (palette: ColorPalette) => void;
+  lightPreset: "studio" | "soft" | "contrast" | "neutral" | "warm";
+  onChangeLightPreset: (preset: "studio" | "soft" | "contrast" | "neutral" | "warm") => void;
+  materialRoughness: number;
+  onSetMaterialRoughness: (v: number) => void;
+  materialMetalness: number;
+  onSetMaterialMetalness: (v: number) => void;
+  materialOpacity: number;
+  onSetMaterialOpacity: (v: number) => void;
+  showWireframe: boolean;
+  onToggleWireframe: () => void;
+  showBoundingBox: boolean;
+  onToggleBoundingBox: () => void;
+  showPlanes: boolean;
+  onTogglePlanes: () => void;
+};
+
+const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
+  colorModes,
+  colorMode,
+  onChangeColorMode,
+  colorPalette,
+  onChangeColorPalette,
+  lightPreset,
+  onChangeLightPreset,
+  materialRoughness,
+  onSetMaterialRoughness,
+  materialMetalness,
+  onSetMaterialMetalness,
+  materialOpacity,
+  onSetMaterialOpacity,
+  showWireframe,
+  onToggleWireframe,
+  showBoundingBox,
+  onToggleBoundingBox,
+  showPlanes,
+  onTogglePlanes,
+}) => (
+  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Coloring</div>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
+        Mode
+        <select value={colorMode} onChange={(e) => onChangeColorMode(e.target.value as ColorMode)}>
+          {colorModes.map((mode) => (
+            <option key={mode} value={mode}>
+              {mode}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+        Palette
+        <select value={colorPalette} onChange={(e) => onChangeColorPalette(e.target.value as ColorPalette)}>
+          <option value="blueRed">blueRed</option>
+          <option value="rainbow">rainbow</option>
+          <option value="grayscale">grayscale</option>
+          <option value="redYellow">redYellow</option>
+        </select>
+      </label>
+    </div>
+
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Lighting</div>
+      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+        Preset
+        <select value={lightPreset} onChange={(e) => onChangeLightPreset(e.target.value as "studio" | "soft" | "contrast" | "neutral" | "warm")}>
+          <option value="studio">studio</option>
+          <option value="soft">soft</option>
+          <option value="contrast">contrast</option>
+          <option value="neutral">neutral</option>
+          <option value="warm">warm</option>
+        </select>
+      </label>
+    </div>
+
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Material</div>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
+        Roughness: {materialRoughness.toFixed(2)}
+        <input type="range" min={0} max={1} step={0.01} value={materialRoughness} onChange={(e) => onSetMaterialRoughness(Number(e.target.value))} />
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
+        Metalness: {materialMetalness.toFixed(2)}
+        <input type="range" min={0} max={1} step={0.01} value={materialMetalness} onChange={(e) => onSetMaterialMetalness(Number(e.target.value))} />
+      </label>
+      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+        Opacity: {materialOpacity.toFixed(2)}
+        <input type="range" min={0.1} max={1} step={0.01} value={materialOpacity} onChange={(e) => onSetMaterialOpacity(Number(e.target.value))} />
+      </label>
+    </div>
+
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Mesh display</div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+        <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} />
+        Wireframe
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+        <input type="checkbox" checked={showBoundingBox} onChange={onToggleBoundingBox} />
+        Bounding box
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
+        <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
+        Coordinate planes
+      </label>
+    </div>
   </div>
 );
 
@@ -20422,77 +21665,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       </div>
       )}
 
-      <div style={{ marginTop: 10, fontSize: 12 }}>
-        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
-          <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} style={{ marginRight: 6 }} />
-          Wireframe mesh
-        </label>
-        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
-          <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} style={{ marginRight: 6 }} />
-          Show chart grid
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, marginTop: 4 }}>
-          Grid density
-          <input
-            type="number"
-            min={3}
-            max={41}
-            step={1}
-            value={chartGridDensity}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (!Number.isFinite(v)) return;
-              onChangeChartGridDensity(clampInt(v, 3, 41));
-            }}
-            style={{ width: 64 }}
-          />
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          Active chart
-          <select
-            value={chartMode}
-            onChange={(e) => onChangeChartMode(e.target.value as ChartMode)}
-            style={{ fontSize: 11, padding: "2px 4px" }}
-          >
-            {chartModeOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label style={{ display: "block", cursor: "pointer", marginBottom: 2 }}>
-          <input
-            type="checkbox"
-            checked={chartCoordinateReadoutEnabled}
-            onChange={onToggleChartCoordinateReadout}
-            style={{ marginRight: 6 }}
-          />
-          Coordinate readout
-        </label>
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} style={{ marginRight: 6 }} />
-          Show coordinate planes (x=0, y=0, z=0)
-        </label>
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} style={{ marginRight: 6 }} />
-          Show normal arrow
-        </label>
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input
-            type="checkbox"
-            checked={showProbeTangentPlane}
-            onChange={onToggleProbeTangentPlane}
-            style={{ marginRight: 6 }}
-          />
-          Show tangent plane
-        </label>
-        <label style={{ display: "block", cursor: "pointer" }}>
-          <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} style={{ marginRight: 6 }} />
-          Show tangent directions
-        </label>
-      </div>
-
       {wrapComplexAdvancedTools(
       <>
       <details style={{ ...cardStyle, marginTop: 10 }}>
@@ -20936,13 +22108,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       <details style={{ ...cardStyle, marginTop: 10 }}>
         <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Display & analysis</summary>
         <div style={{ marginTop: 8, fontSize: 12 }}>
-        {viewerKind !== "complex" && (
-          <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
-            <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} style={{ marginRight: 6 }} />
-            Probe mode: pick point on surface
-          </label>
-        )}
-
         <div style={{ marginTop: 0, fontSize: 12 }}>
           {(viewerKind === "param" ||
             viewerKind === "weierstrass" ||
@@ -22078,11 +23243,6 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         )}
         </div>
         </div>
-        <label style={{ display: "block", cursor: "pointer", marginTop: 2 }}>
-          <input type="checkbox" checked={showBoundingBox} onChange={onToggleBoundingBox} style={{ marginRight: 6 }} />
-          Show bounding box for domain
-        </label>
-
         <button
           type="button"
           onClick={onResetCamera}
