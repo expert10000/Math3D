@@ -1816,17 +1816,18 @@ useEffect(() => {
         const heatmapOk = useHeatmap && !!posAttr && posAttr.count === activeHeatmapValues!.length;
         const useImplicitCurv =
           !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+        const useScalarColors = !heatmapOk && !useImplicitCurv && colorMode !== "solid";
 
         const mats = Array.isArray(anyO.material) ? anyO.material : [anyO.material];
         for (const m of mats) {
           if (!m) continue;
           (m as any).wireframe = !!wireframe;
-          (m as any).vertexColors = useImplicitCurv || heatmapOk;
+          (m as any).vertexColors = useImplicitCurv || heatmapOk || useScalarColors;
           (m as any).roughness = materialRoughness;
           (m as any).metalness = materialMetalness;
           (m as any).transparent = clamp01(materialOpacity) < 1;
           (m as any).opacity = clamp01(materialOpacity);
-          if (heatmapOk || useImplicitCurv) {
+          if (heatmapOk || useImplicitCurv || useScalarColors) {
             (m as any).color?.set(0xffffff);
           } else if (colorMode === "solid") {
             (m as any).color?.set(solidColorForPalette(colorPalette));
@@ -1840,6 +1841,8 @@ useEffect(() => {
             applyHeatmapColors(anyO.geometry, activeHeatmapValues!, colorPalette);
           } else if (useImplicitCurv && implicitMeta?.f) {
             applyImplicitCurvatureColors(anyO.geometry, implicitMeta.f, colorPalette);
+          } else if (useScalarColors) {
+            applyVertexColors(anyO.geometry, colorMode, colorPalette);
           } else if (anyO.geometry.getAttribute("color")) {
             anyO.geometry.deleteAttribute("color");
           }
@@ -2424,20 +2427,34 @@ useEffect(() => {
   if (isImplicitMeshObj(obj)) {
     const mesh = obj as THREE.Mesh;
     const geom = mesh.geometry as THREE.BufferGeometry | null;
+    const implicitMeta = (mesh as any).userData?.__implicit as
+      | { f: (x: number, y: number, z: number) => number }
+      | undefined;
     const posAttr = geom?.getAttribute("position") as THREE.BufferAttribute | null;
     const heatmapOk =
       !!activeHeatmapValues?.length && !!posAttr && posAttr.count === activeHeatmapValues.length;
+    const useImplicitCurv =
+      !heatmapOk && implicitOverlay === "curvature" && typeof implicitMeta?.f === "function";
+    const useScalarColors = !heatmapOk && !useImplicitCurv && colorMode !== "solid";
     const mat = (mesh as any).material as THREE.Material | undefined;
-    if (geom && heatmapOk) {
-      applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
+    if (geom) {
+      if (heatmapOk) {
+        applyHeatmapColors(geom, activeHeatmapValues!, colorPalette);
+      } else if (useImplicitCurv && implicitMeta?.f) {
+        applyImplicitCurvatureColors(geom, implicitMeta.f, colorPalette);
+      } else if (useScalarColors) {
+        applyVertexColors(geom, colorMode, colorPalette);
+      } else if (geom.getAttribute("color")) {
+        geom.deleteAttribute("color");
+      }
     }
     if (mat && (mat as any).color) {
-      if (heatmapOk || colorMode !== "solid") {
+      if (heatmapOk || useImplicitCurv || useScalarColors) {
         (mat as any).color.set(0xffffff);
       } else {
         (mat as any).color.set(solidColorForPalette(colorPalette));
       }
-      (mat as any).vertexColors = heatmapOk;
+      (mat as any).vertexColors = heatmapOk || useImplicitCurv || useScalarColors;
       mat.needsUpdate = true;
     }
     return;

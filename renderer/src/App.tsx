@@ -1265,6 +1265,25 @@ const COLOR_MODE_LABELS: Record<ColorMode, string> = {
   k2: "k2",
 };
 
+const colorModesForSurfaceViewer = (
+  viewerKind: SurfaceViewerKind,
+  surfaceMeshLabel?: string | null
+): ColorMode[] => {
+  const phaseAllowed =
+    (viewerKind === "mesh" || viewerKind === "complex") &&
+    isComplexMapSurfaceLabel(surfaceMeshLabel);
+  if (viewerKind === "param" || viewerKind === "weierstrass") {
+    return ["solid", "height", "radius", ...PARAM_CURVATURE_COLOR_MODES];
+  }
+  if (viewerKind === "graph") {
+    return ["solid", "height", "radius", "curvature"];
+  }
+  if (phaseAllowed) {
+    return ["solid", "height", "radius", "phase"];
+  }
+  return ["solid", "height", "radius"];
+};
+
 
 
 
@@ -6449,7 +6468,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(260);
   const minRight = 200;
   const maxRight = 480;
-  const [surfacesLeftTab, setSurfacesLeftTab] = useState<"scene" | "inspect" | "view" | "tools">("scene");
+  const [surfacesLeftTab, setSurfacesLeftTab] = useState<
+    "scene" | "inspect" | "view" | "tools" | "analysis"
+  >("scene");
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -6514,18 +6535,18 @@ const mobiusEffectiveParams = useMemo(() => {
     );
   }, [colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId]);
 
+  const availableColorModes = useMemo(
+    () => colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshData?.label),
+    [surfaceViewerKind, surfaceMeshData?.label]
+  );
+
   useEffect(() => {
-    if (
-      surfaceViewerKind !== "param" &&
-      surfaceViewerKind !== "weierstrass" &&
-      PARAM_CURVATURE_COLOR_MODES.includes(colorMode)
-    ) {
-      setColorMode("height");
-    }
-    if (colorMode === "phase" && !(isMeshLikeViewer && isComplexMapSurfaceLabel(surfaceMeshData?.label))) {
-      setColorMode("height");
-    }
-  }, [surfaceViewerKind, colorMode, surfaceMeshData?.label]);
+    if (availableColorModes.includes(colorMode)) return;
+    const fallback = availableColorModes.includes("height")
+      ? "height"
+      : availableColorModes[0] ?? "solid";
+    setColorMode(fallback);
+  }, [availableColorModes, colorMode]);
 
   /* ---------- central drawing effect (2D modes) ---------- */
   useEffect(() => {
@@ -15241,19 +15262,7 @@ case "mobius":
   );
 
   const viewColorModes = useMemo<ColorMode[]>(() => {
-    const phaseAllowed =
-      (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
-      isComplexMapSurfaceLabel(surfaceMeshLabel);
-    if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-      return ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"];
-    }
-    if (surfaceViewerKind === "graph") {
-      return ["solid", "height", "radius", "curvature"];
-    }
-    if (phaseAllowed) {
-      return ["solid", "height", "radius", "phase"];
-    }
-    return ["solid", "height", "radius"];
+    return colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshLabel);
   }, [surfaceViewerKind, surfaceMeshLabel]);
 
   const inspectChartModeOptions = useMemo<Array<{ value: ChartMode; label: string }>>(() => {
@@ -15427,7 +15436,7 @@ case "mobius":
             {/* LEFT */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {(["scene", "inspect", "view", "tools"] as const).map((tab) => (
+                {(["scene", "inspect", "view", "tools", "analysis"] as const).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -15505,10 +15514,15 @@ case "mobius":
                   onTogglePlanes={() => setShowPlanes((p) => !p)}
                 />
               )}
-              {surfacesLeftTab === "tools" && (
+              {(surfacesLeftTab === "tools" || surfacesLeftTab === "analysis") && (
                 <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Advanced tools</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+                    {surfacesLeftTab === "analysis" ? "Display & analysis" : "Advanced tools"}
+                  </div>
                 <SurfacesLeftPanel
+                  showInternalTabs={surfacesLeftTab === "tools"}
+                  hideViewControls={surfacesLeftTab === "tools"}
+                  initialLeftTab={surfacesLeftTab === "analysis" ? "analysis" : "controls"}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
@@ -18723,6 +18737,9 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
 /* ---------------- Surfaces Left Panel ---------------- */
 
 type SurfacesLeftPanelProps = {
+  showInternalTabs?: boolean;
+  hideViewControls?: boolean;
+  initialLeftTab?: "controls" | "analysis" | "theory";
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
@@ -19208,6 +19225,9 @@ type SurfacesLeftPanelProps = {
 };
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
+  showInternalTabs = true,
+  hideViewControls = false,
+  initialLeftTab,
   viewerKind,
   surfaceId,
   paramId,
@@ -19755,7 +19775,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
   const isImplicitAny = viewerKind === "implicit" && isImplicitSurface(surfaceId);
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
-  const [leftTab, setLeftTab] = useState<"controls" | "theory">("controls");
+  const [leftTab, setLeftTab] = useState<"controls" | "analysis" | "theory">(initialLeftTab ?? "controls");
+  const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk">("surface_mesh");
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
@@ -19773,16 +19794,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     Math.max(0, complexMapSheetCount - 1)
   );
   const complexMapBranchCutDeg = (complexMapSpec.branchCutAngle * 180) / Math.PI;
-  const canPhaseColor =
-    (viewerKind === "mesh" || viewerKind === "complex") && isComplexMapSurfaceLabel(surfaceMeshLabel);
-  const colorModes: ColorMode[] =
-    viewerKind === "param" || viewerKind === "weierstrass"
-      ? ["solid", "height", "radius", "gaussian", "mean", "k1", "k2"]
-      : viewerKind === "graph"
-      ? ["solid", "height", "radius", "curvature"]
-      : canPhaseColor
-        ? ["solid", "height", "radius", "phase"]
-        : ["solid", "height", "radius"];
+  const colorModes: ColorMode[] = colorModesForSurfaceViewer(viewerKind, surfaceMeshLabel);
   const chartModeOptions: Array<{ value: ChartMode; label: string }> =
     viewerKind === "graph"
       ? [
@@ -19802,6 +19814,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const volumeShowCustom = volumePresetId === "custom";
   const volumePresetOptions = VOLUME_PRESETS.filter((preset) => preset.id !== "custom");
   const lastVolumePresetIdRef = useRef<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
+  useEffect(() => {
+    if (!initialLeftTab) return;
+    setLeftTab(initialLeftTab);
+  }, [initialLeftTab]);
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -20148,26 +20164,30 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         Rotate with mouse, scroll to zoom. In <strong>probe mode</strong> click the surface to read point p and unit normal n.
       </p>
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        {(["controls", "theory"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setLeftTab(t)}
-            style={pill(leftTab === t)}
-            aria-pressed={leftTab === t}
-          >
-            {t === "controls" ? "Controls" : "Theory"}
-          </button>
-        ))}
-      </div>
+      {showInternalTabs && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          {(["controls", "theory"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setLeftTab(t)}
+              style={pill(leftTab === t)}
+              aria-pressed={leftTab === t}
+            >
+              {t === "controls" ? "Controls" : "Theory"}
+            </button>
+          ))}
+        </div>
+      )}
 
-      <div style={{ display: leftTab === "controls" ? "block" : "none" }}>
+      <div style={{ display: leftTab !== "theory" ? "block" : "none" }}>
       <h3 style={styles.h3}>{activeMeta.label}</h3>
       <p style={styles.hint}>
         Mode: <strong>{modeLabel}</strong>
       </p>
 
+      {leftTab === "controls" && (
+      <>
       {datasetKind === "volume" && (
         <div style={{ ...cardStyle, marginTop: 10 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Volume grid</div>
@@ -22142,7 +22162,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         </div>
       </div>
       )}
+      </>
+      )}
+      </>
+      )}
 
+      {leftTab === "analysis" && (
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Display & analysis</div>
         <div style={{ marginTop: 0, fontSize: 12 }}>
@@ -22244,10 +22269,35 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           )}
         </div>
 
-        <details style={{ marginTop: 8 }}>
-          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>
-            Vector calculus (Track A)
-          </summary>
+        <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setAnalysisTab("vector")}
+            style={pill(analysisTab === "vector")}
+            aria-pressed={analysisTab === "vector"}
+          >
+            Vector calculus
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnalysisTab("curvature")}
+            style={pill(analysisTab === "curvature")}
+            aria-pressed={analysisTab === "curvature"}
+          >
+            Curvature lines
+          </button>
+          <button
+            type="button"
+            onClick={() => setAnalysisTab("ridges")}
+            style={pill(analysisTab === "ridges")}
+            aria-pressed={analysisTab === "ridges"}
+          >
+            Ridges / Valleys
+          </button>
+        </div>
+
+        <div style={{ marginTop: 8, display: analysisTab === "vector" ? "block" : "none" }}>
+          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Vector calculus (Track A)</div>
           <div style={{ marginTop: 6, fontSize: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
               <span>Scalar source</span>
@@ -22389,10 +22439,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </div>
             )}
           </div>
-        </details>
+        </div>
 
-        <details style={{ marginTop: 8 }} open={showCurvatureLines}>
-          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Curvature lines</summary>
+        <div style={{ marginTop: 8, display: analysisTab === "curvature" ? "block" : "none" }}>
+          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Curvature lines</div>
           <div style={{ marginTop: 6, fontSize: 12 }}>
             <label style={{ display: "block", cursor: "pointer" }}>
               <input
@@ -22537,10 +22587,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </button>
             </div>
           </div>
-        </details>
+        </div>
 
-        <details style={{ marginTop: 8 }} open={showRidges || showValleys}>
-          <summary style={{ cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Ridges / Valleys</summary>
+        <div style={{ marginTop: 8, display: analysisTab === "ridges" ? "block" : "none" }}>
+          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Ridges / Valleys</div>
           <div style={{ marginTop: 6, fontSize: 12 }}>
             {(() => {
               const ridgeValleyAvailable =
@@ -22775,7 +22825,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               );
             })()}
           </div>
-        </details>
+        </div>
 
         <div style={{ marginTop: 8 }}>
           <label style={{ display: "block", cursor: "pointer" }}>
@@ -23298,8 +23348,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         </button>
       </div>
       </div>
-      </>
       )}
+      {leftTab === "controls" && (
+      <>
+      {!hideViewControls && (
+      <>
 
       {/* color mode */}
       <div style={{ marginBottom: 10 }}>
@@ -23437,6 +23490,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           />
         </div>
       </div>
+      </>
+      )}
 
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh resolution</div>
@@ -23568,7 +23623,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         </div>
       )}
 
-      {/* palette */}
+      {!hideViewControls && (
       <div style={{ marginBottom: 10 }}>
   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Palette</div>
 
@@ -23586,6 +23641,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     ))}
   </div>
 </div>
+      )}
 
       {isEqViewer && <p style={styles.hint}>{eqMeta.note}</p>}
       {viewerKind === "param" && <p style={styles.hint}>{paramMeta.note}</p>}
@@ -23921,6 +23977,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             }}
           />
         </div>
+      )}
+      </>
       )}
       </div>
 
