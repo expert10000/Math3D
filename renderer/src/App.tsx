@@ -617,6 +617,10 @@ type UnifiedObjectNode = {
   derivedProductIds: string[];
   category: UnifiedObjectCategory;
   objectRefId?: string;
+  visible?: boolean | null;
+  canToggleVisibility?: boolean;
+  canDelete?: boolean;
+  colorHex?: string | null;
 };
 
 type UnifiedManualDerived = {
@@ -15101,6 +15105,10 @@ case "mobius":
         parentId: null,
         category: "sceneObject",
         objectRefId: obj.id,
+        visible: obj.visible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: toHexColorString(obj.material.color, 0x8aa4ff),
       });
     }
     for (const obj of geometryDatasetMeshObjects) {
@@ -15114,6 +15122,10 @@ case "mobius":
         parentId: null,
         category: "sceneObject",
         objectRefId: obj.id,
+        visible: obj.visible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: toHexColorString(obj.material.color, 0x8aa4ff),
       });
     }
 
@@ -15129,6 +15141,7 @@ case "mobius":
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
+          visible: true,
         });
       } else if (surfaceViewerKind === "graph") {
         activeDefinitionNodeId = `def:graph:${activeEqSurfaceId}`;
@@ -15140,6 +15153,7 @@ case "mobius":
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
+          visible: true,
         });
       } else if (surfaceViewerKind === "param") {
         activeDefinitionNodeId = `def:param:${paramSurfaceId}`;
@@ -15151,6 +15165,7 @@ case "mobius":
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
+          visible: true,
         });
       } else if (surfaceViewerKind === "weierstrass") {
         activeDefinitionNodeId = "def:weierstrass";
@@ -15162,6 +15177,7 @@ case "mobius":
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
+          visible: true,
         });
       } else if (surfaceViewerKind === "complex") {
         activeDefinitionNodeId = "def:complex-map";
@@ -15173,6 +15189,7 @@ case "mobius":
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
+          visible: true,
         });
       }
     } else {
@@ -15186,6 +15203,7 @@ case "mobius":
         displayState: "active",
         parentId: null,
         category: "surfaceDefinition",
+        visible: true,
       });
     }
 
@@ -15210,6 +15228,7 @@ case "mobius":
           displayState: "reference",
           parentId: activeDefinitionNodeId,
           category: "surfaceDefinition",
+          visible: true,
         });
         parentId = sourceNodeId;
       } else {
@@ -15224,6 +15243,7 @@ case "mobius":
         displayState: `${surfaceViewerKind === "mesh" ? "shown" : "ready"}, ${surfaceMeshStats?.vertCount ?? 0} verts`,
         parentId,
         category: "dataset",
+        visible: true,
       });
     }
 
@@ -15242,157 +15262,233 @@ case "mobius":
         displayState: datasetKind === "volume" ? "shown" : "ready",
         parentId: volumeDatasetOverride?.sourceId === "surface_distance" ? surfaceDatasetNodeId : activeDefinitionNodeId,
         category: "dataset",
+        visible: true,
       });
     }
 
     const activeSurfaceParentId = surfaceDatasetNodeId ?? activeDefinitionNodeId;
     if (activeSurfaceParentId) {
-      if (showWireframe) {
-        addRaw({
-          id: "derived:auto:wireframe",
-          name: "Wireframe",
-          type: "derived/wireframe",
-          sourceDefinition: "Surface edge overlay",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (showChartGrid) {
-        addRaw({
-          id: "derived:auto:chart-grid",
-          name: "Chart grid",
-          type: "derived/chart-grid",
-          sourceDefinition: `Chart density ${chartGridDensity}`,
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (implicitOverlay === "normals") {
+      const curvatureFieldVisible =
+        colorMode === "curvature" ||
+        colorMode === "gaussian" ||
+        colorMode === "mean" ||
+        colorMode === "k1" ||
+        colorMode === "k2";
+      const ridgeValleyVisible = showRidges || showValleys;
+      const geodesicsVisible = geodesicPathEnabled || geodesicHeatEnabled || geodesicDiskEnabled;
+
+      addRaw({
+        id: "derived:auto:wireframe",
+        name: "Wireframe",
+        type: "derived/wireframe",
+        sourceDefinition: "Surface edge overlay",
+        displayState: showWireframe ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showWireframe,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#334155",
+      });
+      addRaw({
+        id: "derived:auto:chart-grid",
+        name: "Chart grid",
+        type: "derived/chart-grid",
+        sourceDefinition: `Chart density ${chartGridDensity}`,
+        displayState: showChartGrid ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showChartGrid,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#0ea5e9",
+      });
+      addRaw({
+        id: "derived:auto:coordinate-planes",
+        name: "Coordinate planes",
+        type: "derived/coordinate-planes",
+        sourceDefinition: "Global XY / YZ / ZX guides",
+        displayState: showPlanes ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showPlanes,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#64748b",
+      });
+      addRaw({
+        id: "derived:auto:bounding-box",
+        name: "Bounding box",
+        type: "derived/bounding-box",
+        sourceDefinition: "Axis-aligned mesh bounds",
+        displayState: showBoundingBox ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showBoundingBox,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#94a3b8",
+      });
+      addRaw({
+        id: "derived:auto:curvature-field",
+        name: "Curvature field",
+        type: "derived/curvature-field",
+        sourceDefinition: `Color mode ${colorMode}`,
+        displayState: curvatureFieldVisible ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: curvatureFieldVisible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#b45309",
+      });
+      addRaw({
+        id: "derived:auto:principal-directions",
+        name: "Principal directions",
+        type: "derived/principal-directions",
+        sourceDefinition: "Direction field overlay",
+        displayState: showPrincipalDirections ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showPrincipalDirections,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#f97316",
+      });
+      addRaw({
+        id: "derived:auto:principal-lines",
+        name: "Principal lines",
+        type: "derived/principal-lines",
+        sourceDefinition: "Integrated principal curves",
+        displayState: showPrincipalLines ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showPrincipalLines,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#d97706",
+      });
+      addRaw({
+        id: "derived:auto:curvature-lines",
+        name: "Curvature lines",
+        type: "derived/curvature-lines",
+        sourceDefinition: "Integrated d1/d2 streamlines",
+        displayState: showCurvatureLines ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: showCurvatureLines,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#ca8a04",
+      });
+      addRaw({
+        id: "derived:auto:ridge-valley",
+        name: "Ridges / valleys",
+        type: "derived/ridge-valley",
+        sourceDefinition: `Curvature extremal set (${showRidges ? "ridges on" : "ridges off"}, ${showValleys ? "valleys on" : "valleys off"})`,
+        displayState: ridgeValleyVisible ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: ridgeValleyVisible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#dc2626",
+      });
+      addRaw({
+        id: "derived:auto:geodesics",
+        name: "Geodesic overlay",
+        type: "derived/geodesic",
+        sourceDefinition: `Path ${geodesicPathEnabled ? "on" : "off"}, heat ${geodesicHeatEnabled ? "on" : "off"}, disk ${geodesicDiskEnabled ? "on" : "off"}`,
+        displayState: geodesicsVisible ? "visible" : "hidden",
+        parentId: activeSurfaceParentId,
+        category: "derived",
+        visible: geodesicsVisible,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#16a34a",
+      });
+      if (surfaceViewerKind === "implicit") {
+        const normalsVisible = implicitOverlay === "normals";
         addRaw({
           id: "derived:auto:normals",
           name: "Normals",
           type: "derived/normals",
           sourceDefinition: "Finite-difference normals",
-          displayState: "visible",
+          displayState: normalsVisible ? "visible" : "hidden",
           parentId: activeSurfaceParentId,
           category: "derived",
+          visible: normalsVisible,
+          canToggleVisibility: true,
+          canDelete: true,
+          colorHex: "#0f766e",
         });
       }
-      if (colorMode === "curvature" || colorMode === "gaussian" || colorMode === "mean" || colorMode === "k1" || colorMode === "k2") {
+      if (
+        datasetKind === "surface" &&
+        surfaceViewerKind !== "mesh" &&
+        surfaceViewerKind !== "complex" &&
+        surfaceViewerKind !== "weierstrass"
+      ) {
+        const compareDef =
+          surfaceViewerKind === "param"
+            ? `param id ${compareParamId}`
+            : `surface id ${compareSurfaceId}`;
         addRaw({
-          id: "derived:auto:curvature-field",
-          name: "Curvature field",
-          type: "derived/curvature-field",
-          sourceDefinition: `Color mode ${colorMode}`,
-          displayState: "visible",
+          id: "derived:auto:compare-surface",
+          name: "Comparison surface B",
+          type: "derived/compare-surface",
+          sourceDefinition: compareDef,
+          displayState: compareEnabled ? "visible" : "hidden",
           parentId: activeSurfaceParentId,
           category: "derived",
-        });
-      }
-      if (showPrincipalDirections) {
-        addRaw({
-          id: "derived:auto:principal-directions",
-          name: "Principal directions",
-          type: "derived/principal-directions",
-          sourceDefinition: "Direction field overlay",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (showPrincipalLines) {
-        addRaw({
-          id: "derived:auto:principal-lines",
-          name: "Principal lines",
-          type: "derived/principal-lines",
-          sourceDefinition: "Integrated principal curves",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (showCurvatureLines) {
-        addRaw({
-          id: "derived:auto:curvature-lines",
-          name: "Curvature lines",
-          type: "derived/curvature-lines",
-          sourceDefinition: "Integrated d1/d2 streamlines",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (showRidges || showValleys) {
-        addRaw({
-          id: "derived:auto:ridge-valley",
-          name: "Ridges / valleys",
-          type: "derived/ridge-valley",
-          sourceDefinition: "Curvature extremal set",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (geodesicPathEnabled || geodesicHeatEnabled || geodesicDiskEnabled) {
-        addRaw({
-          id: "derived:auto:geodesics",
-          name: "Geodesic overlay",
-          type: "derived/geodesic",
-          sourceDefinition: "Path / heat / disk geodesics",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
-        });
-      }
-      if (showPlanes) {
-        addRaw({
-          id: "derived:auto:slices",
-          name: "Slices / sections",
-          type: "derived/section",
-          sourceDefinition: "Plane intersection",
-          displayState: "visible",
-          parentId: activeSurfaceParentId,
-          category: "derived",
+          visible: compareEnabled,
+          canToggleVisibility: true,
+          canDelete: true,
+          colorHex: "#2563eb",
         });
       }
     }
 
     if (volumeDatasetNodeId) {
-      if (volumeViewMode === "slices") {
-        addRaw({
-          id: "derived:auto:volume-slices",
-          name: "Slices / sections",
-          type: "derived/volume-slices",
-          sourceDefinition: "Orthogonal slice views",
-          displayState: "visible",
-          parentId: volumeDatasetNodeId,
-          category: "derived",
-        });
-      }
-      if (volumeShowIsosurface) {
-        addRaw({
-          id: "derived:auto:volume-isosurface",
-          name: "Isosurface",
-          type: "derived/isosurface",
-          sourceDefinition: `iso=${Number.isFinite(volumeIsoValue) ? volumeIsoValue.toFixed(4) : String(volumeIsoValue)}`,
-          displayState: "visible",
-          parentId: volumeDatasetNodeId,
-          category: "derived",
-        });
-      }
-      if (volumeShowStreamlines) {
-        addRaw({
-          id: "derived:auto:volume-streamlines",
-          name: "Flow lines",
-          type: "derived/flow-lines",
-          sourceDefinition: `vector field ${volumeVectorPreset.label}`,
-          displayState: "visible",
-          parentId: volumeDatasetNodeId,
-          category: "derived",
-        });
-      }
+      addRaw({
+        id: "derived:auto:volume-slices",
+        name: "Slices / sections",
+        type: "derived/volume-slices",
+        sourceDefinition: "Orthogonal slice views",
+        displayState: volumeViewMode === "slices" ? "visible" : "hidden",
+        parentId: volumeDatasetNodeId,
+        category: "derived",
+        visible: volumeViewMode === "slices",
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#4f46e5",
+      });
+      addRaw({
+        id: "derived:auto:volume-isosurface",
+        name: "Isosurface",
+        type: "derived/isosurface",
+        sourceDefinition: `iso=${Number.isFinite(volumeIsoValue) ? volumeIsoValue.toFixed(4) : String(volumeIsoValue)}`,
+        displayState: volumeShowIsosurface ? "visible" : "hidden",
+        parentId: volumeDatasetNodeId,
+        category: "derived",
+        visible: volumeShowIsosurface,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#7c3aed",
+      });
+      addRaw({
+        id: "derived:auto:volume-streamlines",
+        name: "Flow lines",
+        type: "derived/flow-lines",
+        sourceDefinition: `vector field ${volumeVectorPreset.label}`,
+        displayState: volumeShowStreamlines ? "visible" : "hidden",
+        parentId: volumeDatasetNodeId,
+        category: "derived",
+        visible: volumeShowStreamlines,
+        canToggleVisibility: true,
+        canDelete: true,
+        colorHex: "#0891b2",
+      });
     }
 
     for (const derived of unifiedManualDerived) {
@@ -15404,6 +15500,7 @@ case "mobius":
         displayState: derived.displayState,
         parentId: derived.parentId,
         category: "derived",
+        canDelete: true,
       });
     }
 
@@ -15489,11 +15586,15 @@ case "mobius":
     geodesicHeatEnabled,
     geodesicDiskEnabled,
     showPlanes,
+    showBoundingBox,
     volumeViewMode,
     volumeShowIsosurface,
     volumeShowStreamlines,
     volumeIsoValue,
     volumeVectorPreset.label,
+    compareEnabled,
+    compareSurfaceId,
+    compareParamId,
     unifiedManualDerived,
   ]);
 
@@ -15642,6 +15743,126 @@ case "mobius":
     surfaceMeshExportBusy,
     unifiedSelectedSceneObject,
   ]);
+  const handleFocusUnifiedNode = useCallback(
+    (nodeId: string) => {
+      setUnifiedTreeSelectedId(nodeId);
+      if (mode === "surfaces") {
+        setSurfacesLeftTab("object");
+      }
+    },
+    [mode]
+  );
+  const handleToggleUnifiedNodeVisibility = useCallback(
+    (nodeId: string) => {
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (!node) return;
+      if (node.category === "sceneObject" && node.objectRefId) {
+        handleToggleGeometryObjectVisible(node.objectRefId);
+        return;
+      }
+      switch (nodeId) {
+        case "derived:auto:wireframe":
+          setShowWireframe((v) => !v);
+          return;
+        case "derived:auto:chart-grid":
+          setShowChartGrid((v) => !v);
+          return;
+        case "derived:auto:coordinate-planes":
+          setShowPlanes((v) => !v);
+          return;
+        case "derived:auto:bounding-box":
+          setShowBoundingBox((v) => !v);
+          return;
+        case "derived:auto:normals":
+          setImplicitOverlay((v) => (v === "normals" ? "none" : "normals"));
+          return;
+        case "derived:auto:curvature-field":
+          if (
+            colorMode === "curvature" ||
+            colorMode === "gaussian" ||
+            colorMode === "mean" ||
+            colorMode === "k1" ||
+            colorMode === "k2"
+          ) {
+            setColorMode("solid");
+          } else if (surfaceViewerKind === "graph") {
+            setColorMode("curvature");
+          } else {
+            setColorMode("gaussian");
+          }
+          return;
+        case "derived:auto:principal-directions":
+          setShowPrincipalDirections((v) => !v);
+          return;
+        case "derived:auto:principal-lines":
+          setShowPrincipalLines((v) => !v);
+          return;
+        case "derived:auto:curvature-lines":
+          setShowCurvatureLines((v) => !v);
+          return;
+        case "derived:auto:ridge-valley":
+          if (showRidges || showValleys) {
+            setShowRidges(false);
+            setShowValleys(false);
+          } else {
+            setShowRidges(true);
+            setShowValleys(true);
+          }
+          return;
+        case "derived:auto:geodesics":
+          if (geodesicPathEnabled || geodesicHeatEnabled || geodesicDiskEnabled) {
+            setGeodesicPathEnabled(false);
+            setGeodesicHeatEnabled(false);
+            setGeodesicDiskEnabled(false);
+          } else {
+            setGeodesicPathEnabled(true);
+          }
+          return;
+        case "derived:auto:compare-surface":
+          setCompareEnabled((v) => !v);
+          return;
+        case "derived:auto:volume-slices":
+          setVolumeViewMode((mode) => (mode === "slices" ? "3d" : "slices"));
+          return;
+        case "derived:auto:volume-isosurface":
+          setVolumeShowIsosurface((v) => !v);
+          return;
+        case "derived:auto:volume-streamlines":
+          setVolumeShowStreamlines((v) => !v);
+          return;
+        default:
+          return;
+      }
+    },
+    [
+      unifiedObjectModel.nodeById,
+      handleToggleGeometryObjectVisible,
+      colorMode,
+      surfaceViewerKind,
+      showRidges,
+      showValleys,
+      geodesicPathEnabled,
+      geodesicHeatEnabled,
+      geodesicDiskEnabled,
+    ]
+  );
+  const handleDeleteUnifiedNode = useCallback(
+    (nodeId: string) => {
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (!node) return;
+      if (node.category === "sceneObject" && node.objectRefId) {
+        handleRemoveGeometryObject(node.objectRefId);
+        return;
+      }
+      if (nodeId.startsWith("derived:manual:")) {
+        const manualId = nodeId.slice("derived:manual:".length);
+        setUnifiedManualDerived((prev) => prev.filter((entry) => entry.id !== manualId));
+        return;
+      }
+      handleToggleUnifiedNodeVisibility(nodeId);
+    },
+    [handleRemoveGeometryObject, handleToggleUnifiedNodeVisibility, unifiedObjectModel.nodeById]
+  );
   const handleSendUnifiedObjectToCompare = useCallback(() => {
     if (datasetKind !== "surface" || !unifiedSelectedNode) return;
     if (unifiedSelectedNode.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
@@ -16197,10 +16418,13 @@ case "mobius":
               </div>
               {surfacesLeftTab === "scene" && (
                 <UnifiedObjectTreePanel
-                  title="Scene / Dataset tree"
+                  title="Scene contents"
                   nodes={unifiedObjectNodes}
                   selectedId={unifiedTreeSelectedId}
                   onSelect={setUnifiedTreeSelectedId}
+                  onFocus={handleFocusUnifiedNode}
+                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                  onDeleteNode={handleDeleteUnifiedNode}
                   actions={unifiedPipelineActions}
                 />
               )}
@@ -17592,10 +17816,13 @@ case "mobius":
                     </div>
 
                     <UnifiedObjectTreePanel
-                      title="Scene / Dataset tree"
+                      title="Scene contents"
                       nodes={unifiedObjectNodes}
                       selectedId={unifiedTreeSelectedId}
                       onSelect={setUnifiedTreeSelectedId}
+                      onFocus={handleFocusUnifiedNode}
+                      onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                      onDeleteNode={handleDeleteUnifiedNode}
                       actions={unifiedPipelineActions}
                     />
 
@@ -19084,6 +19311,9 @@ type UnifiedObjectTreePanelProps = {
   nodes: UnifiedObjectNode[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onFocus?: (id: string) => void;
+  onToggleVisibility?: (id: string) => void;
+  onDeleteNode?: (id: string) => void;
   actions: UnifiedPipelineAction[];
 };
 
@@ -19092,6 +19322,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   nodes,
   selectedId,
   onSelect,
+  onFocus,
+  onToggleVisibility,
+  onDeleteNode,
   actions,
 }) => {
   const rootKey = "__root__";
@@ -19107,6 +19340,16 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     return map;
   }, [nodes]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
+  const shortTypeLabel = (raw: string) => {
+    const part = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
+    return part.replaceAll("-", " ");
+  };
+  const categoryBadgeColor: Record<UnifiedObjectCategory, string> = {
+    sceneObject: "#334155",
+    surfaceDefinition: "#0f766e",
+    dataset: "#1d4ed8",
+    derived: "#7c3aed",
+  };
 
   const renderTree = (parentId: string, depth: number): React.ReactNode => {
     const rows = byParent.get(parentId) ?? [];
@@ -19114,31 +19357,121 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     return rows.map((node) => {
       const active = selectedId === node.id;
       const state = node.displayState.trim();
+      const typeLabel = shortTypeLabel(node.type);
+      const chipColor = node.colorHex || categoryBadgeColor[node.category];
+      const canToggleVisibility = !!node.canToggleVisibility && typeof node.visible === "boolean" && !!onToggleVisibility;
+      const canDelete = !!node.canDelete && !!onDeleteNode;
       return (
         <div key={node.id}>
-          <button
-            type="button"
-            onClick={() => onSelect(node.id)}
+          <div
             style={{
-              width: "100%",
-              textAlign: "left",
-              padding: `4px 6px 4px ${6 + depth * 14}px`,
-              borderRadius: 6,
-              border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
-              background: active ? "#eef4ff" : "#fff",
-              cursor: "pointer",
-              fontSize: 11,
-              boxSizing: "border-box",
-              minWidth: 0,
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 6,
+              alignItems: "start",
+              marginLeft: depth * 12,
             }}
-            title={node.sourceDefinition}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ fontWeight: active ? 700 : 600 }}>{node.name}</span>
-              <span style={{ opacity: 0.7 }}>{node.type}</span>
+            <button
+              type="button"
+              onClick={() => onSelect(node.id)}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
+                background: active ? "#eef4ff" : "#fff",
+                cursor: "pointer",
+                fontSize: 11,
+                boxSizing: "border-box",
+                minWidth: 0,
+              }}
+              title={node.sourceDefinition}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                  <span
+                    style={{
+                      width: 9,
+                      height: 9,
+                      borderRadius: 999,
+                      background: chipColor,
+                      flex: "0 0 auto",
+                      border: "1px solid rgba(0,0,0,0.08)",
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontWeight: active ? 700 : 600,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {node.name}
+                  </span>
+                </span>
+                <span
+                  style={{
+                    opacity: 0.9,
+                    fontSize: 10,
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    background: "#f8fafc",
+                    textTransform: "capitalize",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {typeLabel}
+                </span>
+              </div>
+              {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
+            </button>
+
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {canToggleVisibility && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleVisibility?.(node.id);
+                  }}
+                  style={{ padding: "3px 6px", fontSize: 10 }}
+                  title={node.visible ? "Hide" : "Show"}
+                >
+                  {node.visible ? "Hide" : "Show"}
+                </button>
+              )}
+              {onFocus && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onFocus(node.id);
+                  }}
+                  style={{ padding: "3px 6px", fontSize: 10 }}
+                  title="Select and open Object tab"
+                >
+                  Focus
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteNode?.(node.id);
+                  }}
+                  style={{ padding: "3px 6px", fontSize: 10 }}
+                  title="Delete / remove"
+                >
+                  Delete
+                </button>
+              )}
             </div>
-            {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
-          </button>
+          </div>
           {renderTree(node.id, depth + 1)}
         </div>
       );
@@ -19149,7 +19482,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{title}</div>
       {nodes.length ? (
-        <div style={{ display: "grid", gap: 5, maxHeight: 280, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
+        <div style={{ display: "grid", gap: 5, maxHeight: 320, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
           {renderTree(rootKey, 0)}
         </div>
       ) : (
@@ -19172,6 +19505,10 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           </div>
           <div>
             <strong>Display state:</strong> {selected.displayState || "n/a"}
+          </div>
+          <div>
+            <strong>Visible:</strong>{" "}
+            {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}
           </div>
           <div>
             <strong>Derived products:</strong>{" "}
