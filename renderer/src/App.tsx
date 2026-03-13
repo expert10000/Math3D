@@ -6647,8 +6647,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // root style
   const rootStyle: React.CSSProperties =
     mode === "surfaces" || mode === "geometry"
-      ? { ...styles.appRoot, maxWidth: "none", width: "100%", margin: 0 }
-      : styles.appRoot;
+      ? {
+          ...styles.appRoot,
+          maxWidth: "none",
+          width: "100%",
+          margin: 0,
+          overflowX: "hidden",
+          paddingBottom: showStatusBar ? 46 : 0,
+        }
+      : { ...styles.appRoot, overflowX: "hidden", paddingBottom: showStatusBar ? 46 : 0 };
 
 
 const mobiusEffectiveParams = useMemo(() => {
@@ -16211,6 +16218,113 @@ case "mobius":
     return colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshLabel);
   }, [surfaceViewerKind, surfaceMeshLabel]);
 
+  const statusViewerLabel = useMemo(() => {
+    if (mode === "surfaces") {
+      if (datasetKind === "volume") return `Volume viewer (${volumeViewMode})`;
+      if (surfaceViewerKind === "implicit") return "Implicit viewer";
+      if (surfaceViewerKind === "graph") return "Graph viewer";
+      if (surfaceViewerKind === "param") return "Param viewer";
+      if (surfaceViewerKind === "weierstrass") return "Weierstrass viewer";
+      if (surfaceViewerKind === "complex") return "Complex viewer";
+      if (surfaceViewerKind === "mesh") return "Mesh viewer";
+      return "Surface viewer";
+    }
+    if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
+    if (mode === "mobius") return "Mobius viewer";
+    if (mode === "chebyshev") return "Chebyshev viewer";
+    if (mode === "transform") return "Transform viewer";
+    if (mode === "maps") return "Maps viewer";
+    return mode;
+  }, [datasetKind, geometryMode, mode, surfaceViewerKind, volumeViewMode]);
+  const statusMeshLabel = useMemo(() => {
+    if (unifiedSelectedSceneMeshStats) {
+      return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
+    }
+    if (mode === "surfaces" && datasetKind === "surface" && surfaceMeshStats) {
+      return `${surfaceMeshStats.vertCount.toLocaleString()} vertices / ${surfaceMeshStats.triCount.toLocaleString()} faces`;
+    }
+    if (mode === "surfaces" && datasetKind === "volume") {
+      return `grid ${volumeDims[0]}x${volumeDims[1]}x${volumeDims[2]}`;
+    }
+    if (mode === "geometry" && geometryStats.mode === "procedural") {
+      return `${geometryStats.vertCount.toLocaleString()} vertices / ${geometryStats.triCount.toLocaleString()} faces`;
+    }
+    return null;
+  }, [
+    datasetKind,
+    geometryStats,
+    mode,
+    surfaceMeshStats,
+    unifiedSelectedSceneMeshStats,
+    volumeDims,
+  ]);
+  const statusPickedPointLabel = useMemo(() => {
+    const point =
+      mode === "surfaces"
+        ? probeInfo?.point ?? inspectPos
+        : mode === "geometry"
+          ? geometryProceduralPick?.point
+          : null;
+    if (!point) return null;
+    return `point (${fmt(point.x)}, ${fmt(point.y)}, ${fmt(point.z)})`;
+  }, [geometryProceduralPick?.point, inspectPos, mode, probeInfo?.point]);
+  const statusCameraLabel = useMemo(() => {
+    if (mode === "surfaces" && compareEnabled) {
+      return compareCameraSync ? "camera sync on" : "camera sync off";
+    }
+    if (cameraOverride) return "camera preset";
+    return "camera free";
+  }, [cameraOverride, compareCameraSync, compareEnabled, mode]);
+  const analysisRunning =
+    cgalBusy ||
+    vtkBusy ||
+    vtkPreviewBusy ||
+    implicitBakeBusy ||
+    geodesicHeatBusy ||
+    geodesicDiskBusy ||
+    volumeDistanceBusy;
+  const statusItems = useMemo(() => {
+    const items: string[] = [];
+    items.push(statusViewerLabel);
+    if (unifiedSelectedNode) {
+      items.push(unifiedSelectedNode.name);
+      if (unifiedObjectTypeLabel && unifiedObjectTypeLabel !== "n/a") {
+        items.push(`type ${unifiedObjectTypeLabel}`);
+      }
+    }
+    if (statusMeshLabel) items.push(statusMeshLabel);
+    items.push(statusCameraLabel);
+    if (mode === "surfaces") items.push(`${lightPreset} lighting`);
+    if (statusPickedPointLabel) items.push(statusPickedPointLabel);
+    items.push(analysisRunning ? "analysis running" : "analysis ready");
+    if (mode === "surfaces") {
+      items.push(compareEnabled ? "compare mode active" : "compare mode off");
+      if (IS_REPLAY_MODE) {
+        items.push("workspace replay");
+      } else {
+        items.push(workbookDirty ? "workspace unsaved" : "workspace saved");
+      }
+    }
+    if (screenshotBusy) items.push(`screenshot ${screenshotBusy}...`);
+    else if (screenshotStatus) items.push(screenshotStatus);
+    return items;
+  }, [
+    analysisRunning,
+    compareEnabled,
+    IS_REPLAY_MODE,
+    lightPreset,
+    mode,
+    screenshotBusy,
+    screenshotStatus,
+    statusCameraLabel,
+    statusMeshLabel,
+    statusPickedPointLabel,
+    statusViewerLabel,
+    unifiedObjectTypeLabel,
+    unifiedSelectedNode,
+    workbookDirty,
+  ]);
+
   return (
     <div style={rootStyle}>
       {isDev && devError && (
@@ -16362,20 +16476,6 @@ case "mobius":
                 Window shot
               </button>
             </div>
-            {showStatusBar && screenshotStatus && (
-              <div
-                style={{
-                  fontSize: 10,
-                  opacity: 0.75,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-                title={screenshotStatus}
-              >
-                {screenshotStatus}
-              </div>
-            )}
           </div>
         </div>
       </header>
@@ -18835,6 +18935,39 @@ case "mobius":
           </>
         )}
       </div>
+      {showStatusBar && (
+        <div
+          style={{
+            position: "fixed",
+            left: 16,
+            right: 16,
+            bottom: 10,
+            padding: "7px 10px",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-sm)",
+            background: "var(--panel-strong)",
+            boxShadow: "var(--shadow-soft)",
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            rowGap: 4,
+            gap: 8,
+            fontSize: 11,
+            overflow: "hidden",
+            zIndex: 2000,
+          }}
+          title={statusItems.join(" | ")}
+        >
+          {statusItems.map((item, index) => (
+            <React.Fragment key={`${item}-${index}`}>
+              {index > 0 && <span style={{ opacity: 0.5 }}>|</span>}
+              <span style={{ maxWidth: 340, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {item}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
