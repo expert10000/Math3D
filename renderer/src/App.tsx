@@ -30,6 +30,7 @@ import {
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
+import { ProblemAnalyzerPanel } from "./components/ProblemAnalyzerPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
@@ -45,6 +46,11 @@ import { buildDemoPyramidConstruction } from "./geometry/demoScene";
 import type { GeometryScene } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
+import {
+  buildOlympiadArcProblem,
+  DEFAULT_OLYMPIAD_ARC_FREE_POINTS,
+  type OlympiadArcFreePoints,
+} from "./geometry/problemPresets";
 import {
   GEOMETRY_OBJECT_REGISTRY,
   GEOMETRY_OBJECT_TYPES,
@@ -307,7 +313,7 @@ type WorkbookWorkspaceState = {
   version: 1;
   savedAt: number;
   geometry: {
-    mode: "procedural" | "demo";
+    mode: "procedural" | "demo" | "problem";
     objects: GeometryObject[];
     selectedObjectId: string | null;
   };
@@ -2838,7 +2844,7 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("surfaces");
-  const [geometryMode, setGeometryMode] = useState<"procedural" | "demo">("procedural");
+  const [geometryMode, setGeometryMode] = useState<"procedural" | "demo" | "problem">("procedural");
   const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
   const geometryFaces = geometryDemo.faces ?? [];
   const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
@@ -2889,6 +2895,28 @@ const App: React.FC = () => {
       });
     return labels.length ? [{ labels }] : null;
   }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
+  const [geometryProblemFreePoints, setGeometryProblemFreePoints] = useState<OlympiadArcFreePoints>(() => ({
+    A: { ...DEFAULT_OLYMPIAD_ARC_FREE_POINTS.A },
+    B: { ...DEFAULT_OLYMPIAD_ARC_FREE_POINTS.B },
+    C: { ...DEFAULT_OLYMPIAD_ARC_FREE_POINTS.C },
+  }));
+  const setGeometryProblemFreePointAxis = useCallback(
+    (id: keyof OlympiadArcFreePoints, axis: "x" | "y", value: number) => {
+      if (!Number.isFinite(value)) return;
+      setGeometryProblemFreePoints((prev) => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          [axis]: value,
+        },
+      }));
+    },
+    []
+  );
+  const geometryProblem = useMemo(
+    () => buildOlympiadArcProblem(geometryProblemFreePoints),
+    [geometryProblemFreePoints]
+  );
   const [geometryProceduralPick, setGeometryProceduralPick] = useState<{
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
@@ -3502,7 +3530,12 @@ const App: React.FC = () => {
   ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
-  const geometryScene: GeometryScene = geometryMode === "demo" ? geometryDemo.scene : proceduralScene;
+  const geometryScene: GeometryScene =
+    geometryMode === "procedural"
+      ? proceduralScene
+      : geometryMode === "demo"
+        ? geometryDemo.scene
+        : geometryProblem.scene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
@@ -9122,6 +9155,9 @@ case "mobius":
 
     const geometry = workspace.geometry;
     if (geometry && Array.isArray(geometry.objects)) {
+      setGeometryMode(
+        geometry.mode === "demo" ? "demo" : geometry.mode === "problem" ? "problem" : "procedural"
+      );
       const normalized = geometry.objects
         .filter((obj) => obj && typeof obj.id === "string" && typeof obj.type === "string")
         .map((obj) => ({
@@ -9151,7 +9187,6 @@ case "mobius":
           group: typeof obj.group === "string" ? obj.group : "default",
         })) as GeometryObject[];
       if (normalized.length) {
-        setGeometryMode(geometry.mode === "demo" ? "demo" : "procedural");
         setGeometryObjects(normalized);
         setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
       }
@@ -17960,6 +17995,20 @@ case "mobius":
                   >
                     Demo scene
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setGeometryMode("problem")}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (geometryMode === "problem" ? "#0a66c2" : "#ddd"),
+                      background: geometryMode === "problem" ? "#e6f0ff" : "#fff",
+                      fontWeight: geometryMode === "problem" ? 600 : 400,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Problem visualizer
+                  </button>
                 </div>
 
                 {geometryMode === "procedural" ? (
@@ -18731,7 +18780,7 @@ case "mobius":
                       </>
                     )}
                   </>
-                ) : (
+                ) : geometryMode === "demo" ? (
                   <>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Points</div>
                     <div
@@ -18803,6 +18852,53 @@ case "mobius":
                       </div>
                     </div>
                   </>
+                ) : (
+                  <>
+                    <div style={{ marginTop: 2, display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>Free points</div>
+                      {(["A", "B", "C"] as const).map((id) => {
+                        const point = geometryProblemFreePoints[id];
+                        return (
+                          <div
+                            key={id}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "18px 1fr 1fr",
+                              gap: 6,
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>{id}</div>
+                            <label style={{ fontSize: 10, opacity: 0.8 }}>
+                              x
+                              <input
+                                type="number"
+                                step={0.05}
+                                value={point.x}
+                                onChange={(e) =>
+                                  setGeometryProblemFreePointAxis(id, "x", Number(e.target.value))
+                                }
+                                style={{ width: "100%", marginTop: 2 }}
+                              />
+                            </label>
+                            <label style={{ fontSize: 10, opacity: 0.8 }}>
+                              y
+                              <input
+                                type="number"
+                                step={0.05}
+                                value={point.y}
+                                onChange={(e) =>
+                                  setGeometryProblemFreePointAxis(id, "y", Number(e.target.value))
+                                }
+                                style={{ width: "100%", marginTop: 2 }}
+                              />
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <ProblemAnalyzerPanel result={geometryProblem} />
+                  </>
                 )}
 
                 <div style={{ marginTop: 12 }}>
@@ -18865,12 +18961,16 @@ case "mobius":
                   highlightPointSets={
                     geometryMode === "demo"
                       ? geometryHighlightPointSets
-                      : geometryProceduralFeatureOverlays.pointSets
+                      : geometryMode === "problem"
+                        ? null
+                        : geometryProceduralFeatureOverlays.pointSets
                   }
                   overlayLabelSets={
                     geometryMode === "demo"
                       ? geometryLabelSets
-                      : geometryProceduralFeatureOverlays.labelSets
+                      : geometryMode === "problem"
+                        ? geometryProblem.labels
+                        : geometryProceduralFeatureOverlays.labelSets
                   }
                   dragEnabled={geometryMode === "procedural" && !geometryGizmoEnabled}
                   onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
@@ -18886,7 +18986,13 @@ case "mobius":
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
                   onGizmoTransform={geometryMode === "procedural" ? handleProceduralGizmoTransform : undefined}
                   pickEnabled={geometryMode === "demo" || geometryMode === "procedural"}
-                  onPick={geometryMode === "demo" ? handleGeometryPick : handleProceduralPick}
+                  onPick={
+                    geometryMode === "demo"
+                      ? handleGeometryPick
+                      : geometryMode === "procedural"
+                        ? handleProceduralPick
+                        : undefined
+                  }
                 />
               </div>
             </div>
