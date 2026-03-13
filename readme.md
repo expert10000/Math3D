@@ -2,6 +2,10 @@
 
 ## Changes (Latest changes)
 
+- Added an Object tab as a true selected-object identity/properties panel (name, type, creation source, parameters, domain/ranges, sampling, mesh stats, transform, and object actions).
+- Added a scalable Scene contents list with row actions (show/hide, focus, delete), color/type badges, and grouped/flat modes.
+- Added explicit scene roles for multi-object workflows: `PrimaryObject`, `Overlay`, `DerivedResult`, `ReferenceObject`.
+- Added a docked status bar with persistent context (viewer, selected object/type, mesh stats, camera mode, picked point, analysis/compare/workspace state) and wrapping tokens to avoid main horizontal scroll.
 - Added a Geometry Viewer with construction primitives, constraints, stereometry analyzer (pyramid incenters + plane check), and face selection/highlight overlays.
 - Added “Convert to Mesh…” for surfaces: bakes the active surface into a mesh dataset and switches to the SurfaceMesh viewer.
 - Added an implicit baker (marching cubes) with independent bounds + resolution controls, running in a worker with progress and caching for big grids.
@@ -40,6 +44,8 @@
 - Added VTK worker ops for volume slice (vtkImageReslice), unsigned distance fields, and streamlines, with IPC/preload/service updates to expose them end-to-end.
 - Integrated a volume bridge in the UI (Surface → Volume distance field), plus a volume override mode, and a new streamlines panel with vector presets and seed controls.
 - Swapped volume slice rendering to use VTK when available/large grids, added a small-grid CPU fallback for volume isosurface, and added VTK streamlines rendering as tubes.
+
+For detailed UI behavior and workflows for Scene contents/Object/Status bar, see [manual.md](manual.md).
 
 ## Code
 

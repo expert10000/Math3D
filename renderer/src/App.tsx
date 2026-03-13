@@ -2837,7 +2837,7 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 /* ---------------- App ---------------- */
 
 const App: React.FC = () => {
-  const [mode, setMode] = useState<Mode>(IS_REPLAY_MODE ? "surfaces" : "mobius");
+  const [mode, setMode] = useState<Mode>("surfaces");
   const [geometryMode, setGeometryMode] = useState<"procedural" | "demo">("procedural");
   const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
   const geometryFaces = geometryDemo.faces ?? [];

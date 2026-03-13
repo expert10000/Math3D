@@ -8,6 +8,86 @@
 5. Visualize blocks: capture the current view as a snapshot and jump back to it later; use A/B snapshots for compare mode.
 6. Export or import workbooks as JSON from the Workbook panel.
 
+## Scene contents, Object tab, and status bar
+
+### A) Geometry viewer scene roles
+Use scene roles to keep multi-object projects consistent as object count grows.
+
+1. `PrimaryObject`
+- Main scene geometry that users create/edit directly.
+- Typical examples: box, sphere, plane, vector, line, curve, procedural scene objects.
+
+2. `Overlay`
+- Display helpers layered on top of objects.
+- Typical examples: wireframe, labels, bounding box, axes, normals, helper construction marks.
+
+3. `DerivedResult`
+- Geometry/results computed from other objects.
+- Typical examples: intersection curves, measurement paths, projections, fitted constructions, generated mesh from procedural objects.
+
+4. `ReferenceObject`
+- Read-only or guide geometry used for construction context.
+- Typical examples: guide planes, imported template meshes, helper references.
+
+### B) Scene contents panel behavior
+The Scene contents panel is the central object list for the active scene/workspace.
+
+1. It supports both list modes:
+- `Grouped`: groups rows by role (`PrimaryObject`, `Overlay`, `DerivedResult`, `ReferenceObject`).
+- `Flat`: one continuous list when you prefer strict creation/order scanning.
+
+2. Each row supports desktop-style object management:
+- Visibility toggle (eye/show-hide behavior).
+- Select/focus action (select row and jump to Object tab context).
+- Delete/remove action (when allowed).
+- Name + type badge + color chip for fast scanning.
+
+3. Why this matters:
+- Analysis outputs are not only booleans; they become first-class scene objects.
+- You can add many overlays/results without scattering controls across multiple tabs.
+- Selecting from Scene contents always routes details/edit actions to Object tab.
+
+### C) Object tab behavior
+Object tab is the identity card and properties panel of the currently selected item.
+
+1. Core identity fields:
+- Name
+- Category/role
+- Type
+- Created from/source definition
+
+2. Math/geometry fields:
+- Domain/ranges (x/y/z or u/v, depending on object type)
+- Sampling/resolution
+- Mesh/topology stats (vertices/faces/triangles when available)
+
+3. Editable fields and actions (when object is editable):
+- Transform (position, rotation, scale)
+- Rename
+- Duplicate
+- Hide/show
+- Isolate/show all
+- Bake/export/delete (depending on object type and mode)
+
+### D) Docked status bar
+The status bar is docked and persistent to provide passive context with low UI cost.
+
+1. It is intended for always-useful runtime state, such as:
+- Active viewer kind
+- Selected object name
+- Object type
+- Mesh stats
+- Camera mode
+- Picked coordinates
+- Analysis running/ready
+- Compare mode state
+- Workspace saved/unsaved state
+
+2. Layout behavior:
+- Docked at the bottom of the app viewport.
+- Tokenized entries wrap/truncate as needed to prevent forcing main horizontal scroll.
+- Keeps continuous feedback visible without consuming sidebar space.
+
 ## Differential operators (grad/div/laplacian)
 1. Add a Compute block and choose `Grad (scalar → vector field)`, `Div (vector → scalar field)`, or `Laplacian (scalar → scalar field)`.
 2. For `Grad`, pick a scalar field (defaults to `K`) and optionally set `Vector density` and `Vector scale`. Run to render downsampled tangent arrows (e.g. `K → grad(K)`).
