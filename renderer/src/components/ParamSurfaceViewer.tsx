@@ -98,6 +98,64 @@ function makePlaneBasis(n: THREE.Vector3) {
   return { e1, e2 };
 }
 
+type ProbeLabelSprite = {
+  sprite: THREE.Sprite;
+  texture: THREE.CanvasTexture;
+  ctx: CanvasRenderingContext2D;
+  width: number;
+  height: number;
+};
+
+const PROBE_LABEL_FONT =
+  "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
+
+const formatProbeNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(3) : "nan");
+
+const createProbeLabelSprite = (): ProbeLabelSprite | null => {
+  const width = 512;
+  const height = 104;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(1.7, 0.36, 1);
+  sprite.renderOrder = 490;
+  sprite.visible = false;
+  return { sprite, texture, ctx, width, height };
+};
+
+const drawProbeLabelSprite = (label: ProbeLabelSprite, lines: string[]) => {
+  const { ctx, texture, width, height } = label;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(15,23,42,0.82)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(148,163,184,0.85)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, width - 2, height - 2);
+  ctx.font = PROBE_LABEL_FONT;
+  ctx.fillStyle = "#f8fafc";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const lineHeight = 30;
+  const startY = 24;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], 12, startY + i * lineHeight);
+  }
+  texture.needsUpdate = true;
+};
+
 export type ParamSurfaceId =
   | "plane"
   | "cylinder"
@@ -1307,6 +1365,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     t1: THREE.ArrowHelper;
     t2: THREE.ArrowHelper;
   } | null>(null);
+  const probeLabelRef = useRef<ProbeLabelSprite | null>(null);
   const principalGroupRef = useRef<THREE.Group | null>(null);
   const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
     null
@@ -1441,6 +1500,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       widgets.plane.visible = false;
       widgets.t1.visible = false;
       widgets.t2.visible = false;
+    }
+    if (probeLabelRef.current) {
+      probeLabelRef.current.sprite.visible = false;
     }
   }, [probeEnabled]);
 
@@ -2549,6 +2611,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     extraGeoms.push(probeMarkerGeom);
     extraMats.push(probeMarkerMat);
 
+    const probeLabel = createProbeLabelSprite();
+    if (probeLabel) {
+      scene.add(probeLabel.sprite);
+      probeLabelRef.current = probeLabel;
+    } else {
+      probeLabelRef.current = null;
+    }
+
     const normalArrow = new THREE.ArrowHelper(
       new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(0, 0, 0),
@@ -2646,6 +2716,22 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
       // store last uv for geodesic
       setProbeUV(uvDomain ?? null);
+
+      const probeLabel = probeLabelRef.current;
+      if (probeLabel) {
+        const lines = [
+          `p: (${formatProbeNumber(point.x)}, ${formatProbeNumber(point.y)}, ${formatProbeNumber(point.z)})`,
+          `n: (${formatProbeNumber(n.x)}, ${formatProbeNumber(n.y)}, ${formatProbeNumber(n.z)})`,
+          uvDomain
+            ? `uv: (${formatProbeNumber(uvDomain.u)}, ${formatProbeNumber(uvDomain.v)})`
+            : "",
+        ].filter(Boolean) as string[];
+        drawProbeLabelSprite(probeLabel, lines);
+        const labelPos = point.clone().add(n.clone().multiplyScalar(0.12));
+        const viewOffset = camera.position.clone().sub(point).normalize().multiplyScalar(0.08);
+        probeLabel.sprite.position.copy(labelPos.add(viewOffset));
+        probeLabel.sprite.visible = true;
+      }
 
       const cb = onProbeRef.current;
       if (cb) {
@@ -2988,6 +3074,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         if (mat.map) mat.map.dispose();
         mat.dispose();
       });
+      if (probeLabelRef.current) {
+        scene.remove(probeLabelRef.current.sprite);
+        const mat = probeLabelRef.current.sprite.material as THREE.SpriteMaterial;
+        if (mat.map) mat.map.dispose();
+        mat.dispose();
+        probeLabelRef.current = null;
+      }
 
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
@@ -3132,6 +3225,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const showT = hasProbe && showProbeTangents;
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
+    if (probeLabelRef.current) {
+      probeLabelRef.current.sprite.visible = hasProbe;
+    }
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   useEffect(() => {
