@@ -606,6 +606,7 @@ type GeometryDatasetMeshObject = {
 };
 
 type UnifiedObjectCategory = "sceneObject" | "surfaceDefinition" | "dataset" | "derived";
+type UnifiedSceneRole = "primaryObject" | "overlay" | "derivedResult" | "referenceObject";
 
 type UnifiedObjectNode = {
   id: string;
@@ -616,6 +617,7 @@ type UnifiedObjectNode = {
   parentId: string | null;
   derivedProductIds: string[];
   category: UnifiedObjectCategory;
+  sceneRole?: UnifiedSceneRole;
   objectRefId?: string;
   visible?: boolean | null;
   canToggleVisibility?: boolean;
@@ -638,6 +640,38 @@ type UnifiedPipelineAction = {
   disabled: boolean;
   onRun: () => void;
   hint?: string;
+};
+
+const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
+  primaryObject: "PrimaryObject",
+  overlay: "Overlay",
+  derivedResult: "DerivedResult",
+  referenceObject: "ReferenceObject",
+};
+
+const inferUnifiedSceneRole = (
+  category: UnifiedObjectCategory,
+  type: string,
+  sourceDefinition: string
+): UnifiedSceneRole => {
+  if (category === "sceneObject") return "primaryObject";
+  if (category === "surfaceDefinition") return "referenceObject";
+  if (category === "dataset") {
+    return sourceDefinition.toLowerCase().includes("import") ? "referenceObject" : "derivedResult";
+  }
+  if (
+    type.includes("wireframe") ||
+    type.includes("chart-grid") ||
+    type.includes("coordinate-planes") ||
+    type.includes("bounding-box") ||
+    type.includes("normals") ||
+    type.includes("axes") ||
+    type.includes("label") ||
+    type.includes("helper")
+  ) {
+    return "overlay";
+  }
+  return "derivedResult";
 };
 
 const axisPatch = (axis: keyof Vec3, value: number): Partial<Vec3> => ({ [axis]: value } as Partial<Vec3>);
@@ -15111,6 +15145,7 @@ case "mobius":
         displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
         parentId: null,
         category: "sceneObject",
+        sceneRole: "primaryObject",
         objectRefId: obj.id,
         visible: obj.visible,
         canToggleVisibility: true,
@@ -15120,6 +15155,8 @@ case "mobius":
     }
     for (const obj of geometryDatasetMeshObjects) {
       const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
+      const meshSceneRole: UnifiedSceneRole =
+        obj.mesh.source.kind === "import" ? "referenceObject" : "derivedResult";
       addRaw({
         id: `scene:${obj.id}`,
         name: obj.name,
@@ -15128,6 +15165,7 @@ case "mobius":
         displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
         parentId: null,
         category: "sceneObject",
+        sceneRole: meshSceneRole,
         objectRefId: obj.id,
         visible: obj.visible,
         canToggleVisibility: true,
@@ -15250,6 +15288,7 @@ case "mobius":
         displayState: `${surfaceViewerKind === "mesh" ? "shown" : "ready"}, ${surfaceMeshStats?.vertCount ?? 0} verts`,
         parentId,
         category: "dataset",
+        sceneRole: surfaceMeshData.source.kind === "import" ? "referenceObject" : "derivedResult",
         visible: true,
       });
     }
@@ -15269,6 +15308,7 @@ case "mobius":
         displayState: datasetKind === "volume" ? "shown" : "ready",
         parentId: volumeDatasetOverride?.sourceId === "surface_distance" ? surfaceDatasetNodeId : activeDefinitionNodeId,
         category: "dataset",
+        sceneRole: "derivedResult",
         visible: true,
       });
     }
@@ -15318,6 +15358,7 @@ case "mobius":
         displayState: showPlanes ? "visible" : "hidden",
         parentId: activeSurfaceParentId,
         category: "derived",
+        sceneRole: "referenceObject",
         visible: showPlanes,
         canToggleVisibility: true,
         canDelete: true,
@@ -15525,6 +15566,7 @@ case "mobius":
     }
     const nodes: UnifiedObjectNode[] = normalized.map((node) => ({
       ...node,
+      sceneRole: node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition),
       derivedProductIds: childrenByParent.get(node.id) ?? [],
     }));
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -19460,17 +19502,18 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onDeleteNode,
   actions,
 }) => {
-  const rootKey = "__root__";
+  const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const byParent = useMemo(() => {
-    const map = new Map<string, UnifiedObjectNode[]>();
+  const roleOrder: UnifiedSceneRole[] = ["primaryObject", "overlay", "derivedResult", "referenceObject"];
+  const nodesByRole = useMemo(() => {
+    const grouped = new Map<UnifiedSceneRole, UnifiedObjectNode[]>();
+    for (const role of roleOrder) grouped.set(role, []);
     for (const node of nodes) {
-      const key = node.parentId ?? rootKey;
-      const prev = map.get(key);
-      if (prev) prev.push(node);
-      else map.set(key, [node]);
+      const role = node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition);
+      const bucket = grouped.get(role);
+      if (bucket) bucket.push(node);
     }
-    return map;
+    return grouped;
   }, [nodes]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
   const shortTypeLabel = (raw: string) => {
@@ -19483,140 +19526,204 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     dataset: "#1d4ed8",
     derived: "#7c3aed",
   };
+  const roleBadgeColor: Record<UnifiedSceneRole, string> = {
+    primaryObject: "#0369a1",
+    overlay: "#0f766e",
+    derivedResult: "#7c3aed",
+    referenceObject: "#6b7280",
+  };
 
-  const renderTree = (parentId: string, depth: number): React.ReactNode => {
-    const rows = byParent.get(parentId) ?? [];
-    if (!rows.length) return null;
-    return rows.map((node) => {
-      const active = selectedId === node.id;
-      const state = node.displayState.trim();
-      const typeLabel = shortTypeLabel(node.type);
-      const chipColor = node.colorHex || categoryBadgeColor[node.category];
-      const canToggleVisibility = !!node.canToggleVisibility && typeof node.visible === "boolean" && !!onToggleVisibility;
-      const canDelete = !!node.canDelete && !!onDeleteNode;
-      return (
-        <div key={node.id}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 6,
-              alignItems: "start",
-              marginLeft: depth * 12,
-            }}
-          >
+  const renderRow = (node: UnifiedObjectNode) => {
+    const active = selectedId === node.id;
+    const state = node.displayState.trim();
+    const typeLabel = shortTypeLabel(node.type);
+    const chipColor = node.colorHex || categoryBadgeColor[node.category];
+    const role = node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition);
+    const roleLabel = UNIFIED_SCENE_ROLE_LABELS[role];
+    const canToggleVisibility = !!node.canToggleVisibility && typeof node.visible === "boolean" && !!onToggleVisibility;
+    const canDelete = !!node.canDelete && !!onDeleteNode;
+    return (
+      <div
+        key={node.id}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 6,
+          alignItems: "start",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onSelect(node.id)}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "4px 6px",
+            borderRadius: 6,
+            border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
+            background: active ? "#eef4ff" : "#fff",
+            cursor: "pointer",
+            fontSize: 11,
+            boxSizing: "border-box",
+            minWidth: 0,
+          }}
+          title={node.sourceDefinition}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+              <span
+                style={{
+                  width: 9,
+                  height: 9,
+                  borderRadius: 999,
+                  background: chipColor,
+                  flex: "0 0 auto",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                }}
+              />
+              <span
+                style={{
+                  fontWeight: active ? 700 : 600,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {node.name}
+              </span>
+            </span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <span
+                style={{
+                  opacity: 0.95,
+                  fontSize: 10,
+                  border: `1px solid ${roleBadgeColor[role]}`,
+                  color: roleBadgeColor[role],
+                  borderRadius: 999,
+                  padding: "1px 6px",
+                  background: "#fff",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {roleLabel}
+              </span>
+              <span
+                style={{
+                  opacity: 0.9,
+                  fontSize: 10,
+                  border: "1px solid #cbd5e1",
+                  borderRadius: 999,
+                  padding: "1px 6px",
+                  background: "#f8fafc",
+                  textTransform: "capitalize",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {typeLabel}
+              </span>
+            </span>
+          </div>
+          {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
+        </button>
+
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {canToggleVisibility && (
             <button
               type="button"
-              onClick={() => onSelect(node.id)}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "4px 6px",
-                borderRadius: 6,
-                border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
-                background: active ? "#eef4ff" : "#fff",
-                cursor: "pointer",
-                fontSize: 11,
-                boxSizing: "border-box",
-                minWidth: 0,
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleVisibility?.(node.id);
               }}
-              title={node.sourceDefinition}
+              style={{ padding: "3px 6px", fontSize: 10 }}
+              title={node.visible ? "Hide" : "Show"}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                  <span
-                    style={{
-                      width: 9,
-                      height: 9,
-                      borderRadius: 999,
-                      background: chipColor,
-                      flex: "0 0 auto",
-                      border: "1px solid rgba(0,0,0,0.08)",
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontWeight: active ? 700 : 600,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {node.name}
-                  </span>
-                </span>
-                <span
-                  style={{
-                    opacity: 0.9,
-                    fontSize: 10,
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    background: "#f8fafc",
-                    textTransform: "capitalize",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {typeLabel}
-                </span>
-              </div>
-              {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
+              {node.visible ? "Hide" : "Show"}
             </button>
-
-            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              {canToggleVisibility && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onToggleVisibility?.(node.id);
-                  }}
-                  style={{ padding: "3px 6px", fontSize: 10 }}
-                  title={node.visible ? "Hide" : "Show"}
-                >
-                  {node.visible ? "Hide" : "Show"}
-                </button>
-              )}
-              {onFocus && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onFocus(node.id);
-                  }}
-                  style={{ padding: "3px 6px", fontSize: 10 }}
-                  title="Select and open Object tab"
-                >
-                  Focus
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDeleteNode?.(node.id);
-                  }}
-                  style={{ padding: "3px 6px", fontSize: 10 }}
-                  title="Delete / remove"
-                >
-                  Delete
-                </button>
-              )}
-            </div>
-          </div>
-          {renderTree(node.id, depth + 1)}
+          )}
+          {onFocus && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onFocus(node.id);
+              }}
+              style={{ padding: "3px 6px", fontSize: 10 }}
+              title="Select and open Object tab"
+            >
+              Focus
+            </button>
+          )}
+          {canDelete && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDeleteNode?.(node.id);
+              }}
+              style={{ padding: "3px 6px", fontSize: 10 }}
+              title="Delete / remove"
+            >
+              Delete
+            </button>
+          )}
         </div>
-      );
-    });
+      </div>
+    );
   };
 
   return (
     <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>{title}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
+        <div style={{ display: "inline-flex", gap: 4 }}>
+          <button
+            type="button"
+            onClick={() => setListMode("grouped")}
+            aria-pressed={listMode === "grouped"}
+            style={{
+              padding: "3px 8px",
+              fontSize: 10,
+              borderRadius: 999,
+              border: "1px solid " + (listMode === "grouped" ? "#0a66c2" : "#d1d5db"),
+              background: listMode === "grouped" ? "#e6f0ff" : "#fff",
+              fontWeight: listMode === "grouped" ? 700 : 500,
+            }}
+          >
+            Grouped
+          </button>
+          <button
+            type="button"
+            onClick={() => setListMode("flat")}
+            aria-pressed={listMode === "flat"}
+            style={{
+              padding: "3px 8px",
+              fontSize: 10,
+              borderRadius: 999,
+              border: "1px solid " + (listMode === "flat" ? "#0a66c2" : "#d1d5db"),
+              background: listMode === "flat" ? "#e6f0ff" : "#fff",
+              fontWeight: listMode === "flat" ? 700 : 500,
+            }}
+          >
+            Flat
+          </button>
+        </div>
+      </div>
       {nodes.length ? (
         <div style={{ display: "grid", gap: 5, maxHeight: 320, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
-          {renderTree(rootKey, 0)}
+          {listMode === "flat"
+            ? nodes.map((node) => renderRow(node))
+            : roleOrder.map((role) => {
+                const rows = nodesByRole.get(role) ?? [];
+                if (!rows.length) return null;
+                return (
+                  <div key={role} style={{ display: "grid", gap: 5 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#334155", textTransform: "uppercase", letterSpacing: 0.35 }}>
+                      {UNIFIED_SCENE_ROLE_LABELS[role]} ({rows.length})
+                    </div>
+                    {rows.map((node) => renderRow(node))}
+                  </div>
+                );
+              })}
         </div>
       ) : (
         <div style={{ fontSize: 11, opacity: 0.75 }}>No objects yet.</div>
@@ -19632,6 +19739,12 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           </div>
           <div>
             <strong>Type:</strong> {selected.type}
+          </div>
+          <div>
+            <strong>Scene role:</strong>{" "}
+            {UNIFIED_SCENE_ROLE_LABELS[
+              selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
+            ]}
           </div>
           <div>
             <strong>Source definition:</strong> {selected.sourceDefinition}
@@ -19760,6 +19873,12 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
 }) => {
   const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
   const categoryLabel = selectedNode ? OBJECT_CATEGORY_LABELS[selectedNode.category] : "n/a";
+  const sceneRoleLabel = selectedNode
+    ? UNIFIED_SCENE_ROLE_LABELS[
+        selectedNode.sceneRole ??
+          inferUnifiedSceneRole(selectedNode.category, selectedNode.type, selectedNode.sourceDefinition)
+      ]
+    : "n/a";
   const creationLabel = useMemo(() => {
     if (!selectedNode) return "n/a";
     if (selectedNode.category === "sceneObject") {
@@ -19819,6 +19938,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             <div><strong>Name:</strong> {selectedNode.name}</div>
             <div><strong>Category:</strong> {categoryLabel}</div>
+            <div><strong>Scene role:</strong> {sceneRoleLabel}</div>
             <div><strong>Type:</strong> {objectTypeLabel}</div>
             <div><strong>Created from:</strong> {creationLabel}</div>
             <div><strong>Definition:</strong> {objectDefinitionLabel}</div>
