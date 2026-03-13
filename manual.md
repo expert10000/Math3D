@@ -173,6 +173,22 @@ The status bar is docked and persistent to provide passive context with low UI c
   - Param/Weierstrass: iso-u / iso-v curves on the surface
   - Mesh-like: local tangent-plane patch grid around the probe point
 
+### Inspect domain navigator (surface-local)
+- Added a Domain navigator card inside the left `Inspect` tab for graph/param/Weierstrass viewers.
+- The card is attached to the current primary surface (not a separate scene object/global setting).
+- Features:
+  - 2D domain rectangle (`(x,y)` for graph, `(u,v)` for param/Weierstrass).
+  - `Click mode` and `Hover mode`.
+  - Optional drag-to-move point.
+  - Optional `Sync with 3D pick`.
+  - Coordinate readout mapping 2D domain point to 3D surface point/value.
+- `Pick info` now includes 3D point, normal, tangent basis, and curvature scalars when available.
+- Live-hover flicker mitigation:
+  - hover updates are throttled
+  - tiny deltas are ignored
+  - domain probes run through lightweight viewer updates to avoid full scene rebuilds
+- For the most stable interaction, prefer `Click mode`; use `Hover mode` for live preview.
+
 ### PR4 — Export/import loop (OBJ/PLY)
 - Added `Export PLY` alongside existing OBJ/GLB export in the Surface mesh panel.
 - Mesh files can be re-imported (`Load STL/OBJ/PLY/GLTF`) and keep geometry coordinates as exported, so orientation/scale round-trip reliably.

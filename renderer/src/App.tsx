@@ -5647,6 +5647,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setInspectIdx(null);
     setInspectPos(null);
     setInspectNormal(null);
+    setProbeInfo(null);
+    setProbeCurv(null);
+    setParamProbeCurv(null);
   }, []);
 
   useEffect(() => {
@@ -7493,6 +7496,21 @@ case "mobius":
 
   const handleParamCurvature = useCallback((data: PrincipalCurvatureScalars | null) => {
     setParamProbeCurv(data);
+  }, []);
+
+  const handlePickDomainUV = useCallback((uv: { u: number; v: number }) => {
+    setParamProbeUV(uv);
+    setParamProbeToken((t) => t + 1);
+  }, []);
+
+  const handlePickDomainXY = useCallback((xy: { x: number; y: number }) => {
+    setGraphProbeXY(xy);
+    setGraphProbeToken((t) => t + 1);
+  }, []);
+
+  const handlePickDomainXYZ = useCallback((xyz: { x: number; y: number; z: number }) => {
+    setImplicitProbeXYZ(xyz);
+    setImplicitProbeToken((t) => t + 1);
   }, []);
 
   const handleChangeGraphDomain = useCallback(
@@ -11955,11 +11973,19 @@ case "mobius":
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    uv?: { u: number; v: number };
+    xy?: { x: number; y: number };
   }) => {
     setInspectIdx(info.index);
     setInspectPos(info.point);
     setInspectNormal(info.normal);
-  }, []);
+    handleProbe({
+      point: info.point,
+      normal: info.normal,
+      uv: info.uv,
+      xy: info.xy,
+    });
+  }, [handleProbe]);
 
   const availableSelectionMetrics = useMemo(() => {
     if (!selectionCurvatures) return [];
@@ -16604,6 +16630,7 @@ case "mobius":
               )}
               {surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
+                  viewerKind={surfaceViewerKind}
                   inspectEnabled={inspectEnabled}
                   onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
                   onClearInspect={clearInspect}
@@ -16611,6 +16638,13 @@ case "mobius":
                   inspectPos={inspectPos}
                   inspectNormal={inspectNormal}
                   inspectMetrics={inspectMetrics}
+                  probeInfo={probeInfo}
+                  probeCurv={probeCurv}
+                  paramProbeCurv={paramProbeCurv}
+                  graphDomain={activeGraphDomain}
+                  paramDomain={activeParamLikeDomain}
+                  onPickDomainXY={handlePickDomainXY}
+                  onPickDomainUV={handlePickDomainUV}
                   probeEnabled={probeEnabled}
                   onToggleProbe={() => setProbeEnabled((v) => !v)}
                   showProbeNormal={showProbeNormal}
@@ -17782,18 +17816,9 @@ case "mobius":
                   onStopCgalWorker={handleStopCgalWorker}
                   cgalMeshInfo={cgalMeshInfo}
                   probeInfo={probeInfo}
-                  onPickDomainUV={(uv) => {
-                    setParamProbeUV(uv);
-                    setParamProbeToken((t) => t + 1);
-                  }}
-                  onPickDomainXY={(xy) => {
-                    setGraphProbeXY(xy);
-                    setGraphProbeToken((t) => t + 1);
-                  }}
-                  onPickDomainXYZ={(xyz) => {
-                    setImplicitProbeXYZ(xyz);
-                    setImplicitProbeToken((t) => t + 1);
-                  }}
+                  onPickDomainUV={handlePickDomainUV}
+                  onPickDomainXY={handlePickDomainXY}
+                  onPickDomainXYZ={handlePickDomainXYZ}
                   graphDomain={activeGraphDomain}
                   onChangeGraphDomain={handleChangeGraphDomain}
                   paramDomain={activeParamLikeDomain}
@@ -20119,6 +20144,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
 };
 
 type SurfacesInspectPanelProps = {
+  viewerKind: SurfaceViewerKind;
   inspectEnabled: boolean;
   onToggleInspectEnabled: () => void;
   onClearInspect: () => void;
@@ -20126,6 +20152,13 @@ type SurfacesInspectPanelProps = {
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
   inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  probeInfo: ProbeInfo | null;
+  probeCurv: CurvatureData | null;
+  paramProbeCurv: PrincipalCurvatureScalars | null;
+  graphDomain: GraphDomain;
+  paramDomain: ParamDomain;
+  onPickDomainXY: (xy: { x: number; y: number }) => void;
+  onPickDomainUV: (uv: { u: number; v: number }) => void;
   probeEnabled: boolean;
   onToggleProbe: () => void;
   showProbeNormal: boolean;
@@ -20137,6 +20170,7 @@ type SurfacesInspectPanelProps = {
 };
 
 const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
+  viewerKind,
   inspectEnabled,
   onToggleInspectEnabled,
   onClearInspect,
@@ -20144,6 +20178,13 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
   inspectPos,
   inspectNormal,
   inspectMetrics,
+  probeInfo,
+  probeCurv,
+  paramProbeCurv,
+  graphDomain,
+  paramDomain,
+  onPickDomainXY,
+  onPickDomainUV,
   probeEnabled,
   onToggleProbe,
   showProbeNormal,
@@ -20152,80 +20193,250 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
   onToggleProbeTangentPlane,
   showProbeTangents,
   onToggleProbeTangents,
-}) => (
-  <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Inspect controls</div>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input type="checkbox" checked={inspectEnabled} onChange={onToggleInspectEnabled} />
-        Inspect mode (pick points)
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
-        Probe mode
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} />
-        Normal arrow
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
-        <input type="checkbox" checked={showProbeTangentPlane} onChange={onToggleProbeTangentPlane} />
-        Tangent plane
-      </label>
-      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-        <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} />
-        Tangent directions
-      </label>
-      <div style={{ marginTop: 8 }}>
-        <button type="button" onClick={onClearInspect}>
-          Clear inspect
-        </button>
-      </div>
-    </div>
+}) => {
+  const [navigatorMode, setNavigatorMode] = useState<"click" | "hover">("click");
+  const [navigatorDrag, setNavigatorDrag] = useState(false);
+  const [syncWith3DPick, setSyncWith3DPick] = useState(true);
 
-    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Picked point</div>
-      {inspectIdx != null && inspectPos && inspectNormal ? (
-        <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "70px 1fr", gap: "4px 8px" }}>
-          <div style={{ color: "#556" }}>Idx</div>
-          <div>{inspectIdx}</div>
-          <div style={{ color: "#556" }}>Pos</div>
-          <div>{fmt3(inspectPos)}</div>
-          <div style={{ color: "#556" }}>Normal</div>
-          <div>{fmt3(inspectNormal)}</div>
-          {inspectMetrics?.K != null && (
-            <>
-              <div style={{ color: "#556" }}>K</div>
-              <div>{fmt(inspectMetrics.K)}</div>
-            </>
-          )}
-          {inspectMetrics?.H != null && (
-            <>
-              <div style={{ color: "#556" }}>H</div>
-              <div>{fmt(inspectMetrics.H)}</div>
-            </>
-          )}
-          {inspectMetrics?.k1 != null && (
-            <>
-              <div style={{ color: "#556" }}>k1</div>
-              <div>{fmt(inspectMetrics.k1)}</div>
-            </>
-          )}
-          {inspectMetrics?.k2 != null && (
-            <>
-              <div style={{ color: "#556" }}>k2</div>
-              <div>{fmt(inspectMetrics.k2)}</div>
-            </>
-          )}
+  const isGraphViewer = viewerKind === "graph";
+  const isParamViewer = viewerKind === "param" || viewerKind === "weierstrass";
+  const showDomainNavigator = isGraphViewer || isParamViewer;
+
+  const activePoint = probeInfo?.point ?? inspectPos;
+  const activeNormal = probeInfo?.normal ?? inspectNormal;
+  const tangentBasis = activeNormal ? buildTangentBasis(activeNormal) : null;
+  const chartXY = probeInfo?.xy ?? (probeInfo?.point ? { x: probeInfo.point.x, y: probeInfo.point.z } : null);
+  const chartUV = probeInfo?.uv ?? null;
+
+  const curvature =
+    isGraphViewer && probeCurv
+      ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
+      : isParamViewer && paramProbeCurv
+        ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
+        : inspectMetrics;
+
+  return (
+    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Inspect controls</div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+          <input type="checkbox" checked={inspectEnabled} onChange={onToggleInspectEnabled} />
+          Inspect mode (pick points)
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+          <input type="checkbox" checked={probeEnabled} onChange={onToggleProbe} />
+          Probe mode
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+          <input type="checkbox" checked={showProbeNormal} onChange={onToggleProbeNormal} />
+          Normal arrow
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+          <input type="checkbox" checked={showProbeTangentPlane} onChange={onToggleProbeTangentPlane} />
+          Tangent plane
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+          <input type="checkbox" checked={showProbeTangents} onChange={onToggleProbeTangents} />
+          Tangent directions
+        </label>
+        <div style={{ marginTop: 8 }}>
+          <button type="button" onClick={onClearInspect}>
+            Clear inspect
+          </button>
         </div>
-      ) : (
-        <div style={{ fontSize: 11, opacity: 0.75 }}>
-          {inspectEnabled ? "Click the surface to inspect a point." : "Enable Inspect mode to start picking points."}
-        </div>
+      </div>
+
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Pick info</div>
+        {activePoint && activeNormal ? (
+          <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "88px 1fr", gap: "4px 8px" }}>
+            {inspectIdx != null && (
+              <>
+                <div style={{ color: "#556" }}>Index</div>
+                <div>{inspectIdx}</div>
+              </>
+            )}
+            <div style={{ color: "#556" }}>3D point</div>
+            <div>{fmt3(activePoint)}</div>
+            {isGraphViewer && chartXY && (
+              <>
+                <div style={{ color: "#556" }}>(x, y)</div>
+                <div>({fmt(chartXY.x)}, {fmt(chartXY.y)})</div>
+              </>
+            )}
+            {isParamViewer && chartUV && (
+              <>
+                <div style={{ color: "#556" }}>(u, v)</div>
+                <div>({fmt(chartUV.u)}, {fmt(chartUV.v)})</div>
+              </>
+            )}
+            <div style={{ color: "#556" }}>Normal</div>
+            <div>{fmt3(activeNormal)}</div>
+            {tangentBasis && (
+              <>
+                <div style={{ color: "#556" }}>Tangent U</div>
+                <div>{fmt3(tangentBasis.t1)}</div>
+                <div style={{ color: "#556" }}>Tangent V</div>
+                <div>{fmt3(tangentBasis.t2)}</div>
+              </>
+            )}
+            {curvature?.K != null && (
+              <>
+                <div style={{ color: "#556" }}>K</div>
+                <div>{fmt(curvature.K)}</div>
+              </>
+            )}
+            {curvature?.H != null && (
+              <>
+                <div style={{ color: "#556" }}>H</div>
+                <div>{fmt(curvature.H)}</div>
+              </>
+            )}
+            {curvature?.k1 != null && (
+              <>
+                <div style={{ color: "#556" }}>k1</div>
+                <div>{fmt(curvature.k1)}</div>
+              </>
+            )}
+            {curvature?.k2 != null && (
+              <>
+                <div style={{ color: "#556" }}>k2</div>
+                <div>{fmt(curvature.k2)}</div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, opacity: 0.75 }}>
+            {inspectEnabled || probeEnabled
+              ? "Click the surface (or use the navigator) to inspect a point."
+              : "Enable Inspect mode or Probe mode to start."}
+          </div>
+        )}
+      </div>
+
+      {showDomainNavigator && (
+        <>
+          <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Domain navigator</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+              <button
+                type="button"
+                onClick={() => setNavigatorMode("click")}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: "1px solid " + (navigatorMode === "click" ? "#0a66c2" : "#d0d5dd"),
+                  background: navigatorMode === "click" ? "#e6f0ff" : "#fff",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                Click mode
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavigatorMode("hover")}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: "1px solid " + (navigatorMode === "hover" ? "#0a66c2" : "#d0d5dd"),
+                  background: navigatorMode === "hover" ? "#e6f0ff" : "#fff",
+                  cursor: "pointer",
+                  fontSize: 11,
+                }}
+              >
+                Hover mode
+              </button>
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 6 }}>
+              <input
+                type="checkbox"
+                checked={syncWith3DPick}
+                onChange={(e) => setSyncWith3DPick(e.target.checked)}
+              />
+              Sync with 3D pick
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginBottom: 8 }}>
+              <input
+                type="checkbox"
+                checked={navigatorDrag}
+                onChange={(e) => setNavigatorDrag(e.target.checked)}
+              />
+              Drag to move point
+            </label>
+            {isGraphViewer ? (
+              <>
+                <XYDomainPreview
+                  width={250}
+                  height={190}
+                  xSpan={graphDomain.xSpan}
+                  ySpan={graphDomain.ySpan}
+                  onPick={onPickDomainXY}
+                  picked={syncWith3DPick && navigatorMode === "click" ? chartXY : null}
+                  mode={navigatorMode}
+                  dragToPick={navigatorDrag}
+                />
+                <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+                  Click/hover in the rectangle to sample z = f(x,y) on the surface.
+                </div>
+              </>
+            ) : (
+              <>
+                <ParamDomainPreview
+                  width={250}
+                  height={190}
+                  uMin={paramDomain.uMin}
+                  uMax={paramDomain.uMax}
+                  vMin={paramDomain.vMin}
+                  vMax={paramDomain.vMax}
+                  onPick={onPickDomainUV}
+                  picked={syncWith3DPick && navigatorMode === "click" ? chartUV : null}
+                  mode={navigatorMode}
+                  dragToPick={navigatorDrag}
+                />
+                <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+                  Click/hover in the rectangle to sample σ(u,v) on the surface.
+                </div>
+              </>
+            )}
+          </div>
+
+          <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Coordinate readout</div>
+            <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "88px 1fr", gap: "4px 8px" }}>
+              {isGraphViewer && (
+                <>
+                  <div style={{ color: "#556" }}>(x, y)</div>
+                  <div>{chartXY ? `(${fmt(chartXY.x)}, ${fmt(chartXY.y)})` : "n/a"}</div>
+                </>
+              )}
+              {isParamViewer && (
+                <>
+                  <div style={{ color: "#556" }}>(u, v)</div>
+                  <div>{chartUV ? `(${fmt(chartUV.u)}, ${fmt(chartUV.v)})` : "n/a"}</div>
+                </>
+              )}
+              <div style={{ color: "#556" }}>3D point</div>
+              <div>{activePoint ? fmt3(activePoint) : "n/a"}</div>
+              {isGraphViewer && (
+                <>
+                  <div style={{ color: "#556" }}>f(x, y)</div>
+                  <div>{activePoint ? fmt(activePoint.y) : "n/a"}</div>
+                </>
+              )}
+              {isParamViewer && (
+                <>
+                  <div style={{ color: "#556" }}>height y</div>
+                  <div>{activePoint ? fmt(activePoint.y) : "n/a"}</div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
-  </div>
-);
+  );
+};
 
 type SurfacesViewPanelProps = {
   colorModes: ColorMode[];
@@ -26763,16 +26974,86 @@ type XYDomainPreviewProps = {
   ySpan: number; // shows y in [-ySpan, ySpan]
   onPick: (xy: { x: number; y: number }) => void;
   picked?: { x: number; y: number } | null;
+  mode?: "click" | "hover";
+  dragToPick?: boolean;
 };
 
-const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan, ySpan, onPick, picked: pickedProp }) => {
+const XYDomainPreview = React.memo(function XYDomainPreview({
+  width,
+  height,
+  xSpan,
+  ySpan,
+  onPick,
+  picked: pickedProp,
+  mode = "click",
+  dragToPick = false,
+}: XYDomainPreviewProps) {
   const [picked, setPicked] = useState<{ x: number; y: number } | null>(null);
-  useEffect(() => {
-    if (pickedProp) setPicked(pickedProp);
-  }, [pickedProp?.x, pickedProp?.y]);
-
+  const [hovered, setHovered] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const isPointerInsideRef = useRef(false);
   const safeXSpan = Number.isFinite(xSpan) && xSpan > 0 ? xSpan : 1;
   const safeYSpan = Number.isFinite(ySpan) && ySpan > 0 ? ySpan : 1;
+  const hoverTimerRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<{ x: number; y: number; updateLocal: boolean } | null>(null);
+  const lastSentRef = useRef<{ x: number; y: number } | null>(null);
+  const HOVER_PICK_INTERVAL_MS = 90;
+
+  const pushPick = useCallback(
+    (xy: { x: number; y: number }, updateLocal = true) => {
+      if (updateLocal) setPicked(xy);
+      onPick(xy);
+      lastSentRef.current = xy;
+    },
+    [onPick]
+  );
+
+  const flushHoverPick = useCallback(() => {
+    if (hoverTimerRef.current != null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    const pending = pendingHoverRef.current;
+    pendingHoverRef.current = null;
+    if (!pending) return;
+    const next = { x: pending.x, y: pending.y };
+
+    const last = lastSentRef.current;
+    const epsX = safeXSpan * 0.01;
+    const epsY = safeYSpan * 0.01;
+    if (last && Math.abs(next.x - last.x) <= epsX && Math.abs(next.y - last.y) <= epsY) {
+      return;
+    }
+    pushPick(next, pending.updateLocal);
+  }, [pushPick, safeXSpan, safeYSpan]);
+
+  const scheduleHoverPick = useCallback(
+    (xy: { x: number; y: number }, updateLocal: boolean) => {
+      pendingHoverRef.current = { ...xy, updateLocal };
+      if (hoverTimerRef.current != null) return;
+      hoverTimerRef.current = window.setTimeout(() => {
+        flushHoverPick();
+      }, HOVER_PICK_INTERVAL_MS);
+    },
+    [flushHoverPick]
+  );
+
+  useEffect(() => {
+    if (!pickedProp) return;
+    if (mode === "hover" && isPointerInsideRef.current) return;
+    setPicked(pickedProp);
+    lastSentRef.current = pickedProp;
+  }, [mode, pickedProp?.x, pickedProp?.y]);
+
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current != null) {
+        window.clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+    },
+    []
+  );
 
   const pad = 12;
   const w = width;
@@ -26802,10 +27083,33 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan,
         height={h}
         style={{ display: "block", cursor: "crosshair" }}
         onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          setIsDragging(true);
+          isPointerInsideRef.current = true;
           const svg = e.currentTarget;
           const xy = toXY(e.clientX, e.clientY, svg);
-          setPicked(xy);
-          onPick(xy);
+          setHovered(xy);
+          pushPick(xy);
+        }}
+        onMouseMove={(e) => {
+          isPointerInsideRef.current = true;
+          const svg = e.currentTarget;
+          const xy = toXY(e.clientX, e.clientY, svg);
+          if (mode !== "hover") setHovered(xy);
+          if (mode === "hover" || (dragToPick && isDragging)) {
+            const updateLocal = mode === "hover" ? false : true;
+            scheduleHoverPick(xy, updateLocal);
+          }
+        }}
+        onMouseUp={() => {
+          setIsDragging(false);
+          flushHoverPick();
+        }}
+        onMouseLeave={() => {
+          isPointerInsideRef.current = false;
+          setHovered(null);
+          setIsDragging(false);
+          flushHoverPick();
         }}
       >
         {/* background */}
@@ -26852,13 +27156,14 @@ const XYDomainPreview: React.FC<XYDomainPreviewProps> = ({ width, height, xSpan,
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
         <span style={{ opacity: 0.75 }}>x ? ±{xSpan.toFixed(2)}  y ? ±{ySpan.toFixed(2)}</span>
-        <span style={{ fontFamily: "monospace" }}>
-          {picked ? `(${fmt(picked.x)}, ${fmt(picked.y)})` : "(click)"}
+        <span style={{ fontFamily: "monospace", textAlign: "right" }}>
+          {picked ? `pick ${fmt(picked.x)}, ${fmt(picked.y)}` : "pick (none)"}
+          {mode !== "hover" && hovered ? ` | hover ${fmt(hovered.x)}, ${fmt(hovered.y)}` : ""}
         </span>
       </div>
     </div>
   );
-};
+});
 
 type ParamDomainPreviewProps = {
   width: number;
@@ -26869,9 +27174,11 @@ type ParamDomainPreviewProps = {
   vMax: number;
   onPick: (uv: { u: number; v: number }) => void;
   picked?: { u: number; v: number } | null;
+  mode?: "click" | "hover";
+  dragToPick?: boolean;
 };
 
-const ParamDomainPreview: React.FC<ParamDomainPreviewProps> = ({
+const ParamDomainPreview = React.memo(function ParamDomainPreview({
   width,
   height,
   uMin,
@@ -26880,11 +27187,75 @@ const ParamDomainPreview: React.FC<ParamDomainPreviewProps> = ({
   vMax,
   onPick,
   picked: pickedProp,
-}) => {
+  mode = "click",
+  dragToPick = false,
+}: ParamDomainPreviewProps) {
   const [picked, setPicked] = useState<{ u: number; v: number } | null>(null);
+  const [hovered, setHovered] = useState<{ u: number; v: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const isPointerInsideRef = useRef(false);
+  const hoverTimerRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<{ u: number; v: number; updateLocal: boolean } | null>(null);
+  const lastSentRef = useRef<{ u: number; v: number } | null>(null);
+  const HOVER_PICK_INTERVAL_MS = 90;
+  const spanU = Math.max(1e-9, Math.abs(uMax - uMin));
+  const spanV = Math.max(1e-9, Math.abs(vMax - vMin));
+
+  const pushPick = useCallback(
+    (uv: { u: number; v: number }, updateLocal = true) => {
+      if (updateLocal) setPicked(uv);
+      onPick(uv);
+      lastSentRef.current = uv;
+    },
+    [onPick]
+  );
+
+  const flushHoverPick = useCallback(() => {
+    if (hoverTimerRef.current != null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    const pending = pendingHoverRef.current;
+    pendingHoverRef.current = null;
+    if (!pending) return;
+    const next = { u: pending.u, v: pending.v };
+
+    const last = lastSentRef.current;
+    const epsU = spanU * 0.01;
+    const epsV = spanV * 0.01;
+    if (last && Math.abs(next.u - last.u) <= epsU && Math.abs(next.v - last.v) <= epsV) {
+      return;
+    }
+    pushPick(next, pending.updateLocal);
+  }, [pushPick, spanU, spanV]);
+
+  const scheduleHoverPick = useCallback(
+    (uv: { u: number; v: number }, updateLocal: boolean) => {
+      pendingHoverRef.current = { ...uv, updateLocal };
+      if (hoverTimerRef.current != null) return;
+      hoverTimerRef.current = window.setTimeout(() => {
+        flushHoverPick();
+      }, HOVER_PICK_INTERVAL_MS);
+    },
+    [flushHoverPick]
+  );
+
   useEffect(() => {
-    if (pickedProp) setPicked(pickedProp);
-  }, [pickedProp?.u, pickedProp?.v]);
+    if (!pickedProp) return;
+    if (mode === "hover" && isPointerInsideRef.current) return;
+    setPicked(pickedProp);
+    lastSentRef.current = pickedProp;
+  }, [mode, pickedProp?.u, pickedProp?.v]);
+
+  useEffect(
+    () => () => {
+      if (hoverTimerRef.current != null) {
+        window.clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+    },
+    []
+  );
 
   const pad = 12;
   const w = width;
@@ -26914,10 +27285,33 @@ const ParamDomainPreview: React.FC<ParamDomainPreviewProps> = ({
         height={h}
         style={{ display: "block", cursor: "crosshair" }}
         onMouseDown={(e) => {
+          if (e.button !== 0) return;
+          setIsDragging(true);
+          isPointerInsideRef.current = true;
           const svg = e.currentTarget;
           const uv = toUV(e.clientX, e.clientY, svg);
-          setPicked(uv);
-          onPick(uv);
+          setHovered(uv);
+          pushPick(uv);
+        }}
+        onMouseMove={(e) => {
+          isPointerInsideRef.current = true;
+          const svg = e.currentTarget;
+          const uv = toUV(e.clientX, e.clientY, svg);
+          if (mode !== "hover") setHovered(uv);
+          if (mode === "hover" || (dragToPick && isDragging)) {
+            const updateLocal = mode === "hover" ? false : true;
+            scheduleHoverPick(uv, updateLocal);
+          }
+        }}
+        onMouseUp={() => {
+          setIsDragging(false);
+          flushHoverPick();
+        }}
+        onMouseLeave={() => {
+          isPointerInsideRef.current = false;
+          setHovered(null);
+          setIsDragging(false);
+          flushHoverPick();
         }}
       >
         <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
@@ -26949,13 +27343,14 @@ const ParamDomainPreview: React.FC<ParamDomainPreviewProps> = ({
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
         <span style={{ opacity: 0.75 }}>u∈[{fmt(uMin)},{fmt(uMax)}], v∈[{fmt(vMin)},{fmt(vMax)}]</span>
-        <span style={{ fontFamily: "monospace" }}>
-          {picked ? `(${fmt(picked.u)}, ${fmt(picked.v)})` : "(click)"}
+        <span style={{ fontFamily: "monospace", textAlign: "right" }}>
+          {picked ? `pick ${fmt(picked.u)}, ${fmt(picked.v)}` : "pick (none)"}
+          {mode !== "hover" && hovered ? ` | hover ${fmt(hovered.u)}, ${fmt(hovered.v)}` : ""}
         </span>
       </div>
     </div>
   );
-};
+});
 const cardStyle: React.CSSProperties = {
   marginTop: 8,
   background: "#fff",

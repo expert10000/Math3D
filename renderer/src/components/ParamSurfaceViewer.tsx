@@ -286,6 +286,8 @@ type Props = {
     index: number;
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
+    uv?: { u: number; v: number };
+    xy?: { x: number; y: number };
   }) => void;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
@@ -2939,6 +2941,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
                 index: bestIdx,
                 point: { x: sample.position.x, y: sample.position.y, z: sample.position.z },
                 normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+                uv: uvDomain,
               });
             }
           }

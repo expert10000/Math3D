@@ -36,6 +36,8 @@
 - Moved the Gauss map toggle into the in-view slice panel and kept color controls in the left panel when the map is enabled.
 - Added a Gauss-map density heatmap (S²) for selected or all normals, rendered as a compact equirectangular inset with optional smoothing.
 - Inspect picks now place the marker at the clicked surface point even when sampling stats from the nearest vertex.
+- Added an Inspect-tab Domain navigator for graph/param/Weierstrass surfaces: 2D domain rectangle, click/hover picking, optional drag, sync with 3D picks, and coordinate readout mapped to the current surface point.
+- Reduced live-hover flicker by throttling domain hover picks, ignoring tiny motion deltas, and routing domain probes through lightweight viewer updates (no full scene re-init).
 - Added curvature line streamlines that follow principal direction fields (d1/d2) with controls for field, seeding, and step limits.
 - Added ridge/valley overlays (local extrema of k1/k2 along d1/d2) with thresholds for magnitude, contrast, and direction alignment.
 - Added ridge/valley curve stitching (v2) that turns feature vertices into readable polylines with decimation and cap controls.
@@ -339,9 +341,15 @@ Use the left-panel “Heat method (mesh)” section and toggle “Use continuous
 ### Inspect tool
 
 - Toggle "Inspect mode" and click on the surface to lock an inspect point.
-- The UI shows idx, position, normal, and curvature scalars (K/H/k1/k2 when available).
+- The Inspect panel shows idx, 3D point, normal, tangent frame, and curvature scalars (K/H/k1/k2 when available).
 - The Gauss map highlights the inspect normal direction, and the inspect marker stays until cleared.
 - Inspect markers are placed at the exact click location while stats are sampled from the nearest mesh sample.
+- For graph/param/Weierstrass viewers, Inspect includes a Domain navigator card:
+  - 2D rectangle over active `(x,y)` or `(u,v)` domain.
+  - `Click` and `Hover` modes, with optional drag-to-move.
+  - `Sync with 3D pick` to mirror picks between viewport and domain chart.
+  - Coordinate readout linking domain coordinates to the mapped 3D point/value.
+- For most stable interaction, use `Click mode`; `Hover mode` is throttled for live preview.
 
 ### Weierstrass diagnostics
 

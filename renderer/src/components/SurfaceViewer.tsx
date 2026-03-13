@@ -169,63 +169,10 @@ function clearGroup(group: THREE.Group) {
   });
 }
 
-type ProbeLabelSprite = {
-  sprite: THREE.Sprite;
-  texture: THREE.CanvasTexture;
-  ctx: CanvasRenderingContext2D;
-  width: number;
-  height: number;
-};
-
-const PROBE_LABEL_FONT =
-  "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
+const PROBE_HUD_FONT_FAMILY =
+  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
 
 const formatProbeNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(3) : "nan");
-
-const createProbeLabelSprite = (): ProbeLabelSprite | null => {
-  const width = 512;
-  const height = 104;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.7, 0.36, 1);
-  sprite.renderOrder = 490;
-  sprite.visible = false;
-  return { sprite, texture, ctx, width, height };
-};
-
-const drawProbeLabelSprite = (label: ProbeLabelSprite, lines: string[]) => {
-  const { ctx, texture, width, height } = label;
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "rgba(15,23,42,0.82)";
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(148,163,184,0.85)";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, width - 2, height - 2);
-  ctx.font = PROBE_LABEL_FONT;
-  ctx.fillStyle = "#f8fafc";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  const lineHeight = 30;
-  const startY = 24;
-  for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], 12, startY + i * lineHeight);
-  }
-  texture.needsUpdate = true;
-};
 
 function isImplicitMeshObj(obj: THREE.Object3D) {
   const anyObj = obj as any;
@@ -1067,6 +1014,8 @@ type Props = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    uv?: { u: number; v: number };
+    xy?: { x: number; y: number };
   }) => void;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
@@ -1325,10 +1274,19 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     t1: THREE.ArrowHelper;
     t2: THREE.ArrowHelper;
   } | null>(null);
-  const probeLabelRef = useRef<ProbeLabelSprite | null>(null);
   const probePointRef = useRef<THREE.Vector3 | null>(null);
   const probeNormalRef = useRef<THREE.Vector3 | null>(null);
+  const applyProbeFromDomainRef = useRef<
+    | ((
+        point: THREE.Vector3,
+        normalWorld: THREE.Vector3,
+        xyDomain?: { x: number; y: number },
+        uvDomain?: { u: number; v: number }
+      ) => void)
+    | null
+  >(null);
   const [probePointToken, setProbePointToken] = useState(0);
+  const [probeHudLines, setProbeHudLines] = useState<string[]>([]);
   const principalGroupRef = useRef<THREE.Group | null>(null);
   const principalGlyphsRef = useRef<{ d1?: THREE.LineSegments; d2?: THREE.LineSegments } | null>(
     null
@@ -1459,6 +1417,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     if (!probeEnabled) {
       setProbeXY(null);
+      setProbeHudLines([]);
       prevPrincipalRef.current = null;
       probePointRef.current = null;
       probeNormalRef.current = null;
@@ -1471,13 +1430,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         widgets.t1.visible = false;
         widgets.t2.visible = false;
       }
-      if (probeLabelRef.current) {
-        probeLabelRef.current.sprite.visible = false;
-      }
     }
   }, [probeEnabled]);
 
   useEffect(() => {
+    setProbeHudLines([]);
     prevPrincipalRef.current = null;
     if (principalGroupRef.current) clearGroup(principalGroupRef.current);
   }, [surfaceId, graphExpr, implicitExpr, graphDomain?.xSpan, graphDomain?.ySpan]);
@@ -3467,14 +3424,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     probeMarker.visible = false;
     scene.add(probeMarker);
 
-    const probeLabel = createProbeLabelSprite();
-    if (probeLabel) {
-      scene.add(probeLabel.sprite);
-      probeLabelRef.current = probeLabel;
-    } else {
-      probeLabelRef.current = null;
-    }
-
     const normalArrow = new THREE.ArrowHelper(
       new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(0, 0, 0),
@@ -3574,10 +3523,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       probeNormalRef.current = n.clone();
       setProbePointToken((v) => v + 1);
       setProbeXY(xyDomain ?? null);
-
-      const probeLabel = probeLabelRef.current;
-      if (probeLabel) {
-        const lines = [
+      setProbeHudLines(
+        [
           `p: (${formatProbeNumber(point.x)}, ${formatProbeNumber(point.y)}, ${formatProbeNumber(point.z)})`,
           `n: (${formatProbeNumber(n.x)}, ${formatProbeNumber(n.y)}, ${formatProbeNumber(n.z)})`,
           uvDomain
@@ -3585,13 +3532,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             : xyDomain
             ? `xy: (${formatProbeNumber(xyDomain.x)}, ${formatProbeNumber(xyDomain.y)})`
             : "",
-        ].filter(Boolean) as string[];
-        drawProbeLabelSprite(probeLabel, lines);
-        const labelPos = point.clone().add(n.clone().multiplyScalar(0.12));
-        const viewOffset = camera.position.clone().sub(point).normalize().multiplyScalar(0.08);
-        probeLabel.sprite.position.copy(labelPos.add(viewOffset));
-        probeLabel.sprite.visible = true;
-      }
+        ].filter(Boolean) as string[]
+      );
 
       const cb = onProbeRef.current;
       if (cb) {
@@ -3603,6 +3545,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         });
       }
     };
+    applyProbeFromDomainRef.current = applyProbe;
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -3848,6 +3791,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 },
                 normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
                 meshKey: hitMeshKey ?? nearest.sample.meshKey,
+                uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
+                xy: xyDomain,
               });
             } else {
               inspectCb({
@@ -3855,6 +3800,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 point: { x: point.x, y: point.y, z: point.z },
                 normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
                 meshKey: hitMeshKey ?? undefined,
+                uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
+                xy: xyDomain,
               });
             }
           }
@@ -3942,83 +3889,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     window.addEventListener("pointerup", handlePointerUp);
 
     setSceneEpoch((v) => v + 1);
-
-    // ---- programmatic probe for graphs (from XY mini-map) ----
-    if (graphProbeXY && isGraphId(surfaceId)) {
-      const { x, y } = graphProbeXY;
-
-      const f = getGraphF();
-      const z = f(x, y);
-      const point = new THREE.Vector3(x, z, y);
-
-      const eps = 1e-2;
-      const fx = (f(x + eps, y) - f(x - eps, y)) / (2 * eps);
-      const fy = (f(x, y + eps) - f(x, y - eps)) / (2 * eps);
-
-      const normalWorld = new THREE.Vector3(fx, -1, fy).normalize();
-      applyProbe(point, normalWorld, { x, y });
-    }
-
-    // ---- programmatic probe for implicit (from domain picker) ----
-    if (implicitProbeXYZ && isImplicitId(surfaceId)) {
-      const root = surfaceObjRef.current as THREE.Object3D | null;
-      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
-      let implicitSize: number | null = null;
-
-      if (root) {
-        root.traverse((obj) => {
-          if (implicitF) return;
-          const anyObj = obj as any;
-          if (isImplicitMeshObj(anyObj)) {
-            const meta = anyObj.userData?.__implicit as { f: (x: number, y: number, z: number) => number; size?: number } | undefined;
-            if (meta?.f) {
-              implicitF = meta.f;
-              if (typeof meta.size === "number") implicitSize = meta.size;
-            }
-          }
-        });
-      }
-
-      if (!implicitF) {
-        const fallback = getImplicitFallback(surfaceId);
-        if (fallback) implicitF = fallback;
-      }
-
-      if (implicitF) {
-        const size = implicitDomainSize ?? implicitSize ?? radiusRef.current ?? 2.2;
-        const h = Math.max(1e-3, size * 0.01);
-        const p = new THREE.Vector3(implicitProbeXYZ.x, implicitProbeXYZ.y, implicitProbeXYZ.z);
-
-        const projectToSurface = (pt: THREE.Vector3) => {
-          for (let it = 0; it < 6; it++) {
-            const d = sampleImplicitDerivatives(implicitF!, pt.x, pt.y, pt.z, h);
-            const gx = d.fx;
-            const gy = d.fy;
-            const gz = d.fz;
-            const g2 = gx * gx + gy * gy + gz * gz;
-            if (!Number.isFinite(g2) || g2 < 1e-10) return false;
-            const v = implicitF!(pt.x, pt.y, pt.z);
-            if (!Number.isFinite(v)) return false;
-            const s = v / g2;
-            pt.x -= gx * s;
-            pt.y -= gy * s;
-            pt.z -= gz * s;
-            if (!Number.isFinite(pt.x) || !Number.isFinite(pt.y) || !Number.isFinite(pt.z)) return false;
-            if (Math.abs(v) < 1e-5) break;
-          }
-          return true;
-        };
-
-        if (projectToSurface(p)) {
-          const d = sampleImplicitDerivatives(implicitF, p.x, p.y, p.z, h);
-          const n = new THREE.Vector3(d.fx, d.fy, d.fz);
-          if (n.lengthSq() > 1e-12) {
-            n.normalize();
-            applyProbe(p, n);
-          }
-        }
-      }
-    }
 
     const handleResize = () => {
       const { width: w, height: h } = getSize();
@@ -4167,17 +4037,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }
       });
 
-      if (probeLabelRef.current) {
-        scene.remove(probeLabelRef.current.sprite);
-        const material = probeLabelRef.current.sprite.material as THREE.SpriteMaterial;
-        if (material.map) material.map.dispose();
-        material.dispose();
-        probeLabelRef.current = null;
-      }
-
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
       rendererRef.current = null;
+      applyProbeFromDomainRef.current = null;
 
       sampleSetRef.current = null;
       onSampleSet?.(null);
@@ -4200,10 +4063,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     showBoundingBox,
     resetToken,
     probeEnabled,
-    graphProbeXY,
-    graphProbeToken,
-    implicitProbeXYZ,
-    implicitProbeToken,
     graphResolution,
     implicitResolution,
     implicitMeshToken,
@@ -4212,6 +4071,91 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
+  ]);
+
+  useEffect(() => {
+    const applyProbe = applyProbeFromDomainRef.current;
+    if (!applyProbe) return;
+
+    if (graphProbeXY && isGraphId(surfaceId)) {
+      const { x, y } = graphProbeXY;
+      const f = getGraphF();
+      const z = f(x, y);
+      if (!Number.isFinite(z)) return;
+
+      const point = new THREE.Vector3(x, z, y);
+      const eps = 1e-2;
+      const fx = (f(x + eps, y) - f(x - eps, y)) / (2 * eps);
+      const fy = (f(x, y + eps) - f(x, y - eps)) / (2 * eps);
+      if (!Number.isFinite(fx) || !Number.isFinite(fy)) return;
+
+      const normalWorld = new THREE.Vector3(fx, -1, fy);
+      if (normalWorld.lengthSq() < 1e-12) return;
+      normalWorld.normalize();
+      applyProbe(point, normalWorld, { x, y });
+      return;
+    }
+
+    if (implicitProbeXYZ && isImplicitId(surfaceId)) {
+      const root = surfaceObjRef.current as THREE.Object3D | null;
+      let implicitF: ((x: number, y: number, z: number) => number) | null = null;
+      let implicitSize: number | null = null;
+
+      if (root) {
+        root.traverse((obj) => {
+          if (implicitF) return;
+          const anyObj = obj as any;
+          if (!isImplicitMeshObj(anyObj)) return;
+          const meta = anyObj.userData?.__implicit as
+            | { f: (x: number, y: number, z: number) => number; size?: number }
+            | undefined;
+          if (!meta?.f) return;
+          implicitF = meta.f;
+          if (typeof meta.size === "number") implicitSize = meta.size;
+        });
+      }
+
+      if (!implicitF) {
+        const fallback = getImplicitFallback(surfaceId);
+        if (fallback) implicitF = fallback;
+      }
+      if (!implicitF) return;
+
+      const size = implicitDomainSize ?? implicitSize ?? radiusRef.current ?? 2.2;
+      const h = Math.max(1e-3, size * 0.01);
+      const p = new THREE.Vector3(implicitProbeXYZ.x, implicitProbeXYZ.y, implicitProbeXYZ.z);
+
+      for (let it = 0; it < 6; it++) {
+        const d = sampleImplicitDerivatives(implicitF, p.x, p.y, p.z, h);
+        const gx = d.fx;
+        const gy = d.fy;
+        const gz = d.fz;
+        const g2 = gx * gx + gy * gy + gz * gz;
+        if (!Number.isFinite(g2) || g2 < 1e-10) return;
+        const v = implicitF(p.x, p.y, p.z);
+        if (!Number.isFinite(v)) return;
+        const s = v / g2;
+        p.x -= gx * s;
+        p.y -= gy * s;
+        p.z -= gz * s;
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return;
+        if (Math.abs(v) < 1e-5) break;
+      }
+
+      const d = sampleImplicitDerivatives(implicitF, p.x, p.y, p.z, h);
+      const n = new THREE.Vector3(d.fx, d.fy, d.fz);
+      if (n.lengthSq() < 1e-12) return;
+      n.normalize();
+      applyProbe(p, n);
+    }
+  }, [
+    surfaceId,
+    graphProbeXY,
+    graphProbeToken,
+    implicitProbeXYZ,
+    implicitProbeToken,
+    implicitDomainSize,
+    sceneEpoch,
   ]);
 
   useEffect(() => {
@@ -7072,9 +7016,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const showT = hasProbe && showProbeTangents;
     widgets.t1.visible = showT;
     widgets.t2.visible = showT;
-    if (probeLabelRef.current) {
-      probeLabelRef.current.sprite.visible = hasProbe;
-    }
   }, [showProbeNormal, showProbeTangentPlane, showProbeTangents]);
 
   useEffect(() => {
@@ -7863,6 +7804,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       .add(frame.e2.clone().multiplyScalar(st.t));
     return { st, world };
   })();
+  const showProbeHud = probeEnabled && probeHudLines.length > 0;
   const presetButtonStyle = (active: boolean) => ({
     padding: "2px 8px",
     borderRadius: 6,
@@ -8081,6 +8023,36 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             const fmt = (v: number) => v.toFixed(2).padStart(6, " ");
             return `Slice hover: s ${fmt(sliceHoverInfo.st.s)}, t ${fmt(sliceHoverInfo.st.t)} | X (${fmt(sliceHoverInfo.world.x)}, ${fmt(sliceHoverInfo.world.y)}, ${fmt(sliceHoverInfo.world.z)})`;
           })()}
+        </div>
+      )}
+
+      {showProbeHud && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 12,
+            transform: "translateX(-50%)",
+            zIndex: 32,
+            width: "min(84vw, 760px)",
+            padding: "8px 12px",
+            borderRadius: 12,
+            background: "rgba(15,23,42,0.82)",
+            border: "1px solid rgba(148,163,184,0.85)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.24)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            color: "#f8fafc",
+            fontFamily: PROBE_HUD_FONT_FAMILY,
+            fontSize: 12,
+            lineHeight: 1.3,
+            pointerEvents: "none",
+          }}
+        >
+          {probeHudLines.map((line, idx) => (
+            <div key={`${idx}-${line}`}>{line}</div>
+          ))}
         </div>
       )}
 
