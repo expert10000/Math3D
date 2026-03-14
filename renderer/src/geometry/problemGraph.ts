@@ -682,7 +682,15 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
     });
   }
 
-  const circleSegments = Object.values(circles).flatMap((circle) =>
+  const hiddenIds = new Set(nodes.filter((node) => node.hidden).map((node) => node.id));
+  const visiblePoints = Object.entries(points)
+    .filter(([id]) => !hiddenIds.has(id))
+    .map(([, point]) => point);
+  const visibleLines = Object.entries(lines)
+    .filter(([id]) => !hiddenIds.has(id))
+    .map(([, line]) => line);
+  const visibleCircles = Object.entries(circles).filter(([id]) => !hiddenIds.has(id));
+  const circleSegments = visibleCircles.flatMap(([, circle]) =>
     buildCircleSegments(circle.center, circle.normal, circle.radius, {
       color: circle.color,
       opacity: circle.opacity,
@@ -692,8 +700,8 @@ export const evaluateConstructionGraph = (nodes: ConstructionNode[]): Constructi
   );
 
   const scene: GeometryScene = {
-    points: Object.values(points),
-    lines: Object.values(lines),
+    points: visiblePoints,
+    lines: visibleLines,
     segments: circleSegments,
   };
 
