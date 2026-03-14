@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OverlayLabelSet } from "./SurfaceViewer";
 import type { GeometryScene } from "../geometry/types";
 import {
@@ -13,7 +13,7 @@ import {
 import { formatConstraintValue } from "../geometry/analysis";
 
 type BuildMode = "select" | "create" | "check";
-type PowerTab = "palette" | "script";
+type WorkspaceTab = "build" | "inspect" | "claims" | "script" | "scene";
 
 type ToolKind =
   | "point"
@@ -41,6 +41,22 @@ type ScriptPreset = {
   name: string;
   script: string;
   savedAt: number;
+};
+
+type SceneMode = "plane2d" | "space3d";
+type SceneType = "task" | "free" | "demo";
+type ScriptSyncMode = "overwrite" | "appendNew" | "keepComments";
+type ClaimsSortMode = "status" | "name" | "residual";
+
+type SceneBundle = {
+  version: number;
+  sceneName: string;
+  sceneType: SceneType;
+  sceneMode: SceneMode;
+  metadata: string;
+  script: string;
+  nodes: ConstructionNode[];
+  checks: ProblemCheckDef[];
 };
 
 export type ConstructionLabState = {
@@ -128,6 +144,18 @@ const CREATE_GROUPS: Array<{ title: string; tools: ToolKind[] }> = [
   { title: "Derived", tools: ["midpoint", "arcMidpoint", "intersection", "secondIntersection", "circumcenter"] },
 ];
 
+const SCRIPT_TEMPLATES: Array<{ label: string; command: string }> = [
+  { label: "Free point", command: "point P 0 0 0" },
+  { label: "Line through points", command: "line A B as AB" },
+  { label: "Perpendicular through point", command: "perp AB through C as C_perp_AB" },
+  { label: "Parallel through point", command: "parallel AB through C as C_parallel_AB" },
+  { label: "Circle center-point", command: "circle O A as omega" },
+  { label: "Circumcircle", command: "circumcircle A B C as Omega" },
+  { label: "Intersection", command: "intersection AB AC as A1" },
+  { label: "Second intersection", command: "second-intersection AB Omega exclude A as X" },
+  { label: "Claim point on circle", command: "check point-on-circle X Omega" },
+];
+
 const isPointNode = (node: ConstructionNode) =>
   node.type === "freePoint" ||
   node.type === "midpoint" ||
@@ -213,6 +241,16 @@ const nodeDependencies = (node: ConstructionNode): string[] => {
     case "arcMidpointOnCircle":
       return [node.circle, node.b, node.c, ...(node.excludePoint ? [node.excludePoint] : [])];
   }
+};
+
+const checkReferencedIds = (check: ProblemCheckDef): string[] => {
+  if (check.type === "pointOnCircle") return [check.point, check.circle];
+  if (check.type === "collinear" || check.type === "concyclic") return [...check.points];
+  if (check.type === "perpendicular" || check.type === "parallel") return [...check.lines];
+  if (check.type === "equalLength") return [...check.segments[0], ...check.segments[1]];
+  if (check.type === "equalAngle") return [...check.angles[0], ...check.angles[1]];
+  if (check.type === "samePower") return [check.point, ...check.circles];
+  return [];
 };
 
 const buildScriptFromState = (nodes: ConstructionNode[], checks: ProblemCheckDef[]) => {
@@ -575,6 +613,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("build");
   const [tool, setTool] = useState<ToolKind>("point");
   const [toolForm, setToolForm] = useState<Record<string, string>>({});
   const [toolError, setToolError] = useState<string | null>(null);
@@ -583,7 +622,23 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [checkForm, setCheckForm] = useState<Record<string, string>>({});
   const [checkError, setCheckError] = useState<string | null>(null);
 
-  const [powerTab, setPowerTab] = useState<PowerTab>("palette");
+  const [sceneName, setSceneName] = useState("Olympiad construction");
+  const [sceneType, setSceneType] = useState<SceneType>("task");
+  const [sceneMode, setSceneMode] = useState<SceneMode>("plane2d");
+  const [sceneMetadata, setSceneMetadata] = useState(
+    "Construct X as in the embedded olympiad-style arc problem."
+  );
+  const [scriptSyncMode, setScriptSyncMode] = useState<ScriptSyncMode>("overwrite");
+  const [claimsSortMode, setClaimsSortMode] = useState<ClaimsSortMode>("status");
+  const [disabledCheckIds, setDisabledCheckIds] = useState<Set<string>>(() => new Set());
+  const [highlightRequiredInputs, setHighlightRequiredInputs] = useState(false);
+  const [selectedScriptTemplate, setSelectedScriptTemplate] = useState(SCRIPT_TEMPLATES[0]?.command ?? "");
+  const [lockedNodeIds, setLockedNodeIds] = useState<Set<string>>(() => new Set());
+  const [helperNodeIds, setHelperNodeIds] = useState<Set<string>>(() => new Set());
+  const [claimExplainId, setClaimExplainId] = useState<string | null>(null);
+  const importSceneInputRef = useRef<HTMLInputElement | null>(null);
+  const scriptEditorRef = useRef<HTMLTextAreaElement | null>(null);
+
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInput, setPaletteInput] = useState("");
   const [paletteError, setPaletteError] = useState<string | null>(null);
@@ -595,7 +650,11 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
 
   const solved = useMemo(() => evaluateConstructionGraph(nodes), [nodes]);
-  const checkResults = useMemo(() => evaluateProblemChecks(solved, checkDefs), [solved, checkDefs]);
+  const activeCheckDefs = useMemo(
+    () => checkDefs.filter((check) => !disabledCheckIds.has(check.id)),
+    [checkDefs, disabledCheckIds]
+  );
+  const checkResults = useMemo(() => evaluateProblemChecks(solved, activeCheckDefs), [solved, activeCheckDefs]);
   const labels = useMemo(() => buildPointLabelSet(solved.points), [solved.points]);
   const presetOptions = useMemo(() => {
     const userPresets = presets.filter((preset) => preset.name !== BUILTIN_TASK_PRESET_NAME);
@@ -623,7 +682,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       const isPaletteShortcut = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
       if (!isPaletteShortcut) return;
       event.preventDefault();
-      setPowerTab("palette");
+      setWorkspaceTab("script");
       setPaletteOpen(true);
     };
     globalThis.addEventListener("keydown", onKeyDown);
@@ -649,6 +708,161 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         : [],
     [selectedNode]
   );
+  const selectedNodeLocked = !!(selectedNode && lockedNodeIds.has(selectedNode.id));
+  const selectedNodeHelper = !!(selectedNode && helperNodeIds.has(selectedNode.id));
+  const selectedNodeUsedBy = useMemo(() => {
+    if (!selectedNode) return [] as string[];
+    return nodes
+      .filter((node) => node.id !== selectedNode.id && nodeDependencies(node).includes(selectedNode.id))
+      .map((node) => node.id);
+  }, [nodes, selectedNode]);
+  const selectedNodeUsedByClaims = useMemo(() => {
+    if (!selectedNode) return [] as string[];
+    return checkDefs
+      .filter((check) => checkReferencedIds(check).includes(selectedNode.id))
+      .map((check) => check.label);
+  }, [checkDefs, selectedNode]);
+
+  const graphObjectById = useMemo(() => {
+    const map = new Map<string, ConstructionObjectSummary>();
+    for (const obj of solved.objects) map.set(obj.id, obj);
+    return map;
+  }, [solved.objects]);
+
+  const checkDefById = useMemo(() => {
+    const map = new Map<string, ProblemCheckDef>();
+    for (const check of checkDefs) map.set(check.id, check);
+    return map;
+  }, [checkDefs]);
+
+  const scriptParsePreview = useMemo(() => parseSceneScript(scriptText), [scriptText]);
+  const scriptDiagnostics = useMemo(() => {
+    const diagnostics: Array<{ line: number; kind: "error" | "warning"; message: string }> = [];
+    const ids = new Set<string>();
+    let objectCount = 0;
+    let claimCount = 0;
+    const lines = scriptText.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const parsed = parseCommandLine(trimmed, ids, claimCount + 1);
+      if (!parsed.ok) {
+        diagnostics.push({ line: i + 1, kind: "error", message: parsed.error });
+        break;
+      }
+      if (parsed.node) {
+        if (ids.has(parsed.node.id)) {
+          diagnostics.push({ line: i + 1, kind: "warning", message: `Alias ${parsed.node.id} already exists.` });
+        }
+        ids.add(parsed.node.id);
+        objectCount += 1;
+      }
+      if (parsed.check) claimCount += 1;
+    }
+    return {
+      parsedSteps: objectCount + claimCount,
+      objectCount,
+      claimCount,
+      warnings: diagnostics.filter((d) => d.kind === "warning"),
+      errors: diagnostics.filter((d) => d.kind === "error"),
+      diagnostics,
+    };
+  }, [scriptText]);
+
+  const explainCheckInputs = useCallback((checkId: string) => {
+    const check = checkDefById.get(checkId);
+    if (!check) return "No check definition.";
+    const resolved = (id: string) => graphObjectById.get(id)?.summary ?? "(missing)";
+    if (check.type === "pointOnCircle") {
+      return `point ${check.point}: ${resolved(check.point)} | circle ${check.circle}: ${resolved(check.circle)}`;
+    }
+    if (check.type === "collinear" || check.type === "concyclic") {
+      return check.points.map((id) => `${id}: ${resolved(id)}`).join(" | ");
+    }
+    if (check.type === "perpendicular" || check.type === "parallel") {
+      return check.lines.map((id) => `${id}: ${resolved(id)}`).join(" | ");
+    }
+    if (check.type === "equalLength") {
+      const [ab, cd] = check.segments;
+      return `${ab[0]}: ${resolved(ab[0])} | ${ab[1]}: ${resolved(ab[1])} | ${cd[0]}: ${resolved(cd[0])} | ${cd[1]}: ${resolved(cd[1])}`;
+    }
+    if (check.type === "equalAngle") {
+      return check.angles
+        .flat()
+        .map((id) => `${id}: ${resolved(id)}`)
+        .join(" | ");
+    }
+    if (check.type === "samePower") {
+      return `point ${check.point}: ${resolved(check.point)} | circles ${check.circles[0]}, ${check.circles[1]}`;
+    }
+    return "Unsupported claim explainer.";
+  }, [checkDefById, graphObjectById]);
+
+  const checkFocusRefs = useCallback((checkId: string) => {
+    const check = checkDefById.get(checkId);
+    if (!check) return [] as string[];
+    return checkReferencedIds(check);
+  }, [checkDefById]);
+
+  const checkResultById = useMemo(() => {
+    const map = new Map<string, ProblemCheckResult>();
+    for (const row of checkResults) map.set(row.id, row);
+    return map;
+  }, [checkResults]);
+  const claimRows = useMemo(() => {
+    const rows = checkDefs.map((def) => {
+      const result = checkResultById.get(def.id);
+      const disabled = disabledCheckIds.has(def.id);
+      const status = disabled ? "invalid" : result?.status ?? "invalid";
+      const residual = disabled ? null : result?.residual ?? null;
+      const tolerance =
+        def.type === "perpendicular" || def.type === "parallel"
+          ? Math.abs(def.toleranceDeg ?? 0.6)
+          : Math.abs(def.tolerance ?? 1e-3);
+      const unit = def.type === "perpendicular" || def.type === "parallel" ? "deg" : "unit";
+      return { def, result, disabled, status, residual, tolerance, unit };
+    });
+    if (claimsSortMode === "name") {
+      rows.sort((a, b) => a.def.label.localeCompare(b.def.label));
+    } else if (claimsSortMode === "residual") {
+      rows.sort((a, b) => {
+        const ar = a.residual == null ? Number.POSITIVE_INFINITY : Math.abs(a.residual);
+        const br = b.residual == null ? Number.POSITIVE_INFINITY : Math.abs(b.residual);
+        return ar - br;
+      });
+    } else {
+      const rank: Record<string, number> = { fail: 0, invalid: 1, ok: 2 };
+      rows.sort((a, b) => (rank[a.status] ?? 3) - (rank[b.status] ?? 3));
+    }
+    return rows;
+  }, [checkDefs, checkResultById, claimsSortMode, disabledCheckIds]);
+
+  const sceneObjectStats = useMemo(() => {
+    const stats = {
+      total: solved.objects.length,
+      visible: 0,
+      invalid: 0,
+      point: 0,
+      line: 0,
+      circle: 0,
+    };
+    for (const obj of solved.objects) {
+      if (!obj.hidden) stats.visible += 1;
+      if (!obj.valid) stats.invalid += 1;
+      if (obj.type === "point") stats.point += 1;
+      if (obj.type === "line") stats.line += 1;
+      if (obj.type === "circle") stats.circle += 1;
+    }
+    return stats;
+  }, [solved.objects]);
+
+  const toggleNodeVisible = useCallback((id: string) => {
+    if (lockedNodeIds.has(id)) return;
+    setNodes((prev) =>
+      prev.map((node) => (node.id === id ? { ...node, hidden: !node.hidden } : node))
+    );
+  }, [lockedNodeIds]);
 
   const updateToolField = (key: string, value: string) => {
     setToolForm((prev) => ({ ...prev, [key]: value }));
@@ -658,7 +872,130 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   };
   const toolValue = (key: string) => toolForm[key] ?? "";
   const checkValue = (key: string) => checkForm[key] ?? "";
-  const pointPlacementMode = buildMode === "create" && tool === "point";
+  const toolRequiredFields: Record<ToolKind, string[]> = {
+    point: [],
+    line: ["a", "b"],
+    perpendicular: ["line", "point"],
+    parallel: ["line", "point"],
+    perpBisector: ["a", "b"],
+    angleBisector: ["vertex", "a", "c"],
+    circle: ["center", "point"],
+    circle3: ["a", "b", "c"],
+    circumcircle: ["a", "b", "c"],
+    circumcenter: ["a", "b", "c"],
+    midpoint: ["a", "b"],
+    arcMidpoint: ["circle", "b", "c"],
+    intersection: ["lineA", "lineB"],
+    secondIntersection: ["line", "circle", "exclude"],
+  };
+  const missingRequiredToolFields = useMemo(
+    () => toolRequiredFields[tool].filter((field) => !String(toolForm[field] ?? "").trim().length),
+    [tool, toolForm]
+  );
+  const pointPlacementMode = workspaceTab === "build" && buildMode === "create" && tool === "point";
+
+  const useSelectedObjectsForTool = useCallback(() => {
+    if (!selectedNodeId) {
+      setToolError("Select an object in scene contents first.");
+      return;
+    }
+    const selected = graphObjectById.get(selectedNodeId);
+    if (!selected) {
+      setToolError("Selected object is not solved.");
+      return;
+    }
+    const pointFieldsByTool: Record<ToolKind, string[]> = {
+      point: [],
+      line: ["a", "b"],
+      perpendicular: ["point"],
+      parallel: ["point"],
+      perpBisector: ["a", "b"],
+      angleBisector: ["vertex", "a", "c"],
+      circle: ["center", "point"],
+      circle3: ["a", "b", "c"],
+      circumcircle: ["a", "b", "c"],
+      circumcenter: ["a", "b", "c"],
+      midpoint: ["a", "b"],
+      arcMidpoint: ["b", "c", "exclude"],
+      intersection: [],
+      secondIntersection: ["exclude"],
+    };
+    const lineFieldsByTool: Record<ToolKind, string[]> = {
+      point: [],
+      line: [],
+      perpendicular: ["line"],
+      parallel: ["line"],
+      perpBisector: [],
+      angleBisector: [],
+      circle: [],
+      circle3: [],
+      circumcircle: [],
+      circumcenter: [],
+      midpoint: [],
+      arcMidpoint: [],
+      intersection: ["lineA", "lineB"],
+      secondIntersection: ["line"],
+    };
+    const circleFieldsByTool: Record<ToolKind, string[]> = {
+      point: [],
+      line: [],
+      perpendicular: [],
+      parallel: [],
+      perpBisector: [],
+      angleBisector: [],
+      circle: [],
+      circle3: [],
+      circumcircle: [],
+      circumcenter: [],
+      midpoint: [],
+      arcMidpoint: ["circle"],
+      intersection: [],
+      secondIntersection: ["circle"],
+    };
+
+    const fieldPool =
+      selected.type === "point"
+        ? pointFieldsByTool[tool]
+        : selected.type === "line"
+          ? lineFieldsByTool[tool]
+          : circleFieldsByTool[tool];
+    if (!fieldPool.length) {
+      setToolError(`Selected ${selected.type} cannot be used for this tool.`);
+      return;
+    }
+    setToolForm((prev) => {
+      const next = { ...prev };
+      const target = fieldPool.find((field) => !String(prev[field] ?? "").trim().length) ?? fieldPool[0];
+      next[target] = selected.id;
+      return next;
+    });
+    setToolError(null);
+  }, [graphObjectById, selectedNodeId, tool]);
+
+  const swapToolInputs = useCallback(() => {
+    const pair: [string, string] | null =
+      tool === "line" || tool === "perpBisector" || tool === "midpoint"
+        ? ["a", "b"]
+        : tool === "circle3" || tool === "circumcircle" || tool === "circumcenter"
+          ? ["a", "b"]
+          : tool === "intersection"
+            ? ["lineA", "lineB"]
+            : tool === "arcMidpoint"
+              ? ["b", "c"]
+              : null;
+    if (!pair) {
+      setToolError("Swap is not available for this tool.");
+      return;
+    }
+    setToolForm((prev) => ({ ...prev, [pair[0]]: prev[pair[1]] ?? "", [pair[1]]: prev[pair[0]] ?? "" }));
+    setToolError(null);
+  }, [tool]);
+
+  const clearBuildSelections = useCallback(() => {
+    setToolForm({});
+    setSelectedNodeId("");
+    setToolError(null);
+  }, []);
 
   const addNode = useCallback((node: ConstructionNode, nextMode: BuildMode = "select") => {
     setNodes((prev) => [...prev, node]);
@@ -690,6 +1027,52 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }));
     onViewportPickConsumed?.();
   }, [addNode, nodes, onViewportPickConsumed, pointPlacementMode, toolForm, viewportPickPoint]);
+
+  useEffect(() => {
+    const ids = new Set(nodes.map((node) => node.id));
+    if (!ids.size) {
+      if (selectedNodeId) setSelectedNodeId("");
+      return;
+    }
+    if (!selectedNodeId || !ids.has(selectedNodeId)) {
+      setSelectedNodeId(nodes[0]?.id ?? "");
+    }
+  }, [nodes, selectedNodeId]);
+
+  useEffect(() => {
+    const ids = new Set(nodes.map((node) => node.id));
+    setLockedNodeIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+    setHelperNodeIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [nodes]);
+
+  useEffect(() => {
+    const ids = new Set(checkDefs.map((check) => check.id));
+    setDisabledCheckIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [checkDefs]);
 
   const parseWithCurrentState = useCallback(
     (command: string) => {
@@ -910,6 +1293,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setScriptError(null);
     setNodes(parsed.nodes);
     setCheckDefs(parsed.checks);
+    setDisabledCheckIds(new Set());
+    setLockedNodeIds(new Set());
+    setHelperNodeIds(new Set());
     setSelectedNodeId(parsed.nodes[0].id);
     setBuildMode("select");
     return true;
@@ -925,20 +1311,112 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     applyScriptToScene(source);
   };
 
+  const focusScriptLine = useCallback((lineNumber: number) => {
+    const textarea = scriptEditorRef.current;
+    if (!textarea || lineNumber < 1) return;
+    const lines = scriptText.split(/\r?\n/);
+    let start = 0;
+    for (let i = 0; i < Math.min(lineNumber - 1, lines.length); i++) start += lines[i].length + 1;
+    const end = start + (lines[lineNumber - 1]?.length ?? 0);
+    textarea.focus();
+    textarea.setSelectionRange(start, end);
+  }, [scriptText]);
+
+  const runScriptFragment = useCallback((fragment: string, startLine = 1) => {
+    const lines = fragment.split(/\r?\n/);
+    const ids = new Set(nodes.map((node) => node.id));
+    const nextNodes = nodes.slice();
+    const nextChecks = checkDefs.slice();
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i];
+      const line = raw.trim();
+      if (!line || line.startsWith("#")) continue;
+      const parsed = parseCommandLine(line, ids, nextChecks.length + 1);
+      if (!parsed.ok) {
+        const absoluteLine = startLine + i;
+        setScriptError(`Line ${absoluteLine}: ${parsed.error}`);
+        focusScriptLine(absoluteLine);
+        return;
+      }
+      if (parsed.node) {
+        nextNodes.push(parsed.node);
+        ids.add(parsed.node.id);
+      }
+      if (parsed.check) nextChecks.push(parsed.check);
+    }
+    setNodes(nextNodes);
+    setCheckDefs(nextChecks);
+    setScriptError(null);
+  }, [checkDefs, focusScriptLine, nodes]);
+
+  const runSelectedScript = useCallback(() => {
+    const textarea = scriptEditorRef.current;
+    if (!textarea) return;
+    const text = scriptText;
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    if (end > start) {
+      const selected = text.slice(start, end);
+      const lineOffset = text.slice(0, start).split(/\r?\n/).length;
+      runScriptFragment(selected, lineOffset);
+      return;
+    }
+    const lines = text.split(/\r?\n/);
+    const lineIndex = text.slice(0, start).split(/\r?\n/).length - 1;
+    const current = lines[lineIndex] ?? "";
+    runScriptFragment(current, lineIndex + 1);
+  }, [runScriptFragment, scriptText]);
+
+  const runScriptFromCursor = useCallback(() => {
+    const textarea = scriptEditorRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? 0;
+    const lineIndex = scriptText.slice(0, start).split(/\r?\n/).length - 1;
+    const lines = scriptText.split(/\r?\n/);
+    const fragment = lines.slice(lineIndex).join("\n");
+    runScriptFragment(fragment, lineIndex + 1);
+  }, [runScriptFragment, scriptText]);
+
   const regenerateScriptFromScene = () => {
-    setScriptText(buildScriptFromState(nodes, checkDefs));
+    const generated = buildScriptFromState(nodes, checkDefs);
+    if (scriptSyncMode === "overwrite") {
+      setScriptText(generated);
+      setScriptError(null);
+      return;
+    }
+    if (scriptSyncMode === "appendNew") {
+      const currentLines = new Set(scriptText.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+      const additions = generated
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !currentLines.has(line));
+      if (additions.length) {
+        setScriptText((prev) => `${prev.trimEnd()}\n${additions.join("\n")}`);
+      }
+      setScriptError(null);
+      return;
+    }
+    const comments = scriptText
+      .split(/\r?\n/)
+      .filter((line) => line.trim().startsWith("#"));
+    setScriptText([...comments, generated].join("\n"));
     setScriptError(null);
   };
 
-  const saveCurrentScriptPreset = () => {
-    const name = cleanId(presetName) || `preset_${Date.now()}`;
+  const saveScriptPreset = useCallback((nameRaw: string, script: string) => {
+    const name = cleanId(nameRaw) || `preset_${Date.now()}`;
     const next: ScriptPreset[] = [
-      { name, script: scriptText, savedAt: Date.now() },
+      { name, script, savedAt: Date.now() },
       ...presets.filter((preset) => preset.name !== name),
     ].slice(0, 30);
     setPresets(next);
     setSelectedPresetName(name);
     savePresets(next);
+    return name;
+  }, [presets]);
+
+  const saveCurrentScriptPreset = () => {
+    saveScriptPreset(presetName, scriptText);
   };
 
   const loadSelectedPreset = () => {
@@ -955,6 +1433,185 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
     savePresets(next);
   };
+
+  const focusClaimInputs = useCallback((checkId: string) => {
+    const refs = checkFocusRefs(checkId);
+    const target = refs.find((id) => nodes.some((node) => node.id === id));
+    if (!target) return;
+    setSelectedNodeId(target);
+    setWorkspaceTab("inspect");
+    setBuildMode("select");
+  }, [checkFocusRefs, nodes]);
+
+  const toggleClaimEnabled = useCallback((checkId: string) => {
+    setDisabledCheckIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(checkId)) next.delete(checkId);
+      else next.add(checkId);
+      return next;
+    });
+  }, []);
+
+  const updateClaimTolerance = useCallback((checkId: string, value: number) => {
+    if (!Number.isFinite(value) || value < 0) return;
+    setCheckDefs((prev) =>
+      prev.map((check) => {
+        if (check.id !== checkId) return check;
+        if (check.type === "perpendicular" || check.type === "parallel") {
+          return { ...check, toleranceDeg: value };
+        }
+        return { ...check, tolerance: value };
+      })
+    );
+  }, []);
+
+  const resetToEmbeddedTask = useCallback(() => {
+    setScriptText(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+    setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
+    setSceneName("Olympiad construction");
+    setSceneType("task");
+    setSceneMode("plane2d");
+    setSceneMetadata("Construct X as in the embedded olympiad-style arc problem.");
+    setDisabledCheckIds(new Set());
+    setWorkspaceTab("build");
+    setBuildMode("create");
+    applyScriptToScene(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+  }, [applyScriptToScene]);
+
+  const cloneSceneToPreset = useCallback(() => {
+    const cloneScript = buildScriptFromState(nodes, checkDefs);
+    setScriptText(cloneScript);
+    const suggestedName = `${cleanId(sceneName) || "scene"}_copy`;
+    setPresetName(suggestedName);
+    saveScriptPreset(suggestedName, cloneScript);
+  }, [checkDefs, nodes, saveScriptPreset, sceneName]);
+
+  const exportSceneBundle = useCallback(() => {
+    const bundle: SceneBundle = {
+      version: 1,
+      sceneName,
+      sceneType,
+      sceneMode,
+      metadata: sceneMetadata,
+      script: scriptText,
+      nodes,
+      checks: checkDefs,
+    };
+    try {
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `${cleanId(sceneName) || "problem_scene"}.problem-scene.json`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setScriptError(`Scene export failed: ${String(err)}`);
+    }
+  }, [checkDefs, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText]);
+
+  const exportSceneScript = useCallback(() => {
+    try {
+      const blob = new Blob([scriptText], { type: "text/plain" });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `${cleanId(sceneName) || "problem_scene"}.scene.txt`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setScriptError(`Scene script export failed: ${String(err)}`);
+    }
+  }, [sceneName, scriptText]);
+
+  const importSceneBundle = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const raw = String(reader.result ?? "");
+        const parsed = JSON.parse(raw) as Partial<SceneBundle>;
+        if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.checks)) {
+          throw new Error("Missing nodes/checks arrays.");
+        }
+        const nextNodes = parsed.nodes as ConstructionNode[];
+        const nextChecks = parsed.checks as ProblemCheckDef[];
+        if (!nextNodes.length) throw new Error("Imported scene has no nodes.");
+        setNodes(nextNodes);
+        setCheckDefs(nextChecks);
+        setLockedNodeIds(new Set());
+        setHelperNodeIds(new Set());
+        setDisabledCheckIds(new Set());
+        setSelectedNodeId(nextNodes[0].id);
+        setScriptText(
+          typeof parsed.script === "string" && parsed.script.trim().length
+            ? parsed.script
+            : buildScriptFromState(nextNodes, nextChecks)
+        );
+        setSceneName(typeof parsed.sceneName === "string" && parsed.sceneName.trim() ? parsed.sceneName : "Imported scene");
+        setSceneType(parsed.sceneType === "demo" || parsed.sceneType === "free" ? parsed.sceneType : "task");
+        setSceneMode(parsed.sceneMode === "space3d" ? "space3d" : "plane2d");
+        setSceneMetadata(typeof parsed.metadata === "string" ? parsed.metadata : "");
+        setScriptError(null);
+        setWorkspaceTab("scene");
+      } catch (err) {
+        setScriptError(`Scene import failed: ${String(err)}`);
+      }
+    };
+    reader.onerror = () => setScriptError("Scene import failed while reading file.");
+    reader.readAsText(file);
+  }, []);
+
+  const insertScriptTemplate = useCallback(() => {
+    if (!selectedScriptTemplate) return;
+    setScriptText((prev) => (prev.trim().length ? `${prev.trimEnd()}\n${selectedScriptTemplate}` : selectedScriptTemplate));
+  }, [selectedScriptTemplate]);
+
+  const cloneIntoGeometry3D = useCallback(() => {
+    try {
+      globalThis.dispatchEvent(
+        new CustomEvent("math3d:problem-scene:clone-to-geometry3d", {
+          detail: {
+            scene: solved.scene,
+            labels,
+            name: sceneName,
+          },
+        })
+      );
+      setScriptError(null);
+    } catch (err) {
+      setScriptError(`Clone to Geometry 3D failed: ${String(err)}`);
+    }
+  }, [labels, sceneName, solved.scene]);
+
+  const createFromSelection = useCallback(() => {
+    if (!selectedNodeId) {
+      setToolError("Select an object first.");
+      return;
+    }
+    const selected = graphObjectById.get(selectedNodeId);
+    if (!selected || selected.type !== "point") {
+      setToolError("Create from selection currently supports point objects.");
+      return;
+    }
+    const point = solved.points[selectedNodeId];
+    if (!point) {
+      setToolError("Selected point is not solved.");
+      return;
+    }
+    const ids = new Set(nodes.map((node) => node.id));
+    const id = uniqueId(`${selectedNodeId}_copy`, ids);
+    addNode(
+      {
+        id,
+        label: `${selectedNodeId} copy`,
+        type: "freePoint",
+        point: { x: point.x, y: point.y, z: point.z },
+        style: { color: 0xef4444, size: 0.045 },
+      },
+      "create"
+    );
+    setToolError(null);
+  }, [addNode, graphObjectById, nodes, selectedNodeId, solved.points]);
 
   const renderToolInputs = () => {
     if (tool === "point") {
@@ -1153,24 +1810,130 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
   return (
     <div style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        {(["select", "create", "check"] as BuildMode[]).map((mode) => (
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+        {(["build", "inspect", "claims", "script", "scene"] as WorkspaceTab[]).map((tab) => (
           <button
-            key={mode}
+            key={tab}
             type="button"
-            onClick={() => setBuildMode(mode)}
+            onClick={() => setWorkspaceTab(tab)}
             style={{
               padding: "4px 10px",
               borderRadius: 999,
-              border: "1px solid " + (buildMode === mode ? "#0a66c2" : "#d1d5db"),
-              background: buildMode === mode ? "#e6f0ff" : "#fff",
-              fontWeight: buildMode === mode ? 700 : 500,
+              border: "1px solid " + (workspaceTab === tab ? "#0a66c2" : "#d1d5db"),
+              background: workspaceTab === tab ? "#e6f0ff" : "#fff",
+              fontWeight: workspaceTab === tab ? 700 : 500,
               fontSize: 11,
             }}
           >
-            {mode[0].toUpperCase() + mode.slice(1)}
+            {tab[0].toUpperCase() + tab.slice(1)}
           </button>
         ))}
+      </div>
+
+      {workspaceTab === "build" && (
+        <>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginRight: 6 }}>Guided build:</div>
+            {(["select", "create", "check"] as BuildMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setBuildMode(mode)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: "1px solid " + (buildMode === mode ? "#0a66c2" : "#d1d5db"),
+                  background: buildMode === mode ? "#e6f0ff" : "#fff",
+                  fontWeight: buildMode === mode ? 700 : 500,
+                  fontSize: 11,
+                }}
+              >
+                {mode[0].toUpperCase() + mode.slice(1)}
+              </button>
+            ))}
+          </div>
+
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 10,
+          padding: 8,
+          display: "grid",
+          gap: 6,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Scene contents</div>
+          <div style={{ fontSize: 10, opacity: 0.72 }}>
+            {sceneObjectStats.visible}/{sceneObjectStats.total} visible
+          </div>
+        </div>
+        {sceneObjectStats.total > 0 ? (
+          <>
+            <div style={{ fontSize: 10, opacity: 0.72 }}>
+              Points {sceneObjectStats.point} · Lines {sceneObjectStats.line} · Circles {sceneObjectStats.circle}
+              {sceneObjectStats.invalid > 0 ? ` · Invalid ${sceneObjectStats.invalid}` : ""}
+            </div>
+            <div style={{ display: "grid", gap: 4, maxHeight: 180, overflowY: "auto" }}>
+              {solved.objects.map((obj) => (
+                <div
+                  key={obj.id}
+                  onClick={() => {
+                    setSelectedNodeId(obj.id);
+                    setBuildMode("select");
+                  }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "auto 1fr auto",
+                    gap: 6,
+                    alignItems: "center",
+                    border: selectedNodeId === obj.id ? "1px solid #93c5fd" : "1px solid #e5e7eb",
+                    borderRadius: 8,
+                    padding: "4px 6px",
+                    background: selectedNodeId === obj.id ? "#eff6ff" : "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!obj.hidden}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleNodeVisible(obj.id)}
+                    title="Visible"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedNodeId(obj.id);
+                      setBuildMode("select");
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      textAlign: "left",
+                      padding: 0,
+                      cursor: "pointer",
+                      display: "flex",
+                      gap: 6,
+                      alignItems: "baseline",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{obj.label || obj.id}</span>
+                    <span style={{ fontSize: 10, opacity: 0.65 }}>{obj.type}</span>
+                  </button>
+                  <span style={{ fontSize: 10, color: obj.valid ? "#2e7d32" : "#b42318", fontWeight: 700 }}>
+                    {obj.valid ? "OK" : "ERR"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 11, opacity: 0.7 }}>No scene objects yet.</div>
+        )}
+        {solved.errors.length > 0 && (
+          <div style={{ fontSize: 10, color: "#b42318" }}>{solved.errors[0]}</div>
+        )}
       </div>
 
       {buildMode === "create" && (
@@ -1204,6 +1967,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <div style={{ fontSize: 11, fontWeight: 700 }}>
               Action: {TOOL_LABELS[tool]}
             </div>
+            <div style={{ fontSize: 10, opacity: 0.75 }}>
+              Required inputs: {toolRequiredFields[tool].length ? toolRequiredFields[tool].join(", ") : "none"}
+              {missingRequiredToolFields.length
+                ? ` · missing: ${missingRequiredToolFields.join(", ")}`
+                : " · ready"}
+            </div>
             {tool === "point" && (
               <div style={{ fontSize: 11, opacity: 0.72 }}>
                 Click in the 3D viewer to place a free point on the construction workplane.
@@ -1216,9 +1985,31 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               onChange={(e) => updateToolField("id", e.target.value)}
             />
             {renderToolInputs()}
-            <button type="button" onClick={handleAddFromCreateTool}>
-              Add object
-            </button>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={handleAddFromCreateTool}>
+                Add object
+              </button>
+              <button type="button" onClick={createFromSelection}>
+                Create from selection
+              </button>
+              <button type="button" onClick={useSelectedObjectsForTool}>
+                Use selected objects
+              </button>
+              <button type="button" onClick={swapToolInputs}>
+                Swap inputs
+              </button>
+              <button type="button" onClick={clearBuildSelections}>
+                Clear selection
+              </button>
+              <button type="button" onClick={() => setHighlightRequiredInputs((v) => !v)}>
+                {highlightRequiredInputs ? "Hide required hints" : "Highlight required inputs"}
+              </button>
+            </div>
+            {highlightRequiredInputs && missingRequiredToolFields.length > 0 && (
+              <div style={{ fontSize: 11, color: "#b42318" }}>
+                Missing required inputs: {missingRequiredToolFields.join(", ")}
+              </div>
+            )}
             {toolError && <div style={{ fontSize: 11, color: "#b42318" }}>{toolError}</div>}
           </div>
         </div>
@@ -1391,87 +2182,419 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           </div>
         </div>
       )}
+        </>
+      )}
 
-      <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 12, fontWeight: 700 }}>Power layer</div>
-          <button type="button" onClick={() => { setPowerTab("palette"); setPaletteOpen(true); }}>
-            Command palette (Ctrl/Cmd+K)
-          </button>
+      {workspaceTab === "inspect" && (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector</div>
+          {selectedNode ? (
+            <div style={{ display: "grid", gap: 8, fontSize: 11 }}>
+              <div>Type: <b>{selectedNode.type}</b></div>
+              <div>Alias: <code>{selectedNode.id}</code></div>
+              <div>Role: <b>{selectedNode.type === "freePoint" ? "free" : "derived"}</b></div>
+              <label>
+                Name / label
+                <input
+                  type="text"
+                  value={selectedNode.label ?? ""}
+                  disabled={selectedNodeLocked}
+                  onChange={(e) =>
+                    setNodes((prev) =>
+                      prev.map((node) => (node.id === selectedNode.id ? { ...node, label: e.target.value } : node))
+                    )
+                  }
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+              <div style={{ fontFamily: "monospace", opacity: 0.8 }}>
+                Coordinates / equation: {selectedGraphObject?.summary ?? "No solved value"}
+              </div>
+              <div style={{ fontFamily: "monospace", opacity: 0.8 }}>
+                Parameters:{" "}
+                {selectedNodeParameters.length
+                  ? selectedNodeParameters
+                      .map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`)
+                      .join(", ")
+                  : "-"}
+              </div>
+              <div>Dependencies: {nodeDependencies(selectedNode).join(", ") || "-"}</div>
+              <div>Used by: {selectedNodeUsedBy.join(", ") || "-"}</div>
+              <div>Used in claims: {selectedNodeUsedByClaims.join(" | ") || "-"}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={!selectedNode.hidden}
+                    disabled={selectedNodeLocked}
+                    onChange={() => toggleNodeVisible(selectedNode.id)}
+                  />
+                  visible
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedNodeLocked}
+                    onChange={() =>
+                      setLockedNodeIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(selectedNode.id)) next.delete(selectedNode.id);
+                        else next.add(selectedNode.id);
+                        return next;
+                      })
+                    }
+                  />
+                  locked
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedNodeHelper}
+                    onChange={() =>
+                      setHelperNodeIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(selectedNode.id)) next.delete(selectedNode.id);
+                        else next.add(selectedNode.id);
+                        return next;
+                      })
+                    }
+                  />
+                  helper
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={selectedNodeLocked}
+                  onClick={() => setNodes((prev) => prev.filter((node) => node.id !== selectedNode.id))}
+                >
+                  Delete
+                </button>
+                <button type="button" onClick={() => setWorkspaceTab("build")}>Go To Build</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.7 }}>No selected object.</div>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {(["palette", "script"] as PowerTab[]).map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setPowerTab(tab)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 999,
-                border: "1px solid " + (powerTab === tab ? "#0a66c2" : "#d1d5db"),
-                background: powerTab === tab ? "#e6f0ff" : "#fff",
-                fontSize: 11,
-                fontWeight: powerTab === tab ? 700 : 500,
-              }}
+      )}
+
+      {workspaceTab === "claims" && (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Claims</div>
+            <select
+              value={claimsSortMode}
+              onChange={(e) => setClaimsSortMode(e.target.value as ClaimsSortMode)}
+              style={{ fontSize: 11 }}
             >
-              {tab === "palette" ? "Command Palette" : "Scene Script"}
-            </button>
-          ))}
-        </div>
-
-        {powerTab === "palette" && (
-          <div style={{ fontSize: 11, opacity: 0.75 }}>
-            Use keyboard shortcut <code>Ctrl+K</code> or <code>Cmd+K</code> to open quick command execution with parse preview.
+              <option value="status">Sort by status</option>
+              <option value="name">Sort by name</option>
+              <option value="residual">Sort by residual</option>
+            </select>
           </div>
-        )}
-
-        {powerTab === "script" && (
-          <div style={{ display: "grid", gap: 6 }}>
-            <textarea
-              value={scriptText}
-              onChange={(e) => setScriptText(e.target.value)}
-              rows={10}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
-            />
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 8px", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Add new claim</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button type="button" onClick={regenerateScriptFromScene}>Generate from scene</button>
-              <button type="button" onClick={rebuildFromScript}>Rerun / rebuild scene</button>
-              <button
-                type="button"
-                onClick={() => {
-                  setScriptText(DEFAULT_OLYMPIAD_ARC_SCRIPT);
-                  setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
-                  applyScriptToScene(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+              {(Object.keys(CHECK_LABELS) as CheckKind[]).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setCheckKind(kind)}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: "1px solid " + (checkKind === kind ? "#0a66c2" : "#d1d5db"),
+                    background: checkKind === kind ? "#e6f0ff" : "#fff",
+                    fontSize: 11,
+                  }}
+                >
+                  {CHECK_LABELS[kind]}
+                </button>
+              ))}
+            </div>
+            {renderCheckInputs()}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button type="button" onClick={handleAddCheck}>Add claim</button>
+            </div>
+            {checkError && <div style={{ fontSize: 11, color: "#b42318" }}>{checkError}</div>}
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {claimRows.map((claim) => (
+              <div
+                key={claim.def.id}
+                onClick={() => focusClaimInputs(claim.def.id)}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: "6px 8px",
+                  display: "grid",
+                  gap: 6,
+                  cursor: "pointer",
                 }}
               >
-                Restore embedded task
-              </button>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 6, alignItems: "center" }}>
-              <input
-                type="text"
-                value={presetName}
-                onChange={(e) => setPresetName(e.target.value)}
-                placeholder="preset name"
-              />
-              <button type="button" onClick={saveCurrentScriptPreset}>Save as preset</button>
-              <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)}>
-                <option value="">Preset...</option>
-                {presetOptions.map((preset) => (
-                  <option key={preset.name} value={preset.name}>
-                    {preset.name === BUILTIN_TASK_PRESET_NAME ? BUILTIN_TASK_PRESET_LABEL : preset.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={loadSelectedPreset} disabled={!selectedPresetName}>Load</button>
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" onClick={deleteSelectedPreset} disabled={!selectedPresetName || selectedPresetIsBuiltin}>Delete preset</button>
-            </div>
-            {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "center", fontSize: 11 }}>
+                  <span style={{ color: CHECK_BADGE_COLORS[claim.status], fontWeight: 700 }}>
+                    {claim.disabled ? "DISABLED" : claim.status.toUpperCase()}
+                  </span>
+                  <span>{claim.def.label}</span>
+                  <span style={{ fontFamily: "monospace", opacity: 0.75 }}>
+                    {formatConstraintValue(claim.residual, claim.unit === "deg" ? "deg" : "unit")}
+                    {" / "}
+                    {formatConstraintValue(claim.tolerance, claim.unit === "deg" ? "deg" : "unit")}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8, alignItems: "center", fontSize: 11 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={!claim.disabled}
+                      onChange={() => toggleClaimEnabled(claim.def.id)}
+                    />
+                    enabled
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    tolerance
+                    <input
+                      type="number"
+                      min={0}
+                      step={claim.unit === "deg" ? 0.1 : 0.0005}
+                      value={claim.tolerance}
+                      onChange={(e) => updateClaimTolerance(claim.def.id, Number(e.target.value))}
+                      style={{ width: 90 }}
+                    />
+                    <span style={{ opacity: 0.7 }}>{claim.unit}</span>
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => focusClaimInputs(claim.def.id)} disabled={!checkFocusRefs(claim.def.id).length}>
+                    Focus in scene
+                  </button>
+                  <button type="button" onClick={() => setClaimExplainId((prev) => (prev === claim.def.id ? null : claim.def.id))}>
+                    Explain inputs
+                  </button>
+                  <button type="button" onClick={() => setCheckDefs((prev) => prev.filter((entry) => entry.id !== claim.def.id))}>
+                    Delete
+                  </button>
+                </div>
+                {claimExplainId === claim.def.id && (
+                  <div style={{ fontFamily: "monospace", fontSize: 10, opacity: 0.85 }}>
+                    {explainCheckInputs(claim.def.id)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {!claimRows.length && <div style={{ fontSize: 11, opacity: 0.7 }}>No claims yet.</div>}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {workspaceTab === "script" && (
+        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 8 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Scene script</div>
+            <button type="button" onClick={() => setPaletteOpen(true)}>
+              Command palette (Ctrl/Cmd+K)
+            </button>
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.78, display: "grid", gap: 2 }}>
+            <div><code>point A -0.2 1.35 0</code></div>
+            <div><code>line A B as AB</code></div>
+            <div><code>circumcircle A B C as Omega</code></div>
+            <div><code>check point-on-circle X Omega</code></div>
+          </div>
+          <div style={{ fontSize: 11, color: scriptParsePreview.error ? "#b42318" : "#166534" }}>
+            {scriptParsePreview.error
+              ? `Parse error: ${scriptParsePreview.error}`
+              : `Parse OK: ${scriptParsePreview.nodes.length} objects, ${scriptParsePreview.checks.length} claims`}
+          </div>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 11,
+              fontFamily: "monospace",
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <div>parsed steps: {scriptDiagnostics.parsedSteps}</div>
+            <div>objects created: {scriptDiagnostics.objectCount}</div>
+            <div>claims created: {scriptDiagnostics.claimCount}</div>
+            <div>warnings: {scriptDiagnostics.warnings.length}</div>
+            <div>errors: {scriptDiagnostics.errors.length}</div>
+          </div>
+          <textarea
+            ref={scriptEditorRef}
+            value={scriptText}
+            onChange={(e) => setScriptText(e.target.value)}
+            rows={10}
+            style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
+          />
+          {scriptDiagnostics.diagnostics.length > 0 && (
+            <div style={{ display: "grid", gap: 4 }}>
+              {scriptDiagnostics.diagnostics.map((diag, idx) => (
+                <button
+                  key={`${diag.line}:${idx}`}
+                  type="button"
+                  onClick={() => focusScriptLine(diag.line)}
+                  style={{
+                    textAlign: "left",
+                    border: "1px solid " + (diag.kind === "error" ? "#fca5a5" : "#fde68a"),
+                    background: diag.kind === "error" ? "#fef2f2" : "#fffbeb",
+                    borderRadius: 6,
+                    padding: "4px 6px",
+                    fontSize: 11,
+                    fontFamily: "monospace",
+                    cursor: "pointer",
+                  }}
+                >
+                  line {diag.line}: {diag.message}
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+            <select value={selectedScriptTemplate} onChange={(e) => setSelectedScriptTemplate(e.target.value)}>
+              {SCRIPT_TEMPLATES.map((entry) => (
+                <option key={entry.label} value={entry.command}>
+                  {entry.label}: {entry.command}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={insertScriptTemplate}>Insert command template</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={regenerateScriptFromScene}>Generate from scene</button>
+            <button type="button" onClick={rebuildFromScript}>Run / rerun</button>
+            <button type="button" onClick={runSelectedScript}>Run selected</button>
+            <button type="button" onClick={runScriptFromCursor}>Run from cursor</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+            <select value={scriptSyncMode} onChange={(e) => setScriptSyncMode(e.target.value as ScriptSyncMode)}>
+              <option value="overwrite">Sync mode: overwrite script from scene</option>
+              <option value="appendNew">Sync mode: append new steps only</option>
+              <option value="keepComments">Sync mode: keep manual comments</option>
+            </select>
+            <button type="button" onClick={regenerateScriptFromScene}>Apply sync mode</button>
+          </div>
+          <div style={{ fontSize: 10, opacity: 0.72 }}>
+            Failed run keeps previous valid scene; fix diagnostics then rerun.
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>
+            Preview:{" "}
+            {palettePreview.ok ? (
+              <span style={{ color: "#166534" }}>{palettePreview.summary}</span>
+            ) : (
+              <span style={{ color: "#b42318" }}>{palettePreview.error}</span>
+            )}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6, alignItems: "center" }}>
+            <input
+              type="text"
+              list="construction-command-suggestions"
+              value={paletteInput}
+              onChange={(e) => setPaletteInput(e.target.value)}
+              placeholder="Quick command autocomplete"
+              style={{ fontFamily: "monospace", fontSize: 11 }}
+            />
+            <button type="button" onClick={executePalette}>Execute command</button>
+            <datalist id="construction-command-suggestions">
+              {SCRIPT_TEMPLATES.map((entry) => (
+                <option key={entry.label} value={entry.command} />
+              ))}
+            </datalist>
+          </div>
+          {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
+        </div>
+      )}
+
+      {workspaceTab === "scene" && (
+        <div style={{ display: "grid", gap: 8, border: "1px solid #e5e7eb", borderRadius: 10, padding: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Scene card</div>
+          <label style={{ fontSize: 11 }}>
+            Scene name
+            <input
+              type="text"
+              value={sceneName}
+              onChange={(e) => setSceneName(e.target.value)}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11 }}>
+            Scene type
+            <select
+              value={sceneType}
+              onChange={(e) => setSceneType(e.target.value as SceneType)}
+              style={{ width: "100%", marginTop: 4 }}
+            >
+              <option value="task">Task</option>
+              <option value="free">Free scene</option>
+              <option value="demo">Demo</option>
+            </select>
+          </label>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="radio" checked={sceneMode === "plane2d"} onChange={() => setSceneMode("plane2d")} />
+              plane2d
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="radio" checked={sceneMode === "space3d"} onChange={() => setSceneMode("space3d")} />
+              space3d
+            </label>
+          </div>
+          <label style={{ fontSize: 11 }}>
+            Embedded task metadata
+            <textarea
+              value={sceneMetadata}
+              onChange={(e) => setSceneMetadata(e.target.value)}
+              rows={3}
+              style={{ width: "100%", marginTop: 4 }}
+            />
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 6, alignItems: "center" }}>
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              placeholder="preset name"
+            />
+            <button type="button" onClick={saveCurrentScriptPreset}>Save as preset</button>
+            <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)}>
+              <option value="">Preset...</option>
+              {presetOptions.map((preset) => (
+                <option key={preset.name} value={preset.name}>
+                  {preset.name === BUILTIN_TASK_PRESET_NAME ? BUILTIN_TASK_PRESET_LABEL : preset.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={loadSelectedPreset} disabled={!selectedPresetName}>Load</button>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={deleteSelectedPreset} disabled={!selectedPresetName || selectedPresetIsBuiltin}>
+              Delete preset
+            </button>
+            <button type="button" onClick={resetToEmbeddedTask}>Restore embedded task</button>
+            <button type="button" onClick={cloneSceneToPreset}>Duplicate</button>
+            <button type="button" onClick={() => importSceneInputRef.current?.click()}>Import</button>
+            <button type="button" onClick={exportSceneBundle}>Export scene JSON</button>
+            <button type="button" onClick={exportSceneScript}>Export scene script</button>
+            <button type="button" onClick={cloneIntoGeometry3D}>Clone into Geometry 3D</button>
+          </div>
+          <input
+            ref={importSceneInputRef}
+            type="file"
+            accept=".json,application/json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importSceneBundle(file);
+              e.currentTarget.value = "";
+            }}
+          />
+        </div>
+      )}
 
       {paletteOpen && (
         <div

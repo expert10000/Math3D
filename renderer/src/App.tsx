@@ -43,6 +43,7 @@ import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
 import { buildDemoPyramidConstruction } from "./geometry/demoScene";
+import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
@@ -604,6 +605,12 @@ type GeometryDatasetMeshObject = {
   transform: GeometryObjectTransform;
   visible: boolean;
   material: GeometryObject["material"];
+};
+
+type ProblemSceneCloneDetail = {
+  scene?: GeometryScene | null;
+  labels?: OverlayLabelSet[] | null;
+  name?: string;
 };
 
 type UnifiedObjectCategory = "sceneObject" | "surfaceDefinition" | "dataset" | "derived";
@@ -4427,6 +4434,238 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     setGeometryMode("procedural");
     setMode("geometry");
   }, [datasetKind, surfaceMeshData]);
+
+  useEffect(() => {
+    const finitePoint = (p: { x: number; y: number; z: number } | null | undefined) =>
+      !!p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+
+    const onCloneProblemScene = (event: Event) => {
+      const detail = (event as CustomEvent<ProblemSceneCloneDetail>).detail;
+      const scene = detail?.scene ?? null;
+      if (!scene) {
+        setGeometryBakeError("Clone into Geometry 3D failed: scene payload missing.");
+        return;
+      }
+
+      const sceneLabel = detail?.name?.trim() || "Problem scene";
+      const points = (scene.points ?? []).filter((p) => finitePoint(p));
+
+      const cloud: Array<{ x: number; y: number; z: number }> = [];
+      points.forEach((p) => cloud.push({ x: p.x, y: p.y, z: p.z }));
+      (scene.segments ?? []).forEach((seg) => {
+        if (finitePoint(seg.a)) cloud.push({ x: seg.a.x, y: seg.a.y, z: seg.a.z });
+        if (finitePoint(seg.b)) cloud.push({ x: seg.b.x, y: seg.b.y, z: seg.b.z });
+      });
+      (scene.triangles ?? []).forEach((tri) => {
+        if (finitePoint(tri.a)) cloud.push({ x: tri.a.x, y: tri.a.y, z: tri.a.z });
+        if (finitePoint(tri.b)) cloud.push({ x: tri.b.x, y: tri.b.y, z: tri.b.z });
+        if (finitePoint(tri.c)) cloud.push({ x: tri.c.x, y: tri.c.y, z: tri.c.z });
+      });
+      (scene.polygons ?? []).forEach((poly) =>
+        poly.vertices.forEach((v) => {
+          if (finitePoint(v)) cloud.push({ x: v.x, y: v.y, z: v.z });
+        })
+      );
+      (scene.polyhedra ?? []).forEach((poly) =>
+        poly.faces.forEach((face) =>
+          face.vertices.forEach((v) => {
+            if (finitePoint(v)) cloud.push({ x: v.x, y: v.y, z: v.z });
+          })
+        )
+      );
+      (scene.lines ?? []).forEach((line) => {
+        if (finitePoint(line.origin)) cloud.push({ x: line.origin.x, y: line.origin.y, z: line.origin.z });
+      });
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+      for (const p of cloud) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        minZ = Math.min(minZ, p.z);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+        maxZ = Math.max(maxZ, p.z);
+      }
+      const diag =
+        minX <= maxX && minY <= maxY && minZ <= maxZ
+          ? Math.hypot(maxX - minX, maxY - minY, maxZ - minZ)
+          : 0;
+      const defaultLineLength = diag > 0 ? Math.max(2, diag * 1.4) : 6;
+      const pointRadius = diag > 0 ? clampNumber(diag * 0.012, 0.02, 0.11) : 0.05;
+      const lineRadius = diag > 0 ? clampNumber(diag * 0.005, 0.01, 0.06) : 0.02;
+
+      const lineSegments = (scene.lines ?? [])
+        .map((line) => {
+          if (!finitePoint(line.origin)) return null;
+          const dx = Number(line.direction?.x ?? 0);
+          const dy = Number(line.direction?.y ?? 0);
+          const dz = Number(line.direction?.z ?? 0);
+          const len = Math.hypot(dx, dy, dz);
+          if (!Number.isFinite(len) || len <= 1e-8) return null;
+          const ux = dx / len;
+          const uy = dy / len;
+          const uz = dz / len;
+          const half =
+            Number.isFinite(line.length ?? NaN) && (line.length ?? 0) > 1e-4
+              ? (line.length as number) * 0.5
+              : defaultLineLength * 0.5;
+          return {
+            a: {
+              x: line.origin.x - ux * half,
+              y: line.origin.y - uy * half,
+              z: line.origin.z - uz * half,
+            },
+            b: {
+              x: line.origin.x + ux * half,
+              y: line.origin.y + uy * half,
+              z: line.origin.z + uz * half,
+            },
+            color: line.color,
+            opacity: line.opacity,
+            radiusScale: line.radiusScale,
+          };
+        })
+        .filter((seg): seg is NonNullable<typeof seg> => !!seg);
+
+      const rawSegments = [...(scene.segments ?? []), ...lineSegments];
+      const maxPoints = 160;
+      const maxSegments = 280;
+      const pointStride = Math.max(1, Math.ceil(points.length / maxPoints));
+      const segmentStride = Math.max(1, Math.ceil(rawSegments.length / maxSegments));
+      const sampledPoints = points.filter((_, idx) => idx % pointStride === 0);
+      const sampledSegments = rawSegments.filter((_, idx) => idx % segmentStride === 0);
+
+      const clonedObjects: GeometryObject[] = [];
+      for (let i = 0; i < sampledPoints.length; i++) {
+        const p = sampledPoints[i];
+        const pointObj = createGeometryObject("sphere", makeId());
+        pointObj.name = p.label ?? p.id ?? `P${i + 1}`;
+        pointObj.group = "problem-clone";
+        pointObj.params = {
+          ...pointObj.params,
+          radius: Number.isFinite(p.size ?? NaN) ? clampNumber(Number(p.size), 0.01, 0.2) : pointRadius,
+          widthSegments: 14,
+          heightSegments: 10,
+        };
+        pointObj.transform = {
+          position: { x: p.x, y: p.y, z: p.z },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        };
+        pointObj.material = {
+          color: Number.isFinite(p.color ?? NaN) ? Number(p.color) : 0xef4444,
+          opacity: Number.isFinite(p.opacity ?? NaN) ? clampNumber(Number(p.opacity), 0.1, 1) : 1,
+        };
+        clonedObjects.push(pointObj);
+      }
+
+      const yAxis = new THREE.Vector3(0, 1, 0);
+      for (let i = 0; i < sampledSegments.length; i++) {
+        const seg = sampledSegments[i];
+        if (!finitePoint(seg.a) || !finitePoint(seg.b)) continue;
+        const vx = seg.b.x - seg.a.x;
+        const vy = seg.b.y - seg.a.y;
+        const vz = seg.b.z - seg.a.z;
+        const len = Math.hypot(vx, vy, vz);
+        if (!Number.isFinite(len) || len <= 1e-7) continue;
+        const ux = vx / len;
+        const uy = vy / len;
+        const uz = vz / len;
+        const cylinder = createGeometryObject("cylinder", makeId());
+        cylinder.name = `Segment ${i + 1}`;
+        cylinder.group = "problem-clone";
+        const radiusScale = Number.isFinite(seg.radiusScale ?? NaN) ? Number(seg.radiusScale) : 1;
+        const radius = clampNumber(lineRadius * radiusScale, 0.004, 0.08);
+        cylinder.params = {
+          ...cylinder.params,
+          radiusTop: radius,
+          radiusBottom: radius,
+          height: len,
+          radialSegments: 10,
+          heightSegments: 1,
+          openEnded: false,
+        };
+        const quat = new THREE.Quaternion().setFromUnitVectors(yAxis, new THREE.Vector3(ux, uy, uz));
+        const euler = new THREE.Euler().setFromQuaternion(quat, "XYZ");
+        cylinder.transform = {
+          position: {
+            x: 0.5 * (seg.a.x + seg.b.x),
+            y: 0.5 * (seg.a.y + seg.b.y),
+            z: 0.5 * (seg.a.z + seg.b.z),
+          },
+          rotation: { x: euler.x, y: euler.y, z: euler.z },
+          scale: { x: 1, y: 1, z: 1 },
+        };
+        cylinder.material = {
+          color: Number.isFinite(seg.color ?? NaN) ? Number(seg.color) : 0x64748b,
+          opacity: Number.isFinite(seg.opacity ?? NaN) ? clampNumber(Number(seg.opacity), 0.1, 1) : 1,
+        };
+        clonedObjects.push(cylinder);
+      }
+
+      const renderData = buildGeometryRenderData(scene, { label: sceneLabel, emitEdges: false });
+      let meshObject: GeometryDatasetMeshObject | null = null;
+      if (renderData.mesh?.positions?.length) {
+        const meshId = makeId();
+        meshObject = {
+          id: meshId,
+          name: `${sceneLabel} (faces)`,
+          mesh: cloneSurfaceMeshData(renderData.mesh, `${sceneLabel} (faces)`),
+          transform: {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          },
+          visible: true,
+          material: { color: 0x8aa4ff, opacity: 0.95 },
+        };
+      }
+
+      if (!clonedObjects.length && !meshObject) {
+        setGeometryBakeError("Clone into Geometry 3D failed: scene has no clonable geometry.");
+        return;
+      }
+
+      if (clonedObjects.length) {
+        setGeometryObjects((prev) => [...clonedObjects, ...prev]);
+      }
+      if (meshObject) {
+        setGeometryDatasetMeshObjects((prev) => [meshObject as GeometryDatasetMeshObject, ...prev]);
+      }
+
+      const selectedId = clonedObjects[0]?.id ?? meshObject?.id ?? null;
+      if (selectedId) setGeometrySelectedObjectId(selectedId);
+
+      const pointSampled = sampledPoints.length !== points.length;
+      const segmentSampled = sampledSegments.length !== rawSegments.length;
+      if (pointSampled || segmentSampled) {
+        setGeometryBakeError(
+          `Problem scene cloned with sampling (${sampledPoints.length}/${points.length} points, ${sampledSegments.length}/${rawSegments.length} segments).`
+        );
+      } else {
+        setGeometryBakeError(null);
+      }
+
+      setGeometryMode("procedural");
+      setMode("geometry");
+    };
+
+    globalThis.addEventListener(
+      "math3d:problem-scene:clone-to-geometry3d",
+      onCloneProblemScene as EventListener
+    );
+    return () => {
+      globalThis.removeEventListener(
+        "math3d:problem-scene:clone-to-geometry3d",
+        onCloneProblemScene as EventListener
+      );
+    };
+  }, []);
 
   // complex map sweep
   const [complexMapSpec, setComplexMapSpec] = useState<ComplexMapSweepSpec>(COMPLEX_MAP_DEFAULT_SPEC);
