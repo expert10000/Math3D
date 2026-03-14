@@ -68,6 +68,25 @@ const DEFAULT_FREE_POINTS: ConstructionNode[] = [
   { id: "C", type: "freePoint", label: "C", point: { x: 1.6, y: -0.55, z: 0 }, style: { color: 0xef4444, size: 0.05 } },
 ];
 
+const DEFAULT_OLYMPIAD_ARC_SCRIPT = [
+  "point A -0.2 1.35 0",
+  "point B -1.4 -0.7 0",
+  "point C 1.6 -0.55 0",
+  "circumcircle A B C as Omega",
+  "circumcenter A B C as O",
+  "arc-midpoint Omega B C exclude A as M",
+  "circle3 A O M as Gamma",
+  "line A B as AB",
+  "line A C as AC",
+  "second-intersection AB Gamma exclude A as P",
+  "second-intersection AC Gamma exclude A as Q",
+  "line B C as BC",
+  "perp-bisector P Q as bisPQ",
+  "perp BC through A as A_perp_BC",
+  "intersection bisPQ A_perp_BC as X",
+  "check point-on-circle X Omega",
+].join("\n");
+
 const TOOL_LABELS: Record<ToolKind, string> = {
   point: "Add free point",
   line: "Through 2 points",
@@ -477,6 +496,46 @@ const parseCommandLine = (
   return { ok: false, error: `Unsupported command: ${trimmed}` };
 };
 
+const parseSceneScript = (script: string) => {
+  const draftNodes: ConstructionNode[] = [];
+  const draftChecks: ProblemCheckDef[] = [];
+  const ids = new Set<string>();
+
+  const lines = script.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.startsWith("#")) continue;
+    const parsed = parseCommandLine(line, ids, draftChecks.length + 1);
+    if (!parsed.ok) {
+      return { nodes: draftNodes, checks: draftChecks, error: `Line ${i + 1}: ${parsed.error}` };
+    }
+    if (parsed.node) {
+      draftNodes.push(parsed.node);
+      ids.add(parsed.node.id);
+    }
+    if (parsed.check) {
+      draftChecks.push(parsed.check);
+    }
+  }
+  return { nodes: draftNodes, checks: draftChecks, error: null as string | null };
+};
+
+const DEFAULT_INITIAL_SCENE = (() => {
+  const parsed = parseSceneScript(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+  if (!parsed.error && parsed.nodes.length > 0) {
+    return {
+      nodes: parsed.nodes,
+      checks: parsed.checks,
+      script: DEFAULT_OLYMPIAD_ARC_SCRIPT,
+    };
+  }
+  return {
+    nodes: DEFAULT_FREE_POINTS,
+    checks: [] as ProblemCheckDef[],
+    script: buildScriptFromState(DEFAULT_FREE_POINTS, []),
+  };
+})();
+
 const loadPresets = (): ScriptPreset[] => {
   try {
     const raw = globalThis.localStorage?.getItem(PRESET_STORAGE_KEY);
@@ -509,9 +568,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   viewportPickPoint = null,
   onViewportPickConsumed,
 }) => {
-  const [nodes, setNodes] = useState<ConstructionNode[]>(() => [...DEFAULT_FREE_POINTS]);
-  const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string>("A");
+  const [nodes, setNodes] = useState<ConstructionNode[]>(() => DEFAULT_INITIAL_SCENE.nodes.map((node) => ({ ...node })));
+  const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>(() => DEFAULT_INITIAL_SCENE.checks.map((check) => ({ ...check })));
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
   const [tool, setTool] = useState<ToolKind>("point");
@@ -527,7 +586,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [paletteInput, setPaletteInput] = useState("");
   const [paletteError, setPaletteError] = useState<string | null>(null);
 
-  const [scriptText, setScriptText] = useState<string>(() => buildScriptFromState(DEFAULT_FREE_POINTS, []));
+  const [scriptText, setScriptText] = useState<string>(() => DEFAULT_INITIAL_SCENE.script);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
@@ -830,24 +889,12 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
 
   const rebuildFromScript = () => {
     setScriptError(null);
-    const draftNodes: ConstructionNode[] = [];
-    const draftChecks: ProblemCheckDef[] = [];
-    const ids = new Set<string>();
-
-    const lines = scriptText.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line || line.startsWith("#")) continue;
-      const parsed = parseCommandLine(line, ids, draftChecks.length + 1);
-      if (!parsed.ok) {
-        setScriptError(`Line ${i + 1}: ${parsed.error}`);
-        return;
-      }
-      if (parsed.node) {
-        draftNodes.push(parsed.node);
-        ids.add(parsed.node.id);
-      }
-      if (parsed.check) draftChecks.push(parsed.check);
+    const parsed = parseSceneScript(scriptText);
+    const draftNodes = parsed.nodes;
+    const draftChecks = parsed.checks;
+    if (parsed.error) {
+      setScriptError(parsed.error);
+      return;
     }
     if (!draftNodes.length) {
       setScriptError("Script produced no construction objects.");
