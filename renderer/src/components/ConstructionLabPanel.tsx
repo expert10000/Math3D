@@ -61,6 +61,8 @@ type ConstructionLabPanelProps = {
 };
 
 const PRESET_STORAGE_KEY = "math3d.geometry.sceneScriptPresets.v1";
+const BUILTIN_TASK_PRESET_NAME = "__builtin_olympiad_arc_task__";
+const BUILTIN_TASK_PRESET_LABEL = "Task: Olympiad Arc";
 
 const DEFAULT_FREE_POINTS: ConstructionNode[] = [
   { id: "A", type: "freePoint", label: "A", point: { x: -0.2, y: 1.35, z: 0 }, style: { color: 0xef4444, size: 0.05 } },
@@ -590,11 +592,19 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
-  const [selectedPresetName, setSelectedPresetName] = useState("");
+  const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
 
   const solved = useMemo(() => evaluateConstructionGraph(nodes), [nodes]);
   const checkResults = useMemo(() => evaluateProblemChecks(solved, checkDefs), [solved, checkDefs]);
   const labels = useMemo(() => buildPointLabelSet(solved.points), [solved.points]);
+  const presetOptions = useMemo(() => {
+    const userPresets = presets.filter((preset) => preset.name !== BUILTIN_TASK_PRESET_NAME);
+    return [
+      { name: BUILTIN_TASK_PRESET_NAME, script: DEFAULT_OLYMPIAD_ARC_SCRIPT, savedAt: 0 },
+      ...userPresets,
+    ];
+  }, [presets]);
+  const selectedPresetIsBuiltin = selectedPresetName === BUILTIN_TASK_PRESET_NAME;
 
   useEffect(() => {
     onChange({
@@ -887,23 +897,32 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setPaletteOpen(false);
   };
 
-  const rebuildFromScript = () => {
-    setScriptError(null);
-    const parsed = parseSceneScript(scriptText);
-    const draftNodes = parsed.nodes;
-    const draftChecks = parsed.checks;
+  const applyScriptToScene = useCallback((script: string) => {
+    const parsed = parseSceneScript(script);
     if (parsed.error) {
       setScriptError(parsed.error);
-      return;
+      return false;
     }
-    if (!draftNodes.length) {
+    if (!parsed.nodes.length) {
       setScriptError("Script produced no construction objects.");
-      return;
+      return false;
     }
-    setNodes(draftNodes);
-    setCheckDefs(draftChecks);
-    setSelectedNodeId(draftNodes[0].id);
+    setScriptError(null);
+    setNodes(parsed.nodes);
+    setCheckDefs(parsed.checks);
+    setSelectedNodeId(parsed.nodes[0].id);
     setBuildMode("select");
+    return true;
+  }, []);
+
+  const rebuildFromScript = () => {
+    setScriptError(null);
+    const source = scriptText.trim().length ? scriptText : DEFAULT_OLYMPIAD_ARC_SCRIPT;
+    if (!scriptText.trim().length) {
+      setScriptText(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+      setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
+    }
+    applyScriptToScene(source);
   };
 
   const regenerateScriptFromScene = () => {
@@ -923,16 +942,17 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   };
 
   const loadSelectedPreset = () => {
-    const preset = presets.find((entry) => entry.name === selectedPresetName);
+    const preset = presetOptions.find((entry) => entry.name === selectedPresetName);
     if (!preset) return;
     setScriptText(preset.script);
+    applyScriptToScene(preset.script);
   };
 
   const deleteSelectedPreset = () => {
-    if (!selectedPresetName) return;
+    if (!selectedPresetName || selectedPresetIsBuiltin) return;
     const next = presets.filter((preset) => preset.name !== selectedPresetName);
     setPresets(next);
-    setSelectedPresetName("");
+    setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
     savePresets(next);
   };
 
@@ -1416,6 +1436,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <button type="button" onClick={regenerateScriptFromScene}>Generate from scene</button>
               <button type="button" onClick={rebuildFromScript}>Rerun / rebuild scene</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScriptText(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+                  setSelectedPresetName(BUILTIN_TASK_PRESET_NAME);
+                  applyScriptToScene(DEFAULT_OLYMPIAD_ARC_SCRIPT);
+                }}
+              >
+                Restore embedded task
+              </button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 6, alignItems: "center" }}>
               <input
@@ -1427,16 +1457,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <button type="button" onClick={saveCurrentScriptPreset}>Save as preset</button>
               <select value={selectedPresetName} onChange={(e) => setSelectedPresetName(e.target.value)}>
                 <option value="">Preset...</option>
-                {presets.map((preset) => (
+                {presetOptions.map((preset) => (
                   <option key={preset.name} value={preset.name}>
-                    {preset.name}
+                    {preset.name === BUILTIN_TASK_PRESET_NAME ? BUILTIN_TASK_PRESET_LABEL : preset.name}
                   </option>
                 ))}
               </select>
               <button type="button" onClick={loadSelectedPreset} disabled={!selectedPresetName}>Load</button>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button type="button" onClick={deleteSelectedPreset} disabled={!selectedPresetName}>Delete preset</button>
+              <button type="button" onClick={deleteSelectedPreset} disabled={!selectedPresetName || selectedPresetIsBuiltin}>Delete preset</button>
             </div>
             {scriptError && <div style={{ fontSize: 11, color: "#b42318" }}>{scriptError}</div>}
           </div>
