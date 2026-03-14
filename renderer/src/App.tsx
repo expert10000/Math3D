@@ -2899,6 +2899,8 @@ const App: React.FC = () => {
   }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
+  const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
+  const [geometryProblemCameraOverrideToken, setGeometryProblemCameraOverrideToken] = useState(0);
   const [geometryPendingViewportPoint, setGeometryPendingViewportPoint] = useState<{
     x: number;
     y: number;
@@ -2907,6 +2909,21 @@ const App: React.FC = () => {
   const handleConstructionLabChange = useCallback((next: ConstructionLabState) => {
     setGeometryConstructionState(next);
   }, []);
+  const handleConstructionLabFocusObjectInScene = useCallback(
+    (focus: { target: { x: number; y: number; z: number }; radius?: number }) => {
+      const t = focus?.target;
+      if (!t || !Number.isFinite(t.x) || !Number.isFinite(t.y) || !Number.isFinite(t.z)) return;
+      const radius = Number.isFinite(focus?.radius ?? NaN) ? Math.max(0.5, Number(focus?.radius)) : 1.5;
+      const dist = Math.max(2.2, radius * 2.8);
+      setGeometryProblemCameraOverride({
+        target: { x: t.x, y: t.y, z: t.z },
+        position: { x: t.x + dist, y: t.y + dist * 0.8, z: t.z + dist },
+        up: { x: 0, y: 1, z: 0 },
+      });
+      setGeometryProblemCameraOverrideToken((v) => v + 1);
+    },
+    []
+  );
   const [geometryProceduralPick, setGeometryProceduralPick] = useState<{
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
@@ -2954,6 +2971,8 @@ const App: React.FC = () => {
     if (geometryMode === "problem") return;
     setGeometryPointPlacementEnabled(false);
     setGeometryPendingViewportPoint(null);
+    setGeometryProblemCameraOverride(null);
+    setGeometryProblemCameraOverrideToken(0);
   }, [geometryMode]);
   const geometryConstraints = useMemo(
     () => evaluateConstraints(geometryDemo.constraints),
@@ -19112,6 +19131,7 @@ case "mobius":
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
                       onViewportPickConsumed={() => setGeometryPendingViewportPoint(null)}
+                      onFocusObjectInScene={handleConstructionLabFocusObjectInScene}
                     />
                   </>
                 )}
@@ -19172,6 +19192,8 @@ case "mobius":
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
+                  cameraOverride={geometryMode === "problem" ? geometryProblemCameraOverride : null}
+                  cameraOverrideToken={geometryMode === "problem" ? geometryProblemCameraOverrideToken : 0}
                   highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
                   highlightPointSets={
                     geometryMode === "demo"

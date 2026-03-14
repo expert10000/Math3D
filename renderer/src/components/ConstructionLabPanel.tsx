@@ -74,6 +74,16 @@ type ConstructionLabPanelProps = {
   onPointPlacementModeChange?: (enabled: boolean) => void;
   viewportPickPoint?: { x: number; y: number; z: number } | null;
   onViewportPickConsumed?: () => void;
+  onFocusObjectInScene?: (focus: { target: { x: number; y: number; z: number }; radius?: number }) => void;
+};
+
+type ConstructionHistoryState = {
+  nodes: ConstructionNode[];
+  checkDefs: ProblemCheckDef[];
+  selectedNodeId: string;
+  lockedNodeIds: string[];
+  helperNodeIds: string[];
+  disabledCheckIds: string[];
 };
 
 const PRESET_STORAGE_KEY = "math3d.geometry.sceneScriptPresets.v1";
@@ -607,6 +617,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   onPointPlacementModeChange,
   viewportPickPoint = null,
   onViewportPickConsumed,
+  onFocusObjectInScene,
 }) => {
   const [nodes, setNodes] = useState<ConstructionNode[]>(() => DEFAULT_INITIAL_SCENE.nodes.map((node) => ({ ...node })));
   const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>(() => DEFAULT_INITIAL_SCENE.checks.map((check) => ({ ...check })));
@@ -631,13 +642,21 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [scriptSyncMode, setScriptSyncMode] = useState<ScriptSyncMode>("overwrite");
   const [claimsSortMode, setClaimsSortMode] = useState<ClaimsSortMode>("status");
   const [disabledCheckIds, setDisabledCheckIds] = useState<Set<string>>(() => new Set());
+  const [helpersVisible, setHelpersVisible] = useState(true);
   const [highlightRequiredInputs, setHighlightRequiredInputs] = useState(false);
+  const [selectionAId, setSelectionAId] = useState("");
+  const [selectionBId, setSelectionBId] = useState("");
   const [selectedScriptTemplate, setSelectedScriptTemplate] = useState(SCRIPT_TEMPLATES[0]?.command ?? "");
   const [lockedNodeIds, setLockedNodeIds] = useState<Set<string>>(() => new Set());
   const [helperNodeIds, setHelperNodeIds] = useState<Set<string>>(() => new Set());
   const [claimExplainId, setClaimExplainId] = useState<string | null>(null);
   const importSceneInputRef = useRef<HTMLInputElement | null>(null);
   const scriptEditorRef = useRef<HTMLTextAreaElement | null>(null);
+  const historyRef = useRef<{ stack: ConstructionHistoryState[]; index: number; applying: boolean }>({
+    stack: [],
+    index: -1,
+    applying: false,
+  });
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInput, setPaletteInput] = useState("");
@@ -649,7 +668,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
   const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
 
-  const solved = useMemo(() => evaluateConstructionGraph(nodes), [nodes]);
+  const nodesForSolve = useMemo(
+    () =>
+      helpersVisible
+        ? nodes
+        : nodes.map((node) => (helperNodeIds.has(node.id) ? { ...node, hidden: true } : node)),
+    [helperNodeIds, helpersVisible, nodes]
+  );
+  const solved = useMemo(() => evaluateConstructionGraph(nodesForSolve), [nodesForSolve]);
   const activeCheckDefs = useMemo(
     () => checkDefs.filter((check) => !disabledCheckIds.has(check.id)),
     [checkDefs, disabledCheckIds]
@@ -805,6 +831,27 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     return checkReferencedIds(check);
   }, [checkDefById]);
 
+  const focusNodeInScene = useCallback((id: string) => {
+    if (!onFocusObjectInScene) return;
+    const point = solved.points[id];
+    if (point) {
+      onFocusObjectInScene({ target: { x: point.x, y: point.y, z: point.z }, radius: 0.8 });
+      return;
+    }
+    const line = solved.lines[id];
+    if (line?.origin) {
+      onFocusObjectInScene({ target: { x: line.origin.x, y: line.origin.y, z: line.origin.z }, radius: 2.5 });
+      return;
+    }
+    const circle = solved.circles[id];
+    if (circle?.center) {
+      onFocusObjectInScene({
+        target: { x: circle.center.x, y: circle.center.y, z: circle.center.z },
+        radius: Math.max(1, Number(circle.radius) * 1.6),
+      });
+    }
+  }, [onFocusObjectInScene, solved.circles, solved.lines, solved.points]);
+
   const checkResultById = useMemo(() => {
     const map = new Map<string, ProblemCheckResult>();
     for (const row of checkResults) map.set(row.id, row);
@@ -837,6 +884,80 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     }
     return rows;
   }, [checkDefs, checkResultById, claimsSortMode, disabledCheckIds]);
+
+  const snapshotCurrent = useCallback((): ConstructionHistoryState => ({
+    nodes: nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })),
+    checkDefs: checkDefs.map((check) => ({ ...check })),
+    selectedNodeId,
+    lockedNodeIds: Array.from(lockedNodeIds).sort(),
+    helperNodeIds: Array.from(helperNodeIds).sort(),
+    disabledCheckIds: Array.from(disabledCheckIds).sort(),
+  }), [checkDefs, disabledCheckIds, helperNodeIds, lockedNodeIds, nodes, selectedNodeId]);
+
+  const snapshotSignature = useMemo(
+    () => JSON.stringify(snapshotCurrent()),
+    [snapshotCurrent]
+  );
+
+  useEffect(() => {
+    const history = historyRef.current;
+    if (history.applying) return;
+    const next = snapshotCurrent();
+    const current = history.stack[history.index];
+    if (current && JSON.stringify(current) === snapshotSignature) return;
+    const trimmed = history.stack.slice(0, history.index + 1);
+    trimmed.push(next);
+    const MAX_HISTORY = 200;
+    history.stack = trimmed.length > MAX_HISTORY ? trimmed.slice(trimmed.length - MAX_HISTORY) : trimmed;
+    history.index = history.stack.length - 1;
+  }, [snapshotCurrent, snapshotSignature]);
+
+  const applyHistoryState = useCallback((state: ConstructionHistoryState) => {
+    historyRef.current.applying = true;
+    setNodes(state.nodes.map((node) => ({ ...node, style: node.style ? { ...node.style } : undefined })));
+    setCheckDefs(state.checkDefs.map((check) => ({ ...check })));
+    setSelectedNodeId(state.selectedNodeId);
+    setLockedNodeIds(new Set(state.lockedNodeIds));
+    setHelperNodeIds(new Set(state.helperNodeIds));
+    setDisabledCheckIds(new Set(state.disabledCheckIds));
+    queueMicrotask(() => {
+      historyRef.current.applying = false;
+    });
+  }, []);
+
+  const undoHistory = useCallback(() => {
+    const history = historyRef.current;
+    if (history.index <= 0) return;
+    history.index -= 1;
+    const state = history.stack[history.index];
+    if (state) applyHistoryState(state);
+  }, [applyHistoryState]);
+
+  const redoHistory = useCallback(() => {
+    const history = historyRef.current;
+    if (history.index >= history.stack.length - 1) return;
+    history.index += 1;
+    const state = history.stack[history.index];
+    if (state) applyHistoryState(state);
+  }, [applyHistoryState]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoHistory();
+        return;
+      }
+      if (key === "y" || (key === "z" && event.shiftKey)) {
+        event.preventDefault();
+        redoHistory();
+      }
+    };
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
+  }, [redoHistory, undoHistory]);
 
   const sceneObjectStats = useMemo(() => {
     const stats = {
@@ -1613,6 +1734,143 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     setToolError(null);
   }, [addNode, graphObjectById, nodes, selectedNodeId, solved.points]);
 
+  const useSelectedAsSelectionSlot = useCallback((slot: "a" | "b") => {
+    if (!selectedNodeId) return;
+    if (slot === "a") setSelectionAId(selectedNodeId);
+    else setSelectionBId(selectedNodeId);
+  }, [selectedNodeId]);
+
+  const selectionA = selectionAId ? graphObjectById.get(selectionAId) ?? null : null;
+  const selectionB = selectionBId ? graphObjectById.get(selectionBId) ?? null : null;
+
+  const createClaimFromSelection = useCallback(() => {
+    setCheckError(null);
+    if (!selectionA || !selectionB) {
+      setCheckError("Select two objects for claim creation.");
+      return;
+    }
+    const id = `check_${checkDefs.length + 1}`;
+    if (selectionA.type === "point" && selectionB.type === "circle") {
+      setCheckDefs((prev) => [
+        ...prev,
+        {
+          id,
+          label: `${selectionA.id} on ${selectionB.id}`,
+          type: "pointOnCircle",
+          point: selectionA.id,
+          circle: selectionB.id,
+          tolerance: 2e-3,
+        },
+      ]);
+      return;
+    }
+    if (selectionA.type === "circle" && selectionB.type === "point") {
+      setCheckDefs((prev) => [
+        ...prev,
+        {
+          id,
+          label: `${selectionB.id} on ${selectionA.id}`,
+          type: "pointOnCircle",
+          point: selectionB.id,
+          circle: selectionA.id,
+          tolerance: 2e-3,
+        },
+      ]);
+      return;
+    }
+    if (selectionA.type === "line" && selectionB.type === "line") {
+      setCheckDefs((prev) => [
+        ...prev,
+        {
+          id,
+          label: `${selectionA.id} parallel ${selectionB.id}`,
+          type: "parallel",
+          lines: [selectionA.id, selectionB.id],
+          toleranceDeg: 0.6,
+        },
+      ]);
+      return;
+    }
+    setCheckError("No automatic claim rule for this selection pair.");
+  }, [checkDefs.length, selectionA, selectionB]);
+
+  const createObjectFromSelectionAssistant = useCallback((kind: "line" | "midpoint" | "perpBisector" | "perpendicular" | "parallel") => {
+    setToolError(null);
+    if (!selectionA || !selectionB) {
+      setToolError("Select two objects first.");
+      return;
+    }
+    const ids = new Set(nodes.map((node) => node.id));
+    if (kind === "line" || kind === "midpoint" || kind === "perpBisector") {
+      if (!(selectionA.type === "point" && selectionB.type === "point")) {
+        setToolError("This suggestion requires two points.");
+        return;
+      }
+      if (kind === "line") {
+        const id = uniqueId(`${selectionA.id}${selectionB.id}`, ids);
+        addNode({
+          id,
+          label: id,
+          type: "lineThroughPoints",
+          a: selectionA.id,
+          b: selectionB.id,
+          style: { color: 0x6b7280, length: 6 },
+        }, "create");
+        return;
+      }
+      if (kind === "midpoint") {
+        const id = uniqueId("M", ids);
+        addNode({
+          id,
+          label: id,
+          type: "midpoint",
+          a: selectionA.id,
+          b: selectionB.id,
+          style: { color: 0x22c55e, size: 0.045 },
+        }, "create");
+        return;
+      }
+      const id = uniqueId(`bis${selectionA.id}${selectionB.id}`, ids);
+      addNode({
+        id,
+        label: id,
+        type: "perpendicularBisector",
+        a: selectionA.id,
+        b: selectionB.id,
+        style: { color: 0x0891b2, length: 6 },
+      }, "create");
+      return;
+    }
+
+    const lineObj = selectionA.type === "line" ? selectionA : selectionB.type === "line" ? selectionB : null;
+    const pointObj = selectionA.type === "point" ? selectionA : selectionB.type === "point" ? selectionB : null;
+    if (!lineObj || !pointObj) {
+      setToolError("Needs one line and one point.");
+      return;
+    }
+    if (kind === "perpendicular") {
+      const id = uniqueId(`${pointObj.id}_perp_${lineObj.id}`, ids);
+      addNode({
+        id,
+        label: id,
+        type: "perpendicularLine",
+        line: lineObj.id,
+        point: pointObj.id,
+        style: { color: 0x0f766e, length: 6 },
+      }, "create");
+      return;
+    }
+    const id = uniqueId(`${pointObj.id}_parallel_${lineObj.id}`, ids);
+    addNode({
+      id,
+      label: id,
+      type: "parallelLine",
+      line: lineObj.id,
+      point: pointObj.id,
+      style: { color: 0x7c3aed, length: 6 },
+    }, "create");
+  }, [addNode, nodes, selectionA, selectionB]);
+
   const renderToolInputs = () => {
     if (tool === "point") {
       return (
@@ -1828,6 +2086,22 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             {tab[0].toUpperCase() + tab.slice(1)}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={undoHistory}
+          disabled={historyRef.current.index <= 0}
+          title="Undo (Ctrl/Cmd+Z)"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          onClick={redoHistory}
+          disabled={historyRef.current.index >= historyRef.current.stack.length - 1}
+          title="Redo (Ctrl/Cmd+Y or Shift+Ctrl/Cmd+Z)"
+        >
+          Redo
+        </button>
       </div>
 
       {workspaceTab === "build" && (
@@ -1864,8 +2138,13 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
           <div style={{ fontSize: 12, fontWeight: 700 }}>Scene contents</div>
-          <div style={{ fontSize: 10, opacity: 0.72 }}>
-            {sceneObjectStats.visible}/{sceneObjectStats.total} visible
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ fontSize: 10, opacity: 0.72 }}>
+              {sceneObjectStats.visible}/{sceneObjectStats.total} visible
+            </div>
+            <button type="button" onClick={() => setHelpersVisible((v) => !v)} style={{ fontSize: 10, padding: "2px 6px" }}>
+              {helpersVisible ? "Hide helpers" : "Show helpers"}
+            </button>
           </div>
         </div>
         {sceneObjectStats.total > 0 ? (
@@ -1884,7 +2163,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   }}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "auto 1fr auto",
+                    gridTemplateColumns: "auto 1fr auto auto",
                     gap: 6,
                     alignItems: "center",
                     border: selectedNodeId === obj.id ? "1px solid #93c5fd" : "1px solid #e5e7eb",
@@ -1920,6 +2199,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                   >
                     <span style={{ fontSize: 11, fontWeight: 600 }}>{obj.label || obj.id}</span>
                     <span style={{ fontSize: 10, opacity: 0.65 }}>{obj.type}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      focusNodeInScene(obj.id);
+                    }}
+                    style={{ padding: "2px 6px", fontSize: 10 }}
+                  >
+                    Focus
                   </button>
                   <span style={{ fontSize: 10, color: obj.valid ? "#2e7d32" : "#b42318", fontWeight: 700 }}>
                     {obj.valid ? "OK" : "ERR"}
@@ -2004,6 +2293,42 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
               <button type="button" onClick={() => setHighlightRequiredInputs((v) => !v)}>
                 {highlightRequiredInputs ? "Hide required hints" : "Highlight required inputs"}
               </button>
+            </div>
+            <div style={{ borderTop: "1px dashed #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Selection assistant</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, alignItems: "center" }}>
+                <select value={selectionAId} onChange={(e) => setSelectionAId(e.target.value)}>
+                  <option value="">Selection A</option>
+                  {solved.objects.map((obj) => (
+                    <option key={`a-${obj.id}`} value={obj.id}>{obj.id}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => useSelectedAsSelectionSlot("a")}>Use selected</button>
+                <select value={selectionBId} onChange={(e) => setSelectionBId(e.target.value)}>
+                  <option value="">Selection B</option>
+                  {solved.objects.map((obj) => (
+                    <option key={`b-${obj.id}`} value={obj.id}>{obj.id}</option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => useSelectedAsSelectionSlot("b")}>Use selected</button>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={createClaimFromSelection}>Create claim from selection</button>
+                <button type="button" onClick={() => createObjectFromSelectionAssistant("midpoint")}>Suggest midpoint</button>
+                <button type="button" onClick={() => createObjectFromSelectionAssistant("line")}>Suggest segment/line</button>
+                <button type="button" onClick={() => createObjectFromSelectionAssistant("perpBisector")}>
+                  Suggest perpendicular bisector
+                </button>
+                <button type="button" onClick={() => createObjectFromSelectionAssistant("perpendicular")}>
+                  Suggest perpendicular through point
+                </button>
+                <button type="button" onClick={() => createObjectFromSelectionAssistant("parallel")}>
+                  Suggest parallel through point
+                </button>
+              </div>
+              <div style={{ fontSize: 10, opacity: 0.7 }}>
+                A={selectionA?.id ?? "-"} ({selectionA?.type ?? "-"}) · B={selectionB?.id ?? "-"} ({selectionB?.type ?? "-"})
+              </div>
             </div>
             {highlightRequiredInputs && missingRequiredToolFields.length > 0 && (
               <div style={{ fontSize: 11, color: "#b42318" }}>
@@ -2263,6 +2588,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
                 </label>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" onClick={() => focusNodeInScene(selectedNode.id)}>
+                  Focus in scene
+                </button>
                 <button
                   type="button"
                   disabled={selectedNodeLocked}
@@ -2316,6 +2644,23 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
             {renderCheckInputs()}
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" onClick={handleAddCheck}>Add claim</button>
+              <button type="button" onClick={createClaimFromSelection}>Create claim from selection</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto", gap: 6, alignItems: "center" }}>
+              <select value={selectionAId} onChange={(e) => setSelectionAId(e.target.value)}>
+                <option value="">Selection A</option>
+                {solved.objects.map((obj) => (
+                  <option key={`claims-a-${obj.id}`} value={obj.id}>{obj.id}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => useSelectedAsSelectionSlot("a")}>Use selected</button>
+              <select value={selectionBId} onChange={(e) => setSelectionBId(e.target.value)}>
+                <option value="">Selection B</option>
+                {solved.objects.map((obj) => (
+                  <option key={`claims-b-${obj.id}`} value={obj.id}>{obj.id}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => useSelectedAsSelectionSlot("b")}>Use selected</button>
             </div>
             {checkError && <div style={{ fontSize: 11, color: "#b42318" }}>{checkError}</div>}
           </div>

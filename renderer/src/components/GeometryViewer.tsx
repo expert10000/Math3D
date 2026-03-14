@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import {
   SurfaceViewer,
+  type CameraSyncState,
   type ColorMode,
   type OverlayLabelSet,
   type OverlayPointSet,
@@ -33,6 +34,8 @@ export type GeometryViewerProps = {
   wireframe?: boolean;
   materialOpacity?: number;
   resetToken?: number;
+  cameraOverride?: CameraSyncState | null;
+  cameraOverrideToken?: number;
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
   highlightPolygons?: Polygon3[] | null;
   highlightColor?: number;
@@ -90,6 +93,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   wireframe = false,
   materialOpacity = 0.85,
   resetToken,
+  cameraOverride = null,
+  cameraOverrideToken = 0,
   extraOverlayPolylineGroups = null,
   highlightPolygons,
   highlightColor = 0xf97316,
@@ -234,6 +239,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       showContours={false}
       showBoundingBox={true}
       resetToken={resetToken}
+      cameraOverride={cameraOverride}
+      cameraOverrideToken={cameraOverrideToken}
       dragEnabled={dragEnabled}
       onDragStart={onDragStart}
       onDrag={onDrag}
