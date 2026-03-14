@@ -52,11 +52,11 @@ export type IncenterPlaneCheck = {
 };
 
 export const buildDemoPyramidConstruction = (): GeometryDemo => {
-  const A = pt(-1.2, -1.0, 0, "A");
-  const B = pt(1.25, -1.0, 0, "B");
-  const C = pt(1.0, 1.1, 0, "C");
-  const D = pt(-1.1, 1.1, 0, "D");
-  const S = pt(0.1, 0.2, 1.6, "S", 0x7c3aed);
+  const A = pt(-1.0, -1.0, 0, "A");
+  const B = pt(1.0, -1.0, 0, "B");
+  const C = pt(1.0, 1.0, 0, "C");
+  const D = pt(-1.0, 1.0, 0, "D");
+  const S = pt(0, 0, 1.6, "S", 0x7c3aed);
 
   const vertexMap = { A, B, C, D, S };
   const { polyhedron: pyramid, faceInfo } = buildPolyhedronFromVertexSets({
@@ -205,7 +205,18 @@ export const buildDemoPyramidConstruction = (): GeometryDemo => {
     constraints.push(constraintPointOnPlane("O-on-plane", "O on base plane", O, basePlane, 1e-4));
   }
   if (basePlane) {
-    constraints.push(constraintPointOnPlane("S-on-plane", "S on base plane", S, basePlane, 1e-3));
+    const minApexHeight = 0.25;
+    constraints.push({
+      id: "S-above-plane",
+      label: "S above base plane",
+      tolerance: 0,
+      unit: "unit",
+      residual: () => {
+        const d = distancePointToPlane(S, basePlane);
+        if (d == null) return null;
+        return Math.max(0, minApexHeight - d);
+      },
+    });
   }
   if (diagAC && diagBD) {
     constraints.push(constraintLineIntersection("diag-intersect", "AC intersects BD", diagAC, diagBD, 1e-4));
