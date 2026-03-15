@@ -15,8 +15,8 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 if (-not $SkipBuild) {
-  Write-Host "[release-smoke] building installer (npm run dist)"
-  npm run dist
+  Write-Host "[release-smoke] building installer (npm run dist -- --publish never)"
+  npm run dist -- --publish never
   if ($LASTEXITCODE -ne 0) {
     throw "npm run dist failed (exit code $LASTEXITCODE)"
   }
