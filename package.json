@@ -11,10 +11,14 @@
     "dev:main": "electron .",
     "predev:main": "npm run build:main",
     "build:renderer": "npm --prefix renderer run build",
-    "build:main": "tsc -p tsconfig.node.json",
+    "build:main": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.node.json",
+    "build:python-worker": "python python/worker/freeze.py",
+    "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "build:core": "npm run build:main && npm run build:renderer",
     "build": "npm run build:core && electron .",
-    "dist": "npm run build:core && electron-builder -w"
+    "dist": "npm run build:python-worker && npm run build:core && electron-builder -w",
+    "verify:installer-worker": "powershell -ExecutionPolicy Bypass -File scripts/verify-installer-worker.ps1",
+    "smoke:release": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1"
   },
   "build": {
     "appId": "com.example.math3d",
@@ -25,7 +29,15 @@
     "files": [
       "dist/**/*",
       "package.json",
-      "renderer/dist/**/*"
+      "renderer/dist/**/*",
+      "python/**/*",
+      "py/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "build/python-worker-dist",
+        "to": "python-worker"
+      }
     ],
     "win": {
       "target": "nsis",

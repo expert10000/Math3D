@@ -183,6 +183,37 @@ declare global {
     | { ok: true; path: string; folder: string }
     | { ok: false; error: string };
 
+  type PythonWorkerFailureCategory =
+    | "worker-missing"
+    | "startup-crash"
+    | "dependency-load-failure"
+    | "operation-timeout"
+    | "unknown";
+
+  type PythonWorkerDiagnosticsError = {
+    category: PythonWorkerFailureCategory;
+    code: string;
+    message: string;
+    detail: string;
+    context: string;
+    fatal: boolean;
+    at: number;
+  };
+
+  type PythonWorkerDiagnosticsSnapshot = {
+    startupChecked: boolean;
+    available: boolean;
+    statusMessage: string;
+    backend?: "python-script" | "bundled-exe";
+    version?: string;
+    protocol?: string;
+    command?: string;
+    args?: string[];
+    logPath: string;
+    lastCheckAt: number;
+    lastError?: PythonWorkerDiagnosticsError;
+  };
+
   interface Window {
     surfacePresets?: {
       list: (kind: PresetKind) => Promise<SurfacePresetRecord[]>;
@@ -190,6 +221,8 @@ declare global {
       remove: (id: string) => Promise<void>;
     };
     cgalMesh?: {
+      ping: () => Promise<{ ok: boolean; pong?: boolean; error?: string }>;
+      version: () => Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }>;
       health: () => Promise<{ ok: boolean; error?: string }>;
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;
@@ -213,6 +246,9 @@ declare global {
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
+    };
+    pythonWorkerDiagnostics?: {
+      getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
     };
   }
 }

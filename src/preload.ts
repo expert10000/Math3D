@@ -171,6 +171,37 @@ export type AppCaptureScreenshotResponse =
   | { ok: true; path: string; folder: string }
   | { ok: false; error: string };
 
+export type PythonWorkerFailureCategory =
+  | "worker-missing"
+  | "startup-crash"
+  | "dependency-load-failure"
+  | "operation-timeout"
+  | "unknown";
+
+export type PythonWorkerDiagnosticsError = {
+  category: PythonWorkerFailureCategory;
+  code: string;
+  message: string;
+  detail: string;
+  context: string;
+  fatal: boolean;
+  at: number;
+};
+
+export type PythonWorkerDiagnosticsSnapshot = {
+  startupChecked: boolean;
+  available: boolean;
+  statusMessage: string;
+  backend?: "python-script" | "bundled-exe";
+  version?: string;
+  protocol?: string;
+  command?: string;
+  args?: string[];
+  logPath: string;
+  lastCheckAt: number;
+  lastError?: PythonWorkerDiagnosticsError;
+};
+
 contextBridge.exposeInMainWorld("surfacePresets", {
   list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
     ipcRenderer.invoke("surfacePresets:list", kind),
@@ -183,6 +214,10 @@ contextBridge.exposeInMainWorld("surfacePresets", {
 });
 
 contextBridge.exposeInMainWorld("cgalMesh", {
+  ping: (): Promise<{ ok: boolean; pong?: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:ping"),
+  version: (): Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:version"),
   health: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("mesh:cgal:health"),
   mesh: (req: CgalMeshRequest): Promise<any> =>
@@ -238,4 +273,9 @@ contextBridge.exposeInMainWorld("appMenu", {
 contextBridge.exposeInMainWorld("appCapture", {
   captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
     ipcRenderer.invoke("app:capture-screenshot", req),
+});
+
+contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
+  getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
+    ipcRenderer.invoke("python-worker:diagnostics:get"),
 });

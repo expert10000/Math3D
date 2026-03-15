@@ -13,7 +13,11 @@ import {
   type VtkVolumeDistanceResponse,
   type VtkVolumeStreamlinesRequest,
   type VtkVolumeStreamlinesResponse,
-} from "../python/PythonWorker";
+} from "../python/pythonWorker";
+import {
+  recordPythonWorkerFailure,
+  recordPythonWorkerSuccess,
+} from "../python/pythonWorkerDiagnostics";
 
 export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
 export type VtkPreviewRequestPayload = Omit<VtkPreviewRequest, "jobId"> & { jobId: string };
@@ -25,9 +29,16 @@ export type VtkVolumeStreamlinesRequestPayload = Omit<VtkVolumeStreamlinesReques
 async function runVtkJob(op: VtkMeshOp, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> {
   try {
     const worker = await getPythonWorker();
-    return await worker.vtkMesh(op, req);
+    const res = await worker.vtkMesh(op, req);
+    if (!res.ok) {
+      const diag = recordPythonWorkerFailure(res.error, `mesh:vtk:${op}`, "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+    recordPythonWorkerSuccess();
+    return res;
   } catch (e: any) {
-    return { ok: false, error: e?.message ?? String(e) };
+    const diag = recordPythonWorkerFailure(e, `mesh:vtk:${op}`, "WORKER_OPERATION_FAILED");
+    return { ok: false, error: diag.message };
   }
 }
 
@@ -47,9 +58,16 @@ export function registerVtkMeshIpc() {
   ipcMain.handle("mesh:vtk:preview", async (_evt, req: VtkPreviewRequestPayload): Promise<VtkMeshResponse> => {
     try {
       const worker = await getPythonWorker();
-      return await worker.vtkPreviewImplicit(req);
+      const res = await worker.vtkPreviewImplicit(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:vtk:preview", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:vtk:preview", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
@@ -58,9 +76,16 @@ export function registerVtkMeshIpc() {
     async (_evt, req: VtkVolumeSliceRequestPayload): Promise<VtkVolumeSliceResponse> => {
       try {
         const worker = await getPythonWorker();
-        return await worker.vtkVolumeSlice(req);
+        const res = await worker.vtkVolumeSlice(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:slice", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
       } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:slice", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
       }
     }
   );
@@ -70,9 +95,16 @@ export function registerVtkMeshIpc() {
     async (_evt, req: VtkVolumeIsosurfaceRequestPayload): Promise<VtkVolumeIsosurfaceResponse> => {
       try {
         const worker = await getPythonWorker();
-        return await worker.vtkVolumeIsosurface(req);
+        const res = await worker.vtkVolumeIsosurface(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:isosurface", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
       } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:isosurface", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
       }
     }
   );
@@ -82,9 +114,16 @@ export function registerVtkMeshIpc() {
     async (_evt, req: VtkVolumeDistanceRequestPayload): Promise<VtkVolumeDistanceResponse> => {
       try {
         const worker = await getPythonWorker();
-        return await worker.vtkVolumeDistance(req);
+        const res = await worker.vtkVolumeDistance(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:distance", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
       } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:distance", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
       }
     }
   );
@@ -94,9 +133,16 @@ export function registerVtkMeshIpc() {
     async (_evt, req: VtkVolumeStreamlinesRequestPayload): Promise<VtkVolumeStreamlinesResponse> => {
       try {
         const worker = await getPythonWorker();
-        return await worker.vtkVolumeStreamlines(req);
+        const res = await worker.vtkVolumeStreamlines(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:streamlines", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
       } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:streamlines", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
       }
     }
   );

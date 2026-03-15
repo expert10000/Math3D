@@ -75,7 +75,11 @@ import {
   type SelectionStats,
 } from "./math/selection/selectionStats";
 import { buildGeodesicDisk } from "./math/geodesicDisk";
-import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import {
+  getPythonWorkerDiagnostics,
+  type PythonWorkerDiagnosticsSnapshot,
+} from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { vtkVolumeDistance } from "./services/vtkVolumeClient";
@@ -462,7 +466,29 @@ type CgalMeshState = {
   indices: number[];
   createdAt: number;
 };
-type CgalHealthState = { ok: boolean; error?: string };
+type CgalHealthState = {
+  ok: boolean;
+  statusMessage: string;
+  backend?: "python-script" | "bundled-exe";
+  version?: string;
+  protocol?: string;
+  logsPath?: string;
+  checkedAt: number;
+  error?: string;
+  errorCategory?: string;
+};
+
+const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthState => ({
+  ok: status.available,
+  statusMessage: status.statusMessage,
+  backend: status.backend,
+  version: status.version,
+  protocol: status.protocol,
+  logsPath: status.logPath,
+  checkedAt: status.lastCheckAt,
+  error: status.lastError?.message,
+  errorCategory: status.lastError?.category,
+});
 
 const stereographicToSphere = (re: number, im: number) => {
   if (!Number.isFinite(re) || !Number.isFinite(im)) {
@@ -7156,7 +7182,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const minRight = 240;
   const maxRight = 640;
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
-    "scene" | "object" | "inspect" | "view" | "tools" | "analysis"
+    "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -11214,8 +11240,21 @@ case "mobius":
     };
   }, []);
 
+  const refreshCgalHealthState = useCallback(async () => {
+    const status = await getPythonWorkerDiagnostics();
+    setCgalHealthState(toCgalHealthState(status));
+  }, []);
+
+  const refreshCgalHealthAfterWorkerAction = useCallback(() => {
+    void refreshCgalHealthState();
+  }, [refreshCgalHealthState]);
+
   const handleVtkCleanNormals = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11234,11 +11273,16 @@ case "mobius":
       setVtkError(err?.message ?? "VTK clean failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, [vtkBusy, getMeshForVtk, applyVtkResultToSurfaceMesh]);
+  }, [vtkBusy, cgalHealthState, getMeshForVtk, applyVtkResultToSurfaceMesh, refreshCgalHealthAfterWorkerAction]);
 
   const handleVtkDecimate = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11260,18 +11304,25 @@ case "mobius":
       setVtkError(err?.message ?? "VTK decimate failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     vtkBusy,
+    cgalHealthState,
     getMeshForVtk,
     vtkUseTargetFaces,
     vtkDecimateTargetFaces,
     vtkDecimateReduction,
     applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleVtkSmooth = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11294,11 +11345,24 @@ case "mobius":
       setVtkError(err?.message ?? "VTK smooth failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, [vtkBusy, getMeshForVtk, vtkSmoothIterations, vtkSmoothPassband, applyVtkResultToSurfaceMesh]);
+  }, [
+    vtkBusy,
+    cgalHealthState,
+    getMeshForVtk,
+    vtkSmoothIterations,
+    vtkSmoothPassband,
+    applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
 
   const handleBuildDistanceVolume = useCallback(async () => {
     if (volumeDistanceBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVolumeDistanceError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     if (!surfaceMeshData?.positions?.length) {
       setVolumeDistanceError("Surface mesh not ready yet.");
       return;
@@ -11383,15 +11447,18 @@ case "mobius":
       setVolumeDistanceError(err?.message ?? "Distance field failed.");
     } finally {
       setVolumeDistanceBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     volumeDistanceBusy,
+    cgalHealthState,
     volumeDistanceSigned,
     volumeDistanceAutoBounds,
     surfaceMeshData,
     volumeSamplingClamped,
     volumeSamplingSpacing,
     volumeSamplingBounds,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleClearVolumeOverride = useCallback(() => {
@@ -12706,17 +12773,27 @@ case "mobius":
   }, []);
 
   useEffect(() => {
-    if (surfaceViewerKind !== "implicit") return;
     let alive = true;
-    (async () => {
-      const res = await cgalHealth();
+    const run = async () => {
+      const status = await getPythonWorkerDiagnostics();
       if (!alive) return;
-      setCgalHealthState(res);
-    })();
+      setCgalHealthState(toCgalHealthState(status));
+    };
+    void run();
+    const timer = window.setInterval(() => {
+      void run();
+    }, 6000);
     return () => {
       alive = false;
+      window.clearInterval(timer);
     };
-  }, [surfaceViewerKind]);
+  }, [refreshCgalHealthState]);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "implicit") return;
+    if (cgalHealthState?.ok) return;
+    void refreshCgalHealthState();
+  }, [surfaceViewerKind, cgalHealthState?.ok, refreshCgalHealthState]);
   const geodesicHeatMeshInfo = useMemo(() => resolveGeodesicMesh(null), [resolveGeodesicMesh]);
   const geodesicHeatMeshAvailable = !!geodesicHeatMeshInfo;
   const geodesicHeatContinuousAllowed =
@@ -14796,6 +14873,10 @@ case "mobius":
 
   const handleVtkPreviewImplicit = useCallback(async () => {
     if (vtkBusy || vtkPreviewBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkPreviewError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     if (surfaceViewerKind !== "implicit") {
       setVtkPreviewError("VTK preview is available only in the implicit viewer.");
       return;
@@ -14829,10 +14910,12 @@ case "mobius":
       setVtkPreviewError(err?.message ?? "VTK preview failed.");
     } finally {
       setVtkPreviewBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     vtkBusy,
     vtkPreviewBusy,
+    cgalHealthState,
     surfaceViewerKind,
     activeImplicitExpr,
     implicitResolution,
@@ -14840,10 +14923,16 @@ case "mobius":
     vtkPreviewUseDecimate,
     cgalDomainPreview,
     applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleRunCgalMesh = useCallback(async () => {
     setCgalError(null);
+
+    if (cgalHealthState?.ok === false) {
+      setCgalError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
 
     if (surfaceViewerKind !== "implicit") {
       setCgalError("CGAL meshing is available only in the implicit viewer.");
@@ -14927,8 +15016,10 @@ case "mobius":
       setCgalError(e?.message ?? String(e));
     } finally {
       setCgalBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
+    cgalHealthState,
     surfaceViewerKind,
     activeImplicitExpr,
     selectionStats,
@@ -14953,6 +15044,7 @@ case "mobius":
     cgalTooHeavy,
     selectionBBoxForCgal,
     activeEqSurfaceId,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleStopCgalWorker = useCallback(async () => {
@@ -14963,12 +15055,13 @@ case "mobius":
         return;
       }
       setCgalBusy(false);
-      setCgalHealthState(null);
       setCgalError("CGAL worker stopped.");
     } catch (e: any) {
       setCgalError(e?.message ?? String(e));
+    } finally {
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, []);
+  }, [refreshCgalHealthAfterWorkerAction]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -16960,300 +17053,11 @@ case "mobius":
     workbookDirty,
   ]);
 
-  return (
-    <div style={rootStyle}>
-      {isDev && devError && (
-        <div
-          style={{
-            position: "fixed",
-            top: 12,
-            right: 12,
-            zIndex: 3000,
-            maxWidth: 520,
-            padding: "10px 12px",
-            background: "#fff4f4",
-            border: "1px solid #f2b8b5",
-            borderRadius: 8,
-            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
-            fontSize: 12,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>Dev error</div>
-          <div style={{ marginBottom: devError.stack ? 6 : 0 }}>{devError.message}</div>
-          {devError.stack && (
-            <pre
-              style={{
-                margin: 0,
-                padding: 6,
-                background: "#fff",
-                border: "1px solid #f2b8b5",
-                borderRadius: 6,
-                maxHeight: 160,
-                overflow: "auto",
-                whiteSpace: "pre-wrap",
-                fontSize: 11,
-              }}
-            >
-              {devError.stack.split("\n").slice(0, 6).join("\n")}
-            </pre>
-          )}
-          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => setDevError(null)} style={{ padding: "3px 8px" }}>
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-      <header style={styles.header}>
-        <h1 style={styles.h1}>Math3D</h1>
-
-        <div style={styles.tabs}>
-          <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
-            Surfaces
-          </TabButton>
-          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
-            Geometry
-          </TabButton>
-        </div>
-
-        <div style={styles.controls}>
-          {mode === "maps" ? (
-            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
-          ) : mode === "surfaces" ? (
-            <SurfacesControls
-              viewerKind={surfaceViewerKind}
-              onChangeViewerKind={handleChangeViewerKind}
-              datasetKind={datasetKind}
-              onChangeDatasetKind={setDatasetKind}
-              surfaceId={activeEqSurfaceId}
-              onChangeSurface={handlePickEqSurface}
-              paramId={paramSurfaceId}
-              onChangeParamId={setParamSurfaceId}
-              activeWeierstrassPreset={activeWeierstrassPreset}
-              onApplyWeierstrassPreset={applyWeierstrassPreset}
-              onApplySuggestedDomain={applySuggestedDomain}
-              compareEnabled={compareEnabled}
-              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
-              compareCameraSync={compareCameraSync}
-              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
-              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
-              onToggleCompare={() => {
-                setCompareEnabled((v) => !v);
-                if (rightPanelTab !== "workbook") setCameraSync(null);
-              }}
-              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
-              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
-              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
-              compareSurfaceId={compareSurfaceId}
-              onChangeCompareSurface={(id) => {
-                setCompareSurfaceId(id);
-                setCompareUseSnapshotB(false);
-              }}
-              compareParamId={compareParamId}
-              onChangeCompareParamId={(id) => {
-                setCompareParamId(id);
-                setCompareUseSnapshotB(false);
-              }}
-            />
-          ) : mode === "geometry" ? (
-            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={geometryWireframe}
-                  onChange={(e) => setGeometryWireframe(e.target.checked)}
-                />
-                Wireframe
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                Opacity
-                <input
-                  type="range"
-                  min={0.2}
-                  max={1}
-                  step={0.05}
-                  value={geometryOpacity}
-                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
-                />
-              </label>
-              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
-                Reset camera
-              </button>
-            </div>
-          ) : (
-            <div style={{ ...styles.group, ...styles.groupWide }}>
-              <div
-                style={{
-                  width: "100%",
-                  height: 32,
-                  borderRadius: 8,
-                  background: "linear-gradient(90deg, #ffffff, #f5f7ff)",
-                  boxShadow: "inset 0 0 0 1px #e0e0e0",
-                }}
-              />
-            </div>
-          )}
-          <div style={{ ...styles.group, gridColumn: "span 3" }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("scene")}
-                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
-              >
-                Scene shot
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("window")}
-                disabled={screenshotBusy !== null}
-              >
-                Window shot
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div
-        style={{
-          ...styles.wrap,
-          ...(mode === "surfaces" || mode === "geometry"
-            ? {
-              maxWidth: "100%",
-              width: "100%",
-            }
-            : null),
-        }}
-      >
-        {mode === "surfaces" ? (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
-            {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {(["scene", "object", "inspect", "view", "tools", "analysis"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setSurfacesLeftTab(tab)}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
-                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
-                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
-                      fontSize: 12,
-                      cursor: "pointer",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-              {surfacesLeftTab === "scene" && (
-                <UnifiedObjectTreePanel
-                  title="Scene contents"
-                  nodes={unifiedObjectNodes}
-                  selectedId={unifiedTreeSelectedId}
-                  onSelect={setUnifiedTreeSelectedId}
-                  onFocus={handleFocusUnifiedNode}
-                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
-                  onDeleteNode={handleDeleteUnifiedNode}
-                  actions={unifiedPipelineActions}
-                />
-              )}
-              {surfacesLeftTab === "object" && (
-                <SurfacesObjectPanel
-                  selectedNode={unifiedSelectedNode}
-                  nodeById={unifiedObjectModel.nodeById}
-                  selectedSceneObject={unifiedSelectedSceneObject}
-                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
-                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
-                  selectedVisible={unifiedSelectedSceneVisible}
-                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
-                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
-                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
-                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
-                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
-                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
-                  objectTypeLabel={unifiedObjectTypeLabel}
-                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
-                  objectDomainLabel={unifiedObjectDomainLabel}
-                  objectSamplingLabel={unifiedObjectSamplingLabel}
-                  canBakeToSurfaceMesh={unifiedCanBake}
-                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
-                  canSendToCompare={unifiedCanSendToCompare}
-                  onSendToCompare={handleSendUnifiedObjectToCompare}
-                  canExportSelectedObject={unifiedCanExportSelectedObject}
-                  onExportSelectedObject={() => {
-                    void handleExportUnifiedSelectedObject();
-                  }}
-                  canIsolateSelectedObject={unifiedCanIsolateSelected}
-                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
-                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
-                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
-                />
-              )}
-              {surfacesLeftTab === "inspect" && (
-                <SurfacesInspectPanel
-                  viewerKind={surfaceViewerKind}
-                  inspectEnabled={inspectEnabled}
-                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
-                  onClearInspect={clearInspect}
-                  inspectIdx={inspectIdx}
-                  inspectPos={inspectPos}
-                  inspectNormal={inspectNormal}
-                  inspectMetrics={inspectMetrics}
-                  probeInfo={probeInfo}
-                  probeCurv={probeCurv}
-                  paramProbeCurv={paramProbeCurv}
-                  graphDomain={activeGraphDomain}
-                  paramDomain={activeParamLikeDomain}
-                  onPickDomainXY={handlePickDomainXY}
-                  onPickDomainUV={handlePickDomainUV}
-                  probeEnabled={probeEnabled}
-                  onToggleProbe={() => setProbeEnabled((v) => !v)}
-                  showProbeNormal={showProbeNormal}
-                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
-                  showProbeTangentPlane={showProbeTangentPlane}
-                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
-                  showProbeTangents={showProbeTangents}
-                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
-                />
-              )}
-              {surfacesLeftTab === "view" && (
-                <SurfacesViewPanel
-                  colorModes={viewColorModes}
-                  colorMode={colorMode}
-                  onChangeColorMode={setColorMode}
-                  colorPalette={colorPalette}
-                  onChangeColorPalette={setColorPalette}
-                  lightPreset={lightPreset}
-                  onChangeLightPreset={setLightPreset}
-                  materialRoughness={materialRoughness}
-                  onSetMaterialRoughness={setMaterialRoughness}
-                  materialMetalness={materialMetalness}
-                  onSetMaterialMetalness={setMaterialMetalness}
-                  materialOpacity={materialOpacity}
-                  onSetMaterialOpacity={setMaterialOpacity}
-                  showWireframe={showWireframe}
-                  onToggleWireframe={() => setShowWireframe((w) => !w)}
-                  showBoundingBox={showBoundingBox}
-                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
-                  showPlanes={showPlanes}
-                  onTogglePlanes={() => setShowPlanes((p) => !p)}
-                />
-              )}
-              {(surfacesLeftTab === "tools" || surfacesLeftTab === "analysis") && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    {surfacesLeftTab === "analysis" ? "Display & analysis" : "Advanced tools"}
-                  </div>
+  const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools") => (
                 <SurfacesLeftPanel
-                  showInternalTabs={surfacesLeftTab === "tools"}
-                  hideViewControls={surfacesLeftTab === "tools"}
-                  initialLeftTab={surfacesLeftTab === "analysis" ? "analysis" : "controls"}
+                  showInternalTabs={panelMode === "tools"}
+                  hideViewControls={panelMode === "tools"}
+                  initialLeftTab={panelMode === "analysis" ? "analysis" : "controls"}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
@@ -17379,6 +17183,9 @@ case "mobius":
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   vtkAvailable={vtkMeshAvailable}
+                  pythonWorkerAvailable={cgalHealthState?.ok === true}
+                  pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
+                  pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   vtkBusy={vtkBusy}
                   vtkError={vtkError}
                   vtkDecimateReduction={vtkDecimateReduction}
@@ -17737,6 +17544,297 @@ case "mobius":
                 onChangeSelectedMetric={setSelectedMetric}
                 onRefreshSelectionStats={handleRefreshSelectionStats}
               />
+  );
+
+  return (
+    <div style={rootStyle}>
+      {isDev && devError && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 3000,
+            maxWidth: 520,
+            padding: "10px 12px",
+            background: "#fff4f4",
+            border: "1px solid #f2b8b5",
+            borderRadius: 8,
+            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Dev error</div>
+          <div style={{ marginBottom: devError.stack ? 6 : 0 }}>{devError.message}</div>
+          {devError.stack && (
+            <pre
+              style={{
+                margin: 0,
+                padding: 6,
+                background: "#fff",
+                border: "1px solid #f2b8b5",
+                borderRadius: 6,
+                maxHeight: 160,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                fontSize: 11,
+              }}
+            >
+              {devError.stack.split("\n").slice(0, 6).join("\n")}
+            </pre>
+          )}
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => setDevError(null)} style={{ padding: "3px 8px" }}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+      <header style={styles.header}>
+        <h1 style={styles.h1}>Math3D</h1>
+
+        <div style={styles.tabs}>
+          <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
+            Surfaces
+          </TabButton>
+          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
+            Geometry
+          </TabButton>
+        </div>
+
+        <div style={styles.controls}>
+          {mode === "maps" ? (
+            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
+          ) : mode === "surfaces" ? (
+            <SurfacesControls
+              viewerKind={surfaceViewerKind}
+              onChangeViewerKind={handleChangeViewerKind}
+              datasetKind={datasetKind}
+              onChangeDatasetKind={setDatasetKind}
+              surfaceId={activeEqSurfaceId}
+              onChangeSurface={handlePickEqSurface}
+              paramId={paramSurfaceId}
+              onChangeParamId={setParamSurfaceId}
+              activeWeierstrassPreset={activeWeierstrassPreset}
+              onApplyWeierstrassPreset={applyWeierstrassPreset}
+              onApplySuggestedDomain={applySuggestedDomain}
+              compareEnabled={compareEnabled}
+              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+              compareCameraSync={compareCameraSync}
+              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+              onToggleCompare={() => {
+                setCompareEnabled((v) => !v);
+                if (rightPanelTab !== "workbook") setCameraSync(null);
+              }}
+              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
+              compareSurfaceId={compareSurfaceId}
+              onChangeCompareSurface={(id) => {
+                setCompareSurfaceId(id);
+                setCompareUseSnapshotB(false);
+              }}
+              compareParamId={compareParamId}
+              onChangeCompareParamId={(id) => {
+                setCompareParamId(id);
+                setCompareUseSnapshotB(false);
+              }}
+            />
+          ) : mode === "geometry" ? (
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={geometryWireframe}
+                  onChange={(e) => setGeometryWireframe(e.target.checked)}
+                />
+                Wireframe
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Opacity
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1}
+                  step={0.05}
+                  value={geometryOpacity}
+                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                />
+              </label>
+              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
+                Reset camera
+              </button>
+            </div>
+          ) : (
+            <div style={{ ...styles.group, ...styles.groupWide }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: 32,
+                  borderRadius: 8,
+                  background: "linear-gradient(90deg, #ffffff, #f5f7ff)",
+                  boxShadow: "inset 0 0 0 1px #e0e0e0",
+                }}
+              />
+            </div>
+          )}
+          <div style={{ ...styles.group, gridColumn: "span 3" }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("scene")}
+                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
+              >
+                Scene shot
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("window")}
+                disabled={screenshotBusy !== null}
+              >
+                Window shot
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div
+        style={{
+          ...styles.wrap,
+          ...(mode === "surfaces" || mode === "geometry"
+            ? {
+              maxWidth: "100%",
+              width: "100%",
+            }
+            : null),
+        }}
+      >
+        {mode === "surfaces" ? (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+            {/* LEFT */}
+            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                {(["scene", "object", "inspect", "view", "analysis"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setSurfacesLeftTab(tab)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
+                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
+                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              {surfacesLeftTab === "scene" && (
+                <UnifiedObjectTreePanel
+                  title="Scene contents"
+                  nodes={unifiedObjectNodes}
+                  selectedId={unifiedTreeSelectedId}
+                  onSelect={setUnifiedTreeSelectedId}
+                  onFocus={handleFocusUnifiedNode}
+                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                  onDeleteNode={handleDeleteUnifiedNode}
+                  actions={unifiedPipelineActions}
+                />
+              )}
+              {surfacesLeftTab === "object" && (
+                <SurfacesObjectPanel
+                  selectedNode={unifiedSelectedNode}
+                  nodeById={unifiedObjectModel.nodeById}
+                  selectedSceneObject={unifiedSelectedSceneObject}
+                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
+                  selectedVisible={unifiedSelectedSceneVisible}
+                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
+                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
+                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
+                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
+                  objectTypeLabel={unifiedObjectTypeLabel}
+                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
+                  objectDomainLabel={unifiedObjectDomainLabel}
+                  objectSamplingLabel={unifiedObjectSamplingLabel}
+                  canBakeToSurfaceMesh={unifiedCanBake}
+                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
+                  canSendToCompare={unifiedCanSendToCompare}
+                  onSendToCompare={handleSendUnifiedObjectToCompare}
+                  canExportSelectedObject={unifiedCanExportSelectedObject}
+                  onExportSelectedObject={() => {
+                    void handleExportUnifiedSelectedObject();
+                  }}
+                  canIsolateSelectedObject={unifiedCanIsolateSelected}
+                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
+                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                />
+              )}
+              {surfacesLeftTab === "inspect" && (
+                <SurfacesInspectPanel
+                  viewerKind={surfaceViewerKind}
+                  inspectEnabled={inspectEnabled}
+                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                  onClearInspect={clearInspect}
+                  inspectIdx={inspectIdx}
+                  inspectPos={inspectPos}
+                  inspectNormal={inspectNormal}
+                  inspectMetrics={inspectMetrics}
+                  probeInfo={probeInfo}
+                  probeCurv={probeCurv}
+                  paramProbeCurv={paramProbeCurv}
+                  graphDomain={activeGraphDomain}
+                  paramDomain={activeParamLikeDomain}
+                  onPickDomainXY={handlePickDomainXY}
+                  onPickDomainUV={handlePickDomainUV}
+                  probeEnabled={probeEnabled}
+                  onToggleProbe={() => setProbeEnabled((v) => !v)}
+                  showProbeNormal={showProbeNormal}
+                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                  showProbeTangentPlane={showProbeTangentPlane}
+                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                  showProbeTangents={showProbeTangents}
+                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                />
+              )}
+              {surfacesLeftTab === "view" && (
+                <SurfacesViewPanel
+                  colorModes={viewColorModes}
+                  colorMode={colorMode}
+                  onChangeColorMode={setColorMode}
+                  colorPalette={colorPalette}
+                  onChangeColorPalette={setColorPalette}
+                  lightPreset={lightPreset}
+                  onChangeLightPreset={setLightPreset}
+                  materialRoughness={materialRoughness}
+                  onSetMaterialRoughness={setMaterialRoughness}
+                  materialMetalness={materialMetalness}
+                  onSetMaterialMetalness={setMaterialMetalness}
+                  materialOpacity={materialOpacity}
+                  onSetMaterialOpacity={setMaterialOpacity}
+                  showWireframe={showWireframe}
+                  onToggleWireframe={() => setShowWireframe((w) => !w)}
+                  showBoundingBox={showBoundingBox}
+                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                  showPlanes={showPlanes}
+                  onTogglePlanes={() => setShowPlanes((p) => !p)}
+                />
+              )}
+              {surfacesLeftTab === "analysis" && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+                  {renderSurfacesInspectorPanel("analysis")}
                 </div>
               )}
             </div>
@@ -18331,6 +18429,7 @@ case "mobius":
               </div>
 
               {rightPanelTab === "inspector" ? (
+                <>
                 <SurfacesRightPanel
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -18405,6 +18504,13 @@ case "mobius":
                   onRemoveParamDomainPreset={removeParamDomainPreset}
                   onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
                 />
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
+                  <div style={{ marginTop: 8 }}>
+                    {renderSurfacesInspectorPanel("tools")}
+                  </div>
+                </details>
+                </>
               ) : (
                 <WorkbookPanel
                   workbooks={workbooks}
@@ -21380,6 +21486,9 @@ type SurfacesLeftPanelProps = {
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   vtkAvailable: boolean;
+  pythonWorkerAvailable: boolean;
+  pythonWorkerStatusMessage: string | null;
+  pythonWorkerLogPath: string | null;
   vtkBusy: boolean;
   vtkError: string | null;
   vtkDecimateReduction: number;
@@ -21864,10 +21973,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
   onLoadSurfaceMeshFile,
-    onConvertToMesh,
+  onConvertToMesh,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   vtkAvailable,
+  pythonWorkerAvailable,
+  pythonWorkerStatusMessage,
+  pythonWorkerLogPath,
   vtkBusy,
   vtkError,
   vtkDecimateReduction,
@@ -22275,6 +22387,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk">("surface_mesh");
+  const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
@@ -24532,12 +24645,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           <button
             type="button"
             onClick={onBuildDistanceVolume}
-            disabled={volumeDistanceBusy}
+            disabled={volumeDistanceBusy || !pythonWorkerAvailable}
             style={{ padding: "4px 10px" }}
           >
             {volumeDistanceBusy ? "Building..." : "Surface → Volume (distance)"}
           </button>
         </div>
+        {!pythonWorkerAvailable && (
+          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
+            {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+          </div>
+        )}
+        {!pythonWorkerAvailable && pythonWorkerLogPath && (
+          <div style={{ fontSize: 10, color: "#667085", marginTop: 4, wordBreak: "break-all" }}>
+            log: {pythonWorkerLogPath}
+          </div>
+        )}
         <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
           Builds a {volumeDistanceSigned ? "signed" : "unsigned"} distance field on{" "}
           {volumeDistanceAutoBounds ? "auto mesh bounds" : "the current sampling box"}. Use the Volume panel to view
@@ -24558,16 +24681,26 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         ) : (
           <>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              <button type="button" onClick={onVtkCleanNormals} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkCleanNormals} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Clean + normals"}
               </button>
-              <button type="button" onClick={onVtkDecimate} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkDecimate} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Decimate"}
               </button>
-              <button type="button" onClick={onVtkSmooth} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkSmooth} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Smooth"}
               </button>
             </div>
+            {!pythonWorkerAvailable && (
+              <div style={{ fontSize: 11, color: "#b42318", marginBottom: 8 }}>
+                {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+              </div>
+            )}
+            {!pythonWorkerAvailable && pythonWorkerLogPath && (
+              <div style={{ fontSize: 10, color: "#667085", marginBottom: 8, wordBreak: "break-all" }}>
+                log: {pythonWorkerLogPath}
+              </div>
+            )}
 
             <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Decimate</div>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
@@ -24575,7 +24708,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 type="checkbox"
                 checked={vtkUseTargetFaces}
                 onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
-                disabled={vtkBusy}
+                disabled={vtkOpsDisabled}
               />
               Use target faces
             </label>
@@ -24590,7 +24723,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 step={0.01}
                 value={vtkDecimateReduction}
                 onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
-                disabled={vtkUseTargetFaces || vtkBusy}
+                disabled={vtkUseTargetFaces || vtkOpsDisabled}
                 style={{ width: 180 }}
               />
             </div>
@@ -24603,7 +24736,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 step={100}
                 value={vtkDecimateTargetFaces}
                 onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
-                disabled={!vtkUseTargetFaces || vtkBusy}
+                disabled={!vtkUseTargetFaces || vtkOpsDisabled}
                 style={{ width: 120 }}
               />
             </div>
@@ -24619,7 +24752,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   step={1}
                   value={vtkSmoothIterations}
                   onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
-                  disabled={vtkBusy}
+                  disabled={vtkOpsDisabled}
                   style={{ width: 60 }}
                 />
               </label>
@@ -24632,7 +24765,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   step={0.01}
                   value={vtkSmoothPassband}
                   onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
-                  disabled={vtkBusy}
+                  disabled={vtkOpsDisabled}
                   style={{ width: 70 }}
                 />
               </label>
@@ -26873,13 +27006,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const isImplicitViewer = viewerKind === "implicit";
   const isEqViewer = isGraphViewer || isImplicitViewer;
   const showDomainPicker = isGraphViewer || isParamViewer || isImplicitViewer;
-  const cgalReady = !!cgalHealthState?.ok;
-  const cgalStatusText = cgalHealthState ? (cgalHealthState.ok ? "available" : "unavailable") : "checking...";
+  const cgalReady = cgalHealthState?.ok === true;
+  const cgalStatusText = !cgalHealthState
+    ? "checking..."
+    : cgalHealthState.ok
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
+      : "unavailable";
   const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
-  const cgalDisabled = cgalBusy || cgalHealthState?.ok === false;
-  const cgalStopDisabled = !cgalHealthState && !cgalBusy;
+  const cgalDisabled = cgalBusy || cgalHealthState?.ok !== true;
+  const cgalStopDisabled = !cgalBusy && cgalHealthState?.ok !== true;
   const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
-  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy;
+  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy || cgalHealthState?.ok !== true;
   const vtkPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
@@ -27337,6 +27474,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               {vtkPreviewError && <div style={{ fontSize: 11, color: "#b42318" }}>{vtkPreviewError}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: cgalStatusColor,
+                    display: "inline-block",
+                  }}
+                />
                 <div style={{ fontSize: 11, color: cgalStatusColor }}>{cgalStatusText}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -27576,16 +27722,32 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   {cgalMeshInfo.vertexCount} verts · {cgalMeshInfo.triCount} tris
                 </div>
               )}
+              {cgalHealthState && (
+                <div style={{ fontSize: 10, color: "#667085" }}>
+                  backend: {cgalHealthState.backend ?? "unknown"} · protocol: {cgalHealthState.protocol ?? "unknown"}
+                </div>
+              )}
+              {cgalHealthState?.logsPath && (
+                <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>
+                  log: {cgalHealthState.logsPath}
+                </div>
+              )}
               {cgalError && <div style={{ fontSize: 11, color: "#b42318" }}>{cgalError}</div>}
+              {!cgalReady && !cgalHealthState?.error && cgalHealthState?.statusMessage && (
+                <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.statusMessage}</div>
+              )}
               {!cgalReady && cgalHealthState?.error && (
                 <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.error}</div>
+              )}
+              {!cgalReady && cgalHealthState?.errorCategory && (
+                <div style={{ fontSize: 10, color: "#b42318" }}>reason: {cgalHealthState.errorCategory}</div>
               )}
             </div>
           </div>
         )}
 
       <div style={{ marginBottom: 12, fontSize: 11, opacity: 0.75 }}>
-        Probe details, gradients, and curvature live in the left panel (Theory tab).
+        Probe details, gradients, and curvature are available in the left Analysis tab.
       </div>
 
       <details style={{ marginBottom: 12 }}>
@@ -28227,3 +28389,11 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
     </div>
   );
 };
+
+
+
+
+
+
+
+
