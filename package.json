@@ -17,6 +17,7 @@
     "build:core": "npm run build:main && npm run build:renderer",
     "build": "npm run build:core && electron .",
     "dist": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs",
+    "dist:ci": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=stable&& electron-builder -w --config electron-builder.config.cjs --publish never",
     "dist:dev": "npm run build:python-worker && npm run build:core && set MATH3D_CHANNEL=dev&& electron-builder -w --config electron-builder.config.cjs",
     "verify:installer-worker": "powershell -ExecutionPolicy Bypass -File scripts/verify-installer-worker.ps1",
     "smoke:release": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1",

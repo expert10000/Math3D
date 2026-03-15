@@ -15,10 +15,21 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 }
 
 if (-not $SkipBuild) {
-  Write-Host "[release-smoke] building installer (npm run dist -- --publish never)"
-  npm run dist -- --publish never
-  if ($LASTEXITCODE -ne 0) {
-    throw "npm run dist failed (exit code $LASTEXITCODE)"
+  $ciBackup = $env:CI
+  try {
+    # Prevent electron-builder CI auto-publish behavior in smoke runs.
+    $env:CI = "false"
+    Write-Host "[release-smoke] building installer (npm run dist:ci)"
+    npm run dist:ci
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm run dist:ci failed (exit code $LASTEXITCODE)"
+    }
+  } finally {
+    if ($null -eq $ciBackup) {
+      Remove-Item Env:CI -ErrorAction SilentlyContinue
+    } else {
+      $env:CI = $ciBackup
+    }
   }
 }
 
