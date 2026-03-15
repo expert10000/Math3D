@@ -11,7 +11,7 @@
     "dev:main": "electron .",
     "predev:main": "npm run build:main",
     "build:renderer": "npm --prefix renderer run build",
-    "build:main": "tsc -p tsconfig.node.json",
+    "build:main": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.node.json",
     "build:python-worker": "python python/worker/freeze.py",
     "build:python-worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "build:core": "npm run build:main && npm run build:renderer",
