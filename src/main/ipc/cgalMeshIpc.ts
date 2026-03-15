@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { getPythonWorker, stopPythonWorker } from "../python/PythonWorker";
+import { getPythonWorker, stopPythonWorker } from "../python/pythonWorker";
 
 export type CgalMeshRequest = {
   jobId: string;
@@ -35,8 +35,32 @@ export type GeodesicHeatResponse =
   | { ok: false; error: string };
 
 export type CgalHealthResponse = { ok: true } | { ok: false; error: string };
+export type PythonPingResponse = { ok: true; pong: boolean } | { ok: false; error: string };
+export type PythonVersionResponse =
+  | { ok: true; version: string; protocol: string }
+  | { ok: false; error: string };
 
 export function registerCgalMeshIpc() {
+  ipcMain.handle("mesh:cgal:ping", async (): Promise<PythonPingResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.ping();
+      return { ok: true, pong: !!res.pong };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:version", async (): Promise<PythonVersionResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.version();
+      return { ok: true, version: res.version, protocol: res.protocol };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) };
+    }
+  });
+
   ipcMain.handle("mesh:cgal", async (_evt, req: CgalMeshRequest): Promise<CgalMeshResponse> => {
     try {
       const worker = await getPythonWorker();

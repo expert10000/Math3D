@@ -1,4 +1,5 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type {
@@ -7,6 +8,37 @@ import type {
   GeodesicHeatRequest,
   GeodesicHeatResponse,
 } from "../ipc/cgalMeshIpc";
+
+export type PythonWorkerError = {
+  code: string;
+  message: string;
+  details?: unknown;
+};
+
+export type PythonWorkerBackend = "python-script" | "bundled-exe";
+
+export type PythonWorkerStartupStatus =
+  | {
+      ok: true;
+      backend: PythonWorkerBackend;
+      command: string;
+      args: string[];
+      pythonExe?: string;
+      scriptPath?: string;
+      exePath?: string;
+      version: string;
+      protocol: string;
+    }
+  | {
+      ok: false;
+      backend?: PythonWorkerBackend;
+      command?: string;
+      args?: string[];
+      pythonExe?: string;
+      scriptPath?: string;
+      exePath?: string;
+      error: PythonWorkerError;
+    };
 
 export type VtkMeshOp = "vtk_clean_normals" | "vtk_decimate" | "vtk_smooth";
 export type VtkMeshRequest = {
@@ -143,6 +175,11 @@ type PendingBinary = {
   totalBytes: number;
 };
 
+type WorkerVersionResult = {
+  version: string;
+  protocol: string;
+};
+
 function decodeFloat32(b64: string): number[] {
   const buf = Buffer.from(b64, "base64");
   const arr = new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
@@ -169,6 +206,28 @@ function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
   Buffer.from(out).set(buf);
   return out;
 }
+
+const toWorkerError = (msg: any): PythonWorkerError => {
+  const nested = msg?.error;
+  if (nested && typeof nested === "object") {
+    return {
+      code: String((nested as any).code ?? msg?.code ?? "WORKER_ERROR"),
+      message: String((nested as any).message ?? msg?.message ?? "Python worker error"),
+      details: (nested as any).details ?? msg?.details ?? msg?.trace,
+    };
+  }
+  return {
+    code: String(msg?.code ?? "WORKER_ERROR"),
+    message: String(msg?.message ?? msg?.error ?? "Python worker error"),
+    details: msg?.details ?? msg?.trace,
+  };
+};
+
+const workerErrorText = (msg: any, fallback: string): string => {
+  const err = toWorkerError(msg);
+  if (!err.message || err.message === "Python worker error") return fallback;
+  return `${err.code}: ${err.message}`;
+};
 
 class PythonWorker {
   private proc: ChildProcessWithoutNullStreams;
@@ -246,7 +305,8 @@ class PythonWorker {
     this.pending.delete(jobId);
 
     if (msg.type === "error" || msg.ok === false) {
-      pending.reject(new Error(msg.message || msg.error || "Python worker error"));
+      const err = toWorkerError(msg);
+      pending.reject(new Error(`${err.code}: ${err.message}`));
       return;
     }
 
@@ -338,6 +398,22 @@ class PythonWorker {
     });
   }
 
+  async ping(): Promise<{ ok: boolean; pong: boolean }> {
+    const jobId = `ping-${Date.now()}`;
+    const res = await this.request({ type: "ping", jobId }, 15000);
+    const pong = res?.type === "pong" || res?.pong === true;
+    return { ok: pong, pong };
+  }
+
+  async version(): Promise<WorkerVersionResult> {
+    const jobId = `version-${Date.now()}`;
+    const res = await this.request({ type: "version", jobId }, 15000);
+    return {
+      version: String(res?.version ?? "unknown"),
+      protocol: String(res?.protocol ?? "legacy"),
+    };
+  }
+
   async health(): Promise<{ ok: boolean; error?: string } | undefined> {
     const jobId = `health-${Date.now()}`;
     const res = await this.request({ type: "health", jobId }, 15000);
@@ -357,7 +433,7 @@ class PythonWorker {
       exprLength: req.f?.length ?? 0,
     });
     const msg = {
-      type: "mesh_job",
+      type: "mesh.generate",
       jobId: req.jobId,
       expr: req.f,
       iso: req.iso,
@@ -385,7 +461,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "result") {
-      throw new Error(res?.message || res?.error || "Unknown CGAL worker response");
+      throw new Error(workerErrorText(res, "Unknown CGAL worker response"));
     }
 
     const t2 = Date.now();
@@ -433,7 +509,7 @@ class PythonWorker {
     });
 
     const msg = {
-      type: "geodesic_heat",
+      type: "geodesic.heat",
       jobId: req.jobId,
       mesh: req.mesh,
       source: req.source,
@@ -453,7 +529,7 @@ class PythonWorker {
     });
 
     if (!res || res.ok === false) {
-      return { ok: false, error: res?.error || res?.message || "Unknown geodesic heat response" };
+      return { ok: false, error: workerErrorText(res, "Unknown geodesic heat response") };
     }
 
     if (!Array.isArray(res.polyline)) {
@@ -476,7 +552,7 @@ class PythonWorker {
     }
 
     const msg = {
-      type: "vtk_job",
+      type: "mesh.transform",
       jobId: req.jobId,
       op,
       options: req.options ?? {},
@@ -498,7 +574,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "vtk_result") {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK worker response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK worker response") };
     }
 
     const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
@@ -521,7 +597,7 @@ class PythonWorker {
 
   async vtkPreviewImplicit(req: VtkPreviewRequest): Promise<VtkMeshResponse> {
     const msg = {
-      type: "vtk_preview",
+      type: "mesh.preview",
       jobId: req.jobId,
       expr: req.expr,
       iso: req.iso,
@@ -543,7 +619,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "vtk_result") {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK preview response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK preview response") };
     }
 
     const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
@@ -571,7 +647,7 @@ class PythonWorker {
     }
 
     const msg = {
-      type: "volume_slice",
+      type: "volume.slice",
       jobId: req.jobId,
       dims: req.dims,
       axis: req.axis,
@@ -595,7 +671,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "volume_slice_result" || res.ok === false) {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume slice response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume slice response") };
     }
 
     const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
@@ -622,7 +698,7 @@ class PythonWorker {
     }
 
     const msg = {
-      type: "volume_isosurface",
+      type: "volume.isosurface",
       jobId: req.jobId,
       dims: req.dims,
       iso: req.iso,
@@ -643,7 +719,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "volume_isosurface_result" || res.ok === false) {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume isosurface response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume isosurface response") };
     }
 
     const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
@@ -672,7 +748,7 @@ class PythonWorker {
     }
 
     const msg = {
-      type: "volume_distance",
+      type: "volume.distance",
       jobId: req.jobId,
       dims: req.dims,
       spacing: req.spacing,
@@ -695,7 +771,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "volume_distance_result" || res.ok === false) {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK volume distance response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume distance response") };
     }
 
     const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
@@ -718,7 +794,7 @@ class PythonWorker {
     }
 
     const msg = {
-      type: "volume_streamlines",
+      type: "volume.streamlines",
       jobId: req.jobId,
       dims: req.dims,
       spacing: req.spacing,
@@ -741,7 +817,7 @@ class PythonWorker {
     });
 
     if (!res || res.type !== "volume_streamlines_result" || res.ok === false) {
-      return { ok: false, error: res?.message || res?.error || "Unknown VTK streamlines response" };
+      return { ok: false, error: workerErrorText(res, "Unknown VTK streamlines response") };
     }
 
     if (!Array.isArray(res.lines)) {
@@ -758,6 +834,23 @@ class PythonWorker {
 
 let singleton: PythonWorker | null = null;
 let spawnPromise: Promise<PythonWorker> | null = null;
+let lastLaunchConfig: WorkerLaunchConfig | null = null;
+
+type WorkerResolutionMode = "auto" | "python" | "exe";
+type WorkerLaunchConfig = {
+  backend: PythonWorkerBackend;
+  command: string;
+  args: string[];
+  mode: WorkerResolutionMode;
+  modeSource: string;
+  packaged: boolean;
+  pythonExe?: string;
+  scriptPath?: string;
+  exePath?: string;
+};
+
+const truthy = (value: string | undefined): boolean =>
+  ["1", "true", "yes", "on", "y"].includes(String(value || "").toLowerCase());
 
 function resolvePythonExe(): string {
   const env = process.env.MATH3D_PYTHON;
@@ -766,15 +859,188 @@ function resolvePythonExe(): string {
   return process.platform === "win32" ? "python" : "python3";
 }
 
-function resolveWorkerScript(): string {
+function dedupePaths(candidates: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of candidates) {
+    const key = path.normalize(item).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function resolveWorkerMode(): { mode: WorkerResolutionMode; source: string } {
+  const direct = (process.env.MATH3D_WORKER_MODE || "").trim();
+  const legacy = (process.env.MATH3D_PYTHON_WORKER_MODE || "").trim();
+  const raw = (direct || legacy || "auto").toLowerCase();
+  const source = direct
+    ? "MATH3D_WORKER_MODE"
+    : legacy
+      ? "MATH3D_PYTHON_WORKER_MODE"
+      : "default:auto";
+  if (raw === "python" || raw === "exe" || raw === "auto") {
+    return { mode: raw, source };
+  }
+  console.warn("[python-worker] invalid worker mode, using auto", { source, value: raw });
+  return { mode: "auto", source };
+}
+
+function resolveWorkerScriptCandidates(): string[] {
+  const fromEnv = (process.env.MATH3D_WORKER_SCRIPT || "").trim();
+  const unpackedBase = process.resourcesPath
+    ? path.join(process.resourcesPath, "app.asar.unpacked")
+    : null;
   const candidates = [
-    path.join(__dirname, "..", "..", "..", "py", "cgal_worker.py"),
-    path.join(process.cwd(), "py", "cgal_worker.py"),
+    ...(fromEnv ? [path.resolve(fromEnv)] : []),
+    path.join(process.cwd(), "python", "worker", "main.py"),
+    path.join(process.cwd(), "dist", "python", "worker", "main.py"),
+    path.join(__dirname, "..", "..", "..", "python", "worker", "main.py"),
+    path.join(__dirname, "..", "..", "..", "..", "python", "worker", "main.py"),
+    ...(unpackedBase ? [path.join(unpackedBase, "python", "worker", "main.py")] : []),
+    ...(process.resourcesPath ? [path.join(process.resourcesPath, "python", "worker", "main.py")] : []),
   ];
+  return dedupePaths(candidates);
+}
+
+function resolveBundledWorkerExeCandidates(): string[] {
+  const fromEnv = (process.env.MATH3D_WORKER_EXE || "").trim();
+  const candidates = [
+    ...(fromEnv ? [path.resolve(fromEnv)] : []),
+    ...(process.resourcesPath
+      ? [
+          path.join(process.resourcesPath, "python-worker", "worker.exe"),
+          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", "worker.exe"),
+        ]
+      : []),
+    path.join(path.dirname(process.execPath), "resources", "python-worker", "worker.exe"),
+    path.join(process.cwd(), "build", "python-worker-dist", "worker.exe"),
+  ];
+  return dedupePaths(candidates);
+}
+
+function firstExistingPath(candidates: string[]): string | null {
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
   }
-  return candidates[0];
+  return null;
+}
+
+function workerNotFoundError(kind: string, detail: string, candidates: string[]): Error {
+  return new Error(
+    [
+      `${kind} not found.`,
+      detail,
+      `candidates: ${candidates.join(" | ")}`,
+    ].join(" ")
+  );
+}
+
+function resolvePythonScriptLaunch(mode: WorkerResolutionMode, source: string): WorkerLaunchConfig {
+  const pythonExe = resolvePythonExe();
+  const candidates = resolveWorkerScriptCandidates();
+  const scriptPath = firstExistingPath(candidates);
+  if (!scriptPath) {
+    throw workerNotFoundError(
+      "Python worker entrypoint",
+      `python: ${pythonExe}. Set MATH3D_PYTHON to override Python or MATH3D_WORKER_SCRIPT to override the script path.`,
+      candidates
+    );
+  }
+  return {
+    backend: "python-script",
+    command: pythonExe,
+    args: [scriptPath],
+    pythonExe,
+    scriptPath,
+    mode,
+    modeSource: source,
+    packaged: app.isPackaged,
+  };
+}
+
+function resolveBundledExeLaunch(mode: WorkerResolutionMode, source: string): WorkerLaunchConfig {
+  const candidates = resolveBundledWorkerExeCandidates();
+  const exePath = firstExistingPath(candidates);
+  if (!exePath) {
+    throw workerNotFoundError(
+      "Bundled worker executable",
+      "Expected packaged worker at resources/python-worker/worker.exe. Set MATH3D_WORKER_EXE to override.",
+      candidates
+    );
+  }
+  return {
+    backend: "bundled-exe",
+    command: exePath,
+    args: [],
+    exePath,
+    mode,
+    modeSource: source,
+    packaged: app.isPackaged,
+  };
+}
+
+function resolveWorkerLaunch(): WorkerLaunchConfig {
+  const { mode, source } = resolveWorkerMode();
+  const packaged = app.isPackaged;
+  const allowPackagedPythonFallback = truthy(process.env.MATH3D_WORKER_ALLOW_PYTHON_FALLBACK);
+  const attempts: Array<() => WorkerLaunchConfig> = [];
+
+  if (mode === "python") {
+    attempts.push(() => resolvePythonScriptLaunch(mode, source));
+  } else if (mode === "exe") {
+    attempts.push(() => resolveBundledExeLaunch(mode, source));
+  } else if (packaged) {
+    attempts.push(() => resolveBundledExeLaunch(mode, source));
+    if (allowPackagedPythonFallback) {
+      attempts.push(() => resolvePythonScriptLaunch(mode, `${source}+packaged-python-fallback`));
+    }
+  } else {
+    attempts.push(() => resolvePythonScriptLaunch(mode, source));
+  }
+
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      return attempt();
+    } catch (err: any) {
+      errors.push(String(err?.message ?? err));
+    }
+  }
+
+  throw new Error(
+    [
+      "Unable to resolve python worker launch backend.",
+      `mode=${mode}`,
+      `packaged=${packaged}`,
+      `allowPackagedPythonFallback=${allowPackagedPythonFallback}`,
+      `errors=${errors.join(" || ")}`,
+    ].join(" ")
+  );
+}
+
+function logWorkerLaunch(config: WorkerLaunchConfig): void {
+  console.log("[python-worker] using backend", {
+    backend: config.backend,
+    command: config.command,
+    args: config.args,
+    mode: config.mode,
+    modeSource: config.modeSource,
+    packaged: config.packaged,
+    resourcesPath: process.resourcesPath,
+  });
+}
+
+function launchStatusFields(config: WorkerLaunchConfig) {
+  return {
+    backend: config.backend,
+    command: config.command,
+    args: config.args,
+    pythonExe: config.pythonExe,
+    scriptPath: config.scriptPath,
+    exePath: config.exePath,
+  };
 }
 
 export async function getPythonWorker(): Promise<PythonWorker> {
@@ -782,13 +1048,11 @@ export async function getPythonWorker(): Promise<PythonWorker> {
   if (spawnPromise) return spawnPromise;
 
   spawnPromise = (async () => {
-    const pythonExe = resolvePythonExe();
-    const scriptPath = resolveWorkerScript();
-    if (!fs.existsSync(scriptPath)) {
-      throw new Error(`CGAL worker script not found at ${scriptPath}`);
-    }
+    const launch = resolveWorkerLaunch();
+    logWorkerLaunch(launch);
+    lastLaunchConfig = launch;
 
-    const proc = spawn(pythonExe, [scriptPath], {
+    const proc = spawn(launch.command, launch.args, {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env },
     });
@@ -802,6 +1066,11 @@ export async function getPythonWorker(): Promise<PythonWorker> {
     });
 
     try {
+      const ping = await worker.ping();
+      if (!ping.ok) {
+        throw new Error(`Python worker ping failed (${launch.backend})`);
+      }
+      await worker.version();
       await worker.health();
     } catch (err) {
       worker.kill();
@@ -826,5 +1095,52 @@ export function stopPythonWorker() {
     } finally {
       singleton = null;
     }
+  }
+}
+
+export async function runPythonWorkerStartupCheck(): Promise<PythonWorkerStartupStatus> {
+  let resolvedLaunch: WorkerLaunchConfig;
+  try {
+    resolvedLaunch = resolveWorkerLaunch();
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: {
+        code: "WORKER_RESOLUTION_FAILED",
+        message: String(error?.message ?? error),
+      },
+    };
+  }
+
+  try {
+    const worker = await getPythonWorker();
+    const ping = await worker.ping();
+    if (!ping.ok) {
+      return {
+        ok: false,
+        ...launchStatusFields(lastLaunchConfig || resolvedLaunch),
+        error: {
+          code: "PING_FAILED",
+          message: "Python worker ping failed during startup check.",
+        },
+      };
+    }
+    const version = await worker.version();
+    const launch = lastLaunchConfig || resolvedLaunch;
+    return {
+      ok: true,
+      ...launchStatusFields(launch),
+      version: version.version,
+      protocol: version.protocol,
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      ...launchStatusFields(lastLaunchConfig || resolvedLaunch),
+      error: {
+        code: "WORKER_STARTUP_FAILED",
+        message: String(error?.message ?? error),
+      },
+    };
   }
 }

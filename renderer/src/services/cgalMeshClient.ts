@@ -24,6 +24,18 @@ export async function cgalHealth(): Promise<{ ok: boolean; error?: string }> {
   return api.health();
 }
 
+export async function cgalPing(): Promise<{ ok: boolean; pong?: boolean; error?: string }> {
+  const api = (window as any).cgalMesh;
+  if (!api?.ping) return { ok: false, error: "CGAL IPC unavailable" };
+  return api.ping();
+}
+
+export async function cgalVersion(): Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }> {
+  const api = (window as any).cgalMesh;
+  if (!api?.version) return { ok: false, error: "CGAL IPC unavailable" };
+  return api.version();
+}
+
 export async function stopCgalWorker(): Promise<{ ok: boolean; error?: string }> {
   const api = (window as any).cgalMesh;
   if (!api?.stop) return { ok: false, error: "CGAL IPC unavailable" };
