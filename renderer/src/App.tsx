@@ -213,6 +213,7 @@ import {
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
+type GeometryDemoTab = "task" | "objects" | "solve" | "script";
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
   "graph",
@@ -774,6 +775,37 @@ const PROCEDURAL_SCRIPT_STARTER = [
   "add sphere as marker radius=0.45 x=1.15 y=0.25 z=0.2 color=#22c55e",
   "set marker opacity=0.9",
 ].join("\n");
+
+const DEMO_STEREOMETRY_TASK_TEXT_PL =
+  "Dany jest ostroslup ABCDS o podstawie wypuklego czworokata ABCD. " +
+  "Zalozmy, ze plaszczyzny BAD, BSD i BCD maja punkt wspolny. " +
+  "Wykazac, ze srodki okregow wpisanych w trojkaty ABS, BCS, CDS, DAS leza na jednej plaszczyznie.";
+
+const DEMO_STEREOMETRY_TASK_TEXT_EN =
+  "Given pyramid ABCDS with convex base ABCD. Assume planes BAD, BSD, and BCD intersect at one point. " +
+  "Prove that incenters of triangles ABS, BCS, CDS, DAS are coplanar.";
+
+const DEMO_STEREOMETRY_GUIDE_SCRIPT = [
+  "# Demo guide: pyramid incenter-plane theorem",
+  "# 1) Place A,B,C,D on the base and apex S above the base.",
+  "point A -1.0 -1.0 0",
+  "point B 1.0 -1.0 0",
+  "point C 1.0 1.0 0",
+  "point D -1.0 1.0 0",
+  "point S 0.0 0.0 1.6",
+  "# 2) Build side-face triangles: ABS, BCS, CDS, DAS.",
+  "# 3) Compute incenter of each face triangle.",
+  "# 4) Build plane through I_ABS, I_BCS, I_CDS.",
+  "# 5) Verify I_DAS lies on that plane (residual near 0).",
+  "# Note: this is a guided pseudo-script for the demo workflow.",
+].join("\n");
+
+type ThicknessPresetId = "small" | "medium" | "large";
+const THICKNESS_PRESETS: Array<{ id: ThicknessPresetId; label: string; scale: number }> = [
+  { id: "small", label: "Small", scale: 0.7 },
+  { id: "medium", label: "Medium", scale: 1 },
+  { id: "large", label: "Large", scale: 1.8 },
+];
 
 const tokenizeScriptLine = (line: string): string[] =>
   (line.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g) ?? []).map((token) => {
@@ -2928,6 +2960,13 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("surfaces");
   const [geometryMode, setGeometryMode] = useState<"procedural" | "demo" | "problem">("procedural");
+  const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
+  const [geometryDemoGuideStatus, setGeometryDemoGuideStatus] = useState<string | null>(null);
+  const [geometryDemoShowPointLabels, setGeometryDemoShowPointLabels] = useState(true);
+  const [geometryDemoLabelScale, setGeometryDemoLabelScale] = useState(1);
+  const [geometryDemoLineRadiusScale, setGeometryDemoLineRadiusScale] = useState(1);
+  const [geometryDemoSegmentRadiusScale, setGeometryDemoSegmentRadiusScale] = useState(1);
+  const [geometryDemoEdgeRadiusScale, setGeometryDemoEdgeRadiusScale] = useState(1);
   const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
   const geometryFaces = geometryDemo.faces ?? [];
   const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
@@ -2960,7 +2999,7 @@ const App: React.FC = () => {
     [geometrySelectedIncenter]
   );
   const geometryLabelSets = useMemo(() => {
-    const labels = geometryFaceIncenters
+    const incenterLabels = geometryFaceIncenters
       .filter((face) => face.incenter)
       .map((face) => {
         const residual = face.residual;
@@ -2972,12 +3011,28 @@ const App: React.FC = () => {
           text: `${face.label} delta=${residualText}`,
           position: face.incenter as { x: number; y: number; z: number },
           color,
-          size: 1,
+          size: 0.92,
           opacity: 0.95,
         };
       });
-    return labels.length ? [{ labels }] : null;
-  }, [geometryFaceIncenters, geometryFaceIncenterTolerance]);
+    const anchorLabels = geometryDemoShowPointLabels
+      ? Object.entries(geometryDemo.points).map(([id, point]) => ({
+          text: point.label ?? id,
+          position: { x: point.x, y: point.y, z: point.z },
+          color: 0x111827,
+          size: 1,
+          opacity: 0.98,
+        }))
+      : [];
+    const labels = [...anchorLabels, ...incenterLabels];
+    return labels.length ? [{ labels, size: geometryDemoLabelScale }] : null;
+  }, [
+    geometryDemo.points,
+    geometryDemoLabelScale,
+    geometryDemoShowPointLabels,
+    geometryFaceIncenters,
+    geometryFaceIncenterTolerance,
+  ]);
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
   const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
@@ -3054,6 +3109,11 @@ const App: React.FC = () => {
     setGeometryPendingViewportPoint(null);
     setGeometryProblemCameraOverride(null);
     setGeometryProblemCameraOverrideToken(0);
+  }, [geometryMode]);
+  useEffect(() => {
+    if (geometryMode !== "demo") {
+      setGeometryDemoGuideStatus(null);
+    }
   }, [geometryMode]);
   const geometryConstraints = useMemo(
     () => evaluateConstraints(geometryDemo.constraints),
@@ -19454,109 +19514,313 @@ case "mobius":
                   </>
                 ) : geometryMode === "demo" ? (
                   <>
-                    <div style={{ marginBottom: 12, display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>Procedural scripting</div>
-                      <div style={{ fontSize: 11, opacity: 0.72 }}>
-                        You can run the same script workflow from Demo and switch directly to the procedural scene.
-                      </div>
-                      <textarea
-                        value={geometryProceduralScriptText}
-                        onChange={(e) => setGeometryProceduralScriptText(e.target.value)}
-                        rows={6}
-                        style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
-                      />
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={() => executeProceduralScript({ switchToProcedural: true })}>
-                          Run script and switch to Procedural
-                        </button>
+                    <div style={{ ...pillRow, marginBottom: 10 }}>
+                      {(["task", "objects", "solve", "script"] as GeometryDemoTab[]).map((tab) => (
                         <button
+                          key={tab}
                           type="button"
-                          onClick={() => {
-                            setGeometryProceduralScriptText(PROCEDURAL_SCRIPT_STARTER);
-                            setGeometryProceduralScriptError(null);
-                            setGeometryProceduralScriptStatus("Loaded starter script.");
+                          onClick={() => setGeometryDemoTab(tab)}
+                          style={pill(geometryDemoTab === tab)}
+                          aria-pressed={geometryDemoTab === tab}
+                        >
+                          {tab === "task"
+                            ? "Task"
+                            : tab === "objects"
+                              ? "Objects"
+                              : tab === "solve"
+                                ? "Solve"
+                                : "Script"}
+                        </button>
+                      ))}
+                    </div>
+
+                    {geometryDemoTab === "task" && (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Stereometry task</div>
+                        <div style={{ fontSize: 11, lineHeight: 1.45 }}>{DEMO_STEREOMETRY_TASK_TEXT_PL}</div>
+                        <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.45 }}>{DEMO_STEREOMETRY_TASK_TEXT_EN}</div>
+                        <div style={{ fontSize: 11, opacity: 0.8 }}>
+                          Demo setup uses a convex base and computes incenters for faces ABS, BCS, CDS, DAS.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => setGeometryDemoTab("solve")}>
+                            Open solve diagnostics
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGeometryMode("problem");
+                            }}
+                          >
+                            Switch to editable problem mode
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {geometryDemoTab === "objects" && (
+                      <div style={{ display: "grid", gap: 12 }}>
+                        <div
+                          style={{
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            display: "grid",
+                            gap: 8,
                           }}
                         >
-                          Load starter
-                        </button>
-                      </div>
-                      {geometryProceduralScriptStatus && (
-                        <div style={{ fontSize: 11, color: "#166534" }}>{geometryProceduralScriptStatus}</div>
-                      )}
-                      {geometryProceduralScriptError && (
-                        <div style={{ fontSize: 11, color: "#b42318" }}>{geometryProceduralScriptError}</div>
-                      )}
-                    </div>
-
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Points</div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "auto 1fr",
-                        gap: "4px 8px",
-                        fontSize: 12,
-                        fontFamily: "monospace",
-                      }}
-                    >
-                      {(geometryScene.points ?? []).map((p) => {
-                        const key = p.id ?? p.label ?? `${p.x},${p.y},${p.z}`;
-                        return (
-                          <React.Fragment key={key}>
-                            <div>{p.label ?? "•"}</div>
-                            <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-
-                    <StereometryAnalyzerPanel
-                      faces={geometryFaces}
-                      faceIncenters={geometryFaceIncenters}
-                      planeCheck={geometryIncenterPlaneCheck}
-                      incenterTolerance={geometryFaceIncenterTolerance}
-                      selectedFaceId={geometrySelectedFaceId}
-                      onSelectFace={(id) => setGeometrySelectedFaceId(id)}
-                    />
-
-                    <div style={{ marginTop: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        {geometryConstraints.map((c) => {
-                          const color = GEOMETRY_BADGE_COLORS[c.status];
-                          return (
-                            <div
-                              key={c.id}
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "auto 1fr auto",
-                                gap: 8,
-                                alignItems: "center",
-                                fontSize: 12,
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Display</div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryDemoShowPointLabels}
+                              onChange={(e) => setGeometryDemoShowPointLabels(e.target.checked)}
+                            />
+                            Show point labels (A, B, C, D, S)
+                          </label>
+                          <label style={{ fontSize: 11 }}>
+                            Label scale
+                            <input
+                              type="number"
+                              min={0.5}
+                              max={2.5}
+                              step={0.05}
+                              value={geometryDemoLabelScale}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (Number.isFinite(v)) setGeometryDemoLabelScale(clampNumber(v, 0.5, 2.5));
                               }}
-                            >
-                              <span
-                                style={{
-                                  padding: "2px 8px",
-                                  borderRadius: 999,
-                                  background: `${color}22`,
-                                  color,
-                                  fontWeight: 700,
-                                  fontSize: 10,
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.3px",
-                                }}
-                              >
-                                {c.status}
-                              </span>
-                              <div>{c.label}</div>
-                              <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
-                                {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
+                              style={{ width: 96, marginTop: 4 }}
+                            />
+                          </label>
+                          {(
+                            [
+                              {
+                                id: "line",
+                                title: "Line thickness",
+                                value: geometryDemoLineRadiusScale,
+                                set: (scale: number) => setGeometryDemoLineRadiusScale(scale),
+                              },
+                              {
+                                id: "segment",
+                                title: "Segment thickness",
+                                value: geometryDemoSegmentRadiusScale,
+                                set: (scale: number) => setGeometryDemoSegmentRadiusScale(scale),
+                              },
+                              {
+                                id: "edge",
+                                title: "Edge thickness",
+                                value: geometryDemoEdgeRadiusScale,
+                                set: (scale: number) => setGeometryDemoEdgeRadiusScale(scale),
+                              },
+                            ] as const
+                          ).map((entry) => (
+                            <div key={entry.id} style={{ display: "grid", gap: 4 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600 }}>
+                                {entry.title}
+                                <span style={{ marginLeft: 6, opacity: 0.7, fontFamily: "monospace" }}>
+                                  x{entry.value.toFixed(2)}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                {THICKNESS_PRESETS.map((preset) => (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => entry.set(preset.scale)}
+                                    style={{
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                      border: "1px solid " + (Math.abs(entry.value - preset.scale) < 1e-9 ? "#0a66c2" : "#d1d5db"),
+                                      background: Math.abs(entry.value - preset.scale) < 1e-9 ? "#e6f0ff" : "#fff",
+                                      fontWeight: Math.abs(entry.value - preset.scale) < 1e-9 ? 700 : 500,
+                                      fontSize: 10,
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
                               </div>
                             </div>
-                          );
-                        })}
+                          ))}
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Anchor points</div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "auto 1fr",
+                              gap: "4px 8px",
+                              fontSize: 12,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {Object.entries(geometryDemo.points).map(([id, p]) => (
+                              <React.Fragment key={id}>
+                                <div>{id}</div>
+                                <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Faces</div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            {geometryFaces.map((face) => (
+                              <div
+                                key={face.id}
+                                style={{
+                                  border: "1px solid #e5e7eb",
+                                  borderRadius: 8,
+                                  padding: "6px 8px",
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ fontWeight: 700 }}>{face.label}</div>
+                                <div style={{ opacity: 0.72 }}>
+                                  vertices: {face.vertices.map((v) => v.label ?? "?").join(", ")}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Face incenters</div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            {geometryFaceIncenters.map((face) => (
+                              <div
+                                key={face.faceId}
+                                style={{
+                                  border: "1px solid #e5e7eb",
+                                  borderRadius: 8,
+                                  padding: "6px 8px",
+                                  display: "grid",
+                                  gridTemplateColumns: "80px 1fr auto",
+                                  gap: 8,
+                                  alignItems: "center",
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ fontWeight: 700 }}>{face.label}</div>
+                                <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
+                                  {face.incenter ? fmt3(face.incenter) : "(unavailable)"}
+                                </div>
+                                <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
+                                  delta={face.residual == null ? "-" : formatConstraintValue(face.residual)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {geometryDemoTab === "solve" && (
+                      <>
+                        <StereometryAnalyzerPanel
+                          faces={geometryFaces}
+                          faceIncenters={geometryFaceIncenters}
+                          planeCheck={geometryIncenterPlaneCheck}
+                          incenterTolerance={geometryFaceIncenterTolerance}
+                          selectedFaceId={geometrySelectedFaceId}
+                          onSelectFace={(id) => setGeometrySelectedFaceId(id)}
+                        />
+
+                        <div style={{ marginTop: 14 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            {geometryConstraints.map((c) => {
+                              const color = GEOMETRY_BADGE_COLORS[c.status];
+                              return (
+                                <div
+                                  key={c.id}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "auto 1fr auto",
+                                    gap: 8,
+                                    alignItems: "center",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                      background: `${color}22`,
+                                      color,
+                                      fontWeight: 700,
+                                      fontSize: 10,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.3px",
+                                    }}
+                                  >
+                                    {c.status}
+                                  </span>
+                                  <div>{c.label}</div>
+                                  <div style={{ fontFamily: "monospace", opacity: 0.7 }}>
+                                    {formatConstraintValue(c.residual, c.unit)} ≤ {formatConstraintValue(c.tolerance, c.unit)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {geometryDemoTab === "script" && (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Guide script</div>
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                          This is a ready-to-use solve script plan for the stereometry demo workflow.
+                        </div>
+                        <textarea
+                          readOnly
+                          value={DEMO_STEREOMETRY_GUIDE_SCRIPT}
+                          rows={12}
+                          style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
+                        />
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(DEMO_STEREOMETRY_GUIDE_SCRIPT);
+                                setGeometryDemoGuideStatus("Guide script copied.");
+                              } catch {
+                                const textarea = document.createElement("textarea");
+                                textarea.value = DEMO_STEREOMETRY_GUIDE_SCRIPT;
+                                textarea.setAttribute("readonly", "true");
+                                textarea.style.position = "fixed";
+                                textarea.style.opacity = "0";
+                                document.body.appendChild(textarea);
+                                textarea.select();
+                                document.execCommand("copy");
+                                document.body.removeChild(textarea);
+                                setGeometryDemoGuideStatus("Guide script copied.");
+                              }
+                            }}
+                          >
+                            Copy guide script
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGeometryMode("problem");
+                            }}
+                          >
+                            Open editable problem mode
+                          </button>
+                        </div>
+                        {geometryDemoGuideStatus && (
+                          <div style={{ fontSize: 11, color: "#166534" }}>{geometryDemoGuideStatus}</div>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>
@@ -19614,6 +19878,9 @@ case "mobius":
               <div ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
                 <GeometryViewer
                   scene={geometryScene}
+                  lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
+                  segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
+                  edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
                   meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
                   extraOverlayPolylineGroups={
                     geometryMode === "procedural"
@@ -28389,11 +28656,3 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
     </div>
   );
 };
-
-
-
-
-
-
-
-

@@ -13,7 +13,7 @@ import {
 import { formatConstraintValue } from "../geometry/analysis";
 
 type BuildMode = "select" | "create" | "check";
-type WorkspaceTab = "build" | "inspect" | "claims" | "script" | "scene";
+type WorkspaceTab = "task" | "build" | "inspect" | "claims" | "script" | "scene";
 
 type ToolKind =
   | "point"
@@ -114,6 +114,20 @@ const DEFAULT_OLYMPIAD_ARC_SCRIPT = [
   "intersection bisPQ A_perp_BC as X",
   "check point-on-circle X Omega",
 ].join("\n");
+
+const OLYMPIAD_ARC_TASK_TEXT_PL =
+  "Dany jest nierownoramienny trojkat ABC wpisany w okrag Omega o srodku O. " +
+  "Punkt M jest srodkiem tego luku BC okregu Omega, ktory nie zawiera punktu A. " +
+  "Okreg opisany na trojkacie AOM przecina proste AB i AC odpowiednio w punktach P != A i Q != A. " +
+  "Zakladajac kolejnosc A-B-P na AB oraz Q-A-C na AC, wykazac, ze symetralna odcinka PQ " +
+  "przecina prosta prostopadla do BC przechodzaca przez A w punkcie lezacym na okregu Omega.";
+
+const OLYMPIAD_ARC_TASK_TEXT_EN =
+  "Given a non-isosceles triangle ABC inscribed in circle Omega with center O. " +
+  "Let M be the midpoint of arc BC not containing A. " +
+  "The circumcircle of triangle AOM meets lines AB and AC at P != A and Q != A. " +
+  "Assuming A-B-P are collinear in that order and Q-A-C are collinear in that order, " +
+  "prove that the perpendicular bisector of PQ meets the line through A perpendicular to BC at a point on Omega.";
 
 const TOOL_LABELS: Record<ToolKind, string> = {
   point: "Add free point",
@@ -2069,7 +2083,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        {(["build", "inspect", "claims", "script", "scene"] as WorkspaceTab[]).map((tab) => (
+        {(["task", "build", "inspect", "claims", "script", "scene"] as WorkspaceTab[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -2103,6 +2117,31 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
           Redo
         </button>
       </div>
+
+      {workspaceTab === "task" && (
+        <div
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            padding: 10,
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Task statement</div>
+          <div style={{ fontSize: 11, lineHeight: 1.45 }}>{OLYMPIAD_ARC_TASK_TEXT_PL}</div>
+          <div style={{ fontSize: 11, lineHeight: 1.45, opacity: 0.75 }}>{OLYMPIAD_ARC_TASK_TEXT_EN}</div>
+          <div style={{ fontSize: 11, opacity: 0.75 }}>
+            Embedded script already builds O, Omega, M, Gamma, points P/Q, bisector(PQ), A_perp_BC, and X check on Omega.
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setWorkspaceTab("build")}>Open Build</button>
+            <button type="button" onClick={() => setWorkspaceTab("claims")}>Open Claims</button>
+            <button type="button" onClick={() => setWorkspaceTab("script")}>Open Script</button>
+            <button type="button" onClick={resetToEmbeddedTask}>Reload embedded task</button>
+          </div>
+        </div>
+      )}
 
       {workspaceTab === "build" && (
         <>

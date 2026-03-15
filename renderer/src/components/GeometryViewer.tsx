@@ -83,6 +83,9 @@ export type GeometryViewerProps = {
     rotation: { x: number; y: number; z: number };
     scale: { x: number; y: number; z: number };
   }) => void;
+  lineRadiusScale?: number;
+  segmentRadiusScale?: number;
+  edgeRadiusScale?: number;
 };
 
 export const GeometryViewer: React.FC<GeometryViewerProps> = ({
@@ -120,14 +123,20 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   gizmoRotationSnapDeg = null,
   gizmoScaleSnap = null,
   onGizmoTransform,
+  lineRadiusScale = 1,
+  segmentRadiusScale = 1,
+  edgeRadiusScale = 1,
 }) => {
   const renderData = useMemo(
     () =>
       buildGeometryRenderData(scene, {
         label: "Geometry",
         emitEdges: true,
+        lineRadiusScale,
+        segmentRadiusScale,
+        edgeRadiusScale,
       }),
-    [scene]
+    [scene, lineRadiusScale, segmentRadiusScale, edgeRadiusScale]
   );
 
   const meshOverrideList = meshOverrides?.length ? meshOverrides : null;

@@ -10,6 +10,48 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 
+function Invoke-WorkerCliSmoke {
+  param(
+    [Parameter(Mandatory = $true)][string]$WorkerPath
+  )
+
+  foreach ($check in @(
+    @{ Flag = "--ping"; ExpectedType = "pong" },
+    @{ Flag = "--version"; ExpectedType = "version" }
+  )) {
+    $raw = (& $WorkerPath $check.Flag | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+      throw "Worker CLI check failed: $WorkerPath $($check.Flag) (exit code $LASTEXITCODE)"
+    }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+      throw "Worker CLI check returned empty output: $WorkerPath $($check.Flag)"
+    }
+    try {
+      $obj = $raw | ConvertFrom-Json
+    } catch {
+      throw "Worker CLI check returned non-JSON output: $raw"
+    }
+    if ($obj.type -ne $check.ExpectedType -or -not $obj.ok) {
+      throw "Worker CLI check returned unexpected payload for $($check.Flag): $raw"
+    }
+  }
+}
+
+function Invoke-WorkerProtocolSmoke {
+  param(
+    [Parameter(Mandatory = $true)][string]$WorkerPath
+  )
+
+  $smokeScript = Join-Path $repo "scripts/smoke-python-worker.mjs"
+  if (-not (Test-Path $smokeScript)) {
+    throw "Smoke script not found: $smokeScript"
+  }
+  node $smokeScript --exe $WorkerPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Smoke test failed for worker: $WorkerPath (exit code $LASTEXITCODE)"
+  }
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
   $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs/Math3D"
 }
@@ -32,7 +74,11 @@ if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
 
 if (-not $SkipInstall) {
   Write-Host "[verify] installing from $InstallerPath"
-  Start-Process -FilePath $InstallerPath -ArgumentList "/S" -Wait
+  $installerArgs = @("/S", "/D=$InstallRoot")
+  $proc = Start-Process -FilePath $InstallerPath -ArgumentList $installerArgs -Wait -PassThru
+  if ($proc.ExitCode -ne 0) {
+    throw "Installer failed (exit code $($proc.ExitCode)): $InstallerPath"
+  }
 }
 
 $installedWorker = Join-Path $InstallRoot "resources/python-worker/worker.exe"
@@ -42,15 +88,17 @@ if (-not (Test-Path $installedWorker)) {
 Write-Host "[verify] installed worker found: $installedWorker"
 
 if (-not $SkipSmoke) {
-  $smokeScript = Join-Path $repo "scripts/smoke-python-worker.mjs"
-  if (-not (Test-Path $smokeScript)) {
-    throw "Smoke script not found: $smokeScript"
-  }
-  Write-Host "[verify] running smoke test against installed worker"
-  node $smokeScript --exe $installedWorker
-  if ($LASTEXITCODE -ne 0) {
-    throw "Smoke test failed for installed worker (exit code $LASTEXITCODE)"
-  }
+  Write-Host "[verify] running CLI smoke (packaged worker)"
+  Invoke-WorkerCliSmoke -WorkerPath $unpackedWorker
+
+  Write-Host "[verify] running protocol smoke (packaged worker)"
+  Invoke-WorkerProtocolSmoke -WorkerPath $unpackedWorker
+
+  Write-Host "[verify] running CLI smoke (installed worker)"
+  Invoke-WorkerCliSmoke -WorkerPath $installedWorker
+
+  Write-Host "[verify] running protocol smoke (installed worker)"
+  Invoke-WorkerProtocolSmoke -WorkerPath $installedWorker
 }
 
 if (-not $SkipLaunchCheck) {

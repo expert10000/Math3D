@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
 import * as path from "node:path";
 
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
@@ -12,6 +12,25 @@ import * as fs from "node:fs";
 
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+
+type AppRuntimeMode = "development" | "packaged";
+type AppInstallType = "development" | "installer" | "portable-or-unknown";
+type AppSystemInfo = {
+  appName: string;
+  appVersion: string;
+  mode: AppRuntimeMode;
+  installType: AppInstallType;
+  execPath: string;
+  appPath: string;
+  resourcesPath: string;
+  userDataPath: string;
+  workingDir: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+};
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
 type AppCaptureRequest = { target: "scene" | "window"; rect?: CaptureRect | null };
@@ -34,6 +53,72 @@ const screenshotStamp = () => {
   const d = new Date();
   const pad = (n: number, size = 2) => String(n).padStart(size, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`;
+};
+
+const inferInstallType = (execPath: string, mode: AppRuntimeMode): AppInstallType => {
+  if (mode === "development") return "development";
+  const normalized = execPath.replace(/\//g, "\\").toLowerCase();
+  if (
+    normalized.includes("\\program files\\") ||
+    normalized.includes("\\program files (x86)\\") ||
+    normalized.includes("\\appdata\\local\\programs\\")
+  ) {
+    return "installer";
+  }
+  return "portable-or-unknown";
+};
+
+const buildAppSystemInfo = (): AppSystemInfo => {
+  const mode: AppRuntimeMode = app.isPackaged ? "packaged" : "development";
+  const execPath = process.execPath;
+  return {
+    appName: app.getName(),
+    appVersion: app.getVersion(),
+    mode,
+    installType: inferInstallType(execPath, mode),
+    execPath,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath ?? "",
+    userDataPath: app.getPath("userData"),
+    workingDir: process.cwd(),
+    electronVersion: process.versions.electron ?? "unknown",
+    chromeVersion: process.versions.chrome ?? "unknown",
+    nodeVersion: process.versions.node ?? "unknown",
+    platform: process.platform,
+    arch: process.arch,
+  };
+};
+
+const formatAppSystemInfo = (info: AppSystemInfo): string => {
+  const version = info.appVersion ? `v${info.appVersion}` : "version unknown";
+  return [
+    `${info.appName} ${version}`,
+    `Mode: ${info.mode}`,
+    `Install type: ${info.installType}`,
+    "",
+    `Executable: ${info.execPath}`,
+    `App folder: ${info.appPath}`,
+    `Resources: ${info.resourcesPath}`,
+    `User data: ${info.userDataPath}`,
+    `Working dir: ${info.workingDir}`,
+    "",
+    `Electron: ${info.electronVersion}`,
+    `Chrome: ${info.chromeVersion}`,
+    `Node: ${info.nodeVersion}`,
+    `Platform: ${info.platform} ${info.arch}`,
+  ].join("\n");
+};
+
+const showAppSystemInfo = async (win: BrowserWindow): Promise<void> => {
+  const info = buildAppSystemInfo();
+  await dialog.showMessageBox(win, {
+    type: "info",
+    title: `${info.appName} system info`,
+    message: `${info.appName} runtime details`,
+    detail: formatAppSystemInfo(info),
+    buttons: ["OK"],
+    noLink: true,
+  });
 };
 
 // Guard against running this entrypoint under plain Node (Electron APIs unavailable).
@@ -254,7 +339,18 @@ function buildAppMenu(win: BrowserWindow) {
         action("Preset guide", "help:preset-guide"),
         action("Surface formulas", "help:surface-formulas"),
         { type: "separator" },
-        { label: "About", role: "about" },
+        {
+          label: "App system info",
+          click: () => {
+            void showAppSystemInfo(win);
+          },
+        },
+        {
+          label: "About",
+          click: () => {
+            void showAppSystemInfo(win);
+          },
+        },
       ],
     },
   ];

@@ -11,6 +11,9 @@ export type GeometryRenderOptions = {
   defaultLineLength?: number;
   defaultPlaneSize?: number;
   emitEdges?: boolean;
+  lineRadiusScale?: number;
+  segmentRadiusScale?: number;
+  edgeRadiusScale?: number;
 };
 
 export type GeometryRenderData = {
@@ -220,13 +223,14 @@ export const buildGeometryRenderData = (
   }
 
   const lineGroups = new Map<string, OverlayPolylineGroup>();
-  const addLine = (segment: Segment3, fallbackColor: number) => {
+  const addLine = (segment: Segment3, fallbackColor: number, radiusMultiplier = 1) => {
     const a = segment.a;
     const b = segment.b;
     if (!isFiniteVec3(a) || !isFiniteVec3(b)) return;
     const color = segment.color ?? fallbackColor;
     const opacity = segment.opacity;
-    const radiusScale = segment.radiusScale;
+    const baseScale = segment.radiusScale ?? 1;
+    const radiusScale = baseScale * Math.max(0.01, radiusMultiplier);
     const key = `${color}|${opacity ?? ""}|${radiusScale ?? ""}`;
     let group = lineGroups.get(key);
     if (!group) {
@@ -237,19 +241,23 @@ export const buildGeometryRenderData = (
   };
 
   const seenEdges = new Set<string>();
-  const addUniqueEdge = (segment: Segment3, fallbackColor: number) => {
+  const addUniqueEdge = (segment: Segment3, fallbackColor: number, radiusMultiplier = 1) => {
     const key = edgeKey(segment.a, segment.b);
     if (seenEdges.has(key)) return;
     seenEdges.add(key);
-    addLine(segment, fallbackColor);
+    addLine(segment, fallbackColor, radiusMultiplier);
   };
 
-  segments.forEach((s) => addLine(s, opts.defaultLineColor ?? DEFAULT_LINE_COLOR));
-  edgeSegments.forEach((s) => addUniqueEdge(s, opts.defaultLineColor ?? DEFAULT_LINE_COLOR));
+  const segmentRadiusScale = opts.segmentRadiusScale ?? 1;
+  const edgeRadiusScale = opts.edgeRadiusScale ?? 1;
+  const lineRadiusScale = opts.lineRadiusScale ?? 1;
+
+  segments.forEach((s) => addLine(s, opts.defaultLineColor ?? DEFAULT_LINE_COLOR, segmentRadiusScale));
+  edgeSegments.forEach((s) => addUniqueEdge(s, opts.defaultLineColor ?? DEFAULT_LINE_COLOR, edgeRadiusScale));
 
   lines.forEach((line) => {
     const seg = lineToSegment(line, defaultLineLength);
-    if (seg) addLine(seg, opts.defaultLineColor ?? DEFAULT_LINE_COLOR);
+    if (seg) addLine(seg, opts.defaultLineColor ?? DEFAULT_LINE_COLOR, lineRadiusScale);
   });
 
   const pointGroups = new Map<string, OverlayPointSet>();
