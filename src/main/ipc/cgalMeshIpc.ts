@@ -1,5 +1,9 @@
 import { ipcMain } from "electron";
 import { getPythonWorker, stopPythonWorker } from "../python/pythonWorker";
+import {
+  recordPythonWorkerFailure,
+  recordPythonWorkerSuccess,
+} from "../python/pythonWorkerDiagnostics";
 
 export type CgalMeshRequest = {
   jobId: string;
@@ -45,9 +49,11 @@ export function registerCgalMeshIpc() {
     try {
       const worker = await getPythonWorker();
       const res = await worker.ping();
+      recordPythonWorkerSuccess();
       return { ok: true, pong: !!res.pong };
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:ping", "WORKER_PING_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
@@ -55,27 +61,43 @@ export function registerCgalMeshIpc() {
     try {
       const worker = await getPythonWorker();
       const res = await worker.version();
+      recordPythonWorkerSuccess({ version: res.version, protocol: res.protocol });
       return { ok: true, version: res.version, protocol: res.protocol };
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:version", "WORKER_VERSION_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
   ipcMain.handle("mesh:cgal", async (_evt, req: CgalMeshRequest): Promise<CgalMeshResponse> => {
     try {
       const worker = await getPythonWorker();
-      return await worker.meshCgal(req);
+      const res = await worker.meshCgal(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
   ipcMain.handle("mesh:geodesic:heat", async (_evt, req: GeodesicHeatRequest): Promise<GeodesicHeatResponse> => {
     try {
       const worker = await getPythonWorker();
-      return await worker.geodesicHeat(req);
+      const res = await worker.geodesicHeat(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:geodesic:heat", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:geodesic:heat", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
@@ -84,11 +106,14 @@ export function registerCgalMeshIpc() {
       const worker = await getPythonWorker();
       const res = await worker.health();
       if (res?.ok === false) {
-        return { ok: false, error: res.error ?? "CGAL worker health failed" };
+        const diag = recordPythonWorkerFailure(res.error ?? "CGAL worker health failed", "mesh:cgal:health", "WORKER_HEALTH_FAILED");
+        return { ok: false, error: diag.message };
       }
+      recordPythonWorkerSuccess();
       return { ok: true };
     } catch (e: any) {
-      return { ok: false, error: e?.message ?? String(e) };
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:health", "WORKER_HEALTH_FAILED");
+      return { ok: false, error: diag.message };
     }
   });
 
