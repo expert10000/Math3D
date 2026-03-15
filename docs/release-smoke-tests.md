@@ -49,7 +49,8 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
   - Flow:
     - install Node + Python
     - install npm dependencies (`root` + `renderer`)
-    - install Python freeze dependencies (`pyinstaller` + `python/worker/requirements.freeze.txt`)
+    - install Python freeze dependencies (`pyinstaller`, `numpy`, `scipy`, `sympy`, `vtk`)
+    - try to install `pygalmesh` (optional; workflow continues if unavailable on runner)
     - run `npm run build:core`
     - run `npm run test:worker:smoke`
 - Installer smoke workflow: `.github/workflows/windows-release-smoke.yml`
@@ -63,7 +64,8 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
   - Flow:
     - install Node + Python
     - install npm dependencies (`root` + `renderer`)
-    - install Python freeze dependencies (`pyinstaller` + `python/worker/requirements.freeze.txt`)
+    - install Python freeze dependencies (`pyinstaller`, `numpy`, `scipy`, `sympy`, `vtk`)
+    - try to install `pygalmesh` (optional; workflow continues if unavailable on runner)
     - build installer, install silently, run packaged and installed worker smoke checks
 
 ## Minimal packaged-build test plan
