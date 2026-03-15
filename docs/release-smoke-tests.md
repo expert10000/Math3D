@@ -44,13 +44,27 @@ Prevent installer regressions by validating packaged behavior in a repeatable wa
 
 ## GitHub Actions
 
-- Workflow: `.github/workflows/windows-release-smoke.yml`
-- Runs on: `windows-latest`
-- Flow:
-  - install Node + Python
-  - install npm dependencies (`root` + `renderer`)
-  - install Python freeze dependencies (`pyinstaller`, `numpy`, `scipy`, `sympy`, `vtk`)
-  - run `npm run test:release:smoke`
+- Build + worker smoke workflow: `.github/workflows/ci-build-and-worker-smoke.yml`
+  - Triggers: push/pull request to `main|master`, manual `workflow_dispatch`
+  - Flow:
+    - install Node + Python
+    - install npm dependencies (`root` + `renderer`)
+    - install Python freeze dependencies (`pyinstaller` + `python/worker/requirements.freeze.txt`)
+    - run `npm run build:core`
+    - run `npm run test:worker:smoke`
+- Installer smoke workflow: `.github/workflows/windows-release-smoke.yml`
+  - Runs on: `windows-latest`
+  - Trigger methods:
+    - push to `main|master`
+    - weekly schedule (Monday, 04:00 UTC)
+    - manual `workflow_dispatch` (optional `skip_launch_check` input)
+    - PR label: add `ci:installer-smoke` label
+    - API: `repository_dispatch` event type `run-installer-smoke`
+  - Flow:
+    - install Node + Python
+    - install npm dependencies (`root` + `renderer`)
+    - install Python freeze dependencies (`pyinstaller` + `python/worker/requirements.freeze.txt`)
+    - build installer, install silently, run packaged and installed worker smoke checks
 
 ## Minimal packaged-build test plan
 

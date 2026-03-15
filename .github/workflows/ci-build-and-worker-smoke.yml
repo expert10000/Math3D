@@ -1,9 +1,7 @@
-name: Windows Installer Smoke
+name: CI Build and Worker Smoke
 
 on:
   pull_request:
-    types:
-      - labeled
     branches:
       - main
       - master
@@ -11,28 +9,22 @@ on:
     branches:
       - main
       - master
-  schedule:
-    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
-      skip_launch_check:
-        description: Skip installed app launch persistence check
+      run_worker_smoke:
+        description: Run frozen worker smoke tests
         required: false
         default: true
         type: boolean
-  repository_dispatch:
-    types:
-      - run-installer-smoke
 
 concurrency:
-  group: windows-installer-smoke-${{ github.ref }}
+  group: ci-build-worker-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  release-smoke:
-    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'ci:installer-smoke' }}
+  build-and-test:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -60,33 +52,26 @@ jobs:
       - name: Install npm dependencies (renderer)
         run: npm --prefix renderer ci
 
-      - name: Install Python dependencies for frozen worker
+      - name: Install Python dependencies for worker freeze
         run: |
           python -m pip install --upgrade pip
           python -m pip install pyinstaller
           python -m pip install -r python/worker/requirements.freeze.txt
 
-      - name: Build installer, install, and run smoke tests
-        shell: pwsh
-        run: |
-          $skipLaunchCheck = "${{ github.event.inputs.skip_launch_check }}"
-          if ([string]::IsNullOrWhiteSpace($skipLaunchCheck)) {
-            $skipLaunchCheck = "true"
-          }
+      - name: Build app
+        run: npm run build:core
 
-          if ($skipLaunchCheck -eq "true") {
-            npm run test:release:smoke
-          } else {
-            powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -StrictLaunchCheck
-          }
+      - name: Run worker smoke tests
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_worker_smoke == 'true' }}
+        run: npm run test:worker:smoke
 
-      - name: Upload release artifacts
+      - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer-smoke-artifacts
+          name: ci-build-and-worker-smoke-artifacts
           if-no-files-found: warn
           path: |
-            release/*.exe
-            release/builder-debug.yml
-            release/latest.yml
+            dist/**
+            renderer/dist/**
+            build/python-worker-dist/worker.exe
