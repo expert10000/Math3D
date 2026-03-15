@@ -58,7 +58,7 @@ jobs:
         run: npm ci
 
       - name: Install npm dependencies (renderer)
-        run: npm --prefix renderer ci
+        run: npm --prefix renderer install
 
       - name: Install Python dependencies for frozen worker
         shell: pwsh
