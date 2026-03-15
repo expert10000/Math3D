@@ -75,7 +75,11 @@ import {
   type SelectionStats,
 } from "./math/selection/selectionStats";
 import { buildGeodesicDisk } from "./math/geodesicDisk";
-import { cgalHealth, cgalPing, cgalVersion, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import {
+  getPythonWorkerDiagnostics,
+  type PythonWorkerDiagnosticsSnapshot,
+} from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { vtkVolumeDistance } from "./services/vtkVolumeClient";
@@ -462,7 +466,29 @@ type CgalMeshState = {
   indices: number[];
   createdAt: number;
 };
-type CgalHealthState = { ok: boolean; error?: string };
+type CgalHealthState = {
+  ok: boolean;
+  statusMessage: string;
+  backend?: "python-script" | "bundled-exe";
+  version?: string;
+  protocol?: string;
+  logsPath?: string;
+  checkedAt: number;
+  error?: string;
+  errorCategory?: string;
+};
+
+const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthState => ({
+  ok: status.available,
+  statusMessage: status.statusMessage,
+  backend: status.backend,
+  version: status.version,
+  protocol: status.protocol,
+  logsPath: status.logPath,
+  checkedAt: status.lastCheckAt,
+  error: status.lastError?.message,
+  errorCategory: status.lastError?.category,
+});
 
 const stereographicToSphere = (re: number, im: number) => {
   if (!Number.isFinite(re) || !Number.isFinite(im)) {
@@ -11214,8 +11240,21 @@ case "mobius":
     };
   }, []);
 
+  const refreshCgalHealthState = useCallback(async () => {
+    const status = await getPythonWorkerDiagnostics();
+    setCgalHealthState(toCgalHealthState(status));
+  }, []);
+
+  const refreshCgalHealthAfterWorkerAction = useCallback(() => {
+    void refreshCgalHealthState();
+  }, [refreshCgalHealthState]);
+
   const handleVtkCleanNormals = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11234,11 +11273,16 @@ case "mobius":
       setVtkError(err?.message ?? "VTK clean failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, [vtkBusy, getMeshForVtk, applyVtkResultToSurfaceMesh]);
+  }, [vtkBusy, cgalHealthState, getMeshForVtk, applyVtkResultToSurfaceMesh, refreshCgalHealthAfterWorkerAction]);
 
   const handleVtkDecimate = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11260,18 +11304,25 @@ case "mobius":
       setVtkError(err?.message ?? "VTK decimate failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     vtkBusy,
+    cgalHealthState,
     getMeshForVtk,
     vtkUseTargetFaces,
     vtkDecimateTargetFaces,
     vtkDecimateReduction,
     applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleVtkSmooth = useCallback(async () => {
     if (vtkBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     const mesh = getMeshForVtk();
     if (!mesh) {
       setVtkError("Surface mesh not ready yet.");
@@ -11294,11 +11345,24 @@ case "mobius":
       setVtkError(err?.message ?? "VTK smooth failed.");
     } finally {
       setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, [vtkBusy, getMeshForVtk, vtkSmoothIterations, vtkSmoothPassband, applyVtkResultToSurfaceMesh]);
+  }, [
+    vtkBusy,
+    cgalHealthState,
+    getMeshForVtk,
+    vtkSmoothIterations,
+    vtkSmoothPassband,
+    applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
 
   const handleBuildDistanceVolume = useCallback(async () => {
     if (volumeDistanceBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVolumeDistanceError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     if (!surfaceMeshData?.positions?.length) {
       setVolumeDistanceError("Surface mesh not ready yet.");
       return;
@@ -11383,15 +11447,18 @@ case "mobius":
       setVolumeDistanceError(err?.message ?? "Distance field failed.");
     } finally {
       setVolumeDistanceBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     volumeDistanceBusy,
+    cgalHealthState,
     volumeDistanceSigned,
     volumeDistanceAutoBounds,
     surfaceMeshData,
     volumeSamplingClamped,
     volumeSamplingSpacing,
     volumeSamplingBounds,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleClearVolumeOverride = useCallback(() => {
@@ -12706,36 +12773,27 @@ case "mobius":
   }, []);
 
   useEffect(() => {
-    if (surfaceViewerKind !== "implicit") return;
     let alive = true;
-    (async () => {
-      const ping = await cgalPing();
+    const run = async () => {
+      const status = await getPythonWorkerDiagnostics();
       if (!alive) return;
-      if (!ping.ok) {
-        setCgalHealthState({ ok: false, error: `Python worker ping failed: ${ping.error ?? "unknown error"}` });
-        return;
-      }
-      const version = await cgalVersion();
-      if (!alive) return;
-      if (!version.ok) {
-        setCgalHealthState({ ok: false, error: `Python worker version failed: ${version.error ?? "unknown error"}` });
-        return;
-      }
-      const health = await cgalHealth();
-      if (!alive) return;
-      if (!health.ok) {
-        setCgalHealthState({
-          ok: false,
-          error: `Python worker health failed: ${health.error ?? "unknown error"} (${version.version ?? "?"}/${version.protocol ?? "?"})`,
-        });
-        return;
-      }
-      setCgalHealthState({ ok: true });
-    })();
+      setCgalHealthState(toCgalHealthState(status));
+    };
+    void run();
+    const timer = window.setInterval(() => {
+      void run();
+    }, 6000);
     return () => {
       alive = false;
+      window.clearInterval(timer);
     };
-  }, [surfaceViewerKind]);
+  }, [refreshCgalHealthState]);
+
+  useEffect(() => {
+    if (surfaceViewerKind !== "implicit") return;
+    if (cgalHealthState?.ok) return;
+    void refreshCgalHealthState();
+  }, [surfaceViewerKind, cgalHealthState?.ok, refreshCgalHealthState]);
   const geodesicHeatMeshInfo = useMemo(() => resolveGeodesicMesh(null), [resolveGeodesicMesh]);
   const geodesicHeatMeshAvailable = !!geodesicHeatMeshInfo;
   const geodesicHeatContinuousAllowed =
@@ -14815,6 +14873,10 @@ case "mobius":
 
   const handleVtkPreviewImplicit = useCallback(async () => {
     if (vtkBusy || vtkPreviewBusy) return;
+    if (cgalHealthState?.ok === false) {
+      setVtkPreviewError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
     if (surfaceViewerKind !== "implicit") {
       setVtkPreviewError("VTK preview is available only in the implicit viewer.");
       return;
@@ -14848,10 +14910,12 @@ case "mobius":
       setVtkPreviewError(err?.message ?? "VTK preview failed.");
     } finally {
       setVtkPreviewBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
     vtkBusy,
     vtkPreviewBusy,
+    cgalHealthState,
     surfaceViewerKind,
     activeImplicitExpr,
     implicitResolution,
@@ -14859,10 +14923,16 @@ case "mobius":
     vtkPreviewUseDecimate,
     cgalDomainPreview,
     applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleRunCgalMesh = useCallback(async () => {
     setCgalError(null);
+
+    if (cgalHealthState?.ok === false) {
+      setCgalError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
 
     if (surfaceViewerKind !== "implicit") {
       setCgalError("CGAL meshing is available only in the implicit viewer.");
@@ -14946,8 +15016,10 @@ case "mobius":
       setCgalError(e?.message ?? String(e));
     } finally {
       setCgalBusy(false);
+      refreshCgalHealthAfterWorkerAction();
     }
   }, [
+    cgalHealthState,
     surfaceViewerKind,
     activeImplicitExpr,
     selectionStats,
@@ -14972,6 +15044,7 @@ case "mobius":
     cgalTooHeavy,
     selectionBBoxForCgal,
     activeEqSurfaceId,
+    refreshCgalHealthAfterWorkerAction,
   ]);
 
   const handleStopCgalWorker = useCallback(async () => {
@@ -14982,12 +15055,13 @@ case "mobius":
         return;
       }
       setCgalBusy(false);
-      setCgalHealthState(null);
       setCgalError("CGAL worker stopped.");
     } catch (e: any) {
       setCgalError(e?.message ?? String(e));
+    } finally {
+      refreshCgalHealthAfterWorkerAction();
     }
-  }, []);
+  }, [refreshCgalHealthAfterWorkerAction]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -17109,6 +17183,9 @@ case "mobius":
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
                   onToggleVolumeDistanceAutoBounds={setVolumeDistanceAutoBounds}
                   vtkAvailable={vtkMeshAvailable}
+                  pythonWorkerAvailable={cgalHealthState?.ok === true}
+                  pythonWorkerStatusMessage={cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? null}
+                  pythonWorkerLogPath={cgalHealthState?.logsPath ?? null}
                   vtkBusy={vtkBusy}
                   vtkError={vtkError}
                   vtkDecimateReduction={vtkDecimateReduction}
@@ -21409,6 +21486,9 @@ type SurfacesLeftPanelProps = {
   onToggleVolumeDistanceSigned: (v: boolean) => void;
   onToggleVolumeDistanceAutoBounds: (v: boolean) => void;
   vtkAvailable: boolean;
+  pythonWorkerAvailable: boolean;
+  pythonWorkerStatusMessage: string | null;
+  pythonWorkerLogPath: string | null;
   vtkBusy: boolean;
   vtkError: string | null;
   vtkDecimateReduction: number;
@@ -21893,10 +21973,13 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
   onLoadSurfaceMeshFile,
-    onConvertToMesh,
+  onConvertToMesh,
   onToggleVolumeDistanceSigned,
   onToggleVolumeDistanceAutoBounds,
   vtkAvailable,
+  pythonWorkerAvailable,
+  pythonWorkerStatusMessage,
+  pythonWorkerLogPath,
   vtkBusy,
   vtkError,
   vtkDecimateReduction,
@@ -22304,6 +22387,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk">("surface_mesh");
+  const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
@@ -24561,12 +24645,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           <button
             type="button"
             onClick={onBuildDistanceVolume}
-            disabled={volumeDistanceBusy}
+            disabled={volumeDistanceBusy || !pythonWorkerAvailable}
             style={{ padding: "4px 10px" }}
           >
             {volumeDistanceBusy ? "Building..." : "Surface → Volume (distance)"}
           </button>
         </div>
+        {!pythonWorkerAvailable && (
+          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
+            {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+          </div>
+        )}
+        {!pythonWorkerAvailable && pythonWorkerLogPath && (
+          <div style={{ fontSize: 10, color: "#667085", marginTop: 4, wordBreak: "break-all" }}>
+            log: {pythonWorkerLogPath}
+          </div>
+        )}
         <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
           Builds a {volumeDistanceSigned ? "signed" : "unsigned"} distance field on{" "}
           {volumeDistanceAutoBounds ? "auto mesh bounds" : "the current sampling box"}. Use the Volume panel to view
@@ -24587,16 +24681,26 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         ) : (
           <>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              <button type="button" onClick={onVtkCleanNormals} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkCleanNormals} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Clean + normals"}
               </button>
-              <button type="button" onClick={onVtkDecimate} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkDecimate} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Decimate"}
               </button>
-              <button type="button" onClick={onVtkSmooth} disabled={vtkBusy}>
+              <button type="button" onClick={onVtkSmooth} disabled={vtkOpsDisabled}>
                 {vtkBusy ? "Working..." : "Smooth"}
               </button>
             </div>
+            {!pythonWorkerAvailable && (
+              <div style={{ fontSize: 11, color: "#b42318", marginBottom: 8 }}>
+                {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+              </div>
+            )}
+            {!pythonWorkerAvailable && pythonWorkerLogPath && (
+              <div style={{ fontSize: 10, color: "#667085", marginBottom: 8, wordBreak: "break-all" }}>
+                log: {pythonWorkerLogPath}
+              </div>
+            )}
 
             <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Decimate</div>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
@@ -24604,7 +24708,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 type="checkbox"
                 checked={vtkUseTargetFaces}
                 onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
-                disabled={vtkBusy}
+                disabled={vtkOpsDisabled}
               />
               Use target faces
             </label>
@@ -24619,7 +24723,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 step={0.01}
                 value={vtkDecimateReduction}
                 onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
-                disabled={vtkUseTargetFaces || vtkBusy}
+                disabled={vtkUseTargetFaces || vtkOpsDisabled}
                 style={{ width: 180 }}
               />
             </div>
@@ -24632,7 +24736,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                 step={100}
                 value={vtkDecimateTargetFaces}
                 onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
-                disabled={!vtkUseTargetFaces || vtkBusy}
+                disabled={!vtkUseTargetFaces || vtkOpsDisabled}
                 style={{ width: 120 }}
               />
             </div>
@@ -24648,7 +24752,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   step={1}
                   value={vtkSmoothIterations}
                   onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
-                  disabled={vtkBusy}
+                  disabled={vtkOpsDisabled}
                   style={{ width: 60 }}
                 />
               </label>
@@ -24661,7 +24765,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
                   step={0.01}
                   value={vtkSmoothPassband}
                   onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
-                  disabled={vtkBusy}
+                  disabled={vtkOpsDisabled}
                   style={{ width: 70 }}
                 />
               </label>
@@ -26902,13 +27006,17 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const isImplicitViewer = viewerKind === "implicit";
   const isEqViewer = isGraphViewer || isImplicitViewer;
   const showDomainPicker = isGraphViewer || isParamViewer || isImplicitViewer;
-  const cgalReady = !!cgalHealthState?.ok;
-  const cgalStatusText = cgalHealthState ? (cgalHealthState.ok ? "available" : "unavailable") : "checking...";
+  const cgalReady = cgalHealthState?.ok === true;
+  const cgalStatusText = !cgalHealthState
+    ? "checking..."
+    : cgalHealthState.ok
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
+      : "unavailable";
   const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
-  const cgalDisabled = cgalBusy || cgalHealthState?.ok === false;
-  const cgalStopDisabled = !cgalHealthState && !cgalBusy;
+  const cgalDisabled = cgalBusy || cgalHealthState?.ok !== true;
+  const cgalStopDisabled = !cgalBusy && cgalHealthState?.ok !== true;
   const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
-  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy;
+  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy || cgalHealthState?.ok !== true;
   const vtkPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
@@ -27366,6 +27474,15 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               {vtkPreviewError && <div style={{ fontSize: 11, color: "#b42318" }}>{vtkPreviewError}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: cgalStatusColor,
+                    display: "inline-block",
+                  }}
+                />
                 <div style={{ fontSize: 11, color: cgalStatusColor }}>{cgalStatusText}</div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -27605,9 +27722,25 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   {cgalMeshInfo.vertexCount} verts · {cgalMeshInfo.triCount} tris
                 </div>
               )}
+              {cgalHealthState && (
+                <div style={{ fontSize: 10, color: "#667085" }}>
+                  backend: {cgalHealthState.backend ?? "unknown"} · protocol: {cgalHealthState.protocol ?? "unknown"}
+                </div>
+              )}
+              {cgalHealthState?.logsPath && (
+                <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>
+                  log: {cgalHealthState.logsPath}
+                </div>
+              )}
               {cgalError && <div style={{ fontSize: 11, color: "#b42318" }}>{cgalError}</div>}
+              {!cgalReady && !cgalHealthState?.error && cgalHealthState?.statusMessage && (
+                <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.statusMessage}</div>
+              )}
               {!cgalReady && cgalHealthState?.error && (
                 <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.error}</div>
+              )}
+              {!cgalReady && cgalHealthState?.errorCategory && (
+                <div style={{ fontSize: 10, color: "#b42318" }}>reason: {cgalHealthState.errorCategory}</div>
               )}
             </div>
           </div>

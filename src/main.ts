@@ -6,6 +6,7 @@ import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
 import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
 import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
 import { runPythonWorkerStartupCheck } from "./main/python/pythonWorker";
+import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
 
 import * as fs from "node:fs";
 
@@ -63,7 +64,10 @@ const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
 }
 
 app.whenReady().then(() => {
+  registerPythonWorkerDiagnosticsIpc();
+
   void runPythonWorkerStartupCheck().then((status) => {
+    recordPythonWorkerStartup(status);
     if (status.ok) {
       console.log("[python-worker] startup check passed", {
         backend: status.backend,
