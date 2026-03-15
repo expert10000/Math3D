@@ -20,6 +20,7 @@
 - JSON/stdin protocol check using `scripts/smoke-python-worker.mjs`:
   - sends `ping`
   - sends `mesh.preview`
+  - sends `mesh.transform` (`vtk_clean_normals`)
   - validates non-empty mesh result (`vertexCount > 0`, `triCount > 0`)
 
 ## Packaging notes (DLLs / heavy deps)
@@ -40,7 +41,10 @@
   - `npm run dist`
 - Validate packaged and installed worker layout:
   - `npm run verify:installer-worker`
+  - `npm run smoke:release`
 - For a clean-machine check:
   - run `release/Math3D Setup *.exe` on a Windows VM without Python
   - confirm `resources/python-worker/worker.exe` under install root
   - confirm mesh/Python-backed features work immediately
+
+See: `docs/release-smoke-tests.md`

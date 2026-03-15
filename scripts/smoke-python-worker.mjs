@@ -29,6 +29,16 @@ function withTimeout(promise, timeoutMs, label) {
   ]);
 }
 
+function float32Buffer(values) {
+  const arr = Float32Array.from(values);
+  return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+
+function uint32Buffer(values) {
+  const arr = Uint32Array.from(values);
+  return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+
 class WorkerClient {
   constructor(exePath) {
     this.proc = spawn(exePath, [], { stdio: ["pipe", "pipe", "pipe"] });
@@ -86,8 +96,13 @@ class WorkerClient {
     return withTimeout(p, timeoutMs, `readBytes(${count})`);
   }
 
-  async request(msg) {
+  async request(msg, payloads = []) {
     this.proc.stdin.write(`${JSON.stringify(msg)}\n`);
+    for (const payload of payloads) {
+      if (payload?.length) {
+        this.proc.stdin.write(payload);
+      }
+    }
     for (;;) {
       const line = await this.readLine(60000);
       let meta;
@@ -163,8 +178,43 @@ async function main() {
       throw new Error(`mesh.preview returned empty geometry: v=${vertexCount} t=${triCount}`);
     }
 
+    const positions = float32Buffer([
+      0, 0, 0,
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+    ]);
+    const indices = uint32Buffer([
+      0, 1, 2,
+      0, 1, 3,
+      0, 2, 3,
+      1, 2, 3,
+    ]);
+    const vtk = await client.request(
+      {
+        type: "mesh.transform",
+        jobId: "smoke-vtk-clean",
+        op: "vtk_clean_normals",
+        options: { computeNormals: true },
+        binary: [
+          { name: "positions", bytes: positions.length },
+          { name: "indices", bytes: indices.length },
+        ],
+      },
+      [positions, indices]
+    );
+    if (vtk.type !== "vtk_result" || vtk.ok === false) {
+      throw new Error(`Unexpected mesh.transform response: ${JSON.stringify(vtk)}`);
+    }
+    const vtkTriCount = Number(vtk.triCount ?? 0);
+    const vtkVertexCount = Number(vtk.vertexCount ?? 0);
+    if (!(vtkTriCount >= 4 && vtkVertexCount >= 4)) {
+      throw new Error(`mesh.transform returned invalid geometry: v=${vtkVertexCount} t=${vtkTriCount}`);
+    }
+
     process.stdout.write(
-      `[smoke] ok ping + mesh.preview (vertices=${vertexCount}, tris=${triCount})\n`
+      `[smoke] ok ping + mesh.preview + mesh.transform(vtk_clean_normals) `
+      + `(preview_v=${vertexCount}, preview_t=${triCount}, vtk_v=${vtkVertexCount}, vtk_t=${vtkTriCount})\n`
     );
   } catch (err) {
     const detail = client.stderrTail ? `\n[worker-stderr]\n${client.stderrTail}` : "";

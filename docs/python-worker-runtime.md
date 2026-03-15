@@ -24,6 +24,7 @@ After `npm run dist`, validate the packaged and installed layout:
 
 - quick command:
   - `npm run verify:installer-worker`
+  - `npm run smoke:release` (full release smoke flow)
 - underlying checks performed:
   - `release/win-unpacked/resources/python-worker/worker.exe` exists
   - installs the newest `release/Math3D Setup *.exe` with `/S`
@@ -42,6 +43,10 @@ Clean machine / VM pass:
 - install on a Windows VM with no Python installed
 - verify `%LOCALAPPDATA%\Programs\Math3D\resources\python-worker\worker.exe`
 - launch app and run mesh/Python-backed workflows immediately
+
+See full release checklist and packaged-build plan:
+
+- `docs/release-smoke-tests.md`
 
 ## Runtime overrides
 
