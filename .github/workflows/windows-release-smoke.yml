@@ -68,6 +68,7 @@ jobs:
           python -m pip install pygalmesh
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
+            $global:LASTEXITCODE = 0
           }
 
       - name: Build installer, install, and run smoke tests
