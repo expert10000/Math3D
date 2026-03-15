@@ -13,7 +13,7 @@ import {
   type VtkVolumeDistanceResponse,
   type VtkVolumeStreamlinesRequest,
   type VtkVolumeStreamlinesResponse,
-} from "../python/PythonWorker";
+} from "../python/pythonWorker";
 
 export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
 export type VtkPreviewRequestPayload = Omit<VtkPreviewRequest, "jobId"> & { jobId: string };

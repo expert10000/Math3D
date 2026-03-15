@@ -190,6 +190,8 @@ declare global {
       remove: (id: string) => Promise<void>;
     };
     cgalMesh?: {
+      ping: () => Promise<{ ok: boolean; pong?: boolean; error?: string }>;
+      version: () => Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }>;
       health: () => Promise<{ ok: boolean; error?: string }>;
       mesh: (req: CgalMeshRequest) => Promise<CgalMeshResponse>;
       stop: () => Promise<{ ok: boolean; error?: string }>;

@@ -75,7 +75,7 @@ import {
   type SelectionStats,
 } from "./math/selection/selectionStats";
 import { buildGeodesicDisk } from "./math/geodesicDisk";
-import { cgalHealth, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { cgalHealth, cgalPing, cgalVersion, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { vtkVolumeDistance } from "./services/vtkVolumeClient";
@@ -7156,7 +7156,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const minRight = 240;
   const maxRight = 640;
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
-    "scene" | "object" | "inspect" | "view" | "tools" | "analysis"
+    "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -12709,9 +12709,28 @@ case "mobius":
     if (surfaceViewerKind !== "implicit") return;
     let alive = true;
     (async () => {
-      const res = await cgalHealth();
+      const ping = await cgalPing();
       if (!alive) return;
-      setCgalHealthState(res);
+      if (!ping.ok) {
+        setCgalHealthState({ ok: false, error: `Python worker ping failed: ${ping.error ?? "unknown error"}` });
+        return;
+      }
+      const version = await cgalVersion();
+      if (!alive) return;
+      if (!version.ok) {
+        setCgalHealthState({ ok: false, error: `Python worker version failed: ${version.error ?? "unknown error"}` });
+        return;
+      }
+      const health = await cgalHealth();
+      if (!alive) return;
+      if (!health.ok) {
+        setCgalHealthState({
+          ok: false,
+          error: `Python worker health failed: ${health.error ?? "unknown error"} (${version.version ?? "?"}/${version.protocol ?? "?"})`,
+        });
+        return;
+      }
+      setCgalHealthState({ ok: true });
     })();
     return () => {
       alive = false;
@@ -16960,300 +16979,11 @@ case "mobius":
     workbookDirty,
   ]);
 
-  return (
-    <div style={rootStyle}>
-      {isDev && devError && (
-        <div
-          style={{
-            position: "fixed",
-            top: 12,
-            right: 12,
-            zIndex: 3000,
-            maxWidth: 520,
-            padding: "10px 12px",
-            background: "#fff4f4",
-            border: "1px solid #f2b8b5",
-            borderRadius: 8,
-            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
-            fontSize: 12,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>Dev error</div>
-          <div style={{ marginBottom: devError.stack ? 6 : 0 }}>{devError.message}</div>
-          {devError.stack && (
-            <pre
-              style={{
-                margin: 0,
-                padding: 6,
-                background: "#fff",
-                border: "1px solid #f2b8b5",
-                borderRadius: 6,
-                maxHeight: 160,
-                overflow: "auto",
-                whiteSpace: "pre-wrap",
-                fontSize: 11,
-              }}
-            >
-              {devError.stack.split("\n").slice(0, 6).join("\n")}
-            </pre>
-          )}
-          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => setDevError(null)} style={{ padding: "3px 8px" }}>
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-      <header style={styles.header}>
-        <h1 style={styles.h1}>Math3D</h1>
-
-        <div style={styles.tabs}>
-          <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
-            Surfaces
-          </TabButton>
-          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
-            Geometry
-          </TabButton>
-        </div>
-
-        <div style={styles.controls}>
-          {mode === "maps" ? (
-            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
-          ) : mode === "surfaces" ? (
-            <SurfacesControls
-              viewerKind={surfaceViewerKind}
-              onChangeViewerKind={handleChangeViewerKind}
-              datasetKind={datasetKind}
-              onChangeDatasetKind={setDatasetKind}
-              surfaceId={activeEqSurfaceId}
-              onChangeSurface={handlePickEqSurface}
-              paramId={paramSurfaceId}
-              onChangeParamId={setParamSurfaceId}
-              activeWeierstrassPreset={activeWeierstrassPreset}
-              onApplyWeierstrassPreset={applyWeierstrassPreset}
-              onApplySuggestedDomain={applySuggestedDomain}
-              compareEnabled={compareEnabled}
-              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
-              compareCameraSync={compareCameraSync}
-              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
-              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
-              onToggleCompare={() => {
-                setCompareEnabled((v) => !v);
-                if (rightPanelTab !== "workbook") setCameraSync(null);
-              }}
-              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
-              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
-              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
-              compareSurfaceId={compareSurfaceId}
-              onChangeCompareSurface={(id) => {
-                setCompareSurfaceId(id);
-                setCompareUseSnapshotB(false);
-              }}
-              compareParamId={compareParamId}
-              onChangeCompareParamId={(id) => {
-                setCompareParamId(id);
-                setCompareUseSnapshotB(false);
-              }}
-            />
-          ) : mode === "geometry" ? (
-            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={geometryWireframe}
-                  onChange={(e) => setGeometryWireframe(e.target.checked)}
-                />
-                Wireframe
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                Opacity
-                <input
-                  type="range"
-                  min={0.2}
-                  max={1}
-                  step={0.05}
-                  value={geometryOpacity}
-                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
-                />
-              </label>
-              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
-                Reset camera
-              </button>
-            </div>
-          ) : (
-            <div style={{ ...styles.group, ...styles.groupWide }}>
-              <div
-                style={{
-                  width: "100%",
-                  height: 32,
-                  borderRadius: 8,
-                  background: "linear-gradient(90deg, #ffffff, #f5f7ff)",
-                  boxShadow: "inset 0 0 0 1px #e0e0e0",
-                }}
-              />
-            </div>
-          )}
-          <div style={{ ...styles.group, gridColumn: "span 3" }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("scene")}
-                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
-              >
-                Scene shot
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("window")}
-                disabled={screenshotBusy !== null}
-              >
-                Window shot
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div
-        style={{
-          ...styles.wrap,
-          ...(mode === "surfaces" || mode === "geometry"
-            ? {
-              maxWidth: "100%",
-              width: "100%",
-            }
-            : null),
-        }}
-      >
-        {mode === "surfaces" ? (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
-            {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {(["scene", "object", "inspect", "view", "tools", "analysis"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setSurfacesLeftTab(tab)}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
-                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
-                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
-                      fontSize: 12,
-                      cursor: "pointer",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
-              {surfacesLeftTab === "scene" && (
-                <UnifiedObjectTreePanel
-                  title="Scene contents"
-                  nodes={unifiedObjectNodes}
-                  selectedId={unifiedTreeSelectedId}
-                  onSelect={setUnifiedTreeSelectedId}
-                  onFocus={handleFocusUnifiedNode}
-                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
-                  onDeleteNode={handleDeleteUnifiedNode}
-                  actions={unifiedPipelineActions}
-                />
-              )}
-              {surfacesLeftTab === "object" && (
-                <SurfacesObjectPanel
-                  selectedNode={unifiedSelectedNode}
-                  nodeById={unifiedObjectModel.nodeById}
-                  selectedSceneObject={unifiedSelectedSceneObject}
-                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
-                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
-                  selectedVisible={unifiedSelectedSceneVisible}
-                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
-                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
-                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
-                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
-                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
-                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
-                  objectTypeLabel={unifiedObjectTypeLabel}
-                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
-                  objectDomainLabel={unifiedObjectDomainLabel}
-                  objectSamplingLabel={unifiedObjectSamplingLabel}
-                  canBakeToSurfaceMesh={unifiedCanBake}
-                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
-                  canSendToCompare={unifiedCanSendToCompare}
-                  onSendToCompare={handleSendUnifiedObjectToCompare}
-                  canExportSelectedObject={unifiedCanExportSelectedObject}
-                  onExportSelectedObject={() => {
-                    void handleExportUnifiedSelectedObject();
-                  }}
-                  canIsolateSelectedObject={unifiedCanIsolateSelected}
-                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
-                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
-                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
-                />
-              )}
-              {surfacesLeftTab === "inspect" && (
-                <SurfacesInspectPanel
-                  viewerKind={surfaceViewerKind}
-                  inspectEnabled={inspectEnabled}
-                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
-                  onClearInspect={clearInspect}
-                  inspectIdx={inspectIdx}
-                  inspectPos={inspectPos}
-                  inspectNormal={inspectNormal}
-                  inspectMetrics={inspectMetrics}
-                  probeInfo={probeInfo}
-                  probeCurv={probeCurv}
-                  paramProbeCurv={paramProbeCurv}
-                  graphDomain={activeGraphDomain}
-                  paramDomain={activeParamLikeDomain}
-                  onPickDomainXY={handlePickDomainXY}
-                  onPickDomainUV={handlePickDomainUV}
-                  probeEnabled={probeEnabled}
-                  onToggleProbe={() => setProbeEnabled((v) => !v)}
-                  showProbeNormal={showProbeNormal}
-                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
-                  showProbeTangentPlane={showProbeTangentPlane}
-                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
-                  showProbeTangents={showProbeTangents}
-                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
-                />
-              )}
-              {surfacesLeftTab === "view" && (
-                <SurfacesViewPanel
-                  colorModes={viewColorModes}
-                  colorMode={colorMode}
-                  onChangeColorMode={setColorMode}
-                  colorPalette={colorPalette}
-                  onChangeColorPalette={setColorPalette}
-                  lightPreset={lightPreset}
-                  onChangeLightPreset={setLightPreset}
-                  materialRoughness={materialRoughness}
-                  onSetMaterialRoughness={setMaterialRoughness}
-                  materialMetalness={materialMetalness}
-                  onSetMaterialMetalness={setMaterialMetalness}
-                  materialOpacity={materialOpacity}
-                  onSetMaterialOpacity={setMaterialOpacity}
-                  showWireframe={showWireframe}
-                  onToggleWireframe={() => setShowWireframe((w) => !w)}
-                  showBoundingBox={showBoundingBox}
-                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
-                  showPlanes={showPlanes}
-                  onTogglePlanes={() => setShowPlanes((p) => !p)}
-                />
-              )}
-              {(surfacesLeftTab === "tools" || surfacesLeftTab === "analysis") && (
-                <div style={{ marginTop: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-                    {surfacesLeftTab === "analysis" ? "Display & analysis" : "Advanced tools"}
-                  </div>
+  const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools") => (
                 <SurfacesLeftPanel
-                  showInternalTabs={surfacesLeftTab === "tools"}
-                  hideViewControls={surfacesLeftTab === "tools"}
-                  initialLeftTab={surfacesLeftTab === "analysis" ? "analysis" : "controls"}
+                  showInternalTabs={panelMode === "tools"}
+                  hideViewControls={panelMode === "tools"}
+                  initialLeftTab={panelMode === "analysis" ? "analysis" : "controls"}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
@@ -17737,6 +17467,297 @@ case "mobius":
                 onChangeSelectedMetric={setSelectedMetric}
                 onRefreshSelectionStats={handleRefreshSelectionStats}
               />
+  );
+
+  return (
+    <div style={rootStyle}>
+      {isDev && devError && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12,
+            right: 12,
+            zIndex: 3000,
+            maxWidth: 520,
+            padding: "10px 12px",
+            background: "#fff4f4",
+            border: "1px solid #f2b8b5",
+            borderRadius: 8,
+            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
+            fontSize: 12,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Dev error</div>
+          <div style={{ marginBottom: devError.stack ? 6 : 0 }}>{devError.message}</div>
+          {devError.stack && (
+            <pre
+              style={{
+                margin: 0,
+                padding: 6,
+                background: "#fff",
+                border: "1px solid #f2b8b5",
+                borderRadius: 6,
+                maxHeight: 160,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+                fontSize: 11,
+              }}
+            >
+              {devError.stack.split("\n").slice(0, 6).join("\n")}
+            </pre>
+          )}
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <button type="button" onClick={() => setDevError(null)} style={{ padding: "3px 8px" }}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+      <header style={styles.header}>
+        <h1 style={styles.h1}>Math3D</h1>
+
+        <div style={styles.tabs}>
+          <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
+            Surfaces
+          </TabButton>
+          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
+            Geometry
+          </TabButton>
+        </div>
+
+        <div style={styles.controls}>
+          {mode === "maps" ? (
+            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
+          ) : mode === "surfaces" ? (
+            <SurfacesControls
+              viewerKind={surfaceViewerKind}
+              onChangeViewerKind={handleChangeViewerKind}
+              datasetKind={datasetKind}
+              onChangeDatasetKind={setDatasetKind}
+              surfaceId={activeEqSurfaceId}
+              onChangeSurface={handlePickEqSurface}
+              paramId={paramSurfaceId}
+              onChangeParamId={setParamSurfaceId}
+              activeWeierstrassPreset={activeWeierstrassPreset}
+              onApplyWeierstrassPreset={applyWeierstrassPreset}
+              onApplySuggestedDomain={applySuggestedDomain}
+              compareEnabled={compareEnabled}
+              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+              compareCameraSync={compareCameraSync}
+              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+              onToggleCompare={() => {
+                setCompareEnabled((v) => !v);
+                if (rightPanelTab !== "workbook") setCameraSync(null);
+              }}
+              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
+              compareSurfaceId={compareSurfaceId}
+              onChangeCompareSurface={(id) => {
+                setCompareSurfaceId(id);
+                setCompareUseSnapshotB(false);
+              }}
+              compareParamId={compareParamId}
+              onChangeCompareParamId={(id) => {
+                setCompareParamId(id);
+                setCompareUseSnapshotB(false);
+              }}
+            />
+          ) : mode === "geometry" ? (
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={geometryWireframe}
+                  onChange={(e) => setGeometryWireframe(e.target.checked)}
+                />
+                Wireframe
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Opacity
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1}
+                  step={0.05}
+                  value={geometryOpacity}
+                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                />
+              </label>
+              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
+                Reset camera
+              </button>
+            </div>
+          ) : (
+            <div style={{ ...styles.group, ...styles.groupWide }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: 32,
+                  borderRadius: 8,
+                  background: "linear-gradient(90deg, #ffffff, #f5f7ff)",
+                  boxShadow: "inset 0 0 0 1px #e0e0e0",
+                }}
+              />
+            </div>
+          )}
+          <div style={{ ...styles.group, gridColumn: "span 3" }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("scene")}
+                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
+              >
+                Scene shot
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleScreenshot("window")}
+                disabled={screenshotBusy !== null}
+              >
+                Window shot
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div
+        style={{
+          ...styles.wrap,
+          ...(mode === "surfaces" || mode === "geometry"
+            ? {
+              maxWidth: "100%",
+              width: "100%",
+            }
+            : null),
+        }}
+      >
+        {mode === "surfaces" ? (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+            {/* LEFT */}
+            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                {(["scene", "object", "inspect", "view", "analysis"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setSurfacesLeftTab(tab)}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
+                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
+                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      textTransform: "capitalize",
+                    }}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              {surfacesLeftTab === "scene" && (
+                <UnifiedObjectTreePanel
+                  title="Scene contents"
+                  nodes={unifiedObjectNodes}
+                  selectedId={unifiedTreeSelectedId}
+                  onSelect={setUnifiedTreeSelectedId}
+                  onFocus={handleFocusUnifiedNode}
+                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                  onDeleteNode={handleDeleteUnifiedNode}
+                  actions={unifiedPipelineActions}
+                />
+              )}
+              {surfacesLeftTab === "object" && (
+                <SurfacesObjectPanel
+                  selectedNode={unifiedSelectedNode}
+                  nodeById={unifiedObjectModel.nodeById}
+                  selectedSceneObject={unifiedSelectedSceneObject}
+                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
+                  selectedVisible={unifiedSelectedSceneVisible}
+                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
+                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
+                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
+                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
+                  objectTypeLabel={unifiedObjectTypeLabel}
+                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
+                  objectDomainLabel={unifiedObjectDomainLabel}
+                  objectSamplingLabel={unifiedObjectSamplingLabel}
+                  canBakeToSurfaceMesh={unifiedCanBake}
+                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
+                  canSendToCompare={unifiedCanSendToCompare}
+                  onSendToCompare={handleSendUnifiedObjectToCompare}
+                  canExportSelectedObject={unifiedCanExportSelectedObject}
+                  onExportSelectedObject={() => {
+                    void handleExportUnifiedSelectedObject();
+                  }}
+                  canIsolateSelectedObject={unifiedCanIsolateSelected}
+                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
+                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                />
+              )}
+              {surfacesLeftTab === "inspect" && (
+                <SurfacesInspectPanel
+                  viewerKind={surfaceViewerKind}
+                  inspectEnabled={inspectEnabled}
+                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                  onClearInspect={clearInspect}
+                  inspectIdx={inspectIdx}
+                  inspectPos={inspectPos}
+                  inspectNormal={inspectNormal}
+                  inspectMetrics={inspectMetrics}
+                  probeInfo={probeInfo}
+                  probeCurv={probeCurv}
+                  paramProbeCurv={paramProbeCurv}
+                  graphDomain={activeGraphDomain}
+                  paramDomain={activeParamLikeDomain}
+                  onPickDomainXY={handlePickDomainXY}
+                  onPickDomainUV={handlePickDomainUV}
+                  probeEnabled={probeEnabled}
+                  onToggleProbe={() => setProbeEnabled((v) => !v)}
+                  showProbeNormal={showProbeNormal}
+                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                  showProbeTangentPlane={showProbeTangentPlane}
+                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                  showProbeTangents={showProbeTangents}
+                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                />
+              )}
+              {surfacesLeftTab === "view" && (
+                <SurfacesViewPanel
+                  colorModes={viewColorModes}
+                  colorMode={colorMode}
+                  onChangeColorMode={setColorMode}
+                  colorPalette={colorPalette}
+                  onChangeColorPalette={setColorPalette}
+                  lightPreset={lightPreset}
+                  onChangeLightPreset={setLightPreset}
+                  materialRoughness={materialRoughness}
+                  onSetMaterialRoughness={setMaterialRoughness}
+                  materialMetalness={materialMetalness}
+                  onSetMaterialMetalness={setMaterialMetalness}
+                  materialOpacity={materialOpacity}
+                  onSetMaterialOpacity={setMaterialOpacity}
+                  showWireframe={showWireframe}
+                  onToggleWireframe={() => setShowWireframe((w) => !w)}
+                  showBoundingBox={showBoundingBox}
+                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                  showPlanes={showPlanes}
+                  onTogglePlanes={() => setShowPlanes((p) => !p)}
+                />
+              )}
+              {surfacesLeftTab === "analysis" && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+                  {renderSurfacesInspectorPanel("analysis")}
                 </div>
               )}
             </div>
@@ -18331,6 +18352,7 @@ case "mobius":
               </div>
 
               {rightPanelTab === "inspector" ? (
+                <>
                 <SurfacesRightPanel
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
@@ -18405,6 +18427,13 @@ case "mobius":
                   onRemoveParamDomainPreset={removeParamDomainPreset}
                   onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
                 />
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
+                  <div style={{ marginTop: 8 }}>
+                    {renderSurfacesInspectorPanel("tools")}
+                  </div>
+                </details>
+                </>
               ) : (
                 <WorkbookPanel
                   workbooks={workbooks}
@@ -27585,7 +27614,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
 
       <div style={{ marginBottom: 12, fontSize: 11, opacity: 0.75 }}>
-        Probe details, gradients, and curvature live in the left panel (Theory tab).
+        Probe details, gradients, and curvature are available in the left Analysis tab.
       </div>
 
       <details style={{ marginBottom: 12 }}>
@@ -28227,3 +28256,11 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
     </div>
   );
 };
+
+
+
+
+
+
+
+

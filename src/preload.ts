@@ -183,6 +183,10 @@ contextBridge.exposeInMainWorld("surfacePresets", {
 });
 
 contextBridge.exposeInMainWorld("cgalMesh", {
+  ping: (): Promise<{ ok: boolean; pong?: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:ping"),
+  version: (): Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:version"),
   health: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke("mesh:cgal:health"),
   mesh: (req: CgalMeshRequest): Promise<any> =>
