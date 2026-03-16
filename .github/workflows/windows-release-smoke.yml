@@ -60,6 +60,9 @@ jobs:
       - name: Install npm dependencies (renderer)
         run: npm --prefix renderer install
 
+      - name: Run renderer unit tests
+        run: npm --prefix renderer run test
+
       - name: Install Python dependencies for frozen worker
         shell: pwsh
         run: |
@@ -70,6 +73,12 @@ jobs:
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
             $global:LASTEXITCODE = 0
           }
+
+      - name: Build app
+        run: npm run build:core
+
+      - name: Run startup functional smoke
+        run: npm run test:app:startup:smoke
 
       - name: Build installer, install, and run smoke tests
         shell: pwsh

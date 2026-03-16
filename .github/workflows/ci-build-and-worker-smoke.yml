@@ -52,6 +52,9 @@ jobs:
       - name: Install npm dependencies (renderer)
         run: npm --prefix renderer install
 
+      - name: Run renderer unit tests
+        run: npm --prefix renderer run test
+
       - name: Install Python dependencies for worker freeze
         shell: pwsh
         run: |
@@ -65,6 +68,9 @@ jobs:
 
       - name: Build app
         run: npm run build:core
+
+      - name: Run startup functional smoke
+        run: npm run test:app:startup:smoke
 
       - name: Run worker smoke tests
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_worker_smoke == 'true' }}

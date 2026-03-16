@@ -5,13 +5,14 @@ import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
 import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
 import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
-import { runPythonWorkerStartupCheck } from "./main/python/pythonWorker";
+import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
 import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
 
 import * as fs from "node:fs";
 
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
 
 type AppRuntimeMode = "development" | "packaged";
 type AppInstallType = "development" | "installer" | "portable-or-unknown";
@@ -121,6 +122,85 @@ const showAppSystemInfo = async (win: BrowserWindow): Promise<void> => {
   });
 };
 
+const logStartupSmoke = (event: string, details?: unknown): void => {
+  if (!isStartupSmoke) return;
+  if (details === undefined) {
+    console.log(`[startup-smoke] ${event}`);
+    return;
+  }
+  console.log(`[startup-smoke] ${event}`, details);
+};
+
+const runAndRecordWorkerStartupCheck = async () => {
+  const status = await runPythonWorkerStartupCheck();
+  recordPythonWorkerStartup(status);
+  if (status.ok) {
+    console.log("[python-worker] startup check passed", {
+      backend: status.backend,
+      command: status.command,
+      args: status.args,
+      version: status.version,
+      protocol: status.protocol,
+      pythonExe: status.pythonExe,
+      scriptPath: status.scriptPath,
+      exePath: status.exePath,
+    });
+    return status;
+  }
+  console.error("[python-worker] startup check failed", status);
+  return status;
+};
+
+const waitForMainWindowReady = (win: BrowserWindow, timeoutMs = 30000): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const fail = (reason: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(reason);
+    };
+
+    const timer = setTimeout(() => {
+      fail(new Error(`Main window did not become ready within ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    const onReady = () => finish();
+    const onClosed = () => fail(new Error("Main window closed before it became ready."));
+    const onFailLoad = (
+      _event: Electron.Event,
+      errorCode: number,
+      errorDescription: string,
+      validatedURL: string,
+      isMainFrame: boolean
+    ) => {
+      if (!isMainFrame) return;
+      fail(new Error(`Main window failed to load (${errorCode}): ${errorDescription} [${validatedURL}]`));
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      win.removeListener("ready-to-show", onReady);
+      win.removeListener("closed", onClosed);
+      win.webContents.removeListener("did-finish-load", onReady);
+      win.webContents.removeListener("did-fail-load", onFailLoad);
+    };
+
+    win.once("ready-to-show", onReady);
+    win.once("closed", onClosed);
+    win.webContents.once("did-finish-load", onReady);
+    win.webContents.on("did-fail-load", onFailLoad);
+  });
+};
+
 // Guard against running this entrypoint under plain Node (Electron APIs unavailable).
 if (!(app && typeof app.whenReady === "function")) {
   console.error("Electron app is not available. Run via the Electron runtime.");
@@ -148,26 +228,12 @@ const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
   return win;
 }
 
-app.whenReady().then(() => {
-  registerPythonWorkerDiagnosticsIpc();
+app.whenReady().then(async () => {
+  if (isStartupSmoke) {
+    logStartupSmoke("APP_READY");
+  }
 
-  void runPythonWorkerStartupCheck().then((status) => {
-    recordPythonWorkerStartup(status);
-    if (status.ok) {
-      console.log("[python-worker] startup check passed", {
-        backend: status.backend,
-        command: status.command,
-        args: status.args,
-        version: status.version,
-        protocol: status.protocol,
-        pythonExe: status.pythonExe,
-        scriptPath: status.scriptPath,
-        exePath: status.exePath,
-      });
-      return;
-    }
-    console.error("[python-worker] startup check failed", status);
-  });
+  registerPythonWorkerDiagnosticsIpc();
 
   ipcMain.handle("surfacePresets:list", (_evt, kind: PresetKind) => {
     return listPresets(kind);
@@ -217,10 +283,49 @@ try {
 
   const win = createWindow();
   if (win) buildAppMenu(win);
+
+  if (isStartupSmoke) {
+    try {
+      await waitForMainWindowReady(win);
+      logStartupSmoke("WINDOW_READY");
+
+      const status = await runAndRecordWorkerStartupCheck();
+      if (!status.ok) {
+        logStartupSmoke("WORKER_HEALTH_FAILED", status.error);
+        process.exitCode = 1;
+        app.quit();
+        return;
+      }
+
+      logStartupSmoke("WORKER_HEALTH_OK", {
+        backend: status.backend,
+        version: status.version,
+        protocol: status.protocol,
+      });
+      app.quit();
+    } catch (error: any) {
+      logStartupSmoke("STARTUP_FAILED", String(error?.message ?? error));
+      process.exitCode = 1;
+      app.quit();
+    }
+    return;
+  }
+
+  void runAndRecordWorkerStartupCheck();
 });
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  stopPythonWorker();
+});
+
+app.on("will-quit", () => {
+  if (isStartupSmoke) {
+    logStartupSmoke("EXIT_CLEAN");
+  }
 });
 
 app.on("activate", () => {

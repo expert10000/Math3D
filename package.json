@@ -22,7 +22,8 @@
     "verify:installer-worker": "powershell -ExecutionPolicy Bypass -File scripts/verify-installer-worker.ps1",
     "smoke:release": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1",
     "test:worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
-    "test:release:smoke": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipLaunchCheck"
+    "test:release:smoke": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipLaunchCheck",
+    "test:app:startup:smoke": "node scripts/startup-functional-smoke.mjs"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
