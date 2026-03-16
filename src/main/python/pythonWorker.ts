@@ -596,6 +596,59 @@ class PythonWorker {
   }
 
   async vtkPreviewImplicit(req: VtkPreviewRequest): Promise<VtkMeshResponse> {
+    if (workerFailureInjectionMode === "worker-success") {
+      const positions = new Float32Array([
+        -0.5, -0.5, 0,
+         0.5, -0.5, 0,
+         0.0,  0.5, 0,
+      ]);
+      const indices = new Uint32Array([0, 1, 2]);
+      return {
+        ok: true,
+        positions: positions.buffer,
+        indices: indices.buffer,
+        vertexCount: 3,
+        triCount: 1,
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-invalid-expression") {
+      return {
+        ok: false,
+        error: "Invalid expression near '*' token (injected invalid-expression mode).",
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-missing") {
+      return {
+        ok: false,
+        error: "Python worker entrypoint not found (injected worker-missing mode).",
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-timeout") {
+      await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      throw new Error(
+        `Python worker timeout for jobId=${req.jobId} (injected worker-timeout mode)`
+      );
+    }
+
+    if (workerFailureInjectionMode === "worker-malformed-error") {
+      const malformed = {
+        type: "error",
+        error: {
+          details: {
+            shape: "malformed-error-payload",
+            injected: true,
+          },
+        },
+      };
+      return {
+        ok: false,
+        error: workerErrorText(malformed, "Malformed worker error payload (injected)."),
+      };
+    }
+
     const msg = {
       type: "mesh.preview",
       jobId: req.jobId,
@@ -837,6 +890,13 @@ let spawnPromise: Promise<PythonWorker> | null = null;
 let lastLaunchConfig: WorkerLaunchConfig | null = null;
 
 type WorkerResolutionMode = "auto" | "python" | "exe";
+type WorkerFailureInjectionMode =
+  | "none"
+  | "worker-success"
+  | "worker-invalid-expression"
+  | "worker-missing"
+  | "worker-timeout"
+  | "worker-malformed-error";
 type WorkerLaunchConfig = {
   backend: PythonWorkerBackend;
   command: string;
@@ -851,6 +911,33 @@ type WorkerLaunchConfig = {
 
 const truthy = (value: string | undefined): boolean =>
   ["1", "true", "yes", "on", "y"].includes(String(value || "").toLowerCase());
+
+function resolveWorkerFailureInjectionMode(): WorkerFailureInjectionMode {
+  const direct = (process.env.MATH3D_WORKER_FAILURE_INJECTION || "").trim();
+  const legacy = (process.env.MATH3D_WORKER_FAILURE_MODE || "").trim();
+  const raw = (direct || legacy || "none").toLowerCase();
+
+  if (raw === "none" || raw === "off" || raw === "disabled") return "none";
+  if (raw === "worker-success" || raw === "success") return "worker-success";
+  if (raw === "worker-invalid-expression" || raw === "invalid-expression") {
+    return "worker-invalid-expression";
+  }
+  if (raw === "worker-missing" || raw === "missing") return "worker-missing";
+  if (raw === "worker-timeout" || raw === "timeout") return "worker-timeout";
+  if (raw === "worker-malformed-error" || raw === "malformed-error" || raw === "malformed") {
+    return "worker-malformed-error";
+  }
+
+  console.warn("[python-worker] invalid failure injection mode, using none", { value: raw });
+  return "none";
+}
+
+const workerFailureInjectionMode = resolveWorkerFailureInjectionMode();
+if (workerFailureInjectionMode !== "none") {
+  console.warn("[python-worker] failure injection enabled", {
+    mode: workerFailureInjectionMode,
+  });
+}
 
 function resolvePythonExe(): string {
   const env = process.env.MATH3D_PYTHON;

@@ -26,6 +26,8 @@
     "test:app:startup:smoke": "node scripts/startup-functional-smoke.mjs",
     "test:app:geometry:smoke": "node scripts/geometry-functional-smoke.mjs",
     "test:app:e2e": "playwright test",
+    "test:app:e2e:functional": "playwright test tests/e2e/surface-functional.spec.ts",
+    "test:app:e2e:worker-failures": "playwright test tests/e2e/worker-failure-injection.spec.ts",
     "test:app:e2e:packaged": "playwright test tests/e2e/packaged-desktop.spec.ts"
   },
   "devDependencies": {
