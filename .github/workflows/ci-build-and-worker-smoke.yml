@@ -75,6 +75,9 @@ jobs:
       - name: Run geometry functional smoke
         run: npm run test:app:geometry:smoke
 
+      - name: Run Playwright app e2e tests
+        run: npm run test:app:e2e
+
       - name: Run worker smoke tests
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_worker_smoke == 'true' }}
         run: npm run test:worker:smoke
@@ -89,3 +92,5 @@ jobs:
             dist/**
             renderer/dist/**
             build/python-worker-dist/worker.exe
+            playwright-report/**
+            test-results/**

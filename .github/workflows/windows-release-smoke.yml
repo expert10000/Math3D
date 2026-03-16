@@ -97,6 +97,12 @@ jobs:
             powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -StrictLaunchCheck
           }
 
+      - name: Run packaged Playwright e2e tests
+        shell: pwsh
+        run: |
+          $env:MATH3D_RUN_PACKAGED_E2E = "1"
+          npm run test:app:e2e:packaged
+
       - name: Upload release artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,3 +113,5 @@ jobs:
             release/*.exe
             release/builder-debug.yml
             release/latest.yml
+            playwright-report/**
+            test-results/**

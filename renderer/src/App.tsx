@@ -18884,7 +18884,7 @@ case "mobius":
                           </option>
                         ))}
                       </select>
-                      <button type="button" onClick={handleAddGeometryObject}>
+                      <button type="button" data-testid="geometry-add-object" onClick={handleAddGeometryObject}>
                         Add
                       </button>
                     </div>
@@ -18935,12 +18935,13 @@ case "mobius":
                     />
 
                     <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
-                    <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+                    <div data-testid="geometry-objects-list" style={{ display: "grid", gap: 6, marginTop: 6 }}>
                       {geometrySceneObjectRows.map((obj) => {
                         const active = obj.id === geometrySelectedObjectId;
                         return (
                           <div
                             key={obj.id}
+                            data-testid="geometry-object-row"
                             style={{
                               display: "grid",
                               gridTemplateColumns: "auto 1fr auto",
@@ -18954,6 +18955,7 @@ case "mobius":
                           >
                             <input
                               type="checkbox"
+                              data-testid="geometry-object-visible-toggle"
                               checked={obj.visible}
                               onChange={() => handleToggleGeometryObjectVisible(obj.id)}
                               title="Show/Hide"
@@ -18973,7 +18975,11 @@ case "mobius":
                               {obj.name}
                               <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{obj.label}</span>
                             </button>
-                            <button type="button" onClick={() => handleRemoveGeometryObject(obj.id)}>
+                            <button
+                              type="button"
+                              data-testid="geometry-object-delete"
+                              onClick={() => handleRemoveGeometryObject(obj.id)}
+                            >
                               Delete
                             </button>
                           </div>
@@ -20023,7 +20029,7 @@ case "mobius":
                   </div>
                 </div>
 
-                <div style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
+                <div data-testid="geometry-scene-stats" style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
                   {geometryStats.mode === "procedural"
                     ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
                     : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
@@ -20214,6 +20220,7 @@ case "mobius":
       </div>
       {showStatusBar && (
         <div
+          data-testid="app-status-bar"
           style={{
             position: "fixed",
             left: 16,
@@ -20907,7 +20914,10 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   };
 
   return (
-    <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+    <div
+      data-testid="unified-object-tree"
+      style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
         <div style={{ display: "inline-flex", gap: 4 }}>

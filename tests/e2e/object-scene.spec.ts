@@ -1,0 +1,229 @@
+import { expect, test, type Page } from "@playwright/test";
+import { _electron as electron, type ElectronApplication } from "playwright";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const repoRoot = path.resolve(__dirname, "..", "..");
+
+type GeometryStats = {
+  objectCount: number;
+  visibleCount: number;
+};
+
+const parseGeometryStats = (raw: string): GeometryStats => {
+  const match = raw.match(/(\d+)\s+objects\s+\((\d+)\s+visible\)/i);
+  if (!match) {
+    throw new Error(`Unable to parse geometry stats from: "${raw}"`);
+  }
+  return {
+    objectCount: Number(match[1]),
+    visibleCount: Number(match[2]),
+  };
+};
+
+const readGeometryStats = async (page: Page): Promise<GeometryStats> => {
+  const text = await page.getByTestId("geometry-scene-stats").innerText();
+  return parseGeometryStats(text);
+};
+
+const launchApp = async (env: Record<string, string | undefined>): Promise<{ app: ElectronApplication; page: Page }> => {
+  const launchEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ...env,
+    ELECTRON_ENABLE_LOGGING: "1",
+  };
+  delete launchEnv.ELECTRON_RUN_AS_NODE;
+
+  const app = await electron.launch({
+    args: ["."],
+    cwd: repoRoot,
+    env: launchEnv,
+  });
+  const page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  return { app, page };
+};
+
+const resetStorage = async (page: Page) => {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+};
+
+const openProceduralGeometry = async (page: Page) => {
+  await page.getByRole("button", { name: "Geometry", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Procedural", exact: true }).click();
+  await expect(page.getByTestId("geometry-scene-stats")).toBeVisible();
+};
+
+const openWorkbookPanel = async (page: Page) => {
+  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Workbook", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Workbook", exact: true }).click();
+};
+
+const installSaveCapture = async (page: Page) => {
+  await page.evaluate(() => {
+    const win = window as unknown as {
+      __math3dE2E?: { installed?: boolean; lastSavedText?: string | null };
+    };
+    if (win.__math3dE2E?.installed) return;
+    const originalCreateObjectURL = URL.createObjectURL.bind(URL);
+    win.__math3dE2E = { installed: true, lastSavedText: null };
+    URL.createObjectURL = (obj: Blob | MediaSource): string => {
+      if (obj instanceof Blob) {
+        void obj.text().then((text) => {
+          if (win.__math3dE2E) win.__math3dE2E.lastSavedText = text;
+        });
+      }
+      return originalCreateObjectURL(obj);
+    };
+  });
+};
+
+const saveWorkspace = async (page: Page): Promise<string> => {
+  await openWorkbookPanel(page);
+  await installSaveCapture(page);
+  await page.evaluate(() => {
+    const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+    if (win.__math3dE2E) win.__math3dE2E.lastSavedText = null;
+  });
+  await page.getByRole("button", { name: "Save", exact: true }).first().click();
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+      return win.__math3dE2E?.lastSavedText?.length ?? 0;
+    });
+  }).toBeGreaterThan(0);
+  const payload = await page.evaluate(() => {
+    const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+    return win.__math3dE2E?.lastSavedText ?? "";
+  });
+  const outPath = path.join(os.tmpdir(), `math3d-workspace-${Date.now()}-${Math.random().toString(16).slice(2)}.math3d`);
+  writeFileSync(outPath, payload, "utf8");
+  return outPath;
+};
+
+const openWorkspace = async (page: Page, filePath: string) => {
+  await openWorkbookPanel(page);
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open...", exact: true }).first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(filePath);
+};
+
+test("Object/scene behavior: create, toggle visibility, remove, overlay state remains consistent", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-obj-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    const rows = page.getByTestId("geometry-object-row");
+    const toggles = page.getByTestId("geometry-object-visible-toggle");
+    const deletes = page.getByTestId("geometry-object-delete");
+
+    const initialRows = await rows.count();
+    const initialStats = await readGeometryStats(page);
+    expect(initialStats.objectCount).toBe(initialRows);
+
+    await page.getByTestId("geometry-add-object").click();
+    await expect.poll(async () => rows.count()).toBe(initialRows + 1);
+    const createdStats = await readGeometryStats(page);
+    expect(createdStats.objectCount).toBe(initialRows + 1);
+    expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
+
+    await expect(toggles.first()).toBeChecked();
+    await toggles.first().click();
+    await expect(toggles.first()).not.toBeChecked();
+    await expect.poll(async () => {
+      const stats = await readGeometryStats(page);
+      return stats.visibleCount;
+    }).toBe(createdStats.visibleCount - 1);
+
+    await deletes.first().click();
+    await expect.poll(async () => rows.count()).toBe(initialRows);
+    const finalStats = await readGeometryStats(page);
+    expect(finalStats.objectCount).toBe(initialStats.objectCount);
+    expect(finalStats.visibleCount).toBe(initialStats.visibleCount);
+
+    await expect(page.getByTestId("unified-object-tree")).toBeVisible();
+    await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Persistence: save workspace and reopen restores scene", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-persist-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let firstApp: ElectronApplication | null = null;
+  let secondApp: ElectronApplication | null = null;
+  let savedWorkspacePath: string | null = null;
+  try {
+    const first = await launchApp(env);
+    firstApp = first.app;
+    const firstPage = first.page;
+    await resetStorage(firstPage);
+    await openProceduralGeometry(firstPage);
+
+    const rows = firstPage.getByTestId("geometry-object-row");
+    const baseCount = await rows.count();
+
+    await firstPage.getByTestId("geometry-add-object").click();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+    const savedStats = await readGeometryStats(firstPage);
+
+    savedWorkspacePath = await saveWorkspace(firstPage);
+    await expect.poll(async () => {
+      return firstPage.evaluate(() => Number(localStorage.getItem("math3d.workbook.manualSaveAt.v1") ?? 0));
+    }).toBeGreaterThan(0);
+
+    await firstApp.close();
+    firstApp = null;
+
+    const second = await launchApp(env);
+    secondApp = second.app;
+    const secondPage = second.page;
+
+    await openWorkspace(secondPage, savedWorkspacePath);
+    await openProceduralGeometry(secondPage);
+
+    const reopenedRows = secondPage.getByTestId("geometry-object-row");
+    await expect.poll(async () => reopenedRows.count()).toBe(savedStats.objectCount);
+    const reopenedStats = await readGeometryStats(secondPage);
+    expect(reopenedStats.objectCount).toBe(savedStats.objectCount);
+    expect(reopenedStats.visibleCount).toBe(savedStats.visibleCount);
+    await expect(secondPage.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (firstApp) {
+      await firstApp.close();
+    }
+    if (secondApp) {
+      await secondApp.close();
+    }
+    if (savedWorkspacePath) {
+      rmSync(savedWorkspacePath, { force: true });
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
