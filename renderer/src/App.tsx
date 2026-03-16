@@ -4367,6 +4367,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const isDev = typeof import.meta !== "undefined" && !!(import.meta as any).env?.DEV;
   const isGeometrySmoke = useMemo(() => {
     if (typeof window === "undefined") return false;
+    if (window.__MATH3D_GEOMETRY_SMOKE_TRIGGER__ === true) return true;
     if (window.appRuntime?.geometrySmoke === true) return true;
     try {
       const params = new URLSearchParams(window.location.search);
@@ -4381,6 +4382,22 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return window.location.href.includes("geometrySmoke=1");
     }
   }, []);
+  const [forceGeometrySmoke, setForceGeometrySmoke] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.__MATH3D_GEOMETRY_SMOKE_TRIGGER__ === true;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.__MATH3D_GEOMETRY_SMOKE_TRIGGER__ === true) {
+      setForceGeometrySmoke(true);
+    }
+    const onStart = () => setForceGeometrySmoke(true);
+    window.addEventListener("math3d:geometry-smoke:start", onStart as EventListener);
+    return () => {
+      window.removeEventListener("math3d:geometry-smoke:start", onStart as EventListener);
+    };
+  }, []);
+  const geometrySmokeEnabled = isGeometrySmoke || forceGeometrySmoke;
   const [devError, setDevError] = useState<{ message: string; stack?: string } | null>(null);
   const volumeGridBounds = useMemo(() => {
     const grid = volumeDataset.grid;
@@ -15173,7 +15190,7 @@ case "mobius":
 
   const geometrySmokeRunRef = useRef(false);
   useEffect(() => {
-    if (!isGeometrySmoke || geometrySmokeRunRef.current) return;
+    if (!geometrySmokeEnabled || geometrySmokeRunRef.current) return;
     geometrySmokeRunRef.current = true;
 
     const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -15288,7 +15305,7 @@ case "mobius":
         }
       }
     })();
-  }, [isGeometrySmoke, handleVtkPreviewImplicit]);
+  }, [geometrySmokeEnabled, handleVtkPreviewImplicit]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);

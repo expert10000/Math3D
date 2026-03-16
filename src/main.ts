@@ -248,9 +248,25 @@ function createWindow() {
 
 const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
   let done = false;
+  let pokeTimer: NodeJS.Timeout | null = null;
+  const pokeRendererStart = () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    void win.webContents
+      .executeJavaScript(
+        "window.__MATH3D_GEOMETRY_SMOKE_TRIGGER__=true;window.dispatchEvent(new Event('math3d:geometry-smoke:start'));true;",
+        true
+      )
+      .catch(() => {
+        // Ignore transient executeJavaScript failures during early load.
+      });
+  };
   const finish = (ok: boolean, reason?: string) => {
     if (done) return;
     done = true;
+    if (pokeTimer) {
+      clearInterval(pokeTimer);
+      pokeTimer = null;
+    }
     clearTimeout(timeout);
     if (ok) {
       console.log("[geometry-smoke] EXIT_OK");
@@ -264,6 +280,12 @@ const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
   console.log("[geometry-smoke] HARNESS_READY", { timeoutMs: geometrySmokeTimeoutMs });
   win.webContents.on("did-finish-load", () => {
     console.log("[geometry-smoke] PAGE_URL", win.webContents.getURL());
+    pokeRendererStart();
+    if (!pokeTimer) {
+      pokeTimer = setInterval(() => {
+        pokeRendererStart();
+      }, 500);
+    }
   });
   const timeout = setTimeout(() => {
     finish(false, `Timeout waiting for geometry smoke completion (${geometrySmokeTimeoutMs}ms).`);
