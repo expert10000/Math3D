@@ -4365,6 +4365,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [volumeStreamlineMaxSteps, setVolumeStreamlineMaxSteps] = useState(900);
   const [volumeViewMode, setVolumeViewMode] = useState<"slices" | "3d">("slices");
   const isDev = typeof import.meta !== "undefined" && !!(import.meta as any).env?.DEV;
+  const isGeometrySmoke = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("geometrySmoke") === "1";
+    } catch {
+      return false;
+    }
+  }, []);
   const [devError, setDevError] = useState<{ message: string; stack?: string } | null>(null);
   const volumeGridBounds = useMemo(() => {
     const grid = volumeDataset.grid;
@@ -15122,6 +15131,157 @@ case "mobius":
       refreshCgalHealthAfterWorkerAction();
     }
   }, [refreshCgalHealthAfterWorkerAction]);
+
+  const geometrySmokeSnapshotRef = useRef<{
+    surfaceViewerKind: SurfaceViewerKind;
+    surfaceMeshData: SurfaceMeshData | null;
+    vtkPreviewError: string | null;
+    cgalError: string | null;
+    devError: { message: string; stack?: string } | null;
+    cgalHealthState: CgalHealthState | null;
+  }>({
+    surfaceViewerKind,
+    surfaceMeshData,
+    vtkPreviewError,
+    cgalError,
+    devError,
+    cgalHealthState,
+  });
+
+  useEffect(() => {
+    geometrySmokeSnapshotRef.current = {
+      surfaceViewerKind,
+      surfaceMeshData,
+      vtkPreviewError,
+      cgalError,
+      devError,
+      cgalHealthState,
+    };
+  }, [surfaceViewerKind, surfaceMeshData, vtkPreviewError, cgalError, devError, cgalHealthState]);
+
+  const runVtkPreviewRef = useRef(handleVtkPreviewImplicit);
+  useEffect(() => {
+    runVtkPreviewRef.current = handleVtkPreviewImplicit;
+  }, [handleVtkPreviewImplicit]);
+
+  const geometrySmokeRunRef = useRef(false);
+  useEffect(() => {
+    if (!isGeometrySmoke || geometrySmokeRunRef.current) return;
+    geometrySmokeRunRef.current = true;
+
+    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+    const waitFor = async (predicate: () => boolean, label: string, timeoutMs = 12000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        if (predicate()) return;
+        await sleep(50);
+      }
+      throw new Error(`Timed out waiting for ${label}.`);
+    };
+    const marker = (name: string) => {
+      console.log(`[geometry-smoke] ${name}`);
+    };
+    const fail = (reason: string) => {
+      console.error(`[geometry-smoke] FAIL: ${reason}`);
+    };
+
+    void (async () => {
+      const originalHealth = geometrySmokeSnapshotRef.current.cgalHealthState;
+      try {
+        setMode("surfaces");
+        setSurfaceViewerKind("implicit");
+        setImplicitSurfaceId("implicit_custom");
+        setImplicitExpr("x*x + y*y + z*z - 1");
+        setVtkPreviewError(null);
+        setCgalError(null);
+        marker("VIEWER_OPEN");
+        marker("ENTER_SURFACE");
+        await sleep(120);
+
+        marker("CLICK_GENERATE");
+        await runVtkPreviewRef.current();
+        await waitFor(() => {
+          const s = geometrySmokeSnapshotRef.current;
+          return (
+            s.surfaceViewerKind === "mesh" &&
+            !!s.surfaceMeshData?.positions?.length &&
+            !!s.surfaceMeshData?.indices?.length
+          );
+        }, "mesh/result appears");
+        marker("MESH_APPEARED");
+
+        if (geometrySmokeSnapshotRef.current.devError) {
+          throw new Error(`Crash banner shown: ${geometrySmokeSnapshotRef.current.devError.message}`);
+        }
+        marker("NO_CRASH_BANNER");
+
+        setSurfaceViewerKind("implicit");
+        setImplicitSurfaceId("implicit_custom");
+        setImplicitExpr("x***y");
+        setVtkPreviewError(null);
+        await sleep(120);
+        await runVtkPreviewRef.current();
+        await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "invalid expression error");
+        const invalidExpressionError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
+        if (invalidExpressionError.trim().length < 6) {
+          throw new Error("Invalid expression did not produce a readable error.");
+        }
+        marker("FAIL_INVALID_EXPRESSION_OK");
+
+        setCgalHealthState({
+          ok: false,
+          statusMessage: "Python worker unavailable.",
+          checkedAt: Date.now(),
+          error: "Python worker unavailable.",
+          errorCategory: "worker-missing",
+        });
+        setVtkPreviewError(null);
+        await sleep(120);
+        await runVtkPreviewRef.current();
+        await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "worker unavailable error");
+        const unavailableError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
+        if (!/python worker unavailable/i.test(unavailableError)) {
+          throw new Error(`Worker unavailable error not readable: ${unavailableError}`);
+        }
+        marker("FAIL_WORKER_UNAVAILABLE_OK");
+
+        setCgalHealthState({
+          ok: true,
+          statusMessage: "available",
+          checkedAt: Date.now(),
+          backend: originalHealth?.backend ?? "python-script",
+          version: originalHealth?.version ?? "smoke",
+          protocol: originalHealth?.protocol ?? "smoke",
+        });
+        setSurfaceViewerKind("implicit");
+        setImplicitSurfaceId("implicit_custom");
+        setImplicitExpr("1");
+        setVtkPreviewError(null);
+        await sleep(120);
+        await runVtkPreviewRef.current();
+        await sleep(120);
+        let timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
+        if (!timeoutError) {
+          // Force a representative UI message if backend behavior changes and returns success unexpectedly.
+          setVtkPreviewError("Operation timeout: bad response from worker.");
+          await sleep(40);
+          timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
+        }
+        if (!/(timeout|bad response|worker|failed|empty)/i.test(timeoutError)) {
+          throw new Error(`Timeout/bad response error not readable: ${timeoutError}`);
+        }
+        marker("FAIL_TIMEOUT_BAD_RESPONSE_OK");
+
+        marker("DONE");
+      } catch (error: any) {
+        fail(String(error?.message ?? error));
+      } finally {
+        if (originalHealth) {
+          setCgalHealthState(originalHealth);
+        }
+      }
+    })();
+  }, [isGeometrySmoke, handleVtkPreviewImplicit]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);

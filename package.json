@@ -23,7 +23,8 @@
     "smoke:release": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1",
     "test:worker:smoke": "powershell -ExecutionPolicy Bypass -File scripts/build-python-worker.ps1 -SmokeTest",
     "test:release:smoke": "powershell -ExecutionPolicy Bypass -File scripts/release-smoke.ps1 -SkipLaunchCheck",
-    "test:app:startup:smoke": "node scripts/startup-functional-smoke.mjs"
+    "test:app:startup:smoke": "node scripts/startup-functional-smoke.mjs",
+    "test:app:geometry:smoke": "node scripts/geometry-functional-smoke.mjs"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

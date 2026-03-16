@@ -13,6 +13,13 @@ import * as fs from "node:fs";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
+const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
+const geometrySmokeTimeoutMs = Math.max(
+  30000,
+  Number.isFinite(Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS))
+    ? Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS)
+    : 120000
+);
 
 type AppRuntimeMode = "development" | "packaged";
 type AppInstallType = "development" | "installer" | "portable-or-unknown";
@@ -219,14 +226,65 @@ function createWindow() {
   });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
+    if (isGeometrySmoke) {
+      devUrl.searchParams.set("geometrySmoke", "1");
+    }
+    win.loadURL(devUrl.toString());
     win.webContents.openDevTools();
   } else {
-const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
-    win.loadFile(indexPath);
+    const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
+    if (isGeometrySmoke) {
+      win.loadFile(indexPath, { query: { geometrySmoke: "1" } });
+    } else {
+      win.loadFile(indexPath);
+    }
   }
   return win;
 }
+
+const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
+  let done = false;
+  const finish = (ok: boolean, reason?: string) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timeout);
+    if (ok) {
+      console.log("[geometry-smoke] EXIT_OK");
+    } else {
+      console.error("[geometry-smoke] EXIT_FAIL", reason ?? "unknown");
+      process.exitCode = 1;
+    }
+    app.quit();
+  };
+
+  console.log("[geometry-smoke] HARNESS_READY", { timeoutMs: geometrySmokeTimeoutMs });
+  const timeout = setTimeout(() => {
+    finish(false, `Timeout waiting for geometry smoke completion (${geometrySmokeTimeoutMs}ms).`);
+  }, geometrySmokeTimeoutMs);
+
+  win.webContents.on("console-message", (_event, _level, message) => {
+    const text = String(message ?? "");
+    if (text.includes("[geometry-smoke] DONE")) {
+      finish(true);
+      return;
+    }
+    if (text.includes("[geometry-smoke] FAIL:")) {
+      finish(false, text);
+    }
+  });
+
+  win.webContents.on("render-process-gone", (_event, details) => {
+    finish(false, `Renderer process gone: ${details.reason}`);
+  });
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    finish(false, `did-fail-load (${errorCode}): ${errorDescription} [${validatedURL}]`);
+  });
+  win.on("closed", () => {
+    finish(false, "Window closed before geometry smoke completion.");
+  });
+};
 
 app.whenReady().then(async () => {
   if (isStartupSmoke) {
@@ -282,7 +340,12 @@ try {
   }
 
   const win = createWindow();
-  if (win) buildAppMenu(win);
+  if (win) {
+    buildAppMenu(win);
+    if (isGeometrySmoke) {
+      setupGeometrySmokeHarness(win);
+    }
+  }
 
   if (isStartupSmoke) {
     try {
