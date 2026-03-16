@@ -479,6 +479,14 @@ type CgalHealthState = {
   errorCategory?: string;
 };
 
+type GenerateSurfaceStatus = {
+  state: "idle" | "success" | "error";
+  message: string;
+  at: number;
+};
+
+const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
+
 const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthState => ({
   ok: status.available,
   statusMessage: status.statusMessage,
@@ -4668,6 +4676,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
+  const [generateSurfaceStatus, setGenerateSurfaceStatus] = useState<GenerateSurfaceStatus>({
+    state: "idle",
+    message: "Not run yet.",
+    at: Date.now(),
+  });
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
     setMeshDatasetState(toMeshDataset(mesh));
     setDatasetKind("surface");
@@ -8357,6 +8370,21 @@ case "mobius":
     }
     if (compareEnabled) setCompareUseSnapshotA(false);
   };
+
+  const handleLoadDeterministicImplicitSample = useCallback(() => {
+    setMode("surfaces");
+    setDatasetKind("surface");
+    setSurfaceViewerKind("implicit");
+    setImplicitSurfaceId("implicit_custom");
+    setImplicitExpr(DETERMINISTIC_IMPLICIT_SAMPLE_EXPR);
+    setVtkPreviewError(null);
+    setCgalError(null);
+    setGenerateSurfaceStatus({
+      state: "idle",
+      message: "Sample loaded. Click preview (VTK).",
+      at: Date.now(),
+    });
+  }, []);
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
@@ -14967,17 +14995,23 @@ case "mobius":
   const handleVtkPreviewImplicit = useCallback(async () => {
     if (vtkBusy || vtkPreviewBusy) return;
     if (cgalHealthState?.ok === false) {
-      setVtkPreviewError(cgalHealthState.error ?? "Python worker unavailable.");
+      const msg = cgalHealthState.error ?? "Python worker unavailable.";
+      setVtkPreviewError(msg);
+      setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
       return;
     }
     if (surfaceViewerKind !== "implicit") {
-      setVtkPreviewError("VTK preview is available only in the implicit viewer.");
+      const msg = "VTK preview is available only in the implicit viewer.";
+      setVtkPreviewError(msg);
+      setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
       return;
     }
 
     const expr = activeImplicitExpr;
     if (!expr) {
-      setVtkPreviewError("Implicit expression is empty.");
+      const msg = "Implicit expression is empty.";
+      setVtkPreviewError(msg);
+      setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
       return;
     }
 
@@ -14996,11 +15030,19 @@ case "mobius":
       });
       if (!res.ok) {
         setVtkPreviewError(res.error);
+        setGenerateSurfaceStatus({ state: "error", message: res.error, at: Date.now() });
         return;
       }
       applyVtkResultToSurfaceMesh("VTK preview", res);
+      setGenerateSurfaceStatus({
+        state: "success",
+        message: `Generated mesh (${res.vertexCount.toLocaleString()} verts, ${res.triCount.toLocaleString()} tris).`,
+        at: Date.now(),
+      });
     } catch (err: any) {
-      setVtkPreviewError(err?.message ?? "VTK preview failed.");
+      const msg = err?.message ?? "VTK preview failed.";
+      setVtkPreviewError(msg);
+      setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
     } finally {
       setVtkPreviewBusy(false);
       refreshCgalHealthAfterWorkerAction();
@@ -17791,7 +17833,7 @@ case "mobius":
   );
 
   return (
-    <div style={rootStyle}>
+    <div data-testid="app-shell" style={rootStyle}>
       {isDev && devError && (
         <div
           style={{
@@ -18088,6 +18130,7 @@ case "mobius":
             {/* MIDDLE */}
             <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
               <div
+                data-testid="main-viewer"
                 ref={surfaceSceneCaptureRef}
                 style={{
                   flex: 1,
@@ -18685,9 +18728,11 @@ case "mobius":
                   onPickParamSurface={handlePickParamSurface}
                   implicitExpr={implicitExpr}
                   onChangeImplicitExpr={setImplicitExpr}
+                  onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
                   implicitResolution={implicitResolution}
                   vtkPreviewBusy={vtkPreviewBusy}
                   vtkPreviewError={vtkPreviewError}
+                  generateSurfaceStatus={generateSurfaceStatus}
                   vtkPreviewTargetFaces={vtkPreviewTargetFaces}
                   vtkPreviewUseDecimate={vtkPreviewUseDecimate}
                   onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
@@ -18959,6 +19004,7 @@ case "mobius":
                     />
 
                     <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
+                    <div data-testid="scene-object-list">
                     <div data-testid="geometry-objects-list" style={{ display: "grid", gap: 6, marginTop: 6 }}>
                       {geometrySceneObjectRows.map((obj) => {
                         const active = obj.id === geometrySelectedObjectId;
@@ -19009,6 +19055,7 @@ case "mobius":
                           </div>
                         );
                       })}
+                    </div>
                     </div>
 
                     <div style={{ marginTop: 12 }}>
@@ -20065,7 +20112,7 @@ case "mobius":
 
             {/* RIGHT */}
             <div style={styles.stack}>
-              <div ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
+              <div data-testid="main-viewer" ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
                 <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
@@ -27314,9 +27361,11 @@ type SurfacesRightPanelProps = {
 
   implicitExpr: string;
   onChangeImplicitExpr: (s: string) => void;
+  onLoadDeterministicImplicitSample: () => void;
   implicitResolution: number;
   vtkPreviewBusy: boolean;
   vtkPreviewError: string | null;
+  generateSurfaceStatus: GenerateSurfaceStatus;
   vtkPreviewTargetFaces: number;
   vtkPreviewUseDecimate: boolean;
   onChangeVtkPreviewTargetFaces: (v: number) => void;
@@ -27393,9 +27442,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onPickParamSurface,
   implicitExpr,
   onChangeImplicitExpr,
+  onLoadDeterministicImplicitSample,
   implicitResolution,
   vtkPreviewBusy,
   vtkPreviewError,
+  generateSurfaceStatus,
   vtkPreviewTargetFaces,
   vtkPreviewUseDecimate,
   onChangeVtkPreviewTargetFaces,
@@ -27459,7 +27510,6 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
 
-  const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isWeierstrass = viewerKind === "weierstrass";
   const isMeshViewer = viewerKind === "mesh" || viewerKind === "complex";
   const isGraphViewer = viewerKind === "graph";
@@ -27479,6 +27529,18 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
   const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy || cgalHealthState?.ok !== true;
   const vtkPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
+  const workerReady = cgalHealthState?.ok === true;
+  const workerStatusLabel = workerReady ? "ready" : "unavailable";
+  const workerStatusText = workerReady
+    ? "worker ready"
+    : `worker unavailable: ${cgalHealthState?.error ?? cgalHealthState?.statusMessage ?? "checking..."}`;
+  const generateStateLabel = vtkPreviewBusy ? "running" : generateSurfaceStatus.state;
+  const generateStatusText = vtkPreviewBusy ? "generate running..." : generateSurfaceStatus.message;
+  const generateStatusColor = generateStateLabel === "success"
+    ? "#1f894f"
+    : generateStateLabel === "error"
+      ? "#b42318"
+      : "#556";
   const fmtTriEstimate = (value: number) => {
     if (!Number.isFinite(value) || value <= 0) return "0";
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
@@ -27864,11 +27926,47 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       )}
 
+      {isImplicitViewer && (
+        <div
+          data-testid="worker-status"
+          style={{
+            marginBottom: 12,
+            padding: "8px 10px",
+            border: "1px solid #d0d5dd",
+            borderRadius: 8,
+            background: "#fff",
+            fontSize: 11,
+            display: "grid",
+            gap: 4,
+          }}
+        >
+          <div style={{ color: workerReady ? "#1f894f" : "#b42318" }}>
+            worker: {workerStatusLabel}
+          </div>
+          <div style={{ color: generateStatusColor }}>
+            generate: {generateStateLabel}
+          </div>
+          <div style={{ color: workerReady ? "#556" : "#b42318" }}>{workerStatusText}</div>
+          <div style={{ color: generateStatusColor }}>{generateStatusText}</div>
+          <div>
+            <button
+              type="button"
+              data-testid="sample-surface-button"
+              onClick={onLoadDeterministicImplicitSample}
+              style={{ padding: "4px 8px" }}
+            >
+              Load deterministic sample
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Custom implicit editor (optional, but handy) */}
-      {isImplicitCustom && (
+      {isImplicitViewer && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Implicit formula</div>
           <input
+            data-testid="surface-input"
             type="text"
             value={implicitExpr}
             onChange={(e) => onChangeImplicitExpr(e.target.value)}
@@ -27894,6 +27992,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <button
+                  data-testid="generate-button"
                   type="button"
                   onClick={() => void onRunVtkPreview()}
                   disabled={vtkPreviewDisabled}
@@ -27932,7 +28031,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 />
                 <span style={{ fontSize: 11, color: "#556" }}>faces</span>
               </div>
-              {vtkPreviewError && <div style={{ fontSize: 11, color: "#b42318" }}>{vtkPreviewError}</div>}
+              {vtkPreviewError && (
+                <div data-testid="error-banner" style={{ fontSize: 11, color: "#b42318" }}>
+                  {vtkPreviewError}
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
                 <span
