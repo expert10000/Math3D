@@ -250,5 +250,8 @@ declare global {
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
     };
+    appRuntime?: {
+      geometrySmoke?: boolean;
+    };
   }
 }

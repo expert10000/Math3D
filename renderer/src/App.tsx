@@ -4367,11 +4367,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const isDev = typeof import.meta !== "undefined" && !!(import.meta as any).env?.DEV;
   const isGeometrySmoke = useMemo(() => {
     if (typeof window === "undefined") return false;
+    if (window.appRuntime?.geometrySmoke === true) return true;
     try {
       const params = new URLSearchParams(window.location.search);
-      return params.get("geometrySmoke") === "1";
+      if (params.get("geometrySmoke") === "1") return true;
+      const hashQueryStart = window.location.hash.indexOf("?");
+      if (hashQueryStart >= 0) {
+        const hashParams = new URLSearchParams(window.location.hash.slice(hashQueryStart + 1));
+        if (hashParams.get("geometrySmoke") === "1") return true;
+      }
+      return /(?:\?|&|#)geometrySmoke=1(?:&|$)/.test(window.location.href);
     } catch {
-      return false;
+      return window.location.href.includes("geometrySmoke=1");
     }
   }, []);
   const [devError, setDevError] = useState<{ message: string; stack?: string } | null>(null);

@@ -4,6 +4,9 @@ export type PresetKind = "graph" | "implicit" | "param";
 
 console.log("[preload] LOADED");
 
+const asFlag = (value: unknown): boolean =>
+  ["1", "true", "yes", "on", "y"].includes(String(value ?? "").toLowerCase());
+
 export type SurfacePresetRecord = {
   id: string;
   kind: PresetKind;
@@ -278,4 +281,8 @@ contextBridge.exposeInMainWorld("appCapture", {
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
   getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
     ipcRenderer.invoke("python-worker:diagnostics:get"),
+});
+
+contextBridge.exposeInMainWorld("appRuntime", {
+  geometrySmoke: asFlag(process.env.MATH3D_GEOMETRY_SMOKE),
 });
