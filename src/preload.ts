@@ -7,6 +7,21 @@ console.log("[preload] LOADED");
 const asFlag = (value: unknown): boolean =>
   ["1", "true", "yes", "on", "y"].includes(String(value ?? "").toLowerCase());
 
+const readGeometrySmokeFlag = (): boolean => {
+  try {
+    const flags = ipcRenderer.sendSync("app:runtime:get-flags") as { geometrySmoke?: unknown } | null;
+    if (flags?.geometrySmoke === true) return true;
+  } catch {
+    // Ignore: runtime flags are optional for non-main test contexts.
+  }
+  return asFlag(process.env.MATH3D_GEOMETRY_SMOKE);
+};
+
+const geometrySmokeEnabled = readGeometrySmokeFlag();
+if (geometrySmokeEnabled) {
+  console.log("[preload] GEOMETRY_SMOKE=1");
+}
+
 export type SurfacePresetRecord = {
   id: string;
   kind: PresetKind;
@@ -284,5 +299,5 @@ contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
 });
 
 contextBridge.exposeInMainWorld("appRuntime", {
-  geometrySmoke: asFlag(process.env.MATH3D_GEOMETRY_SMOKE),
+  geometrySmoke: geometrySmokeEnabled,
 });

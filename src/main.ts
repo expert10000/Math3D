@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { listPresets, upsertPreset, removePreset } from "./presetsDb";
 import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
@@ -235,7 +236,9 @@ function createWindow() {
   } else {
     const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
     if (isGeometrySmoke) {
-      win.loadFile(indexPath, { query: { geometrySmoke: "1" } });
+      const indexUrl = pathToFileURL(indexPath);
+      indexUrl.searchParams.set("geometrySmoke", "1");
+      win.loadURL(indexUrl.toString());
     } else {
       win.loadFile(indexPath);
     }
@@ -259,6 +262,9 @@ const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
   };
 
   console.log("[geometry-smoke] HARNESS_READY", { timeoutMs: geometrySmokeTimeoutMs });
+  win.webContents.on("did-finish-load", () => {
+    console.log("[geometry-smoke] PAGE_URL", win.webContents.getURL());
+  });
   const timeout = setTimeout(() => {
     finish(false, `Timeout waiting for geometry smoke completion (${geometrySmokeTimeoutMs}ms).`);
   }, geometrySmokeTimeoutMs);
@@ -285,6 +291,12 @@ const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
     finish(false, "Window closed before geometry smoke completion.");
   });
 };
+
+ipcMain.on("app:runtime:get-flags", (event) => {
+  event.returnValue = {
+    geometrySmoke: isGeometrySmoke,
+  };
+});
 
 app.whenReady().then(async () => {
   if (isStartupSmoke) {
