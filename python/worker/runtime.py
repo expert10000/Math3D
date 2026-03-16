@@ -8,7 +8,8 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-HEAVY_DEPENDENCIES = ["numpy", "scipy", "sympy", "pygalmesh", "vtk"]
+REQUIRED_DEPENDENCIES = ["numpy", "scipy", "sympy", "vtk"]
+OPTIONAL_DEPENDENCIES = ["pygalmesh"]
 
 
 def is_frozen() -> bool:
@@ -91,19 +92,34 @@ def bootstrap_worker_paths() -> Dict[str, str]:
 
 
 def dependency_probe() -> Dict[str, Any]:
-    result: Dict[str, Any] = {"ok": True, "dependencies": {}}
-    for name in HEAVY_DEPENDENCIES:
+    result: Dict[str, Any] = {
+        "ok": True,
+        "dependencies": {},
+        "required": list(REQUIRED_DEPENDENCIES),
+        "optional": list(OPTIONAL_DEPENDENCIES),
+        "optionalMissing": [],
+    }
+
+    ordered = [(name, True) for name in REQUIRED_DEPENDENCIES] + [
+        (name, False) for name in OPTIONAL_DEPENDENCIES
+    ]
+    for name, required in ordered:
         try:
             mod = importlib.import_module(name)
             result["dependencies"][name] = {
                 "ok": True,
+                "required": required,
                 "file": getattr(mod, "__file__", None),
                 "version": getattr(mod, "__version__", None),
             }
         except Exception as exc:
-            result["ok"] = False
+            if required:
+                result["ok"] = False
+            else:
+                result["optionalMissing"].append(name)
             result["dependencies"][name] = {
                 "ok": False,
+                "required": required,
                 "error": str(exc),
             }
     return result

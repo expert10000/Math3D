@@ -12,9 +12,9 @@ if __package__ in (None, ""):
     _HERE = os.path.dirname(os.path.abspath(__file__))
     if _HERE not in sys.path:
         sys.path.insert(0, _HERE)
-    from runtime import bootstrap_worker_paths
+    from runtime import bootstrap_worker_paths, dependency_probe
 else:
-    from .runtime import bootstrap_worker_paths
+    from .runtime import bootstrap_worker_paths, dependency_probe
 
 bootstrap_worker_paths()
 
@@ -411,18 +411,24 @@ def handle_job(msg: Dict[str, Any]) -> None:
 
 def handle_health(msg: Dict[str, Any]) -> None:
     job_id = msg.get("jobId", "")
-    try:
-        import pygalmesh  # noqa: F401
-        import sympy  # noqa: F401
-        import numpy  # noqa: F401
-        import scipy  # noqa: F401
-        import vtk  # noqa: F401
-    except Exception as e:
+    probe = dependency_probe()
+    dependencies = probe.get("dependencies") or {}
+    if not probe.get("ok"):
+        missing_required = [
+            name
+            for name, info in dependencies.items()
+            if info and bool(info.get("required")) and not bool(info.get("ok"))
+        ]
+        detail = {
+            "missingRequired": missing_required,
+            "dependencies": dependencies,
+            "optionalMissing": probe.get("optionalMissing", []),
+        }
         send_error(
             job_id,
             "DEPENDENCY_MISSING",
-            f"Python deps unavailable: {e}",
-            {"trace": traceback.format_exc()},
+            f"Python deps unavailable: missing required modules ({', '.join(missing_required)})",
+            detail,
             "health",
         )
         return
@@ -434,6 +440,8 @@ def handle_health(msg: Dict[str, Any]) -> None:
             "ok": True,
             "version": WORKER_VERSION,
             "protocol": PROTOCOL_VERSION,
+            "dependencies": dependencies,
+            "optionalMissing": probe.get("optionalMissing", []),
         }
     )
 
