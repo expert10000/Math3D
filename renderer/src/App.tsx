@@ -40,6 +40,10 @@ import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
 import type { ColorPalette } from "./components/colorPalette";
+import {
+  DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+  type ReferencePlaneGridSettings,
+} from "./components/layeredReferenceGrid";
 
 import { renderMobius } from "./d3/MobiusRenderer";
 import { renderChebyshev } from "./d3/ChebyshevRenderer";
@@ -6607,6 +6611,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const chartGridCountU = chartGridDensity;
   const chartGridCountV = chartGridDensity;
   const [showPlanes, setShowPlanes] = useState(false);
+  const [planeGridSettings, setPlaneGridSettings] = useState<ReferencePlaneGridSettings>(() => ({
+    ...DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+  }));
   const [colorMode, setColorMode] = useState<ColorMode>("solid");
   const [colorPalette, setColorPalette] = useState<ColorPalette>("blueRed");
   const [showGaussMap, setShowGaussMap] = useState(false);
@@ -18591,6 +18598,40 @@ case "mobius":
                   onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                   showPlanes={showPlanes}
                   onTogglePlanes={() => setShowPlanes((p) => !p)}
+                  planeGridSettings={planeGridSettings}
+                  onTogglePlaneGrid={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }))
+                  }
+                  onTogglePlaneMinorGrid={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: !prev.showMinorGrid }))
+                  }
+                  onTogglePlaneLabels={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showLabels: !prev.showLabels }))
+                  }
+                  onTogglePlaneXY={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showXY: !prev.showXY }))
+                  }
+                  onTogglePlaneXZ={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showXZ: !prev.showXZ }))
+                  }
+                  onTogglePlaneYZ={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showYZ: !prev.showYZ }))
+                  }
+                  onTogglePlaneAutoScale={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, autoGridScale: !prev.autoGridScale }))
+                  }
+                  onChangePlaneGridDensity={(value) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      gridDensity: Math.max(4, Math.min(20, Number.isFinite(value) ? value : prev.gridDensity)),
+                    }))
+                  }
+                  onChangePlaneOpacity={(value) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      planeOpacity: Math.max(0, Math.min(0.35, Number.isFinite(value) ? value : prev.planeOpacity)),
+                    }))
+                  }
                 />
               )}
               {surfacesLeftTab === "analysis" && (
@@ -18782,6 +18823,7 @@ case "mobius":
                             customZ={paramZExpr}
                             wireframe={primaryOverlay.showWireframe}
                             showPlanes={primaryOverlay.showPlanes}
+                            planeGridSettings={planeGridSettings}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
@@ -18910,9 +18952,10 @@ case "mobius":
                             }
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
-                            wireframe={primaryOverlay.showWireframe}
-                            showPlanes={primaryOverlay.showPlanes}
-                            lightPreset={lightPreset}
+                              wireframe={primaryOverlay.showWireframe}
+                              showPlanes={primaryOverlay.showPlanes}
+                              planeGridSettings={planeGridSettings}
+                              lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
                             materialMetalness={materialMetalness}
                             materialOpacity={materialOpacity}
@@ -19030,6 +19073,7 @@ case "mobius":
                               customZ={paramZExpr}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
+                              planeGridSettings={planeGridSettings}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
                               materialMetalness={materialMetalness}
@@ -19072,6 +19116,7 @@ case "mobius":
                               sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
+                              planeGridSettings={planeGridSettings}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
                               materialMetalness={materialMetalness}
@@ -22428,6 +22473,16 @@ type SurfacesViewPanelProps = {
   onToggleBoundingBox: () => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
+  planeGridSettings: ReferencePlaneGridSettings;
+  onTogglePlaneGrid: () => void;
+  onTogglePlaneMinorGrid: () => void;
+  onTogglePlaneLabels: () => void;
+  onTogglePlaneXY: () => void;
+  onTogglePlaneXZ: () => void;
+  onTogglePlaneYZ: () => void;
+  onTogglePlaneAutoScale: () => void;
+  onChangePlaneGridDensity: (value: number) => void;
+  onChangePlaneOpacity: (value: number) => void;
 };
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
@@ -22450,6 +22505,16 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onToggleBoundingBox,
   showPlanes,
   onTogglePlanes,
+  planeGridSettings,
+  onTogglePlaneGrid,
+  onTogglePlaneMinorGrid,
+  onTogglePlaneLabels,
+  onTogglePlaneXY,
+  onTogglePlaneXZ,
+  onTogglePlaneYZ,
+  onTogglePlaneAutoScale,
+  onChangePlaneGridDensity,
+  onChangePlaneOpacity,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
@@ -22538,6 +22603,65 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
         <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
         Coordinate planes
       </label>
+      {showPlanes && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #dbe3ef", display: "grid", gap: 6 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.showGrid} onChange={onTogglePlaneGrid} />
+            Show grid
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={planeGridSettings.showMinorGrid}
+              onChange={onTogglePlaneMinorGrid}
+              disabled={!planeGridSettings.showGrid}
+            />
+            Show minor grid
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.showLabels} onChange={onTogglePlaneLabels} />
+            Show labels
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.showXY} onChange={onTogglePlaneXY} />
+            Show XY
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.showXZ} onChange={onTogglePlaneXZ} />
+            Show XZ
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.showYZ} onChange={onTogglePlaneYZ} />
+            Show YZ
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={planeGridSettings.autoGridScale} onChange={onTogglePlaneAutoScale} />
+            Auto grid scale
+          </label>
+          <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+            Grid density: {planeGridSettings.gridDensity.toFixed(0)}
+            <input
+              type="range"
+              min={4}
+              max={20}
+              step={1}
+              value={planeGridSettings.gridDensity}
+              onChange={(e) => onChangePlaneGridDensity(Number(e.target.value))}
+            />
+          </label>
+          <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
+            Plane opacity: {planeGridSettings.planeOpacity.toFixed(2)}
+            <input
+              type="range"
+              min={0}
+              max={0.35}
+              step={0.01}
+              value={planeGridSettings.planeOpacity}
+              onChange={(e) => onChangePlaneOpacity(Number(e.target.value))}
+            />
+          </label>
+        </div>
+      )}
     </div>
   </div>
 );
@@ -27456,7 +27580,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             type="text"
             value={graphExpr}
             onChange={(e) => onChangeGraphExpr(e.target.value)}
-            placeholder="e.g. x*x - y*y, Math.sin(x)*Math.cos(y)"
+            placeholder="e.g. x*x - y*y, sin(x)*cos(y), x^y"
             style={{
               width: "100%",
               marginTop: 4,
@@ -27469,7 +27593,11 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
             }}
           />
           <p style={styles.hint}>
-            Use <code>x</code>, <code>y</code> and <code>Math.*</code>.
+            Use <code>x</code>, <code>y</code>, operators <code>+ - * / ^</code>, and functions like
+            <code> sin</code>, <code>cos</code>, <code>sqrt</code>, <code>abs</code>, <code>log</code>,
+            <code>exp</code>, <code>min</code>, <code>max</code>. Constants: <code>pi</code>, <code>e</code>.
+            For real values, <code>x^y</code> is valid when <code>x &gt;= 0</code> (or integer <code>y</code>);
+            otherwise use <code>abs(x)^y</code>.
           </p>
         </div>
       )}
@@ -28660,7 +28788,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             }}
           />
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Use <code>x</code>, <code>y</code>, <code>z</code> and <code>Math.*</code>.
+              Use <code>x</code>, <code>y</code>, <code>z</code>, operators <code>+ - * / ^</code>, and functions
+              like <code>sin</code>, <code>cos</code>, <code>sqrt</code>, <code>abs</code>, <code>log</code>,
+              <code>exp</code>, <code>min</code>, <code>max</code>.
             </div>
             <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

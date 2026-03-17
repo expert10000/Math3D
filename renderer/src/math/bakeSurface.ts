@@ -122,7 +122,11 @@ const buildGraphFn = (surfaceId: SurfaceId, graphExpr: string) => {
       vars.x = x;
       vars.y = y;
       const v = fn(vars);
-      return Number.isFinite(v) ? v : NaN;
+      if (!Number.isFinite(v)) return 0;
+      const LIM = 1e4;
+      if (v > LIM) return LIM;
+      if (v < -LIM) return -LIM;
+      return v;
     },
   };
 };

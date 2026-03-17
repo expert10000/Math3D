@@ -37,6 +37,11 @@ import {
 } from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
 import type { PolylineSet } from "../scene/renderPrimitives";
+import {
+  createLayeredReferenceGrid,
+  DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+  type ReferencePlaneGridSettings,
+} from "./layeredReferenceGrid";
 
 type ParamPreset = {
   id: string;
@@ -187,6 +192,7 @@ type Props = {
   customZ?: string;
   wireframe?: boolean;
   showPlanes?: boolean;
+  planeGridSettings?: ReferencePlaneGridSettings;
   lightPreset?: "studio" | "soft" | "contrast" | "neutral" | "warm";
   materialRoughness?: number;
   materialMetalness?: number;
@@ -1112,6 +1118,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   customZ,
   wireframe,
   showPlanes,
+  planeGridSettings = DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   lightPreset = "studio",
   materialRoughness = 0.6,
   materialMetalness = 0.1,
@@ -1231,6 +1238,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onSetCustomZ,
   onParamGeodesicState,
 }) => {
+  const planeGridShowGrid = planeGridSettings.showGrid;
+  const planeGridShowMinor = planeGridSettings.showMinorGrid;
+  const planeGridShowLabels = planeGridSettings.showLabels;
+  const planeGridShowXY = planeGridSettings.showXY;
+  const planeGridShowXZ = planeGridSettings.showXZ;
+  const planeGridShowYZ = planeGridSettings.showYZ;
+  const planeGridAutoScale = planeGridSettings.autoGridScale;
+  const planeGridDensity = planeGridSettings.gridDensity;
+  const planeGridOpacity = planeGridSettings.planeOpacity;
+
   const mountRef = useRef<HTMLDivElement | null>(null);
 
   // refs for stable callbacks / flags
@@ -2175,36 +2192,23 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     // optional coordinate planes
     const extraGeoms: THREE.BufferGeometry[] = [];
     const extraMats: THREE.Material[] = [];
+    let referenceGridOverlay: ReturnType<typeof createLayeredReferenceGrid> | null = null;
     if (showPlanes) {
-      const planeSize = 6;
-
-      const makePlane = () =>
-        new THREE.MeshBasicMaterial({
-          color: 0x999999,
-          transparent: true,
-          opacity: 0.12,
-          side: THREE.DoubleSide,
-        });
-
-      const matXZ = makePlane();
-      const geoXZ = new THREE.PlaneGeometry(planeSize, planeSize);
-      const planeXZ = new THREE.Mesh(geoXZ, matXZ);
-      planeXZ.rotation.x = -Math.PI / 2;
-      scene.add(planeXZ);
-
-      const matXY = makePlane();
-      const geoXY = new THREE.PlaneGeometry(planeSize, planeSize);
-      const planeXY = new THREE.Mesh(geoXY, matXY);
-      scene.add(planeXY);
-
-      const matYZ = makePlane();
-      const geoYZ = new THREE.PlaneGeometry(planeSize, planeSize);
-      const planeYZ = new THREE.Mesh(geoYZ, matYZ);
-      planeYZ.rotation.y = Math.PI / 2;
-      scene.add(planeYZ);
-
-      extraGeoms.push(geoXZ, geoXY, geoYZ);
-      extraMats.push(matXZ, matXY, matYZ);
+      referenceGridOverlay = createLayeredReferenceGrid({
+        halfSize: 3,
+        lineLift: 0.003,
+        originDotRadius: 0.052,
+        showGrid: planeGridShowGrid,
+        showMinorGrid: planeGridShowMinor,
+        showLabels: planeGridShowLabels,
+        showXY: planeGridShowXY,
+        showXZ: planeGridShowXZ,
+        showYZ: planeGridShowYZ,
+        autoGridScale: planeGridAutoScale,
+        gridDensity: planeGridDensity,
+        planeOpacity: planeGridOpacity,
+      });
+      scene.add(referenceGridOverlay.group);
     }
 
     const slices = Math.max(16, Math.round(paramResolution));
@@ -3063,14 +3067,19 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         viewerRef.current = null;
         window.removeEventListener("resize", onResize);
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
-      if (isCameraLeader && onCameraSync) {
-        controls.removeEventListener("change", emitCameraSync);
-      }
-      controls.dispose();
-      geometry.dispose();
-      material.dispose();
-      extraGeoms.forEach((g) => g.dispose());
-      extraMats.forEach((m) => m.dispose());
+        if (isCameraLeader && onCameraSync) {
+          controls.removeEventListener("change", emitCameraSync);
+        }
+        controls.dispose();
+        if (referenceGridOverlay) {
+          scene.remove(referenceGridOverlay.group);
+          referenceGridOverlay.dispose();
+          referenceGridOverlay = null;
+        }
+        geometry.dispose();
+        material.dispose();
+        extraGeoms.forEach((g) => g.dispose());
+        extraMats.forEach((m) => m.dispose());
 
       labelSprites.forEach((s) => {
         const mat = s.material as THREE.SpriteMaterial;
@@ -3198,6 +3207,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customZ,
     wireframe,
     showPlanes,
+    planeGridShowGrid,
+    planeGridShowMinor,
+    planeGridShowLabels,
+    planeGridShowXY,
+    planeGridShowXZ,
+    planeGridShowYZ,
+    planeGridAutoScale,
+    planeGridDensity,
+    planeGridOpacity,
     lightPreset,
     colorMode,
     showBoundingBox,

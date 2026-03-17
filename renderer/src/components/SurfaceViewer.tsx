@@ -28,6 +28,11 @@ import {
 } from "../math/sampling/surfaceSampling";
 import type { SelectionMask } from "../math/selection/selectionModel";
 import type { PolylineSet } from "../scene/renderPrimitives";
+import {
+  createLayeredReferenceGrid,
+  DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+  type ReferencePlaneGridSettings,
+} from "./layeredReferenceGrid";
 
 export type ColorMode =
   | "solid"
@@ -232,11 +237,18 @@ function makeGraphGeometry(
   nx = 80,
   ny = 80
 ) {
+  const clampGraphHeight = (value: number) => {
+    if (!Number.isFinite(value)) return 0;
+    const LIM = 1e4;
+    if (value > LIM) return LIM;
+    if (value < -LIM) return -LIM;
+    return value;
+  };
   return new ParametricGeometry(
     (u, v, target) => {
       const x = (u - 0.5) * 2 * xMax;
       const y = (v - 0.5) * 2 * yMax;
-      const z = f(x, y);
+      const z = clampGraphHeight(f(x, y));
       target.set(x, z, y);
     },
     nx,
@@ -251,7 +263,15 @@ function makeGraphContourLines(
   levelCount: number,
   gridN = 140
 ): THREE.LineSegments {
-  const { geometry } = buildGraphContours(f, {
+  const safeF = (x: number, y: number) => {
+    const v = f(x, y);
+    if (!Number.isFinite(v)) return 0;
+    const LIM = 1e4;
+    if (v > LIM) return LIM;
+    if (v < -LIM) return -LIM;
+    return v;
+  };
+  const { geometry } = buildGraphContours(safeF, {
     xMin: -xMax,
     xMax: xMax,
     yMin: -yMax,
@@ -878,6 +898,7 @@ type Props = {
 
   wireframe?: boolean;
   showPlanes?: boolean;
+  planeGridSettings?: ReferencePlaneGridSettings;
 
   lightPreset?: "studio" | "soft" | "contrast" | "neutral" | "warm";
   materialRoughness?: number;
@@ -1090,6 +1111,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
     wireframe,
     showPlanes,
+    planeGridSettings = DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
 
     lightPreset = "studio",
     materialRoughness = 0.3,
@@ -1220,6 +1242,15 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     showContours = false,
     contourCount = 12,
   } = props;
+  const planeGridShowGrid = planeGridSettings.showGrid;
+  const planeGridShowMinor = planeGridSettings.showMinorGrid;
+  const planeGridShowLabels = planeGridSettings.showLabels;
+  const planeGridShowXY = planeGridSettings.showXY;
+  const planeGridShowXZ = planeGridSettings.showXZ;
+  const planeGridShowYZ = planeGridSettings.showYZ;
+  const planeGridAutoScale = planeGridSettings.autoGridScale;
+  const planeGridDensity = planeGridSettings.gridDensity;
+  const planeGridOpacity = planeGridSettings.planeOpacity;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -1744,7 +1775,11 @@ useEffect(() => {
     const fn = r.fn!;
     graphFnRef.current = (x, y) => {
       const v = fn({ x, y });
-      return Number.isFinite(v) ? v : NaN;
+      if (!Number.isFinite(v)) return 0;
+      const LIM = 1e4;
+      if (v > LIM) return LIM;
+      if (v < -LIM) return -LIM;
+      return v;
     };
     setGraphCompileError(null);
   }, [surfaceId, graphExpr]);
@@ -3394,27 +3429,24 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     originSphere.renderOrder = 460;
     viewGizmo.add(originSphere);
 
+    let referenceGridOverlay: ReturnType<typeof createLayeredReferenceGrid> | null = null;
     if (showPlanes) {
-      const planeSize = 3.0;
-      const basePlaneMat = new THREE.MeshBasicMaterial({
-        color: 0x888888,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.15,
+      const halfSize = Math.max(3, Math.min(28, (radiusRef.current || 3) * 1.35));
+      referenceGridOverlay = createLayeredReferenceGrid({
+        halfSize,
+        lineLift: Math.max(0.002, halfSize * 0.0012),
+        originDotRadius: Math.max(0.04, halfSize * 0.014),
+        showGrid: planeGridShowGrid,
+        showMinorGrid: planeGridShowMinor,
+        showLabels: planeGridShowLabels,
+        showXY: planeGridShowXY,
+        showXZ: planeGridShowXZ,
+        showYZ: planeGridShowYZ,
+        autoGridScale: planeGridAutoScale,
+        gridDensity: planeGridDensity,
+        planeOpacity: planeGridOpacity,
       });
-
-      const planeGeom = new THREE.PlaneGeometry(planeSize * 2, planeSize * 2);
-
-      const planeXY = new THREE.Mesh(planeGeom.clone(), basePlaneMat.clone());
-      scene.add(planeXY);
-
-      const planeYZ = new THREE.Mesh(planeGeom.clone(), basePlaneMat.clone());
-      planeYZ.rotation.y = Math.PI / 2;
-      scene.add(planeYZ);
-
-      const planeXZ = new THREE.Mesh(planeGeom.clone(), basePlaneMat.clone());
-      planeXZ.rotation.x = -Math.PI / 2;
-      scene.add(planeXZ);
+      scene.add(referenceGridOverlay.group);
     }
 
     // ---- PROBE GADGET ----
@@ -3942,6 +3974,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         bboxHelperRef.current = null;
       }
 
+      if (referenceGridOverlay) {
+        scene.remove(referenceGridOverlay.group);
+        referenceGridOverlay.dispose();
+        referenceGridOverlay = null;
+      }
+
       if (sliceGroupRef.current) {
         clearGroup(sliceGroupRef.current);
         scene.remove(sliceGroupRef.current);
@@ -4061,6 +4099,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     colorPalette,
     implicitOverlay,
     showBoundingBox,
+    planeGridShowGrid,
+    planeGridShowMinor,
+    planeGridShowLabels,
+    planeGridShowXY,
+    planeGridShowXZ,
+    planeGridShowYZ,
+    planeGridAutoScale,
+    planeGridDensity,
+    planeGridOpacity,
     resetToken,
     probeEnabled,
     graphResolution,

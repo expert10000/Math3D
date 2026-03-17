@@ -1,5 +1,6 @@
 // src/math/surfaceInvariants.ts
 import type { SurfaceId } from "../components/SurfaceViewer";
+import { compileExpression } from "./expression";
 
 export type CurvatureData = {
   fx: number;
@@ -100,65 +101,19 @@ function makeZFunction(expr: string | undefined): (x: number, y: number) => numb
   const fallback = () => 0;
   if (!expr || !expr.trim()) return fallback;
 
-  try {
-    const fn = new Function(
-      "x",
-      "y",
-      "Math",
-      "sin",
-      "cos",
-      "tan",
-      "sqrt",
-      "abs",
-      "exp",
-      "log",
-      "pow",
-      "PI",
-      "E",
-      "pi",
-      "e",
-      `return (${expr});`
-    ) as (
-      x: number,
-      y: number,
-      m: typeof Math,
-      sin: (t: number) => number,
-      cos: (t: number) => number,
-      tan: (t: number) => number,
-      sqrt: (t: number) => number,
-      abs: (t: number) => number,
-      exp: (t: number) => number,
-      log: (t: number) => number,
-      pow: (a: number, b: number) => number,
-      PI: number,
-      E: number,
-      pi: number,
-      e: number
-    ) => number;
-
-    return (x, y) => {
-      const z = fn(
-        x,
-        y,
-        Math,
-        Math.sin,
-        Math.cos,
-        Math.tan,
-        Math.sqrt,
-        Math.abs,
-        Math.exp,
-        Math.log,
-        Math.pow,
-        Math.PI,
-        Math.E,
-        Math.PI,
-        Math.E
-      );
-      return Number.isFinite(z) ? z : 0;
-    };
-  } catch {
+  const compiled = compileExpression(expr, ["x", "y"]);
+  if (compiled.error || !compiled.fn) {
     return fallback;
   }
+  const fn = compiled.fn;
+  return (x, y) => {
+    const z = fn({ x, y });
+    if (!Number.isFinite(z)) return 0;
+    const LIM = 1e4;
+    if (z > LIM) return LIM;
+    if (z < -LIM) return -LIM;
+    return z;
+  };
 }
 
 // get f(x,y) for the graph_* surfaces
