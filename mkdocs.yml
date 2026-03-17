@@ -1,0 +1,19 @@
+site_name: Math3D Documentation
+site_description: Math3D project docs and API reference
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  from-A/**
+theme:
+  name: mkdocs
+nav:
+  - Home: index.md
+  - API Reference: api-reference.md
+  - Guides:
+      - Playwright E2E Tests: playwright-e2e-tests.md
+      - Release Smoke Tests: release-smoke-tests.md
+  - Python Worker:
+      - Runtime: python-worker-runtime.md
+      - Protocol: python-worker-protocol.md
+      - Freeze: python-worker-freeze.md
+      - Packaging Prep: python-worker-packaging-prep.md

@@ -78,12 +78,22 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
+          python -m pip install mkdocs
           python -m pip install pyinstaller numpy scipy sympy vtk
           python -m pip install pygalmesh
           if ($LASTEXITCODE -ne 0) {
             Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
             $global:LASTEXITCODE = 0
           }
+
+      - name: Build docs bundle
+        shell: pwsh
+        run: |
+          if (Test-Path "docs/api") {
+            Remove-Item -Recurse -Force "docs/api"
+          }
+          npm run docs:api
+          npm run docs:site
 
       - name: Build Windows installer
         run: npm run dist:ci
@@ -111,6 +121,15 @@ jobs:
               -Force
           } else {
             Write-Warning "release/win-unpacked not found; skipping portable zip."
+          }
+
+          $docsSite = Join-Path $PWD "site"
+          if (Test-Path $docsSite) {
+            Compress-Archive -Path (Join-Path $docsSite "*") `
+              -DestinationPath (Join-Path $assetsDir "Math3D-docs-$version.zip") `
+              -Force
+          } else {
+            Write-Warning "site directory not found; skipping docs zip."
           }
 
           $optionalFiles = @(

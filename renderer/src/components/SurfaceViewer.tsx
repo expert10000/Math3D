@@ -885,6 +885,116 @@ function makePlaneBasis(n: THREE.Vector3) {
   return { e1, e2 };
 }
 
+type PrincipalProjectionPlane = "xy" | "yz" | "xz";
+
+const PRINCIPAL_PROJECTION_COLORS: Record<PrincipalProjectionPlane, number> = {
+  xy: 0x0ea5e9,
+  yz: 0x16a34a,
+  xz: 0xf59e0b,
+};
+
+const cloneIndexArray = (index: ArrayLike<number>) => {
+  if (index instanceof Uint32Array) return new Uint32Array(index);
+  if (index instanceof Uint16Array) return new Uint16Array(index);
+  if (index instanceof Uint8Array) return new Uint8Array(index);
+  return Uint32Array.from(index);
+};
+
+const projectPointToPlane = (
+  point: THREE.Vector3,
+  plane: PrincipalProjectionPlane,
+  out: THREE.Vector3
+) => {
+  if (plane === "xy") {
+    out.set(point.x, point.y, 0);
+    return out;
+  }
+  if (plane === "yz") {
+    out.set(0, point.y, point.z);
+    return out;
+  }
+  out.set(point.x, 0, point.z);
+  return out;
+};
+
+const buildPrincipalProjectionGroup = (
+  root: THREE.Object3D,
+  options: {
+    showXY: boolean;
+    showYZ: boolean;
+    showXZ: boolean;
+    opacity: number;
+    wireframe: boolean;
+  }
+) => {
+  const planes: PrincipalProjectionPlane[] = [];
+  if (options.showXY) planes.push("xy");
+  if (options.showYZ) planes.push("yz");
+  if (options.showXZ) planes.push("xz");
+  if (!planes.length) return null;
+
+  root.updateMatrixWorld(true);
+  const sourceMeshes: THREE.Mesh[] = [];
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh?.isMesh) return;
+    if (!(mesh.geometry instanceof THREE.BufferGeometry)) return;
+    const pos = mesh.geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    if (!pos || pos.count < 3) return;
+    sourceMeshes.push(mesh);
+  });
+  if (!sourceMeshes.length) return null;
+
+  const group = new THREE.Group();
+  group.name = "principal-plane-projections";
+  const world = new THREE.Vector3();
+  const projected = new THREE.Vector3();
+
+  for (const source of sourceMeshes) {
+    const geometry = source.geometry as THREE.BufferGeometry;
+    const pos = geometry.getAttribute("position") as THREE.BufferAttribute | null;
+    if (!pos || pos.count < 3) continue;
+    const idx = geometry.getIndex();
+
+    for (const plane of planes) {
+      const projectedPositions = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        world.fromBufferAttribute(pos, i).applyMatrix4(source.matrixWorld);
+        projectPointToPlane(world, plane, projected);
+        projectedPositions[3 * i] = projected.x;
+        projectedPositions[3 * i + 1] = projected.y;
+        projectedPositions[3 * i + 2] = projected.z;
+      }
+
+      const projectedGeom = new THREE.BufferGeometry();
+      projectedGeom.setAttribute("position", new THREE.Float32BufferAttribute(projectedPositions, 3));
+      if (idx && idx.count >= 3) {
+        projectedGeom.setIndex(new THREE.BufferAttribute(cloneIndexArray(idx.array as ArrayLike<number>), 1));
+      }
+
+      const opacity = Math.max(0.03, Math.min(0.95, options.opacity));
+      const mat = new THREE.MeshBasicMaterial({
+        color: PRINCIPAL_PROJECTION_COLORS[plane],
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        wireframe: options.wireframe,
+      });
+      mat.polygonOffset = true;
+      mat.polygonOffsetFactor = -1;
+      mat.polygonOffsetUnits = -1;
+
+      const projectedMesh = new THREE.Mesh(projectedGeom, mat);
+      projectedMesh.frustumCulled = false;
+      projectedMesh.renderOrder = 210;
+      group.add(projectedMesh);
+    }
+  }
+
+  return group.children.length ? group : null;
+};
+
 /* ---------- props ---------- */
 
 type Props = {
@@ -899,6 +1009,11 @@ type Props = {
   wireframe?: boolean;
   showPlanes?: boolean;
   planeGridSettings?: ReferencePlaneGridSettings;
+  showPrincipalProjections?: boolean;
+  principalProjectionXY?: boolean;
+  principalProjectionYZ?: boolean;
+  principalProjectionXZ?: boolean;
+  principalProjectionOpacity?: number;
 
   lightPreset?: "studio" | "soft" | "contrast" | "neutral" | "warm";
   materialRoughness?: number;
@@ -1112,6 +1227,11 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     wireframe,
     showPlanes,
     planeGridSettings = DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+    showPrincipalProjections = false,
+    principalProjectionXY = true,
+    principalProjectionYZ = true,
+    principalProjectionXZ = true,
+    principalProjectionOpacity = 0.24,
 
     lightPreset = "studio",
     materialRoughness = 0.3,
@@ -1268,6 +1388,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const geodesicHeatLineRef = useRef<THREE.Object3D | null>(null);
   const overlayPolylinesRef = useRef<THREE.Group | null>(null);
   const overlayPolylineGroupsRef = useRef<THREE.Group | null>(null);
+  const principalProjectionGroupRef = useRef<THREE.Group | null>(null);
   const overlayPointSetsRef = useRef<THREE.Group | null>(null);
   const overlayMeshGroupsRef = useRef<THREE.Group | null>(null);
   const overlayLabelSetsRef = useRef<THREE.Group | null>(null);
@@ -4029,6 +4150,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         gaussHighlightRef.current = null;
       }
 
+      if (principalProjectionGroupRef.current) {
+        scene.remove(principalProjectionGroupRef.current);
+        principalProjectionGroupRef.current.traverse(disposeObject3D);
+        principalProjectionGroupRef.current = null;
+      }
+
       if (selectionOverlayRef.current) {
         scene.remove(selectionOverlayRef.current);
         selectionOverlayRef.current.traverse(disposeObject3D);
@@ -5483,6 +5610,49 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     scene.add(group);
     geodesicHeatLineRef.current = group;
   }, [geodesicHeatEnd, geodesicHeatPolylines, geodesicHeatStart, sceneEpoch]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (principalProjectionGroupRef.current) {
+      scene.remove(principalProjectionGroupRef.current);
+      principalProjectionGroupRef.current.traverse(disposeObject3D);
+      principalProjectionGroupRef.current = null;
+    }
+
+    if (!showPrincipalProjections) return;
+    const root = surfaceObjRef.current;
+    if (!root) return;
+
+    const group = buildPrincipalProjectionGroup(root, {
+      showXY: principalProjectionXY,
+      showYZ: principalProjectionYZ,
+      showXZ: principalProjectionXZ,
+      opacity: principalProjectionOpacity,
+      wireframe: !!wireframe,
+    });
+    if (!group) return;
+    scene.add(group);
+    principalProjectionGroupRef.current = group;
+  }, [
+    sceneEpoch,
+    showPrincipalProjections,
+    principalProjectionXY,
+    principalProjectionYZ,
+    principalProjectionXZ,
+    principalProjectionOpacity,
+    wireframe,
+    surfaceId,
+    graphExpr,
+    implicitExpr,
+    graphResolution,
+    implicitResolution,
+    implicitMeshToken,
+    implicitDomainSize,
+    surfaceMeshOverride,
+    surfaceMeshOverrides,
+  ]);
 
   useEffect(() => {
     const scene = sceneRef.current;

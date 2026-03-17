@@ -1,0 +1,30 @@
+{
+  "name": "Math3D Full Project API",
+  "entryPointStrategy": "expand",
+  "entryPoints": [
+    "src/**/*.ts",
+    "preload.ts",
+    "renderer/src/**/*.ts",
+    "renderer/src/**/*.tsx"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.d.ts",
+    "dist/**",
+    "build/**",
+    "renderer/dist/**",
+    "legacy/**",
+    "tests/**",
+    "test-results/**",
+    "playwright-report/**",
+    "node_modules/**"
+  ],
+  "excludeInternal": true,
+  "skipErrorChecking": true,
+  "readme": "none",
+  "categorizeByGroup": false,
+  "gitRevision": "HEAD",
+  "tsconfig": "tsconfig.typedoc.json",
+  "out": "docs/api"
+}

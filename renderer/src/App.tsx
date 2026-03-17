@@ -57,7 +57,7 @@ import {
   buildDemoPyramidConstruction,
 } from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
-import type { GeometryScene } from "./geometry/types";
+import type { GeometryScene, Point3, Segment3 } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
@@ -260,6 +260,7 @@ const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
+type PrincipalProjectionPlane = "xy" | "yz" | "zx";
 
 const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
 const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
@@ -3351,6 +3352,10 @@ const App: React.FC = () => {
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
   const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
   const [geometryProblemCameraOverrideToken, setGeometryProblemCameraOverrideToken] = useState(0);
+  const [geometryPrincipalProjectionEnabled, setGeometryPrincipalProjectionEnabled] = useState(true);
+  const [geometryPrincipalProjectionXY, setGeometryPrincipalProjectionXY] = useState(true);
+  const [geometryPrincipalProjectionYZ, setGeometryPrincipalProjectionYZ] = useState(true);
+  const [geometryPrincipalProjectionZX, setGeometryPrincipalProjectionZX] = useState(true);
   const [geometryPendingViewportPoint, setGeometryPendingViewportPoint] = useState<{
     x: number;
     y: number;
@@ -4226,6 +4231,133 @@ const App: React.FC = () => {
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryProblemScene: GeometryScene = useMemo(() => {
     const base = geometryConstructionState?.scene ?? {};
+    const finitePoint = (p: Point3 | null | undefined): p is Point3 =>
+      !!p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z);
+    const projectionPlanes: PrincipalProjectionPlane[] = [];
+    if (geometryPrincipalProjectionXY) projectionPlanes.push("xy");
+    if (geometryPrincipalProjectionYZ) projectionPlanes.push("yz");
+    if (geometryPrincipalProjectionZX) projectionPlanes.push("zx");
+
+    const projectToPlane = (point: Point3, plane: PrincipalProjectionPlane): Point3 => {
+      if (plane === "xy") return { x: point.x, y: point.y, z: 0 };
+      if (plane === "yz") return { x: 0, y: point.y, z: point.z };
+      return { x: point.x, y: 0, z: point.z };
+    };
+
+    const planeDistance = (point: Point3, plane: PrincipalProjectionPlane) => {
+      if (plane === "xy") return Math.abs(point.z);
+      if (plane === "yz") return Math.abs(point.x);
+      return Math.abs(point.y);
+    };
+
+    const projectionColors: Record<PrincipalProjectionPlane, number> = {
+      xy: 0x0ea5e9,
+      yz: 0x16a34a,
+      zx: 0xf59e0b,
+    };
+
+    const sourcePoints = (base.points ?? []).filter((point) => finitePoint(point));
+    const sourceSegments = (base.segments ?? []).filter((segment) => finitePoint(segment.a) && finitePoint(segment.b));
+    const cloud: Point3[] = [];
+    sourcePoints.forEach((point) => cloud.push({ x: point.x, y: point.y, z: point.z }));
+    sourceSegments.forEach((segment) => {
+      cloud.push({ x: segment.a.x, y: segment.a.y, z: segment.a.z });
+      cloud.push({ x: segment.b.x, y: segment.b.y, z: segment.b.z });
+    });
+    (base.lines ?? []).forEach((line) => {
+      if (finitePoint(line.origin)) cloud.push({ x: line.origin.x, y: line.origin.y, z: line.origin.z });
+    });
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+    for (const point of cloud) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      minZ = Math.min(minZ, point.z);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+      maxZ = Math.max(maxZ, point.z);
+    }
+    const sceneDiag =
+      minX <= maxX && minY <= maxY && minZ <= maxZ ? Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) : 0;
+    const defaultLineLength = sceneDiag > 0 ? Math.max(4, sceneDiag * 1.25) : 8;
+
+    const projectionPoints: Point3[] = [];
+    const projectionSegments: Segment3[] = [];
+    const projectionGuideSegments: Segment3[] = [];
+
+    if (geometryPrincipalProjectionEnabled && projectionPlanes.length) {
+      for (const plane of projectionPlanes) {
+        const color = projectionColors[plane];
+
+        for (const point of sourcePoints) {
+          const projected = projectToPlane(point, plane);
+          projectionPoints.push({
+            x: projected.x,
+            y: projected.y,
+            z: projected.z,
+            color,
+            opacity: 0.72,
+            size: Math.max(0.016, (point.size ?? 0.045) * 0.72),
+          });
+          if (planeDistance(point, plane) > 1e-6) {
+            projectionGuideSegments.push({
+              a: { x: point.x, y: point.y, z: point.z },
+              b: { x: projected.x, y: projected.y, z: projected.z },
+              color,
+              opacity: 0.24,
+              radiusScale: 0.6,
+            });
+          }
+        }
+
+        for (const segment of sourceSegments) {
+          const a = projectToPlane(segment.a, plane);
+          const b = projectToPlane(segment.b, plane);
+          projectionSegments.push({
+            a,
+            b,
+            color,
+            opacity: 0.55,
+            radiusScale: Math.max(0.4, (segment.radiusScale ?? 1) * 0.85),
+          });
+        }
+
+        for (const line of base.lines ?? []) {
+          if (!finitePoint(line.origin)) continue;
+          const dirLen = Math.hypot(line.direction.x, line.direction.y, line.direction.z);
+          if (!Number.isFinite(dirLen) || dirLen <= 1e-8) continue;
+          const ux = line.direction.x / dirLen;
+          const uy = line.direction.y / dirLen;
+          const uz = line.direction.z / dirLen;
+          const halfLen =
+            Number.isFinite(line.length ?? NaN) && (line.length ?? 0) > 1e-4
+              ? Number(line.length) * 0.5
+              : defaultLineLength * 0.5;
+          const a = {
+            x: line.origin.x - ux * halfLen,
+            y: line.origin.y - uy * halfLen,
+            z: line.origin.z - uz * halfLen,
+          };
+          const b = {
+            x: line.origin.x + ux * halfLen,
+            y: line.origin.y + uy * halfLen,
+            z: line.origin.z + uz * halfLen,
+          };
+          projectionSegments.push({
+            a: projectToPlane(a, plane),
+            b: projectToPlane(b, plane),
+            color,
+            opacity: 0.5,
+            radiusScale: Math.max(0.4, (line.radiusScale ?? 1) * 0.8),
+          });
+        }
+      }
+    }
+
     const workPlane = {
       id: "construction_workplane",
       label: "Workplane",
@@ -4240,9 +4372,17 @@ const App: React.FC = () => {
     };
     return {
       ...base,
+      points: [...(base.points ?? []), ...projectionPoints],
+      segments: [...(base.segments ?? []), ...projectionSegments, ...projectionGuideSegments],
       polygons: [...(base.polygons ?? []), workPlane],
     };
-  }, [geometryConstructionState]);
+  }, [
+    geometryConstructionState,
+    geometryPrincipalProjectionEnabled,
+    geometryPrincipalProjectionXY,
+    geometryPrincipalProjectionYZ,
+    geometryPrincipalProjectionZX,
+  ]);
   const geometryScene: GeometryScene =
     geometryMode === "procedural"
       ? proceduralScene
@@ -4268,12 +4408,16 @@ const App: React.FC = () => {
         triCount,
       };
     }
-    const pointCount = geometryScene.points?.length ?? 0;
-    const segmentCount = geometryScene.segments?.length ?? 0;
-    const triangleCount = geometryScene.triangles?.length ?? 0;
-    const polygonCount = geometryScene.polygons?.length ?? 0;
-    const polyhedronCount = geometryScene.polyhedra?.length ?? 0;
-    const polyhedronFaces = geometryScene.polyhedra?.reduce((sum, p) => sum + p.faces.length, 0) ?? 0;
+    const statsScene =
+      geometryMode === "scratch" || geometryMode === "workbook"
+        ? geometryConstructionState?.scene ?? geometryScene
+        : geometryScene;
+    const pointCount = statsScene.points?.length ?? 0;
+    const segmentCount = statsScene.segments?.length ?? 0;
+    const triangleCount = statsScene.triangles?.length ?? 0;
+    const polygonCount = statsScene.polygons?.length ?? 0;
+    const polyhedronCount = statsScene.polyhedra?.length ?? 0;
+    const polyhedronFaces = statsScene.polyhedra?.reduce((sum, p) => sum + p.faces.length, 0) ?? 0;
     return {
       mode: "demo" as const,
       pointCount,
@@ -4283,7 +4427,7 @@ const App: React.FC = () => {
       polyhedronCount,
       polyhedronFaces,
     };
-  }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, proceduralMeshSet]);
+  }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, geometryConstructionState, proceduralMeshSet]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -6611,6 +6755,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const chartGridCountU = chartGridDensity;
   const chartGridCountV = chartGridDensity;
   const [showPlanes, setShowPlanes] = useState(false);
+  const [showPrincipalProjections, setShowPrincipalProjections] = useState(false);
+  const [principalProjectionXY, setPrincipalProjectionXY] = useState(true);
+  const [principalProjectionXZ, setPrincipalProjectionXZ] = useState(true);
+  const [principalProjectionYZ, setPrincipalProjectionYZ] = useState(true);
   const [planeGridSettings, setPlaneGridSettings] = useState<ReferencePlaneGridSettings>(() => ({
     ...DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   }));
@@ -18598,6 +18746,14 @@ case "mobius":
                   onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                   showPlanes={showPlanes}
                   onTogglePlanes={() => setShowPlanes((p) => !p)}
+                  showPrincipalProjections={showPrincipalProjections}
+                  onTogglePrincipalProjections={() => setShowPrincipalProjections((v) => !v)}
+                  principalProjectionXY={principalProjectionXY}
+                  onTogglePrincipalProjectionXY={() => setPrincipalProjectionXY((v) => !v)}
+                  principalProjectionXZ={principalProjectionXZ}
+                  onTogglePrincipalProjectionXZ={() => setPrincipalProjectionXZ((v) => !v)}
+                  principalProjectionYZ={principalProjectionYZ}
+                  onTogglePrincipalProjectionYZ={() => setPrincipalProjectionYZ((v) => !v)}
                   planeGridSettings={planeGridSettings}
                   onTogglePlaneGrid={() =>
                     setPlaneGridSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }))
@@ -18823,6 +18979,10 @@ case "mobius":
                             customZ={paramZExpr}
                             wireframe={primaryOverlay.showWireframe}
                             showPlanes={primaryOverlay.showPlanes}
+                            showPrincipalProjections={showPrincipalProjections}
+                            principalProjectionXY={principalProjectionXY}
+                            principalProjectionYZ={principalProjectionYZ}
+                            principalProjectionXZ={principalProjectionXZ}
                             planeGridSettings={planeGridSettings}
                             lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
@@ -18954,6 +19114,10 @@ case "mobius":
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={primaryOverlay.showWireframe}
                               showPlanes={primaryOverlay.showPlanes}
+                              showPrincipalProjections={showPrincipalProjections}
+                              principalProjectionXY={principalProjectionXY}
+                              principalProjectionYZ={principalProjectionYZ}
+                              principalProjectionXZ={principalProjectionXZ}
                               planeGridSettings={planeGridSettings}
                               lightPreset={lightPreset}
                             materialRoughness={materialRoughness}
@@ -19073,6 +19237,10 @@ case "mobius":
                               customZ={paramZExpr}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
+                              showPrincipalProjections={showPrincipalProjections}
+                              principalProjectionXY={principalProjectionXY}
+                              principalProjectionYZ={principalProjectionYZ}
+                              principalProjectionXZ={principalProjectionXZ}
                               planeGridSettings={planeGridSettings}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
@@ -19116,6 +19284,10 @@ case "mobius":
                               sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
+                              showPrincipalProjections={showPrincipalProjections}
+                              principalProjectionXY={principalProjectionXY}
+                              principalProjectionYZ={principalProjectionYZ}
+                              principalProjectionXZ={principalProjectionXZ}
                               planeGridSettings={planeGridSettings}
                               lightPreset={lightPreset}
                               materialRoughness={materialRoughness}
@@ -20812,6 +20984,55 @@ case "mobius":
                         style={{ width: "100%", marginTop: 4 }}
                       />
                     </label>
+                    {(geometryMode === "scratch" || geometryMode === "workbook") && (
+                      <div
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryPrincipalProjectionEnabled}
+                            onChange={(e) => setGeometryPrincipalProjectionEnabled(e.target.checked)}
+                          />
+                          Projections on principal planes
+                        </label>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 18 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryPrincipalProjectionXY}
+                              disabled={!geometryPrincipalProjectionEnabled}
+                              onChange={(e) => setGeometryPrincipalProjectionXY(e.target.checked)}
+                            />
+                            XY
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryPrincipalProjectionYZ}
+                              disabled={!geometryPrincipalProjectionEnabled}
+                              onChange={(e) => setGeometryPrincipalProjectionYZ(e.target.checked)}
+                            />
+                            YZ
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryPrincipalProjectionZX}
+                              disabled={!geometryPrincipalProjectionEnabled}
+                              onChange={(e) => setGeometryPrincipalProjectionZX(e.target.checked)}
+                            />
+                            ZX
+                          </label>
+                        </div>
+                      </div>
+                    )}
                     <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
                       Reset view
                     </button>
@@ -22473,6 +22694,14 @@ type SurfacesViewPanelProps = {
   onToggleBoundingBox: () => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
+  showPrincipalProjections: boolean;
+  onTogglePrincipalProjections: () => void;
+  principalProjectionXY: boolean;
+  onTogglePrincipalProjectionXY: () => void;
+  principalProjectionXZ: boolean;
+  onTogglePrincipalProjectionXZ: () => void;
+  principalProjectionYZ: boolean;
+  onTogglePrincipalProjectionYZ: () => void;
   planeGridSettings: ReferencePlaneGridSettings;
   onTogglePlaneGrid: () => void;
   onTogglePlaneMinorGrid: () => void;
@@ -22505,6 +22734,14 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onToggleBoundingBox,
   showPlanes,
   onTogglePlanes,
+  showPrincipalProjections,
+  onTogglePrincipalProjections,
+  principalProjectionXY,
+  onTogglePrincipalProjectionXY,
+  principalProjectionXZ,
+  onTogglePrincipalProjectionXZ,
+  principalProjectionYZ,
+  onTogglePrincipalProjectionYZ,
   planeGridSettings,
   onTogglePlaneGrid,
   onTogglePlaneMinorGrid,
@@ -22603,6 +22840,26 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
         <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
         Coordinate planes
       </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
+        <input type="checkbox" checked={showPrincipalProjections} onChange={onTogglePrincipalProjections} />
+        Principal-plane projections
+      </label>
+      {showPrincipalProjections && (
+        <div style={{ marginTop: 6, paddingLeft: 20, display: "grid", gap: 4 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={principalProjectionXY} onChange={onTogglePrincipalProjectionXY} />
+            Project to XY
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={principalProjectionXZ} onChange={onTogglePrincipalProjectionXZ} />
+            Project to XZ
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input type="checkbox" checked={principalProjectionYZ} onChange={onTogglePrincipalProjectionYZ} />
+            Project to YZ
+          </label>
+        </div>
+      )}
       {showPlanes && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #dbe3ef", display: "grid", gap: 6 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>

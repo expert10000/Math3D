@@ -12,6 +12,9 @@ yarn-error.log*
 /build/
 /playwright-report/
 /test-results/
+/site/
+/docs/api/
+/docs/from-A/
 
 # TS build
 *.tsbuildinfo
