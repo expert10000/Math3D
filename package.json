@@ -1,6 +1,7 @@
 {
   "name": "math3d",
   "private": true,
+  "license": "Apache-2.0",
   "version": "0.0.0",
   "description": "Interactive Möbius & Chebyshev viewer (Electron + React + D3)",
   "author": "developer",
