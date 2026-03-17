@@ -1,5 +1,7 @@
 # Math3D
 
+Documentation (GitHub Pages): https://expert10000.github.io/Math3D/
+
 ## Changes (Latest changes)
 
 - Added an Object tab as a true selected-object identity/properties panel (name, type, creation source, parameters, domain/ranges, sampling, mesh stats, transform, and object actions).
