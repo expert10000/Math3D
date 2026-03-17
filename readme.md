@@ -1062,3 +1062,34 @@ How to publish a release:
    - `SHA256SUMS.txt`
    - Optional builder metadata (`latest.yml`, `builder-debug.yml`)
 4. Release notes are generated automatically by GitHub.
+
+## Notice
+
+Math3D  
+Copyright 2026 expert10000
+
+This product includes software and components developed for the Math3D project.
+
+Third-party libraries, assets, fonts, icons, models, datasets, and other external materials
+remain subject to their own respective licenses unless explicitly stated otherwise.
+
+## License
+
+This project is licensed under the Apache License 2.0.
+
+Unless explicitly stated otherwise, the source code in this repository is covered by the
+Apache-2.0 license.
+
+Third-party libraries, assets, fonts, icons, models, datasets, screenshots, and other
+externally sourced materials may be subject to separate licenses and are not automatically
+relicensed under Apache-2.0.
+
+See the `LICENSE` file for details.
+
+## Third-party materials
+
+Some non-code materials included in this repository may be provided under separate terms.
+Where applicable, their original license and attribution should be preserved.
+
+These materials are not assumed to be covered by the repository's main Apache-2.0 license
+unless explicitly stated.
