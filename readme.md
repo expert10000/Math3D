@@ -1043,3 +1043,18 @@ Upstream OK blocks should stay OK.
 Cache hit badge + input hash tooltip
 Log/timing panel per compute block
 Mini “Cache hit” indicator in the Compute block header
+
+## GitHub Release (Installer Assets)
+
+This repository now includes `.github/workflows/release.yml` to publish Windows installers as GitHub Release assets.
+
+How to publish a release:
+
+1. Push a semver tag (for example: `git tag v1.0.0 && git push origin v1.0.0`).
+2. GitHub Actions runs the `Release Installer` workflow on that tag.
+3. The workflow builds and attaches:
+   - `Math3D-Setup-<version>.exe`
+   - `Math3D-<version>-win-portable.zip` (from `release/win-unpacked`, when available)
+   - `SHA256SUMS.txt`
+   - Optional builder metadata (`latest.yml`, `builder-debug.yml`)
+4. Release notes are generated automatically by GitHub.

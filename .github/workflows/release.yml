@@ -1,0 +1,148 @@
+name: Release Installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to release (e.g. v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows-release:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/worker/requirements.freeze.txt
+
+      - name: Resolve release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = "${{ env.RELEASE_TAG }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "Release tag is required."
+          }
+
+          if ($tag -notmatch '^v?\d+\.\d+\.\d+(-[0-9A-Za-z\.-]+)?(\+[0-9A-Za-z\.-]+)?$') {
+            throw "Tag '$tag' is not a valid semver tag (example: v1.2.3 or v1.2.3-beta.1)."
+          }
+
+          $version = if ($tag.StartsWith("v")) { $tag.Substring(1) } else { $tag }
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Install npm dependencies (root)
+        run: npm ci
+
+      - name: Install npm dependencies (renderer)
+        run: npm --prefix renderer ci
+
+      - name: Set package version from tag
+        run: npm version --no-git-tag-version --allow-same-version ${{ steps.meta.outputs.version }}
+
+      - name: Install Python dependencies for frozen worker
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller numpy scipy sympy vtk
+          python -m pip install pygalmesh
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Optional dependency pygalmesh failed to install; continuing without mesh.generate support."
+            $global:LASTEXITCODE = 0
+          }
+
+      - name: Build Windows installer
+        run: npm run dist:ci
+
+      - name: Prepare release assets
+        id: assets
+        shell: pwsh
+        run: |
+          $version = "${{ steps.meta.outputs.version }}"
+          $assetsDir = Join-Path $PWD "release-assets"
+          New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
+
+          $setup = Get-ChildItem -Path "release" -Filter "Math3D Setup *.exe" -File |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $setup) {
+            throw "Installer not found in release directory."
+          }
+          Copy-Item $setup.FullName (Join-Path $assetsDir "Math3D-Setup-$version.exe") -Force
+
+          $winUnpacked = Join-Path $PWD "release/win-unpacked"
+          if (Test-Path $winUnpacked) {
+            Compress-Archive -Path (Join-Path $winUnpacked "*") `
+              -DestinationPath (Join-Path $assetsDir "Math3D-$version-win-portable.zip") `
+              -Force
+          } else {
+            Write-Warning "release/win-unpacked not found; skipping portable zip."
+          }
+
+          $optionalFiles = @(
+            "release/latest.yml",
+            "release/builder-debug.yml"
+          )
+          foreach ($file in $optionalFiles) {
+            if (Test-Path $file) {
+              Copy-Item $file $assetsDir -Force
+            }
+          }
+
+          Push-Location $assetsDir
+          Get-ChildItem -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content -Path "SHA256SUMS.txt" -Encoding ascii
+          Pop-Location
+
+          "asset_glob=release-assets/*" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Upload release bundle artifact (debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ steps.meta.outputs.tag }}
+          if-no-files-found: error
+          path: release-assets/*
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          files: ${{ steps.assets.outputs.asset_glob }}
