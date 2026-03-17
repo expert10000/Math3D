@@ -30,7 +30,11 @@ import {
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
-import { ConstructionLabPanel, type ConstructionLabState } from "./components/ConstructionLabPanel";
+import {
+  ConstructionLabPanel,
+  type ConstructionLabSeed,
+  type ConstructionLabState,
+} from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
@@ -42,7 +46,12 @@ import { renderChebyshev } from "./d3/ChebyshevRenderer";
 import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer";
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
-import { buildDemoPyramidConstruction } from "./geometry/demoScene";
+import {
+  buildDemoPlanimetryConstruction,
+  buildDemoPlanimetryEulerConstruction,
+  buildDemoPlanimetryTangentCirclesConstruction,
+  buildDemoPyramidConstruction,
+} from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
@@ -211,6 +220,9 @@ import {
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
+type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
+type GeometryDemoFamily = "stereometry" | "planimetry";
+type PlanimetryPresetId = "task" | "euler" | "tangent";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
@@ -314,9 +326,11 @@ type WorkbookWorkspaceState = {
   version: 1;
   savedAt: number;
   geometry: {
-    mode: "procedural" | "demo" | "problem";
+    mode: GeometryMode;
     objects: GeometryObject[];
     selectedObjectId: string | null;
+    scratchScene?: ConstructionLabSeed | null;
+    workbookScenes?: Record<string, ConstructionLabSeed>;
   };
   datasets: {
     currentDatasetRef: string;
@@ -807,6 +821,198 @@ const DEMO_STEREOMETRY_GUIDE_SCRIPT = [
   "# 5) Verify I_DAS lies on that plane (residual near 0).",
   "# Note: this is a guided pseudo-script for the demo workflow.",
 ].join("\n");
+
+const DEMO_PLANIMETRY_TASK_TEXT_PL =
+  "Dany jest trojkat ABC. Oznaczmy przez I srodek okregu wpisanego oraz przez O srodek okregu opisanego. " +
+  "W podgladzie pokazujemy konstrukcje: boki trojkata, dwusieczne, okrag wpisany i opisany oraz podstawowe zaleznosci metryczne.";
+
+const DEMO_PLANIMETRY_TASK_TEXT_EN =
+  "Given triangle ABC, let I be the incenter and O the circumcenter. " +
+  "This preview shows triangle edges, angle bisectors, the incircle and circumcircle, with key metric checks.";
+
+const DEMO_PLANIMETRY_TASK_SCRIPT = [
+  "# Task planimetry script (used in Scratch too)",
+  "point A -1.35 -0.65 0",
+  "point B 1.45 -0.72 0",
+  "point C 0.15 1.32 0",
+  "line A B as AB",
+  "line B C as BC",
+  "line C A as CA",
+  "angle-bisector A B C as bisA",
+  "angle-bisector B A C as bisB",
+  "intersection bisA bisB as I",
+  "perp AB through I as i_perp_AB",
+  "intersection i_perp_AB AB as T",
+  "circle I T as omega_i",
+  "circumcenter A B C as O",
+  "circumcircle A B C as Omega",
+  "check equal-distance I A I B",
+  "check equal-distance I B I C",
+  "check point-on-circle T omega_i",
+  "check point-on-circle A Omega",
+  "check point-on-circle B Omega",
+  "check point-on-circle C Omega",
+].join("\n");
+
+const DEMO_PLANIMETRY_EULER_TASK_TEXT_PL =
+  "Dany jest trojkat ABC. Wyznacz O (srodek okregu opisanego), H (ortocentrum) oraz G (srodek ciezkosci). " +
+  "W podgladzie badamy linie Eulera i zaleznosc OG:GH = 1:2.";
+
+const DEMO_PLANIMETRY_EULER_TASK_TEXT_EN =
+  "Given triangle ABC, construct O (circumcenter), H (orthocenter), and G (centroid). " +
+  "The preview highlights the Euler line and checks OG:GH = 1:2.";
+
+const DEMO_PLANIMETRY_EULER_SCRIPT = [
+  "# Euler line planimetry script",
+  "point A -1.2 -0.75 0",
+  "point B 1.55 -0.58 0",
+  "point C 0.22 1.45 0",
+  "line A B as AB",
+  "line B C as BC",
+  "line C A as CA",
+  "circumcenter A B C as O",
+  "circumcircle A B C as Omega",
+  "perp BC through A as altA",
+  "perp CA through B as altB",
+  "intersection altA altB as H",
+  "midpoint B C as M_bc",
+  "midpoint A C as M_ac",
+  "line A M_bc as medA",
+  "line B M_ac as medB",
+  "intersection medA medB as G",
+  "line O H as euler",
+  "check collinear O G H",
+  "check equal-distance O A O B",
+  "check equal-distance O B O C",
+].join("\n");
+
+const DEMO_PLANIMETRY_TANGENT_TASK_TEXT_PL =
+  "Dwa okregi sa styczne zewnetrznie w punkcie T. " +
+  "W podgladzie pokazujemy osrodkowa O1O2, punkt stycznosci T oraz styczna wspolna w T.";
+
+const DEMO_PLANIMETRY_TANGENT_TASK_TEXT_EN =
+  "Two circles are externally tangent at point T. " +
+  "The preview shows center line O1O2, tangency point T, and the common tangent through T.";
+
+const DEMO_PLANIMETRY_TANGENT_SCRIPT = [
+  "# Tangent circles planimetry script",
+  "point O1 -0.8 0 0",
+  "point O2 1.0 0 0",
+  "point T 0 0 0",
+  "point V 0 1.8 0",
+  "circle O1 T as c1",
+  "circle O2 T as c2",
+  "line O1 O2 as centerAxis",
+  "line T V as tangentAtT",
+  "check point-on-circle T c1",
+  "check point-on-circle T c2",
+  "check collinear O1 T O2",
+].join("\n");
+
+const PLANIMETRY_PRESET_META: Record<
+  PlanimetryPresetId,
+  { label: string; taskPl: string; taskEn: string; script: string }
+> = {
+  task: {
+    label: "Incenter + Circumcircle",
+    taskPl: DEMO_PLANIMETRY_TASK_TEXT_PL,
+    taskEn: DEMO_PLANIMETRY_TASK_TEXT_EN,
+    script: DEMO_PLANIMETRY_TASK_SCRIPT,
+  },
+  euler: {
+    label: "Euler Line",
+    taskPl: DEMO_PLANIMETRY_EULER_TASK_TEXT_PL,
+    taskEn: DEMO_PLANIMETRY_EULER_TASK_TEXT_EN,
+    script: DEMO_PLANIMETRY_EULER_SCRIPT,
+  },
+  tangent: {
+    label: "Tangent Circles",
+    taskPl: DEMO_PLANIMETRY_TANGENT_TASK_TEXT_PL,
+    taskEn: DEMO_PLANIMETRY_TANGENT_TASK_TEXT_EN,
+    script: DEMO_PLANIMETRY_TANGENT_SCRIPT,
+  },
+};
+
+const PLANIMETRY_SCRATCH_SEEDS: Record<PlanimetryPresetId, ConstructionLabSeed> = {
+  task: {
+    selectedNodeId: "I",
+    scriptText: DEMO_PLANIMETRY_TASK_SCRIPT,
+    nodes: [
+      { id: "A", label: "A", type: "freePoint", point: { x: -1.35, y: -0.65, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "B", label: "B", type: "freePoint", point: { x: 1.45, y: -0.72, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "C", label: "C", type: "freePoint", point: { x: 0.15, y: 1.32, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "AB", label: "AB", type: "lineThroughPoints", a: "A", b: "B", style: { color: 0x6b7280, length: 6 } },
+      { id: "BC", label: "BC", type: "lineThroughPoints", a: "B", b: "C", style: { color: 0x6b7280, length: 6 } },
+      { id: "CA", label: "CA", type: "lineThroughPoints", a: "C", b: "A", style: { color: 0x6b7280, length: 6 } },
+      { id: "bisA", label: "bisA", type: "angleBisector", vertex: "A", a: "B", c: "C", style: { color: 0xa855f7, length: 6 } },
+      { id: "bisB", label: "bisB", type: "angleBisector", vertex: "B", a: "A", c: "C", style: { color: 0xa855f7, length: 6 } },
+      { id: "I", label: "I", type: "lineLineIntersection", lineA: "bisA", lineB: "bisB", style: { color: 0xdc2626, size: 0.05 } },
+      { id: "i_perp_AB", label: "i_perp_AB", type: "perpendicularLine", line: "AB", point: "I", style: { color: 0x0f766e, length: 6 } },
+      { id: "T", label: "T", type: "lineLineIntersection", lineA: "i_perp_AB", lineB: "AB", style: { color: 0xdc2626, size: 0.05 } },
+      { id: "omega_i", label: "omega_i", type: "circleCenterPoint", center: "I", point: "T", style: { color: 0x2563eb, segments: 96 } },
+      { id: "O", label: "O", type: "circumcenter", a: "A", b: "B", c: "C", style: { color: 0xf59e0b, size: 0.045 } },
+      { id: "Omega", label: "Omega", type: "circleThrough3Points", a: "A", b: "B", c: "C", style: { color: 0x2563eb, segments: 96 } },
+    ],
+    checkDefs: [
+      { id: "check_1", label: "|IA| = |IB|", type: "equalLength", segments: [["I", "A"], ["I", "B"]] as [[string, string], [string, string]], tolerance: 2e-3 },
+      { id: "check_2", label: "|IB| = |IC|", type: "equalLength", segments: [["I", "B"], ["I", "C"]] as [[string, string], [string, string]], tolerance: 2e-3 },
+      { id: "check_3", label: "T on omega_i", type: "pointOnCircle", point: "T", circle: "omega_i", tolerance: 2e-3 },
+      { id: "check_4", label: "A on Omega", type: "pointOnCircle", point: "A", circle: "Omega", tolerance: 2e-3 },
+      { id: "check_5", label: "B on Omega", type: "pointOnCircle", point: "B", circle: "Omega", tolerance: 2e-3 },
+      { id: "check_6", label: "C on Omega", type: "pointOnCircle", point: "C", circle: "Omega", tolerance: 2e-3 },
+    ],
+  },
+  euler: {
+    selectedNodeId: "euler",
+    scriptText: DEMO_PLANIMETRY_EULER_SCRIPT,
+    nodes: [
+      { id: "A", label: "A", type: "freePoint", point: { x: -1.2, y: -0.75, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "B", label: "B", type: "freePoint", point: { x: 1.55, y: -0.58, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "C", label: "C", type: "freePoint", point: { x: 0.22, y: 1.45, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "AB", label: "AB", type: "lineThroughPoints", a: "A", b: "B", style: { color: 0x6b7280, length: 6 } },
+      { id: "BC", label: "BC", type: "lineThroughPoints", a: "B", b: "C", style: { color: 0x6b7280, length: 6 } },
+      { id: "CA", label: "CA", type: "lineThroughPoints", a: "C", b: "A", style: { color: 0x6b7280, length: 6 } },
+      { id: "O", label: "O", type: "circumcenter", a: "A", b: "B", c: "C", style: { color: 0xf59e0b, size: 0.045 } },
+      { id: "Omega", label: "Omega", type: "circleThrough3Points", a: "A", b: "B", c: "C", style: { color: 0x2563eb, segments: 96 } },
+      { id: "altA", label: "altA", type: "perpendicularLine", line: "BC", point: "A", style: { color: 0x0f766e, length: 6 } },
+      { id: "altB", label: "altB", type: "perpendicularLine", line: "CA", point: "B", style: { color: 0x0f766e, length: 6 } },
+      { id: "H", label: "H", type: "lineLineIntersection", lineA: "altA", lineB: "altB", style: { color: 0xdc2626, size: 0.05 } },
+      { id: "M_bc", label: "M_bc", type: "midpoint", a: "B", b: "C", style: { color: 0x22c55e, size: 0.045 } },
+      { id: "M_ac", label: "M_ac", type: "midpoint", a: "A", b: "C", style: { color: 0x22c55e, size: 0.045 } },
+      { id: "medA", label: "medA", type: "lineThroughPoints", a: "A", b: "M_bc", style: { color: 0x6b7280, length: 6 } },
+      { id: "medB", label: "medB", type: "lineThroughPoints", a: "B", b: "M_ac", style: { color: 0x6b7280, length: 6 } },
+      { id: "G", label: "G", type: "lineLineIntersection", lineA: "medA", lineB: "medB", style: { color: 0xdc2626, size: 0.05 } },
+      { id: "euler", label: "euler", type: "lineThroughPoints", a: "O", b: "H", style: { color: 0x7c3aed, length: 6 } },
+    ],
+    checkDefs: [
+      { id: "check_1", label: "O,G,H collinear", type: "collinear", points: ["O", "G", "H"] as [string, string, string], tolerance: 2e-3 },
+      { id: "check_2", label: "|OA| = |OB|", type: "equalLength", segments: [["O", "A"], ["O", "B"]] as [[string, string], [string, string]], tolerance: 2e-3 },
+      { id: "check_3", label: "|OB| = |OC|", type: "equalLength", segments: [["O", "B"], ["O", "C"]] as [[string, string], [string, string]], tolerance: 2e-3 },
+      { id: "check_4", label: "A on Omega", type: "pointOnCircle", point: "A", circle: "Omega", tolerance: 2e-3 },
+      { id: "check_5", label: "B on Omega", type: "pointOnCircle", point: "B", circle: "Omega", tolerance: 2e-3 },
+      { id: "check_6", label: "C on Omega", type: "pointOnCircle", point: "C", circle: "Omega", tolerance: 2e-3 },
+    ],
+  },
+  tangent: {
+    selectedNodeId: "tangentAtT",
+    scriptText: DEMO_PLANIMETRY_TANGENT_SCRIPT,
+    nodes: [
+      { id: "O1", label: "O1", type: "freePoint", point: { x: -0.8, y: 0, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "O2", label: "O2", type: "freePoint", point: { x: 1.0, y: 0, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "T", label: "T", type: "freePoint", point: { x: 0, y: 0, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "V", label: "V", type: "freePoint", point: { x: 0, y: 1.8, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "c1", label: "c1", type: "circleCenterPoint", center: "O1", point: "T", style: { color: 0x2563eb, segments: 96 } },
+      { id: "c2", label: "c2", type: "circleCenterPoint", center: "O2", point: "T", style: { color: 0x2563eb, segments: 96 } },
+      { id: "centerAxis", label: "centerAxis", type: "lineThroughPoints", a: "O1", b: "O2", style: { color: 0x6b7280, length: 6 } },
+      { id: "tangentAtT", label: "tangentAtT", type: "lineThroughPoints", a: "T", b: "V", style: { color: 0x6b7280, length: 6 } },
+    ],
+    checkDefs: [
+      { id: "check_1", label: "T on c1", type: "pointOnCircle", point: "T", circle: "c1", tolerance: 2e-3 },
+      { id: "check_2", label: "T on c2", type: "pointOnCircle", point: "T", circle: "c2", tolerance: 2e-3 },
+      { id: "check_3", label: "O1,T,O2 collinear", type: "collinear", points: ["O1", "T", "O2"] as [string, string, string], tolerance: 2e-3 },
+    ],
+  },
+};
 
 type ThicknessPresetId = "small" | "medium" | "large";
 const THICKNESS_PRESETS: Array<{ id: ThicknessPresetId; label: string; scale: number }> = [
@@ -1682,6 +1888,32 @@ function safeParseObject<T>(raw: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+function normalizeConstructionLabSeed(raw: unknown): ConstructionLabSeed | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const seed = raw as ConstructionLabSeed;
+  if (!Array.isArray(seed.nodes) || !Array.isArray(seed.checkDefs) || !seed.nodes.length) return null;
+  const nodes = seed.nodes.filter((node) => !!node && typeof node.id === "string").map((node) => ({ ...node }));
+  if (!nodes.length) return null;
+  const checkDefs = seed.checkDefs.filter((check) => !!check && typeof check.id === "string").map((check) => ({ ...check }));
+  const selectedNodeId =
+    typeof seed.selectedNodeId === "string" && nodes.some((node) => node.id === seed.selectedNodeId)
+      ? seed.selectedNodeId
+      : nodes[0].id;
+  const scriptText = typeof seed.scriptText === "string" ? seed.scriptText : undefined;
+  return { nodes, checkDefs, selectedNodeId, scriptText };
+}
+
+function normalizeConstructionLabSeedRecord(raw: unknown): Record<string, ConstructionLabSeed> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, ConstructionLabSeed> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    const safe = normalizeConstructionLabSeed(value);
+    if (!safe) continue;
+    out[id] = safe;
+  }
+  return out;
 }
 
 function normalizeGraphDomain(d: GraphDomain, fallback: GraphDomain): GraphDomain {
@@ -2967,15 +3199,23 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("surfaces");
-  const [geometryMode, setGeometryMode] = useState<"procedural" | "demo" | "problem">("procedural");
+  const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryDemoGuideStatus, setGeometryDemoGuideStatus] = useState<string | null>(null);
+  const [geometryDemoFamily, setGeometryDemoFamily] = useState<GeometryDemoFamily>("stereometry");
   const [geometryDemoShowPointLabels, setGeometryDemoShowPointLabels] = useState(true);
   const [geometryDemoLabelScale, setGeometryDemoLabelScale] = useState(1);
   const [geometryDemoLineRadiusScale, setGeometryDemoLineRadiusScale] = useState(1);
   const [geometryDemoSegmentRadiusScale, setGeometryDemoSegmentRadiusScale] = useState(1);
   const [geometryDemoEdgeRadiusScale, setGeometryDemoEdgeRadiusScale] = useState(1);
   const [geometryDemo] = useState(() => buildDemoPyramidConstruction());
+  const [geometryPlanimetryPresetId, setGeometryPlanimetryPresetId] = useState<PlanimetryPresetId>("task");
+  const [geometryPlanimetryDemos] = useState(() => ({
+    task: buildDemoPlanimetryConstruction(),
+    euler: buildDemoPlanimetryEulerConstruction(),
+    tangent: buildDemoPlanimetryTangentCirclesConstruction(),
+  }));
+  const geometryPlanimetryDemo = geometryPlanimetryDemos[geometryPlanimetryPresetId];
   const geometryFaces = geometryDemo.faces ?? [];
   const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
   const geometryIncenterPlaneCheck = geometryDemo.incenterPlaneCheck ?? null;
@@ -2987,61 +3227,123 @@ const App: React.FC = () => {
     () => geometryFaces.find((face) => face.id === geometrySelectedFaceId) ?? null,
     [geometryFaces, geometrySelectedFaceId]
   );
-  const geometryHighlightPolygons = geometrySelectedFace ? [geometrySelectedFace.polygon] : null;
+  const geometryHighlightPolygons =
+    geometryDemoFamily === "stereometry" && geometrySelectedFace ? [geometrySelectedFace.polygon] : null;
+  const [geometrySelectedPlanimetryPointId, setGeometrySelectedPlanimetryPointId] = useState<string | null>(
+    () => (geometryPlanimetryDemos.task.points.I ? "I" : Object.keys(geometryPlanimetryDemos.task.points)[0] ?? null)
+  );
+  const geometrySelectedPlanimetryPoint = useMemo(
+    () =>
+      geometrySelectedPlanimetryPointId && geometryPlanimetryDemo.points[geometrySelectedPlanimetryPointId]
+        ? geometryPlanimetryDemo.points[geometrySelectedPlanimetryPointId]
+        : null,
+    [geometryPlanimetryDemo.points, geometrySelectedPlanimetryPointId]
+  );
+  useEffect(() => {
+    const ids = Object.keys(geometryPlanimetryDemo.points);
+    if (!ids.length) {
+      if (geometrySelectedPlanimetryPointId) setGeometrySelectedPlanimetryPointId(null);
+      return;
+    }
+    if (!geometrySelectedPlanimetryPointId || !ids.includes(geometrySelectedPlanimetryPointId)) {
+      setGeometrySelectedPlanimetryPointId(geometryPlanimetryDemo.points.I ? "I" : ids[0]);
+    }
+  }, [geometryPlanimetryDemo, geometrySelectedPlanimetryPointId]);
   const geometrySelectedIncenter = useMemo(
     () => geometryFaceIncenters.find((f) => f.faceId === geometrySelectedFaceId)?.incenter ?? null,
     [geometryFaceIncenters, geometrySelectedFaceId]
   );
   const geometryHighlightPointSets = useMemo(
-    () =>
-      geometrySelectedIncenter
+    () => {
+      if (geometryDemoFamily === "stereometry") {
+        return geometrySelectedIncenter
+          ? [
+              {
+                points: [geometrySelectedIncenter],
+                color: 0x16a34a,
+                size: 0.05,
+                opacity: 0.95,
+              },
+            ]
+          : null;
+      }
+      return geometrySelectedPlanimetryPoint
         ? [
             {
-              points: [geometrySelectedIncenter],
-              color: 0x16a34a,
-              size: 0.05,
+              points: [geometrySelectedPlanimetryPoint],
+              color: 0x1d4ed8,
+              size: 0.055,
               opacity: 0.95,
             },
           ]
-        : null,
-    [geometrySelectedIncenter]
+        : null;
+    },
+    [geometryDemoFamily, geometrySelectedIncenter, geometrySelectedPlanimetryPoint]
   );
   const geometryLabelSets = useMemo(() => {
-    const incenterLabels = geometryFaceIncenters
-      .filter((face) => face.incenter)
-      .map((face) => {
-        const residual = face.residual;
-        const residualText = residual == null ? "-" : formatConstraintValue(residual);
-        const status =
-          residual != null && residual <= geometryFaceIncenterTolerance ? "ok" : "fail";
-        const color = status === "ok" ? 0x2e7d32 : 0xc62828;
-        return {
-          text: `${face.label} delta=${residualText}`,
-          position: face.incenter as { x: number; y: number; z: number },
-          color,
-          size: 0.92,
-          opacity: 0.95,
-        };
-      });
+    if (geometryDemoFamily === "stereometry") {
+      const incenterLabels = geometryFaceIncenters
+        .filter((face) => face.incenter)
+        .map((face) => {
+          const residual = face.residual;
+          const residualText = residual == null ? "-" : formatConstraintValue(residual);
+          const status =
+            residual != null && residual <= geometryFaceIncenterTolerance ? "ok" : "fail";
+          const color = status === "ok" ? 0x2e7d32 : 0xc62828;
+          return {
+            text: `${face.label} delta=${residualText}`,
+            position: face.incenter as { x: number; y: number; z: number },
+            color,
+            size: 0.92,
+            opacity: 0.95,
+          };
+        });
+      const anchorLabels = geometryDemoShowPointLabels
+        ? Object.entries(geometryDemo.points).map(([id, point]) => ({
+            text: point.label ?? id,
+            position: { x: point.x, y: point.y, z: point.z },
+            color: 0x111827,
+            size: 1,
+            opacity: 0.98,
+          }))
+        : [];
+      const labels = [...anchorLabels, ...incenterLabels];
+      return labels.length ? [{ labels, size: geometryDemoLabelScale }] : null;
+    }
     const anchorLabels = geometryDemoShowPointLabels
-      ? Object.entries(geometryDemo.points).map(([id, point]) => ({
+      ? Object.entries(geometryPlanimetryDemo.points).map(([id, point]) => ({
           text: point.label ?? id,
           position: { x: point.x, y: point.y, z: point.z },
-          color: 0x111827,
-          size: 1,
+          color: id === geometrySelectedPlanimetryPointId ? 0x1d4ed8 : 0x111827,
+          size: id === geometrySelectedPlanimetryPointId ? 1.08 : 1,
           opacity: 0.98,
         }))
       : [];
-    const labels = [...anchorLabels, ...incenterLabels];
+    const circleLabels = geometryPlanimetryDemo.circles.map((circle) => ({
+      text: `${circle.label} r=${circle.radius.toFixed(3)}`,
+      position: { x: circle.center.x + circle.radius * 0.72, y: circle.center.y, z: circle.center.z },
+      color: circle.id === "incircle" ? 0x1d4ed8 : 0xd97706,
+      size: 0.9,
+      opacity: 0.95,
+    }));
+    const labels = [...anchorLabels, ...circleLabels];
     return labels.length ? [{ labels, size: geometryDemoLabelScale }] : null;
   }, [
+    geometryDemoFamily,
     geometryDemo.points,
+    geometryPlanimetryDemo.circles,
+    geometryPlanimetryDemo.points,
     geometryDemoLabelScale,
     geometryDemoShowPointLabels,
     geometryFaceIncenters,
     geometryFaceIncenterTolerance,
+    geometrySelectedPlanimetryPointId,
   ]);
+  const geometryDemoScene =
+    geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryDemo.scene;
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
+  const [geometryScratchSceneSeed, setGeometryScratchSceneSeed] = useState<ConstructionLabSeed | null>(null);
+  const [geometryWorkbookSceneSeeds, setGeometryWorkbookSceneSeeds] = useState<Record<string, ConstructionLabSeed>>({});
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
   const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
   const [geometryProblemCameraOverrideToken, setGeometryProblemCameraOverrideToken] = useState(0);
@@ -3079,6 +3381,16 @@ const App: React.FC = () => {
       normal: { x: number; y: number; z: number };
       meshKey?: string;
     }) => {
+      if (geometryDemoFamily === "planimetry") {
+        let best: { id: string; distance: number } | null = null;
+        for (const [id, point] of Object.entries(geometryPlanimetryDemo.points)) {
+          const d = Math.hypot(info.point.x - point.x, info.point.y - point.y, info.point.z - point.z);
+          if (!Number.isFinite(d)) continue;
+          if (!best || d < best.distance) best = { id, distance: d };
+        }
+        if (best && best.distance <= 0.45) setGeometrySelectedPlanimetryPointId(best.id);
+        return;
+      }
       let best: { id: string; distance: number } | null = null;
       for (const face of geometryFaces) {
         const hit = pointInPolygonOnPlane(info.point, face.polygon, face.plane, 1e-3);
@@ -3090,7 +3402,7 @@ const App: React.FC = () => {
       }
       if (best) setGeometrySelectedFaceId(best.id);
     },
-    [geometryFaces]
+    [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points]
   );
   const handleProceduralPick = useCallback((info: {
     point: { x: number; y: number; z: number };
@@ -3112,7 +3424,7 @@ const App: React.FC = () => {
     setGeometryPendingViewportPoint(info.point);
   }, []);
   useEffect(() => {
-    if (geometryMode === "problem") return;
+    if (geometryMode === "scratch" || geometryMode === "workbook") return;
     setGeometryPointPlacementEnabled(false);
     setGeometryPendingViewportPoint(null);
     setGeometryProblemCameraOverride(null);
@@ -3124,8 +3436,11 @@ const App: React.FC = () => {
     }
   }, [geometryMode]);
   const geometryConstraints = useMemo(
-    () => evaluateConstraints(geometryDemo.constraints),
-    [geometryDemo]
+    () =>
+      evaluateConstraints(
+        geometryDemoFamily === "stereometry" ? geometryDemo.constraints : geometryPlanimetryDemo.constraints
+      ),
+    [geometryDemo, geometryDemoFamily, geometryPlanimetryDemo]
   );
 
   const [geometryObjects, setGeometryObjects] = useState<GeometryObject[]>(() => {
@@ -3928,7 +4243,7 @@ const App: React.FC = () => {
     geometryMode === "procedural"
       ? proceduralScene
       : geometryMode === "demo"
-        ? geometryDemo.scene
+        ? geometryDemoScene
         : geometryProblemScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
@@ -4172,6 +4487,72 @@ const App: React.FC = () => {
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
     [workbooks, activeWorkbookId]
   );
+  const activeWorkbookSceneSeed = useMemo(
+    () => (activeWorkbookId ? geometryWorkbookSceneSeeds[activeWorkbookId] ?? null : null),
+    [activeWorkbookId, geometryWorkbookSceneSeeds]
+  );
+  const geometryEditorSeed = useMemo(
+    () =>
+      geometryMode === "scratch"
+        ? geometryScratchSceneSeed
+        : geometryMode === "workbook"
+          ? activeWorkbookSceneSeed
+          : null,
+    [geometryMode, geometryScratchSceneSeed, activeWorkbookSceneSeed]
+  );
+  const geometryEditorPanelKey =
+    geometryMode === "workbook" ? `workbook:${activeWorkbookId ?? "none"}` : "scratch";
+  const geometrySceneSourceKey =
+    geometryMode === "scratch"
+      ? "scratch"
+      : geometryMode === "workbook"
+        ? `workbook:${activeWorkbookId ?? "none"}`
+        : "";
+
+  useEffect(() => {
+    setGeometryConstructionState(null);
+  }, [geometrySceneSourceKey]);
+
+  useEffect(() => {
+    if (!geometryConstructionState) return;
+    const nextSeed = normalizeConstructionLabSeed({
+      nodes: geometryConstructionState.nodes,
+      checkDefs: geometryConstructionState.checkDefs,
+      selectedNodeId: geometryConstructionState.selectedNodeId,
+      scriptText: geometryConstructionState.scriptText,
+    });
+    if (!nextSeed) return;
+    if (geometryMode === "scratch") {
+      setGeometryScratchSceneSeed(nextSeed);
+      return;
+    }
+    if (geometryMode === "workbook" && activeWorkbookId) {
+      setGeometryWorkbookSceneSeeds((prev) => ({ ...prev, [activeWorkbookId]: nextSeed }));
+    }
+  }, [geometryConstructionState, geometryMode, activeWorkbookId]);
+
+  useEffect(() => {
+    setGeometryWorkbookSceneSeeds((prev) => {
+      const active = new Set(workbooks.map((w) => w.id));
+      let changed = false;
+      const next: Record<string, ConstructionLabSeed> = {};
+      for (const [id, seed] of Object.entries(prev)) {
+        if (!active.has(id)) {
+          changed = true;
+          continue;
+        }
+        next[id] = seed;
+      }
+      return changed ? next : prev;
+    });
+  }, [workbooks]);
+
+  useEffect(() => {
+    if (geometryMode !== "workbook") return;
+    if (activeWorkbookId) return;
+    setGeometryMode("scratch");
+  }, [geometryMode, activeWorkbookId]);
+
   const workbookSessionPayload = useMemo<WorkbookReplayPayload>(
     () => ({
       workbooks,
@@ -4195,6 +4576,55 @@ const App: React.FC = () => {
   const workbookDirty = workbookManualSaveHash
     ? workbookManualSaveHash !== workbookSessionHash
     : true;
+  const openGeometryWorkbookMode = useCallback(
+    (seed?: ConstructionLabSeed | null) => {
+      const setSeedForWorkbook = (workbookId: string) => {
+        if (!seed) return;
+        setGeometryWorkbookSceneSeeds((prev) => {
+          return { ...prev, [workbookId]: seed };
+        });
+      };
+      if (activeWorkbookId) {
+        setSeedForWorkbook(activeWorkbookId);
+        setGeometryMode("workbook");
+        return;
+      }
+      const existingId = workbooks[0]?.id ?? null;
+      if (existingId) {
+        setActiveWorkbookId(existingId);
+        setActiveStageId("define");
+        setSeedForWorkbook(existingId);
+        setGeometryMode("workbook");
+        return;
+      }
+      if (IS_REPLAY_MODE) return;
+      const wb = createDefaultWorkbook(makeId);
+      setWorkbooks((prev) => [wb, ...prev]);
+      setActiveWorkbookId(wb.id);
+      setActiveStageId("define");
+      setSeedForWorkbook(wb.id);
+      setGeometryMode("workbook");
+    },
+    [activeWorkbookId, workbooks]
+  );
+  const activePlanimetryPresetMeta = PLANIMETRY_PRESET_META[geometryPlanimetryPresetId];
+  const activePlanimetryScratchSeed = useMemo(
+    () => normalizeConstructionLabSeed(PLANIMETRY_SCRATCH_SEEDS[geometryPlanimetryPresetId]),
+    [geometryPlanimetryPresetId]
+  );
+  const handleOpenDemoScratch = useCallback(() => {
+    if (geometryDemoFamily === "planimetry" && activePlanimetryScratchSeed) {
+      setGeometryScratchSceneSeed(activePlanimetryScratchSeed);
+    }
+    setGeometryMode("scratch");
+  }, [geometryDemoFamily, activePlanimetryScratchSeed]);
+  const handleOpenDemoWorkbook = useCallback(() => {
+    if (geometryDemoFamily === "planimetry") {
+      openGeometryWorkbookMode(activePlanimetryScratchSeed);
+      return;
+    }
+    openGeometryWorkbookMode();
+  }, [geometryDemoFamily, activePlanimetryScratchSeed, openGeometryWorkbookMode]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -9623,6 +10053,8 @@ case "mobius":
           group: obj.group,
         })),
         selectedObjectId: geometrySelectedObjectId,
+        scratchScene: geometryScratchSceneSeed,
+        workbookScenes: geometryWorkbookSceneSeeds,
       },
       datasets: {
         currentDatasetRef,
@@ -9723,6 +10155,8 @@ case "mobius":
       geometryMode,
       geometryObjects,
       geometrySelectedObjectId,
+      geometryScratchSceneSeed,
+      geometryWorkbookSceneSeeds,
       currentDatasetRef,
       showChartGrid,
       chartGridDensity,
@@ -9833,11 +10267,21 @@ case "mobius":
     if (!workspace || typeof workspace !== "object") return;
 
     const geometry = workspace.geometry;
-    if (geometry && Array.isArray(geometry.objects)) {
+    if (geometry && typeof geometry === "object") {
+      const savedMode = String((geometry as any).mode ?? "");
       setGeometryMode(
-        geometry.mode === "demo" ? "demo" : geometry.mode === "problem" ? "problem" : "procedural"
+        savedMode === "demo"
+          ? "demo"
+          : savedMode === "scratch"
+            ? "scratch"
+            : savedMode === "workbook"
+              ? "workbook"
+              : savedMode === "problem"
+                ? "scratch"
+                : "procedural"
       );
-      const normalized = geometry.objects
+      const objects = Array.isArray(geometry.objects) ? geometry.objects : [];
+      const normalized = objects
         .filter((obj) => obj && typeof obj.id === "string" && typeof obj.type === "string")
         .map((obj) => ({
           id: obj.id,
@@ -9869,6 +10313,8 @@ case "mobius":
         setGeometryObjects(normalized);
         setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
       }
+      setGeometryScratchSceneSeed(normalizeConstructionLabSeed((geometry as any).scratchScene));
+      setGeometryWorkbookSceneSeeds(normalizeConstructionLabSeedRecord((geometry as any).workbookScenes));
     }
 
     const datasetItems = workspace.datasets?.items ?? [];
@@ -18950,21 +19396,35 @@ case "mobius":
                       cursor: "pointer",
                     }}
                   >
-                    Demo scene
+                    Demo preview
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGeometryMode("problem")}
+                    onClick={() => setGeometryMode("scratch")}
                     style={{
                       padding: "4px 10px",
                       borderRadius: 999,
-                      border: "1px solid " + (geometryMode === "problem" ? "#0a66c2" : "#ddd"),
-                      background: geometryMode === "problem" ? "#e6f0ff" : "#fff",
-                      fontWeight: geometryMode === "problem" ? 600 : 400,
+                      border: "1px solid " + (geometryMode === "scratch" ? "#0a66c2" : "#ddd"),
+                      background: geometryMode === "scratch" ? "#e6f0ff" : "#fff",
+                      fontWeight: geometryMode === "scratch" ? 600 : 400,
                       cursor: "pointer",
                     }}
                   >
-                    Problem visualizer
+                    Scratch editor
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openGeometryWorkbookMode(geometryScratchSceneSeed)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (geometryMode === "workbook" ? "#0a66c2" : "#ddd"),
+                      background: geometryMode === "workbook" ? "#e6f0ff" : "#fff",
+                      fontWeight: geometryMode === "workbook" ? 600 : 400,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Workbook scene
                   </button>
                 </div>
 
@@ -19781,6 +20241,43 @@ case "mobius":
                   </>
                 ) : geometryMode === "demo" ? (
                   <>
+                    <div style={{ ...pillRow, marginBottom: 8 }}>
+                      {([
+                        { id: "stereometry" as const, label: "3D task" },
+                        { id: "planimetry" as const, label: "Planimetry" },
+                      ] as const).map((entry) => (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => {
+                            setGeometryDemoFamily(entry.id);
+                            setGeometryDemoGuideStatus(null);
+                          }}
+                          style={pill(geometryDemoFamily === entry.id)}
+                          aria-pressed={geometryDemoFamily === entry.id}
+                        >
+                          {entry.label}
+                        </button>
+                      ))}
+                    </div>
+                    {geometryDemoFamily === "planimetry" && (
+                      <div style={{ ...pillRow, marginBottom: 8 }}>
+                        {(["task", "euler", "tangent"] as PlanimetryPresetId[]).map((presetId) => (
+                          <button
+                            key={presetId}
+                            type="button"
+                            onClick={() => {
+                              setGeometryPlanimetryPresetId(presetId);
+                              setGeometryDemoGuideStatus(null);
+                            }}
+                            style={pill(geometryPlanimetryPresetId === presetId)}
+                            aria-pressed={geometryPlanimetryPresetId === presetId}
+                          >
+                            {PLANIMETRY_PRESET_META[presetId].label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div style={{ ...pillRow, marginBottom: 10 }}>
                       {(["task", "objects", "solve", "script"] as GeometryDemoTab[]).map((tab) => (
                         <button
@@ -19803,11 +20300,23 @@ case "mobius":
 
                     {geometryDemoTab === "task" && (
                       <div style={{ display: "grid", gap: 8 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Stereometry task</div>
-                        <div style={{ fontSize: 11, lineHeight: 1.45 }}>{DEMO_STEREOMETRY_TASK_TEXT_PL}</div>
-                        <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.45 }}>{DEMO_STEREOMETRY_TASK_TEXT_EN}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>
+                          {geometryDemoFamily === "stereometry" ? "Stereometry task" : "Planimetry task"}
+                        </div>
+                        <div style={{ fontSize: 11, lineHeight: 1.45 }}>
+                          {geometryDemoFamily === "stereometry"
+                            ? DEMO_STEREOMETRY_TASK_TEXT_PL
+                            : activePlanimetryPresetMeta.taskPl}
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.75, lineHeight: 1.45 }}>
+                          {geometryDemoFamily === "stereometry"
+                            ? DEMO_STEREOMETRY_TASK_TEXT_EN
+                            : activePlanimetryPresetMeta.taskEn}
+                        </div>
                         <div style={{ fontSize: 11, opacity: 0.8 }}>
-                          Demo setup uses a convex base and computes incenters for faces ABS, BCS, CDS, DAS.
+                          {geometryDemoFamily === "stereometry"
+                            ? "Demo setup uses a convex base and computes incenters for faces ABS, BCS, CDS, DAS."
+                            : "Demo setup uses triangle ABC with incenter/incircle and circumcenter/circumcircle relations."}
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => setGeometryDemoTab("solve")}>
@@ -19816,10 +20325,18 @@ case "mobius":
                           <button
                             type="button"
                             onClick={() => {
-                              setGeometryMode("problem");
+                              handleOpenDemoScratch();
                             }}
                           >
-                            Switch to editable problem mode
+                            Open scratch editor
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOpenDemoWorkbook();
+                            }}
+                          >
+                            Open in workbook
                           </button>
                         </div>
                       </div>
@@ -19843,7 +20360,9 @@ case "mobius":
                               checked={geometryDemoShowPointLabels}
                               onChange={(e) => setGeometryDemoShowPointLabels(e.target.checked)}
                             />
-                            Show point labels (A, B, C, D, S)
+                            {geometryDemoFamily === "stereometry"
+                              ? "Show point labels (A, B, C, D, S)"
+                              : "Show point labels (A, B, C, I, O)"}
                           </label>
                           <label style={{ fontSize: 11 }}>
                             Label scale
@@ -19924,7 +20443,9 @@ case "mobius":
                               fontFamily: "monospace",
                             }}
                           >
-                            {Object.entries(geometryDemo.points).map(([id, p]) => (
+                            {Object.entries(
+                              geometryDemoFamily === "stereometry" ? geometryDemo.points : geometryPlanimetryDemo.points
+                            ).map(([id, p]) => (
                               <React.Fragment key={id}>
                                 <div>{id}</div>
                                 <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
@@ -19933,69 +20454,133 @@ case "mobius":
                           </div>
                         </div>
 
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Faces</div>
-                          <div style={{ display: "grid", gap: 6 }}>
-                            {geometryFaces.map((face) => (
-                              <div
-                                key={face.id}
-                                style={{
-                                  border: "1px solid #e5e7eb",
-                                  borderRadius: 8,
-                                  padding: "6px 8px",
-                                  fontSize: 11,
-                                }}
-                              >
-                                <div style={{ fontWeight: 700 }}>{face.label}</div>
-                                <div style={{ opacity: 0.72 }}>
-                                  vertices: {face.vertices.map((v) => v.label ?? "?").join(", ")}
-                                </div>
+                        {geometryDemoFamily === "stereometry" ? (
+                          <>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Faces</div>
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {geometryFaces.map((face) => (
+                                  <div
+                                    key={face.id}
+                                    style={{
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: 8,
+                                      padding: "6px 8px",
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 700 }}>{face.label}</div>
+                                    <div style={{ opacity: 0.72 }}>
+                                      vertices: {face.vertices.map((v) => v.label ?? "?").join(", ")}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
 
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Face incenters</div>
-                          <div style={{ display: "grid", gap: 6 }}>
-                            {geometryFaceIncenters.map((face) => (
-                              <div
-                                key={face.faceId}
-                                style={{
-                                  border: "1px solid #e5e7eb",
-                                  borderRadius: 8,
-                                  padding: "6px 8px",
-                                  display: "grid",
-                                  gridTemplateColumns: "80px 1fr auto",
-                                  gap: 8,
-                                  alignItems: "center",
-                                  fontSize: 11,
-                                }}
-                              >
-                                <div style={{ fontWeight: 700 }}>{face.label}</div>
-                                <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
-                                  {face.incenter ? fmt3(face.incenter) : "(unavailable)"}
-                                </div>
-                                <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
-                                  delta={face.residual == null ? "-" : formatConstraintValue(face.residual)}
-                                </div>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Face incenters</div>
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {geometryFaceIncenters.map((face) => (
+                                  <div
+                                    key={face.faceId}
+                                    style={{
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: 8,
+                                      padding: "6px 8px",
+                                      display: "grid",
+                                      gridTemplateColumns: "80px 1fr auto",
+                                      gap: 8,
+                                      alignItems: "center",
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 700 }}>{face.label}</div>
+                                    <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
+                                      {face.incenter ? fmt3(face.incenter) : "(unavailable)"}
+                                    </div>
+                                    <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
+                                      delta={face.residual == null ? "-" : formatConstraintValue(face.residual)}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Circles</div>
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {geometryPlanimetryDemo.circles.map((circle) => (
+                                  <div
+                                    key={circle.id}
+                                    style={{
+                                      border: "1px solid #e5e7eb",
+                                      borderRadius: 8,
+                                      padding: "6px 8px",
+                                      display: "grid",
+                                      gridTemplateColumns: "1fr auto",
+                                      gap: 8,
+                                      fontSize: 11,
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ fontWeight: 700 }}>{circle.label}</div>
+                                      <div style={{ opacity: 0.72 }}>center: {fmt3(circle.center)}</div>
+                                    </div>
+                                    <div style={{ fontFamily: "monospace", opacity: 0.78 }}>
+                                      r={circle.radius.toFixed(4)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Focus point</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {Object.keys(geometryPlanimetryDemo.points).map((id) => (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => setGeometrySelectedPlanimetryPointId(id)}
+                                    style={pill(geometrySelectedPlanimetryPointId === id)}
+                                  >
+                                    {id}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
 
                     {geometryDemoTab === "solve" && (
                       <>
-                        <StereometryAnalyzerPanel
-                          faces={geometryFaces}
-                          faceIncenters={geometryFaceIncenters}
-                          planeCheck={geometryIncenterPlaneCheck}
-                          incenterTolerance={geometryFaceIncenterTolerance}
-                          selectedFaceId={geometrySelectedFaceId}
-                          onSelectFace={(id) => setGeometrySelectedFaceId(id)}
-                        />
+                        {geometryDemoFamily === "stereometry" ? (
+                          <StereometryAnalyzerPanel
+                            faces={geometryFaces}
+                            faceIncenters={geometryFaceIncenters}
+                            planeCheck={geometryIncenterPlaneCheck}
+                            incenterTolerance={geometryFaceIncenterTolerance}
+                            selectedFaceId={geometrySelectedFaceId}
+                            onSelectFace={(id) => setGeometrySelectedFaceId(id)}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              fontSize: 11,
+                              background: "#fff",
+                            }}
+                          >
+                            Planimetry diagnostics: check incenter/circumcenter metric relations and angle-bisector split.
+                          </div>
+                        )}
 
                         <div style={{ marginTop: 14 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Constraints</div>
@@ -20043,11 +20628,17 @@ case "mobius":
                       <div style={{ display: "grid", gap: 8 }}>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Guide script</div>
                         <div style={{ fontSize: 11, opacity: 0.75 }}>
-                          This is a ready-to-use solve script plan for the stereometry demo workflow.
+                          {geometryDemoFamily === "stereometry"
+                            ? "This is a ready-to-use solve script plan for the stereometry demo workflow."
+                            : "This is the same script used when opening Scratch for this planimetry task preset."}
                         </div>
                         <textarea
                           readOnly
-                          value={DEMO_STEREOMETRY_GUIDE_SCRIPT}
+                          value={
+                            geometryDemoFamily === "stereometry"
+                              ? DEMO_STEREOMETRY_GUIDE_SCRIPT
+                              : activePlanimetryPresetMeta.script
+                          }
                           rows={12}
                           style={{ width: "100%", fontFamily: "monospace", fontSize: 11 }}
                         />
@@ -20055,12 +20646,16 @@ case "mobius":
                           <button
                             type="button"
                             onClick={async () => {
+                              const script =
+                                geometryDemoFamily === "stereometry"
+                                  ? DEMO_STEREOMETRY_GUIDE_SCRIPT
+                                  : activePlanimetryPresetMeta.script;
                               try {
-                                await navigator.clipboard.writeText(DEMO_STEREOMETRY_GUIDE_SCRIPT);
+                                await navigator.clipboard.writeText(script);
                                 setGeometryDemoGuideStatus("Guide script copied.");
                               } catch {
                                 const textarea = document.createElement("textarea");
-                                textarea.value = DEMO_STEREOMETRY_GUIDE_SCRIPT;
+                                textarea.value = script;
                                 textarea.setAttribute("readonly", "true");
                                 textarea.style.position = "fixed";
                                 textarea.style.opacity = "0";
@@ -20077,10 +20672,18 @@ case "mobius":
                           <button
                             type="button"
                             onClick={() => {
-                              setGeometryMode("problem");
+                              handleOpenDemoScratch();
                             }}
                           >
-                            Open editable problem mode
+                            Open scratch editor
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOpenDemoWorkbook();
+                            }}
+                          >
+                            Open in workbook
                           </button>
                         </div>
                         {geometryDemoGuideStatus && (
@@ -20091,7 +20694,47 @@ case "mobius":
                   </>
                 ) : (
                   <>
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        fontSize: 11,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        background: "#f8fafc",
+                        padding: "6px 8px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                      }}
+                    >
+                      <div>
+                        Source:{" "}
+                        <strong>
+                          {geometryMode === "workbook"
+                            ? `Workbook${activeWorkbook ? ` (${activeWorkbook.title})` : ""}`
+                            : "Scratch draft"}
+                        </strong>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {geometryMode === "workbook" ? (
+                          <button type="button" onClick={() => setGeometryMode("scratch")} style={{ fontSize: 11 }}>
+                            Use scratch
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => openGeometryWorkbookMode(geometryScratchSceneSeed)}
+                            style={{ fontSize: 11 }}
+                          >
+                            Open in workbook
+                          </button>
+                        )}
+                      </div>
+                    </div>
                     <ConstructionLabPanel
+                      key={geometryEditorPanelKey}
+                      seed={geometryEditorSeed}
                       onChange={handleConstructionLabChange}
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
@@ -20160,20 +20803,26 @@ case "mobius":
                   wireframe={geometryWireframe}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
-                  cameraOverride={geometryMode === "problem" ? geometryProblemCameraOverride : null}
-                  cameraOverrideToken={geometryMode === "problem" ? geometryProblemCameraOverrideToken : 0}
+                  cameraOverride={
+                    geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
+                  }
+                  cameraOverrideToken={
+                    geometryMode === "scratch" || geometryMode === "workbook"
+                      ? geometryProblemCameraOverrideToken
+                      : 0
+                  }
                   highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
                   highlightPointSets={
                     geometryMode === "demo"
                       ? geometryHighlightPointSets
-                      : geometryMode === "problem"
+                      : geometryMode === "scratch" || geometryMode === "workbook"
                         ? null
                         : geometryProceduralFeatureOverlays.pointSets
                   }
                   overlayLabelSets={
                     geometryMode === "demo"
                       ? geometryLabelSets
-                      : geometryMode === "problem"
+                      : geometryMode === "scratch" || geometryMode === "workbook"
                         ? geometryConstructionState?.labels ?? null
                         : geometryProceduralFeatureOverlays.labelSets
                   }
@@ -20193,14 +20842,14 @@ case "mobius":
                   pickEnabled={
                     geometryMode === "demo" ||
                     geometryMode === "procedural" ||
-                    (geometryMode === "problem" && geometryPointPlacementEnabled)
+                    ((geometryMode === "scratch" || geometryMode === "workbook") && geometryPointPlacementEnabled)
                   }
                   onPick={
                     geometryMode === "demo"
                       ? handleGeometryPick
                       : geometryMode === "procedural"
                         ? handleProceduralPick
-                        : geometryMode === "problem"
+                        : geometryMode === "scratch" || geometryMode === "workbook"
                           ? handleProblemPick
                           : undefined
                   }

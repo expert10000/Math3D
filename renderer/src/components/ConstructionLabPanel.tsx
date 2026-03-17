@@ -67,6 +67,15 @@ export type ConstructionLabState = {
   errors: string[];
   nodes: ConstructionNode[];
   checkDefs: ProblemCheckDef[];
+  selectedNodeId: string;
+  scriptText: string;
+};
+
+export type ConstructionLabSeed = {
+  nodes: ConstructionNode[];
+  checkDefs: ProblemCheckDef[];
+  selectedNodeId?: string | null;
+  scriptText?: string;
 };
 
 type ConstructionLabPanelProps = {
@@ -75,6 +84,7 @@ type ConstructionLabPanelProps = {
   viewportPickPoint?: { x: number; y: number; z: number } | null;
   onViewportPickConsumed?: () => void;
   onFocusObjectInScene?: (focus: { target: { x: number; y: number; z: number }; radius?: number }) => void;
+  seed?: ConstructionLabSeed | null;
 };
 
 type ConstructionHistoryState = {
@@ -600,6 +610,21 @@ const DEFAULT_INITIAL_SCENE = (() => {
   };
 })();
 
+const normalizeConstructionSeed = (seed: ConstructionLabSeed | null | undefined) => {
+  if (!seed || !Array.isArray(seed.nodes) || !Array.isArray(seed.checkDefs) || !seed.nodes.length) return null;
+  const nodes = seed.nodes.map((node) => ({ ...node }));
+  const checks = seed.checkDefs.map((check) => ({ ...check }));
+  const selectedNodeId =
+    typeof seed.selectedNodeId === "string" && nodes.some((node) => node.id === seed.selectedNodeId)
+      ? seed.selectedNodeId
+      : nodes[0].id;
+  const scriptText =
+    typeof seed.scriptText === "string" && seed.scriptText.trim().length
+      ? seed.scriptText
+      : buildScriptFromState(nodes, checks);
+  return { nodes, checks, selectedNodeId, scriptText };
+};
+
 const loadPresets = (): ScriptPreset[] => {
   try {
     const raw = globalThis.localStorage?.getItem(PRESET_STORAGE_KEY);
@@ -632,10 +657,16 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   viewportPickPoint = null,
   onViewportPickConsumed,
   onFocusObjectInScene,
+  seed = null,
 }) => {
-  const [nodes, setNodes] = useState<ConstructionNode[]>(() => DEFAULT_INITIAL_SCENE.nodes.map((node) => ({ ...node })));
-  const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>(() => DEFAULT_INITIAL_SCENE.checks.map((check) => ({ ...check })));
-  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
+  const seededState = normalizeConstructionSeed(seed);
+  const [nodes, setNodes] = useState<ConstructionNode[]>(() =>
+    seededState?.nodes ?? DEFAULT_INITIAL_SCENE.nodes.map((node) => ({ ...node }))
+  );
+  const [checkDefs, setCheckDefs] = useState<ProblemCheckDef[]>(() =>
+    seededState?.checks ?? DEFAULT_INITIAL_SCENE.checks.map((check) => ({ ...check }))
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string>(() => seededState?.selectedNodeId ?? DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("build");
@@ -676,7 +707,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [paletteInput, setPaletteInput] = useState("");
   const [paletteError, setPaletteError] = useState<string | null>(null);
 
-  const [scriptText, setScriptText] = useState<string>(() => DEFAULT_INITIAL_SCENE.script);
+  const [scriptText, setScriptText] = useState<string>(() => seededState?.scriptText ?? DEFAULT_INITIAL_SCENE.script);
   const [scriptError, setScriptError] = useState<string | null>(null);
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
@@ -714,8 +745,10 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       errors: solved.errors,
       nodes,
       checkDefs,
+      selectedNodeId,
+      scriptText,
     });
-  }, [onChange, solved, labels, checkResults, nodes, checkDefs]);
+  }, [onChange, solved, labels, checkResults, nodes, checkDefs, selectedNodeId, scriptText]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
