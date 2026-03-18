@@ -169,6 +169,51 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
   }
 });
 
+test("Geometry gallery: select vs add flow, quick add, and filtering", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gallery-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    const rows = page.getByTestId("geometry-object-row");
+    const baseCount = await rows.count();
+
+    const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
+    await expect(sphereCard).toBeVisible();
+    await sphereCard.click();
+    await expect.poll(async () => rows.count()).toBe(baseCount);
+
+    await sphereCard.dblclick();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+
+    await page.getByTestId("geometry-gallery-quick-add-torus").click();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 2);
+
+    await page.getByTestId("geometry-gallery-search").fill("zzzz-no-match");
+    await expect(page.getByText("No gallery cards match this search/filter.")).toBeVisible();
+
+    await page.getByTestId("geometry-gallery-search").fill("");
+    await page.getByTestId("geometry-gallery-category-filter").selectOption("polyhedra");
+    await expect(page.getByTestId("geometry-gallery-card-cube")).toBeVisible();
+    await expect(page.getByTestId("geometry-gallery-card-sphere")).toHaveCount(0);
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
 test("Persistence: save workspace and reopen restores scene", async () => {
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-persist-"));
   const env = {
