@@ -1,0 +1,13 @@
+services:
+  math3d-web-preview:
+    build:
+      context: .
+      dockerfile: Dockerfile.web-preview
+    environment:
+      MATH3D_WORKER_MODE: python
+      MATH3D_PYTHON: /opt/math3d-venv/bin/python
+      MATH3D_WEB_WORKER_PROXY_HOST: 0.0.0.0
+      MATH3D_WEB_WORKER_PROXY_PORT: 8787
+    ports:
+      - "4173:4173"
+      - "8787:8787"

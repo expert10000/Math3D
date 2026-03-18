@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+node_modules
+**/node_modules
+build
+dist
+release
+playwright-report
+test-results
+site
+docs/api
+apps/web/dist
+output
+*.log

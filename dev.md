@@ -64,3 +64,11 @@ git push origin vX.Y.Z
 - MkDocs content: `docs/`
 - API docs: `docs/api/` (generated via TypeDoc)
 - Site build output: `site/`
+
+## Docker
+
+- Web preview container files:
+  - `Dockerfile.web-preview`
+  - `docker-compose.web.yml`
+- Container mode uses Python worker backend (`MATH3D_WORKER_MODE=python`).
+- Windows bundled worker executable (`worker.exe`) is not used in Linux containers.

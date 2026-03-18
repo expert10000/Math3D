@@ -49,6 +49,21 @@ npm run preview:web
 
 Static output is written to `apps/web/dist/`.
 
+### Browser app in Docker (self-contained)
+
+```bash
+docker compose -f docker-compose.web.yml up --build
+```
+
+Open:
+
+- App: `http://localhost:4173`
+- Worker diagnostics: `http://localhost:8787/api/worker/diagnostics`
+
+Notes:
+- This Docker flow is self-contained (Node + Python deps inside container).
+- Linux containers use `python` worker mode; they do not run Windows `worker.exe`.
+
 ## Python worker modes
 
 Math3D browser mode uses a local proxy (`/api/worker`) for CGAL/VTK-backed operations.
