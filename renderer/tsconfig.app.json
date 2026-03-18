@@ -24,8 +24,8 @@
       "@math3d/ui/*": ["../packages/ui/src/*"],
       "@math3d/workbook": ["../packages/workbook/src/index.ts"],
       "@math3d/workbook/*": ["../packages/workbook/src/*"],
-      "three": ["./node_modules/three/build/three.module.js"],
-      "three/*": ["./node_modules/three/*"]
+      "three": ["./node_modules/@types/three/index.d.ts"],
+      "three/*": ["./node_modules/@types/three/*"]
     },
     "jsx": "react-jsx",
 
