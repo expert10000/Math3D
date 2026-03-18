@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#fff7ed" />
+    <stop offset="100%" stop-color="#ffedd5" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+<path d="M68 16 L34 36 L44 70 H92 L102 36 Z" fill="none" stroke="#d97706" stroke-width="3" />
+<path d="M68 16 V44 M34 36 L68 44 L102 36 M44 70 L68 44 L92 70" fill="none" stroke="#d97706" stroke-width="2.5" opacity="0.75" />
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.75" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="#7c2d12">Icosahedron</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="#7c2d12" opacity="0.8">Polyhedron</text>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#f8fafc" />
+    <stop offset="100%" stop-color="#e2e8f0" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+<path d="M24 56 H112 M34 30 V82 M62 30 V82 M90 30 V82" fill="none" stroke="#475569" stroke-width="3" />
+<circle cx="34" cy="30" r="4" fill="#475569" />
+<circle cx="62" cy="56" r="4" fill="#475569" />
+<circle cx="90" cy="82" r="4" fill="#475569" />
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.75" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="#0f172a">Vector</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="#0f172a" opacity="0.8">Helper</text>
+</svg>

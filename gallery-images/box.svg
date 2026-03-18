@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#ebf4ff" />
+    <stop offset="100%" stop-color="#dbeafe" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+<path d="M36 60 L36 30 L74 30 L74 60 Z" fill="none" stroke="#1d4ed8" stroke-width="3" />
+<path d="M74 30 L92 20 L92 50 L74 60" fill="none" stroke="#1d4ed8" stroke-width="3" />
+<path d="M36 30 L54 20 L92 20" fill="none" stroke="#1d4ed8" stroke-width="3" />
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.75" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="#0f2b67">Box</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="#0f2b67" opacity="0.8">Primitive</text>
+</svg>

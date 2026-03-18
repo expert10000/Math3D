@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#f0f9ff" />
+    <stop offset="100%" stop-color="#dbeafe" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+<path d="M30 62 C46 22, 78 74, 98 30" fill="none" stroke="#0891b2" stroke-width="4" stroke-linecap="round" />
+<circle cx="30" cy="62" r="3" fill="#0891b2" />
+<circle cx="98" cy="30" r="3" fill="#0891b2" />
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.75" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="#155e75">Helix</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="#155e75" opacity="0.8">Curve</text>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#ecfeff" />
+    <stop offset="100%" stop-color="#cffafe" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+<path d="M28 58 C40 30, 58 28, 72 52 C85 74, 102 60, 108 34" fill="none" stroke="#0e7490" stroke-width="3" />
+<path d="M24 46 C40 20, 62 18, 80 42 C94 60, 104 56, 112 32" fill="none" stroke="#0e7490" stroke-width="2" opacity="0.6" />
+<path d="M32 68 C46 42, 68 40, 86 64 C98 78, 108 72, 116 50" fill="none" stroke="#0e7490" stroke-width="2" opacity="0.6" />
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.75" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="#134e4a">Pseudosphere</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="#134e4a" opacity="0.8">Surface</text>
+</svg>
