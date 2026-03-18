@@ -16,6 +16,7 @@ RUN apt-get update \
 COPY . .
 
 RUN npm ci
+RUN npm --prefix renderer install
 RUN npm run build:web
 
 RUN python3 -m venv /opt/math3d-venv
