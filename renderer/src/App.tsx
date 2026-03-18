@@ -93,7 +93,7 @@ import {
   type SelectionStats,
 } from "./math/selection/selectionStats";
 import { buildGeodesicDisk } from "./math/geodesicDisk";
-import { runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
+import { cgalHealth, cgalVersion, runCgalMesh, stopCgalWorker } from "./services/cgalMeshClient";
 import {
   getPythonWorkerDiagnostics,
   type PythonWorkerDiagnosticsSnapshot,
@@ -12328,7 +12328,16 @@ case "mobius":
   }, []);
 
   const refreshCgalHealthState = useCallback(async () => {
-    const status = await getPythonWorkerDiagnostics();
+    let status = await getPythonWorkerDiagnostics();
+
+    // In web proxy mode diagnostics start as "pending" until the first worker call.
+    // Warm the worker once so CGAL availability is resolved without requiring manual actions.
+    if (!status.startupChecked) {
+      await cgalVersion();
+      await cgalHealth();
+      status = await getPythonWorkerDiagnostics();
+    }
+
     setCgalHealthState(toCgalHealthState(status));
   }, []);
 
