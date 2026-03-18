@@ -12,9 +12,8 @@ import type {
   WorkbookSnapshotSlot,
   WorkbookTemplateSpec,
   WorkbookProblemPack,
-} from "../workbook/workbookModel";
-import { WORKBOOK_STAGE_ORDER } from "../workbook/workbookModel";
-import { WORKBOOK_OPERATOR_CATALOG } from "../workbook/operatorRegistry";
+} from "@math3d/workbook";
+import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
 import { computeMeanEdgeLength } from "../mesh/meshOps";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";

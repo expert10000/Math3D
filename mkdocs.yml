@@ -9,6 +9,8 @@ theme:
 nav:
   - Home: index.md
   - API Reference: api-reference.md
+  - Architecture:
+      - Layered Workspace: architecture-layered-workspace.md
   - Guides:
       - Playwright E2E Tests: playwright-e2e-tests.md
       - Release Smoke Tests: release-smoke-tests.md

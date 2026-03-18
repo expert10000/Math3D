@@ -24,7 +24,14 @@ import {
   type WeierstrassDriftResult,
 } from "../math/weierstrass";
 
-import type { ColorMode, ProbeInfo, SliceNormal, SlicePreset, OverlayPolylineGroup } from "./SurfaceViewer";
+import type {
+  ColorMode,
+  ProbeInfo,
+  RenderQuality,
+  SliceNormal,
+  SlicePreset,
+  OverlayPolylineGroup,
+} from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
@@ -41,7 +48,8 @@ import {
   createLayeredReferenceGrid,
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
-} from "./layeredReferenceGrid";
+} from "@math3d/renderer";
+import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
 
 type ParamPreset = {
   id: string;
@@ -271,29 +279,7 @@ const drawProbeLabelSprite = (label: ProbeLabelSprite, lines: string[]) => {
   texture.needsUpdate = true;
 };
 
-export type ParamSurfaceId =
-  | "plane"
-  | "cylinder"
-  | "cone"
-  | "helicoid"
-  | "catenoid"
-  | "sphere"
-  | "ellipsoid"
-  | "torus"
-  | "mobius"
-  | "kleinBottle"
-  | "hyperbolicParaboloid"
-  | "enneper"
-  | "paraboloid"
-  | "pseudosphere"
-  | "dini"
-  | "twistedStrip"
-  // ✅ NEW (your Figure 8 pair)
-  | "expCone" // σ(u,v)=(u cos v, u sin v, ln u), u>0
-  | "helicoidUV" // τ(u,v)=(u cos v, u sin v, v)
-  | "boy"
-  | "weierstrass"
-  | "custom";
+export type ParamSurfaceId = CoreParamSurfaceId;
 
 type Props = {
   surfaceId: ParamSurfaceId;
@@ -332,6 +318,7 @@ type Props = {
   onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  renderQuality?: RenderQuality;
   captureToken?: number;
   onCaptureThumbnail?: (dataUrl: string | null) => void;
   showBoundingBox?: boolean;
@@ -1263,6 +1250,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onCameraSync,
   cameraOverride = null,
   cameraOverrideToken = 0,
+  renderQuality = "balanced",
   captureToken = 0,
   onCaptureThumbnail,
   showBoundingBox = false,
@@ -1358,6 +1346,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onSetCustomZ,
   onParamGeodesicState,
 }) => {
+  const surfaceParamResolution = surfaceId === "torus" ? Math.min(paramResolution, 40) : paramResolution;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
   const planeGridShowLabels = planeGridSettings.showLabels;
@@ -1940,8 +1929,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     group.add(planeMesh);
 
     const { paramFunc, uMin, uMax, vMin, vMax } = state;
-    const nx = Math.max(30, Math.round(paramResolution));
-    const ny = Math.max(30, Math.round(paramResolution));
+    const nx = Math.max(30, Math.round(surfaceParamResolution));
+    const ny = Math.max(30, Math.round(surfaceParamResolution));
 
     const du = (uMax - uMin) / (nx - 1);
     const dv = (vMax - vMin) / (ny - 1);
@@ -2012,7 +2001,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     paramDomain?.uMax,
     paramDomain?.vMin,
     paramDomain?.vMax,
-    paramResolution,
+    surfaceParamResolution,
     sceneEpoch,
   ]);
 
@@ -2147,8 +2136,23 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance" });
+    const heavySurface = surfaceId === "torus";
+    const maxPixelRatio =
+      renderQuality === "performance"
+        ? 1
+        : renderQuality === "sharp"
+          ? heavySurface
+            ? 1.9
+            : 3
+          : heavySurface
+            ? 1.35
+            : 2;
+    const devicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    const qualityScale =
+      renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
+    const targetPixelRatio = devicePixelRatio * qualityScale;
+    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height);
     renderer.localClippingEnabled = true;
     renderer.domElement.style.width = "100%";
@@ -2332,10 +2336,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       scene.add(referenceGridOverlay.group);
     }
 
-    const slices = Math.max(16, Math.round(paramResolution));
-    const stacks = Math.max(16, Math.round(paramResolution));
+    const slices = Math.max(16, Math.round(surfaceParamResolution));
+    const stacks = Math.max(16, Math.round(surfaceParamResolution));
     // Weierstrass integration grid can differ from render resolution.
-    const buildResolution = Math.max(4, Math.round(weierstrassResolution ?? paramResolution));
+    const buildResolution = Math.max(4, Math.round(weierstrassResolution ?? surfaceParamResolution));
 
     const rawDomain = paramDomain ?? getDomain(surfaceId);
     let uMin = Number.isFinite(rawDomain.uMin) ? rawDomain.uMin : -Math.PI;
@@ -3346,8 +3350,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     lightPreset,
     colorMode,
     showBoundingBox,
+    renderQuality,
     resetToken,
-    paramResolution,
+    surfaceParamResolution,
     weierstrassGExpr,
     weierstrassPhiExpr,
     weierstrassResolution,
@@ -4246,7 +4251,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
-    paramResolution,
+    surfaceParamResolution,
     weierstrassGExpr,
     weierstrassPhiExpr,
     weierstrassResolution,

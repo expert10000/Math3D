@@ -1,0 +1,11 @@
+{
+  "name": "@math3d/app-web",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "npm --prefix ../../renderer run dev",
+    "build": "npm --prefix ../../renderer run build",
+    "preview": "npm --prefix ../../renderer run preview",
+    "test": "npm --prefix ../../renderer run test"
+  }
+}

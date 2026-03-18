@@ -1,6 +1,6 @@
 import * as THREE from "three";
-
-export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
+import type { ColorPalette } from "@math3d/core";
+export type { ColorPalette } from "@math3d/core";
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 

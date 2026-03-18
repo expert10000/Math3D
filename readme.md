@@ -1093,3 +1093,13 @@ Where applicable, their original license and attribution should be preserved.
 
 These materials are not assumed to be covered by the repository's main Apache-2.0 license
 unless explicitly stated.
+
+
+erification
+
+npm --prefix renderer run test passed (24/24).
+npm --prefix renderer run build passed.
+If you want, I can continue immediately with phase 2:
+
+make apps/web own real browser bootstrap (not proxy scripts),
+start moving Electron main/preload ownership under apps/desktop/src.

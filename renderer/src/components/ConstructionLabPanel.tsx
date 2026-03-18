@@ -2,6 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { OverlayLabelSet } from "./SurfaceViewer";
 import type { GeometryScene } from "../geometry/types";
 import {
+  createSceneProjectDocument,
+  deserializeSceneProject,
+  serializeSceneProject,
+  type SceneDocument,
+} from "@math3d/core";
+import {
   buildPointLabelSet,
   evaluateConstructionGraph,
   evaluateProblemChecks,
@@ -59,6 +65,15 @@ type SceneBundle = {
   checks: ProblemCheckDef[];
 };
 
+type ConstructionLabExtension = {
+  sceneType: SceneType;
+  sceneMode: SceneMode;
+  metadata: string;
+  script: string;
+  nodes: ConstructionNode[];
+  checks: ProblemCheckDef[];
+};
+
 export type ConstructionLabState = {
   scene: GeometryScene;
   labels: OverlayLabelSet[] | null;
@@ -99,6 +114,7 @@ type ConstructionHistoryState = {
 const PRESET_STORAGE_KEY = "math3d.geometry.sceneScriptPresets.v1";
 const BUILTIN_TASK_PRESET_NAME = "__builtin_olympiad_arc_task__";
 const BUILTIN_TASK_PRESET_LABEL = "Task: Olympiad Arc";
+const CONSTRUCTION_LAB_EXTENSION_KEY = "constructionLab";
 
 const DEFAULT_FREE_POINTS: ConstructionNode[] = [
   { id: "A", type: "freePoint", label: "A", point: { x: -0.2, y: 1.35, z: 0 }, style: { color: 0xef4444, size: 0.05 } },
@@ -1655,9 +1671,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   }, [checkDefs, nodes, saveScriptPreset, sceneName]);
 
   const exportSceneBundle = useCallback(() => {
-    const bundle: SceneBundle = {
-      version: 1,
-      sceneName,
+    const extension: ConstructionLabExtension = {
       sceneType,
       sceneMode,
       metadata: sceneMetadata,
@@ -1665,18 +1679,30 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
       nodes,
       checks: checkDefs,
     };
+    const doc: SceneDocument = {
+      id: cleanId(sceneName) || `scene_${Date.now()}`,
+      title: sceneName,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      geometry: solved.scene,
+      metadata: sceneMetadata ? { description: sceneMetadata } : undefined,
+      extensions: {
+        [CONSTRUCTION_LAB_EXTENSION_KEY]: extension,
+      },
+    };
+    const project = createSceneProjectDocument(doc);
     try {
-      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const blob = new Blob([serializeSceneProject(project)], { type: "application/json" });
       const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = href;
-      a.download = `${cleanId(sceneName) || "problem_scene"}.problem-scene.json`;
+      a.download = `${cleanId(sceneName) || "problem_scene"}.math3d.scene.json`;
       a.click();
       URL.revokeObjectURL(href);
     } catch (err) {
       setScriptError(`Scene export failed: ${String(err)}`);
     }
-  }, [checkDefs, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText]);
+  }, [checkDefs, nodes, sceneMetadata, sceneMode, sceneName, sceneType, scriptText, solved.scene]);
 
   const exportSceneScript = useCallback(() => {
     try {
@@ -1697,12 +1723,49 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
     reader.onload = () => {
       try {
         const raw = String(reader.result ?? "");
-        const parsed = JSON.parse(raw) as Partial<SceneBundle>;
-        if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.checks)) {
-          throw new Error("Missing nodes/checks arrays.");
+        const parsedProject = deserializeSceneProject(raw);
+
+        let nextNodes: ConstructionNode[] | null = null;
+        let nextChecks: ProblemCheckDef[] | null = null;
+        let nextScript: string | null = null;
+        let nextSceneName: string | null = null;
+        let nextSceneType: SceneType = "task";
+        let nextSceneMode: SceneMode = "plane2d";
+        let nextMetadata = "";
+
+        if (parsedProject.ok) {
+          const ext = parsedProject.value.scene.extensions?.[CONSTRUCTION_LAB_EXTENSION_KEY];
+          const extObj = ext && typeof ext === "object" ? (ext as Partial<ConstructionLabExtension>) : null;
+          if (extObj && Array.isArray(extObj.nodes) && Array.isArray(extObj.checks)) {
+            nextNodes = extObj.nodes as ConstructionNode[];
+            nextChecks = extObj.checks as ProblemCheckDef[];
+            nextScript = typeof extObj.script === "string" ? extObj.script : null;
+            nextSceneName = parsedProject.value.scene.title || "Imported scene";
+            nextSceneType = extObj.sceneType === "demo" || extObj.sceneType === "free" ? extObj.sceneType : "task";
+            nextSceneMode = extObj.sceneMode === "space3d" ? "space3d" : "plane2d";
+            nextMetadata =
+              typeof extObj.metadata === "string"
+                ? extObj.metadata
+                : typeof parsedProject.value.scene.metadata?.description === "string"
+                  ? parsedProject.value.scene.metadata.description
+                  : "";
+          }
         }
-        const nextNodes = parsed.nodes as ConstructionNode[];
-        const nextChecks = parsed.checks as ProblemCheckDef[];
+
+        if (!nextNodes || !nextChecks) {
+          const parsedLegacy = JSON.parse(raw) as Partial<SceneBundle>;
+          if (!Array.isArray(parsedLegacy.nodes) || !Array.isArray(parsedLegacy.checks)) {
+            throw new Error("Missing nodes/checks arrays.");
+          }
+          nextNodes = parsedLegacy.nodes as ConstructionNode[];
+          nextChecks = parsedLegacy.checks as ProblemCheckDef[];
+          nextScript = typeof parsedLegacy.script === "string" ? parsedLegacy.script : null;
+          nextSceneName = typeof parsedLegacy.sceneName === "string" && parsedLegacy.sceneName.trim() ? parsedLegacy.sceneName : "Imported scene";
+          nextSceneType = parsedLegacy.sceneType === "demo" || parsedLegacy.sceneType === "free" ? parsedLegacy.sceneType : "task";
+          nextSceneMode = parsedLegacy.sceneMode === "space3d" ? "space3d" : "plane2d";
+          nextMetadata = typeof parsedLegacy.metadata === "string" ? parsedLegacy.metadata : "";
+        }
+
         if (!nextNodes.length) throw new Error("Imported scene has no nodes.");
         setNodes(nextNodes);
         setCheckDefs(nextChecks);
@@ -1711,14 +1774,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
         setDisabledCheckIds(new Set());
         setSelectedNodeId(nextNodes[0].id);
         setScriptText(
-          typeof parsed.script === "string" && parsed.script.trim().length
-            ? parsed.script
+          typeof nextScript === "string" && nextScript.trim().length
+            ? nextScript
             : buildScriptFromState(nextNodes, nextChecks)
         );
-        setSceneName(typeof parsed.sceneName === "string" && parsed.sceneName.trim() ? parsed.sceneName : "Imported scene");
-        setSceneType(parsed.sceneType === "demo" || parsed.sceneType === "free" ? parsed.sceneType : "task");
-        setSceneMode(parsed.sceneMode === "space3d" ? "space3d" : "plane2d");
-        setSceneMetadata(typeof parsed.metadata === "string" ? parsed.metadata : "");
+        setSceneName(nextSceneName ?? "Imported scene");
+        setSceneType(nextSceneType);
+        setSceneMode(nextSceneMode);
+        setSceneMetadata(nextMetadata);
         setScriptError(null);
         setWorkspaceTab("scene");
       } catch (err) {

@@ -1,5 +1,5 @@
 // src/components/SurfaceViewer.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
@@ -21,6 +21,7 @@ import type { MeshValidation } from "../mesh/surfaceMesh";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview, buildSliceSvgString } from "./Slice2DPreview";
 import { compileExpression } from "../math/expression";
+import type { ColorMode as CoreColorMode, SurfaceId as CoreSurfaceId } from "@math3d/core";
 import {
   buildSurfaceSampleSetFromViewer,
   getNonIndexedDrawCount,
@@ -32,27 +33,53 @@ import {
   createLayeredReferenceGrid,
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
-} from "./layeredReferenceGrid";
+} from "@math3d/renderer";
 
-export type ColorMode =
-  | "solid"
-  | "height"
-  | "radius"
-  | "phase"
-  | "curvature"
-  | "gaussian"
-  | "mean"
-  | "k1"
-  | "k2";
+export type ColorMode = CoreColorMode;
 
 export type SlicePreset = "xy" | "yz" | "xz" | "custom";
 export type SliceNormal = { x: number; y: number; z: number };
 type GraphDomain = { xSpan: number; ySpan: number };
-type CameraSyncState = {
+export type CameraSyncState = {
   position: { x: number; y: number; z: number };
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+export type RenderQuality = "performance" | "balanced" | "sharp";
+export type CameraTourMode =
+  | "balanced"
+  | "orbit"
+  | "zoom"
+  | "spiral"
+  | "quick"
+  | "long"
+  | "long_orbit"
+  | "long_zoom"
+  | "long_spiral";
+export type CameraTourCaptureFormat = "mp4" | "webm";
+export type CameraTourCommand = {
+  token: number;
+  action: "play" | "stop";
+  center?: { x: number; y: number; z: number };
+  radius?: number;
+  durationMs?: number;
+  mode?: CameraTourMode;
+  captureVideo?: boolean;
+  captureFps?: number;
+  captureFileName?: string;
+  captureFormat?: CameraTourCaptureFormat;
+};
+export type CameraTourEvent =
+  | "started"
+  | "completed"
+  | "stopped"
+  | "interrupted"
+  | "capture_saved"
+  | "capture_saved_mp4"
+  | "capture_saved_webm"
+  | "capture_fallback_webm"
+  | "capture_unsupported"
+  | "capture_error";
 type ImplicitMeshOverride = {
   positions: number[];
   indices: number[];
@@ -186,35 +213,7 @@ function isImplicitMeshObj(obj: THREE.Object3D) {
   return false;
 }
 
-export type SurfaceId =
-  | "sphere"
-  | "hyperboloid"
-  | "hyperboloid_twoSheet"
-  | "ellipsoid"
-  | "torus_implicit"
-  | "gyroid"
-  | "superquadric"
-  | "roman"
-  | "scherk"
-  | "paraboloid"
-  | "cone"
-  | "cylinder"
-  // graph-style z = f(x,y)
-  | "graph_saddle"
-  | "graph_rotatedSaddle"
-  | "graph_monkey"
-  | "graph_wave"
-  | "graph_paraboloid"
-  | "graph_gaussian"
-  | "graph_ripple"
-  | "graph_mexican"
-  | "graph_sinSum"
-  | "graph_sinc"
-  | "graph_sinc2"
-  | "graph_custom"
-  // implicit f(x,y,z)=0
-  | "implicit_custom"
-  | "surface_mesh";
+export type SurfaceId = CoreSurfaceId;
 
 export type ProbeInfo = {
   point: { x: number; y: number; z: number };
@@ -1036,6 +1035,9 @@ type Props = {
   onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  renderQuality?: RenderQuality;
+  cameraTourCommand?: CameraTourCommand | null;
+  onCameraTourEvent?: (event: CameraTourEvent) => void;
   captureToken?: number;
   onCaptureThumbnail?: (dataUrl: string | null) => void;
 
@@ -1254,6 +1256,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onCameraSync,
     cameraOverride = null,
     cameraOverrideToken = 0,
+    renderQuality = "balanced",
+    cameraTourCommand = null,
+    onCameraTourEvent,
     captureToken = 0,
     onCaptureThumbnail,
 
@@ -1497,14 +1502,48 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const zoomRestoreRef = useRef<{ position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3 } | null>(null);
   const zoomedToRegionRef = useRef(false);
   const zoomTogglePrevRef = useRef(zoomToRegion);
+  const cameraTourFrameRef = useRef<number | null>(null);
+  const cameraTourRunIdRef = useRef(0);
+  const cameraTourCaptureStopRef = useRef<((reason: "completed" | "stopped" | "interrupted") => void) | null>(
+    null
+  );
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
+  const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
 
     const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
     useEffect(() => {
       onProbeRef.current = onProbe;
     }, [onProbe]);
+    useEffect(() => {
+      onCameraTourEventRef.current = onCameraTourEvent;
+    }, [onCameraTourEvent]);
+
+  const stopCameraTourCapture = useCallback((reason: "completed" | "stopped" | "interrupted") => {
+    const stop = cameraTourCaptureStopRef.current;
+    if (!stop) return;
+    stop(reason);
+  }, []);
+
+  const stopCameraTour = useCallback(
+    (reason: "stopped" | "interrupted", notify = true) => {
+      const hadActiveTour = cameraTourFrameRef.current != null;
+      cameraTourRunIdRef.current += 1;
+      if (cameraTourFrameRef.current != null) {
+        cancelAnimationFrame(cameraTourFrameRef.current);
+        cameraTourFrameRef.current = null;
+      }
+      stopCameraTourCapture(reason);
+      if (notify && (hadActiveTour || reason !== "stopped")) {
+        onCameraTourEventRef.current?.(reason);
+      }
+    },
+    [stopCameraTourCapture]
+  );
+  const interruptCameraTour = useCallback(() => {
+    stopCameraTour("interrupted");
+  }, [stopCameraTour]);
 
   useEffect(() => {
     selectRegionEnabledRef.current = selectRegionEnabled;
@@ -2714,7 +2753,22 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const { width, height } = getSize();
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    const heavySurface = surfaceId === "surface_mesh" || surfaceId === "torus_implicit";
+    const maxPixelRatio =
+      renderQuality === "performance"
+        ? 1
+        : renderQuality === "sharp"
+          ? heavySurface
+            ? 1.9
+            : 3
+          : heavySurface
+            ? 1.35
+            : 2;
+    const devicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+    const qualityScale =
+      renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
+    const targetPixelRatio = devicePixelRatio * qualityScale;
+    renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height);
     renderer.setClearColor(0xf8f9fb, 1);
     renderer.domElement.style.width = "100%";
@@ -2799,6 +2853,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       controls.addEventListener("change", emitCameraSync);
       emitCameraSync();
     }
+    const handleControlsStart = () => {
+      interruptCameraTour();
+    };
+    controls.addEventListener("start", handleControlsStart);
 
     const handleGizmoDraggingChanged = (event: { value?: boolean }) => {
       const dragging = !!event?.value;
@@ -3720,6 +3778,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
 
       const handlePointerDown = (event: PointerEvent) => {
+        interruptCameraTour();
         if (
           !probeEnabled &&
           !selectRegionEnabledRef.current &&
@@ -4028,6 +4087,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     };
 
     const handleWheel = (event: WheelEvent) => {
+      interruptCameraTour();
       if (!event.shiftKey) return;
       const cb = onShiftWheelScaleRef.current;
       if (!cb) return;
@@ -4066,6 +4126,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     animate();
 
     return () => {
+      stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
@@ -4077,6 +4138,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (isCameraLeader && onCameraSync) {
         controls.removeEventListener("change", emitCameraSync);
       }
+      controls.removeEventListener("start", handleControlsStart);
       transformControls.removeEventListener("dragging-changed", handleGizmoDraggingChanged);
       transformControls.removeEventListener("objectChange", handleGizmoObjectChange);
       transformControls.detach();
@@ -4235,6 +4297,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     planeGridAutoScale,
     planeGridDensity,
     planeGridOpacity,
+    renderQuality,
     resetToken,
     probeEnabled,
     graphResolution,
@@ -4245,6 +4308,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.ySpan,
     isCameraLeader,
     onCameraSync,
+    interruptCameraTour,
+    stopCameraTour,
   ]);
 
   useEffect(() => {
@@ -7647,6 +7712,435 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    if (!cameraTourCommand) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    if (cameraTourCommand.action === "stop") {
+      stopCameraTour("stopped");
+      return;
+    }
+
+    const centerInput = cameraTourCommand.center;
+    const radiusInput = cameraTourCommand.radius;
+    const fallbackCenter = centerRef.current;
+    const centerX = Number.isFinite(centerInput?.x) ? Number(centerInput?.x) : fallbackCenter.x;
+    const centerY = Number.isFinite(centerInput?.y) ? Number(centerInput?.y) : fallbackCenter.y;
+    const centerZ = Number.isFinite(centerInput?.z) ? Number(centerInput?.z) : fallbackCenter.z;
+    const centerValid = Number.isFinite(centerX) && Number.isFinite(centerY) && Number.isFinite(centerZ);
+    const radiusValue =
+      Number.isFinite(radiusInput) && Number(radiusInput) > 0
+        ? Number(radiusInput)
+        : Number.isFinite(radiusRef.current) && radiusRef.current > 0
+          ? radiusRef.current
+          : NaN;
+    if (!centerValid || !Number.isFinite(radiusValue) || radiusValue <= 0) {
+      return;
+    }
+
+    stopCameraTour("stopped", false);
+
+    const clampPhi = (phi: number) => Math.min(Math.PI - 0.32, Math.max(0.32, phi));
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
+    const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+    const center = new THREE.Vector3(centerX, centerY, centerZ);
+    const startPos = cam.position.clone();
+    const startTarget = ctrls.target.clone();
+    const startOffset = startPos.clone().sub(center);
+    if (startOffset.lengthSq() < 1e-10) {
+      startOffset.set(2.2, 1.3, 2.0);
+    }
+    const startSpherical = new THREE.Spherical().setFromVector3(startOffset);
+    const startTheta = startSpherical.theta;
+    const startPhi = clampPhi(startSpherical.phi);
+    const startRadius = Math.max(0.1, startSpherical.radius);
+
+    const focusRadius = Math.max(0.2, Number(radiusValue));
+    const mode: CameraTourMode = cameraTourCommand.mode ?? "balanced";
+    const preset = (() => {
+      switch (mode) {
+        case "orbit":
+          return {
+            durationMs: 6600,
+            introT: 0.14,
+            settleT: 0.1,
+            orbitSpan: Math.PI * 2.05,
+            phiBase: 1.03,
+            phiAmp: 0.11,
+            finalPhi: 1.0,
+            nearDistance: Math.max(1.7, focusRadius * 2.95),
+            farDistance: Math.max(1.9, focusRadius * 3.2),
+            finalThetaOffset: Math.PI * 0.66,
+            targetLift: focusRadius * 0.06,
+            zoomPulseAmp: focusRadius * 0.05,
+            zoomPulseCycles: 2.0,
+          };
+        case "zoom":
+          return {
+            durationMs: 4300,
+            introT: 0.24,
+            settleT: 0.12,
+            orbitSpan: Math.PI * 0.96,
+            phiBase: 1.06,
+            phiAmp: 0.09,
+            finalPhi: 0.98,
+            nearDistance: Math.max(1.25, focusRadius * 2.05),
+            farDistance: Math.max(1.65, focusRadius * 3.45),
+            finalThetaOffset: Math.PI * 0.55,
+            targetLift: 0,
+            zoomPulseAmp: focusRadius * 0.22,
+            zoomPulseCycles: 1.5,
+          };
+        case "spiral":
+          return {
+            durationMs: 6000,
+            introT: 0.18,
+            settleT: 0.1,
+            orbitSpan: Math.PI * 1.82,
+            phiBase: 1.15,
+            phiAmp: 0.2,
+            finalPhi: 0.92,
+            nearDistance: Math.max(1.5, focusRadius * 2.5),
+            farDistance: Math.max(1.75, focusRadius * 2.95),
+            finalThetaOffset: Math.PI * 0.7,
+            targetLift: focusRadius * 0.14,
+            zoomPulseAmp: focusRadius * 0.08,
+            zoomPulseCycles: 1.6,
+          };
+        case "quick":
+          return {
+            durationMs: 2400,
+            introT: 0.16,
+            settleT: 0.14,
+            orbitSpan: Math.PI * 0.88,
+            phiBase: 1.02,
+            phiAmp: 0.08,
+            finalPhi: 1.0,
+            nearDistance: Math.max(1.35, focusRadius * 2.45),
+            farDistance: Math.max(1.45, focusRadius * 2.65),
+            finalThetaOffset: Math.PI * 0.42,
+            targetLift: 0,
+            zoomPulseAmp: focusRadius * 0.03,
+            zoomPulseCycles: 1.0,
+          };
+        case "long":
+          return {
+            durationMs: 9200,
+            introT: 0.14,
+            settleT: 0.1,
+            orbitSpan: Math.PI * 2.78,
+            phiBase: 1.07,
+            phiAmp: 0.15,
+            finalPhi: 0.96,
+            nearDistance: Math.max(1.45, focusRadius * 2.35),
+            farDistance: Math.max(1.8, focusRadius * 3.15),
+            finalThetaOffset: Math.PI * 0.84,
+            targetLift: focusRadius * 0.08,
+            zoomPulseAmp: focusRadius * 0.07,
+            zoomPulseCycles: 2.4,
+          };
+        case "long_orbit":
+          return {
+            durationMs: 11800,
+            introT: 0.12,
+            settleT: 0.09,
+            orbitSpan: Math.PI * 3.28,
+            phiBase: 1.05,
+            phiAmp: 0.12,
+            finalPhi: 0.98,
+            nearDistance: Math.max(1.55, focusRadius * 2.55),
+            farDistance: Math.max(1.9, focusRadius * 3.25),
+            finalThetaOffset: Math.PI * 1.02,
+            targetLift: focusRadius * 0.08,
+            zoomPulseAmp: focusRadius * 0.1,
+            zoomPulseCycles: 2.6,
+          };
+        case "long_zoom":
+          return {
+            durationMs: 10800,
+            introT: 0.14,
+            settleT: 0.11,
+            orbitSpan: Math.PI * 2.46,
+            phiBase: 1.08,
+            phiAmp: 0.16,
+            finalPhi: 0.9,
+            nearDistance: Math.max(1.1, focusRadius * 1.78),
+            farDistance: Math.max(2.0, focusRadius * 4.1),
+            finalThetaOffset: Math.PI * 0.9,
+            targetLift: focusRadius * 0.06,
+            zoomPulseAmp: focusRadius * 0.34,
+            zoomPulseCycles: 3.0,
+          };
+        case "long_spiral":
+          return {
+            durationMs: 12400,
+            introT: 0.13,
+            settleT: 0.12,
+            orbitSpan: Math.PI * 2.92,
+            phiBase: 1.18,
+            phiAmp: 0.24,
+            finalPhi: 0.86,
+            nearDistance: Math.max(1.25, focusRadius * 2.0),
+            farDistance: Math.max(1.95, focusRadius * 3.5),
+            finalThetaOffset: Math.PI * 1.1,
+            targetLift: focusRadius * 0.22,
+            zoomPulseAmp: focusRadius * 0.2,
+            zoomPulseCycles: 2.2,
+          };
+        case "balanced":
+        default:
+          return {
+            durationMs: 5200,
+            introT: 0.2,
+            settleT: 0.1,
+            orbitSpan: Math.PI * 1.42,
+            phiBase: 1.04,
+            phiAmp: 0.16,
+            finalPhi: 1.02,
+            nearDistance: Math.max(1.5, focusRadius * 2.7),
+            farDistance: Math.max(1.7, focusRadius * 3.08),
+            finalThetaOffset: Math.PI * 0.62,
+            targetLift: 0,
+            zoomPulseAmp: 0,
+            zoomPulseCycles: 0,
+          };
+      }
+    })();
+    const durationMs = Number.isFinite(cameraTourCommand.durationMs)
+      ? Math.max(1200, Math.min(16000, Number(cameraTourCommand.durationMs)))
+      : preset.durationMs;
+    const introT = Math.min(0.35, Math.max(0.08, preset.introT));
+    const settleT = Math.min(0.25, Math.max(0.05, preset.settleT));
+    const orbitT = Math.max(0.2, 1 - introT - settleT);
+    const orbitEndT = Math.min(1, introT + orbitT);
+    const finalTheta = startTheta + preset.finalThetaOffset;
+    const orbitPhiAt = (u: number) =>
+      preset.phiBase + preset.phiAmp * Math.sin(Math.PI * u) + (mode === "spiral" ? -0.26 * u : 0);
+    const orbitRadiusAt = (u: number) => {
+      const base =
+        preset.farDistance + (preset.nearDistance - preset.farDistance) * easeOutCubic(clamp01(u));
+      if (preset.zoomPulseAmp <= 0 || preset.zoomPulseCycles <= 0) return base;
+      const wave = Math.sin(Math.PI * 2 * preset.zoomPulseCycles * u);
+      const decay = 1 - clamp01(u) * 0.7;
+      return base + preset.zoomPulseAmp * wave * decay;
+    };
+    const orbitTargetLiftAt = (u: number) =>
+      preset.targetLift === 0 ? 0 : preset.targetLift * Math.sin(Math.PI * u);
+
+    cameraTourCaptureStopRef.current = null;
+    if (cameraTourCommand.captureVideo) {
+      const canvas = rendererRef.current?.domElement as HTMLCanvasElement | undefined;
+      const hasCapture = !!canvas && typeof canvas.captureStream === "function";
+      if (!hasCapture || typeof MediaRecorder === "undefined") {
+        onCameraTourEventRef.current?.("capture_unsupported");
+      } else {
+        const fps = Number.isFinite(cameraTourCommand.captureFps)
+          ? Math.max(12, Math.min(60, Number(cameraTourCommand.captureFps)))
+          : 30;
+        const timestamp = (() => {
+          const d = new Date();
+          const p2 = (n: number) => String(n).padStart(2, "0");
+          return `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(
+            d.getMinutes()
+          )}${p2(d.getSeconds())}`;
+        })();
+        const fallbackName = `camera-tour-${surfaceId}-${timestamp}.webm`;
+        const desiredName =
+          typeof cameraTourCommand.captureFileName === "string" && cameraTourCommand.captureFileName.trim().length
+            ? cameraTourCommand.captureFileName.trim()
+            : fallbackName;
+        const requestedFormat: CameraTourCaptureFormat =
+          cameraTourCommand.captureFormat === "webm" ? "webm" : "mp4";
+        try {
+          const stream = canvas!.captureStream(fps);
+          const mp4Candidates = [
+            "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+            "video/mp4;codecs=avc1",
+            "video/mp4",
+          ];
+          const webmCandidates = [
+            "video/webm;codecs=vp9,opus",
+            "video/webm;codecs=vp8,opus",
+            "video/webm",
+          ];
+          const mimeCandidates = requestedFormat === "mp4" ? [...mp4Candidates, ...webmCandidates] : webmCandidates;
+          const mimeType =
+            typeof MediaRecorder.isTypeSupported === "function"
+              ? mimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? ""
+              : "";
+          if (!mimeType) {
+            onCameraTourEventRef.current?.("capture_unsupported");
+            return;
+          }
+          const actualFormat: CameraTourCaptureFormat = mimeType.toLowerCase().includes("mp4") ? "mp4" : "webm";
+          if (requestedFormat === "mp4" && actualFormat === "webm") {
+            onCameraTourEventRef.current?.("capture_fallback_webm");
+          }
+          const captureWidth = Math.max(1, Math.round(canvas!.width || 0));
+          const captureHeight = Math.max(1, Math.round(canvas!.height || 0));
+          const capturePixels = captureWidth * captureHeight;
+          const bitsPerPixelPerFrame =
+            renderQuality === "sharp" ? 0.22 : renderQuality === "balanced" ? 0.16 : 0.11;
+          const codecBoost = actualFormat === "mp4" ? 1.08 : 1;
+          const minBitrate =
+            renderQuality === "sharp" ? 10_000_000 : renderQuality === "balanced" ? 6_500_000 : 4_000_000;
+          const maxBitrate = 42_000_000;
+          const videoBitsPerSecond = Math.max(
+            minBitrate,
+            Math.min(
+              maxBitrate,
+              Math.round(capturePixels * Math.max(12, fps) * bitsPerPixelPerFrame * codecBoost)
+            )
+          );
+          const recorder = mimeType
+            ? new MediaRecorder(stream, { mimeType, videoBitsPerSecond })
+            : new MediaRecorder(stream);
+          const chunks: BlobPart[] = [];
+          let finalized = false;
+          let stopCapture: ((reason: "completed" | "stopped" | "interrupted") => void) | null = null;
+          const finalize = () => {
+            if (finalized) return;
+            finalized = true;
+            stream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch {
+                // ignore
+              }
+            });
+            if (stopCapture && cameraTourCaptureStopRef.current === stopCapture) {
+              cameraTourCaptureStopRef.current = null;
+            }
+            const blob = new Blob(chunks, {
+              type: recorder.mimeType || (actualFormat === "mp4" ? "video/mp4" : "video/webm"),
+            });
+            if (!blob.size) {
+              onCameraTourEventRef.current?.("capture_error");
+              return;
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const expectedExt = actualFormat === "mp4" ? ".mp4" : ".webm";
+            const lowered = desiredName.toLowerCase();
+            a.download = lowered.endsWith(".mp4") || lowered.endsWith(".webm") ? desiredName.replace(/\.(mp4|webm)$/i, expectedExt) : `${desiredName}${expectedExt}`;
+            a.style.display = "none";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.setTimeout(() => URL.revokeObjectURL(url), 0);
+            onCameraTourEventRef.current?.("capture_saved");
+            onCameraTourEventRef.current?.(actualFormat === "mp4" ? "capture_saved_mp4" : "capture_saved_webm");
+          };
+          stopCapture = (_reason: "completed" | "stopped" | "interrupted") => {
+            if (recorder.state === "inactive") {
+              finalize();
+              return;
+            }
+            try {
+              recorder.stop();
+            } catch {
+              finalize();
+            }
+          };
+          recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+              chunks.push(event.data);
+            }
+          };
+          recorder.onerror = () => {
+            onCameraTourEventRef.current?.("capture_error");
+          };
+          recorder.onstop = () => {
+            finalize();
+          };
+          recorder.start(100);
+          cameraTourCaptureStopRef.current = stopCapture;
+        } catch {
+          onCameraTourEventRef.current?.("capture_error");
+        }
+      }
+    }
+
+    const runId = cameraTourRunIdRef.current + 1;
+    cameraTourRunIdRef.current = runId;
+    const startedAt = performance.now();
+    onCameraTourEventRef.current?.("started");
+
+    const renderSpherical = new THREE.Spherical();
+    const renderOffset = new THREE.Vector3();
+    const renderTarget = new THREE.Vector3();
+    const renderPose = (theta: number, phi: number, radius: number, target: THREE.Vector3) => {
+      renderSpherical.radius = Math.max(0.2, radius);
+      renderSpherical.phi = clampPhi(phi);
+      renderSpherical.theta = theta;
+      renderOffset.setFromSpherical(renderSpherical);
+      cam.position.copy(target).add(renderOffset);
+      cam.up.set(0, 1, 0);
+      ctrls.target.copy(target);
+      cam.lookAt(target);
+      cam.updateProjectionMatrix();
+      ctrls.update();
+    };
+
+    const step = () => {
+      if (cameraTourRunIdRef.current !== runId) return;
+      const elapsed = performance.now() - startedAt;
+      const t = Math.min(1, elapsed / durationMs);
+
+      if (t <= introT) {
+        const k = easeInOutCubic(t / introT);
+        const theta = startTheta;
+        const phi = startPhi + (preset.phiBase - startPhi) * k;
+        const radius = startRadius + (preset.farDistance - startRadius) * k;
+        renderTarget.copy(startTarget).lerp(center, k);
+        if (preset.targetLift !== 0) {
+          renderTarget.y += preset.targetLift * 0.35 * Math.sin(Math.PI * k);
+        }
+        renderPose(theta, phi, radius, renderTarget);
+      } else if (t <= orbitEndT) {
+        const u = (t - introT) / orbitT;
+        const k = easeInOutCubic(u);
+        const theta = startTheta + preset.orbitSpan * k;
+        const phi = orbitPhiAt(u);
+        const radius = orbitRadiusAt(u);
+        renderTarget.copy(center);
+        renderTarget.y += orbitTargetLiftAt(u);
+        renderPose(theta, phi, radius, renderTarget);
+      } else {
+        const denom = Math.max(1e-6, 1 - orbitEndT);
+        const u = (t - orbitEndT) / denom;
+        const k = easeInOutCubic(u);
+        const orbitEndTheta = startTheta + preset.orbitSpan;
+        const theta = orbitEndTheta + (finalTheta - orbitEndTheta) * k;
+        const orbitEndPhi = orbitPhiAt(1);
+        const phi = orbitEndPhi + (preset.finalPhi - orbitEndPhi) * k;
+        const orbitEndRadius = orbitRadiusAt(1);
+        const radius = orbitEndRadius + (preset.nearDistance - orbitEndRadius) * k;
+        renderTarget.copy(center);
+        renderPose(theta, phi, radius, renderTarget);
+      }
+
+      if (t < 1) {
+        cameraTourFrameRef.current = requestAnimationFrame(step);
+        return;
+      }
+
+      cameraTourFrameRef.current = null;
+      if (cameraTourRunIdRef.current !== runId) return;
+      cameraTourRunIdRef.current += 1;
+      stopCameraTourCapture("completed");
+      onCameraTourEventRef.current?.("completed");
+    };
+
+    cameraTourFrameRef.current = requestAnimationFrame(step);
+  }, [cameraTourCommand?.token, stopCameraTour, stopCameraTourCapture, surfaceId]);
 
   useEffect(() => {
     const scene = sceneRef.current;

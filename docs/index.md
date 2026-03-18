@@ -4,6 +4,7 @@ This site combines:
 
 - Project guides and operational docs (MkDocs content).
 - Full API reference generated from TypeScript sources (TypeDoc output).
+- Architecture docs for cross-runtime workspace planning.
 
 ## Build locally
 

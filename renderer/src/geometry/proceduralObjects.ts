@@ -376,20 +376,20 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
   torus: {
     type: "torus",
     label: "Torus",
-    defaultParams: { radius: 1, tube: 0.35, radialSegments: 24, tubularSegments: 96, arc: Math.PI * 2 },
+    defaultParams: { radius: 1, tube: 0.35, radialSegments: 12, tubularSegments: 48, arc: Math.PI * 2 },
     params: [
       { id: "radius", label: "Radius", kind: "number", min: 0.1, max: 10, step: 0.1 },
       { id: "tube", label: "Tube", kind: "number", min: 0.05, max: 5, step: 0.05 },
-      { id: "radialSegments", label: "Radial segments", kind: "number", min: 3, max: 128, step: 1 },
-      { id: "tubularSegments", label: "Tubular segments", kind: "number", min: 8, max: 256, step: 1 },
+      { id: "radialSegments", label: "Radial segments", kind: "number", min: 3, max: 40, step: 1 },
+      { id: "tubularSegments", label: "Tubular segments", kind: "number", min: 8, max: 96, step: 1 },
       { id: "arc", label: "Arc", kind: "number", min: 0.1, max: Math.PI * 2, step: 0.1 },
     ],
     build: (params) =>
       new THREE.TorusGeometry(
         Number(params.radius ?? 1),
         Number(params.tube ?? 0.35),
-        Math.max(3, Math.round(Number(params.radialSegments ?? 24))),
-        Math.max(8, Math.round(Number(params.tubularSegments ?? 96))),
+        Math.min(40, Math.max(3, Math.round(Number(params.radialSegments ?? 12)))),
+        Math.min(96, Math.max(8, Math.round(Number(params.tubularSegments ?? 48)))),
         Number(params.arc ?? Math.PI * 2)
       ),
   },

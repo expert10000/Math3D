@@ -1,0 +1,67 @@
+export type DatasetKind = "surface" | "volume";
+
+export type SurfaceType = "implicit" | "explicit" | "param" | "weierstrass" | "mesh";
+
+export type ColorMode =
+  | "solid"
+  | "height"
+  | "radius"
+  | "phase"
+  | "curvature"
+  | "gaussian"
+  | "mean"
+  | "k1"
+  | "k2";
+
+export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
+
+export type SurfaceId =
+  | "sphere"
+  | "hyperboloid"
+  | "hyperboloid_twoSheet"
+  | "ellipsoid"
+  | "torus_implicit"
+  | "gyroid"
+  | "superquadric"
+  | "roman"
+  | "scherk"
+  | "paraboloid"
+  | "cone"
+  | "cylinder"
+  | "graph_saddle"
+  | "graph_rotatedSaddle"
+  | "graph_monkey"
+  | "graph_wave"
+  | "graph_paraboloid"
+  | "graph_gaussian"
+  | "graph_ripple"
+  | "graph_mexican"
+  | "graph_sinSum"
+  | "graph_sinc"
+  | "graph_sinc2"
+  | "graph_custom"
+  | "implicit_custom"
+  | "surface_mesh";
+
+export type ParamSurfaceId =
+  | "plane"
+  | "cylinder"
+  | "cone"
+  | "helicoid"
+  | "catenoid"
+  | "sphere"
+  | "ellipsoid"
+  | "torus"
+  | "mobius"
+  | "kleinBottle"
+  | "hyperbolicParaboloid"
+  | "enneper"
+  | "paraboloid"
+  | "pseudosphere"
+  | "dini"
+  | "twistedStrip"
+  | "expCone"
+  | "helicoidUV"
+  | "boy"
+  | "weierstrass"
+  | "custom";

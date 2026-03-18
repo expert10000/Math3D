@@ -27,6 +27,11 @@ import {
   type OverlayPointSet,
   type OverlayPolylineGroup,
   type ProbeInfo,
+  type CameraTourCommand,
+  type CameraTourEvent,
+  type CameraTourMode,
+  type CameraTourCaptureFormat,
+  type RenderQuality,
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
@@ -213,14 +218,14 @@ import {
   type WorkbookCurveOutput,
   type WorkbookPointOutput,
   type WorkbookSnapshotSlot,
-} from "./workbook/workbookModel";
+} from "@math3d/workbook";
 import {
   BASE_COMPUTE_INPUTS,
   type WorkbookOperatorSpec,
   WORKBOOK_OPERATOR_CATALOG,
   WORKBOOK_OPERATOR_REGISTRY,
   createOperatorRegistry,
-} from "./workbook/operatorRegistry";
+} from "@math3d/workbook";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
@@ -256,6 +261,22 @@ type CameraSyncState = {
   target: { x: number; y: number; z: number };
   up: { x: number; y: number; z: number };
 };
+type GeometryCameraTourStatus = "idle" | "playing" | "completed" | "stopped" | "interrupted";
+const GEOMETRY_CAMERA_TOUR_MODE_OPTIONS: Array<{
+  value: CameraTourMode;
+  label: string;
+  hint: string;
+}> = [
+  { value: "balanced", label: "Balanced", hint: "Default timing with smooth orbit and mild zoom." },
+  { value: "orbit", label: "Orbit Showcase", hint: "Longer rotation around the torus profile." },
+  { value: "zoom", label: "Zoom Focus", hint: "Stronger dolly motion to show hole and tube thickness." },
+  { value: "spiral", label: "Spiral Rise", hint: "Orbit with elevation shift for depth presentation." },
+  { value: "long_orbit", label: "Long Orbit", hint: "Very long orbit with gentle breathing zoom." },
+  { value: "long_zoom", label: "Long Zoom", hint: "Very long pass with stronger zoom in/out." },
+  { value: "long_spiral", label: "Long Spiral", hint: "Very long cinematic spiral with height change." },
+  { value: "long", label: "Long Classic", hint: "Extended cinematic pass with balanced movement." },
+  { value: "quick", label: "Quick Preview", hint: "Short pass for fast checks while editing." },
+];
 const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "geometry"];
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
@@ -275,6 +296,7 @@ const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
 const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
 const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
+const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
@@ -1232,6 +1254,50 @@ const transformSurfaceMeshByGeometryTransform = (
     adjacency: null,
     meanEdgeLength: null,
     validation: null,
+  };
+};
+
+const computeSurfaceMeshFocus = (
+  mesh: Pick<SurfaceMeshData, "positions">
+): { center: { x: number; y: number; z: number }; radius: number } | null => {
+  const positions = mesh.positions;
+  if (!positions || positions.length < 3) return null;
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const x = Number(positions[i]);
+    const y = Number(positions[i + 1]);
+    const z = Number(positions[i + 2]);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (z < minZ) minZ = z;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+    if (z > maxZ) maxZ = z;
+  }
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+  const center = {
+    x: (minX + maxX) * 0.5,
+    y: (minY + maxY) * 0.5,
+    z: (minZ + maxZ) * 0.5,
+  };
+  let radiusSq = 0;
+  for (let i = 0; i + 2 < positions.length; i += 3) {
+    const dx = Number(positions[i]) - center.x;
+    const dy = Number(positions[i + 1]) - center.y;
+    const dz = Number(positions[i + 2]) - center.z;
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(dz)) continue;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 > radiusSq) radiusSq = d2;
+  }
+  return {
+    center,
+    radius: Math.max(0.2, Math.sqrt(Math.max(0, radiusSq))),
   };
 };
 
@@ -3485,6 +3551,15 @@ const App: React.FC = () => {
     () => geometryObjects.find((o) => o.id === geometrySelectedObjectId) ?? null,
     [geometryObjects, geometrySelectedObjectId]
   );
+  const [geometryCameraTourStatus, setGeometryCameraTourStatus] = useState<GeometryCameraTourStatus>("idle");
+  const [geometryCameraTourPlayed, setGeometryCameraTourPlayed] = useState(false);
+  const [geometryCameraTourMode, setGeometryCameraTourMode] = useState<CameraTourMode>("balanced");
+  const [geometryCameraTourCaptureFormat, setGeometryCameraTourCaptureFormat] =
+    useState<CameraTourCaptureFormat>("mp4");
+  const [geometryCameraTourCaptureStatus, setGeometryCameraTourCaptureStatus] = useState<string | null>(null);
+  const [geometryCameraTourCommand, setGeometryCameraTourCommand] = useState<CameraTourCommand | null>(null);
+  const geometryCameraTourTokenRef = useRef(0);
+  const geometryCameraTourObjectIdRef = useRef<string | null>(null);
   const geometrySelectedPolyhedron = useMemo(() => {
     if (!geometrySelectedObject || geometrySelectedObject.type !== "polyhedron") return null;
     const family = String(geometrySelectedObject.params.family ?? "platonic");
@@ -4082,6 +4157,112 @@ const App: React.FC = () => {
     return { meshes, vertCount, triCount };
   }, [geometryObjects, geometryDatasetMeshObjects]);
 
+  const pushGeometryCameraTourCommand = useCallback((command: Omit<CameraTourCommand, "token">) => {
+    geometryCameraTourTokenRef.current += 1;
+    setGeometryCameraTourCommand({
+      ...command,
+      token: geometryCameraTourTokenRef.current,
+    });
+  }, []);
+  const handleStopGeometryCameraTour = useCallback(() => {
+    if (geometryCameraTourStatus !== "playing") return;
+    geometryCameraTourObjectIdRef.current = null;
+    setGeometryCameraTourStatus("stopped");
+    if (geometryCameraTourCaptureStatus?.startsWith("Recording tour")) {
+      setGeometryCameraTourCaptureStatus("Recording stopped.");
+    }
+    pushGeometryCameraTourCommand({ action: "stop" });
+  }, [geometryCameraTourStatus, geometryCameraTourCaptureStatus, pushGeometryCameraTourCommand]);
+  const playGeometryTorusTour = useCallback((captureVideo: boolean) => {
+    if (geometryMode !== "procedural") return;
+    if (!geometrySelectedObject || geometrySelectedObject.type !== "torus") return;
+    const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedObject.id) ?? null;
+    if (!mesh) return;
+    const transformed = transformSurfaceMeshByGeometryTransform(mesh, geometrySelectedObject.transform);
+    const focus = computeSurfaceMeshFocus(transformed);
+    if (!focus) return;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const ext = geometryCameraTourCaptureFormat === "mp4" ? "mp4" : "webm";
+    geometryCameraTourObjectIdRef.current = geometrySelectedObject.id;
+    setGeometryCameraTourPlayed(true);
+    setGeometryCameraTourCaptureStatus(captureVideo ? `Recording tour (${ext.toUpperCase()})...` : null);
+    setGeometryCameraTourStatus("playing");
+    pushGeometryCameraTourCommand({
+      action: "play",
+      center: focus.center,
+      radius: focus.radius,
+      mode: geometryCameraTourMode,
+      captureVideo,
+      captureFps: 30,
+      captureFormat: geometryCameraTourCaptureFormat,
+      captureFileName: captureVideo ? `torus-tour-${stamp}.${ext}` : undefined,
+    });
+  }, [
+    geometryMode,
+    geometrySelectedObject,
+    geometryCameraTourMode,
+    geometryCameraTourCaptureFormat,
+    proceduralMeshSet.meshes,
+    pushGeometryCameraTourCommand,
+  ]);
+  const handlePlayGeometryTorusDemo = useCallback(() => {
+    playGeometryTorusTour(false);
+  }, [playGeometryTorusTour]);
+  const handleCaptureGeometryTorusDemo = useCallback(() => {
+    playGeometryTorusTour(true);
+  }, [playGeometryTorusTour]);
+  const handleGeometryCameraTourEvent = useCallback((event: CameraTourEvent) => {
+    if (event === "capture_saved") {
+      setGeometryCameraTourCaptureStatus("Recording saved to file.");
+      return;
+    }
+    if (event === "capture_saved_mp4") {
+      setGeometryCameraTourCaptureStatus("Recording saved as MP4 (H.264).");
+      return;
+    }
+    if (event === "capture_saved_webm") {
+      setGeometryCameraTourCaptureStatus("Recording saved as WebM.");
+      return;
+    }
+    if (event === "capture_fallback_webm") {
+      setGeometryCameraTourCaptureStatus("MP4 unavailable in this browser, using WebM.");
+      return;
+    }
+    if (event === "capture_unsupported") {
+      setGeometryCameraTourCaptureStatus("Recording unsupported in this browser.");
+      return;
+    }
+    if (event === "capture_error") {
+      setGeometryCameraTourCaptureStatus("Recording failed.");
+      return;
+    }
+    if (event === "started") {
+      setGeometryCameraTourStatus("playing");
+      return;
+    }
+    geometryCameraTourObjectIdRef.current = null;
+    if (event === "completed") {
+      setGeometryCameraTourStatus("completed");
+      return;
+    }
+    if (event === "interrupted") {
+      setGeometryCameraTourStatus("interrupted");
+      return;
+    }
+    setGeometryCameraTourStatus("stopped");
+  }, []);
+  useEffect(() => {
+    if (geometryCameraTourStatus !== "playing") return;
+    const activeObjectId = geometryCameraTourObjectIdRef.current;
+    if (!activeObjectId || geometrySelectedObjectId === activeObjectId) return;
+    handleStopGeometryCameraTour();
+  }, [geometryCameraTourStatus, geometrySelectedObjectId, handleStopGeometryCameraTour]);
+  useEffect(() => {
+    if (geometryCameraTourStatus !== "playing") return;
+    if (geometryMode === "procedural") return;
+    handleStopGeometryCameraTour();
+  }, [geometryCameraTourStatus, geometryMode, handleStopGeometryCameraTour]);
+
   const geometryProceduralOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const proceduralById = new Map(geometryObjects.map((obj) => [obj.id, obj]));
@@ -4095,8 +4276,9 @@ const App: React.FC = () => {
       if (!obj) continue;
       const selected = geometrySelectedObjectId === mesh.id;
       const isPoly = !!proceduralObj && proceduralObj.type === "polyhedron";
+      const selectedEdgeHighlight = selected && isPoly;
       const edgeDisplay = isPoly ? Boolean(proceduralObj.params.edgeDisplay ?? false) : false;
-      if (!selected && !edgeDisplay) continue;
+      if (!selectedEdgeHighlight && !edgeDisplay) continue;
       const triangulate = isPoly ? Boolean(proceduralObj.params.triangulate ?? true) : true;
       const lines = applyGeometryTransformToPolylineSet(
         buildMeshEdgePolylines(mesh, triangulate, 2),
@@ -4104,7 +4286,7 @@ const App: React.FC = () => {
       );
       if (!lines.length) continue;
       if (edgeDisplay) edgeLines.push(...lines);
-      if (selected) selectedLines.push(...lines);
+      if (selectedEdgeHighlight) selectedLines.push(...lines);
     }
 
     const groups: OverlayPolylineGroup[] = [];
@@ -6705,6 +6887,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [cameraOverrideToken, setCameraOverrideToken] = useState(0);
   const [compareCameraOverride, setCompareCameraOverride] = useState<CameraSyncState | null>(null);
   const [compareCameraOverrideToken, setCompareCameraOverrideToken] = useState(0);
+  const [surfacesCameraTourStatus, setSurfacesCameraTourStatus] = useState<GeometryCameraTourStatus>("idle");
+  const [surfacesCameraTourPlayed, setSurfacesCameraTourPlayed] = useState(false);
+  const [surfacesCameraTourMode, setSurfacesCameraTourMode] = useState<CameraTourMode>("balanced");
+  const [surfacesCameraTourCaptureFormat, setSurfacesCameraTourCaptureFormat] =
+    useState<CameraTourCaptureFormat>("mp4");
+  const [surfacesCameraTourCaptureStatus, setSurfacesCameraTourCaptureStatus] = useState<string | null>(null);
+  const [surfacesCameraTourCommand, setSurfacesCameraTourCommand] = useState<CameraTourCommand | null>(null);
+  const surfacesCameraTourTokenRef = useRef(0);
+  const surfacesCameraTourSurfaceIdRef = useRef<SurfaceId | null>(null);
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
@@ -6967,6 +7158,121 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
   }, [selectionMode, selection, selectionSeed, surfaceSampleSet]);
 
+  const pushSurfacesCameraTourCommand = useCallback((command: Omit<CameraTourCommand, "token">) => {
+    surfacesCameraTourTokenRef.current += 1;
+    setSurfacesCameraTourCommand({
+      ...command,
+      token: surfacesCameraTourTokenRef.current,
+    });
+  }, []);
+  const handleStopSurfacesCameraTour = useCallback(() => {
+    if (surfacesCameraTourStatus !== "playing") return;
+    surfacesCameraTourSurfaceIdRef.current = null;
+    setSurfacesCameraTourStatus("stopped");
+    if (surfacesCameraTourCaptureStatus?.startsWith("Recording tour")) {
+      setSurfacesCameraTourCaptureStatus("Recording stopped.");
+    }
+    pushSurfacesCameraTourCommand({ action: "stop" });
+  }, [surfacesCameraTourStatus, surfacesCameraTourCaptureStatus, pushSurfacesCameraTourCommand]);
+  const playSurfacesImplicitTour = useCallback(
+    (captureVideo: boolean) => {
+      if (mode !== "surfaces" || datasetKind !== "surface" || surfaceViewerKind !== "implicit") return;
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const ext = surfacesCameraTourCaptureFormat === "mp4" ? "mp4" : "webm";
+      const defaultDomain = getDefaultImplicitDomain(implicitSurfaceId);
+      const xSpan = Math.max(0.05, Number(defaultDomain.xSpan) || 1);
+      const ySpan = Math.max(0.05, Number(defaultDomain.ySpan) || 1);
+      const zSpan = Math.max(xSpan, ySpan);
+      const focusRadius = Math.max(0.3, Math.hypot(xSpan, ySpan, zSpan));
+      surfacesCameraTourSurfaceIdRef.current = implicitSurfaceId;
+      setSurfacesCameraTourPlayed(true);
+      setSurfacesCameraTourCaptureStatus(captureVideo ? `Recording tour (${ext.toUpperCase()})...` : null);
+      setSurfacesCameraTourStatus("playing");
+      pushSurfacesCameraTourCommand({
+        action: "play",
+        center: { x: 0, y: 0, z: 0 },
+        radius: focusRadius,
+        mode: surfacesCameraTourMode,
+        captureVideo,
+        captureFps: 30,
+        captureFormat: surfacesCameraTourCaptureFormat,
+        captureFileName: captureVideo ? `implicit-tour-${implicitSurfaceId}-${stamp}.${ext}` : undefined,
+      });
+    },
+    [
+      mode,
+      datasetKind,
+      surfaceViewerKind,
+      surfacesCameraTourCaptureFormat,
+      implicitSurfaceId,
+      surfacesCameraTourMode,
+      pushSurfacesCameraTourCommand,
+    ]
+  );
+  const handlePlaySurfacesImplicitDemo = useCallback(() => {
+    playSurfacesImplicitTour(false);
+  }, [playSurfacesImplicitTour]);
+  const handleCaptureSurfacesImplicitDemo = useCallback(() => {
+    playSurfacesImplicitTour(true);
+  }, [playSurfacesImplicitTour]);
+  const handleSurfacesCameraTourEvent = useCallback((event: CameraTourEvent) => {
+    if (event === "capture_saved") {
+      setSurfacesCameraTourCaptureStatus("Recording saved to file.");
+      return;
+    }
+    if (event === "capture_saved_mp4") {
+      setSurfacesCameraTourCaptureStatus("Recording saved as MP4 (H.264).");
+      return;
+    }
+    if (event === "capture_saved_webm") {
+      setSurfacesCameraTourCaptureStatus("Recording saved as WebM.");
+      return;
+    }
+    if (event === "capture_fallback_webm") {
+      setSurfacesCameraTourCaptureStatus("MP4 unavailable in this browser, using WebM.");
+      return;
+    }
+    if (event === "capture_unsupported") {
+      setSurfacesCameraTourCaptureStatus("Recording unsupported in this browser.");
+      return;
+    }
+    if (event === "capture_error") {
+      setSurfacesCameraTourCaptureStatus("Recording failed.");
+      return;
+    }
+    if (event === "started") {
+      setSurfacesCameraTourStatus("playing");
+      return;
+    }
+    surfacesCameraTourSurfaceIdRef.current = null;
+    if (event === "completed") {
+      setSurfacesCameraTourStatus("completed");
+      return;
+    }
+    if (event === "interrupted") {
+      setSurfacesCameraTourStatus("interrupted");
+      return;
+    }
+    setSurfacesCameraTourStatus("stopped");
+  }, []);
+  useEffect(() => {
+    if (surfacesCameraTourStatus !== "playing") return;
+    const activeSurfaceId = surfacesCameraTourSurfaceIdRef.current;
+    if (!activeSurfaceId || implicitSurfaceId === activeSurfaceId) return;
+    handleStopSurfacesCameraTour();
+  }, [surfacesCameraTourStatus, implicitSurfaceId, handleStopSurfacesCameraTour]);
+  useEffect(() => {
+    if (surfacesCameraTourStatus !== "playing") return;
+    if (mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "implicit") return;
+    handleStopSurfacesCameraTour();
+  }, [
+    surfacesCameraTourStatus,
+    mode,
+    datasetKind,
+    surfaceViewerKind,
+    handleStopSurfacesCameraTour,
+  ]);
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -6976,12 +7282,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       if (event.key === "i" || event.key === "I") {
         setInspectEnabled((prev) => !prev);
       } else if (event.key === "Escape") {
+        handleStopGeometryCameraTour();
+        handleStopSurfacesCameraTour();
         clearInspect();
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [clearInspect]);
+  }, [clearInspect, handleStopGeometryCameraTour, handleStopSurfacesCameraTour]);
 
   const toggleSelectionUseUV = useCallback(() => {
     if (!surfaceHasUV) return;
@@ -6995,6 +7303,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [materialRoughness, setMaterialRoughness] = useState(0.3);
   const [materialMetalness, setMaterialMetalness] = useState(0.1);
   const [materialOpacity, setMaterialOpacity] = useState(1);
+  const [surfaceRenderQuality, setSurfaceRenderQuality] = useState<RenderQuality>(() => {
+    const raw = localStorage.getItem(SURFACE_RENDER_QUALITY_KEY);
+    return raw === "performance" || raw === "sharp" || raw === "balanced" ? raw : "balanced";
+  });
   const [graphResolution, setGraphResolution] = useState(80);
   const [implicitResolution, setImplicitResolution] = useState(32);
   const [implicitBakeResolution, setImplicitBakeResolution] = useState(() => {
@@ -7104,6 +7416,59 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [implicitDomainPresets, setImplicitDomainPresets] = useState<ImplicitDomainPreset[]>(() =>
     safeParseArray<ImplicitDomainPreset>(localStorage.getItem("mathapp.domainPresets.implicit.v1"))
   );
+  useEffect(() => {
+    localStorage.setItem(SURFACE_RENDER_QUALITY_KEY, surfaceRenderQuality);
+  }, [surfaceRenderQuality]);
+
+  const torusPerformanceGuardActive =
+    mode === "surfaces" &&
+    surfaceViewerKind === "param" &&
+    paramSurfaceId === "torus";
+  useEffect(() => {
+    if (!torusPerformanceGuardActive) return;
+    if (paramResolution > 40) setParamResolution(40);
+    if (showChartGrid) setShowChartGrid(false);
+    if (showContours) setShowContours(false);
+    if (showPrincipalProjections) setShowPrincipalProjections(false);
+    if (probeEnabled) setProbeEnabled(false);
+    if (showPrincipalDirections) setShowPrincipalDirections(false);
+    if (showPrincipalLines) setShowPrincipalLines(false);
+    if (showCurvatureLines) setShowCurvatureLines(false);
+    if (showRidges) setShowRidges(false);
+    if (showValleys) setShowValleys(false);
+    if (geodesicPathEnabled) setGeodesicPathEnabled(false);
+    if (geodesicHeatEnabled) setGeodesicHeatEnabled(false);
+    if (geodesicDiskEnabled) setGeodesicDiskEnabled(false);
+    if (compareEnabled) setCompareEnabled(false);
+    if (principalGlyphDensity > 40) setPrincipalGlyphDensity(40);
+    if (curvatureSeedDensity > 60) setCurvatureSeedDensity(60);
+    if (curvatureMaxSteps > 220) setCurvatureMaxSteps(220);
+    if (curvatureMaxLines > 80) setCurvatureMaxLines(80);
+    if (ridgeValleySampleMode !== "low") setRidgeValleySampleMode("low");
+    if (ridgeValleyMaxCurves > 80) setRidgeValleyMaxCurves(80);
+  }, [
+    torusPerformanceGuardActive,
+    paramResolution,
+    showChartGrid,
+    showContours,
+    showPrincipalProjections,
+    probeEnabled,
+    showPrincipalDirections,
+    showPrincipalLines,
+    showCurvatureLines,
+    showRidges,
+    showValleys,
+    geodesicPathEnabled,
+    geodesicHeatEnabled,
+    geodesicDiskEnabled,
+    compareEnabled,
+    principalGlyphDensity,
+    curvatureSeedDensity,
+    curvatureMaxSteps,
+    curvatureMaxLines,
+    ridgeValleySampleMode,
+    ridgeValleyMaxCurves,
+  ]);
 
   const isComplexViewer = surfaceViewerKind === "complex";
   const isMeshLikeViewer = surfaceViewerKind === "mesh" || isComplexViewer;
@@ -18667,36 +19032,165 @@ case "mobius":
                 />
               )}
               {surfacesLeftTab === "object" && (
-                <SurfacesObjectPanel
-                  selectedNode={unifiedSelectedNode}
-                  nodeById={unifiedObjectModel.nodeById}
-                  selectedSceneObject={unifiedSelectedSceneObject}
-                  selectedSceneObjectLocked={unifiedSelectedSceneLocked}
-                  selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
-                  selectedVisible={unifiedSelectedSceneVisible}
-                  onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
-                  onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
-                  onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
-                  onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
-                  onRenameSelectedObject={handleRenameUnifiedSelectedObject}
-                  onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
-                  objectTypeLabel={unifiedObjectTypeLabel}
-                  objectDefinitionLabel={unifiedObjectDefinitionLabel}
-                  objectDomainLabel={unifiedObjectDomainLabel}
-                  objectSamplingLabel={unifiedObjectSamplingLabel}
-                  canBakeToSurfaceMesh={unifiedCanBake}
-                  onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
-                  canSendToCompare={unifiedCanSendToCompare}
-                  onSendToCompare={handleSendUnifiedObjectToCompare}
-                  canExportSelectedObject={unifiedCanExportSelectedObject}
-                  onExportSelectedObject={() => {
-                    void handleExportUnifiedSelectedObject();
-                  }}
-                  canIsolateSelectedObject={unifiedCanIsolateSelected}
-                  onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
-                  canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
-                  onShowAllSceneObjects={handleShowAllUnifiedObjects}
-                />
+                <>
+                  <SurfacesObjectPanel
+                    selectedNode={unifiedSelectedNode}
+                    nodeById={unifiedObjectModel.nodeById}
+                    selectedSceneObject={unifiedSelectedSceneObject}
+                    selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                    selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
+                    selectedVisible={unifiedSelectedSceneVisible}
+                    onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                    onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                    onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
+                    onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
+                    onRenameSelectedObject={handleRenameUnifiedSelectedObject}
+                    onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
+                    objectTypeLabel={unifiedObjectTypeLabel}
+                    objectDefinitionLabel={unifiedObjectDefinitionLabel}
+                    objectDomainLabel={unifiedObjectDomainLabel}
+                    objectSamplingLabel={unifiedObjectSamplingLabel}
+                    canBakeToSurfaceMesh={unifiedCanBake}
+                    onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
+                    canSendToCompare={unifiedCanSendToCompare}
+                    onSendToCompare={handleSendUnifiedObjectToCompare}
+                    canExportSelectedObject={unifiedCanExportSelectedObject}
+                    onExportSelectedObject={() => {
+                      void handleExportUnifiedSelectedObject();
+                    }}
+                    canIsolateSelectedObject={unifiedCanIsolateSelected}
+                    onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
+                    canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                    onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                  />
+                  {datasetKind === "surface" && surfaceViewerKind === "implicit" && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 8,
+                        padding: "8px 10px",
+                        background: "#f8fbff",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>Camera Tour (Implicit Viewer)</div>
+                      <div style={{ fontSize: 10, opacity: 0.78 }}>
+                        Works for the currently active implicit object and stops on any manual camera interaction.
+                      </div>
+                      <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
+                        Render quality
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {(
+                            [
+                              ["performance", "Performance"],
+                              ["balanced", "Balanced"],
+                              ["sharp", "Sharp"],
+                            ] as const
+                          ).map(([quality, label]) => (
+                            <button
+                              key={`surface-tour-quality-${quality}`}
+                              type="button"
+                              onClick={() => setSurfaceRenderQuality(quality)}
+                              style={pill(surfaceRenderQuality === quality)}
+                              aria-pressed={surfaceRenderQuality === quality}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </label>
+                      <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
+                        Play mode
+                        <select
+                          value={surfacesCameraTourMode}
+                          onChange={(e) => setSurfacesCameraTourMode(e.target.value as CameraTourMode)}
+                          style={{ width: "100%" }}
+                        >
+                          {GEOMETRY_CAMERA_TOUR_MODE_OPTIONS.map((opt) => (
+                            <option key={`surface-tour-${opt.value}`} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div style={{ fontSize: 10, opacity: 0.72 }}>
+                        {GEOMETRY_CAMERA_TOUR_MODE_OPTIONS.find((opt) => opt.value === surfacesCameraTourMode)?.hint ??
+                          ""}
+                      </div>
+                      <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
+                        Export format
+                        <select
+                          value={surfacesCameraTourCaptureFormat}
+                          onChange={(e) =>
+                            setSurfacesCameraTourCaptureFormat(e.target.value === "webm" ? "webm" : "mp4")
+                          }
+                          style={{ width: "100%" }}
+                        >
+                          <option value="mp4">MP4 (H.264) - default</option>
+                          <option value="webm">WebM</option>
+                        </select>
+                      </label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={handlePlaySurfacesImplicitDemo}
+                          disabled={surfacesCameraTourStatus === "playing"}
+                        >
+                          Demo
+                        </button>
+                        <button type="button" onClick={handlePlaySurfacesImplicitDemo}>
+                          {surfacesCameraTourPlayed ? "Replay" : "Play demo"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleStopSurfacesCameraTour}
+                          disabled={surfacesCameraTourStatus !== "playing"}
+                        >
+                          Stop
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCaptureSurfacesImplicitDemo}
+                          disabled={surfacesCameraTourStatus === "playing"}
+                          title="Plays the selected mode and records to MP4 when supported, otherwise WebM."
+                        >
+                          Capture tour
+                        </button>
+                        <button type="button" onClick={() => setCameraResetToken((t) => t + 1)}>
+                          Reset view
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 10,
+                          color:
+                            surfacesCameraTourStatus === "playing"
+                              ? "#0a66c2"
+                              : surfacesCameraTourStatus === "completed"
+                                ? "#166534"
+                                : surfacesCameraTourStatus === "interrupted"
+                                  ? "#9a3412"
+                                  : "#667085",
+                        }}
+                      >
+                        {surfacesCameraTourStatus === "playing"
+                          ? "Tour playing..."
+                          : surfacesCameraTourStatus === "completed"
+                            ? "Tour completed."
+                            : surfacesCameraTourStatus === "interrupted"
+                              ? "Tour interrupted by user."
+                              : surfacesCameraTourStatus === "stopped"
+                                ? "Tour stopped."
+                                : "Tour idle."}
+                      </div>
+                      {surfacesCameraTourCaptureStatus && (
+                        <div style={{ fontSize: 10, color: "#475467" }}>{surfacesCameraTourCaptureStatus}</div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
               {surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
@@ -18727,6 +19221,8 @@ case "mobius":
               )}
               {surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
+                  renderQuality={surfaceRenderQuality}
+                  onChangeRenderQuality={setSurfaceRenderQuality}
                   colorModes={viewColorModes}
                   colorMode={colorMode}
                   onChangeColorMode={setColorMode}
@@ -18974,6 +19470,7 @@ case "mobius":
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
+                            renderQuality={surfaceRenderQuality}
                             customX={paramXExpr}
                             customY={paramYExpr}
                             customZ={paramZExpr}
@@ -19104,6 +19601,7 @@ case "mobius":
                         ) : (
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
+                              renderQuality={surfaceRenderQuality}
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
                             implicitMeshOverride={activeCgalMesh}
@@ -19180,6 +19678,16 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
+                            cameraTourCommand={
+                              datasetKind === "surface" && surfaceViewerKind === "implicit"
+                                ? surfacesCameraTourCommand
+                                : null
+                            }
+                            onCameraTourEvent={
+                              datasetKind === "surface" && surfaceViewerKind === "implicit"
+                                ? handleSurfacesCameraTourEvent
+                                : undefined
+                            }
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={showGaussMap}
@@ -19232,6 +19740,7 @@ case "mobius":
                           {surfaceViewerKind === "param" ? (
                             <ParamSurfaceViewer
                               surfaceId={secondaryParamId}
+                              renderQuality={surfaceRenderQuality}
                               customX={paramXExpr}
                               customY={paramYExpr}
                               customZ={paramZExpr}
@@ -19276,6 +19785,7 @@ case "mobius":
                           ) : (
                             <SurfaceViewer
                               surfaceId={secondarySurfaceId}
+                              renderQuality={surfaceRenderQuality}
                               graphExpr={graphExpr}
                               implicitExpr={implicitExpr}
                               surfaceMeshOverride={
@@ -19914,6 +20424,114 @@ case "mobius":
                           <div style={{ fontSize: 11, opacity: 0.7 }}>
                             Type: {GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.label ?? geometrySelectedObject.type}
                           </div>
+                          {geometrySelectedObject.type === "torus" && (
+                            <div
+                              style={{
+                                border: "1px solid #dbe4f0",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#f8fbff",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700 }}>Camera Tour</div>
+                              <div style={{ fontSize: 10, opacity: 0.78 }}>
+                                Uses current torus params + transform and stops on any manual camera interaction.
+                              </div>
+                              <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
+                                Play mode
+                                <select
+                                  value={geometryCameraTourMode}
+                                  onChange={(e) => setGeometryCameraTourMode(e.target.value as CameraTourMode)}
+                                  style={{ width: "100%" }}
+                                >
+                                  {GEOMETRY_CAMERA_TOUR_MODE_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>
+                                      {opt.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <div style={{ fontSize: 10, opacity: 0.72 }}>
+                                {GEOMETRY_CAMERA_TOUR_MODE_OPTIONS.find((opt) => opt.value === geometryCameraTourMode)
+                                  ?.hint ?? ""}
+                              </div>
+                              <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
+                                Export format
+                                <select
+                                  value={geometryCameraTourCaptureFormat}
+                                  onChange={(e) =>
+                                    setGeometryCameraTourCaptureFormat(
+                                      e.target.value === "webm" ? "webm" : "mp4"
+                                    )
+                                  }
+                                  style={{ width: "100%" }}
+                                >
+                                  <option value="mp4">MP4 (H.264) - default</option>
+                                  <option value="webm">WebM</option>
+                                </select>
+                              </label>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={handlePlayGeometryTorusDemo}
+                                  disabled={geometryCameraTourStatus === "playing"}
+                                >
+                                  Demo
+                                </button>
+                                <button type="button" onClick={handlePlayGeometryTorusDemo}>
+                                  {geometryCameraTourPlayed ? "Replay" : "Play demo"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStopGeometryCameraTour}
+                                  disabled={geometryCameraTourStatus !== "playing"}
+                                >
+                                  Stop
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCaptureGeometryTorusDemo}
+                                  disabled={geometryCameraTourStatus === "playing"}
+                                  title="Plays the selected mode and records to MP4 when supported, otherwise WebM."
+                                >
+                                  Capture tour
+                                </button>
+                                <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
+                                  Reset view
+                                </button>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color:
+                                    geometryCameraTourStatus === "playing"
+                                      ? "#0a66c2"
+                                      : geometryCameraTourStatus === "completed"
+                                        ? "#166534"
+                                        : geometryCameraTourStatus === "interrupted"
+                                          ? "#9a3412"
+                                          : "#667085",
+                                }}
+                              >
+                                {geometryCameraTourStatus === "playing"
+                                  ? "Tour playing..."
+                                  : geometryCameraTourStatus === "completed"
+                                    ? "Tour completed."
+                                    : geometryCameraTourStatus === "interrupted"
+                                      ? "Tour interrupted by user."
+                                      : geometryCameraTourStatus === "stopped"
+                                        ? "Tour stopped."
+                                      : "Tour idle."}
+                              </div>
+                              {geometryCameraTourCaptureStatus && (
+                                <div style={{ fontSize: 10, color: "#475467" }}>
+                                  {geometryCameraTourCaptureStatus}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Parameters</div>
@@ -21077,6 +21695,8 @@ case "mobius":
                       ? geometryProblemCameraOverrideToken
                       : 0
                   }
+                  cameraTourCommand={geometryCameraTourCommand}
+                  onCameraTourEvent={handleGeometryCameraTourEvent}
                   highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
                   highlightPointSets={
                     geometryMode === "demo"
@@ -22675,6 +23295,8 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
 };
 
 type SurfacesViewPanelProps = {
+  renderQuality: RenderQuality;
+  onChangeRenderQuality: (quality: RenderQuality) => void;
   colorModes: ColorMode[];
   colorMode: ColorMode;
   onChangeColorMode: (mode: ColorMode) => void;
@@ -22715,6 +23337,8 @@ type SurfacesViewPanelProps = {
 };
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
+  renderQuality,
+  onChangeRenderQuality,
   colorModes,
   colorMode,
   onChangeColorMode,
@@ -22754,6 +23378,29 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onChangePlaneOpacity,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Render quality</div>
+      <div style={pillRow}>
+        {(
+          [
+            ["performance", "Performance"],
+            ["balanced", "Balanced"],
+            ["sharp", "Sharp"],
+          ] as const
+        ).map(([quality, label]) => (
+          <button
+            key={quality}
+            type="button"
+            onClick={() => onChangeRenderQuality(quality)}
+            style={pill(renderQuality === quality)}
+            aria-pressed={renderQuality === quality}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Coloring</div>
       <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Mode</div>

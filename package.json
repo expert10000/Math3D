@@ -3,10 +3,16 @@
   "private": true,
   "license": "Apache-2.0",
   "version": "0.0.0",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "description": "Interactive Möbius & Chebyshev viewer (Electron + React + D3)",
   "author": "developer",
   "main": "dist/main.js",
   "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:desktop": "npm --prefix apps/desktop run dev",
     "dev": "concurrently \"npm:dev:renderer\" \"npm:dev:main\"",
     "dev:renderer": "npm --prefix renderer run dev",
     "dev:main": "electron .",
