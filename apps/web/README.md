@@ -1,9 +1,27 @@
 # Web App
 
-This app entrypoint currently proxies to the existing Vite app in `renderer/`.
+Browser target for Math3D.
 
-Planned migration target:
+## Run in browser (dev)
 
-- `apps/web/src` owns browser-specific bootstrap and routing.
-- Shared scene model and project format come from `@math3d/core`.
-- Rendering and scene construction are pulled from `@math3d/renderer`.
+```bash
+npm run dev:web
+```
+
+This starts the Vite dev server from `renderer/` so the app runs directly in a browser.
+
+## Build browser bundle
+
+```bash
+npm run build:web
+```
+
+The static web output is written to `apps/web/dist/`.
+
+## Preview browser bundle
+
+```bash
+npm run preview:web
+```
+
+This serves `apps/web/dist/` locally on port `4173`.

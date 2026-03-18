@@ -13,6 +13,7 @@ yarn-error.log*
 /playwright-report/
 /test-results/
 /site/
+/apps/web/dist/
 /docs/api/
 /docs/from-A/
 

@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "npm --prefix ../../renderer run dev",
-    "build": "npm --prefix ../../renderer run build",
-    "preview": "npm --prefix ../../renderer run preview",
+    "build": "npm --prefix ../../renderer run build:web",
+    "preview": "npm --prefix ../../renderer run preview:web",
     "test": "npm --prefix ../../renderer run test"
   }
 }

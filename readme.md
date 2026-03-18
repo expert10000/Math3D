@@ -55,32 +55,44 @@ For detailed UI behavior and workflows for Scene contents/Object/Status bar, see
 
 ## Code
 
-### Build the renderer into /dist
+### Install
 
 ```bash
 git clone https://github.com/expert10000/Math3D.git
 cd Math3D
 npm install
-cd renderer
-npm install
-cd ..
 ```
 
+### Tests
+
 ```bash
-npm run build
+npm --prefix renderer run test
+npm run test:app:startup:smoke
+npm run test:app:geometry:smoke
 ```
 
-### Build
+### Web app (browser)
 
 ```bash
-npm run build:main
-npm --prefix renderer run build
+npm run dev:web
+npm run build:web
+npm run preview:web
+```
+
+`npm run build:web` writes static browser files to `apps/web/dist/`.
+
+### Desktop app (Electron)
+
+```bash
+npm run build:core
 ```
 
 ```bash
 npm run build
 npm run dist
 ```
+
+Desktop installers stay on the existing Electron pipeline (`npm run dist`, `npm run dist:ci`, `npm run dist:dev`).
 
 ### Python setup
 
