@@ -80,6 +80,7 @@ npm run preview:web
 ```
 
 `npm run build:web` writes static browser files to `apps/web/dist/`.
+`npm run dev:web` and `npm run preview:web` also start a local worker proxy (`/api/worker` -> Python worker), so browser mode can use Python-backed CGAL/VTK features.
 
 ### Desktop app (Electron)
 
@@ -101,6 +102,12 @@ Python environment used by the app (set `MATH3D_PYTHON` if needed):
 
 ```bash
 python -m pip install numpy scipy sympy pygalmesh vtk
+```
+
+For browser proxy mode, set `MATH3D_PYTHON` if needed:
+
+```powershell
+$env:MATH3D_PYTHON = (Get-Command python).Source
 ```
 
 ### VTK implicit preview (fast)
