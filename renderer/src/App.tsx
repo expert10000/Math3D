@@ -19005,15 +19005,26 @@ case "mobius":
         </div>
       )}
       <header style={styles.header}>
-        <h1 style={styles.h1}>Math3D</h1>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 10,
+          }}
+        >
+          <h1 style={{ ...styles.h1, margin: 0 }}>Math3D</h1>
 
-        <div style={styles.tabs}>
-          <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
-            Surfaces
-          </TabButton>
-          <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
-            Geometry
-          </TabButton>
+          <div style={{ ...styles.tabs, margin: 0 }}>
+            <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
+              Surfaces
+            </TabButton>
+            <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
+              Geometry
+            </TabButton>
+          </div>
         </div>
 
         <div style={styles.controls}>
@@ -22498,6 +22509,96 @@ const MapsPanel: React.FC<{ mapId: MapId }> = ({ mapId }) => {
 
 /* ---------------- Surfaces controls ---------------- */
 
+type SurfaceGalleryCard = {
+  id: "implicit" | "explicit" | "parametric" | "weierstrass";
+  title: string;
+  subtitle: string;
+  description: string;
+  badge: "Implicit" | "Explicit" | "Parametric" | "Weierstrass";
+  thumbDataUrl: string;
+};
+
+const makeSurfaceGalleryThumb = (
+  title: string,
+  subtitle: string,
+  badge: SurfaceGalleryCard["badge"],
+  shape: "implicit" | "explicit" | "parametric" | "weierstrass"
+) => {
+  const palette =
+    badge === "Implicit"
+      ? { top: "#ecfeff", bottom: "#dbeafe", accent: "#0e7490", ink: "#164e63" }
+      : badge === "Explicit"
+        ? { top: "#fef9c3", bottom: "#fde68a", accent: "#b45309", ink: "#78350f" }
+        : badge === "Parametric"
+          ? { top: "#eef2ff", bottom: "#dbeafe", accent: "#4338ca", ink: "#312e81" }
+          : { top: "#f5f3ff", bottom: "#e9d5ff", accent: "#7c3aed", ink: "#581c87" };
+  const shapeSvg =
+    shape === "implicit"
+      ? `<path d="M20 56 C35 20, 58 20, 72 46 C86 70, 104 62, 112 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<path d="M22 66 C38 40, 62 40, 84 64" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />`
+      : shape === "explicit"
+        ? `<path d="M16 58 L114 28" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<path d="M20 68 L118 38" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.6" />
+<path d="M20 48 L118 18" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.6" />`
+        : shape === "parametric"
+          ? `<path d="M22 58 C34 30, 52 26, 66 44 C80 62, 98 56, 112 34" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<path d="M28 66 C38 42, 56 40, 74 56 C90 70, 104 64, 112 48" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />
+<path d="M28 48 C42 22, 62 20, 82 36 C96 50, 106 48, 112 36" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />`
+          : `<path d="M22 58 C36 26, 50 28, 66 46 C80 62, 96 56, 112 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<circle cx="40" cy="34" r="6" fill="none" stroke="${palette.accent}" stroke-width="2" />
+<circle cx="86" cy="38" r="5" fill="none" stroke="${palette.accent}" stroke-width="2" />
+<path d="M28 66 C40 48, 52 46, 66 58" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.7" />`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="132" height="84" viewBox="0 0 132 84">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="${palette.top}" />
+    <stop offset="100%" stop-color="${palette.bottom}" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="131" height="83" rx="10" fill="url(#g)" stroke="#d1d5db" />
+${shapeSvg}
+<rect x="8" y="64" width="116" height="14" rx="4" fill="#ffffff" opacity="0.78" />
+<text x="12" y="74" font-family="Segoe UI, Arial, sans-serif" font-size="8.5" font-weight="700" fill="${palette.ink}">${title}</text>
+<text x="12" y="12" font-family="Segoe UI, Arial, sans-serif" font-size="8" fill="${palette.ink}" opacity="0.82">${subtitle}</text>
+</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
+  {
+    id: "implicit",
+    title: "Implicit surface",
+    subtitle: "f(x,y,z)=0",
+    description: "Level-set surfaces; start with sphere.",
+    badge: "Implicit",
+    thumbDataUrl: makeSurfaceGalleryThumb("Implicit", "f(x,y,z)=0", "Implicit", "implicit"),
+  },
+  {
+    id: "explicit",
+    title: "Explicit surface",
+    subtitle: "z=f(x,y)",
+    description: "Graph surfaces with slope/curvature analysis.",
+    badge: "Explicit",
+    thumbDataUrl: makeSurfaceGalleryThumb("Explicit", "z=f(x,y)", "Explicit", "explicit"),
+  },
+  {
+    id: "parametric",
+    title: "Parametric surface",
+    subtitle: "σ(u,v)",
+    description: "Parametric families like torus, Mobius, helicoid.",
+    badge: "Parametric",
+    thumbDataUrl: makeSurfaceGalleryThumb("Parametric", "sigma(u,v)", "Parametric", "parametric"),
+  },
+  {
+    id: "weierstrass",
+    title: "Weierstrass",
+    subtitle: "Minimal surfaces",
+    description: "Holomorphic-data presets with safe domains.",
+    badge: "Weierstrass",
+    thumbDataUrl: makeSurfaceGalleryThumb("Weierstrass", "Minimal", "Weierstrass", "weierstrass"),
+  },
+];
+
 type SurfacesControlsProps = {
   viewerKind: SurfaceViewerKind;
   onChangeViewerKind: (k: SurfaceViewerKind) => void;
@@ -22553,12 +22654,100 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
-    const isVolume = datasetKind === "volume";
-    const isMesh = viewerKind === "mesh" || viewerKind === "complex";
-    const isSurface = datasetKind === "surface";
+  const isVolume = datasetKind === "volume";
+  const isMesh = viewerKind === "mesh" || viewerKind === "complex";
+  const isSurface = datasetKind === "surface";
+  const surfaceGallerySelectedId: SurfaceGalleryCard["id"] =
+    isSurface && viewerKind === "implicit"
+      ? "implicit"
+      : isSurface && viewerKind === "graph"
+        ? "explicit"
+        : isSurface && viewerKind === "param"
+          ? "parametric"
+          : isSurface && viewerKind === "weierstrass"
+            ? "weierstrass"
+            : "implicit";
+  const openSurfaceGalleryCard = (cardId: SurfaceGalleryCard["id"]) => {
+    onChangeDatasetKind("surface");
+    if (cardId === "implicit") {
+      onChangeViewerKind("implicit");
+      onChangeSurface("sphere");
+      return;
+    }
+    if (cardId === "explicit") {
+      onChangeViewerKind("graph");
+      onChangeSurface("graph_saddle");
+      return;
+    }
+    if (cardId === "parametric") {
+      onChangeViewerKind("param");
+      onChangeParamId("torus");
+      return;
+    }
+    onChangeViewerKind("weierstrass");
+    const firstPreset = WEIERSTRASS_PRESETS[0];
+    if (firstPreset) onApplyWeierstrassPreset(firstPreset);
+  };
 
   return (
     <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
+      <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Surface gallery</div>
+          <div style={{ fontSize: 10, opacity: 0.72 }}>Quick open cards</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
+          {SURFACE_GALLERY_CARDS.map((card) => {
+            const active = surfaceGallerySelectedId === card.id;
+            return (
+              <article
+                key={card.id}
+                data-testid={`surface-gallery-card-${card.id}`}
+                onClick={() => openSurfaceGalleryCard(card.id)}
+                style={{
+                  borderRadius: 8,
+                  border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
+                  background: active ? "#eef4ff" : "#fff",
+                  padding: 6,
+                  display: "grid",
+                  gap: 5,
+                  cursor: "pointer",
+                }}
+                title={card.description}
+              >
+                <img
+                  src={card.thumbDataUrl}
+                  alt={`${card.title} card`}
+                  style={{
+                    width: "100%",
+                    height: 80,
+                    borderRadius: 6,
+                    border: "1px solid #dbe2ea",
+                    objectFit: "cover",
+                    background: "#f8fafc",
+                  }}
+                />
+                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
+                <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
+                <div
+                  style={{
+                    justifySelf: "start",
+                    fontSize: 9,
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    fontWeight: 700,
+                  }}
+                >
+                  {card.badge}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
       <div style={{ display: "flex", gap: 4 }}>
         <button
           type="button"
