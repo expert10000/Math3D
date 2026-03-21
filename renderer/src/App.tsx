@@ -22926,26 +22926,26 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 <div
                   style={{
                     marginTop: 10,
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #e0e0e0",
-                    background: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Suggested safe domain</div>
-                  <div style={{ fontSize: 12 }}>
-                    u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
-                  </div>
-                  <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6 }}>
-                    {activeWeierstrassPreset.safeDomainReason}
-                  </div>
                   <button
                     type="button"
                     onClick={() => onApplySuggestedDomain(activeWeierstrassPreset)}
-                    style={{ marginTop: 8, padding: "4px 10px" }}
+                    style={{ padding: "4px 10px" }}
                   >
                     Apply suggested domain
                   </button>
+                  <details style={{ fontSize: 11, opacity: 0.85 }}>
+                    <summary style={{ cursor: "pointer", userSelect: "none" }}>Suggested safe domain</summary>
+                    <div style={{ marginTop: 4 }}>
+                      u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
+                    </div>
+                    <div style={{ marginTop: 4 }}>{activeWeierstrassPreset.safeDomainReason}</div>
+                  </details>
                 </div>
               )}
             </div>
