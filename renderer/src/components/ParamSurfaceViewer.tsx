@@ -517,6 +517,7 @@ function getDomain(surfaceId: ParamSurfaceId) {
 
     case "cylinder":
     case "cone":
+    case "rotationalDevelopable":
     case "helicoid":
     case "catenoid":
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -2, vMax: 2 };
@@ -1172,6 +1173,7 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
   const wrapU =
     surfaceId === "cylinder" ||
     surfaceId === "cone" ||
+    surfaceId === "rotationalDevelopable" ||
     surfaceId === "helicoid" ||
     surfaceId === "catenoid" ||
     surfaceId === "sphere" ||
@@ -2440,6 +2442,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             y = v * Math.sin(u);
             z = v;
             break;
+
+          case "rotationalDevelopable": {
+            const k = 0.35;
+            const r = Math.max(0.1, 1 + k * v);
+            x = r * Math.cos(u);
+            y = r * Math.sin(u);
+            z = v;
+            break;
+          }
 
           case "helicoid": {
             const a = 0.4;

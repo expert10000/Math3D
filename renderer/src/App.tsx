@@ -1835,6 +1835,12 @@ const PARAM_SURFACES_META: {
     { id: "plane", label: "Plane", formula: "σ(u,v) = (u, v, 0)", note: "Developable; K = 0." },
     { id: "cylinder", label: "Circular cylinder", formula: "σ(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
     { id: "cone", label: "Cone (away from tip)", formula: "σ(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
+    {
+      id: "rotationalDevelopable",
+      label: "Rotational (developed)",
+      formula: "σ(u,v) = ((1 + k v) cos u, (1 + k v) sin u, v)",
+      note: "Developable surface of revolution (cone/frustum family).",
+    },
     { id: "helicoid", label: "Helicoid", formula: "σ(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
     { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal surface of revolution." },
     { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
@@ -1861,6 +1867,8 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
   switch (id) {
     case "expCone":
       return { uMin: 0.15, uMax: 2.8, vMin: 0, vMax: 2 * Math.PI };
+    case "rotationalDevelopable":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.8, vMax: 1.8 };
 
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };

@@ -47,6 +47,7 @@ export type ParamSurfaceId =
   | "plane"
   | "cylinder"
   | "cone"
+  | "rotationalDevelopable"
   | "helicoid"
   | "catenoid"
   | "sphere"

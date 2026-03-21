@@ -228,6 +228,14 @@ const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
       y = v * Math.sin(u);
       z = v;
       break;
+    case "rotationalDevelopable": {
+      const k = 0.35;
+      const r = Math.max(0.1, 1 + k * v);
+      x = r * Math.cos(u);
+      y = r * Math.sin(u);
+      z = v;
+      break;
+    }
     case "helicoid": {
       const a = 0.4;
       x = v * Math.cos(u);
