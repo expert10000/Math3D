@@ -236,6 +236,35 @@ const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
       z = v;
       break;
     }
+    case "rotationalGraph": {
+      const f = 0.55 + 0.35 * v * v;
+      x = f * Math.cos(u);
+      y = f * Math.sin(u);
+      z = v;
+      break;
+    }
+    case "rotationalBell": {
+      const r = Math.max(0.1, 1 + 0.2 * Math.sin(3 * v));
+      x = r * Math.cos(u);
+      y = r * Math.sin(u);
+      z = v;
+      break;
+    }
+    case "rotationalHyperboloid": {
+      const a = 0.8;
+      const c = 0.9;
+      x = a * Math.cosh(v) * Math.cos(u);
+      y = a * Math.cosh(v) * Math.sin(u);
+      z = c * Math.sinh(v);
+      break;
+    }
+    case "rotationalFreeProfile": {
+      const r = Math.max(0.15, 0.55 + 0.12 * v + 0.08 * v * v - 0.015 * v * v * v);
+      x = r * Math.cos(u);
+      y = r * Math.sin(u);
+      z = v + 0.15 * Math.sin(1.7 * v);
+      break;
+    }
     case "helicoid": {
       const a = 0.4;
       x = v * Math.cos(u);
@@ -253,6 +282,14 @@ const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
       x = R * Math.sin(v) * Math.cos(u);
       y = R * Math.sin(v) * Math.sin(u);
       z = R * Math.cos(v);
+      break;
+    }
+    case "rotationalSpheroid": {
+      const a = 1.15;
+      const c = 0.75;
+      x = a * Math.sin(v) * Math.cos(u);
+      y = a * Math.sin(v) * Math.sin(u);
+      z = c * Math.cos(v);
       break;
     }
     case "ellipsoid": {

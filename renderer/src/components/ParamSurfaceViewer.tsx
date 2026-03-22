@@ -517,12 +517,27 @@ function getDomain(surfaceId: ParamSurfaceId) {
 
     case "cylinder":
     case "cone":
-    case "rotationalDevelopable":
     case "helicoid":
     case "catenoid":
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -2, vMax: 2 };
 
+    case "rotationalDevelopable":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.8, vMax: 1.8 };
+
+    case "rotationalGraph":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+
+    case "rotationalBell":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.4, vMax: 2.4 };
+
+    case "rotationalHyperboloid":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.2, vMax: 1.2 };
+
+    case "rotationalFreeProfile":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+
     case "sphere":
+    case "rotationalSpheroid":
     case "ellipsoid":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: Math.PI };
 
@@ -1174,6 +1189,11 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
     surfaceId === "cylinder" ||
     surfaceId === "cone" ||
     surfaceId === "rotationalDevelopable" ||
+    surfaceId === "rotationalGraph" ||
+    surfaceId === "rotationalBell" ||
+    surfaceId === "rotationalSpheroid" ||
+    surfaceId === "rotationalHyperboloid" ||
+    surfaceId === "rotationalFreeProfile" ||
     surfaceId === "helicoid" ||
     surfaceId === "catenoid" ||
     surfaceId === "sphere" ||
@@ -2452,6 +2472,39 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             break;
           }
 
+          case "rotationalGraph": {
+            const f = 0.55 + 0.35 * v * v;
+            x = f * Math.cos(u);
+            y = f * Math.sin(u);
+            z = v;
+            break;
+          }
+
+          case "rotationalBell": {
+            const r = Math.max(0.1, 1 + 0.2 * Math.sin(3 * v));
+            x = r * Math.cos(u);
+            y = r * Math.sin(u);
+            z = v;
+            break;
+          }
+
+          case "rotationalHyperboloid": {
+            const a = 0.8;
+            const c = 0.9;
+            x = a * Math.cosh(v) * Math.cos(u);
+            y = a * Math.cosh(v) * Math.sin(u);
+            z = c * Math.sinh(v);
+            break;
+          }
+
+          case "rotationalFreeProfile": {
+            const r = Math.max(0.15, 0.55 + 0.12 * v + 0.08 * v * v - 0.015 * v * v * v);
+            x = r * Math.cos(u);
+            y = r * Math.sin(u);
+            z = v + 0.15 * Math.sin(1.7 * v);
+            break;
+          }
+
           case "helicoid": {
             const a = 0.4;
             x = v * Math.cos(u);
@@ -2471,6 +2524,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             x = R * Math.sin(v) * Math.cos(u);
             y = R * Math.sin(v) * Math.sin(u);
             z = R * Math.cos(v);
+            break;
+          }
+
+          case "rotationalSpheroid": {
+            const a = 1.15;
+            const c = 0.75;
+            x = a * Math.sin(v) * Math.cos(u);
+            y = a * Math.sin(v) * Math.sin(u);
+            z = c * Math.cos(v);
             break;
           }
 

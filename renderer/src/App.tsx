@@ -1832,43 +1832,100 @@ const PARAM_SURFACES_META: {
   formula: string;
   note: string;
 }[] = [
-    { id: "plane", label: "Plane", formula: "σ(u,v) = (u, v, 0)", note: "Developable; K = 0." },
-    { id: "cylinder", label: "Circular cylinder", formula: "σ(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
-    { id: "cone", label: "Cone (away from tip)", formula: "σ(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
-    {
-      id: "rotationalDevelopable",
-      label: "Rotational (developed)",
-      formula: "σ(u,v) = ((1 + k v) cos u, (1 + k v) sin u, v)",
-      note: "Developable surface of revolution (cone/frustum family).",
-    },
-    { id: "helicoid", label: "Helicoid", formula: "σ(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
-    { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal surface of revolution." },
-    { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
-    { id: "ellipsoid", label: "Ellipsoid", formula: "σ(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
-    { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (u cos v, u sin v, u^2)", note: "Parametric paraboloid." },
-    { id: "pseudosphere", label: "Pseudosphere", formula: "σ(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Constant negative curvature surface." },
-    { id: "dini", label: "Dini surface", formula: "σ(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
-    { id: "twistedStrip", label: "Twisted strip", formula: "σ(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
-    { id: "torus", label: "Torus", formula: "σ(u,v) = ((R + r cos v) cos u, (R + r cos v) sin u, r sin v)", note: "Donut surface." },
-    { id: "mobius", label: "Möbius strip", formula: "σ(u,v) ≈ ((1 + v/2 cos(u/2)) cos u, …)", note: "Non-orientable strip." },
-    { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
-    { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "σ(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
-    { id: "enneper", label: "Enneper surface", formula: "σ(u,v) = (u − u³/3 + u v², v − v³/3 + v u², u² − v²)", note: "Minimal; self-intersections." },
-      { id: "expCone", label: "Exp cone", formula: "σ(u,v) = (e^u cos v, e^u sin v, u)", note: "u>0; v is angle." },
-
+  { id: "plane", label: "Plane", formula: "σ(u,v) = (u, v, 0)", note: "Developable; K = 0." },
+  {
+    id: "rotationalDevelopable",
+    label: "Rotational linear profile",
+    formula: "σ(u,v) = ((a + b v) cos u, (a + b v) sin u, v)",
+    note: "Cylindrical / conical rotational family; developable.",
+  },
+  {
+    id: "rotationalGraph",
+    label: "Rotational graph",
+    formula: "σ(u,v) = (f(v) cos u, f(v) sin u, v)",
+    note: "Graph-type rotational surface with profile f(v).",
+  },
+  {
+    id: "rotationalBell",
+    label: "Bell / vase rotational",
+    formula: "σ(u,v) = ((1 + 0.2 sin 3v) cos u, (1 + 0.2 sin 3v) sin u, v)",
+    note: "Oscillating profile around axis (vase-like family).",
+  },
+  {
+    id: "rotationalSpheroid",
+    label: "Spheroid of revolution",
+    formula: "σ(u,v) = (a sin v cos u, a sin v sin u, c cos v)",
+    note: "Ellipsoid of revolution around the z-axis.",
+  },
+  {
+    id: "rotationalHyperboloid",
+    label: "Hyperboloid rotational",
+    formula: "σ(u,v) = (a cosh v cos u, a cosh v sin u, c sinh v)",
+    note: "One-sheet hyperboloid as a rotational classical surface.",
+  },
+  {
+    id: "rotationalFreeProfile",
+    label: "Free-profile rotational",
+    formula: "σ(u,v) = (r(v) cos u, r(v) sin u, z(v))",
+    note: "Generic profile template; edit further with Custom σ(u,v).",
+  },
+  { id: "cylinder", label: "Circular cylinder", formula: "σ(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
+  { id: "cone", label: "Cone (away from tip)", formula: "σ(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
+  { id: "helicoid", label: "Helicoid", formula: "σ(u,v) = (v cos u, v sin u, a u)", note: "Minimal ruled surface." },
+  { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal rotational surface." },
+  { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
+  { id: "ellipsoid", label: "Ellipsoid", formula: "σ(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
+  { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (u cos v, u sin v, u^2)", note: "Rotational graph surface." },
+  { id: "pseudosphere", label: "Pseudosphere", formula: "σ(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Classical rotational negative-curvature surface." },
+  { id: "dini", label: "Dini surface", formula: "σ(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
+  { id: "twistedStrip", label: "Twisted strip", formula: "σ(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
+  { id: "torus", label: "Torus", formula: "σ(u,v) = ((R + r cos v) cos u, (R + r cos v) sin u, r sin v)", note: "Torus as special rotational family." },
+  { id: "mobius", label: "Möbius strip", formula: "σ(u,v) ≈ ((1 + v/2 cos(u/2)) cos u, …)", note: "Non-orientable strip." },
+  { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
+  { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "σ(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
+  { id: "enneper", label: "Enneper surface", formula: "σ(u,v) = (u − u³/3 + u v², v − v³/3 + v u², u² − v²)", note: "Minimal; self-intersections." },
+  { id: "expCone", label: "Exp cone / funnel", formula: "σ(u,v) = (u cos v, u sin v, log u)", note: "Graph-type rotational funnel (u>0)." },
   { id: "helicoidUV", label: "Helicoid (u,v)", formula: "σ(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
   { id: "boy", label: "Boy's surface", formula: "σ(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
+  { id: "custom", label: "Custom σ(u,v)", formula: "σ(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
+];
 
-    { id: "custom", label: "Custom σ(u,v)", formula: "σ(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
-  ];
+const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "rotationalDevelopable",
+  "rotationalGraph",
+  "rotationalBell",
+  "rotationalSpheroid",
+  "rotationalHyperboloid",
+  "rotationalFreeProfile",
+  "cylinder",
+  "cone",
+  "paraboloid",
+  "expCone",
+  "sphere",
+  "torus",
+  "pseudosphere",
+  "catenoid",
+]);
+
+const isRotationalParamSurfaceId = (id: ParamSurfaceId): boolean => ROTATIONAL_PARAM_SURFACE_IDS.has(id);
 
 function getParamDomainPreviewBounds(id: ParamSurfaceId) {
   // keep these consistent with ParamSurfaceViewer's domain switch
   switch (id) {
-    case "expCone":
-      return { uMin: 0.15, uMax: 2.8, vMin: 0, vMax: 2 * Math.PI };
     case "rotationalDevelopable":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.8, vMax: 1.8 };
+    case "rotationalGraph":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "rotationalBell":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.4, vMax: 2.4 };
+    case "rotationalSpheroid":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: Math.PI };
+    case "rotationalHyperboloid":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.2, vMax: 1.2 };
+    case "rotationalFreeProfile":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "expCone":
+      return { uMin: 0.15, uMax: 2.8, vMin: 0, vMax: 2 * Math.PI };
 
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
@@ -23056,28 +23113,81 @@ type ParamSurfacesButtonsProps = {
   onChangeParamId: (p: ParamSurfaceId) => void;
 };
 
-const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, onChangeParamId }) => (
-  <div style={styles.presetsRow}>
-    {PARAM_SURFACES_META.map((s) => (
-      <button
-        key={s.id}
-        type="button"
-        onClick={() => onChangeParamId(s.id)}
-        style={{
-          padding: "6px 10px",
-          borderRadius: 6,
-          border: "1px solid " + (paramId === s.id ? "#0a66c2" : "#ddd"),
-          background: paramId === s.id ? "#e6f0ff" : "#fff",
-          fontWeight: paramId === s.id ? 600 : 400,
-          cursor: "pointer",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {s.label}
-      </button>
-    ))}
-  </div>
-);
+const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, onChangeParamId }) => {
+  const [tab, setTab] = useState<"general" | "rotational">(
+    isRotationalParamSurfaceId(paramId) ? "rotational" : "general"
+  );
+
+  useEffect(() => {
+    setTab(isRotationalParamSurfaceId(paramId) ? "rotational" : "general");
+  }, [paramId]);
+
+  const entries = useMemo(() => {
+    if (tab === "rotational") return PARAM_SURFACES_META.filter((s) => isRotationalParamSurfaceId(s.id));
+    return PARAM_SURFACES_META.filter((s) => !isRotationalParamSurfaceId(s.id));
+  }, [tab]);
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <button
+          type="button"
+          onClick={() => setTab("general")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (tab === "general" ? "#0a66c2" : "#ddd"),
+            background: tab === "general" ? "#e6f0ff" : "#fff",
+            fontWeight: tab === "general" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          General
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("rotational")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (tab === "rotational" ? "#0a66c2" : "#ddd"),
+            background: tab === "rotational" ? "#e6f0ff" : "#fff",
+            fontWeight: tab === "rotational" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Rotational
+        </button>
+      </div>
+      {tab === "rotational" && (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          General form: σ(u,v) = (r(v) cos u, r(v) sin u, z(v))
+        </div>
+      )}
+      <div style={styles.presetsRow}>
+        {entries.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => onChangeParamId(s.id)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid " + (paramId === s.id ? "#0a66c2" : "#ddd"),
+              background: paramId === s.id ? "#e6f0ff" : "#fff",
+              fontWeight: paramId === s.id ? 600 : 400,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title={s.formula}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 type UnifiedObjectTreePanelProps = {
   title?: string;
