@@ -202,6 +202,11 @@ import {
 } from "./scene/volume/vectorPresets";
 import { buildSliceSeeds } from "./scene/volume/streamlines";
 import {
+  getDefaultRotationalProfileExpressions,
+  supportsGeneralRotationalProfile,
+  type RotationalProfileMode,
+} from "./math/rotationalSurface";
+import {
   createDefaultWorkbook,
   createWorkbookFromTemplate,
   WORKBOOK_TEMPLATES,
@@ -1836,14 +1841,14 @@ const PARAM_SURFACES_META: {
   {
     id: "rotationalDevelopable",
     label: "Rotational linear profile",
-    formula: "σ(u,v) = ((a + b v) cos u, (a + b v) sin u, v)",
-    note: "Cylindrical / conical rotational family; developable.",
+    formula: "σ(u,v) = ((a + b v) cos u, (a + b v) sin u, c + d v)",
+    note: "Linear profile (r(v), z(v)); cylinder/cone/frustum family.",
   },
   {
     id: "rotationalGraph",
     label: "Rotational graph",
     formula: "σ(u,v) = (f(v) cos u, f(v) sin u, v)",
-    note: "Graph-type rotational surface with profile f(v).",
+    note: "Function-profile form with r(v)=f(v), z(v)=v.",
   },
   {
     id: "rotationalBell",
@@ -1867,7 +1872,7 @@ const PARAM_SURFACES_META: {
     id: "rotationalFreeProfile",
     label: "Free-profile rotational",
     formula: "σ(u,v) = (r(v) cos u, r(v) sin u, z(v))",
-    note: "Generic profile template; edit further with Custom σ(u,v).",
+    note: "General parametric profile (r(v), z(v)); most general rotational form.",
   },
   { id: "cylinder", label: "Circular cylinder", formula: "σ(u,v) = (cos u, sin u, v)", note: "One principal curvature is 0." },
   { id: "cone", label: "Cone (away from tip)", formula: "σ(u,v) = (v cos u, v sin u, v)", note: "Rulings through a vertex; tip is singular." },
@@ -1875,7 +1880,7 @@ const PARAM_SURFACES_META: {
   { id: "catenoid", label: "Catenoid", formula: "σ(u,v) = (cosh v cos u, cosh v sin u, v)", note: "Minimal rotational surface." },
   { id: "sphere", label: "Sphere", formula: "σ(u,v) = (R sin v cos u, R sin v sin u, R cos v)", note: "Spherical coordinates." },
   { id: "ellipsoid", label: "Ellipsoid", formula: "σ(u,v) = (a sin v cos u, b sin v sin u, c cos v)", note: "Scaled sphere with three axes." },
-  { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (u cos v, u sin v, u^2)", note: "Rotational graph surface." },
+  { id: "paraboloid", label: "Paraboloid (param)", formula: "σ(u,v) = (v cos u, v sin u, v^2)", note: "Rotational graph surface." },
   { id: "pseudosphere", label: "Pseudosphere", formula: "σ(u,v) = (cos u sech v, sin u sech v, v - tanh v)", note: "Classical rotational negative-curvature surface." },
   { id: "dini", label: "Dini surface", formula: "σ(u,v) = (cos u sin v, sin u sin v, cos v + log tan(v/2) + b u)", note: "Twisted pseudosphere." },
   { id: "twistedStrip", label: "Twisted strip", formula: "σ(u,v) = ((1+v cos 2u) cos u, (1+v cos 2u) sin u, v sin 2u)", note: "Strip with two twists." },
@@ -1884,7 +1889,7 @@ const PARAM_SURFACES_META: {
   { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
   { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "σ(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
   { id: "enneper", label: "Enneper surface", formula: "σ(u,v) = (u − u³/3 + u v², v − v³/3 + v u², u² − v²)", note: "Minimal; self-intersections." },
-  { id: "expCone", label: "Exp cone / funnel", formula: "σ(u,v) = (u cos v, u sin v, log u)", note: "Graph-type rotational funnel (u>0)." },
+  { id: "expCone", label: "Exp cone / funnel", formula: "σ(u,v) = (v cos u, v sin u, log v)", note: "Graph-type rotational funnel (v>0)." },
   { id: "helicoidUV", label: "Helicoid (u,v)", formula: "σ(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
   { id: "boy", label: "Boy's surface", formula: "σ(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
   { id: "custom", label: "Custom σ(u,v)", formula: "σ(u,v) = (X(u,v), Y(u,v), Z(u,v))", note: "User-defined parametrisation." },
@@ -1909,6 +1914,40 @@ const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
 
 const isRotationalParamSurfaceId = (id: ParamSurfaceId): boolean => ROTATIONAL_PARAM_SURFACE_IDS.has(id);
 
+type RotationalProfileFamily = "linear" | "function" | "parametric" | "splinePoints";
+type RotationalProfileFamilyFilter = RotationalProfileFamily | "all";
+
+const ROTATIONAL_PROFILE_FAMILY_BY_ID: Partial<Record<ParamSurfaceId, RotationalProfileFamily>> = {
+  rotationalDevelopable: "linear",
+  cylinder: "linear",
+  cone: "linear",
+
+  rotationalGraph: "function",
+  rotationalBell: "function",
+  paraboloid: "function",
+  expCone: "function",
+  catenoid: "function",
+
+  rotationalSpheroid: "parametric",
+  rotationalHyperboloid: "parametric",
+  sphere: "parametric",
+  torus: "parametric",
+  pseudosphere: "parametric",
+
+  rotationalFreeProfile: "splinePoints",
+};
+
+const rotationalProfileFamilyFor = (id: ParamSurfaceId): RotationalProfileFamily =>
+  ROTATIONAL_PROFILE_FAMILY_BY_ID[id] ?? "parametric";
+
+const ROTATIONAL_PROFILE_FAMILY_FILTERS: { value: RotationalProfileFamilyFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "linear", label: "Linear profile" },
+  { value: "function", label: "Function profile" },
+  { value: "parametric", label: "Parametric profile" },
+  { value: "splinePoints", label: "Spline / point profile" },
+];
+
 function getParamDomainPreviewBounds(id: ParamSurfaceId) {
   // keep these consistent with ParamSurfaceViewer's domain switch
   switch (id) {
@@ -1925,7 +1964,7 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
     case "rotationalFreeProfile":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
     case "expCone":
-      return { uMin: 0.15, uMax: 2.8, vMin: 0, vMax: 2 * Math.PI };
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0.15, vMax: 2.8 };
 
     case "helicoidUV":
       return { uMin: 0, uMax: 1.8, vMin: 0, vMax: 6 * Math.PI };
@@ -1933,7 +1972,7 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
       return { uMin: 0, uMax: Math.PI, vMin: 0, vMax: Math.PI };
 
     case "paraboloid":
-      return { uMin: 0, uMax: 2, vMin: 0, vMax: 2 * Math.PI };
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 };
 
     case "pseudosphere":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2.6 };
@@ -2082,6 +2121,48 @@ function normalizeParamDomain(d: ParamDomain, fallback: ParamDomain): ParamDomai
   if (u0 > u1) [u0, u1] = [u1, u0];
   if (v0 > v1) [v0, v1] = [v1, v0];
   return { uMin: u0, uMax: u1, vMin: v0, vMax: v1 };
+}
+
+function migrateLegacyRotationalUvDomain(surfaceId: ParamSurfaceId, domain: ParamDomain): ParamDomain {
+  const fallback = getParamDomainPreviewBounds(surfaceId);
+  const normalized = normalizeParamDomain(domain, fallback);
+  const uSpan = normalized.uMax - normalized.uMin;
+  const vSpan = normalized.vMax - normalized.vMin;
+  const looksLikeLegacyAngleRange = normalized.vMin >= -0.25 && vSpan >= 5.4;
+
+  if (surfaceId === "paraboloid") {
+    // Legacy convention used u as radius and v as angle.
+    if (normalized.uMin >= -0.25 && uSpan <= 3.6 && looksLikeLegacyAngleRange) {
+      return normalizeParamDomain(
+        {
+          uMin: normalized.vMin,
+          uMax: normalized.vMax,
+          vMin: normalized.uMin,
+          vMax: normalized.uMax,
+        },
+        fallback
+      );
+    }
+    return normalized;
+  }
+
+  if (surfaceId === "expCone") {
+    // Legacy convention used u as radius and v as angle.
+    if (normalized.uMin >= 0 && uSpan <= 3.2 && looksLikeLegacyAngleRange) {
+      return normalizeParamDomain(
+        {
+          uMin: normalized.vMin,
+          uMax: normalized.vMax,
+          vMin: normalized.uMin,
+          vMax: normalized.uMax,
+        },
+        fallback
+      );
+    }
+    return normalized;
+  }
+
+  return normalized;
 }
 
 function bboxDiag(b: BBox3) {
@@ -2757,6 +2838,15 @@ function autoLabelParamDomain(p: ParamDomain) {
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
 type Vec3 = { x: number; y: number; z: number };
+const DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT = [
+  "-2.0, 0.24, -1.8",
+  "-1.2, 0.5, -1.1",
+  "-0.2, 0.85, -0.2",
+  "0.8, 0.6, 0.9",
+  "1.8, 0.34, 1.7",
+].join("\n");
+const DEFAULT_ROTATIONAL_AXIS_ORIGIN: Vec3 = { x: 0, y: 0, z: 0 };
+const DEFAULT_ROTATIONAL_AXIS_DIRECTION: Vec3 = { x: 0, y: 0, z: 1 };
 const vLen = (v: Vec3) => Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 const vDot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
 const vScale = (v: Vec3, s: number): Vec3 => ({ x: v.x * s, y: v.y * s, z: v.z * s });
@@ -7108,6 +7198,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramXExpr, setParamXExpr] = useState("u");
   const [paramYExpr, setParamYExpr] = useState("v");
   const [paramZExpr, setParamZExpr] = useState("0");
+  const [rotationalProfileMode, setRotationalProfileMode] = useState<RotationalProfileMode>("formula");
+  const [rotationalProfileRExpr, setRotationalProfileRExpr] = useState("");
+  const [rotationalProfileZExpr, setRotationalProfileZExpr] = useState("");
+  const [rotationalProfilePointsText, setRotationalProfilePointsText] = useState(
+    DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT
+  );
+  const [rotationalAxisOrigin, setRotationalAxisOrigin] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_ORIGIN);
+  const [rotationalAxisDirection, setRotationalAxisDirection] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_DIRECTION);
   const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
   const [weierstrassPhiExpr, setWeierstrassPhiExpr] = useState(WEIERSTRASS_DEFAULTS.phiExpr);
   const [weierstrassDomain, setWeierstrassDomain] = useState<ParamDomain>(WEIERSTRASS_DEFAULTS.domain);
@@ -7590,7 +7688,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const raw = safeParseRecord<ParamDomain>(localStorage.getItem("mathapp.domainState.param.v1"));
     const out: Record<string, ParamDomain> = {};
     for (const key of Object.keys(raw)) {
-      out[key] = normalizeParamDomain(raw[key], getParamDomainPreviewBounds(key as ParamSurfaceId));
+      out[key] = migrateLegacyRotationalUvDomain(key as ParamSurfaceId, raw[key]);
     }
     return out;
   });
@@ -8220,11 +8318,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     ]
   );
   const activeParamDomain = useMemo(
-    () =>
-      normalizeParamDomain(
-        paramDomains[paramSurfaceId] ?? getParamDomainPreviewBounds(paramSurfaceId),
-        getParamDomainPreviewBounds(paramSurfaceId)
-      ),
+    () => migrateLegacyRotationalUvDomain(paramSurfaceId, paramDomains[paramSurfaceId] ?? getParamDomainPreviewBounds(paramSurfaceId)),
     [
       paramSurfaceId,
       paramDomains[paramSurfaceId]?.uMin,
@@ -8334,6 +8428,26 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return { ...prev, [paramSurfaceId]: getParamDomainPreviewBounds(paramSurfaceId) };
     });
   }, [paramSurfaceId]);
+
+  useEffect(() => {
+    setParamDomains((prev) => {
+      let changed = false;
+      const next: Record<string, ParamDomain> = { ...prev };
+      for (const [key, value] of Object.entries(prev)) {
+        const migrated = migrateLegacyRotationalUvDomain(key as ParamSurfaceId, value);
+        if (
+          migrated.uMin !== value.uMin ||
+          migrated.uMax !== value.uMax ||
+          migrated.vMin !== value.vMin ||
+          migrated.vMax !== value.vMax
+        ) {
+          next[key] = migrated;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
 
   useEffect(() => {
     if (!compareEnabled) return;
@@ -10307,6 +10421,12 @@ case "mobius":
     paramXExpr,
     paramYExpr,
     paramZExpr,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin,
+    rotationalAxisDirection,
     weierstrassGExpr,
     weierstrassPhiExpr,
     weierstrassRecenter,
@@ -12878,6 +12998,12 @@ case "mobius":
         customX: paramXExpr,
         customY: paramYExpr,
         customZ: paramZExpr,
+        rotationalProfileMode,
+        rotationalProfileRExpr,
+        rotationalProfileZExpr,
+        rotationalProfilePointsText,
+        rotationalAxisOrigin,
+        rotationalAxisDirection,
       });
       if ("error" in baked) {
         setSurfaceMeshImportError(baked.error);
@@ -12930,6 +13056,12 @@ case "mobius":
     paramXExpr,
     paramYExpr,
     paramZExpr,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin,
+    rotationalAxisDirection,
     weierstrassGExpr,
     weierstrassPhiExpr,
     activeWeierstrassDomain,
@@ -18687,6 +18819,12 @@ case "mobius":
                   paramXExpr={paramXExpr}
                   paramYExpr={paramYExpr}
                   paramZExpr={paramZExpr}
+                  rotationalProfileMode={rotationalProfileMode}
+                  rotationalProfileRExpr={rotationalProfileRExpr}
+                  rotationalProfileZExpr={rotationalProfileZExpr}
+                  rotationalProfilePointsText={rotationalProfilePointsText}
+                  rotationalAxisOrigin={rotationalAxisOrigin}
+                  rotationalAxisDirection={rotationalAxisDirection}
                   complexMapSpec={complexMapSpec}
                   complexMapPresetId={complexMapPresetId}
                   complexMapError={complexMapError}
@@ -18768,6 +18906,12 @@ case "mobius":
                   onChangeParamXExpr={setParamXExpr}
                   onChangeParamYExpr={setParamYExpr}
                   onChangeParamZExpr={setParamZExpr}
+                  onChangeRotationalProfileMode={setRotationalProfileMode}
+                  onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+                  onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+                  onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                  onChangeRotationalAxisOrigin={setRotationalAxisOrigin}
+                  onChangeRotationalAxisDirection={setRotationalAxisDirection}
                   onChangeComplexMapSpec={updateComplexMapSpec}
                   onChangeComplexMapPreset={applyComplexMapPreset}
                   onBuildComplexMapSweep={handleBuildComplexMapSweep}
@@ -19130,6 +19274,14 @@ case "mobius":
                 setCompareParamId(id);
                 setCompareUseSnapshotB(false);
               }}
+              rotationalProfileMode={rotationalProfileMode}
+              rotationalProfileRExpr={rotationalProfileRExpr}
+              rotationalProfileZExpr={rotationalProfileZExpr}
+              rotationalProfilePointsText={rotationalProfilePointsText}
+              onChangeRotationalProfileMode={setRotationalProfileMode}
+              onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+              onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+              onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
             />
           ) : mode === "geometry" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
@@ -19682,6 +19834,12 @@ case "mobius":
                             customX={paramXExpr}
                             customY={paramYExpr}
                             customZ={paramZExpr}
+                            rotationalProfileMode={rotationalProfileMode}
+                            rotationalProfileRExpr={rotationalProfileRExpr}
+                            rotationalProfileZExpr={rotationalProfileZExpr}
+                            rotationalProfilePointsText={rotationalProfilePointsText}
+                            rotationalAxisOrigin={rotationalAxisOrigin}
+                            rotationalAxisDirection={rotationalAxisDirection}
                             wireframe={primaryOverlay.showWireframe}
                             showPlanes={primaryOverlay.showPlanes}
                             showPrincipalProjections={showPrincipalProjections}
@@ -19952,6 +20110,12 @@ case "mobius":
                               customX={paramXExpr}
                               customY={paramYExpr}
                               customZ={paramZExpr}
+                              rotationalProfileMode={rotationalProfileMode}
+                              rotationalProfileRExpr={rotationalProfileRExpr}
+                              rotationalProfileZExpr={rotationalProfileZExpr}
+                              rotationalProfilePointsText={rotationalProfilePointsText}
+                              rotationalAxisOrigin={rotationalAxisOrigin}
+                              rotationalAxisDirection={rotationalAxisDirection}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
                               showPrincipalProjections={showPrincipalProjections}
@@ -22689,6 +22853,14 @@ type SurfacesControlsProps = {
   onChangeCompareSurface: (s: SurfaceId) => void;
   compareParamId: ParamSurfaceId;
   onChangeCompareParamId: (p: ParamSurfaceId) => void;
+  rotationalProfileMode: RotationalProfileMode;
+  rotationalProfileRExpr: string;
+  rotationalProfileZExpr: string;
+  rotationalProfilePointsText: string;
+  onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
+  onChangeRotationalProfileRExpr: (s: string) => void;
+  onChangeRotationalProfileZExpr: (s: string) => void;
+  onChangeRotationalProfilePointsText: (s: string) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -22716,6 +22888,14 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeCompareSurface,
   compareParamId,
   onChangeCompareParamId,
+  rotationalProfileMode,
+  rotationalProfileRExpr,
+  rotationalProfileZExpr,
+  rotationalProfilePointsText,
+  onChangeRotationalProfileMode,
+  onChangeRotationalProfileRExpr,
+  onChangeRotationalProfileZExpr,
+  onChangeRotationalProfilePointsText,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -22942,7 +23122,21 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           {viewerKind === "graph" && (
             <SurfacesButtons surfaceId={surfaceId} surfaces={graphSurfaces} onChangeSurface={onChangeSurface} />
           )}
-          {viewerKind === "param" && <ParamSurfacesButtons paramId={paramId} onChangeParamId={onChangeParamId} />}
+          {viewerKind === "param" && (
+            <ParamSurfacesButtons
+              paramId={paramId}
+              onChangeParamId={onChangeParamId}
+              rotationalProfileMode={rotationalProfileMode}
+              rotationalProfileRExpr={rotationalProfileRExpr}
+              rotationalProfileZExpr={rotationalProfileZExpr}
+              rotationalProfilePointsText={rotationalProfilePointsText}
+              onChangeRotationalProfileMode={onChangeRotationalProfileMode}
+              onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
+              onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
+              onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
+              showProfileEditor
+            />
+          )}
           {viewerKind === "weierstrass" && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
@@ -23111,21 +23305,52 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, 
 type ParamSurfacesButtonsProps = {
   paramId: ParamSurfaceId;
   onChangeParamId: (p: ParamSurfaceId) => void;
+  rotationalProfileMode?: RotationalProfileMode;
+  rotationalProfileRExpr?: string;
+  rotationalProfileZExpr?: string;
+  rotationalProfilePointsText?: string;
+  onChangeRotationalProfileMode?: (mode: RotationalProfileMode) => void;
+  onChangeRotationalProfileRExpr?: (s: string) => void;
+  onChangeRotationalProfileZExpr?: (s: string) => void;
+  onChangeRotationalProfilePointsText?: (s: string) => void;
+  showProfileEditor?: boolean;
 };
 
-const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, onChangeParamId }) => {
+const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
+  paramId,
+  onChangeParamId,
+  rotationalProfileMode = "formula",
+  rotationalProfileRExpr = "",
+  rotationalProfileZExpr = "",
+  rotationalProfilePointsText = "",
+  onChangeRotationalProfileMode = () => {},
+  onChangeRotationalProfileRExpr = () => {},
+  onChangeRotationalProfileZExpr = () => {},
+  onChangeRotationalProfilePointsText = () => {},
+  showProfileEditor = false,
+}) => {
   const [tab, setTab] = useState<"general" | "rotational">(
     isRotationalParamSurfaceId(paramId) ? "rotational" : "general"
   );
+  const [rotationalFamilyFilter, setRotationalFamilyFilter] = useState<RotationalProfileFamilyFilter>("all");
 
   useEffect(() => {
     setTab(isRotationalParamSurfaceId(paramId) ? "rotational" : "general");
   }, [paramId]);
 
   const entries = useMemo(() => {
-    if (tab === "rotational") return PARAM_SURFACES_META.filter((s) => isRotationalParamSurfaceId(s.id));
+    if (tab === "rotational") {
+      const rotationalEntries = PARAM_SURFACES_META.filter((s) => isRotationalParamSurfaceId(s.id));
+      if (rotationalFamilyFilter === "all") return rotationalEntries;
+      return rotationalEntries.filter((s) => rotationalProfileFamilyFor(s.id) === rotationalFamilyFilter);
+    }
     return PARAM_SURFACES_META.filter((s) => !isRotationalParamSurfaceId(s.id));
-  }, [tab]);
+  }, [tab, rotationalFamilyFilter]);
+  const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
+  const showRotationalProfileEditorInline =
+    showProfileEditor &&
+    tab === "rotational" &&
+    isRotationalParamSurfaceId(paramId);
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -23160,9 +23385,36 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, on
         </button>
       </div>
       {tab === "rotational" && (
-        <div style={{ fontSize: 11, opacity: 0.8 }}>
-          General form: σ(u,v) = (r(v) cos u, r(v) sin u, z(v))
-        </div>
+        <>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>
+            Profile map: (r(v), z(v)) ↦ (r(v) cos u, r(v) sin u, z(v))
+          </div>
+          <div style={styles.presetsRow}>
+            {ROTATIONAL_PROFILE_FAMILY_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setRotationalFamilyFilter(f.value)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: "1px solid " + (rotationalFamilyFilter === f.value ? "#0a66c2" : "#ddd"),
+                  background: rotationalFamilyFilter === f.value ? "#e6f0ff" : "#fff",
+                  fontWeight: rotationalFamilyFilter === f.value ? 600 : 400,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {rotationalFamilyFilter === "splinePoints" && (
+            <div style={{ fontSize: 11, opacity: 0.8 }}>
+              Use rotational mode <code>points</code> or <code>spline</code> in the left panel editor.
+            </div>
+          )}
+        </>
       )}
       <div style={styles.presetsRow}>
         {entries.map((s) => (
@@ -23185,6 +23437,89 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({ paramId, on
           </button>
         ))}
       </div>
+      {showRotationalProfileEditorInline && (
+        <div
+          style={{
+            marginTop: 8,
+            border: "1px solid #dbe4f0",
+            borderRadius: 8,
+            background: "#f8fbff",
+            padding: "8px 10px",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Rotational profile editor</div>
+          <div style={styles.presetsRow}>
+            {(["formula", "points", "spline"] as const).map((mode) => (
+              <button
+                key={`rot-profile-inline-${mode}`}
+                type="button"
+                onClick={() => onChangeRotationalProfileMode(mode)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: "1px solid " + (rotationalProfileMode === mode ? "#0a66c2" : "#ddd"),
+                  background: rotationalProfileMode === mode ? "#e6f0ff" : "#fff",
+                  fontWeight: rotationalProfileMode === mode ? 600 : 400,
+                  cursor: "pointer",
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+          {rotationalProfileMode === "formula" && (
+            <>
+              <div style={{ fontSize: 11, opacity: 0.8 }}>
+                Defaults: r(v)=<code>{rotationalDefaults?.rExpr ?? "-"}</code>, z(v)=
+                <code>{rotationalDefaults?.zExpr ?? "-"}</code>
+              </div>
+              <label style={{ fontSize: 11 }}>
+                r(v)
+                <input
+                  type="text"
+                  value={rotationalProfileRExpr}
+                  placeholder={rotationalDefaults?.rExpr ?? "r(v)"}
+                  onChange={(e) => onChangeRotationalProfileRExpr(e.target.value)}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+              <label style={{ fontSize: 11 }}>
+                z(v)
+                <input
+                  type="text"
+                  value={rotationalProfileZExpr}
+                  placeholder={rotationalDefaults?.zExpr ?? "z(v)"}
+                  onChange={(e) => onChangeRotationalProfileZExpr(e.target.value)}
+                  style={{ width: "100%", marginTop: 4 }}
+                />
+              </label>
+            </>
+          )}
+          {(rotationalProfileMode === "points" || rotationalProfileMode === "spline") && (
+            <>
+              <div style={{ fontSize: 11, opacity: 0.8 }}>
+                Points format: <code>v, r, z</code> (one line per point).
+              </div>
+              <textarea
+                value={rotationalProfilePointsText}
+                onChange={(e) => onChangeRotationalProfilePointsText(e.target.value)}
+                rows={5}
+                style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 12 }}
+              />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => onChangeRotationalProfilePointsText(DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT)}
+                >
+                  Load sample points
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -24558,6 +24893,12 @@ type SurfacesLeftPanelProps = {
   paramXExpr: string;
   paramYExpr: string;
   paramZExpr: string;
+  rotationalProfileMode: RotationalProfileMode;
+  rotationalProfileRExpr: string;
+  rotationalProfileZExpr: string;
+  rotationalProfilePointsText: string;
+  rotationalAxisOrigin: Vec3;
+  rotationalAxisDirection: Vec3;
   complexMapSpec: ComplexMapSweepSpec;
   complexMapPresetId: string;
   complexMapError: string | null;
@@ -24639,6 +24980,12 @@ type SurfacesLeftPanelProps = {
   onChangeParamXExpr: (s: string) => void;
   onChangeParamYExpr: (s: string) => void;
   onChangeParamZExpr: (s: string) => void;
+  onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
+  onChangeRotationalProfileRExpr: (s: string) => void;
+  onChangeRotationalProfileZExpr: (s: string) => void;
+  onChangeRotationalProfilePointsText: (s: string) => void;
+  onChangeRotationalAxisOrigin: (v: Vec3) => void;
+  onChangeRotationalAxisDirection: (v: Vec3) => void;
   onChangeComplexMapSpec: (patch: Partial<ComplexMapSweepSpec>) => void;
   onChangeComplexMapPreset: (id: string) => void;
   onBuildComplexMapSweep: () => void;
@@ -25047,6 +25394,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramXExpr,
   paramYExpr,
   paramZExpr,
+  rotationalProfileMode,
+  rotationalProfileRExpr,
+  rotationalProfileZExpr,
+  rotationalProfilePointsText,
+  rotationalAxisOrigin,
+  rotationalAxisDirection,
   complexMapSpec,
   complexMapPresetId,
   complexMapError,
@@ -25128,6 +25481,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeParamXExpr,
   onChangeParamYExpr,
   onChangeParamZExpr,
+  onChangeRotationalProfileMode,
+  onChangeRotationalProfileRExpr,
+  onChangeRotationalProfileZExpr,
+  onChangeRotationalProfilePointsText,
+  onChangeRotationalAxisOrigin,
+  onChangeRotationalAxisDirection,
   onChangeComplexMapSpec,
   onChangeComplexMapPreset,
   onBuildComplexMapSweep,
@@ -25425,6 +25784,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
+  const isGeneralRotationalParam = viewerKind === "param" && supportsGeneralRotationalProfile(paramId);
+  const rotationalDefaults = isGeneralRotationalParam ? getDefaultRotationalProfileExpressions(paramId) : null;
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
   const isImplicitAny = viewerKind === "implicit" && isImplicitSurface(surfaceId);
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
@@ -25440,6 +25801,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
+  const patchVecAxis = (base: Vec3, axis: keyof Vec3, raw: number): Vec3 => ({
+    ...base,
+    [axis]: Number.isFinite(raw) ? raw : base[axis],
+  });
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
   const complexMapIsRiemann = complexMapSpec.mapMode === "riemann";
   const complexMapSheetCount = complexMapIsRiemann ? Math.max(2, Math.round(complexMapSpec.sheetCount)) : 1;
@@ -29574,6 +29939,161 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               <button type="button" onClick={onRecomputeDiagnostics} style={{ padding: "4px 8px" }}>
                 Recompute diagnostics
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isGeneralRotationalParam && (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>Rotational profile</label>
+          <p style={styles.hint}>
+            General form: <code>(r(v), z(v)) → (r(v) cos u, r(v) sin u, z(v))</code> with an arbitrary axis.
+          </p>
+
+          <div style={pillRow}>
+            {(["formula", "points", "spline"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onChangeRotationalProfileMode(mode)}
+                style={pill(rotationalProfileMode === mode)}
+                aria-pressed={rotationalProfileMode === mode}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
+          {rotationalProfileMode === "formula" && (
+            <>
+              <div style={{ fontSize: 11, color: "#666", marginTop: 8 }}>
+                Preset defaults: r(v) = <code>{rotationalDefaults?.rExpr ?? "-"}</code>, z(v) ={" "}
+                <code>{rotationalDefaults?.zExpr ?? "-"}</code>
+              </div>
+              <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>r(v) =</label>
+              <input
+                type="text"
+                value={rotationalProfileRExpr}
+                placeholder={rotationalDefaults?.rExpr ?? "r(v)"}
+                onChange={(e) => onChangeRotationalProfileRExpr(e.target.value)}
+                style={{
+                  width: "100%",
+                  marginTop: 2,
+                  marginBottom: 6,
+                  padding: "4px 6px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 13,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <label style={{ fontSize: 12 }}>z(v) =</label>
+              <input
+                type="text"
+                value={rotationalProfileZExpr}
+                placeholder={rotationalDefaults?.zExpr ?? "z(v)"}
+                onChange={(e) => onChangeRotationalProfileZExpr(e.target.value)}
+                style={{
+                  width: "100%",
+                  marginTop: 2,
+                  marginBottom: 6,
+                  padding: "4px 6px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 13,
+                  boxSizing: "border-box",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeRotationalProfileRExpr("");
+                  onChangeRotationalProfileZExpr("");
+                }}
+                style={{ padding: "4px 8px" }}
+              >
+                Use preset profile
+              </button>
+            </>
+          )}
+
+          {(rotationalProfileMode === "points" || rotationalProfileMode === "spline") && (
+            <>
+              <div style={{ fontSize: 11, color: "#666", marginTop: 8 }}>
+                Enter points as <code>v, r, z</code> (one per line). Two values mean <code>r, z</code> with
+                implicit <code>v</code>.
+              </div>
+              <textarea
+                value={rotationalProfilePointsText}
+                onChange={(e) => onChangeRotationalProfilePointsText(e.target.value)}
+                rows={6}
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  marginBottom: 6,
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  boxSizing: "border-box",
+                  resize: "vertical",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onChangeRotationalProfilePointsText(DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT)}
+                style={{ padding: "4px 8px" }}
+              >
+                Load sample points
+              </button>
+            </>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Axis of revolution</div>
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>origin</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 6 }}>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <label key={`axis-origin-${axis}`} style={{ fontSize: 11 }}>
+                  {axis}
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={rotationalAxisOrigin[axis]}
+                    onChange={(e) =>
+                      onChangeRotationalAxisOrigin(
+                        patchVecAxis(rotationalAxisOrigin, axis, Number(e.target.value))
+                      )
+                    }
+                    style={{ width: "100%", marginTop: 3 }}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 11, color: "#666", marginTop: 8, marginBottom: 4 }}>direction</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 6 }}>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <label key={`axis-dir-${axis}`} style={{ fontSize: 11 }}>
+                  {axis}
+                  <input
+                    type="number"
+                    step={0.1}
+                    value={rotationalAxisDirection[axis]}
+                    onChange={(e) =>
+                      onChangeRotationalAxisDirection(
+                        patchVecAxis(rotationalAxisDirection, axis, Number(e.target.value))
+                      )
+                    }
+                    style={{ width: "100%", marginTop: 3 }}
+                  />
+                </label>
+              ))}
             </div>
           </div>
         </div>

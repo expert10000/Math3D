@@ -23,6 +23,10 @@ import {
   type WeierstrassBuildResult,
   type WeierstrassDriftResult,
 } from "../math/weierstrass";
+import {
+  buildRotationalSurfaceEvaluator,
+  type RotationalProfileMode,
+} from "../math/rotationalSurface";
 
 import type {
   ColorMode,
@@ -286,6 +290,12 @@ type Props = {
   customX?: string;
   customY?: string;
   customZ?: string;
+  rotationalProfileMode?: RotationalProfileMode;
+  rotationalProfileRExpr?: string;
+  rotationalProfileZExpr?: string;
+  rotationalProfilePointsText?: string;
+  rotationalAxisOrigin?: { x: number; y: number; z: number };
+  rotationalAxisDirection?: { x: number; y: number; z: number };
   wireframe?: boolean;
   showPlanes?: boolean;
   planeGridSettings?: ReferencePlaneGridSettings;
@@ -513,7 +523,7 @@ function getDomain(surfaceId: ParamSurfaceId) {
       return { uMin: -2, uMax: 2, vMin: -2, vMax: 2 };
 
     case "paraboloid":
-      return { uMin: 0, uMax: 2, vMin: 0, vMax: 2 * Math.PI };
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 };
 
     case "cylinder":
     case "cone":
@@ -559,9 +569,9 @@ function getDomain(surfaceId: ParamSurfaceId) {
     case "twistedStrip":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -0.6, vMax: 0.6 };
 
-    // ✅ NEW: exponential cone (u>0), v is angle
+    // Exponential cone/funnel: u is angle, v is profile input (v>0).
     case "expCone":
-      return { uMin: 0.15, uMax: 2.8, vMin: 0, vMax: 2 * Math.PI };
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0.15, vMax: 2.8 };
 
     // ✅ NEW: τ(u,v)=(u cos v, u sin v, v)
     // v is BOTH angle and height, so we DO NOT wrap it (no identification); just choose a few turns
@@ -1201,15 +1211,13 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
     surfaceId === "torus" ||
     surfaceId === "mobius" ||
     surfaceId === "kleinBottle" ||
+    surfaceId === "expCone" ||
+    surfaceId === "paraboloid" ||
     surfaceId === "pseudosphere" ||
     surfaceId === "dini" ||
     surfaceId === "twistedStrip";
 
-  const wrapV =
-    surfaceId === "torus" ||
-    surfaceId === "kleinBottle" ||
-    surfaceId === "expCone" ||
-    surfaceId === "paraboloid"; // ✅ v is angle for expCone/paraboloid
+  const wrapV = surfaceId === "torus" || surfaceId === "kleinBottle";
 
   // NOTE: helicoidUV: v is not “just angle” because z=v, so NO wrapping.
   return { wrapU, wrapV };
@@ -1240,6 +1248,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   customX,
   customY,
   customZ,
+  rotationalProfileMode = "formula",
+  rotationalProfileRExpr,
+  rotationalProfileZExpr,
+  rotationalProfilePointsText,
+  rotationalAxisOrigin,
+  rotationalAxisDirection,
   wireframe,
   showPlanes,
   planeGridSettings = DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
@@ -1665,6 +1679,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -2019,6 +2043,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -2415,6 +2449,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       surfaceId === "weierstrass" ? weierstrassState?.pathDisagreement ?? null : null;
     onWeierstrassPathDisagreement?.(pathDisagreementValue);
 
+    const rotationalEval = buildRotationalSurfaceEvaluator(surfaceId, {
+      mode: rotationalProfileMode,
+      rExpr: rotationalProfileRExpr,
+      zExpr: rotationalProfileZExpr,
+      pointsText: rotationalProfilePointsText,
+      axisOrigin: rotationalAxisOrigin,
+      axisDirection: rotationalAxisDirection,
+    });
+
     if (surfaceId === "custom") {
       const xFn = makeSafeParamExpr(customX, (u) => u);
       const yFn = makeSafeParamExpr(customY, (_u, v) => v);
@@ -2443,6 +2486,12 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         let x = 0,
           y = 0,
           z = 0;
+
+        if (rotationalEval) {
+          const p = rotationalEval(u, v);
+          target.set(p.x, p.y, p.z);
+          return;
+        }
 
         switch (surfaceId) {
           case "plane":
@@ -2589,9 +2638,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             break;
 
           case "paraboloid":
-            x = u * Math.cos(v);
-            y = u * Math.sin(v);
-            z = 0.6 * u * u;
+            x = v * Math.cos(u);
+            y = v * Math.sin(u);
+            z = 0.6 * v * v;
             break;
 
           case "enneper":
@@ -2629,11 +2678,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             break;
           }
 
-          // ✅ NEW: σ(u,v) = (u cos v, u sin v, ln u)
+          // Rotational graph type: σ(u,v) = (v cos u, v sin u, ln v)
           case "expCone":
-            x = u * Math.cos(v);
-            y = u * Math.sin(v);
-            z = Math.log(Math.max(u, 1e-9));
+            x = v * Math.cos(u);
+            y = v * Math.sin(u);
+            z = Math.log(Math.max(v, 1e-9));
             break;
 
           // ✅ NEW: τ(u,v) = (u cos v, u sin v, v)
@@ -3409,6 +3458,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     wireframe,
     showPlanes,
     planeGridShowGrid,
@@ -4324,6 +4383,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     surfaceParamResolution,
     weierstrassGExpr,
     weierstrassPhiExpr,
@@ -4593,6 +4662,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       customX ?? "",
       customY ?? "",
       customZ ?? "",
+      rotationalProfileMode,
+      rotationalProfileRExpr ?? "",
+      rotationalProfileZExpr ?? "",
+      rotationalProfilePointsText ?? "",
+      rotationalAxisOrigin?.x ?? "",
+      rotationalAxisOrigin?.y ?? "",
+      rotationalAxisOrigin?.z ?? "",
+      rotationalAxisDirection?.x ?? "",
+      rotationalAxisDirection?.y ?? "",
+      rotationalAxisDirection?.z ?? "",
       paramDomain?.uMin ?? "",
       paramDomain?.uMax ?? "",
       paramDomain?.vMin ?? "",
@@ -4795,6 +4874,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -5000,6 +5089,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -5217,6 +5316,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     customX,
     customY,
     customZ,
+    rotationalProfileMode,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    rotationalProfilePointsText,
+    rotationalAxisOrigin?.x,
+    rotationalAxisOrigin?.y,
+    rotationalAxisOrigin?.z,
+    rotationalAxisDirection?.x,
+    rotationalAxisDirection?.y,
+    rotationalAxisDirection?.z,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,

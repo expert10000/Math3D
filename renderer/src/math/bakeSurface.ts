@@ -2,6 +2,11 @@ import type { SurfaceId } from "../components/SurfaceViewer";
 import type { ParamSurfaceId } from "../components/ParamSurfaceViewer";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 import { compileExpression } from "./expression";
+import {
+  buildRotationalSurfaceEvaluator,
+  type RotationalProfileMode,
+  type RotationalProfileSettings,
+} from "./rotationalSurface";
 import { buildWeierstrassSurface } from "./weierstrass";
 
 type GraphDomain = { xSpan: number; ySpan: number };
@@ -207,7 +212,14 @@ const makeSafeParamExpr = (
   };
 };
 
-const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
+const evalParamSurface = (
+  surfaceId: ParamSurfaceId,
+  u: number,
+  v: number,
+  rotationalEval?: ((u: number, v: number) => { x: number; y: number; z: number }) | null
+) => {
+  if (rotationalEval) return rotationalEval(u, v);
+
   let x = 0;
   let y = 0;
   let z = 0;
@@ -340,9 +352,9 @@ const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
       z = u * v;
       break;
     case "paraboloid":
-      x = u * Math.cos(v);
-      y = u * Math.sin(v);
-      z = 0.6 * u * u;
+      x = v * Math.cos(u);
+      y = v * Math.sin(u);
+      z = 0.6 * v * v;
       break;
     case "enneper":
       x = u - (u * u * u) / 3 + u * v * v;
@@ -376,9 +388,9 @@ const evalParamSurface = (surfaceId: ParamSurfaceId, u: number, v: number) => {
       break;
     }
     case "expCone":
-      x = u * Math.cos(v);
-      y = u * Math.sin(v);
-      z = Math.log(Math.max(u, 1e-9));
+      x = v * Math.cos(u);
+      y = v * Math.sin(u);
+      z = Math.log(Math.max(v, 1e-9));
       break;
     case "helicoidUV":
       x = u * Math.cos(v);
@@ -411,7 +423,8 @@ const buildParamGrid = (
   resolution: number,
   customX?: string,
   customY?: string,
-  customZ?: string
+  customZ?: string,
+  rotationalSettings?: RotationalProfileSettings
 ): GridBuild => {
   const nx = clampResolution(resolution, 16, 16);
   const ny = clampResolution(resolution, 16, 16);
@@ -431,6 +444,7 @@ const buildParamGrid = (
       z: makeSafeParamExpr(customZ, () => 0),
     };
   }
+  const rotationalEval = buildRotationalSurfaceEvaluator(surfaceId, rotationalSettings);
 
   for (let j = 0; j < ny; j++) {
     const v = vMin + dv * j;
@@ -447,7 +461,7 @@ const buildParamGrid = (
         y = customFns.y(u, v);
         z = customFns.z(u, v);
       } else {
-        const res = evalParamSurface(surfaceId, u, v);
+        const res = evalParamSurface(surfaceId, u, v, rotationalEval);
         x = res.x;
         y = res.y;
         z = res.z;
@@ -498,6 +512,12 @@ export function bakeParamSurface(params: {
   customX?: string;
   customY?: string;
   customZ?: string;
+  rotationalProfileMode?: RotationalProfileMode;
+  rotationalProfileRExpr?: string;
+  rotationalProfileZExpr?: string;
+  rotationalProfilePointsText?: string;
+  rotationalAxisOrigin?: { x: number; y: number; z: number };
+  rotationalAxisDirection?: { x: number; y: number; z: number };
 }): BakeResult {
   if (params.surfaceId === "weierstrass") {
     return { error: "Weierstrass requires its own baker." };
@@ -510,7 +530,15 @@ export function bakeParamSurface(params: {
     params.resolution,
     params.customX,
     params.customY,
-    params.customZ
+    params.customZ,
+    {
+      mode: params.rotationalProfileMode,
+      rExpr: params.rotationalProfileRExpr,
+      zExpr: params.rotationalProfileZExpr,
+      pointsText: params.rotationalProfilePointsText,
+      axisOrigin: params.rotationalAxisOrigin,
+      axisDirection: params.rotationalAxisDirection,
+    }
   );
   const indices = triangulateGrid(grid.nx, grid.ny, grid.valid);
   if (!indices.length) return { error: "No valid triangles produced. Check expressions or domain." };
