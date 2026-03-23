@@ -5,13 +5,14 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
   appRoot: {
     display: "flex",
     flexDirection: "column" as const,
-    height: "100%",
+    height: "100vh",
     minHeight: "100vh",
     width: "100%",
     maxWidth: "100%",
     margin: 0,
     color: "var(--text)",
     background: "transparent",
+    overflow: "hidden",
   },
 
   wrap: {
@@ -21,6 +22,7 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     alignItems: "stretch",
     gap: 12,
     padding: "12px 16px 16px",
+    overflow: "hidden",
   },
 
   panelLeft: {
@@ -44,16 +46,20 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
   },
 
   header: {
-    padding: "14px 18px",
+    flex: "0 0 auto",
+    padding: "10px 12px",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius)",
     boxShadow: "var(--shadow-soft)",
     background: "var(--panel-strong)",
-    margin: "12px 16px 0",
+    margin: "8px 12px 0",
+    maxHeight: "min(22vh, 220px)",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
   },
   h1: {
     margin: "0 0 6px 0",
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 600,
     letterSpacing: "0.25px",
     fontFamily: "Georgia, \"Times New Roman\", serif",
@@ -87,12 +93,12 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
   controls: {
     display: "grid",
     gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-    gap: 10,
+    gap: 8,
     alignItems: "flex-end",
     background: "var(--panel)",
     border: "1px solid var(--border)",
     borderRadius: "var(--radius)",
-    padding: "10px 12px",
+    padding: "8px 10px",
     boxShadow: "var(--shadow-soft)",
   },
   group: {

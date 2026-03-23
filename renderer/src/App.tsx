@@ -1912,7 +1912,6 @@ const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
   "rotationalBell",
   "rotationalSpheroid",
   "rotationalHyperboloid",
-  "rotationalFreeProfile",
   "cylinder",
   "cone",
   "paraboloid",
@@ -1941,15 +1940,41 @@ const TUBE_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
   "tubeOpen",
 ]);
 const isTubeParamSurfaceId = (id: ParamSurfaceId): boolean => TUBE_PARAM_SURFACE_IDS.has(id);
-type ParamSurfaceCatalogTab = "general" | "rotational" | "sweep" | "tube";
-const paramSurfaceCatalogTabFor = (id: ParamSurfaceId): ParamSurfaceCatalogTab => {
-  if (isRotationalParamSurfaceId(id)) return "rotational";
+const RULED_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "plane",
+  "helicoid",
+  "helicoidUV",
+  "hyperbolicParaboloid",
+  "cone",
+  "cylinder",
+]);
+const isRuledParamSurfaceId = (id: ParamSurfaceId): boolean => RULED_PARAM_SURFACE_IDS.has(id);
+const SPLINE_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "rotationalFreeProfile",
+]);
+const isSplineParamSurfaceId = (id: ParamSurfaceId): boolean => SPLINE_PARAM_SURFACE_IDS.has(id);
+const CONSTRUCTED_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  ...ROTATIONAL_PARAM_SURFACE_IDS,
+  ...SWEEP_PARAM_SURFACE_IDS,
+  ...TUBE_PARAM_SURFACE_IDS,
+  ...RULED_PARAM_SURFACE_IDS,
+]);
+const isConstructedParamSurfaceId = (id: ParamSurfaceId): boolean => CONSTRUCTED_PARAM_SURFACE_IDS.has(id);
+type ParamSurfaceSourceKind = "formula" | "spline" | "constructed";
+type ConstructedParamSubtype = "rotational" | "sweep" | "tube" | "ruled";
+const paramSurfaceSourceKindFor = (id: ParamSurfaceId): ParamSurfaceSourceKind => {
+  if (isSplineParamSurfaceId(id)) return "spline";
+  if (isConstructedParamSurfaceId(id)) return "constructed";
+  return "formula";
+};
+const constructedParamSubtypeFor = (id: ParamSurfaceId): ConstructedParamSubtype => {
   if (isSweepParamSurfaceId(id)) return "sweep";
   if (isTubeParamSurfaceId(id)) return "tube";
-  return "general";
+  if (isRuledParamSurfaceId(id)) return "ruled";
+  return "rotational";
 };
 
-type RotationalProfileFamily = "linear" | "function" | "parametric" | "splinePoints";
+type RotationalProfileFamily = "linear" | "function" | "parametric";
 type RotationalProfileFamilyFilter = RotationalProfileFamily | "all";
 
 const ROTATIONAL_PROFILE_FAMILY_BY_ID: Partial<Record<ParamSurfaceId, RotationalProfileFamily>> = {
@@ -1968,8 +1993,6 @@ const ROTATIONAL_PROFILE_FAMILY_BY_ID: Partial<Record<ParamSurfaceId, Rotational
   sphere: "parametric",
   torus: "parametric",
   pseudosphere: "parametric",
-
-  rotationalFreeProfile: "splinePoints",
 };
 
 const rotationalProfileFamilyFor = (id: ParamSurfaceId): RotationalProfileFamily =>
@@ -1980,7 +2003,6 @@ const ROTATIONAL_PROFILE_FAMILY_FILTERS: { value: RotationalProfileFamilyFilter;
   { value: "linear", label: "Linear profile" },
   { value: "function", label: "Function profile" },
   { value: "parametric", label: "Parametric profile" },
-  { value: "splinePoints", label: "Spline / point profile" },
 ];
 
 function getParamDomainPreviewBounds(id: ParamSurfaceId) {
@@ -23000,6 +23022,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const isVolume = datasetKind === "volume";
   const isMesh = viewerKind === "mesh" || viewerKind === "complex";
   const isSurface = datasetKind === "surface";
+  const paramSourceKind = viewerKind === "param" ? paramSurfaceSourceKindFor(paramId) : null;
+  const isParamFormula = isSurface && viewerKind === "param" && paramSourceKind === "formula";
+  const isParamSpline = isSurface && viewerKind === "param" && paramSourceKind === "spline";
+  const isParamConstructed = isSurface && viewerKind === "param" && paramSourceKind === "constructed";
   const surfaceGallerySelectedId: SurfaceGalleryCard["id"] =
     isSurface && viewerKind === "implicit"
       ? "implicit"
@@ -23031,132 +23057,215 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     const firstPreset = WEIERSTRASS_PRESETS[0];
     if (firstPreset) onApplyWeierstrassPreset(firstPreset);
   };
+  const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
 
   return (
-    <div style={{ ...styles.group, ...styles.groupWide, gap: 12 }}>
+    <div style={{ ...styles.group, gridColumn: "span 9", gap: 12 }}>
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <div style={{ fontSize: 12, fontWeight: 700 }}>Surface gallery</div>
-          <div style={{ fontSize: 10, opacity: 0.72 }}>Quick open cards</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "grid", gap: 2 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>Surface gallery</div>
+            <div style={{ fontSize: 10, opacity: 0.72 }}>Quick open cards</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowSurfaceGallery((v) => !v)}
+            style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12 }}
+            aria-expanded={showSurfaceGallery}
+          >
+            {showSurfaceGallery ? "Hide gallery" : "Show gallery"}
+          </button>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
-          {SURFACE_GALLERY_CARDS.map((card) => {
-            const active = surfaceGallerySelectedId === card.id;
-            return (
-              <article
-                key={card.id}
-                data-testid={`surface-gallery-card-${card.id}`}
-                onClick={() => openSurfaceGalleryCard(card.id)}
-                style={{
-                  borderRadius: 8,
-                  border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
-                  background: active ? "#eef4ff" : "#fff",
-                  padding: 6,
-                  display: "grid",
-                  gap: 5,
-                  cursor: "pointer",
-                }}
-                title={card.description}
-              >
-                <img
-                  src={card.thumbDataUrl}
-                  alt={`${card.title} card`}
+        {showSurfaceGallery && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
+            {SURFACE_GALLERY_CARDS.map((card) => {
+              const active = surfaceGallerySelectedId === card.id;
+              return (
+                <article
+                  key={card.id}
+                  data-testid={`surface-gallery-card-${card.id}`}
+                  onClick={() => openSurfaceGalleryCard(card.id)}
                   style={{
-                    width: "100%",
-                    height: 80,
-                    borderRadius: 6,
-                    border: "1px solid #dbe2ea",
-                    objectFit: "cover",
-                    background: "#f8fafc",
+                    borderRadius: 8,
+                    border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
+                    background: active ? "#eef4ff" : "#fff",
+                    padding: 6,
+                    display: "grid",
+                    gap: 5,
+                    cursor: "pointer",
                   }}
-                />
-                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
-                <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
-                <div
-                  style={{
-                    justifySelf: "start",
-                    fontSize: 9,
-                    border: "1px solid #cbd5e1",
-                    background: "#f8fafc",
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    fontWeight: 700,
-                  }}
+                  title={card.description}
                 >
-                  {card.badge}
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                  <img
+                    src={card.thumbDataUrl}
+                    alt={`${card.title} card`}
+                    style={{
+                      width: "100%",
+                      height: 80,
+                      borderRadius: 6,
+                      border: "1px solid #dbe2ea",
+                      objectFit: "cover",
+                      background: "#f8fafc",
+                    }}
+                  />
+                  <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
+                  <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
+                  <div
+                    style={{
+                      justifySelf: "start",
+                      fontSize: 9,
+                      border: "1px solid #cbd5e1",
+                      background: "#f8fafc",
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {card.badge}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 4 }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Source kinds</span>
         <button
           type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("implicit");
-            }}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("graph");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-              border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
-              background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
-              fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
             cursor: "pointer",
           }}
         >
-          f(x,y,z) = 0 viewer
+          Explicit
         </button>
-
         <button
           type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("graph");
-            }}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("implicit");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-              border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
-              background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
-              fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
+            border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
             cursor: "pointer",
           }}
         >
-          z = f(x,y) viewer
+          Implicit
         </button>
-
         <button
           type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("param");
-            }}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("param");
+            if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-              border: "1px solid " + (isSurface && viewerKind === "param" ? "#0a66c2" : "#ddd"),
-              background: isSurface && viewerKind === "param" ? "#e6f0ff" : "#fff",
-              fontWeight: isSurface && viewerKind === "param" ? 600 : 400,
+            border: "1px solid " + (isParamFormula ? "#0a66c2" : "#ddd"),
+            background: isParamFormula ? "#e6f0ff" : "#fff",
+            fontWeight: isParamFormula ? 600 : 400,
             cursor: "pointer",
           }}
         >
-          σ(u,v) viewer
+          Parametric formula
         </button>
         <button
           type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("weierstrass");
-            }}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("param");
+            if (!isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalFreeProfile");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-              border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
-              background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
-              fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
+            border: "1px solid " + (isParamSpline ? "#0a66c2" : "#ddd"),
+            background: isParamSpline ? "#e6f0ff" : "#fff",
+            fontWeight: isParamSpline ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Spline surface
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("param");
+            if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isParamConstructed ? "#0a66c2" : "#ddd"),
+            background: isParamConstructed ? "#e6f0ff" : "#fff",
+            fontWeight: isParamConstructed ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Constructed
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            if (!isMesh) onChangeViewerKind("mesh");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isMesh ? "#0a66c2" : "#ddd"),
+            background: isMesh ? "#e6f0ff" : "#fff",
+            fontWeight: isMesh ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Mesh
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("mesh");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
+            background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
+            fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          SurfaceMesh
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("weierstrass");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
+            background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
+            fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
             cursor: "pointer",
           }}
         >
@@ -23164,37 +23273,20 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </button>
         <button
           type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("complex");
-            }}
+          onClick={() => {
+            onChangeDatasetKind("surface");
+            onChangeViewerKind("complex");
+          }}
           style={{
             padding: "4px 10px",
             borderRadius: 999,
-              border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
-              background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
-              fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
+            border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
+            background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
+            fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
             cursor: "pointer",
           }}
         >
           Complex map
-        </button>
-        <button
-          type="button"
-            onClick={() => {
-              onChangeDatasetKind("surface");
-              onChangeViewerKind("mesh");
-            }}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-              border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
-              background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
-              fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
-            cursor: "pointer",
-          }}
-        >
-          SurfaceMesh
         </button>
         <button
           type="button"
@@ -23232,6 +23324,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
               onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
               onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
+              showSourceKindTabs={false}
             />
           )}
           {viewerKind === "weierstrass" && (
@@ -23411,6 +23504,7 @@ type ParamSurfacesButtonsProps = {
   onChangeRotationalProfileZExpr?: (s: string) => void;
   onChangeRotationalProfilePointsText?: (s: string) => void;
   showProfileEditor?: boolean;
+  showSourceKindTabs?: boolean;
 };
 
 const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
@@ -23425,97 +23519,156 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   onChangeRotationalProfileZExpr = () => {},
   onChangeRotationalProfilePointsText = () => {},
   showProfileEditor = false,
+  showSourceKindTabs = true,
 }) => {
-  const [tab, setTab] = useState<ParamSurfaceCatalogTab>(paramSurfaceCatalogTabFor(paramId));
+  const [sourceKind, setSourceKind] = useState<ParamSurfaceSourceKind>(paramSurfaceSourceKindFor(paramId));
+  const [constructedSubtype, setConstructedSubtype] = useState<ConstructedParamSubtype>(constructedParamSubtypeFor(paramId));
   const [rotationalFamilyFilter, setRotationalFamilyFilter] = useState<RotationalProfileFamilyFilter>("all");
 
   useEffect(() => {
-    setTab(paramSurfaceCatalogTabFor(paramId));
+    const nextSourceKind = paramSurfaceSourceKindFor(paramId);
+    setSourceKind(nextSourceKind);
+    if (nextSourceKind === "constructed") {
+      setConstructedSubtype(constructedParamSubtypeFor(paramId));
+    }
   }, [paramId]);
 
   const entries = useMemo(() => {
-    if (tab === "rotational") {
-      const rotationalEntries = PARAM_SURFACES_META.filter((s) => isRotationalParamSurfaceId(s.id));
-      if (rotationalFamilyFilter === "all") return rotationalEntries;
-      return rotationalEntries.filter((s) => rotationalProfileFamilyFor(s.id) === rotationalFamilyFilter);
+    if (sourceKind === "spline") {
+      return PARAM_SURFACES_META.filter((s) => isSplineParamSurfaceId(s.id));
     }
-    if (tab === "sweep") {
-      return PARAM_SURFACES_META.filter((s) => isSweepParamSurfaceId(s.id));
+    if (sourceKind === "constructed") {
+      if (constructedSubtype === "rotational") {
+        const rotationalEntries = PARAM_SURFACES_META.filter(
+          (s) => isRotationalParamSurfaceId(s.id) && !isSplineParamSurfaceId(s.id)
+        );
+        if (rotationalFamilyFilter === "all") return rotationalEntries;
+        return rotationalEntries.filter((s) => rotationalProfileFamilyFor(s.id) === rotationalFamilyFilter);
+      }
+      if (constructedSubtype === "sweep") {
+        return PARAM_SURFACES_META.filter((s) => isSweepParamSurfaceId(s.id));
+      }
+      if (constructedSubtype === "tube") {
+        return PARAM_SURFACES_META.filter((s) => isTubeParamSurfaceId(s.id));
+      }
+      return PARAM_SURFACES_META.filter((s) => isRuledParamSurfaceId(s.id));
     }
-    if (tab === "tube") {
-      return PARAM_SURFACES_META.filter((s) => isTubeParamSurfaceId(s.id));
-    }
-    return PARAM_SURFACES_META.filter(
-      (s) => !isRotationalParamSurfaceId(s.id) && !isSweepParamSurfaceId(s.id) && !isTubeParamSurfaceId(s.id)
-    );
-  }, [tab, rotationalFamilyFilter]);
+    return PARAM_SURFACES_META.filter((s) => !isConstructedParamSurfaceId(s.id) && !isSplineParamSurfaceId(s.id));
+  }, [sourceKind, constructedSubtype, rotationalFamilyFilter]);
   const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
   const showRotationalProfileEditorInline =
     showProfileEditor &&
-    tab === "rotational" &&
-    isRotationalParamSurfaceId(paramId);
+    (sourceKind === "spline" || (sourceKind === "constructed" && constructedSubtype === "rotational")) &&
+    (paramId === "rotationalFreeProfile" || isRotationalParamSurfaceId(paramId));
+  const ensureSourceKind = (next: ParamSurfaceSourceKind) => {
+    setSourceKind(next);
+    if (next === "formula") {
+      if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+      return;
+    }
+    if (next === "spline") {
+      if (!isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalFreeProfile");
+      return;
+    }
+    if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+    setConstructedSubtype(constructedParamSubtypeFor(paramId));
+  };
+  const ensureConstructedSubtype = (next: ConstructedParamSubtype) => {
+    setConstructedSubtype(next);
+    if (next === "rotational") {
+      if (!isRotationalParamSurfaceId(paramId) || isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+      return;
+    }
+    if (next === "sweep") {
+      if (!isSweepParamSurfaceId(paramId)) onChangeParamId("sweepPath");
+      return;
+    }
+    if (next === "tube") {
+      if (!isTubeParamSurfaceId(paramId)) onChangeParamId("tubeConstant");
+      return;
+    }
+    if (!isRuledParamSurfaceId(paramId)) onChangeParamId("helicoid");
+  };
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <button
-          type="button"
-          onClick={() => setTab("general")}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid " + (tab === "general" ? "#0a66c2" : "#ddd"),
-            background: tab === "general" ? "#e6f0ff" : "#fff",
-            fontWeight: tab === "general" ? 600 : 400,
-            cursor: "pointer",
-          }}
-        >
-          General
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("rotational")}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid " + (tab === "rotational" ? "#0a66c2" : "#ddd"),
-            background: tab === "rotational" ? "#e6f0ff" : "#fff",
-            fontWeight: tab === "rotational" ? 600 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Rotational
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("sweep")}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid " + (tab === "sweep" ? "#0a66c2" : "#ddd"),
-            background: tab === "sweep" ? "#e6f0ff" : "#fff",
-            fontWeight: tab === "sweep" ? 600 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Sweep
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("tube")}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 999,
-            border: "1px solid " + (tab === "tube" ? "#0a66c2" : "#ddd"),
-            background: tab === "tube" ? "#e6f0ff" : "#fff",
-            fontWeight: tab === "tube" ? 600 : 400,
-            cursor: "pointer",
-          }}
-        >
-          Tube
-        </button>
-      </div>
-      {tab === "rotational" && (
+      {showSourceKindTabs && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Source kinds</span>
+          <button
+            type="button"
+            onClick={() => ensureSourceKind("formula")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1px solid " + (sourceKind === "formula" ? "#0a66c2" : "#ddd"),
+              background: sourceKind === "formula" ? "#e6f0ff" : "#fff",
+              fontWeight: sourceKind === "formula" ? 600 : 400,
+              cursor: "pointer",
+            }}
+          >
+            Parametric formula
+          </button>
+          <button
+            type="button"
+            onClick={() => ensureSourceKind("spline")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1px solid " + (sourceKind === "spline" ? "#0a66c2" : "#ddd"),
+              background: sourceKind === "spline" ? "#e6f0ff" : "#fff",
+              fontWeight: sourceKind === "spline" ? 600 : 400,
+              cursor: "pointer",
+            }}
+          >
+            Spline surface
+          </button>
+          <button
+            type="button"
+            onClick={() => ensureSourceKind("constructed")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1px solid " + (sourceKind === "constructed" ? "#0a66c2" : "#ddd"),
+              background: sourceKind === "constructed" ? "#e6f0ff" : "#fff",
+              fontWeight: sourceKind === "constructed" ? 600 : 400,
+              cursor: "pointer",
+            }}
+          >
+            Constructed
+          </button>
+        </div>
+      )}
+      {sourceKind === "constructed" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Constructed</span>
+          {(
+            [
+              ["rotational", "Rotational"],
+              ["sweep", "Sweep"],
+              ["tube", "Tube"],
+              ["ruled", "Ruled"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={`constructed-subtype-${key}`}
+              type="button"
+              onClick={() => ensureConstructedSubtype(key)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid " + (constructedSubtype === key ? "#0a66c2" : "#ddd"),
+                background: constructedSubtype === key ? "#e6f0ff" : "#fff",
+                fontWeight: constructedSubtype === key ? 600 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {sourceKind === "constructed" && constructedSubtype === "rotational" && (
         <>
           <div style={{ fontSize: 11, opacity: 0.8 }}>
             Profile map: (r(v), z(v)) ↦ (r(v) cos u, r(v) sin u, z(v))
@@ -23540,21 +23693,26 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               </button>
             ))}
           </div>
-          {rotationalFamilyFilter === "splinePoints" && (
-            <div style={{ fontSize: 11, opacity: 0.8 }}>
-              Use rotational mode <code>points</code> or <code>spline</code> in the left panel editor.
-            </div>
-          )}
         </>
       )}
-      {tab === "sweep" && (
+      {sourceKind === "constructed" && constructedSubtype === "sweep" && (
         <div style={{ fontSize: 11, opacity: 0.8 }}>
           Sweep subtypes: linear extrusion, directional, path, helical, scaled, twisted, RMF ribbon.
         </div>
       )}
-      {tab === "tube" && (
+      {sourceKind === "constructed" && constructedSubtype === "tube" && (
         <div style={{ fontSize: 11, opacity: 0.8 }}>
-          Tube subtypes: constant-radius, variable-radius, closed, open. Ribbon/strip can be added as related later.
+          Tube subtypes: constant-radius, variable-radius, closed, open.
+        </div>
+      )}
+      {sourceKind === "constructed" && constructedSubtype === "ruled" && (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Ruled surfaces generated by moving a line in one or two families.
+        </div>
+      )}
+      {sourceKind === "spline" && (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Spline surface tools: editable profile points and spline interpolation.
         </div>
       )}
       <div style={styles.presetsRow}>
@@ -26429,7 +26587,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           {volumeDatasetOverride && (
             <div
               style={{
-                marginBottom: 10,
+            marginBottom: 6,
                 padding: 8,
                 borderRadius: 8,
                 border: "1px solid #e0e0e0",
