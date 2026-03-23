@@ -296,6 +296,8 @@ type Props = {
   rotationalProfilePointsText?: string;
   rotationalAxisOrigin?: { x: number; y: number; z: number };
   rotationalAxisDirection?: { x: number; y: number; z: number };
+  rmfRibbonTwistEnabled?: boolean;
+  rmfRibbonTwistTurns?: number;
   wireframe?: boolean;
   showPlanes?: boolean;
   planeGridSettings?: ReferencePlaneGridSettings;
@@ -568,6 +570,28 @@ function getDomain(surfaceId: ParamSurfaceId) {
 
     case "twistedStrip":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -0.6, vMax: 0.6 };
+    case "sweepLinearExtrusion":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "sweepDirectional":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "sweepPath":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "sweepHelical":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 4 * Math.PI };
+    case "sweepScaled":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "sweepTwisted":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.2, vMax: 2.2 };
+    case "ribbonRMF":
+      return { uMin: -1, uMax: 1, vMin: -2.5, vMax: 2.5 };
+    case "tubeConstant":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "tubeVariable":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "tubeClosed":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 * Math.PI };
+    case "tubeOpen":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.2, vMax: 1.2 };
 
     // Exponential cone/funnel: u is angle, v is profile input (v>0).
     case "expCone":
@@ -587,6 +611,113 @@ function getDomain(surfaceId: ParamSurfaceId) {
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -2, vMax: 2 };
   }
 }
+
+const buildRmfRibbonSampler = (options: {
+  vMin: number;
+  vMax: number;
+  twistEnabled: boolean;
+  twistTurns: number;
+  sampleCount?: number;
+}) => {
+  const { vMin, vMax, twistEnabled, twistTurns } = options;
+  const sampleCount = Math.max(24, Math.floor(options.sampleCount ?? 160));
+  const vRange = Math.max(1e-6, vMax - vMin);
+  const vs = new Float64Array(sampleCount);
+  const centers = new Array<THREE.Vector3>(sampleCount);
+  const tangents = new Array<THREE.Vector3>(sampleCount);
+  const normals = new Array<THREE.Vector3>(sampleCount);
+  const binormals = new Array<THREE.Vector3>(sampleCount);
+
+  const centerAt = (v: number, out: THREE.Vector3) => {
+    out.set(0.95 * Math.cos(0.6 * v), 0.45 * Math.sin(1.05 * v), v);
+    return out;
+  };
+
+  const tangentAt = (v: number, out: THREE.Vector3) => {
+    const h = Math.max(1e-3, vRange * 1e-3);
+    const pa = new THREE.Vector3();
+    const pb = new THREE.Vector3();
+    centerAt(v + h, pa);
+    centerAt(v - h, pb);
+    out.copy(pa).sub(pb);
+    if (out.lengthSq() < 1e-12) out.set(0, 0, 1);
+    return out.normalize();
+  };
+
+  for (let i = 0; i < sampleCount; i++) {
+    const t = sampleCount > 1 ? i / (sampleCount - 1) : 0;
+    const v = vMin + vRange * t;
+    vs[i] = v;
+    centers[i] = new THREE.Vector3();
+    tangents[i] = new THREE.Vector3();
+    centerAt(v, centers[i]);
+    tangentAt(v, tangents[i]);
+    normals[i] = new THREE.Vector3();
+    binormals[i] = new THREE.Vector3();
+  }
+
+  const helper = Math.abs(tangents[0].y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  normals[0].copy(helper).addScaledVector(tangents[0], -helper.dot(tangents[0]));
+  if (normals[0].lengthSq() < 1e-12) normals[0].set(1, 0, 0);
+  normals[0].normalize();
+  binormals[0].crossVectors(tangents[0], normals[0]).normalize();
+
+  const axis = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  for (let i = 1; i < sampleCount; i++) {
+    const tPrev = tangents[i - 1];
+    const tCurr = tangents[i];
+    const nCurr = normals[i];
+    const bCurr = binormals[i];
+
+    nCurr.copy(normals[i - 1]);
+    axis.crossVectors(tPrev, tCurr);
+    const axisLen = axis.length();
+    if (axisLen > 1e-9) {
+      const dot = THREE.MathUtils.clamp(tPrev.dot(tCurr), -1, 1);
+      q.setFromAxisAngle(axis.multiplyScalar(1 / axisLen), Math.atan2(axisLen, dot));
+      nCurr.applyQuaternion(q);
+    }
+    nCurr.addScaledVector(tCurr, -nCurr.dot(tCurr));
+    if (nCurr.lengthSq() < 1e-12) {
+      const aux = Math.abs(tCurr.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+      nCurr.copy(aux).addScaledVector(tCurr, -aux.dot(tCurr));
+    }
+    nCurr.normalize();
+    bCurr.crossVectors(tCurr, nCurr).normalize();
+  }
+
+  const c = new THREE.Vector3();
+  const t = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const side = new THREE.Vector3();
+  const halfWidth = 0.32;
+  const twistTurnsSafe = Number.isFinite(twistTurns) ? twistTurns : 1;
+
+  return (u: number, v: number, target: THREE.Vector3) => {
+    const vc = THREE.MathUtils.clamp(v, vMin, vMax);
+    const s = ((vc - vMin) / vRange) * (sampleCount - 1);
+    const i0 = Math.max(0, Math.min(sampleCount - 1, Math.floor(s)));
+    const i1 = Math.max(i0, Math.min(sampleCount - 1, i0 + 1));
+    const w = THREE.MathUtils.clamp(s - i0, 0, 1);
+
+    c.copy(centers[i0]).lerp(centers[i1], w);
+    t.copy(tangents[i0]).lerp(tangents[i1], w).normalize();
+    n.copy(normals[i0]).lerp(normals[i1], w);
+    n.addScaledVector(t, -n.dot(t));
+    if (n.lengthSq() < 1e-12) n.copy(normals[i0]);
+    n.normalize();
+    b.crossVectors(t, n).normalize();
+
+    const twistAngle = twistEnabled ? twistTurnsSafe * TAU * ((vc - vMin) / vRange) : 0;
+    const ct = Math.cos(twistAngle);
+    const st = Math.sin(twistAngle);
+    side.copy(n).multiplyScalar(ct).addScaledVector(b, st);
+
+    target.copy(c).addScaledVector(side, u * halfWidth);
+  };
+};
 
 // ---- color helpers ----
 function scalarToColor01(
@@ -1215,9 +1346,19 @@ function wrapFlagsFor(surfaceId: ParamSurfaceId) {
     surfaceId === "paraboloid" ||
     surfaceId === "pseudosphere" ||
     surfaceId === "dini" ||
-    surfaceId === "twistedStrip";
+    surfaceId === "twistedStrip" ||
+    surfaceId === "sweepLinearExtrusion" ||
+    surfaceId === "sweepDirectional" ||
+    surfaceId === "sweepPath" ||
+    surfaceId === "sweepHelical" ||
+    surfaceId === "sweepScaled" ||
+    surfaceId === "sweepTwisted" ||
+    surfaceId === "tubeConstant" ||
+    surfaceId === "tubeVariable" ||
+    surfaceId === "tubeClosed" ||
+    surfaceId === "tubeOpen";
 
-  const wrapV = surfaceId === "torus" || surfaceId === "kleinBottle";
+  const wrapV = surfaceId === "torus" || surfaceId === "kleinBottle" || surfaceId === "tubeClosed";
 
   // NOTE: helicoidUV: v is not “just angle” because z=v, so NO wrapping.
   return { wrapU, wrapV };
@@ -1254,6 +1395,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   rotationalProfilePointsText,
   rotationalAxisOrigin,
   rotationalAxisDirection,
+  rmfRibbonTwistEnabled = false,
+  rmfRibbonTwistTurns = 1,
   wireframe,
   showPlanes,
   planeGridSettings = DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
@@ -1689,6 +1832,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -2053,6 +2198,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -2457,6 +2604,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       axisOrigin: rotationalAxisOrigin,
       axisDirection: rotationalAxisDirection,
     });
+    const rmfRibbonEval =
+      surfaceId === "ribbonRMF"
+        ? buildRmfRibbonSampler({
+            vMin,
+            vMax,
+            twistEnabled: rmfRibbonTwistEnabled,
+            twistTurns: rmfRibbonTwistTurns,
+          })
+        : null;
 
     if (surfaceId === "custom") {
       const xFn = makeSafeParamExpr(customX, (u) => u);
@@ -2675,6 +2831,107 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
             x = rho * Math.cos(u);
             y = rho * Math.sin(u);
             z = v * Math.sin(twist);
+            break;
+          }
+
+          case "sweepLinearExtrusion": {
+            const px = 0.62 * Math.cos(u) + 0.08 * Math.cos(3 * u);
+            const py = 0.36 * Math.sin(u);
+            x = px;
+            y = py;
+            z = v;
+            break;
+          }
+
+          case "sweepDirectional": {
+            const px = 0.52 * Math.cos(u);
+            const py = 0.3 * Math.sin(u);
+            x = px + 0.45 * v;
+            y = py + 0.2 * v;
+            z = v;
+            break;
+          }
+
+          case "sweepPath": {
+            const cx = 0.85 * Math.cos(0.7 * v);
+            const cy = 0.55 * Math.sin(1.1 * v);
+            const cz = v;
+            const r = 0.22;
+            x = cx + r * Math.cos(u);
+            y = cy + r * Math.sin(u);
+            z = cz;
+            break;
+          }
+
+          case "sweepHelical": {
+            const R = 1.2;
+            const r = 0.22;
+            const tube = R + r * Math.cos(u);
+            x = tube * Math.cos(v);
+            y = tube * Math.sin(v);
+            z = 0.35 * v + r * Math.sin(u);
+            break;
+          }
+
+          case "sweepScaled": {
+            const scale = 0.55 + 0.24 * Math.sin(0.9 * v);
+            x = scale * Math.cos(u);
+            y = 0.62 * scale * Math.sin(u);
+            z = v;
+            break;
+          }
+
+          case "sweepTwisted": {
+            const theta = u + 1.6 * v;
+            x = 0.72 * Math.cos(theta);
+            y = 0.36 * Math.sin(theta);
+            z = v;
+            break;
+          }
+
+          case "ribbonRMF": {
+            if (rmfRibbonEval) {
+              rmfRibbonEval(u, v, target);
+              return;
+            }
+            x = 0.3 * u;
+            y = 0;
+            z = v;
+            break;
+          }
+
+          case "tubeConstant": {
+            const r = 0.45;
+            x = r * Math.cos(u);
+            y = r * Math.sin(u);
+            z = v;
+            break;
+          }
+
+          case "tubeVariable": {
+            const r = 0.3 + 0.13 * (1 + Math.sin(1.35 * v));
+            x = r * Math.cos(u);
+            y = r * Math.sin(u);
+            z = v;
+            break;
+          }
+
+          case "tubeClosed": {
+            const R = 1.25;
+            const r = 0.32;
+            x = (R + r * Math.cos(u)) * Math.cos(v);
+            y = (R + r * Math.cos(u)) * Math.sin(v);
+            z = r * Math.sin(u);
+            break;
+          }
+
+          case "tubeOpen": {
+            const R = 1.2;
+            const r = 0.24;
+            const tube = R + r * Math.cos(u);
+            x = tube * Math.cos(v);
+            y = r * Math.sin(u);
+            z = tube * Math.sin(v);
             break;
           }
 
@@ -3468,6 +3725,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     wireframe,
     showPlanes,
     planeGridShowGrid,
@@ -4393,6 +4652,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     surfaceParamResolution,
     weierstrassGExpr,
     weierstrassPhiExpr,
@@ -4884,6 +5145,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -5099,6 +5362,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -5326,6 +5591,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     rotationalAxisDirection?.x,
     rotationalAxisDirection?.y,
     rotationalAxisDirection?.z,
+    rmfRibbonTwistEnabled,
+    rmfRibbonTwistTurns,
     paramDomain?.uMin,
     paramDomain?.uMax,
     paramDomain?.vMin,
@@ -6096,3 +6363,4 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     </div>
   );
 };
+

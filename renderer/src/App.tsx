@@ -1889,6 +1889,17 @@ const PARAM_SURFACES_META: {
   { id: "kleinBottle", label: "Klein bottle", formula: "σ(u,v) = immersion in ℝ³ (self-intersecting)", note: "Embedding needs ℝ⁴." },
   { id: "hyperbolicParaboloid", label: "Hyperbolic paraboloid", formula: "σ(u,v) = (u, v, u v)", note: "Saddle; ruled (two families)." },
   { id: "enneper", label: "Enneper surface", formula: "σ(u,v) = (u − u³/3 + u v², v − v³/3 + v u², u² − v²)", note: "Minimal; self-intersections." },
+  { id: "sweepLinearExtrusion", label: "Linear extrusion", formula: "σ(u,v) = (p_x(u), p_y(u), v)", note: "Sweep profile along a straight axis." },
+  { id: "sweepDirectional", label: "Directional sweep", formula: "σ(u,v) = p(u) + v d", note: "Profile translated in a fixed direction vector d." },
+  { id: "sweepPath", label: "Path sweep", formula: "σ(u,v) = C(v) + frame(v) · p(u)", note: "Profile swept along a spatial path C(v)." },
+  { id: "sweepHelical", label: "Helical sweep", formula: "σ(u,v) = C_helix(v) + frame(v) · p(u)", note: "Profile swept along a helical centerline." },
+  { id: "sweepScaled", label: "Scaled sweep", formula: "σ(u,v) = C(v) + s(v) p(u)", note: "Sweep with profile scale varying along v." },
+  { id: "sweepTwisted", label: "Twisted sweep", formula: "σ(u,v) = C(v) + R(θ(v)) p(u)", note: "Sweep with profile twist angle varying along v." },
+  { id: "ribbonRMF", label: "Ribbon (RMF)", formula: "σ(u,v) = C(v) + w u n_RMF(v, θ(v))", note: "Rotation-minimizing-frame ribbon with optional twist." },
+  { id: "tubeConstant", label: "Constant-radius tube", formula: "σ(u,v) = C(v) + r (cos u n(v) + sin u b(v))", note: "Tube with fixed radius around a centerline." },
+  { id: "tubeVariable", label: "Variable-radius tube", formula: "σ(u,v) = C(v) + r(v) (cos u n(v) + sin u b(v))", note: "Tube with radius changing along v." },
+  { id: "tubeClosed", label: "Closed tube", formula: "σ(u,v) = ((R + r cos u) cos v, (R + r cos u) sin v, r sin u)", note: "Closed-centerline tube (torus-like)." },
+  { id: "tubeOpen", label: "Open tube", formula: "σ(u,v) = C_open(v) + r (cos u n(v) + sin u b(v))", note: "Tube over an open centerline segment." },
   { id: "expCone", label: "Exp cone / funnel", formula: "σ(u,v) = (v cos u, v sin u, log v)", note: "Graph-type rotational funnel (v>0)." },
   { id: "helicoidUV", label: "Helicoid (u,v)", formula: "σ(u,v) = (u cos v, u sin v, v)", note: "v is angle + height; use a few turns (no wrapV)." },
   { id: "boy", label: "Boy's surface", formula: "σ(u,v) = Bryant-Kusner param", note: "Immersion of RP2; self-intersections." },
@@ -1913,6 +1924,30 @@ const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
 ]);
 
 const isRotationalParamSurfaceId = (id: ParamSurfaceId): boolean => ROTATIONAL_PARAM_SURFACE_IDS.has(id);
+const SWEEP_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "sweepLinearExtrusion",
+  "sweepDirectional",
+  "sweepPath",
+  "sweepHelical",
+  "sweepScaled",
+  "sweepTwisted",
+  "ribbonRMF",
+]);
+const isSweepParamSurfaceId = (id: ParamSurfaceId): boolean => SWEEP_PARAM_SURFACE_IDS.has(id);
+const TUBE_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "tubeConstant",
+  "tubeVariable",
+  "tubeClosed",
+  "tubeOpen",
+]);
+const isTubeParamSurfaceId = (id: ParamSurfaceId): boolean => TUBE_PARAM_SURFACE_IDS.has(id);
+type ParamSurfaceCatalogTab = "general" | "rotational" | "sweep" | "tube";
+const paramSurfaceCatalogTabFor = (id: ParamSurfaceId): ParamSurfaceCatalogTab => {
+  if (isRotationalParamSurfaceId(id)) return "rotational";
+  if (isSweepParamSurfaceId(id)) return "sweep";
+  if (isTubeParamSurfaceId(id)) return "tube";
+  return "general";
+};
 
 type RotationalProfileFamily = "linear" | "function" | "parametric" | "splinePoints";
 type RotationalProfileFamilyFilter = RotationalProfileFamily | "all";
@@ -1982,6 +2017,28 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
 
     case "twistedStrip":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -0.6, vMax: 0.6 };
+    case "sweepLinearExtrusion":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "sweepDirectional":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "sweepPath":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "sweepHelical":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 4 * Math.PI };
+    case "sweepScaled":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "sweepTwisted":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.2, vMax: 2.2 };
+    case "ribbonRMF":
+      return { uMin: -1, uMax: 1, vMin: -2.5, vMax: 2.5 };
+    case "tubeConstant":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2, vMax: 2 };
+    case "tubeVariable":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -2.5, vMax: 2.5 };
+    case "tubeClosed":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 * Math.PI };
+    case "tubeOpen":
+      return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.2, vMax: 1.2 };
 
     // defaults for everything else (safe generic)
     default:
@@ -2847,6 +2904,11 @@ const DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT = [
 ].join("\n");
 const DEFAULT_ROTATIONAL_AXIS_ORIGIN: Vec3 = { x: 0, y: 0, z: 0 };
 const DEFAULT_ROTATIONAL_AXIS_DIRECTION: Vec3 = { x: 0, y: 0, z: 1 };
+const ROTATIONAL_AXIS_DIRECTIONS: Record<"x" | "y" | "z", Vec3> = {
+  x: { x: 1, y: 0, z: 0 },
+  y: { x: 0, y: 1, z: 0 },
+  z: { x: 0, y: 0, z: 1 },
+};
 const vLen = (v: Vec3) => Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 const vDot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
 const vScale = (v: Vec3, s: number): Vec3 => ({ x: v.x * s, y: v.y * s, z: v.z * s });
@@ -2860,6 +2922,18 @@ const vCross = (a: Vec3, b: Vec3): Vec3 => ({
 const vNormalize = (v: Vec3): Vec3 => {
   const len = vLen(v);
   return len > 1e-12 ? vScale(v, 1 / len) : { x: 0, y: 0, z: 0 };
+};
+const detectPrincipalAxisDirection = (direction: Vec3): "x" | "y" | "z" | null => {
+  if (vLen(direction) <= 1e-12) return null;
+  const n = vNormalize(direction);
+  const ax = Math.abs(n.x);
+  const ay = Math.abs(n.y);
+  const az = Math.abs(n.z);
+  const max = Math.max(ax, ay, az);
+  if (max < 0.999) return null;
+  if (ax === max) return "x";
+  if (ay === max) return "y";
+  return "z";
 };
 const vProjectOnPlane = (v: Vec3, normal: Vec3): Vec3 => {
   const dot = vDot(v, normal);
@@ -7206,6 +7280,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
   const [rotationalAxisOrigin, setRotationalAxisOrigin] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_ORIGIN);
   const [rotationalAxisDirection, setRotationalAxisDirection] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_DIRECTION);
+  const [rmfRibbonTwistEnabled, setRmfRibbonTwistEnabled] = useState(false);
+  const [rmfRibbonTwistTurns, setRmfRibbonTwistTurns] = useState(1);
   const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
   const [weierstrassPhiExpr, setWeierstrassPhiExpr] = useState(WEIERSTRASS_DEFAULTS.phiExpr);
   const [weierstrassDomain, setWeierstrassDomain] = useState<ParamDomain>(WEIERSTRASS_DEFAULTS.domain);
@@ -8405,6 +8481,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     : compareParamId;
   const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
   const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
+  const showRotationalSplineOverlay =
+    mode === "surfaces" &&
+    datasetKind === "surface" &&
+    surfaceViewerKind === "param" &&
+    supportsGeneralRotationalProfile(primaryParamId) &&
+    (rotationalProfileMode === "points" || rotationalProfileMode === "spline");
 
   useEffect(() => {
     if (!isGraphSurface(graphSurfaceId)) return;
@@ -18825,6 +18907,8 @@ case "mobius":
                   rotationalProfilePointsText={rotationalProfilePointsText}
                   rotationalAxisOrigin={rotationalAxisOrigin}
                   rotationalAxisDirection={rotationalAxisDirection}
+                  rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
+                  rmfRibbonTwistTurns={rmfRibbonTwistTurns}
                   complexMapSpec={complexMapSpec}
                   complexMapPresetId={complexMapPresetId}
                   complexMapError={complexMapError}
@@ -18912,6 +18996,8 @@ case "mobius":
                   onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
                   onChangeRotationalAxisOrigin={setRotationalAxisOrigin}
                   onChangeRotationalAxisDirection={setRotationalAxisDirection}
+                  onChangeRmfRibbonTwistEnabled={setRmfRibbonTwistEnabled}
+                  onChangeRmfRibbonTwistTurns={setRmfRibbonTwistTurns}
                   onChangeComplexMapSpec={updateComplexMapSpec}
                   onChangeComplexMapPreset={applyComplexMapPreset}
                   onBuildComplexMapSweep={handleBuildComplexMapSweep}
@@ -19826,7 +19912,7 @@ case "mobius":
                         height: "100%",
                       }}
                     >
-                      <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                      <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb", position: "relative" }}>
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
@@ -19840,6 +19926,8 @@ case "mobius":
                             rotationalProfilePointsText={rotationalProfilePointsText}
                             rotationalAxisOrigin={rotationalAxisOrigin}
                             rotationalAxisDirection={rotationalAxisDirection}
+                            rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
+                            rmfRibbonTwistTurns={rmfRibbonTwistTurns}
                             wireframe={primaryOverlay.showWireframe}
                             showPlanes={primaryOverlay.showPlanes}
                             showPrincipalProjections={showPrincipalProjections}
@@ -20099,6 +20187,14 @@ case "mobius":
                         zoomToRegionToken={zoomNowToken}
                       />
                         )}
+                        {showRotationalSplineOverlay && (
+                          <RotationalSplineOverlay
+                            rotationalProfileMode={rotationalProfileMode}
+                            rotationalProfilePointsText={rotationalProfilePointsText}
+                            onChangeRotationalProfileMode={setRotationalProfileMode}
+                            onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                          />
+                        )}
                       </div>
 
                           {compareEnabled && (
@@ -20116,6 +20212,8 @@ case "mobius":
                               rotationalProfilePointsText={rotationalProfilePointsText}
                               rotationalAxisOrigin={rotationalAxisOrigin}
                               rotationalAxisDirection={rotationalAxisDirection}
+                              rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
+                              rmfRibbonTwistTurns={rmfRibbonTwistTurns}
                               wireframe={secondaryOverlay.showWireframe}
                               showPlanes={secondaryOverlay.showPlanes}
                               showPrincipalProjections={showPrincipalProjections}
@@ -23134,7 +23232,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
               onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
               onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
-              showProfileEditor
             />
           )}
           {viewerKind === "weierstrass" && (
@@ -23329,13 +23426,11 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   onChangeRotationalProfilePointsText = () => {},
   showProfileEditor = false,
 }) => {
-  const [tab, setTab] = useState<"general" | "rotational">(
-    isRotationalParamSurfaceId(paramId) ? "rotational" : "general"
-  );
+  const [tab, setTab] = useState<ParamSurfaceCatalogTab>(paramSurfaceCatalogTabFor(paramId));
   const [rotationalFamilyFilter, setRotationalFamilyFilter] = useState<RotationalProfileFamilyFilter>("all");
 
   useEffect(() => {
-    setTab(isRotationalParamSurfaceId(paramId) ? "rotational" : "general");
+    setTab(paramSurfaceCatalogTabFor(paramId));
   }, [paramId]);
 
   const entries = useMemo(() => {
@@ -23344,7 +23439,15 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
       if (rotationalFamilyFilter === "all") return rotationalEntries;
       return rotationalEntries.filter((s) => rotationalProfileFamilyFor(s.id) === rotationalFamilyFilter);
     }
-    return PARAM_SURFACES_META.filter((s) => !isRotationalParamSurfaceId(s.id));
+    if (tab === "sweep") {
+      return PARAM_SURFACES_META.filter((s) => isSweepParamSurfaceId(s.id));
+    }
+    if (tab === "tube") {
+      return PARAM_SURFACES_META.filter((s) => isTubeParamSurfaceId(s.id));
+    }
+    return PARAM_SURFACES_META.filter(
+      (s) => !isRotationalParamSurfaceId(s.id) && !isSweepParamSurfaceId(s.id) && !isTubeParamSurfaceId(s.id)
+    );
   }, [tab, rotationalFamilyFilter]);
   const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
   const showRotationalProfileEditorInline =
@@ -23383,6 +23486,34 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
         >
           Rotational
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("sweep")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (tab === "sweep" ? "#0a66c2" : "#ddd"),
+            background: tab === "sweep" ? "#e6f0ff" : "#fff",
+            fontWeight: tab === "sweep" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Sweep
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("tube")}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 999,
+            border: "1px solid " + (tab === "tube" ? "#0a66c2" : "#ddd"),
+            background: tab === "tube" ? "#e6f0ff" : "#fff",
+            fontWeight: tab === "tube" ? 600 : 400,
+            cursor: "pointer",
+          }}
+        >
+          Tube
+        </button>
       </div>
       {tab === "rotational" && (
         <>
@@ -23415,6 +23546,16 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
             </div>
           )}
         </>
+      )}
+      {tab === "sweep" && (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Sweep subtypes: linear extrusion, directional, path, helical, scaled, twisted, RMF ribbon.
+        </div>
+      )}
+      {tab === "tube" && (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Tube subtypes: constant-radius, variable-radius, closed, open. Ribbon/strip can be added as related later.
+        </div>
       )}
       <div style={styles.presetsRow}>
         {entries.map((s) => (
@@ -23520,6 +23661,86 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+type RotationalSplineOverlayProps = {
+  rotationalProfileMode: RotationalProfileMode;
+  rotationalProfilePointsText: string;
+  onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
+  onChangeRotationalProfilePointsText: (value: string) => void;
+};
+
+const RotationalSplineOverlay: React.FC<RotationalSplineOverlayProps> = ({
+  rotationalProfileMode,
+  rotationalProfilePointsText,
+  onChangeRotationalProfileMode,
+  onChangeRotationalProfilePointsText,
+}) => {
+  if (rotationalProfileMode !== "points" && rotationalProfileMode !== "spline") return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 12,
+        right: 12,
+        width: "min(360px, calc(100% - 24px))",
+        maxHeight: "calc(100% - 24px)",
+        border: "1px solid #dbe4f0",
+        borderRadius: 10,
+        background: "rgba(255, 255, 255, 0.96)",
+        boxShadow: "0 10px 24px rgba(15, 23, 42, 0.18)",
+        padding: "10px 12px",
+        display: "grid",
+        gap: 6,
+        boxSizing: "border-box",
+        zIndex: 5,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 700 }}>Spline profile editor</div>
+      <div style={{ fontSize: 11, color: "#4b5563" }}>
+        Points format: <code>v, r, z</code> (one row per point).
+      </div>
+      <div style={pillRow}>
+        {(["points", "spline"] as const).map((mode) => (
+          <button
+            key={`rot-spline-overlay-${mode}`}
+            type="button"
+            onClick={() => onChangeRotationalProfileMode(mode)}
+            style={pill(rotationalProfileMode === mode)}
+            aria-pressed={rotationalProfileMode === mode}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={rotationalProfilePointsText}
+        onChange={(e) => onChangeRotationalProfilePointsText(e.target.value)}
+        rows={8}
+        style={{
+          width: "100%",
+          minHeight: 120,
+          maxHeight: 260,
+          boxSizing: "border-box",
+          fontFamily: "monospace",
+          fontSize: 12,
+          borderRadius: 6,
+          border: "1px solid #cbd5e1",
+          padding: "6px 8px",
+          resize: "vertical",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={() => onChangeRotationalProfilePointsText(DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT)}
+        >
+          Load sample points
+        </button>
+      </div>
     </div>
   );
 };
@@ -24899,6 +25120,8 @@ type SurfacesLeftPanelProps = {
   rotationalProfilePointsText: string;
   rotationalAxisOrigin: Vec3;
   rotationalAxisDirection: Vec3;
+  rmfRibbonTwistEnabled: boolean;
+  rmfRibbonTwistTurns: number;
   complexMapSpec: ComplexMapSweepSpec;
   complexMapPresetId: string;
   complexMapError: string | null;
@@ -24986,6 +25209,8 @@ type SurfacesLeftPanelProps = {
   onChangeRotationalProfilePointsText: (s: string) => void;
   onChangeRotationalAxisOrigin: (v: Vec3) => void;
   onChangeRotationalAxisDirection: (v: Vec3) => void;
+  onChangeRmfRibbonTwistEnabled: (v: boolean) => void;
+  onChangeRmfRibbonTwistTurns: (v: number) => void;
   onChangeComplexMapSpec: (patch: Partial<ComplexMapSweepSpec>) => void;
   onChangeComplexMapPreset: (id: string) => void;
   onBuildComplexMapSweep: () => void;
@@ -25400,6 +25625,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   rotationalProfilePointsText,
   rotationalAxisOrigin,
   rotationalAxisDirection,
+  rmfRibbonTwistEnabled,
+  rmfRibbonTwistTurns,
   complexMapSpec,
   complexMapPresetId,
   complexMapError,
@@ -25487,6 +25714,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeRotationalProfilePointsText,
   onChangeRotationalAxisOrigin,
   onChangeRotationalAxisDirection,
+  onChangeRmfRibbonTwistEnabled,
+  onChangeRmfRibbonTwistTurns,
   onChangeComplexMapSpec,
   onChangeComplexMapPreset,
   onBuildComplexMapSweep,
@@ -25784,6 +26013,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
+  const isRmfRibbonParam = viewerKind === "param" && paramId === "ribbonRMF";
   const isGeneralRotationalParam = viewerKind === "param" && supportsGeneralRotationalProfile(paramId);
   const rotationalDefaults = isGeneralRotationalParam ? getDefaultRotationalProfileExpressions(paramId) : null;
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
@@ -25805,6 +26035,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
     ...base,
     [axis]: Number.isFinite(raw) ? raw : base[axis],
   });
+  const rotationalPrincipalAxis = detectPrincipalAxisDirection(rotationalAxisDirection);
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
   const complexMapIsRiemann = complexMapSpec.mapMode === "riemann";
   const complexMapSheetCount = complexMapIsRiemann ? Math.max(2, Math.round(complexMapSpec.sheetCount)) : 1;
@@ -29948,7 +30179,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
         <div style={{ marginTop: 12 }}>
           <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>Rotational profile</label>
           <p style={styles.hint}>
-            General form: <code>(r(v), z(v)) → (r(v) cos u, r(v) sin u, z(v))</code> with an arbitrary axis.
+            General form: <code>(r(v), z(v)) → (r(v) cos u, r(v) sin u, z(v))</code> with x/y/z or arbitrary axis.
           </p>
 
           <div style={pillRow}>
@@ -30024,30 +30255,17 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           {(rotationalProfileMode === "points" || rotationalProfileMode === "spline") && (
             <>
               <div style={{ fontSize: 11, color: "#666", marginTop: 8 }}>
-                Enter points as <code>v, r, z</code> (one per line). Two values mean <code>r, z</code> with
-                implicit <code>v</code>.
+                Spline/points parameters are shown in the main view overlay (top-right), so you can tweak the
+                profile while viewing the surface. Current rows:{" "}
+                {rotationalProfilePointsText
+                  .split(/\r?\n/)
+                  .map((line) => line.trim())
+                  .filter((line) => line.length > 0).length}
               </div>
-              <textarea
-                value={rotationalProfilePointsText}
-                onChange={(e) => onChangeRotationalProfilePointsText(e.target.value)}
-                rows={6}
-                style={{
-                  width: "100%",
-                  marginTop: 6,
-                  marginBottom: 6,
-                  padding: "6px 8px",
-                  borderRadius: 6,
-                  border: "1px solid #ccc",
-                  fontFamily: "monospace",
-                  fontSize: 12,
-                  boxSizing: "border-box",
-                  resize: "vertical",
-                }}
-              />
               <button
                 type="button"
                 onClick={() => onChangeRotationalProfilePointsText(DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT)}
-                style={{ padding: "4px 8px" }}
+                style={{ padding: "4px 8px", width: "fit-content" }}
               >
                 Load sample points
               </button>
@@ -30056,6 +30274,23 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
 
           <div style={{ marginTop: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Axis of revolution</div>
+            <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>quick axis</div>
+            <div style={pillRow}>
+              {(["x", "y", "z"] as const).map((axis) => (
+                <button
+                  key={`rot-axis-${axis}`}
+                  type="button"
+                  onClick={() => onChangeRotationalAxisDirection({ ...ROTATIONAL_AXIS_DIRECTIONS[axis] })}
+                  style={pill(rotationalPrincipalAxis === axis)}
+                  aria-pressed={rotationalPrincipalAxis === axis}
+                >
+                  {axis.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "#666", marginTop: 8, marginBottom: 4 }}>
+              Arbitrary axis: edit direction below.
+            </div>
             <div style={{ fontSize: 11, color: "#666", marginBottom: 4 }}>origin</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 6 }}>
               {(["x", "y", "z"] as const).map((axis) => (
@@ -30096,6 +30331,41 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {isRmfRibbonParam && (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>RMF ribbon options</label>
+          <p style={styles.hint}>
+            Uses a rotation-minimizing frame along the centerline. Enable twist to rotate ribbon orientation along
+            <code> v</code>.
+          </p>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={rmfRibbonTwistEnabled}
+              onChange={(e) => onChangeRmfRibbonTwistEnabled(e.target.checked)}
+            />
+            Enable twist
+          </label>
+          <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>
+            Twist turns across v-range
+            <input
+              type="number"
+              min={-8}
+              max={8}
+              step={0.25}
+              value={rmfRibbonTwistTurns}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                if (!Number.isFinite(v)) return;
+                onChangeRmfRibbonTwistTurns(clampNumber(v, -8, 8));
+              }}
+              style={{ width: "100%", marginTop: 4 }}
+              disabled={!rmfRibbonTwistEnabled}
+            />
+          </label>
         </div>
       )}
 
