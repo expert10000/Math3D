@@ -2032,6 +2032,7 @@ const constructedParamSubtypeFor = (id: ParamSurfaceId): ConstructedParamSubtype
 
 type RotationalProfileFamily = "linear" | "function" | "parametric";
 type RotationalProfileFamilyFilter = RotationalProfileFamily | "all";
+type ParamSurfaceOverlayTab = "rotational" | "spline";
 
 const ROTATIONAL_PROFILE_FAMILY_BY_ID: Partial<Record<ParamSurfaceId, RotationalProfileFamily>> = {
   rotationalDevelopable: "linear",
@@ -7424,6 +7425,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
   const [rotationalAxisOrigin, setRotationalAxisOrigin] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_ORIGIN);
   const [rotationalAxisDirection, setRotationalAxisDirection] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_DIRECTION);
+  const [paramSurfaceOverlayOpen, setParamSurfaceOverlayOpen] = useState(true);
+  const [paramSurfaceOverlayTab, setParamSurfaceOverlayTab] = useState<ParamSurfaceOverlayTab>("rotational");
   const [rmfRibbonTwistEnabled, setRmfRibbonTwistEnabled] = useState(false);
   const [rmfRibbonTwistTurns, setRmfRibbonTwistTurns] = useState(1);
   const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
@@ -8655,12 +8658,34 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     : compareParamId;
   const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
   const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
+  const showParamSurfaceOverlayContext =
+    mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "param";
+  const paramSurfaceOverlayHasRotationalTab =
+    showParamSurfaceOverlayContext && supportsGeneralRotationalProfile(primaryParamId);
+  const paramSurfaceOverlayHasSplineTab = showParamSurfaceOverlayContext && isSplinePatchSurfaceId(primaryParamId);
+  const showParamSurfaceOverlayLauncher = paramSurfaceOverlayHasRotationalTab || paramSurfaceOverlayHasSplineTab;
   const showRotationalSplineOverlay =
-    mode === "surfaces" &&
-    datasetKind === "surface" &&
-    surfaceViewerKind === "param" &&
-    supportsGeneralRotationalProfile(primaryParamId) &&
+    showParamSurfaceOverlayContext &&
+    paramSurfaceOverlayHasRotationalTab &&
     (rotationalProfileMode === "points" || rotationalProfileMode === "spline");
+
+  useEffect(() => {
+    if (!showParamSurfaceOverlayLauncher) {
+      setParamSurfaceOverlayOpen(false);
+      return;
+    }
+    setParamSurfaceOverlayOpen(true);
+  }, [primaryParamId, showParamSurfaceOverlayLauncher]);
+
+  useEffect(() => {
+    setParamSurfaceOverlayTab((prev) => {
+      if (prev === "rotational" && paramSurfaceOverlayHasRotationalTab) return prev;
+      if (prev === "spline" && paramSurfaceOverlayHasSplineTab) return prev;
+      if (paramSurfaceOverlayHasRotationalTab) return "rotational";
+      if (paramSurfaceOverlayHasSplineTab) return "spline";
+      return prev;
+    });
+  }, [paramSurfaceOverlayHasRotationalTab, paramSurfaceOverlayHasSplineTab]);
 
   useEffect(() => {
     if (!isGraphSurface(graphSurfaceId)) return;
@@ -20461,6 +20486,75 @@ case "mobius":
                             onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
                           />
                         )}
+                        {showParamSurfaceOverlayLauncher && !paramSurfaceOverlayOpen && (
+                          <button
+                            type="button"
+                            onClick={() => setParamSurfaceOverlayOpen(true)}
+                            style={{
+                              position: "absolute",
+                              top: 12,
+                              left: 12,
+                              zIndex: 6,
+                              borderRadius: 999,
+                              border: "1px solid #0a66c2",
+                              background: "rgba(230, 240, 255, 0.95)",
+                              color: "#0a66c2",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Open surface params
+                          </button>
+                        )}
+                        {showParamSurfaceOverlayLauncher && (
+                          <ParamSurfaceOverlayDialog
+                            open={paramSurfaceOverlayOpen}
+                            activeTab={paramSurfaceOverlayTab}
+                            onChangeTab={setParamSurfaceOverlayTab}
+                            onClose={() => setParamSurfaceOverlayOpen(false)}
+                            showRotationalTab={paramSurfaceOverlayHasRotationalTab}
+                            showSplineTab={paramSurfaceOverlayHasSplineTab}
+                            paramId={primaryParamId}
+                            rotationalProfileMode={rotationalProfileMode}
+                            rotationalProfileRExpr={rotationalProfileRExpr}
+                            rotationalProfileZExpr={rotationalProfileZExpr}
+                            rotationalProfilePointsText={rotationalProfilePointsText}
+                            rotationalAxisOrigin={rotationalAxisOrigin}
+                            rotationalAxisDirection={rotationalAxisDirection}
+                            onChangeRotationalProfileMode={setRotationalProfileMode}
+                            onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+                            onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+                            onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                            onChangeRotationalAxisOrigin={setRotationalAxisOrigin}
+                            onChangeRotationalAxisDirection={setRotationalAxisDirection}
+                            bezierControlGridText={bezierControlGridText}
+                            bSplineControlGridText={bSplineControlGridText}
+                            bSplineDegreeU={bSplineDegreeU}
+                            bSplineDegreeV={bSplineDegreeV}
+                            bSplineKnotUText={bSplineKnotUText}
+                            bSplineKnotVText={bSplineKnotVText}
+                            nurbsControlGridText={nurbsControlGridText}
+                            nurbsDegreeU={nurbsDegreeU}
+                            nurbsDegreeV={nurbsDegreeV}
+                            nurbsKnotUText={nurbsKnotUText}
+                            nurbsKnotVText={nurbsKnotVText}
+                            nurbsWeightsText={nurbsWeightsText}
+                            onChangeBezierControlGridText={setBezierControlGridText}
+                            onChangeBSplineControlGridText={setBSplineControlGridText}
+                            onChangeBSplineDegreeU={setBSplineDegreeU}
+                            onChangeBSplineDegreeV={setBSplineDegreeV}
+                            onChangeBSplineKnotUText={setBSplineKnotUText}
+                            onChangeBSplineKnotVText={setBSplineKnotVText}
+                            onChangeNurbsControlGridText={setNurbsControlGridText}
+                            onChangeNurbsDegreeU={setNurbsDegreeU}
+                            onChangeNurbsDegreeV={setNurbsDegreeV}
+                            onChangeNurbsKnotUText={setNurbsKnotUText}
+                            onChangeNurbsKnotVText={setNurbsKnotVText}
+                            onChangeNurbsWeightsText={setNurbsWeightsText}
+                          />
+                        )}
                       </div>
 
                           {compareEnabled && (
@@ -24182,6 +24276,558 @@ const RotationalSplineOverlay: React.FC<RotationalSplineOverlayProps> = ({
         >
           Load sample points
         </button>
+      </div>
+    </div>
+  );
+};
+
+type ParamSurfaceOverlayDialogProps = {
+  open: boolean;
+  activeTab: ParamSurfaceOverlayTab;
+  onChangeTab: (tab: ParamSurfaceOverlayTab) => void;
+  onClose: () => void;
+  showRotationalTab: boolean;
+  showSplineTab: boolean;
+  paramId: ParamSurfaceId;
+  rotationalProfileMode: RotationalProfileMode;
+  rotationalProfileRExpr: string;
+  rotationalProfileZExpr: string;
+  rotationalProfilePointsText: string;
+  rotationalAxisOrigin: Vec3;
+  rotationalAxisDirection: Vec3;
+  onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
+  onChangeRotationalProfileRExpr: (value: string) => void;
+  onChangeRotationalProfileZExpr: (value: string) => void;
+  onChangeRotationalProfilePointsText: (value: string) => void;
+  onChangeRotationalAxisOrigin: (next: Vec3) => void;
+  onChangeRotationalAxisDirection: (next: Vec3) => void;
+  bezierControlGridText: string;
+  bSplineControlGridText: string;
+  bSplineDegreeU: number;
+  bSplineDegreeV: number;
+  bSplineKnotUText: string;
+  bSplineKnotVText: string;
+  nurbsControlGridText: string;
+  nurbsDegreeU: number;
+  nurbsDegreeV: number;
+  nurbsKnotUText: string;
+  nurbsKnotVText: string;
+  nurbsWeightsText: string;
+  onChangeBezierControlGridText: (value: string) => void;
+  onChangeBSplineControlGridText: (value: string) => void;
+  onChangeBSplineDegreeU: (value: number) => void;
+  onChangeBSplineDegreeV: (value: number) => void;
+  onChangeBSplineKnotUText: (value: string) => void;
+  onChangeBSplineKnotVText: (value: string) => void;
+  onChangeNurbsControlGridText: (value: string) => void;
+  onChangeNurbsDegreeU: (value: number) => void;
+  onChangeNurbsDegreeV: (value: number) => void;
+  onChangeNurbsKnotUText: (value: string) => void;
+  onChangeNurbsKnotVText: (value: string) => void;
+  onChangeNurbsWeightsText: (value: string) => void;
+};
+
+const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
+  open,
+  activeTab,
+  onChangeTab,
+  onClose,
+  showRotationalTab,
+  showSplineTab,
+  paramId,
+  rotationalProfileMode,
+  rotationalProfileRExpr,
+  rotationalProfileZExpr,
+  rotationalProfilePointsText,
+  rotationalAxisOrigin,
+  rotationalAxisDirection,
+  onChangeRotationalProfileMode,
+  onChangeRotationalProfileRExpr,
+  onChangeRotationalProfileZExpr,
+  onChangeRotationalProfilePointsText,
+  onChangeRotationalAxisOrigin,
+  onChangeRotationalAxisDirection,
+  bezierControlGridText,
+  bSplineControlGridText,
+  bSplineDegreeU,
+  bSplineDegreeV,
+  bSplineKnotUText,
+  bSplineKnotVText,
+  nurbsControlGridText,
+  nurbsDegreeU,
+  nurbsDegreeV,
+  nurbsKnotUText,
+  nurbsKnotVText,
+  nurbsWeightsText,
+  onChangeBezierControlGridText,
+  onChangeBSplineControlGridText,
+  onChangeBSplineDegreeU,
+  onChangeBSplineDegreeV,
+  onChangeBSplineKnotUText,
+  onChangeBSplineKnotVText,
+  onChangeNurbsControlGridText,
+  onChangeNurbsDegreeU,
+  onChangeNurbsDegreeV,
+  onChangeNurbsKnotUText,
+  onChangeNurbsKnotVText,
+  onChangeNurbsWeightsText,
+}) => {
+  if (!open) return null;
+  const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
+  const rotationalPrincipalAxis = detectPrincipalAxisDirection(rotationalAxisDirection);
+  const isBezierPatchParam = isSplinePatchSurfaceId(paramId) && paramId === "bezierSurface";
+  const isBSplinePatchParam = isSplinePatchSurfaceId(paramId) && paramId === "bSplineSurface";
+  const isNurbsPatchParam = isSplinePatchSurfaceId(paramId) && paramId === "nurbsSurface";
+  const tabIds: ParamSurfaceOverlayTab[] = [];
+  if (showRotationalTab) tabIds.push("rotational");
+  if (showSplineTab) tabIds.push("spline");
+  if (!tabIds.length) return null;
+  const resolvedTab = tabIds.includes(activeTab) ? activeTab : tabIds[0];
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 7,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(15, 23, 42, 0.28)",
+        padding: 12,
+        boxSizing: "border-box",
+      }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Surface parameter overlay"
+        style={{
+          width: "min(80%, 1120px)",
+          height: "80%",
+          maxWidth: "calc(100% - 24px)",
+          maxHeight: "calc(100% - 24px)",
+          borderRadius: 12,
+          border: "1px solid #dbe4f0",
+          background: "rgba(255, 255, 255, 0.98)",
+          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.28)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            padding: "10px 12px",
+            borderBottom: "1px solid #e2e8f0",
+            background: "#f8fbff",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Surface parameter overlay</div>
+          <button type="button" onClick={onClose} style={{ padding: "4px 10px" }}>
+            Close
+          </button>
+        </div>
+
+        {tabIds.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              padding: "10px 12px",
+              borderBottom: "1px solid #e2e8f0",
+            }}
+          >
+            {tabIds.map((tab) => (
+              <button
+                key={`param-overlay-tab-${tab}`}
+                type="button"
+                onClick={() => onChangeTab(tab)}
+                style={pill(resolvedTab === tab)}
+                aria-pressed={resolvedTab === tab}
+              >
+                {tab === "rotational" ? "Rotational" : "Spline patch"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "12px 14px" }}>
+          {resolvedTab === "rotational" && showRotationalTab && (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Rotational profile</div>
+                <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
+                  General form: <code>(r(v), z(v)) -&gt; (r(v) cos u, r(v) sin u, z(v))</code>.
+                </div>
+              </div>
+
+              <div style={pillRow}>
+                {(["formula", "points", "spline"] as const).map((mode) => (
+                  <button
+                    key={`overlay-rot-mode-${mode}`}
+                    type="button"
+                    onClick={() => onChangeRotationalProfileMode(mode)}
+                    style={pill(rotationalProfileMode === mode)}
+                    aria-pressed={rotationalProfileMode === mode}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+
+              {rotationalProfileMode === "formula" && (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 11, color: "#4b5563" }}>
+                    Preset defaults: r(v)=<code>{rotationalDefaults?.rExpr ?? "-"}</code>, z(v)=
+                    <code>{rotationalDefaults?.zExpr ?? "-"}</code>
+                  </div>
+                  <label style={{ fontSize: 12 }}>
+                    r(v)
+                    <input
+                      type="text"
+                      value={rotationalProfileRExpr}
+                      placeholder={rotationalDefaults?.rExpr ?? "r(v)"}
+                      onChange={(event) => onChangeRotationalProfileRExpr(event.target.value)}
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "6px 8px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 13,
+                      }}
+                    />
+                  </label>
+                  <label style={{ fontSize: 12 }}>
+                    z(v)
+                    <input
+                      type="text"
+                      value={rotationalProfileZExpr}
+                      placeholder={rotationalDefaults?.zExpr ?? "z(v)"}
+                      onChange={(event) => onChangeRotationalProfileZExpr(event.target.value)}
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "6px 8px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 13,
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChangeRotationalProfileRExpr("");
+                      onChangeRotationalProfileZExpr("");
+                    }}
+                    style={{ width: "fit-content", padding: "4px 10px" }}
+                  >
+                    Use preset profile
+                  </button>
+                </div>
+              )}
+
+              {(rotationalProfileMode === "points" || rotationalProfileMode === "spline") && (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 11, color: "#4b5563" }}>
+                    Points format: <code>v, r, z</code> (one row per point).
+                  </div>
+                  <textarea
+                    value={rotationalProfilePointsText}
+                    onChange={(event) => onChangeRotationalProfilePointsText(event.target.value)}
+                    rows={10}
+                    style={{
+                      width: "100%",
+                      minHeight: 160,
+                      borderRadius: 6,
+                      border: "1px solid #cbd5e1",
+                      padding: "8px 10px",
+                      boxSizing: "border-box",
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      resize: "vertical",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onChangeRotationalProfilePointsText(DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT)}
+                    style={{ width: "fit-content", padding: "4px 10px" }}
+                  >
+                    Load sample points
+                  </button>
+                </div>
+              )}
+
+              <div style={{ display: "grid", gap: 8, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 12 }}>Axis of revolution</div>
+                <div style={{ fontSize: 11, color: "#4b5563" }}>Quick axis</div>
+                <div style={pillRow}>
+                  {(["x", "y", "z"] as const).map((axis) => (
+                    <button
+                      key={`overlay-axis-${axis}`}
+                      type="button"
+                      onClick={() => onChangeRotationalAxisDirection({ ...ROTATIONAL_AXIS_DIRECTIONS[axis] })}
+                      style={pill(rotationalPrincipalAxis === axis)}
+                      aria-pressed={rotationalPrincipalAxis === axis}
+                    >
+                      {axis.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#4b5563" }}>Origin</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                  {(["x", "y", "z"] as const).map((axis) => (
+                    <label key={`overlay-origin-${axis}`} style={{ fontSize: 11 }}>
+                      {axis}
+                      <input
+                        type="number"
+                        step={0.1}
+                        value={rotationalAxisOrigin[axis]}
+                        onChange={(event) =>
+                          onChangeRotationalAxisOrigin(
+                            patchVecAxis(rotationalAxisOrigin, axis, Number(event.target.value))
+                          )
+                        }
+                        style={{ width: "100%", marginTop: 4 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#4b5563" }}>Direction</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8 }}>
+                  {(["x", "y", "z"] as const).map((axis) => (
+                    <label key={`overlay-direction-${axis}`} style={{ fontSize: 11 }}>
+                      {axis}
+                      <input
+                        type="number"
+                        step={0.1}
+                        value={rotationalAxisDirection[axis]}
+                        onChange={(event) =>
+                          onChangeRotationalAxisDirection(
+                            patchVecAxis(rotationalAxisDirection, axis, Number(event.target.value))
+                          )
+                        }
+                        style={{ width: "100%", marginTop: 4 }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {resolvedTab === "spline" && showSplineTab && (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>Spline patch parameters</div>
+                <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
+                  Control rows use <code>x,y,z; x,y,z; ...</code> with one row per line.
+                </div>
+              </div>
+
+              {isBezierPatchParam && (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Control grid Pij
+                    <textarea
+                      value={bezierControlGridText}
+                      onChange={(event) => onChangeBezierControlGridText(event.target.value)}
+                      rows={10}
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "8px 10px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                        resize: "vertical",
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => onChangeBezierControlGridText(DEFAULT_BEZIER_CONTROL_GRID_TEXT)}
+                    style={{ width: "fit-content", padding: "4px 10px" }}
+                  >
+                    Reset Bezier control grid
+                  </button>
+                </div>
+              )}
+
+              {(isBSplinePatchParam || isNurbsPatchParam) && (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>
+                    Control grid Pij
+                    <textarea
+                      value={isNurbsPatchParam ? nurbsControlGridText : bSplineControlGridText}
+                      onChange={(event) =>
+                        isNurbsPatchParam
+                          ? onChangeNurbsControlGridText(event.target.value)
+                          : onChangeBSplineControlGridText(event.target.value)
+                      }
+                      rows={10}
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "8px 10px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                        resize: "vertical",
+                      }}
+                    />
+                  </label>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
+                    <label style={{ fontSize: 11 }}>
+                      Degree u
+                      <input
+                        type="number"
+                        min={1}
+                        max={8}
+                        step={1}
+                        value={isNurbsPatchParam ? nurbsDegreeU : bSplineDegreeU}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (!Number.isFinite(value)) return;
+                          if (isNurbsPatchParam) onChangeNurbsDegreeU(Math.max(1, Math.round(value)));
+                          else onChangeBSplineDegreeU(Math.max(1, Math.round(value)));
+                        }}
+                        style={{ width: "100%", marginTop: 4 }}
+                      />
+                    </label>
+                    <label style={{ fontSize: 11 }}>
+                      Degree v
+                      <input
+                        type="number"
+                        min={1}
+                        max={8}
+                        step={1}
+                        value={isNurbsPatchParam ? nurbsDegreeV : bSplineDegreeV}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (!Number.isFinite(value)) return;
+                          if (isNurbsPatchParam) onChangeNurbsDegreeV(Math.max(1, Math.round(value)));
+                          else onChangeBSplineDegreeV(Math.max(1, Math.round(value)));
+                        }}
+                        style={{ width: "100%", marginTop: 4 }}
+                      />
+                    </label>
+                  </div>
+
+                  <label style={{ fontSize: 12 }}>
+                    Knot vector u
+                    <input
+                      type="text"
+                      value={isNurbsPatchParam ? nurbsKnotUText : bSplineKnotUText}
+                      onChange={(event) =>
+                        isNurbsPatchParam
+                          ? onChangeNurbsKnotUText(event.target.value)
+                          : onChangeBSplineKnotUText(event.target.value)
+                      }
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "6px 8px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                      }}
+                    />
+                  </label>
+
+                  <label style={{ fontSize: 12 }}>
+                    Knot vector v
+                    <input
+                      type="text"
+                      value={isNurbsPatchParam ? nurbsKnotVText : bSplineKnotVText}
+                      onChange={(event) =>
+                        isNurbsPatchParam
+                          ? onChangeNurbsKnotVText(event.target.value)
+                          : onChangeBSplineKnotVText(event.target.value)
+                      }
+                      style={{
+                        width: "100%",
+                        marginTop: 4,
+                        borderRadius: 6,
+                        border: "1px solid #cbd5e1",
+                        padding: "6px 8px",
+                        boxSizing: "border-box",
+                        fontFamily: "monospace",
+                        fontSize: 12,
+                      }}
+                    />
+                  </label>
+
+                  {isNurbsPatchParam && (
+                    <label style={{ fontSize: 12 }}>
+                      Weights wij
+                      <textarea
+                        value={nurbsWeightsText}
+                        onChange={(event) => onChangeNurbsWeightsText(event.target.value)}
+                        rows={6}
+                        style={{
+                          width: "100%",
+                          marginTop: 4,
+                          borderRadius: 6,
+                          border: "1px solid #cbd5e1",
+                          padding: "8px 10px",
+                          boxSizing: "border-box",
+                          fontFamily: "monospace",
+                          fontSize: 12,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isNurbsPatchParam) {
+                        onChangeNurbsControlGridText(DEFAULT_NURBS_CONTROL_GRID_TEXT);
+                        onChangeNurbsDegreeU(DEFAULT_NURBS_DEGREE_U);
+                        onChangeNurbsDegreeV(DEFAULT_NURBS_DEGREE_V);
+                        onChangeNurbsKnotUText(DEFAULT_NURBS_KNOT_U_TEXT);
+                        onChangeNurbsKnotVText(DEFAULT_NURBS_KNOT_V_TEXT);
+                        onChangeNurbsWeightsText(DEFAULT_NURBS_WEIGHTS_TEXT);
+                      } else {
+                        onChangeBSplineControlGridText(DEFAULT_BSPLINE_CONTROL_GRID_TEXT);
+                        onChangeBSplineDegreeU(DEFAULT_BSPLINE_DEGREE_U);
+                        onChangeBSplineDegreeV(DEFAULT_BSPLINE_DEGREE_V);
+                        onChangeBSplineKnotUText(DEFAULT_BSPLINE_KNOT_U_TEXT);
+                        onChangeBSplineKnotVText(DEFAULT_BSPLINE_KNOT_V_TEXT);
+                      }
+                    }}
+                    style={{ width: "fit-content", padding: "4px 10px" }}
+                  >
+                    Reset {isNurbsPatchParam ? "NURBS" : "B-spline"} defaults
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -30749,8 +31395,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
           {(rotationalProfileMode === "points" || rotationalProfileMode === "spline") && (
             <>
               <div style={{ fontSize: 11, color: "#666", marginTop: 8 }}>
-                Spline/points parameters are shown in the main view overlay (top-right), so you can tweak the
-                profile while viewing the surface. Current rows:{" "}
+                Spline/points parameters are available in the main view overlay dialog (center). Current rows:{" "}
                 {rotationalProfilePointsText
                   .split(/\r?\n/)
                   .map((line) => line.trim())
