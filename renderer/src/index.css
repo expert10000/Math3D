@@ -14,6 +14,8 @@
   --shadow-soft: 0 4px 8px rgba(18, 24, 32, 0.06);
   --radius: 12px;
   --radius-sm: 8px;
+  --body-bg: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  --body-bg-size: auto;
 
   font-family: "Georgia", "Times New Roman", serif;
   line-height: 1.5;
@@ -26,6 +28,35 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+html[data-theme="dark"] {
+  --bg: #11161f;
+  --bg-2: #1a2330;
+  --panel: rgba(27, 35, 47, 0.92);
+  --panel-strong: #1f2835;
+  --border: rgba(217, 225, 237, 0.2);
+  --text: #e8eef7;
+  --muted: #a2b0c2;
+  --shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 6px 14px rgba(0, 0, 0, 0.28);
+  --body-bg: linear-gradient(180deg, #11161f 0%, #1a2330 100%);
+  color-scheme: dark;
+}
+
+html[data-theme="dot"] {
+  --bg: #fbf7ef;
+  --bg-2: #eef3fb;
+  --panel: rgba(255, 255, 255, 0.9);
+  --panel-strong: #fffdfa;
+  --border: rgba(22, 34, 52, 0.2);
+  --text: #1d293b;
+  --muted: #627086;
+  --body-bg:
+    radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--accent) 20%, transparent) 1px, transparent 1.2px),
+    linear-gradient(180deg, #fbf7ef 0%, #eef3fb 100%);
+  --body-bg-size: 18px 18px, auto;
+  color-scheme: light;
 }
 
 /* ---- Layout: let React fill the whole Electron window ---- */
@@ -59,7 +90,8 @@ a:hover {
 body {
   margin: 0;
   color: var(--text);
-  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  background: var(--body-bg);
+  background-size: var(--body-bg-size);
   background-attachment: fixed;
 }
 

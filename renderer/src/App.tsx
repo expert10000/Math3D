@@ -265,6 +265,8 @@ type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
+type AppTheme = "light" | "dark" | "dot";
+type AccentPresetId = "blue" | "teal" | "amber" | "rose";
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
   "graph",
@@ -327,10 +329,26 @@ const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
 const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
 const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
+const UI_THEME_KEY = "math3d.ui.theme.v1";
+const UI_ACCENT_KEY = "math3d.ui.accent.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
 const WORKBOOK_SNAPSHOT_HISTORY_LIMIT = 20;
+const APP_THEMES: AppTheme[] = ["light", "dark", "dot"];
+const ACCENT_PRESETS: Record<
+  AccentPresetId,
+  { label: string; accent: string; strong: string; soft: string }
+> = {
+  blue: { label: "Blue", accent: "#1f3556", strong: "#16263f", soft: "#e6ecf7" },
+  teal: { label: "Teal", accent: "#0f766e", strong: "#115e59", soft: "#dff7f3" },
+  amber: { label: "Amber", accent: "#b45309", strong: "#92400e", soft: "#fff2dd" },
+  rose: { label: "Rose", accent: "#be185d", strong: "#9f1239", soft: "#ffe3ef" },
+};
+const isAppTheme = (value: string | null | undefined): value is AppTheme =>
+  !!value && APP_THEMES.includes(value as AppTheme);
+const isAccentPresetId = (value: string | null | undefined): value is AccentPresetId =>
+  !!value && Object.prototype.hasOwnProperty.call(ACCENT_PRESETS, value);
 type WorkbookBundleAssetMode = "embedded" | "linked";
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
@@ -5054,6 +5072,26 @@ const App: React.FC = () => {
     });
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.setAttribute("data-theme", uiTheme);
+    const accent = ACCENT_PRESETS[uiAccent];
+    root.style.setProperty("--accent", accent.accent);
+    root.style.setProperty("--accent-strong", accent.strong);
+    root.style.setProperty("--accent-soft", accent.soft);
+  }, [uiTheme, uiAccent]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_THEME_KEY, uiTheme);
+  }, [uiTheme]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_ACCENT_KEY, uiAccent);
+  }, [uiAccent]);
+
   const samples = 800;
   const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
     if (IS_REPLAY_MODE) return "workbook";
@@ -5061,6 +5099,16 @@ const App: React.FC = () => {
     return saved === "workbook" ? "workbook" : "inspector";
   });
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
+    if (IS_REPLAY_MODE) return "light";
+    const saved = localStorage.getItem(UI_THEME_KEY);
+    return isAppTheme(saved) ? saved : "light";
+  });
+  const [uiAccent, setUiAccent] = useState<AccentPresetId>(() => {
+    if (IS_REPLAY_MODE) return "blue";
+    const saved = localStorage.getItem(UI_ACCENT_KEY);
+    return isAccentPresetId(saved) ? saved : "blue";
+  });
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
@@ -19557,6 +19605,23 @@ case "mobius":
               />
             </div>
           )}
+          <div style={{ ...styles.group, gridColumn: "span 3" }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="dot">Dot Accent</option>
+              </select>
+              <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
+                {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
+                  <option key={id} value={id}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div style={{ ...styles.group, gridColumn: "span 3" }}>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
