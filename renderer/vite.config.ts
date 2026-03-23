@@ -20,6 +20,68 @@ const workerProxy = proxyEnabled
 export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
   plugins: [react()],
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const mod = id.replace(/\\/g, "/");
+
+          if (mod.includes("/node_modules/three/examples/")) return "vendor-three-examples";
+          if (mod.includes("/node_modules/three/src/renderers/")) return "vendor-three-renderers";
+          if (mod.includes("/node_modules/three/")) return "vendor-three-core";
+          if (mod.includes("/node_modules/react/") || mod.includes("/node_modules/react-dom/")) {
+            return "vendor-react";
+          }
+          if (mod.includes("/node_modules/d3/")) return "vendor-d3";
+
+          if (mod.includes("/src/components/VolumeViewer.tsx") || mod.includes("/src/scene/volume/")) {
+            return "feature-volume";
+          }
+          if (mod.includes("/src/components/WorkbookPanel.tsx") || mod.includes("/src/workbook/")) {
+            return "feature-workbook";
+          }
+          if (
+            mod.includes("/src/components/GeometryViewer.tsx") ||
+            mod.includes("/src/components/ConstructionLabPanel.tsx") ||
+            mod.includes("/src/components/StereometryAnalyzerPanel.tsx") ||
+            mod.includes("/src/geometry/")
+          ) {
+            return "feature-geometry";
+          }
+          if (
+            mod.includes("/src/components/SurfaceViewer.tsx") ||
+            mod.includes("/src/components/ParamSurfaceViewer.tsx") ||
+            mod.includes("/src/math/")
+          ) {
+            return "feature-surfaces";
+          }
+          if (
+            mod.includes("/src/components/") &&
+            !mod.includes("/src/components/SurfaceViewer.tsx") &&
+            !mod.includes("/src/components/ParamSurfaceViewer.tsx") &&
+            !mod.includes("/src/components/VolumeViewer.tsx") &&
+            !mod.includes("/src/components/WorkbookPanel.tsx") &&
+            !mod.includes("/src/components/GeometryViewer.tsx") &&
+            !mod.includes("/src/components/ConstructionLabPanel.tsx") &&
+            !mod.includes("/src/components/StereometryAnalyzerPanel.tsx")
+          ) {
+            return "feature-ui";
+          }
+          if (mod.includes("/src/services/")) return "feature-services";
+          if (mod.includes("/src/mesh/")) return "feature-mesh";
+          if (
+            mod.includes("/src/d3/") ||
+            mod.includes("/src/screens/MobiusScreen.tsx") ||
+            mod.includes("/src/screens/ChebyshevScreen.tsx")
+          ) {
+            return "feature-complex";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     proxy: workerProxy,
   },

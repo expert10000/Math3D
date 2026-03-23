@@ -27,6 +27,10 @@ import {
   buildRotationalSurfaceEvaluator,
   type RotationalProfileMode,
 } from "../math/rotationalSurface";
+import {
+  buildSplineSurfacePointEvaluator,
+  type SplineSurfaceSettings,
+} from "../math/splineSurface";
 
 import type {
   ColorMode,
@@ -317,6 +321,7 @@ type Props = {
   chartGridCountU?: number;
   chartGridCountV?: number;
   paramDomain?: ParamDomain;
+  splineSettings?: SplineSurfaceSettings;
   weierstrassGExpr?: string;
   weierstrassPhiExpr?: string;
   weierstrassResolution?: number;
@@ -523,6 +528,11 @@ function getDomain(surfaceId: ParamSurfaceId) {
     case "hyperbolicParaboloid":
     case "enneper":
       return { uMin: -2, uMax: 2, vMin: -2, vMax: 2 };
+
+    case "bezierSurface":
+    case "bSplineSurface":
+    case "nurbsSurface":
+      return { uMin: 0, uMax: 1, vMin: 0, vMax: 1 };
 
     case "paraboloid":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: 0, vMax: 2 };
@@ -1416,6 +1426,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   chartGridCountU = 11,
   chartGridCountV = 11,
   paramDomain,
+  splineSettings,
   weierstrassGExpr,
   weierstrassPhiExpr,
   weierstrassResolution,
@@ -2604,6 +2615,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       axisOrigin: rotationalAxisOrigin,
       axisDirection: rotationalAxisDirection,
     });
+    const splineEval = buildSplineSurfacePointEvaluator(surfaceId, splineSettings);
+    const spanU = Math.max(1e-9, uMax - uMin);
+    const spanV = Math.max(1e-9, vMax - vMin);
     const rmfRibbonEval =
       surfaceId === "ribbonRMF"
         ? buildRmfRibbonSampler({
@@ -2645,6 +2659,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
         if (rotationalEval) {
           const p = rotationalEval(u, v);
+          target.set(p.x, p.y, p.z);
+          return;
+        }
+        if (splineEval) {
+          const uuNorm = (u - uMin) / spanU;
+          const vvNorm = (v - vMin) / spanV;
+          const p = splineEval(uuNorm, vvNorm);
           target.set(p.x, p.y, p.z);
           return;
         }
@@ -3746,6 +3767,18 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     surfaceParamResolution,
     weierstrassGExpr,
     weierstrassPhiExpr,
+    splineSettings?.bezierControlGridText,
+    splineSettings?.bSplineControlGridText,
+    splineSettings?.bSplineDegreeU,
+    splineSettings?.bSplineDegreeV,
+    splineSettings?.bSplineKnotUText,
+    splineSettings?.bSplineKnotVText,
+    splineSettings?.nurbsControlGridText,
+    splineSettings?.nurbsDegreeU,
+    splineSettings?.nurbsDegreeV,
+    splineSettings?.nurbsKnotUText,
+    splineSettings?.nurbsKnotVText,
+    splineSettings?.nurbsWeightsText,
     weierstrassResolution,
     weierstrassRecenter,
     weierstrassError,

@@ -45,6 +45,9 @@ export type SurfaceId =
 
 export type ParamSurfaceId =
   | "plane"
+  | "bezierSurface"
+  | "bSplineSurface"
+  | "nurbsSurface"
   | "cylinder"
   | "cone"
   | "rotationalDevelopable"

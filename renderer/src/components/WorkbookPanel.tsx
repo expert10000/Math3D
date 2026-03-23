@@ -15,6 +15,7 @@ import type {
 } from "@math3d/workbook";
 import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
+import { isSplinePatchSurfaceId } from "../math/splineSurface";
 import { computeMeanEdgeLength } from "../mesh/meshOps";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
 
@@ -253,7 +254,9 @@ const buildMeshFromSnapshot = (snapshot: WorkbookViewSnapshot): { mesh?: Surface
   }
   if (snapshot.viewerKind === "param") {
     if (!snapshot.paramId) return { error: "Missing param surface id." };
-    const domain = snapshot.paramDomain ?? { uMin: -1, uMax: 1, vMin: -1, vMax: 1 };
+    const domain =
+      snapshot.paramDomain ??
+      (isSplinePatchSurfaceId(snapshot.paramId) ? { uMin: 0, uMax: 1, vMin: 0, vMax: 1 } : { uMin: -1, uMax: 1, vMin: -1, vMax: 1 });
     const resolution = Math.max(20, Math.round(snapshot.paramResolution ?? 120));
     const result = bakeParamSurface({
       surfaceId: snapshot.paramId,

@@ -7,6 +7,11 @@ import {
   type RotationalProfileMode,
   type RotationalProfileSettings,
 } from "./rotationalSurface";
+import {
+  buildSplineSurfacePointEvaluator,
+  isSplinePatchSurfaceId,
+  type SplineSurfaceSettings,
+} from "./splineSurface";
 import { buildWeierstrassSurface } from "./weierstrass";
 
 type GraphDomain = { xSpan: number; ySpan: number };
@@ -424,7 +429,8 @@ const buildParamGrid = (
   customX?: string,
   customY?: string,
   customZ?: string,
-  rotationalSettings?: RotationalProfileSettings
+  rotationalSettings?: RotationalProfileSettings,
+  splineSettings?: SplineSurfaceSettings
 ): GridBuild => {
   const nx = clampResolution(resolution, 16, 16);
   const ny = clampResolution(resolution, 16, 16);
@@ -445,6 +451,9 @@ const buildParamGrid = (
     };
   }
   const rotationalEval = buildRotationalSurfaceEvaluator(surfaceId, rotationalSettings);
+  const splineEval = buildSplineSurfacePointEvaluator(surfaceId, splineSettings);
+  const spanU = Math.max(1e-9, uMax - uMin);
+  const spanV = Math.max(1e-9, vMax - vMin);
 
   for (let j = 0; j < ny; j++) {
     const v = vMin + dv * j;
@@ -460,6 +469,13 @@ const buildParamGrid = (
         x = customFns.x(u, v);
         y = customFns.y(u, v);
         z = customFns.z(u, v);
+      } else if (splineEval) {
+        const uuNorm = (u - uMin) / spanU;
+        const vvNorm = (v - vMin) / spanV;
+        const p = splineEval(uuNorm, vvNorm);
+        x = p.x;
+        y = p.y;
+        z = p.z;
       } else {
         const res = evalParamSurface(surfaceId, u, v, rotationalEval);
         x = res.x;
@@ -518,12 +534,16 @@ export function bakeParamSurface(params: {
   rotationalProfilePointsText?: string;
   rotationalAxisOrigin?: { x: number; y: number; z: number };
   rotationalAxisDirection?: { x: number; y: number; z: number };
+  splineSettings?: SplineSurfaceSettings;
 }): BakeResult {
   if (params.surfaceId === "weierstrass") {
     return { error: "Weierstrass requires its own baker." };
   }
 
-  const domain = clampDomain(params.domain, { uMin: -1, uMax: 1, vMin: -1, vMax: 1 });
+  const domain = clampDomain(
+    params.domain,
+    isSplinePatchSurfaceId(params.surfaceId) ? { uMin: 0, uMax: 1, vMin: 0, vMax: 1 } : { uMin: -1, uMax: 1, vMin: -1, vMax: 1 }
+  );
   const grid = buildParamGrid(
     params.surfaceId,
     domain,
@@ -538,7 +558,8 @@ export function bakeParamSurface(params: {
       pointsText: params.rotationalProfilePointsText,
       axisOrigin: params.rotationalAxisOrigin,
       axisDirection: params.rotationalAxisDirection,
-    }
+    },
+    params.splineSettings
   );
   const indices = triangulateGrid(grid.nx, grid.ny, grid.valid);
   if (!indices.length) return { error: "No valid triangles produced. Check expressions or domain." };

@@ -207,6 +207,22 @@ import {
   type RotationalProfileMode,
 } from "./math/rotationalSurface";
 import {
+  DEFAULT_BEZIER_CONTROL_GRID_TEXT,
+  DEFAULT_BSPLINE_CONTROL_GRID_TEXT,
+  DEFAULT_BSPLINE_DEGREE_U,
+  DEFAULT_BSPLINE_DEGREE_V,
+  DEFAULT_BSPLINE_KNOT_U_TEXT,
+  DEFAULT_BSPLINE_KNOT_V_TEXT,
+  DEFAULT_NURBS_CONTROL_GRID_TEXT,
+  DEFAULT_NURBS_DEGREE_U,
+  DEFAULT_NURBS_DEGREE_V,
+  DEFAULT_NURBS_KNOT_U_TEXT,
+  DEFAULT_NURBS_KNOT_V_TEXT,
+  DEFAULT_NURBS_WEIGHTS_TEXT,
+  isSplinePatchSurfaceId,
+  type SplineSurfaceSettings,
+} from "./math/splineSurface";
+import {
   createDefaultWorkbook,
   createWorkbookFromTemplate,
   WORKBOOK_TEMPLATES,
@@ -1839,6 +1855,24 @@ const PARAM_SURFACES_META: {
 }[] = [
   { id: "plane", label: "Plane", formula: "σ(u,v) = (u, v, 0)", note: "Developable; K = 0." },
   {
+    id: "bezierSurface",
+    label: "Bezier surface",
+    formula: "σ(u,v) = Σ_i Σ_j B_i^m(u) B_j^n(v) P_ij",
+    note: "Tensor-product Bezier patch from a control grid.",
+  },
+  {
+    id: "bSplineSurface",
+    label: "B-spline surface",
+    formula: "σ(u,v) = Σ_i Σ_j N_i,p(u) M_j,q(v) P_ij",
+    note: "Tensor-product B-spline patch with clamped knot vectors.",
+  },
+  {
+    id: "nurbsSurface",
+    label: "NURBS surface",
+    formula: "σ(u,v) = (Σ_i Σ_j N_i,p M_j,q w_ij P_ij) / (Σ_i Σ_j N_i,p M_j,q w_ij)",
+    note: "Rational B-spline patch using per-control-point weights.",
+  },
+  {
     id: "rotationalDevelopable",
     label: "Rotational linear profile",
     formula: "σ(u,v) = ((a + b v) cos u, (a + b v) sin u, c + d v)",
@@ -1950,6 +1984,9 @@ const RULED_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
 ]);
 const isRuledParamSurfaceId = (id: ParamSurfaceId): boolean => RULED_PARAM_SURFACE_IDS.has(id);
 const SPLINE_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "bezierSurface",
+  "bSplineSurface",
+  "nurbsSurface",
   "rotationalFreeProfile",
 ]);
 const isSplineParamSurfaceId = (id: ParamSurfaceId): boolean => SPLINE_PARAM_SURFACE_IDS.has(id);
@@ -2008,6 +2045,10 @@ const ROTATIONAL_PROFILE_FAMILY_FILTERS: { value: RotationalProfileFamilyFilter;
 function getParamDomainPreviewBounds(id: ParamSurfaceId) {
   // keep these consistent with ParamSurfaceViewer's domain switch
   switch (id) {
+    case "bezierSurface":
+    case "bSplineSurface":
+    case "nurbsSurface":
+      return { uMin: 0, uMax: 1, vMin: 0, vMax: 1 };
     case "rotationalDevelopable":
       return { uMin: 0, uMax: 2 * Math.PI, vMin: -1.8, vMax: 1.8 };
     case "rotationalGraph":
@@ -7294,6 +7335,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramXExpr, setParamXExpr] = useState("u");
   const [paramYExpr, setParamYExpr] = useState("v");
   const [paramZExpr, setParamZExpr] = useState("0");
+  const [bezierControlGridText, setBezierControlGridText] = useState(DEFAULT_BEZIER_CONTROL_GRID_TEXT);
+  const [bSplineControlGridText, setBSplineControlGridText] = useState(DEFAULT_BSPLINE_CONTROL_GRID_TEXT);
+  const [bSplineDegreeU, setBSplineDegreeU] = useState(DEFAULT_BSPLINE_DEGREE_U);
+  const [bSplineDegreeV, setBSplineDegreeV] = useState(DEFAULT_BSPLINE_DEGREE_V);
+  const [bSplineKnotUText, setBSplineKnotUText] = useState(DEFAULT_BSPLINE_KNOT_U_TEXT);
+  const [bSplineKnotVText, setBSplineKnotVText] = useState(DEFAULT_BSPLINE_KNOT_V_TEXT);
+  const [nurbsControlGridText, setNurbsControlGridText] = useState(DEFAULT_NURBS_CONTROL_GRID_TEXT);
+  const [nurbsDegreeU, setNurbsDegreeU] = useState(DEFAULT_NURBS_DEGREE_U);
+  const [nurbsDegreeV, setNurbsDegreeV] = useState(DEFAULT_NURBS_DEGREE_V);
+  const [nurbsKnotUText, setNurbsKnotUText] = useState(DEFAULT_NURBS_KNOT_U_TEXT);
+  const [nurbsKnotVText, setNurbsKnotVText] = useState(DEFAULT_NURBS_KNOT_V_TEXT);
+  const [nurbsWeightsText, setNurbsWeightsText] = useState(DEFAULT_NURBS_WEIGHTS_TEXT);
   const [rotationalProfileMode, setRotationalProfileMode] = useState<RotationalProfileMode>("formula");
   const [rotationalProfileRExpr, setRotationalProfileRExpr] = useState("");
   const [rotationalProfileZExpr, setRotationalProfileZExpr] = useState("");
@@ -7320,6 +7373,36 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [weierstrassDiagnosticError, setWeierstrassDiagnosticError] = useState<string | null>(null);
   const [diagnosticsToken, setDiagnosticsToken] = useState(0);
   const [showDriftArrow, setShowDriftArrow] = useState(false);
+  const splineSurfaceSettings = useMemo<SplineSurfaceSettings>(
+    () => ({
+      bezierControlGridText,
+      bSplineControlGridText,
+      bSplineDegreeU,
+      bSplineDegreeV,
+      bSplineKnotUText,
+      bSplineKnotVText,
+      nurbsControlGridText,
+      nurbsDegreeU,
+      nurbsDegreeV,
+      nurbsKnotUText,
+      nurbsKnotVText,
+      nurbsWeightsText,
+    }),
+    [
+      bezierControlGridText,
+      bSplineControlGridText,
+      bSplineDegreeU,
+      bSplineDegreeV,
+      bSplineKnotUText,
+      bSplineKnotVText,
+      nurbsControlGridText,
+      nurbsDegreeU,
+      nurbsDegreeV,
+      nurbsKnotUText,
+      nurbsKnotVText,
+      nurbsWeightsText,
+    ]
+  );
 
   // 3D visual toggles
   const [showWireframe, setShowWireframe] = useState(false);
@@ -10531,6 +10614,7 @@ case "mobius":
     rotationalProfilePointsText,
     rotationalAxisOrigin,
     rotationalAxisDirection,
+    splineSurfaceSettings,
     weierstrassGExpr,
     weierstrassPhiExpr,
     weierstrassRecenter,
@@ -13108,6 +13192,7 @@ case "mobius":
         rotationalProfilePointsText,
         rotationalAxisOrigin,
         rotationalAxisDirection,
+        splineSettings: splineSurfaceSettings,
       });
       if ("error" in baked) {
         setSurfaceMeshImportError(baked.error);
@@ -18923,6 +19008,18 @@ case "mobius":
                   paramXExpr={paramXExpr}
                   paramYExpr={paramYExpr}
                   paramZExpr={paramZExpr}
+                  bezierControlGridText={bezierControlGridText}
+                  bSplineControlGridText={bSplineControlGridText}
+                  bSplineDegreeU={bSplineDegreeU}
+                  bSplineDegreeV={bSplineDegreeV}
+                  bSplineKnotUText={bSplineKnotUText}
+                  bSplineKnotVText={bSplineKnotVText}
+                  nurbsControlGridText={nurbsControlGridText}
+                  nurbsDegreeU={nurbsDegreeU}
+                  nurbsDegreeV={nurbsDegreeV}
+                  nurbsKnotUText={nurbsKnotUText}
+                  nurbsKnotVText={nurbsKnotVText}
+                  nurbsWeightsText={nurbsWeightsText}
                   rotationalProfileMode={rotationalProfileMode}
                   rotationalProfileRExpr={rotationalProfileRExpr}
                   rotationalProfileZExpr={rotationalProfileZExpr}
@@ -19012,6 +19109,18 @@ case "mobius":
                   onChangeParamXExpr={setParamXExpr}
                   onChangeParamYExpr={setParamYExpr}
                   onChangeParamZExpr={setParamZExpr}
+                  onChangeBezierControlGridText={setBezierControlGridText}
+                  onChangeBSplineControlGridText={setBSplineControlGridText}
+                  onChangeBSplineDegreeU={setBSplineDegreeU}
+                  onChangeBSplineDegreeV={setBSplineDegreeV}
+                  onChangeBSplineKnotUText={setBSplineKnotUText}
+                  onChangeBSplineKnotVText={setBSplineKnotVText}
+                  onChangeNurbsControlGridText={setNurbsControlGridText}
+                  onChangeNurbsDegreeU={setNurbsDegreeU}
+                  onChangeNurbsDegreeV={setNurbsDegreeV}
+                  onChangeNurbsKnotUText={setNurbsKnotUText}
+                  onChangeNurbsKnotVText={setNurbsKnotVText}
+                  onChangeNurbsWeightsText={setNurbsWeightsText}
                   onChangeRotationalProfileMode={setRotationalProfileMode}
                   onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
                   onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
@@ -19968,6 +20077,7 @@ case "mobius":
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
+                            splineSettings={splineSurfaceSettings}
                             weierstrassGExpr={weierstrassGExpr}
                             weierstrassPhiExpr={weierstrassPhiExpr}
                             weierstrassResolution={weierstrassResolution}
@@ -20254,6 +20364,7 @@ case "mobius":
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               paramDomain={activeParamDomain}
+                              splineSettings={splineSurfaceSettings}
                               overlayPolylineGroups={compareOverlayPolylineGroups}
                               probeEnabled={false}
                               showProbeNormal={false}
@@ -23189,7 +23300,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           onClick={() => {
             onChangeDatasetKind("surface");
             onChangeViewerKind("param");
-            if (!isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalFreeProfile");
+            if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
           }}
           style={{
             padding: "4px 10px",
@@ -23567,7 +23678,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
       return;
     }
     if (next === "spline") {
-      if (!isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalFreeProfile");
+      if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
       return;
     }
     if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
@@ -23712,7 +23823,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
       )}
       {sourceKind === "spline" && (
         <div style={{ fontSize: 11, opacity: 0.8 }}>
-          Spline surface tools: editable profile points and spline interpolation.
+          Spline families: Bezier patch, B-spline patch, NURBS patch, and rotational spline profile.
         </div>
       )}
       <div style={styles.presetsRow}>
@@ -25272,6 +25383,18 @@ type SurfacesLeftPanelProps = {
   paramXExpr: string;
   paramYExpr: string;
   paramZExpr: string;
+  bezierControlGridText: string;
+  bSplineControlGridText: string;
+  bSplineDegreeU: number;
+  bSplineDegreeV: number;
+  bSplineKnotUText: string;
+  bSplineKnotVText: string;
+  nurbsControlGridText: string;
+  nurbsDegreeU: number;
+  nurbsDegreeV: number;
+  nurbsKnotUText: string;
+  nurbsKnotVText: string;
+  nurbsWeightsText: string;
   rotationalProfileMode: RotationalProfileMode;
   rotationalProfileRExpr: string;
   rotationalProfileZExpr: string;
@@ -25361,6 +25484,18 @@ type SurfacesLeftPanelProps = {
   onChangeParamXExpr: (s: string) => void;
   onChangeParamYExpr: (s: string) => void;
   onChangeParamZExpr: (s: string) => void;
+  onChangeBezierControlGridText: (s: string) => void;
+  onChangeBSplineControlGridText: (s: string) => void;
+  onChangeBSplineDegreeU: (n: number) => void;
+  onChangeBSplineDegreeV: (n: number) => void;
+  onChangeBSplineKnotUText: (s: string) => void;
+  onChangeBSplineKnotVText: (s: string) => void;
+  onChangeNurbsControlGridText: (s: string) => void;
+  onChangeNurbsDegreeU: (n: number) => void;
+  onChangeNurbsDegreeV: (n: number) => void;
+  onChangeNurbsKnotUText: (s: string) => void;
+  onChangeNurbsKnotVText: (s: string) => void;
+  onChangeNurbsWeightsText: (s: string) => void;
   onChangeRotationalProfileMode: (mode: RotationalProfileMode) => void;
   onChangeRotationalProfileRExpr: (s: string) => void;
   onChangeRotationalProfileZExpr: (s: string) => void;
@@ -25777,6 +25912,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   paramXExpr,
   paramYExpr,
   paramZExpr,
+  bezierControlGridText,
+  bSplineControlGridText,
+  bSplineDegreeU,
+  bSplineDegreeV,
+  bSplineKnotUText,
+  bSplineKnotVText,
+  nurbsControlGridText,
+  nurbsDegreeU,
+  nurbsDegreeV,
+  nurbsKnotUText,
+  nurbsKnotVText,
+  nurbsWeightsText,
   rotationalProfileMode,
   rotationalProfileRExpr,
   rotationalProfileZExpr,
@@ -25866,6 +26013,18 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeParamXExpr,
   onChangeParamYExpr,
   onChangeParamZExpr,
+  onChangeBezierControlGridText,
+  onChangeBSplineControlGridText,
+  onChangeBSplineDegreeU,
+  onChangeBSplineDegreeV,
+  onChangeBSplineKnotUText,
+  onChangeBSplineKnotVText,
+  onChangeNurbsControlGridText,
+  onChangeNurbsDegreeU,
+  onChangeNurbsDegreeV,
+  onChangeNurbsKnotUText,
+  onChangeNurbsKnotVText,
+  onChangeNurbsWeightsText,
   onChangeRotationalProfileMode,
   onChangeRotationalProfileRExpr,
   onChangeRotationalProfileZExpr,
@@ -26171,6 +26330,10 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   const isGraphCustom = viewerKind === "graph" && surfaceId === "graph_custom";
   const isImplicitCustom = viewerKind === "implicit" && surfaceId === "implicit_custom";
   const isParamCustom = viewerKind === "param" && paramId === "custom";
+  const isSplinePatchParam = viewerKind === "param" && isSplinePatchSurfaceId(paramId);
+  const isBezierPatchParam = viewerKind === "param" && paramId === "bezierSurface";
+  const isBSplinePatchParam = viewerKind === "param" && paramId === "bSplineSurface";
+  const isNurbsPatchParam = viewerKind === "param" && paramId === "nurbsSurface";
   const isRmfRibbonParam = viewerKind === "param" && paramId === "ribbonRMF";
   const isGeneralRotationalParam = viewerKind === "param" && supportsGeneralRotationalProfile(paramId);
   const rotationalDefaults = isGeneralRotationalParam ? getDefaultRotationalProfileExpressions(paramId) : null;
@@ -30524,6 +30687,188 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               disabled={!rmfRibbonTwistEnabled}
             />
           </label>
+        </div>
+      )}
+
+      {isSplinePatchParam && (
+        <div style={{ marginTop: 12 }}>
+          <label style={{ fontWeight: 600, fontSize: 13, display: "block" }}>
+            Spline patch parameters
+          </label>
+          <p style={styles.hint}>
+            Control rows use format <code>x,y,z; x,y,z; ...</code>. Use one row per line. JSON arrays also work.
+          </p>
+
+          {isBezierPatchParam && (
+            <>
+              <label style={{ fontSize: 12 }}>Control grid Pᵢⱼ</label>
+              <textarea
+                value={bezierControlGridText}
+                onChange={(e) => onChangeBezierControlGridText(e.target.value)}
+                rows={6}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  boxSizing: "border-box",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => onChangeBezierControlGridText(DEFAULT_BEZIER_CONTROL_GRID_TEXT)}
+                style={{ padding: "4px 8px", marginTop: 8 }}
+              >
+                Reset Bezier control grid
+              </button>
+            </>
+          )}
+
+          {(isBSplinePatchParam || isNurbsPatchParam) && (
+            <>
+              <label style={{ fontSize: 12 }}>Control grid Pᵢⱼ</label>
+              <textarea
+                value={isNurbsPatchParam ? nurbsControlGridText : bSplineControlGridText}
+                onChange={(e) =>
+                  isNurbsPatchParam
+                    ? onChangeNurbsControlGridText(e.target.value)
+                    : onChangeBSplineControlGridText(e.target.value)
+                }
+                rows={7}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 8 }}>
+                <label style={{ fontSize: 11 }}>
+                  degree u
+                  <input
+                    type="number"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={isNurbsPatchParam ? nurbsDegreeU : bSplineDegreeU}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (!Number.isFinite(value)) return;
+                      if (isNurbsPatchParam) onChangeNurbsDegreeU(Math.max(1, Math.round(value)));
+                      else onChangeBSplineDegreeU(Math.max(1, Math.round(value)));
+                    }}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+                <label style={{ fontSize: 11 }}>
+                  degree v
+                  <input
+                    type="number"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={isNurbsPatchParam ? nurbsDegreeV : bSplineDegreeV}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (!Number.isFinite(value)) return;
+                      if (isNurbsPatchParam) onChangeNurbsDegreeV(Math.max(1, Math.round(value)));
+                      else onChangeBSplineDegreeV(Math.max(1, Math.round(value)));
+                    }}
+                    style={{ width: "100%", marginTop: 4 }}
+                  />
+                </label>
+              </div>
+
+              <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>Knot vector u</label>
+              <input
+                type="text"
+                value={isNurbsPatchParam ? nurbsKnotUText : bSplineKnotUText}
+                onChange={(e) =>
+                  isNurbsPatchParam
+                    ? onChangeNurbsKnotUText(e.target.value)
+                    : onChangeBSplineKnotUText(e.target.value)
+                }
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>Knot vector v</label>
+              <input
+                type="text"
+                value={isNurbsPatchParam ? nurbsKnotVText : bSplineKnotVText}
+                onChange={(e) =>
+                  isNurbsPatchParam
+                    ? onChangeNurbsKnotVText(e.target.value)
+                    : onChangeBSplineKnotVText(e.target.value)
+                }
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  borderRadius: 6,
+                  border: "1px solid #ccc",
+                  fontFamily: "monospace",
+                  fontSize: 12,
+                  boxSizing: "border-box",
+                }}
+              />
+
+              {isNurbsPatchParam && (
+                <>
+                  <label style={{ fontSize: 12, marginTop: 8, display: "block" }}>Weights wᵢⱼ</label>
+                  <textarea
+                    value={nurbsWeightsText}
+                    onChange={(e) => onChangeNurbsWeightsText(e.target.value)}
+                    rows={5}
+                    style={{
+                      width: "100%",
+                      marginTop: 4,
+                      borderRadius: 6,
+                      border: "1px solid #ccc",
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isNurbsPatchParam) {
+                    onChangeNurbsControlGridText(DEFAULT_NURBS_CONTROL_GRID_TEXT);
+                    onChangeNurbsDegreeU(DEFAULT_NURBS_DEGREE_U);
+                    onChangeNurbsDegreeV(DEFAULT_NURBS_DEGREE_V);
+                    onChangeNurbsKnotUText(DEFAULT_NURBS_KNOT_U_TEXT);
+                    onChangeNurbsKnotVText(DEFAULT_NURBS_KNOT_V_TEXT);
+                    onChangeNurbsWeightsText(DEFAULT_NURBS_WEIGHTS_TEXT);
+                  } else {
+                    onChangeBSplineControlGridText(DEFAULT_BSPLINE_CONTROL_GRID_TEXT);
+                    onChangeBSplineDegreeU(DEFAULT_BSPLINE_DEGREE_U);
+                    onChangeBSplineDegreeV(DEFAULT_BSPLINE_DEGREE_V);
+                    onChangeBSplineKnotUText(DEFAULT_BSPLINE_KNOT_U_TEXT);
+                    onChangeBSplineKnotVText(DEFAULT_BSPLINE_KNOT_V_TEXT);
+                  }
+                }}
+                style={{ padding: "4px 8px", marginTop: 8 }}
+              >
+                Reset {isNurbsPatchParam ? "NURBS" : "B-spline"} defaults
+              </button>
+            </>
+          )}
         </div>
       )}
 
