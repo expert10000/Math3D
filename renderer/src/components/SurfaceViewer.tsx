@@ -4155,30 +4155,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
-    let prevResizeW = Math.max(1, Math.round(width));
-    let prevResizeH = Math.max(1, Math.round(height));
     const handleResize = () => {
-      const { width: rw, height: rh } = getSize();
-      const nextW = Math.max(1, Math.round(rw));
-      const nextH = Math.max(1, Math.round(rh));
-      const majorResize =
-        nextW / prevResizeW > 1.2 ||
-        prevResizeW / nextW > 1.2 ||
-        nextH / prevResizeH > 1.2 ||
-        prevResizeH / nextH > 1.2;
-      prevResizeW = nextW;
-      prevResizeH = nextH;
-
-      syncRendererSize(majorResize);
+      syncRendererSize(false);
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       resizeFrameId = requestAnimationFrame(() => {
         resizeFrameId = 0;
-        syncRendererSize(majorResize);
+        syncRendererSize(false);
       });
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
-        syncRendererSize(majorResize);
+        syncRendererSize(true);
       }, 120);
     };
 
