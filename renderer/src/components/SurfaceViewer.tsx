@@ -4103,7 +4103,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     setSceneEpoch((v) => v + 1);
 
-    const syncRendererSize = () => {
+    const syncRendererSize = (reframe = false) => {
       const { width: rawWidth, height: rawHeight } = getSize();
       if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return;
 
@@ -4127,12 +4127,13 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
 
       const currentDist = camera.position.distanceTo(center);
-      if (currentDist >= requiredDist) return;
+      if (!reframe && currentDist >= requiredDist) return;
 
       const viewDir = camera.position.clone().sub(controls.target);
       if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
       viewDir.normalize();
-      camera.position.copy(center).addScaledVector(viewDir, requiredDist);
+      const nextDist = Math.max(requiredDist, currentDist);
+      camera.position.copy(center).addScaledVector(viewDir, nextDist);
       controls.target.copy(center);
       camera.lookAt(center);
       controls.update();
@@ -4140,17 +4141,30 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let prevResizeW = Math.max(1, Math.round(width));
+    let prevResizeH = Math.max(1, Math.round(height));
     const handleResize = () => {
-      syncRendererSize();
+      const { width: rw, height: rh } = getSize();
+      const nextW = Math.max(1, Math.round(rw));
+      const nextH = Math.max(1, Math.round(rh));
+      const majorResize =
+        nextW / prevResizeW > 1.2 ||
+        prevResizeW / nextW > 1.2 ||
+        nextH / prevResizeH > 1.2 ||
+        prevResizeH / nextH > 1.2;
+      prevResizeW = nextW;
+      prevResizeH = nextH;
+
+      syncRendererSize(majorResize);
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       resizeFrameId = requestAnimationFrame(() => {
         resizeFrameId = 0;
-        syncRendererSize();
+        syncRendererSize(majorResize);
       });
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
-        syncRendererSize();
+        syncRendererSize(majorResize);
       }, 120);
     };
 
