@@ -172,10 +172,11 @@ export function compileExpression(
     } else if (t.k === "op") {
       pushOp(t.v, t.i);
     } else if (t.k === "lp") {
-      ops.push(t);
-      // if top-1 is a function, start argc at 0 (we’ll bump to 1 on first expr)
-      const prevOp = ops[ops.length - 2];
+      // For function calls keep argc marker below "(" so it is not consumed while
+      // popping operators/comma handling.
+      const prevOp = ops[ops.length - 1];
       if (prevOp && (prevOp as any).k === "fn") ops.push({ k: "argc", n: 0 });
+      ops.push(t);
     } else if (t.k === "comma") {
       // pop until "("
       while (ops.length && (ops[ops.length - 1] as any).k !== "lp") {
@@ -184,11 +185,13 @@ export function compileExpression(
         if (topOp) output.push({ t: "op", op: topOp });
       }
       if (!ops.length) return { error: err("Comma outside of function call", t.i) };
-      // increment argc marker
-      for (let j = ops.length - 1; j >= 0; j--) {
-        if ((ops[j] as any).k === "argc") { (ops[j] as any).n++; break; }
-        if ((ops[j] as any).k === "lp") break;
+      // increment argc marker for the active function call
+      const lpIndex = ops.length - 1;
+      const argcMarker = lpIndex > 0 ? ops[lpIndex - 1] : null;
+      if (!argcMarker || (argcMarker as any).k !== "argc") {
+        return { error: err("Comma outside of function call", t.i) };
       }
+      (argcMarker as any).n += 1;
     } else if (t.k === "rp") {
       while (ops.length && (ops[ops.length - 1] as any).k !== "lp") {
         const top = ops.pop()!;

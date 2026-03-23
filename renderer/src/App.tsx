@@ -112,6 +112,7 @@ import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./s
 import { vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
+import { buildCurveFromPreset } from "./math/curvePresetFactory";
 import {
   buildComplexMapSweep,
   compileComplexMapExpressions,
@@ -123,6 +124,19 @@ import {
   solveContinuousParamGeodesic,
   type ParamGeodesicState,
 } from "./math/paramGeodesicContinuous";
+import { CurveViewer, type CurveViewerGlyph, type CurveViewerVec3 } from "./components/CurveViewer";
+import {
+  arcLength as curveArcLength,
+  curvature as curveCurvature,
+  derivative as curveDerivative,
+  evaluateCurve as curveEvaluate,
+  frenetFrame as curveFrenetFrame,
+  sampleAdaptive as curveSampleAdaptive,
+  sampleUniform as curveSampleUniform,
+  validateCurve as curveValidate,
+  type AnyCurve as CoreAnyCurve,
+  type Curve3D as CoreCurve3D,
+} from "@math3d/core";
 
 import type { MobiusParams } from "./math/mobius";
 import { computeGraphInvariantsFromProbe, getGraphFunction, type CurvatureData } from "./math/surfaceInvariants";
@@ -316,11 +330,25 @@ const isModeValue = (value: string): value is Mode =>
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
 type PrincipalProjectionPlane = "xy" | "yz" | "zx";
 
-type CurvePresetFamily = "parametric2d" | "parametric3d" | "polynomialRational" | "splineNurbs" | "custom";
+type CurvePresetGroup = "general" | "controlBased" | "derived";
+type CurvePresetCategory =
+  | "parametric"
+  | "explicit"
+  | "implicit"
+  | "polar"
+  | "bezier"
+  | "bspline"
+  | "nurbs"
+  | "offset"
+  | "evolute"
+  | "involute"
+  | "onSurface"
+  | "intersection";
 type CurvePreset = {
   id: string;
   label: string;
-  family: CurvePresetFamily;
+  group: CurvePresetGroup;
+  category: CurvePresetCategory;
   kind: string;
   dimension: 2 | 3;
   formulas: { x: string; y: string; z?: string };
@@ -328,20 +356,49 @@ type CurvePreset = {
   note: string;
 };
 
-const CURVE_PRESET_FAMILY_OPTIONS: Array<{ value: CurvePresetFamily | "all"; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "parametric2d", label: "Parametric 2D" },
-  { value: "parametric3d", label: "Parametric 3D" },
-  { value: "polynomialRational", label: "Polynomial / Rational" },
-  { value: "splineNurbs", label: "Spline / NURBS" },
-  { value: "custom", label: "Custom" },
+const CURVE_PRESET_GROUP_OPTIONS: Array<{ value: CurvePresetGroup; label: string }> = [
+  { value: "general", label: "General" },
+  { value: "controlBased", label: "Control-based" },
+  { value: "derived", label: "Derived" },
 ];
+
+const CURVE_PRESET_CATEGORY_OPTIONS: Array<{ value: CurvePresetCategory | "all"; label: string; group?: CurvePresetGroup }> = [
+  { value: "all", label: "All" },
+  { value: "parametric", label: "Parametric", group: "general" },
+  { value: "explicit", label: "Explicit", group: "general" },
+  { value: "implicit", label: "Implicit", group: "general" },
+  { value: "polar", label: "Polar", group: "general" },
+  { value: "bezier", label: "Bezier", group: "controlBased" },
+  { value: "bspline", label: "B-spline", group: "controlBased" },
+  { value: "nurbs", label: "NURBS", group: "controlBased" },
+  { value: "offset", label: "Offset", group: "derived" },
+  { value: "evolute", label: "Evolute", group: "derived" },
+  { value: "involute", label: "Involute", group: "derived" },
+  { value: "onSurface", label: "On Surface", group: "derived" },
+  { value: "intersection", label: "Intersection", group: "derived" },
+];
+
+const CURVE_PRESET_CATEGORY_LABEL: Record<CurvePresetCategory, string> = {
+  parametric: "Parametric",
+  explicit: "Explicit",
+  implicit: "Implicit",
+  polar: "Polar",
+  bezier: "Bezier",
+  bspline: "B-spline",
+  nurbs: "NURBS",
+  offset: "Offset",
+  evolute: "Evolute",
+  involute: "Involute",
+  onSurface: "On Surface",
+  intersection: "Intersection",
+};
 
 const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "line2d",
     label: "Line (2D)",
-    family: "parametric2d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 2,
     formulas: { x: "t", y: "0.5*t" },
@@ -351,7 +408,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "circle2d",
     label: "Circle",
-    family: "parametric2d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 2,
     formulas: { x: "cos(t)", y: "sin(t)" },
@@ -361,7 +419,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "ellipse2d",
     label: "Ellipse",
-    family: "parametric2d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 2,
     formulas: { x: "2*cos(t)", y: "1.2*sin(t)" },
@@ -371,7 +430,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "lissajous2d",
     label: "Lissajous",
-    family: "parametric2d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 2,
     formulas: { x: "sin(3*t + PI/2)", y: "sin(4*t)" },
@@ -381,7 +441,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "hypotrochoid2d",
     label: "Hypotrochoid",
-    family: "parametric2d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 2,
     formulas: {
@@ -392,9 +453,43 @@ const CURVE_PRESETS: CurvePreset[] = [
     note: "Rolling-circle style mechanical curve.",
   },
   {
+    id: "explicitCubic2d",
+    label: "Explicit cubic (y=f(x))",
+    group: "general",
+    category: "explicit",
+    kind: "explicit",
+    dimension: 2,
+    formulas: { x: "t", y: "0.18*t^3 - t" },
+    domain: { tMin: -2.6, tMax: 2.6, closed: false },
+    note: "Explicit graph curve represented parametrically by x=t.",
+  },
+  {
+    id: "implicitCircle2d",
+    label: "Implicit circle",
+    group: "general",
+    category: "implicit",
+    kind: "implicit",
+    dimension: 2,
+    formulas: { x: "cos(t)", y: "sin(t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Equivalent to implicit form x^2 + y^2 - 1 = 0.",
+  },
+  {
+    id: "polarRose2d",
+    label: "Polar rose (r=cos(4t))",
+    group: "general",
+    category: "polar",
+    kind: "polar",
+    dimension: 2,
+    formulas: { x: "cos(4*t)*cos(t)", y: "cos(4*t)*sin(t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Polar curve converted to x=r cos(t), y=r sin(t).",
+  },
+  {
     id: "helix3d",
     label: "Helix",
-    family: "parametric3d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 3,
     formulas: { x: "cos(t)", y: "sin(t)", z: "0.2*t" },
@@ -404,7 +499,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "conicalSpiral3d",
     label: "Conical spiral",
-    family: "parametric3d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 3,
     formulas: { x: "0.08*t*cos(t)", y: "0.08*t*sin(t)", z: "0.12*t" },
@@ -414,7 +510,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "viviani3d",
     label: "Viviani curve",
-    family: "parametric3d",
+    group: "general",
+    category: "parametric",
     kind: "parametric",
     dimension: 3,
     formulas: { x: "1+cos(t)", y: "sin(t)", z: "2*sin(t/2)" },
@@ -424,7 +521,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "torusKnot3d",
     label: "Torus knot (2,3)",
-    family: "parametric3d",
+    group: "derived",
+    category: "onSurface",
     kind: "parametric",
     dimension: 3,
     formulas: {
@@ -438,7 +536,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "bezierCubic",
     label: "Bezier cubic",
-    family: "polynomialRational",
+    group: "controlBased",
+    category: "bezier",
     kind: "bezier",
     dimension: 3,
     formulas: {
@@ -452,7 +551,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "rationalQuadratic",
     label: "Rational quadratic arc",
-    family: "polynomialRational",
+    group: "controlBased",
+    category: "nurbs",
     kind: "rational",
     dimension: 2,
     formulas: {
@@ -465,7 +565,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "bSplineDemo",
     label: "B-spline demo",
-    family: "splineNurbs",
+    group: "controlBased",
+    category: "bspline",
     kind: "bspline",
     dimension: 3,
     formulas: {
@@ -479,7 +580,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "nurbsQuarterArc",
     label: "NURBS quarter arc",
-    family: "splineNurbs",
+    group: "controlBased",
+    category: "nurbs",
     kind: "nurbs",
     dimension: 2,
     formulas: {
@@ -490,9 +592,79 @@ const CURVE_PRESETS: CurvePreset[] = [
     note: "Rational spline preset with weight-normalized coordinates.",
   },
   {
+    id: "offsetCircle2d",
+    label: "Offset curve (circle)",
+    group: "derived",
+    category: "offset",
+    kind: "offset",
+    dimension: 2,
+    formulas: { x: "1.3*cos(t)", y: "1.3*sin(t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Constant offset from unit circle.",
+  },
+  {
+    id: "evoluteEllipse2d",
+    label: "Evolute of ellipse",
+    group: "derived",
+    category: "evolute",
+    kind: "derived",
+    dimension: 2,
+    formulas: {
+      x: "1.28*cos(t)^3",
+      y: "-2.1333333333*sin(t)^3",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Evolute of ellipse x=2cos(t), y=1.2sin(t).",
+  },
+  {
+    id: "involuteCircle2d",
+    label: "Involute of circle",
+    group: "derived",
+    category: "involute",
+    kind: "derived",
+    dimension: 2,
+    formulas: {
+      x: "cos(t)+t*sin(t)",
+      y: "sin(t)-t*cos(t)",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 6, closed: false },
+    note: "Involute generated from unit circle unwinding.",
+  },
+  {
+    id: "onSurfaceTorus3d",
+    label: "On surface (torus track)",
+    group: "derived",
+    category: "onSurface",
+    kind: "derived",
+    dimension: 3,
+    formulas: {
+      x: "(2+0.6*cos(3*t))*cos(t)",
+      y: "(2+0.6*cos(3*t))*sin(t)",
+      z: "0.6*sin(3*t)",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Curve constrained to a torus surface.",
+  },
+  {
+    id: "intersectionSpherePlane3d",
+    label: "Intersection (sphere ∩ plane)",
+    group: "derived",
+    category: "intersection",
+    kind: "derived",
+    dimension: 3,
+    formulas: {
+      x: "sqrt(0.84)*cos(t)",
+      y: "sqrt(0.84)*sin(t)",
+      z: "0.4",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Intersection circle of x^2+y^2+z^2=1 with z=0.4.",
+  },
+  {
     id: "custom2d",
     label: "Custom x(t), y(t)",
-    family: "custom",
+    group: "general",
+    category: "parametric",
     kind: "custom",
     dimension: 2,
     formulas: { x: "cos(t)", y: "sin(2*t)" },
@@ -502,7 +674,8 @@ const CURVE_PRESETS: CurvePreset[] = [
   {
     id: "custom3d",
     label: "Custom x(t), y(t), z(t)",
-    family: "custom",
+    group: "general",
+    category: "parametric",
     kind: "custom",
     dimension: 3,
     formulas: { x: "cos(t)", y: "sin(t)", z: "0.25*sin(3*t)" },
@@ -3229,6 +3402,81 @@ const vRotateAroundAxis = (v: Vec3, axis: Vec3, angle: number): Vec3 => {
 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
+type CurveFrameSample = CurveViewerGlyph & {
+  t: number;
+  curvature: number;
+  torsion: number;
+};
+
+const toCurveViewerVec3 = (point: { x: number; y: number; z?: number }): CurveViewerVec3 => ({
+  x: point.x,
+  y: point.y,
+  z: point.z ?? 0,
+});
+
+const isFiniteCurveVec3 = (value: CurveViewerVec3 | null | undefined): value is CurveViewerVec3 =>
+  !!value && Number.isFinite(value.x) && Number.isFinite(value.y) && Number.isFinite(value.z);
+
+const normalizedCurveVec3 = (value: CurveViewerVec3 | null | undefined): CurveViewerVec3 | null => {
+  if (!isFiniteCurveVec3(value)) return null;
+  const len = Math.hypot(value.x, value.y, value.z);
+  if (len <= 1e-9) return null;
+  return { x: value.x / len, y: value.y / len, z: value.z / len };
+};
+
+const buildCurveFrameAt = (curve: CoreAnyCurve, t: number): CurveFrameSample | null => {
+  const evalRow = curveEvaluate(curve as never, t);
+  const point = toCurveViewerVec3(evalRow.point as { x: number; y: number; z?: number });
+  if (!isFiniteCurveVec3(point)) return null;
+
+  if (curve.dimension === 3) {
+    const frame = curveFrenetFrame(curve as CoreCurve3D, t);
+    const tangent = normalizedCurveVec3(toCurveViewerVec3(frame.tangent));
+    const normal = normalizedCurveVec3(toCurveViewerVec3(frame.normal));
+    const binormal = normalizedCurveVec3(toCurveViewerVec3(frame.binormal));
+    return {
+      t,
+      point,
+      tangent,
+      normal,
+      binormal,
+      curvature: Number.isFinite(frame.curvature) ? frame.curvature : 0,
+      torsion: Number.isFinite(frame.torsion) ? frame.torsion : 0,
+    };
+  }
+
+  const d1 = curveDerivative(curve as never, t) as { x: number; y: number; z?: number };
+  const tangent = normalizedCurveVec3({ x: d1.x, y: d1.y, z: 0 });
+  const normal = tangent ? normalizedCurveVec3({ x: -tangent.y, y: tangent.x, z: 0 }) : null;
+  const binormal = tangent ? { x: 0, y: 0, z: 1 } : null;
+  const curvatureValue = curveCurvature(curve as never, t);
+  return {
+    t,
+    point,
+    tangent,
+    normal,
+    binormal,
+    curvature: Number.isFinite(curvatureValue) ? curvatureValue : 0,
+    torsion: 0,
+  };
+};
+
+type CurveMetricSummary = { min: number; max: number; avg: number };
+
+const summarizeCurveMetric = (values: number[]): CurveMetricSummary | null => {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (!finite.length) return null;
+  let min = finite[0];
+  let max = finite[0];
+  let sum = 0;
+  for (const value of finite) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+    sum += value;
+  }
+  return { min, max, avg: sum / finite.length };
+};
+
 const buildTangentBasis = (normal: Vec3) => {
   const n = vNormalize(normal);
   const ref = Math.abs(n.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
@@ -3788,7 +4036,7 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("surfaces");
-  const [curvePresetFamilyFilter, setCurvePresetFamilyFilter] = useState<CurvePresetFamily | "all">("all");
+  const [curvePresetCategoryFilter, setCurvePresetCategoryFilter] = useState<CurvePresetCategory | "all">("all");
   const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
   const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
   const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
@@ -3797,9 +4045,19 @@ const App: React.FC = () => {
   const [curveCustomTMax, setCurveCustomTMax] = useState(Math.PI);
   const [curveCustomClosed, setCurveCustomClosed] = useState(false);
   const [curveSampleCount, setCurveSampleCount] = useState(128);
+  const [curveSamplingMode, setCurveSamplingMode] = useState<"uniform" | "adaptive">("adaptive");
+  const [curveAdaptiveTolerance, setCurveAdaptiveTolerance] = useState(1.5e-2);
+  const [curveAdaptiveMaxDepth, setCurveAdaptiveMaxDepth] = useState(10);
+  const [curveShowTangent, setCurveShowTangent] = useState(true);
+  const [curveShowNormal, setCurveShowNormal] = useState(true);
+  const [curveShowBinormal, setCurveShowBinormal] = useState(true);
+  const [curveFrameCount, setCurveFrameCount] = useState(18);
+  const [curveFrameScale, setCurveFrameScale] = useState(0.42);
+  const [curveProbeU, setCurveProbeU] = useState(0.5);
+  const [curveViewerResetToken, setCurveViewerResetToken] = useState(0);
   const visibleCurvePresets = useMemo(
-    () => (curvePresetFamilyFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.family === curvePresetFamilyFilter)),
-    [curvePresetFamilyFilter]
+    () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
+    [curvePresetCategoryFilter]
   );
   useEffect(() => {
     if (!visibleCurvePresets.length) return;
@@ -3811,7 +4069,7 @@ const App: React.FC = () => {
     () => CURVE_PRESET_BY_ID.get(curvePresetId) ?? visibleCurvePresets[0] ?? CURVE_PRESETS[0],
     [curvePresetId, visibleCurvePresets]
   );
-  const activeCurveIsCustom = activeCurvePreset?.family === "custom";
+  const activeCurveIsCustom = activeCurvePreset?.kind === "custom";
   const activeCurveFormulas = useMemo(
     () =>
       activeCurveIsCustom
@@ -3830,23 +4088,147 @@ const App: React.FC = () => {
         : activeCurvePreset?.domain ?? { tMin: 0, tMax: 1, closed: false },
     [activeCurveIsCustom, activeCurvePreset?.domain, curveCustomClosed, curveCustomTMax, curveCustomTMin]
   );
-  const curvePresetCountByFamily = useMemo(
+  const curvePresetCountByCategory = useMemo(
     () =>
-      CURVE_PRESET_FAMILY_OPTIONS.reduce<Record<CurvePresetFamily, number>>(
+      CURVE_PRESET_CATEGORY_OPTIONS.reduce<Record<CurvePresetCategory, number>>(
         (acc, item) => {
-          if (item.value !== "all") acc[item.value] = CURVE_PRESETS.filter((preset) => preset.family === item.value).length;
+          if (item.value !== "all") acc[item.value] = CURVE_PRESETS.filter((preset) => preset.category === item.value).length;
           return acc;
         },
         {
-          parametric2d: 0,
-          parametric3d: 0,
-          polynomialRational: 0,
-          splineNurbs: 0,
-          custom: 0,
+          parametric: 0,
+          explicit: 0,
+          implicit: 0,
+          polar: 0,
+          bezier: 0,
+          bspline: 0,
+          nurbs: 0,
+          offset: 0,
+          evolute: 0,
+          involute: 0,
+          onSurface: 0,
+          intersection: 0,
         }
       ),
     []
   );
+  const curvePresetCountByGroup = useMemo(
+    () =>
+      CURVE_PRESET_GROUP_OPTIONS.reduce<Record<CurvePresetGroup, number>>(
+        (acc, item) => {
+          acc[item.value] = CURVE_PRESETS.filter((preset) => preset.group === item.value).length;
+          return acc;
+        },
+        {
+          general: 0,
+          controlBased: 0,
+          derived: 0,
+        }
+      ),
+    []
+  );
+  const activeCurveInput = useMemo(
+    () => ({
+      id: activeCurvePreset?.id ?? "custom2d",
+      label: activeCurvePreset?.label ?? "Curve",
+      kind: activeCurvePreset?.kind ?? "custom",
+      dimension: activeCurvePreset?.dimension ?? 2,
+      formulas: activeCurveFormulas,
+      domain: activeCurveDomain,
+    }),
+    [activeCurveDomain, activeCurveFormulas, activeCurvePreset?.dimension, activeCurvePreset?.id, activeCurvePreset?.kind, activeCurvePreset?.label]
+  );
+  const curveRenderState = useMemo(() => {
+    const built = buildCurveFromPreset(activeCurveInput);
+    const errors = [...built.errors];
+    const curve = built.curve;
+    if (!curve) {
+      return {
+        curve: null as CoreAnyCurve | null,
+        source: built.source,
+        errors,
+        samplePoints: [] as CurveViewerVec3[],
+        frameSamples: [] as CurveFrameSample[],
+        probe: null as CurveFrameSample | null,
+        probeT: NaN,
+        arcLength: NaN,
+        curvatureSummary: null as CurveMetricSummary | null,
+        torsionSummary: null as CurveMetricSummary | null,
+      };
+    }
+
+    const validationErrors = curveValidate(curve).map((message) => `Validation: ${message}`);
+    errors.push(...validationErrors);
+
+    let sampleRows: Array<{ t: number; point: { x: number; y: number; z?: number } }> = [];
+    try {
+      if (curveSamplingMode === "adaptive") {
+        sampleRows = curveSampleAdaptive(curve, {
+          tolerance: Math.max(1e-6, curveAdaptiveTolerance),
+          maxDepth: Math.max(3, Math.min(20, Math.round(curveAdaptiveMaxDepth))),
+        }) as Array<{ t: number; point: { x: number; y: number; z?: number } }>;
+      } else {
+        sampleRows = curveSampleUniform(curve, Math.max(8, Math.min(4096, Math.round(curveSampleCount)))) as Array<{
+          t: number;
+          point: { x: number; y: number; z?: number };
+        }>;
+      }
+    } catch (error) {
+      errors.push(`Sampling failed: ${error instanceof Error ? error.message : String(error)}`);
+      sampleRows = [];
+    }
+
+    const samplePoints = sampleRows
+      .map((row) => toCurveViewerVec3(row.point))
+      .filter((point): point is CurveViewerVec3 => isFiniteCurveVec3(point));
+    if (samplePoints.length < 2) {
+      errors.push("Sampling produced fewer than 2 finite points.");
+    }
+
+    const span = Math.max(1e-9, curve.domain.tMax - curve.domain.tMin);
+    const probeT = curve.domain.tMin + clamp(curveProbeU, 0, 1) * span;
+    const probe = buildCurveFrameAt(curve, probeT);
+
+    const frameCountSafe = Math.max(1, Math.min(64, Math.floor(curveFrameCount)));
+    const frameSamples: CurveFrameSample[] = [];
+    for (let i = 0; i < frameCountSafe; i += 1) {
+      const u = frameCountSafe <= 1 ? 0.5 : i / (frameCountSafe - 1);
+      const t = curve.domain.tMin + u * span;
+      const frame = buildCurveFrameAt(curve, t);
+      if (frame) frameSamples.push(frame);
+    }
+
+    let arcLengthValue = NaN;
+    try {
+      arcLengthValue = curveArcLength(curve);
+    } catch (error) {
+      errors.push(`Arc-length evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const curvatureSummary = summarizeCurveMetric(frameSamples.map((frame) => frame.curvature));
+    const torsionSummary = summarizeCurveMetric(frameSamples.map((frame) => frame.torsion));
+
+    return {
+      curve,
+      source: built.source,
+      errors: Array.from(new Set(errors)),
+      samplePoints,
+      frameSamples,
+      probe,
+      probeT,
+      arcLength: arcLengthValue,
+      curvatureSummary,
+      torsionSummary,
+    };
+  }, [
+    activeCurveInput,
+    curveAdaptiveMaxDepth,
+    curveAdaptiveTolerance,
+    curveFrameCount,
+    curveProbeU,
+    curveSampleCount,
+    curveSamplingMode,
+  ]);
   const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
@@ -19883,12 +20265,12 @@ case "mobius":
           ) : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                Family
+                Category
                 <select
-                  value={curvePresetFamilyFilter}
-                  onChange={(e) => setCurvePresetFamilyFilter(e.target.value as CurvePresetFamily | "all")}
+                  value={curvePresetCategoryFilter}
+                  onChange={(e) => setCurvePresetCategoryFilter(e.target.value as CurvePresetCategory | "all")}
                 >
-                  {CURVE_PRESET_FAMILY_OPTIONS.map((option) => (
+                  {CURVE_PRESET_CATEGORY_OPTIONS.map((option) => (
                     <option key={`curve-family-${option.value}`} value={option.value}>
                       {option.label}
                     </option>
@@ -19906,21 +20288,112 @@ case "mobius":
                 </select>
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                Samples
+                Sampling
+                <select value={curveSamplingMode} onChange={(e) => setCurveSamplingMode(e.target.value as "uniform" | "adaptive")}>
+                  <option value="adaptive">Adaptive</option>
+                  <option value="uniform">Uniform</option>
+                </select>
+              </label>
+              {curveSamplingMode === "uniform" ? (
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  Samples
+                  <input
+                    type="number"
+                    min={8}
+                    max={4096}
+                    step={8}
+                    value={curveSampleCount}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+                      if (!Number.isFinite(value)) return;
+                      setCurveSampleCount(Math.max(8, Math.min(4096, Math.round(value))));
+                    }}
+                    style={{ width: 84 }}
+                  />
+                </label>
+              ) : (
+                <>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    Tolerance
+                    <input
+                      type="number"
+                      min={0.0001}
+                      max={1}
+                      step={0.0005}
+                      value={curveAdaptiveTolerance}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (!Number.isFinite(value)) return;
+                        setCurveAdaptiveTolerance(Math.max(1e-4, Math.min(1, value)));
+                      }}
+                      style={{ width: 88 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    Max depth
+                    <input
+                      type="number"
+                      min={3}
+                      max={20}
+                      step={1}
+                      value={curveAdaptiveMaxDepth}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (!Number.isFinite(value)) return;
+                        setCurveAdaptiveMaxDepth(Math.max(3, Math.min(20, Math.round(value))));
+                      }}
+                      style={{ width: 74 }}
+                    />
+                  </label>
+                </>
+              )}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Frames
                 <input
                   type="number"
-                  min={8}
-                  max={4096}
-                  step={8}
-                  value={curveSampleCount}
+                  min={1}
+                  max={64}
+                  step={1}
+                  value={curveFrameCount}
                   onChange={(e) => {
                     const value = Number(e.target.value);
                     if (!Number.isFinite(value)) return;
-                    setCurveSampleCount(Math.max(8, Math.min(4096, Math.round(value))));
+                    setCurveFrameCount(Math.max(1, Math.min(64, Math.round(value))));
                   }}
-                  style={{ width: 84 }}
+                  style={{ width: 64 }}
                 />
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Frame scale
+                <input
+                  type="number"
+                  min={0.05}
+                  max={4}
+                  step={0.05}
+                  value={curveFrameScale}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (!Number.isFinite(value)) return;
+                    setCurveFrameScale(Math.max(0.05, Math.min(4, value)));
+                  }}
+                  style={{ width: 74 }}
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                <input type="checkbox" checked={curveShowTangent} onChange={(e) => setCurveShowTangent(e.target.checked)} />
+                T
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                <input type="checkbox" checked={curveShowNormal} onChange={(e) => setCurveShowNormal(e.target.checked)} />
+                N
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+                <input type="checkbox" checked={curveShowBinormal} onChange={(e) => setCurveShowBinormal(e.target.checked)} />
+                B
+              </label>
+              <button type="button" onClick={() => setCurveViewerResetToken((token) => token + 1)}>
+                Reset view
+              </button>
               {activeCurveIsCustom && (
                 <button
                   type="button"
@@ -21259,24 +21732,60 @@ case "mobius":
                   Shared curve presets for geometry/surfaces/curves workflows.
                 </div>
 
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Families</div>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Categories</div>
                 <div style={{ ...pillRow, marginBottom: 8 }}>
-                  {CURVE_PRESET_FAMILY_OPTIONS.map((option) => (
+                  {CURVE_PRESET_CATEGORY_OPTIONS.map((option) => (
                     <button
                       key={`curve-family-pill-${option.value}`}
                       type="button"
-                      onClick={() => setCurvePresetFamilyFilter(option.value)}
-                      style={pill(curvePresetFamilyFilter === option.value)}
-                      aria-pressed={curvePresetFamilyFilter === option.value}
+                      onClick={() => setCurvePresetCategoryFilter(option.value)}
+                      style={pill(curvePresetCategoryFilter === option.value)}
+                      aria-pressed={curvePresetCategoryFilter === option.value}
                       title={
                         option.value === "all"
                           ? `${CURVE_PRESETS.length} presets`
-                          : `${curvePresetCountByFamily[option.value]} presets`
+                          : `${curvePresetCountByCategory[option.value]} presets`
                       }
                     >
                       {option.label}
                     </button>
                   ))}
+                </div>
+                <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+                  {CURVE_PRESET_GROUP_OPTIONS.map((group) => {
+                    const categories = CURVE_PRESET_CATEGORY_OPTIONS.filter((option) => option.group === group.value);
+                    return (
+                      <div
+                        key={`curve-group-${group.value}`}
+                        style={{
+                          border: "1px solid #d6deea",
+                          borderRadius: 8,
+                          background: "#fbfdff",
+                          padding: "8px 10px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>
+                          {group.label} ({curvePresetCountByGroup[group.value]})
+                        </div>
+                        <div style={{ ...pillRow, margin: 0 }}>
+                          {categories.map((option) => (
+                            <button
+                              key={`curve-group-pill-${group.value}-${option.value}`}
+                              type="button"
+                              onClick={() => setCurvePresetCategoryFilter(option.value as CurvePresetCategory)}
+                              style={pill(curvePresetCategoryFilter === option.value)}
+                              aria-pressed={curvePresetCategoryFilter === option.value}
+                              title={`${curvePresetCountByCategory[option.value as CurvePresetCategory]} presets`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -21313,7 +21822,7 @@ case "mobius":
                       >
                         <div style={{ fontWeight: 700, fontSize: 12 }}>{preset.label}</div>
                         <div style={{ fontSize: 11, color: "#475569" }}>
-                          {preset.kind} | {preset.dimension}D | t in [{fmt(preset.domain.tMin)}, {fmt(preset.domain.tMax)}]
+                          {CURVE_PRESET_CATEGORY_LABEL[preset.category]} | {preset.dimension}D | t in [{fmt(preset.domain.tMin)}, {fmt(preset.domain.tMax)}]
                         </div>
                       </button>
                     );
@@ -21495,46 +22004,27 @@ case "mobius":
                       overflow: "auto",
                       minHeight: 0,
                       display: "grid",
+                      gridTemplateRows: "minmax(280px, 1fr) auto auto",
                       gap: 10,
-                      alignContent: "start",
                     }}
                   >
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>Curve Architecture Presets</div>
-                      <div style={{ fontSize: 12, color: "#475569" }}>
-                        Top-level families are ready: Parametric, Polynomial/Rational, Spline/NURBS, and Custom.
-                      </div>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                      {CURVE_PRESET_FAMILY_OPTIONS.filter((option) => option.value !== "all").map((option) => {
-                        const family = option.value as CurvePresetFamily;
-                        return (
-                        <div
-                          key={`curve-family-card-${family}`}
-                          style={{
-                            border: "1px solid #d6deea",
-                            borderRadius: 8,
-                            background: curvePresetFamilyFilter === family ? "#eef4ff" : "#fbfdff",
-                            padding: "8px 10px",
-                          }}
-                        >
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>{option.label}</div>
-                          <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
-                            {curvePresetCountByFamily[family]} presets
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setCurvePresetFamilyFilter(family)}
-                            style={{ marginTop: 6, padding: "3px 8px", fontSize: 11 }}
-                          >
-                            Show
-                          </button>
-                        </div>
-                      )})}
+                    <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
+                      <CurveViewer
+                        samples={curveRenderState.samplePoints}
+                        dimension={activeCurvePreset?.dimension ?? 2}
+                        closed={Boolean(activeCurveDomain.closed)}
+                        frameGlyphs={curveRenderState.frameSamples}
+                        probeGlyph={curveRenderState.probe}
+                        showTangent={curveShowTangent}
+                        showNormal={curveShowNormal}
+                        showBinormal={curveShowBinormal && (activeCurvePreset?.dimension ?? 2) === 3}
+                        frameScale={curveFrameScale}
+                        resetToken={curveViewerResetToken}
+                      />
                     </div>
                     <div
                       style={{
-                        border: "1px dashed #bfd0e8",
+                        border: "1px solid #d6deea",
                         borderRadius: 8,
                         padding: "10px 12px",
                         background: "#f8fbff",
@@ -21542,8 +22032,86 @@ case "mobius":
                         color: "#334155",
                       }}
                     >
-                      Next integration step: wire these presets into shared <code>curve-core</code> evaluators and renderer
-                      overlays for tangent, normal, binormal, arc length, curvature, and torsion.
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Probe</div>
+                        <div style={{ fontSize: 11, color: "#475569" }}>u = {fmt(clamp(curveProbeU, 0, 1))}</div>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.001}
+                        value={clamp(curveProbeU, 0, 1)}
+                        onChange={(e) => setCurveProbeU(Number(e.target.value))}
+                        style={{ width: "100%" }}
+                      />
+                      <div style={{ marginTop: 8, display: "grid", gap: 2 }}>
+                        <div>
+                          t = <strong>{fmt(curveRenderState.probeT)}</strong>
+                        </div>
+                        <div>
+                          p(t) ={" "}
+                          <strong>{curveRenderState.probe?.point ? fmt3(curveRenderState.probe.point) : "n/a"}</strong>
+                        </div>
+                        <div>
+                          curvature κ(t) = <strong>{fmt(curveRenderState.probe?.curvature ?? NaN)}</strong>
+                        </div>
+                        <div>
+                          torsion τ(t) = <strong>{fmt(curveRenderState.probe?.torsion ?? NaN)}</strong>
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        border: "1px solid #d6deea",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        background: "#fbfdff",
+                        fontSize: 12,
+                        color: "#334155",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Curve Core Diagnostics</div>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <div>source: <strong>{curveRenderState.source ?? "-"}</strong></div>
+                        <div>sample points: <strong>{curveRenderState.samplePoints.length}</strong></div>
+                        <div>sample mode: <strong>{curveSamplingMode}</strong></div>
+                        <div>arc length: <strong>{fmt(curveRenderState.arcLength)}</strong></div>
+                        <div>
+                          curvature [min, avg, max]:{" "}
+                          <strong>
+                            {curveRenderState.curvatureSummary
+                              ? `${fmt(curveRenderState.curvatureSummary.min)} / ${fmt(curveRenderState.curvatureSummary.avg)} / ${fmt(curveRenderState.curvatureSummary.max)}`
+                              : "n/a"}
+                          </strong>
+                        </div>
+                        <div>
+                          torsion [min, avg, max]:{" "}
+                          <strong>
+                            {curveRenderState.torsionSummary
+                              ? `${fmt(curveRenderState.torsionSummary.min)} / ${fmt(curveRenderState.torsionSummary.avg)} / ${fmt(curveRenderState.torsionSummary.max)}`
+                              : "n/a"}
+                          </strong>
+                        </div>
+                      </div>
+                      {curveRenderState.errors.length > 0 && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            borderTop: "1px dashed #d7dee7",
+                            paddingTop: 8,
+                            display: "grid",
+                            gap: 4,
+                          }}
+                        >
+                          <div style={{ fontWeight: 700, color: "#b91c1c" }}>Issues</div>
+                          {curveRenderState.errors.map((message, index) => (
+                            <div key={`curve-issue-${index}`} style={{ color: "#7f1d1d", fontSize: 11 }}>
+                              {message}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

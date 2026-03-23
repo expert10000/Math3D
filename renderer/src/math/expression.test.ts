@@ -26,6 +26,13 @@ describe("compileExpression", () => {
     expect(compiled.fn?.({})).toBe(3);
   });
 
+  it("evaluates single-argument trig functions with radians", () => {
+    const compiled = compileExpression("cos(t) + sin(pi/2)", ["t"]);
+    expect(compiled.error).toBeUndefined();
+    expect(compiled.fn?.({ t: 0 })).toBeCloseTo(2, 8);
+    expect(compiled.fn?.({ t: Math.PI })).toBeCloseTo(0, 8);
+  });
+
   it("returns an error for unknown identifiers", () => {
     const compiled = compileExpression("foo + 1", ["x"]);
     expect(compiled.fn).toBeUndefined();

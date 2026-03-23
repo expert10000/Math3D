@@ -80,4 +80,3 @@ export default defineConfig([
 ])
 ```
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/expert10000/Math3D)
