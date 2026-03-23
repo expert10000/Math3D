@@ -1,5 +1,10 @@
 # Install and Run
 
+## Requirements
+
+- Node.js 24 or newer
+- npm 10 or newer
+
 ## Install
 
 ```bash

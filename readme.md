@@ -4,6 +4,10 @@
 
 Math3D is an interactive geometry app (Electron + React) with browser mode support.
 
+Requirements:
+- Node.js 24 or newer
+- npm 10 or newer
+
 Documentation:
 - GitHub Pages: https://expert10000.github.io/Math3D/
 - GitHub Wiki: https://github.com/expert10000/Math3D/wiki
