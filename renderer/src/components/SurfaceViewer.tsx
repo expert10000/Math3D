@@ -2769,7 +2769,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       renderQuality === "performance" ? 1 : renderQuality === "sharp" ? 1.75 : 1.15;
     const targetPixelRatio = devicePixelRatio * qualityScale;
     renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
-    renderer.setSize(width, height);
+    renderer.setSize(width, height, false);
     renderer.setClearColor(0xf8f9fb, 1);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -4103,16 +4103,40 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     setSceneEpoch((v) => v + 1);
 
-    const handleResize = () => {
-      const { width: w, height: h } = getSize();
+    const syncRendererSize = () => {
+      const { width: rawWidth, height: rawHeight } = getSize();
+      if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight)) return;
+
+      const w = Math.max(1, Math.round(rawWidth));
+      const h = Math.max(1, Math.round(rawHeight));
+      const nextDevicePixelRatio = Math.max(1, window.devicePixelRatio || 1);
+      const nextTargetPixelRatio = nextDevicePixelRatio * qualityScale;
+      renderer.setPixelRatio(Math.min(nextTargetPixelRatio, maxPixelRatio));
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      renderer.setSize(w, h, false);
+    };
+
+    let resizeFrameId = 0;
+    let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const handleResize = () => {
+      syncRendererSize();
+      if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
+      resizeFrameId = requestAnimationFrame(() => {
+        resizeFrameId = 0;
+        syncRendererSize();
+      });
+      if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
+      resizeTimeoutId = setTimeout(() => {
+        resizeTimeoutId = null;
+        syncRendererSize();
+      }, 120);
     };
 
     window.addEventListener("resize", handleResize);
     const ro = new ResizeObserver(handleResize);
     ro.observe(mount);
+    handleResize();
 
     let frameId = 0;
 
@@ -4128,6 +4152,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     return () => {
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
+      if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
+      if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
       renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
