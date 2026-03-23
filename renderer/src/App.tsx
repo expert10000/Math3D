@@ -5073,6 +5073,24 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const samples = 800;
+  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
+    if (IS_REPLAY_MODE) return "workbook";
+    const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
+    return saved === "workbook" ? "workbook" : "inspector";
+  });
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
+    if (IS_REPLAY_MODE) return "light";
+    const saved = localStorage.getItem(UI_THEME_KEY);
+    return isAppTheme(saved) ? saved : "light";
+  });
+  const [uiAccent, setUiAccent] = useState<AccentPresetId>(() => {
+    if (IS_REPLAY_MODE) return "blue";
+    const saved = localStorage.getItem(UI_ACCENT_KEY);
+    return isAccentPresetId(saved) ? saved : "blue";
+  });
+
   useEffect(() => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
@@ -5093,23 +5111,6 @@ const App: React.FC = () => {
     localStorage.setItem(UI_ACCENT_KEY, uiAccent);
   }, [uiAccent]);
 
-  const samples = 800;
-  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
-    if (IS_REPLAY_MODE) return "workbook";
-    const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
-    return saved === "workbook" ? "workbook" : "inspector";
-  });
-  const [showRightPanel, setShowRightPanel] = useState(true);
-  const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
-    if (IS_REPLAY_MODE) return "light";
-    const saved = localStorage.getItem(UI_THEME_KEY);
-    return isAppTheme(saved) ? saved : "light";
-  });
-  const [uiAccent, setUiAccent] = useState<AccentPresetId>(() => {
-    if (IS_REPLAY_MODE) return "blue";
-    const saved = localStorage.getItem(UI_ACCENT_KEY);
-    return isAccentPresetId(saved) ? saved : "blue";
-  });
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
     if (REPLAY_PAYLOAD?.activeWorkbookId) return REPLAY_PAYLOAD.activeWorkbookId;
