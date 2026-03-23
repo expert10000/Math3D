@@ -24599,7 +24599,10 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
                         value={rotationalAxisOrigin[axis]}
                         onChange={(event) =>
                           onChangeRotationalAxisOrigin(
-                            patchVecAxis(rotationalAxisOrigin, axis, Number(event.target.value))
+                            {
+                              ...rotationalAxisOrigin,
+                              [axis]: Number(event.target.value),
+                            } as Vec3
                           )
                         }
                         style={{ width: "100%", marginTop: 4 }}
@@ -24618,7 +24621,10 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
                         value={rotationalAxisDirection[axis]}
                         onChange={(event) =>
                           onChangeRotationalAxisDirection(
-                            patchVecAxis(rotationalAxisDirection, axis, Number(event.target.value))
+                            {
+                              ...rotationalAxisDirection,
+                              [axis]: Number(event.target.value),
+                            } as Vec3
                           )
                         }
                         style={{ width: "100%", marginTop: 4 }}
