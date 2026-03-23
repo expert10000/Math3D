@@ -32,6 +32,7 @@ import {
   type CameraTourMode,
   type CameraTourCaptureFormat,
   type RenderQuality,
+  type ViewportDebugSnapshot,
 } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
@@ -8784,6 +8785,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [screenshotBusy, setScreenshotBusy] = useState<"scene" | "window" | null>(null);
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
   const [showStatusBar, setShowStatusBar] = useState(true);
+  const [showViewportDebug, setShowViewportDebug] = useState(false);
+  const [viewportDebugPrimary, setViewportDebugPrimary] = useState<ViewportDebugSnapshot | null>(null);
+  const [viewportDebugSecondary, setViewportDebugSecondary] = useState<ViewportDebugSnapshot | null>(null);
+  const handlePrimaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
+    setViewportDebugPrimary(snapshot);
+  }, []);
+  const handleSecondaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
+    setViewportDebugSecondary(snapshot);
+  }, []);
 
   // resizable panels
   const [leftWidth, setLeftWidth] = useState(320);
@@ -18920,6 +18930,20 @@ case "mobius":
     workbookDirty,
   ]);
 
+  const formatViewportDebug = useCallback((label: string, snapshot: ViewportDebugSnapshot | null) => {
+    if (!snapshot) return `${label}: (no data yet)`;
+    const fmtN = (v: number) => (Number.isFinite(v) ? v.toFixed(2) : "nan");
+    const ageSec = Math.max(0, (Date.now() - snapshot.ts) / 1000);
+    return [
+      `${label} [${snapshot.viewer}] phase=${snapshot.phase} age=${fmtN(ageSec)}s`,
+      `mount=${fmtN(snapshot.mount.width)}x${fmtN(snapshot.mount.height)} css=${fmtN(snapshot.canvasCss.width)}x${fmtN(snapshot.canvasCss.height)}`,
+      `buffer=${fmtN(snapshot.drawingBuffer.width)}x${fmtN(snapshot.drawingBuffer.height)} dpr=${fmtN(snapshot.devicePixelRatio)} pr=${fmtN(snapshot.pixelRatio)}`,
+      `cam fov=${fmtN(snapshot.camera.fov)} aspect=${fmtN(snapshot.camera.aspect)} dist=${fmtN(snapshot.camera.distance)}`,
+      `cam pos=(${fmtN(snapshot.camera.position.x)}, ${fmtN(snapshot.camera.position.y)}, ${fmtN(snapshot.camera.position.z)})`,
+      `cam target=(${fmtN(snapshot.camera.target.x)}, ${fmtN(snapshot.camera.target.y)}, ${fmtN(snapshot.camera.target.z)})`,
+    ].join("\n");
+  }, []);
+
   const renderSurfacesInspectorPanel = (panelMode: "analysis" | "tools") => (
                 <SurfacesLeftPanel
                   showInternalTabs={panelMode === "tools"}
@@ -19620,6 +19644,14 @@ case "mobius":
                   </option>
                 ))}
               </select>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={showViewportDebug}
+                  onChange={(e) => setShowViewportDebug(e.target.checked)}
+                />
+                Viewport debug
+              </label>
             </div>
           </div>
           <div style={{ ...styles.group, gridColumn: "span 3" }}>
@@ -20202,6 +20234,7 @@ case "mobius":
                             showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
+                            onViewportDebug={handlePrimaryViewportDebug}
                             onProbe={handleProbe}
                             onParamCurvature={handleParamCurvature}
                             paramProbeUV={paramProbeUV}
@@ -20305,6 +20338,7 @@ case "mobius":
                             showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
+                            onViewportDebug={handlePrimaryViewportDebug}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
                             implicitProbeXYZ={implicitProbeXYZ}
@@ -20461,9 +20495,10 @@ case "mobius":
                               showPrincipalLines={false}
                               showPrincipalGlyphs={false}
                               showCurvatureLines={false}
-                            showBoundingBox={secondaryOverlay.showBoundingBox}
+                              showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               windowReframeToken={windowReframeToken}
+                              onViewportDebug={handleSecondaryViewportDebug}
                               onSetCustomX={setParamXExpr}
                               onSetCustomY={setParamYExpr}
                               onSetCustomZ={setParamZExpr}
@@ -20503,6 +20538,7 @@ case "mobius":
                               showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               windowReframeToken={windowReframeToken}
+                              onViewportDebug={handleSecondaryViewportDebug}
                               overlayPolylineGroups={compareOverlayPolylineGroups}
                               graphProbeXY={null}
                               graphProbeToken={0}
@@ -22936,6 +22972,32 @@ case "mobius":
           </>
         )}
       </div>
+      {showViewportDebug && mode === "surfaces" && (
+        <div
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: showStatusBar ? 64 : 14,
+            width: 520,
+            maxWidth: "calc(100vw - 32px)",
+            maxHeight: "42vh",
+            overflow: "auto",
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid var(--border)",
+            background: "var(--panel-strong)",
+            boxShadow: "var(--shadow-soft)",
+            zIndex: 2200,
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+            fontSize: 11,
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.35,
+          }}
+        >
+          {formatViewportDebug("Primary", viewportDebugPrimary)}
+          {compareEnabled ? `\n\n${formatViewportDebug("Secondary", viewportDebugSecondary)}` : ""}
+        </div>
+      )}
       {showStatusBar && (
         <div
           data-testid="app-status-bar"

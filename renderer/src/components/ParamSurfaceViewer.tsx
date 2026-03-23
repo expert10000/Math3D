@@ -39,6 +39,7 @@ import type {
   SliceNormal,
   SlicePreset,
   OverlayPolylineGroup,
+  ViewportDebugSnapshot,
 } from "./SurfaceViewer";
 import AxisGizmo from "./AxisGizmo";
 import { Slice2DPreview } from "./Slice2DPreview";
@@ -421,6 +422,7 @@ type Props = {
   zoomToRegion?: boolean;
   zoomToRegionToken?: number;
   windowReframeToken?: number;
+  onViewportDebug?: (snapshot: ViewportDebugSnapshot) => void;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -1492,6 +1494,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     zoomToRegion = false,
     zoomToRegionToken = 0,
     windowReframeToken = 0,
+    onViewportDebug,
     showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -2430,6 +2433,47 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       lastCameraSyncRef.current = next;
       onCameraSync(next);
     };
+
+    const emitViewportDebug = (phase: string) => {
+      if (!onViewportDebug) return;
+      const rect = mount.getBoundingClientRect();
+      const drawingBuffer = renderer.getDrawingBufferSize(new THREE.Vector2());
+      onViewportDebug({
+        viewer: "param",
+        phase,
+        ts: Date.now(),
+        mount: { width: rect.width, height: rect.height },
+        canvasCss: {
+          width: renderer.domElement.clientWidth,
+          height: renderer.domElement.clientHeight,
+        },
+        drawingBuffer: {
+          width: drawingBuffer.x,
+          height: drawingBuffer.y,
+        },
+        pixelRatio: renderer.getPixelRatio(),
+        devicePixelRatio: Math.max(1, window.devicePixelRatio || 1),
+        camera: {
+          aspect: camera.aspect,
+          fov: camera.fov,
+          distance: camera.position.distanceTo(controls.target),
+          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+          target: { x: controls.target.x, y: controls.target.y, z: controls.target.z },
+        },
+      });
+    };
+    let lastViewportDebugAt = 0;
+    const emitViewportDebugThrottled = (phase: string) => {
+      if (!onViewportDebug) return;
+      const now = performance.now();
+      if (now - lastViewportDebugAt < 220) return;
+      lastViewportDebugAt = now;
+      emitViewportDebug(phase);
+    };
+    const handleControlsChangeDebug = () => {
+      emitViewportDebugThrottled("controls");
+    };
+    controls.addEventListener("change", handleControlsChangeDebug);
 
     if (isCameraLeader && onCameraSync) {
       controls.addEventListener("change", emitCameraSync);
@@ -3578,21 +3622,27 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       camera.lookAt(center);
       controls.update();
     };
-    forceReframeRef.current = () => syncRendererSize(true);
+    forceReframeRef.current = () => {
+      syncRendererSize(true);
+      emitViewportDebug("window-reframe");
+    };
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const onResize = () => {
       syncRendererSize(false);
+      emitViewportDebug("resize");
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
       resizeFrameId = requestAnimationFrame(() => {
         resizeFrameId = 0;
         syncRendererSize(false);
+        emitViewportDebug("resize-raf");
       });
       if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
       resizeTimeoutId = setTimeout(() => {
         resizeTimeoutId = null;
         syncRendererSize(true);
+        emitViewportDebug("resize-final");
       }, 120);
     };
 
@@ -3600,6 +3650,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
     onResize();
+    emitViewportDebug("init");
 
       return () => {
         // dispose geodesic line if present
@@ -3657,6 +3708,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
         ro.disconnect();
         window.removeEventListener("resize", onResize);
+        controls.removeEventListener("change", handleControlsChangeDebug);
         renderer.domElement.removeEventListener("pointerdown", handlePointerDown);
         if (isCameraLeader && onCameraSync) {
           controls.removeEventListener("change", emitCameraSync);
