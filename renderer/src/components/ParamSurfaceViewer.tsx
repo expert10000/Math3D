@@ -420,6 +420,7 @@ type Props = {
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
   zoomToRegion?: boolean;
   zoomToRegionToken?: number;
+  windowReframeToken?: number;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
   showPrincipalLines?: boolean;
@@ -1490,6 +1491,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     selectionSphere = null,
     zoomToRegion = false,
     zoomToRegionToken = 0,
+    windowReframeToken = 0,
     showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
   showPrincipalLines = false,
@@ -1669,6 +1671,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const lastCameraSyncRef = useRef<CameraSyncState | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
+  const forceReframeRef = useRef<(() => void) | null>(null);
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const selectionOverlayRef = useRef<THREE.Points | null>(null);
   const selectionSphereRef = useRef<THREE.Mesh | null>(null);
@@ -1921,6 +1924,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     setViewMode("free");
     setLockToPlane(false);
   }, [resetToken]);
+
+  useEffect(() => {
+    if (!windowReframeToken) return;
+    const apply = () => {
+      forceReframeRef.current?.();
+    };
+    apply();
+    const raf = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(raf);
+  }, [windowReframeToken]);
 
   // React to plane selection & lock state without recreating scene
   useEffect(() => {
@@ -3565,6 +3578,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       camera.lookAt(center);
       controls.update();
     };
+    forceReframeRef.current = () => syncRendererSize(true);
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -3651,6 +3665,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         }
 
         viewerRef.current = null;
+        forceReframeRef.current = null;
         if (resizeFrameId) cancelAnimationFrame(resizeFrameId);
         if (resizeTimeoutId) clearTimeout(resizeTimeoutId);
         ro.disconnect();

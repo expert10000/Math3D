@@ -189,6 +189,13 @@ export type AppCaptureScreenshotResponse =
   | { ok: true; path: string; folder: string }
   | { ok: false; error: string };
 
+export type AppWindowStatePacket = {
+  reason?: string;
+  maximized: boolean;
+  fullscreen: boolean;
+  bounds?: { x: number; y: number; width: number; height: number };
+};
+
 export type PythonWorkerFailureCategory =
   | "worker-missing"
   | "startup-crash"
@@ -291,6 +298,17 @@ contextBridge.exposeInMainWorld("appMenu", {
 contextBridge.exposeInMainWorld("appCapture", {
   captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
     ipcRenderer.invoke("app:capture-screenshot", req),
+});
+
+contextBridge.exposeInMainWorld("appWindow", {
+  onStateChange: (handler: (packet: AppWindowStatePacket) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, packet: AppWindowStatePacket | null | undefined) => {
+      if (!packet) return;
+      handler(packet);
+    };
+    ipcRenderer.on("app:window-state", listener);
+    return () => ipcRenderer.removeListener("app:window-state", listener);
+  },
 });
 
 contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {

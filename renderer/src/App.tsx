@@ -5025,6 +5025,8 @@ const App: React.FC = () => {
       polyhedronFaces,
     };
   }, [geometryMode, geometryObjects, geometryDatasetMeshObjects, geometryScene, geometryConstructionState, proceduralMeshSet]);
+  const [windowReframeToken, setWindowReframeToken] = useState(0);
+  const lastWindowStateRef = useRef<{ maximized: boolean; fullscreen: boolean } | null>(null);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -5035,6 +5037,23 @@ const App: React.FC = () => {
       setMode(next);
     });
   }, []);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    const api = window.appWindow;
+    if (!api?.onStateChange) return;
+    return api.onStateChange((packet) => {
+      const prev = lastWindowStateRef.current;
+      const maximized = !!packet.maximized;
+      const fullscreen = !!packet.fullscreen;
+      const changed = !prev || prev.maximized !== maximized || prev.fullscreen !== fullscreen;
+      lastWindowStateRef.current = { maximized, fullscreen };
+      if (changed || ((maximized || fullscreen) && packet.reason === "resize")) {
+        setWindowReframeToken((v) => v + 1);
+      }
+    });
+  }, []);
+
   const samples = 800;
   const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "workbook">(() => {
     if (IS_REPLAY_MODE) return "workbook";
@@ -20117,6 +20136,7 @@ case "mobius":
                             ridgeValleyMinConf={ridgeValleyMinConf}
                             showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
+                            windowReframeToken={windowReframeToken}
                             onProbe={handleProbe}
                             onParamCurvature={handleParamCurvature}
                             paramProbeUV={paramProbeUV}
@@ -20219,6 +20239,7 @@ case "mobius":
                             graphDomain={activeGraphDomain}
                             showBoundingBox={primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
+                            windowReframeToken={windowReframeToken}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
                             implicitProbeXYZ={implicitProbeXYZ}
@@ -20377,6 +20398,7 @@ case "mobius":
                               showCurvatureLines={false}
                             showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
+                              windowReframeToken={windowReframeToken}
                               onSetCustomX={setParamXExpr}
                               onSetCustomY={setParamYExpr}
                               onSetCustomZ={setParamZExpr}
@@ -20415,6 +20437,7 @@ case "mobius":
                               graphDomain={activeGraphDomain}
                               showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
+                              windowReframeToken={windowReframeToken}
                               overlayPolylineGroups={compareOverlayPolylineGroups}
                               graphProbeXY={null}
                               graphProbeToken={0}

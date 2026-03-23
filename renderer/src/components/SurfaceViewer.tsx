@@ -1161,6 +1161,7 @@ type Props = {
   selectionSphere?: { center: { x: number; y: number; z: number }; radius: number } | null;
   zoomToRegion?: boolean;
   zoomToRegionToken?: number;
+  windowReframeToken?: number;
 
   dragEnabled?: boolean;
   onDragStart?: (info: {
@@ -1347,6 +1348,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     selectionSphere = null,
     zoomToRegion = false,
     zoomToRegionToken = 0,
+    windowReframeToken = 0,
     dragEnabled = false,
     onDragStart,
     onDrag,
@@ -1510,6 +1512,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
+  const forceReframeRef = useRef<(() => void) | null>(null);
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
 
     const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
@@ -1662,6 +1665,16 @@ useEffect(() => {
     setViewMode("free");
     setLockToAxisPlane(false);
   }, [resetToken]);
+
+  useEffect(() => {
+    if (!windowReframeToken) return;
+    const apply = () => {
+      forceReframeRef.current?.();
+    };
+    apply();
+    const raf = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(raf);
+  }, [windowReframeToken]);
 
   useEffect(() => {
     const controls = controlsRef.current;
@@ -4138,6 +4151,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       camera.lookAt(center);
       controls.update();
     };
+    forceReframeRef.current = () => syncRendererSize(true);
 
     let resizeFrameId = 0;
     let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -4185,6 +4199,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     animate();
 
     return () => {
+      forceReframeRef.current = null;
       stopCameraTour("stopped", false);
       cancelAnimationFrame(frameId);
       if (resizeFrameId) cancelAnimationFrame(resizeFrameId);

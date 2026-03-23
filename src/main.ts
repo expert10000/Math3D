@@ -226,6 +226,22 @@ function createWindow() {
     },
   });
 
+  const sendWindowState = (reason: string) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("app:window-state", {
+      reason,
+      maximized: win.isMaximized(),
+      fullscreen: win.isFullScreen(),
+      bounds: win.getContentBounds(),
+    });
+  };
+  win.on("maximize", () => sendWindowState("maximize"));
+  win.on("unmaximize", () => sendWindowState("unmaximize"));
+  win.on("enter-full-screen", () => sendWindowState("enter-full-screen"));
+  win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
+  win.on("resize", () => sendWindowState("resize"));
+  win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
     if (isGeometrySmoke) {

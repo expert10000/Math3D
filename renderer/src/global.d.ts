@@ -183,6 +183,13 @@ declare global {
     | { ok: true; path: string; folder: string }
     | { ok: false; error: string };
 
+  type AppWindowStatePacket = {
+    reason?: string;
+    maximized: boolean;
+    fullscreen: boolean;
+    bounds?: { x: number; y: number; width: number; height: number };
+  };
+
   type PythonWorkerFailureCategory =
     | "worker-missing"
     | "startup-crash"
@@ -246,6 +253,9 @@ declare global {
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
+    };
+    appWindow?: {
+      onStateChange: (handler: (packet: AppWindowStatePacket) => void) => () => void;
     };
     pythonWorkerDiagnostics?: {
       getStatus: () => Promise<PythonWorkerDiagnosticsSnapshot>;
