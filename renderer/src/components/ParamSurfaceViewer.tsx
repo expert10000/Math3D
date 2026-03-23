@@ -3542,6 +3542,27 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+
+      const radius = radiusRef.current;
+      if (!Number.isFinite(radius) || radius <= 0) return;
+
+      const center = centerRef.current;
+      const fovY = THREE.MathUtils.degToRad(camera.fov);
+      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * camera.aspect);
+      const minFov = Math.max(1e-3, Math.min(fovY, fovX));
+      const requiredDist = (radius * 1.08) / Math.sin(minFov * 0.5);
+      if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+
+      const currentDist = camera.position.distanceTo(center);
+      if (currentDist >= requiredDist) return;
+
+      const viewDir = camera.position.clone().sub(controls.target);
+      if (viewDir.lengthSq() < 1e-8) viewDir.set(0, 0, 1);
+      viewDir.normalize();
+      camera.position.copy(center).addScaledVector(viewDir, requiredDist);
+      controls.target.copy(center);
+      camera.lookAt(center);
+      controls.update();
     };
 
     let resizeFrameId = 0;
