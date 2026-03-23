@@ -20147,20 +20147,33 @@ case "mobius":
                         showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)
                           ? "minmax(0,1fr) 320px"
                           : "1fr",
+                      gridTemplateRows: "minmax(0,1fr)",
                       gap: showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere) ? 10 : 0,
                       height: "100%",
+                      minHeight: 0,
                     }}
                   >
-                  <div style={{ minWidth: 0 }}>
+                  <div style={{ minWidth: 0, minHeight: 0 }}>
                     <div
                       style={{
                         display: "grid",
                         gridTemplateColumns: compareEnabled ? "1fr 1fr" : "1fr",
+                        gridTemplateRows: "minmax(0,1fr)",
                         gap: compareEnabled ? 10 : 0,
                         height: "100%",
+                        minHeight: 0,
                       }}
                     >
-                      <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb", position: "relative" }}>
+                      <div
+                        style={{
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          background: "#f8f9fb",
+                          position: "relative",
+                          minHeight: 0,
+                          height: "100%",
+                        }}
+                      >
                         {surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass" ? (
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
@@ -20451,7 +20464,15 @@ case "mobius":
                       </div>
 
                           {compareEnabled && (
-                        <div style={{ borderRadius: 10, overflow: "hidden", background: "#f8f9fb" }}>
+                        <div
+                          style={{
+                            borderRadius: 10,
+                            overflow: "hidden",
+                            background: "#f8f9fb",
+                            minHeight: 0,
+                            height: "100%",
+                          }}
+                        >
                           {surfaceViewerKind === "param" ? (
                             <ParamSurfaceViewer
                               surfaceId={secondaryParamId}
@@ -20580,6 +20601,7 @@ case "mobius":
                         flexDirection: "column",
                         gap: 10,
                         alignItems: "stretch",
+                        minHeight: 0,
                         overflowY: "auto",
                       }}
                     >
