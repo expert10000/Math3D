@@ -258,7 +258,7 @@ import {
 } from "@math3d/workbook";
 /* ---------------- App modes ---------------- */
 
-type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "geometry";
+type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "geometry";
 type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
 type GeometryDemoFamily = "stereometry" | "planimetry";
 type PlanimetryPresetId = "task" | "euler" | "tangent";
@@ -310,11 +310,208 @@ const GEOMETRY_CAMERA_TOUR_MODE_OPTIONS: Array<{
   { value: "long", label: "Long Classic", hint: "Extended cinematic pass with balanced movement." },
   { value: "quick", label: "Quick Preview", hint: "Short pass for fast checks while editing." },
 ];
-const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "geometry"];
+const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "geometry"];
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
 type PrincipalProjectionPlane = "xy" | "yz" | "zx";
+
+type CurvePresetFamily = "parametric2d" | "parametric3d" | "polynomialRational" | "splineNurbs" | "custom";
+type CurvePreset = {
+  id: string;
+  label: string;
+  family: CurvePresetFamily;
+  kind: string;
+  dimension: 2 | 3;
+  formulas: { x: string; y: string; z?: string };
+  domain: { tMin: number; tMax: number; closed?: boolean };
+  note: string;
+};
+
+const CURVE_PRESET_FAMILY_OPTIONS: Array<{ value: CurvePresetFamily | "all"; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "parametric2d", label: "Parametric 2D" },
+  { value: "parametric3d", label: "Parametric 3D" },
+  { value: "polynomialRational", label: "Polynomial / Rational" },
+  { value: "splineNurbs", label: "Spline / NURBS" },
+  { value: "custom", label: "Custom" },
+];
+
+const CURVE_PRESETS: CurvePreset[] = [
+  {
+    id: "line2d",
+    label: "Line (2D)",
+    family: "parametric2d",
+    kind: "parametric",
+    dimension: 2,
+    formulas: { x: "t", y: "0.5*t" },
+    domain: { tMin: -2, tMax: 2, closed: false },
+    note: "Basic affine line segment parameterization.",
+  },
+  {
+    id: "circle2d",
+    label: "Circle",
+    family: "parametric2d",
+    kind: "parametric",
+    dimension: 2,
+    formulas: { x: "cos(t)", y: "sin(t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Unit circle with closed domain.",
+  },
+  {
+    id: "ellipse2d",
+    label: "Ellipse",
+    family: "parametric2d",
+    kind: "parametric",
+    dimension: 2,
+    formulas: { x: "2*cos(t)", y: "1.2*sin(t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Scaled circle in x/y.",
+  },
+  {
+    id: "lissajous2d",
+    label: "Lissajous",
+    family: "parametric2d",
+    kind: "parametric",
+    dimension: 2,
+    formulas: { x: "sin(3*t + PI/2)", y: "sin(4*t)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Classic commensurate-frequency Lissajous curve.",
+  },
+  {
+    id: "hypotrochoid2d",
+    label: "Hypotrochoid",
+    family: "parametric2d",
+    kind: "parametric",
+    dimension: 2,
+    formulas: {
+      x: "(2-1)*cos(t)+0.6*cos((2-1)/1*t)",
+      y: "(2-1)*sin(t)-0.6*sin((2-1)/1*t)",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 8, closed: true },
+    note: "Rolling-circle style mechanical curve.",
+  },
+  {
+    id: "helix3d",
+    label: "Helix",
+    family: "parametric3d",
+    kind: "parametric",
+    dimension: 3,
+    formulas: { x: "cos(t)", y: "sin(t)", z: "0.2*t" },
+    domain: { tMin: 0, tMax: Math.PI * 10, closed: false },
+    note: "Uniform pitch helix in R3.",
+  },
+  {
+    id: "conicalSpiral3d",
+    label: "Conical spiral",
+    family: "parametric3d",
+    kind: "parametric",
+    dimension: 3,
+    formulas: { x: "0.08*t*cos(t)", y: "0.08*t*sin(t)", z: "0.12*t" },
+    domain: { tMin: 0, tMax: Math.PI * 10, closed: false },
+    note: "Radius grows with parameter.",
+  },
+  {
+    id: "viviani3d",
+    label: "Viviani curve",
+    family: "parametric3d",
+    kind: "parametric",
+    dimension: 3,
+    formulas: { x: "1+cos(t)", y: "sin(t)", z: "2*sin(t/2)" },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Intersection of a sphere and a tangent cylinder.",
+  },
+  {
+    id: "torusKnot3d",
+    label: "Torus knot (2,3)",
+    family: "parametric3d",
+    kind: "parametric",
+    dimension: 3,
+    formulas: {
+      x: "(2+cos(3*t))*cos(2*t)",
+      y: "(2+cos(3*t))*sin(2*t)",
+      z: "sin(3*t)",
+    },
+    domain: { tMin: 0, tMax: Math.PI * 2, closed: true },
+    note: "Closed knot-type parametric curve.",
+  },
+  {
+    id: "bezierCubic",
+    label: "Bezier cubic",
+    family: "polynomialRational",
+    kind: "bezier",
+    dimension: 3,
+    formulas: {
+      x: "(1-t)^3*0 + 3*(1-t)^2*t*1 + 3*(1-t)*t^2*2 + t^3*3",
+      y: "(1-t)^3*0 + 3*(1-t)^2*t*2 + 3*(1-t)*t^2*(-1) + t^3*1",
+      z: "(1-t)^3*0 + 3*(1-t)^2*t*0.5 + 3*(1-t)*t^2*1 + t^3*0",
+    },
+    domain: { tMin: 0, tMax: 1, closed: false },
+    note: "Explicit cubic Bezier polynomial form.",
+  },
+  {
+    id: "rationalQuadratic",
+    label: "Rational quadratic arc",
+    family: "polynomialRational",
+    kind: "rational",
+    dimension: 2,
+    formulas: {
+      x: "(1.0*(1-t)^2 + 0.7*t*(1-t)) / ((1-t)^2 + 0.7*t*(1-t) + t^2)",
+      y: "(0.7*t*(1-t) + 1.0*t^2) / ((1-t)^2 + 0.7*t*(1-t) + t^2)",
+    },
+    domain: { tMin: 0, tMax: 1, closed: false },
+    note: "Weighted quadratic rational curve segment.",
+  },
+  {
+    id: "bSplineDemo",
+    label: "B-spline demo",
+    family: "splineNurbs",
+    kind: "bspline",
+    dimension: 3,
+    formulas: {
+      x: "sum_i N_i,p(t) * P_i.x",
+      y: "sum_i N_i,p(t) * P_i.y",
+      z: "sum_i N_i,p(t) * P_i.z",
+    },
+    domain: { tMin: 0, tMax: 1, closed: false },
+    note: "UI preset for non-rational spline basis workflow.",
+  },
+  {
+    id: "nurbsQuarterArc",
+    label: "NURBS quarter arc",
+    family: "splineNurbs",
+    kind: "nurbs",
+    dimension: 2,
+    formulas: {
+      x: "sum_i N_i,p(t) * w_i * P_i.x / sum_i N_i,p(t)*w_i",
+      y: "sum_i N_i,p(t) * w_i * P_i.y / sum_i N_i,p(t)*w_i",
+    },
+    domain: { tMin: 0, tMax: 1, closed: false },
+    note: "Rational spline preset with weight-normalized coordinates.",
+  },
+  {
+    id: "custom2d",
+    label: "Custom x(t), y(t)",
+    family: "custom",
+    kind: "custom",
+    dimension: 2,
+    formulas: { x: "cos(t)", y: "sin(2*t)" },
+    domain: { tMin: -Math.PI, tMax: Math.PI, closed: false },
+    note: "Editable custom 2D parametric definition.",
+  },
+  {
+    id: "custom3d",
+    label: "Custom x(t), y(t), z(t)",
+    family: "custom",
+    kind: "custom",
+    dimension: 3,
+    formulas: { x: "cos(t)", y: "sin(t)", z: "0.25*sin(3*t)" },
+    domain: { tMin: -Math.PI * 2, tMax: Math.PI * 2, closed: false },
+    note: "Editable custom 3D parametric definition.",
+  },
+];
+
+const CURVE_PRESET_BY_ID = new Map(CURVE_PRESETS.map((preset) => [preset.id, preset]));
 
 const WORKBOOK_STORAGE_KEY = "math3d.workbooks.v1";
 const WORKBOOK_ACTIVE_KEY = "math3d.workbooks.active.v1";
@@ -3591,6 +3788,65 @@ const resolveBlockPorts = (block: WorkbookBlock): { inputs: WorkbookPort[]; outp
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<Mode>("surfaces");
+  const [curvePresetFamilyFilter, setCurvePresetFamilyFilter] = useState<CurvePresetFamily | "all">("all");
+  const [curvePresetId, setCurvePresetId] = useState<string>("circle2d");
+  const [curveCustomXExpr, setCurveCustomXExpr] = useState("cos(t)");
+  const [curveCustomYExpr, setCurveCustomYExpr] = useState("sin(2*t)");
+  const [curveCustomZExpr, setCurveCustomZExpr] = useState("0.25*sin(3*t)");
+  const [curveCustomTMin, setCurveCustomTMin] = useState(-Math.PI);
+  const [curveCustomTMax, setCurveCustomTMax] = useState(Math.PI);
+  const [curveCustomClosed, setCurveCustomClosed] = useState(false);
+  const [curveSampleCount, setCurveSampleCount] = useState(128);
+  const visibleCurvePresets = useMemo(
+    () => (curvePresetFamilyFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.family === curvePresetFamilyFilter)),
+    [curvePresetFamilyFilter]
+  );
+  useEffect(() => {
+    if (!visibleCurvePresets.length) return;
+    if (!visibleCurvePresets.some((preset) => preset.id === curvePresetId)) {
+      setCurvePresetId(visibleCurvePresets[0].id);
+    }
+  }, [curvePresetId, visibleCurvePresets]);
+  const activeCurvePreset = useMemo(
+    () => CURVE_PRESET_BY_ID.get(curvePresetId) ?? visibleCurvePresets[0] ?? CURVE_PRESETS[0],
+    [curvePresetId, visibleCurvePresets]
+  );
+  const activeCurveIsCustom = activeCurvePreset?.family === "custom";
+  const activeCurveFormulas = useMemo(
+    () =>
+      activeCurveIsCustom
+        ? {
+            x: curveCustomXExpr,
+            y: curveCustomYExpr,
+            z: activeCurvePreset?.dimension === 3 ? curveCustomZExpr : undefined,
+          }
+        : activeCurvePreset?.formulas ?? { x: "cos(t)", y: "sin(t)", z: undefined },
+    [activeCurveIsCustom, activeCurvePreset?.dimension, activeCurvePreset?.formulas, curveCustomXExpr, curveCustomYExpr, curveCustomZExpr]
+  );
+  const activeCurveDomain = useMemo(
+    () =>
+      activeCurveIsCustom
+        ? { tMin: curveCustomTMin, tMax: curveCustomTMax, closed: curveCustomClosed }
+        : activeCurvePreset?.domain ?? { tMin: 0, tMax: 1, closed: false },
+    [activeCurveIsCustom, activeCurvePreset?.domain, curveCustomClosed, curveCustomTMax, curveCustomTMin]
+  );
+  const curvePresetCountByFamily = useMemo(
+    () =>
+      CURVE_PRESET_FAMILY_OPTIONS.reduce<Record<CurvePresetFamily, number>>(
+        (acc, item) => {
+          if (item.value !== "all") acc[item.value] = CURVE_PRESETS.filter((preset) => preset.family === item.value).length;
+          return acc;
+        },
+        {
+          parametric2d: 0,
+          parametric3d: 0,
+          polynomialRational: 0,
+          splineNurbs: 0,
+          custom: 0,
+        }
+      ),
+    []
+  );
   const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
@@ -8804,6 +9060,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const zRef = useRef<PlanePlotHandle | null>(null);
   const wRef = useRef<PlanePlotHandle | null>(null);
   const surfaceSceneCaptureRef = useRef<HTMLDivElement | null>(null);
+  const curvesSceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const geometrySceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const [wPlaneDomainColor, setWPlaneDomainColor] = useState(true);
   const [wPlaneShowRings, setWPlaneShowRings] = useState(false);
@@ -8874,6 +9131,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const getSceneCaptureRect = useCallback((): { x: number; y: number; width: number; height: number } | null => {
     const el = mode === "surfaces"
       ? surfaceSceneCaptureRef.current
+      : mode === "curves"
+        ? curvesSceneCaptureRef.current
       : mode === "geometry"
         ? geometrySceneCaptureRef.current
         : null;
@@ -8922,7 +9181,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // root style
   const rootStyle: React.CSSProperties =
-    mode === "surfaces" || mode === "geometry"
+    mode === "surfaces" || mode === "curves" || mode === "geometry"
       ? {
           ...styles.appRoot,
           maxWidth: "none",
@@ -18860,6 +19119,7 @@ case "mobius":
       if (surfaceViewerKind === "mesh") return "Mesh viewer";
       return "Surface viewer";
     }
+    if (mode === "curves") return "Curve core presets";
     if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
     if (mode === "mobius") return "Mobius viewer";
     if (mode === "chebyshev") return "Chebyshev viewer";
@@ -19564,6 +19824,9 @@ case "mobius":
             <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
               Surfaces
             </TabButton>
+            <TabButton active={mode === "curves"} onClick={() => setMode("curves")}>
+              Curves
+            </TabButton>
             <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
               Geometry
             </TabButton>
@@ -19617,6 +19880,63 @@ case "mobius":
               onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
               onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
             />
+          ) : mode === "curves" ? (
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Family
+                <select
+                  value={curvePresetFamilyFilter}
+                  onChange={(e) => setCurvePresetFamilyFilter(e.target.value as CurvePresetFamily | "all")}
+                >
+                  {CURVE_PRESET_FAMILY_OPTIONS.map((option) => (
+                    <option key={`curve-family-${option.value}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Preset
+                <select value={activeCurvePreset?.id ?? ""} onChange={(e) => setCurvePresetId(e.target.value)}>
+                  {visibleCurvePresets.map((preset) => (
+                    <option key={`curve-preset-head-${preset.id}`} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                Samples
+                <input
+                  type="number"
+                  min={8}
+                  max={4096}
+                  step={8}
+                  value={curveSampleCount}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (!Number.isFinite(value)) return;
+                    setCurveSampleCount(Math.max(8, Math.min(4096, Math.round(value))));
+                  }}
+                  style={{ width: 84 }}
+                />
+              </label>
+              {activeCurveIsCustom && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurveCustomXExpr("cos(t)");
+                    setCurveCustomYExpr("sin(2*t)");
+                    setCurveCustomZExpr("0.25*sin(3*t)");
+                    setCurveCustomTMin(-Math.PI);
+                    setCurveCustomTMax(Math.PI);
+                    setCurveCustomClosed(false);
+                  }}
+                >
+                  Reset custom
+                </button>
+              )}
+            </div>
           ) : mode === "geometry" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -19683,13 +20003,13 @@ case "mobius":
           <div style={{ ...styles.group, gridColumn: "span 3" }}>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("scene")}
-                disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "geometry")}
-              >
-                Scene shot
-              </button>
+                <button
+                  type="button"
+                  onClick={() => void handleScreenshot("scene")}
+                  disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                >
+                  Scene shot
+                </button>
               <button
                 type="button"
                 onClick={() => void handleScreenshot("window")}
@@ -19705,7 +20025,7 @@ case "mobius":
       <div
         style={{
           ...styles.wrap,
-          ...(mode === "surfaces" || mode === "geometry"
+          ...(mode === "surfaces" || mode === "curves" || mode === "geometry"
             ? {
               maxWidth: "100%",
               width: "100%",
@@ -20929,6 +21249,306 @@ case "mobius":
               )}
             </div>
             )}
+          </div>
+        ) : mode === "curves" ? (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+              <section>
+                <h2 style={styles.h2}>Curve Core</h2>
+                <div style={{ fontSize: 12, opacity: 0.74, marginBottom: 10 }}>
+                  Shared curve presets for geometry/surfaces/curves workflows.
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Families</div>
+                <div style={{ ...pillRow, marginBottom: 8 }}>
+                  {CURVE_PRESET_FAMILY_OPTIONS.map((option) => (
+                    <button
+                      key={`curve-family-pill-${option.value}`}
+                      type="button"
+                      onClick={() => setCurvePresetFamilyFilter(option.value)}
+                      style={pill(curvePresetFamilyFilter === option.value)}
+                      aria-pressed={curvePresetFamilyFilter === option.value}
+                      title={
+                        option.value === "all"
+                          ? `${CURVE_PRESETS.length} presets`
+                          : `${curvePresetCountByFamily[option.value]} presets`
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Preset list</div>
+                  <div style={{ fontSize: 11, opacity: 0.72 }}>{visibleCurvePresets.length} shown</div>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    maxHeight: "calc(100vh - 360px)",
+                    overflowY: "auto",
+                    paddingRight: 2,
+                  }}
+                >
+                  {visibleCurvePresets.map((preset) => {
+                    const selected = activeCurvePreset?.id === preset.id;
+                    return (
+                      <button
+                        key={`curve-preset-side-${preset.id}`}
+                        type="button"
+                        onClick={() => setCurvePresetId(preset.id)}
+                        style={{
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid " + (selected ? "#0a66c2" : "#d7dee7"),
+                          background: selected ? "#eaf3ff" : "#fff",
+                          cursor: "pointer",
+                          display: "grid",
+                          gap: 3,
+                        }}
+                        aria-pressed={selected}
+                      >
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>{preset.label}</div>
+                        <div style={{ fontSize: 11, color: "#475569" }}>
+                          {preset.kind} | {preset.dimension}D | t in [{fmt(preset.domain.tMin)}, {fmt(preset.domain.tMax)}]
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <div onMouseDown={startDragLeft} style={splitterStyle} />
+
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <div
+                data-testid="main-viewer"
+                ref={curvesSceneCaptureRef}
+                style={{
+                  flex: 1,
+                  height: "100%",
+                  minHeight: 0,
+                  borderRadius: 12,
+                  boxShadow: "0 0 0 1px #e0e0e0",
+                  overflow: "hidden",
+                  background: "#f8f9fb",
+                  padding: 10,
+                  boxSizing: "border-box",
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(320px, 460px) minmax(0, 1fr)",
+                    gap: 10,
+                    height: "100%",
+                    minHeight: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      borderRadius: 10,
+                      background: "#fff",
+                      border: "1px solid #e2e8f0",
+                      padding: 12,
+                      overflow: "auto",
+                      minHeight: 0,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>{activeCurvePreset?.label ?? "Curve preset"}</div>
+                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                      {activeCurvePreset?.kind ?? "custom"} | {activeCurvePreset?.dimension ?? 2}D | samples {curveSampleCount}
+                    </div>
+                    <div style={{ fontSize: 12, marginBottom: 8 }}>{activeCurvePreset?.note ?? "Preset description."}</div>
+
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Domain</div>
+                    {activeCurveIsCustom ? (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 10 }}>
+                        <label style={{ fontSize: 11 }}>
+                          tMin
+                          <input
+                            type="number"
+                            step={0.1}
+                            value={curveCustomTMin}
+                            onChange={(e) => setCurveCustomTMin(Number(e.target.value))}
+                            style={{ width: "100%", marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: 11 }}>
+                          tMax
+                          <input
+                            type="number"
+                            step={0.1}
+                            value={curveCustomTMax}
+                            onChange={(e) => setCurveCustomTMax(Number(e.target.value))}
+                            style={{ width: "100%", marginTop: 4 }}
+                          />
+                        </label>
+                        <label style={{ fontSize: 11, display: "flex", alignItems: "end", gap: 5 }}>
+                          <input
+                            type="checkbox"
+                            checked={curveCustomClosed}
+                            onChange={(e) => setCurveCustomClosed(e.target.checked)}
+                          />
+                          closed
+                        </label>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 12, marginBottom: 10 }}>
+                        t in [{fmt(activeCurveDomain.tMin)}, {fmt(activeCurveDomain.tMax)}], closed:{" "}
+                        {activeCurveDomain.closed ? "yes" : "no"}
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Parametric equations</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <label style={{ fontSize: 11 }}>
+                        x(t)
+                        {activeCurveIsCustom ? (
+                          <input
+                            type="text"
+                            value={activeCurveFormulas.x}
+                            onChange={(e) => setCurveCustomXExpr(e.target.value)}
+                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              border: "1px solid #d6deea",
+                              borderRadius: 6,
+                              background: "#f8fbff",
+                              padding: "6px 8px",
+                              fontFamily: "monospace",
+                              fontSize: 12,
+                            }}
+                          >
+                            {activeCurveFormulas.x}
+                          </div>
+                        )}
+                      </label>
+                      <label style={{ fontSize: 11 }}>
+                        y(t)
+                        {activeCurveIsCustom ? (
+                          <input
+                            type="text"
+                            value={activeCurveFormulas.y}
+                            onChange={(e) => setCurveCustomYExpr(e.target.value)}
+                            style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              marginTop: 4,
+                              border: "1px solid #d6deea",
+                              borderRadius: 6,
+                              background: "#f8fbff",
+                              padding: "6px 8px",
+                              fontFamily: "monospace",
+                              fontSize: 12,
+                            }}
+                          >
+                            {activeCurveFormulas.y}
+                          </div>
+                        )}
+                      </label>
+                      {(activeCurvePreset?.dimension ?? 2) === 3 && (
+                        <label style={{ fontSize: 11 }}>
+                          z(t)
+                          {activeCurveIsCustom ? (
+                            <input
+                              type="text"
+                              value={activeCurveFormulas.z ?? ""}
+                              onChange={(e) => setCurveCustomZExpr(e.target.value)}
+                              style={{ width: "100%", marginTop: 4, fontFamily: "monospace" }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                marginTop: 4,
+                                border: "1px solid #d6deea",
+                                borderRadius: 6,
+                                background: "#f8fbff",
+                                padding: "6px 8px",
+                                fontFamily: "monospace",
+                                fontSize: 12,
+                              }}
+                            >
+                              {activeCurveFormulas.z}
+                            </div>
+                          )}
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 10,
+                      background: "#fff",
+                      border: "1px solid #e2e8f0",
+                      padding: 12,
+                      overflow: "auto",
+                      minHeight: 0,
+                      display: "grid",
+                      gap: 10,
+                      alignContent: "start",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>Curve Architecture Presets</div>
+                      <div style={{ fontSize: 12, color: "#475569" }}>
+                        Top-level families are ready: Parametric, Polynomial/Rational, Spline/NURBS, and Custom.
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
+                      {CURVE_PRESET_FAMILY_OPTIONS.filter((option) => option.value !== "all").map((option) => {
+                        const family = option.value as CurvePresetFamily;
+                        return (
+                        <div
+                          key={`curve-family-card-${family}`}
+                          style={{
+                            border: "1px solid #d6deea",
+                            borderRadius: 8,
+                            background: curvePresetFamilyFilter === family ? "#eef4ff" : "#fbfdff",
+                            padding: "8px 10px",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>{option.label}</div>
+                          <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>
+                            {curvePresetCountByFamily[family]} presets
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setCurvePresetFamilyFilter(family)}
+                            style={{ marginTop: 6, padding: "3px 8px", fontSize: 11 }}
+                          >
+                            Show
+                          </button>
+                        </div>
+                      )})}
+                    </div>
+                    <div
+                      style={{
+                        border: "1px dashed #bfd0e8",
+                        borderRadius: 8,
+                        padding: "10px 12px",
+                        background: "#f8fbff",
+                        fontSize: 12,
+                        color: "#334155",
+                      }}
+                    >
+                      Next integration step: wire these presets into shared <code>curve-core</code> evaluators and renderer
+                      overlays for tangent, normal, binormal, arc length, curvature, and torsion.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         ) : mode === "geometry" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
