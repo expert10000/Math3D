@@ -188,6 +188,12 @@ export type AppCaptureScreenshotRequest = {
 export type AppCaptureScreenshotResponse =
   | { ok: true; path: string; folder: string }
   | { ok: false; error: string };
+export type AppCaptureListRequest = {
+  limit?: number;
+};
+export type AppCaptureListResponse =
+  | { ok: true; folder: string; paths: string[] }
+  | { ok: false; error: string };
 
 export type AppWindowStatePacket = {
   reason?: string;
@@ -298,6 +304,8 @@ contextBridge.exposeInMainWorld("appMenu", {
 contextBridge.exposeInMainWorld("appCapture", {
   captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
     ipcRenderer.invoke("app:capture-screenshot", req),
+  listScreenshots: (req?: AppCaptureListRequest): Promise<AppCaptureListResponse> =>
+    ipcRenderer.invoke("app:capture-list", req ?? {}),
 });
 
 contextBridge.exposeInMainWorld("appWindow", {

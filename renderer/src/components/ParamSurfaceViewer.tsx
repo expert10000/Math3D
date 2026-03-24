@@ -1,5 +1,5 @@
 // src/components/ParamSurfaceViewer.tsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { ParametricGeometry } from "three/examples/jsm/geometries/ParametricGeometry.js";
@@ -34,8 +34,12 @@ import {
 
 import type {
   ColorMode,
+  CameraTourCommand,
+  CameraTourEvent,
+  CameraTourMode,
   ProbeInfo,
   RenderQuality,
+  SceneBackgroundMode,
   SliceNormal,
   SlicePreset,
   OverlayPolylineGroup,
@@ -337,6 +341,9 @@ type Props = {
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
   renderQuality?: RenderQuality;
+  sceneBackgroundMode?: SceneBackgroundMode;
+  cameraTourCommand?: CameraTourCommand | null;
+  onCameraTourEvent?: (event: CameraTourEvent) => void;
   captureToken?: number;
   onCaptureThumbnail?: (dataUrl: string | null) => void;
   showBoundingBox?: boolean;
@@ -1445,6 +1452,9 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   cameraOverride = null,
   cameraOverrideToken = 0,
   renderQuality = "balanced",
+  sceneBackgroundMode = "default",
+  cameraTourCommand = null,
+  onCameraTourEvent,
   captureToken = 0,
   onCaptureThumbnail,
   showBoundingBox = false,
@@ -1677,6 +1687,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const centerRef = useRef(new THREE.Vector3(0, 0, 0));
   const radiusRef = useRef<number>(3);
   const forceReframeRef = useRef<(() => void) | null>(null);
+  const cameraTourFrameRef = useRef<number | null>(null);
+  const cameraTourRunIdRef = useRef(0);
   const gaussHighlightRef = useRef<THREE.Mesh | null>(null);
   const selectionOverlayRef = useRef<THREE.Points | null>(null);
   const selectionSphereRef = useRef<THREE.Mesh | null>(null);
@@ -1709,6 +1721,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const sliceGroupRef = useRef<THREE.Group | null>(null);
   const diagnosticsGroupRef = useRef<THREE.Group | null>(null);
   const driftArrowRef = useRef<THREE.ArrowHelper | null>(null);
+  const resolveSceneBackground = useCallback(() => {
+    if (sceneBackgroundMode === "transparent") {
+      return { color: 0x000000, alpha: 0, scene: null as THREE.Color | null };
+    }
+    if (sceneBackgroundMode === "calm") {
+      const calmColor = 0xf1f5fb;
+      return { color: calmColor, alpha: 1, scene: new THREE.Color(calmColor) };
+    }
+    const defaultColor = 0xf8f9fb;
+    return { color: defaultColor, alpha: 1, scene: new THREE.Color(defaultColor) };
+  }, [sceneBackgroundMode]);
 
   const sliceParamsRef = useRef({
     enabled: sliceEnabled,
@@ -2360,15 +2383,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     };
 
     const { width, height } = getSize();
+    const background = resolveSceneBackground();
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf8f9fb);
+    scene.background = background.scene;
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100);
     camera.position.set(4, 3, 5);
     camera.lookAt(0, 0, 0);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance" });
+    const renderer = new THREE.WebGLRenderer({ antialias: renderQuality !== "performance", alpha: true });
     const heavySurface = surfaceId === "torus";
     const maxPixelRatio =
       renderQuality === "performance"
@@ -2386,6 +2410,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const targetPixelRatio = devicePixelRatio * qualityScale;
     renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
+    renderer.setClearColor(background.color, background.alpha);
     renderer.localClippingEnabled = true;
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
@@ -3910,7 +3935,17 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     onCameraSync,
     onWeierstrassError,
     onParamGeodesicState,
+    resolveSceneBackground,
   ]);
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const renderer = rendererRef.current;
+    if (!scene || !renderer) return;
+    const background = resolveSceneBackground();
+    scene.background = background.scene;
+    renderer.setClearColor(background.color, background.alpha);
+  }, [resolveSceneBackground]);
 
   useEffect(() => {
     const widgets = probeWidgetsRef.current;
@@ -5794,6 +5829,113 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    return () => {
+      if (cameraTourFrameRef.current != null) {
+        cancelAnimationFrame(cameraTourFrameRef.current);
+        cameraTourFrameRef.current = null;
+      }
+      cameraTourRunIdRef.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cameraTourCommand) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    const emit = (event: CameraTourEvent) => {
+      onCameraTourEvent?.(event);
+    };
+
+    const stopActive = (event: CameraTourEvent) => {
+      if (cameraTourFrameRef.current != null) {
+        cancelAnimationFrame(cameraTourFrameRef.current);
+        cameraTourFrameRef.current = null;
+        cameraTourRunIdRef.current += 1;
+        emit(event);
+      }
+    };
+
+    if (cameraTourCommand.action === "stop") {
+      stopActive("stopped");
+      return;
+    }
+
+    const presetByMode: Record<CameraTourMode, { durationMs: number; turns: number; elevAmp: number; zoomAmp: number }> = {
+      balanced: { durationMs: 8800, turns: 1.35, elevAmp: 0.2, zoomAmp: 0.08 },
+      orbit: { durationMs: 11000, turns: 1.95, elevAmp: 0.16, zoomAmp: 0.06 },
+      zoom: { durationMs: 9000, turns: 1.1, elevAmp: 0.12, zoomAmp: 0.18 },
+      spiral: { durationMs: 10800, turns: 1.7, elevAmp: 0.34, zoomAmp: 0.1 },
+      quick: { durationMs: 5600, turns: 1.15, elevAmp: 0.14, zoomAmp: 0.06 },
+      long: { durationMs: 12400, turns: 2.05, elevAmp: 0.22, zoomAmp: 0.1 },
+      long_orbit: { durationMs: 13600, turns: 2.45, elevAmp: 0.2, zoomAmp: 0.08 },
+      long_zoom: { durationMs: 13200, turns: 1.25, elevAmp: 0.16, zoomAmp: 0.22 },
+      long_spiral: { durationMs: 14200, turns: 2.2, elevAmp: 0.38, zoomAmp: 0.1 },
+    };
+
+    const mode: CameraTourMode = cameraTourCommand.mode ?? "balanced";
+    const preset = presetByMode[mode] ?? presetByMode.balanced;
+    const durationMs = Number.isFinite(cameraTourCommand.durationMs)
+      ? Math.max(1200, Math.min(16000, Number(cameraTourCommand.durationMs)))
+      : preset.durationMs;
+
+    if (cameraTourCommand.captureVideo) {
+      emit("capture_unsupported");
+    }
+
+    const centerInput = cameraTourCommand.center;
+    const center = new THREE.Vector3(
+      centerInput?.x ?? ctrls.target.x,
+      centerInput?.y ?? ctrls.target.y,
+      centerInput?.z ?? ctrls.target.z
+    );
+    const radiusInput = cameraTourCommand.radius;
+    const radius = Math.max(
+      0.2,
+      Number.isFinite(radiusInput) ? Number(radiusInput) : Math.max(0.8, radiusRef.current * 1.1)
+    );
+    const startDir = cam.position.clone().sub(center);
+    const startTheta = Math.atan2(startDir.z, startDir.x);
+
+    stopActive("interrupted");
+    emit("started");
+
+    const runId = cameraTourRunIdRef.current + 1;
+    cameraTourRunIdRef.current = runId;
+    const startedAt = performance.now();
+
+    const step = (now: number) => {
+      if (cameraTourRunIdRef.current !== runId) return;
+      const t = Math.min(1, Math.max(0, (now - startedAt) / durationMs));
+      const eased = t * t * (3 - 2 * t);
+      const theta = startTheta + eased * Math.PI * 2 * preset.turns;
+      const elevation = 0.35 + preset.elevAmp * Math.sin(eased * Math.PI * 2);
+      const dist = radius * (1 + preset.zoomAmp * Math.sin(eased * Math.PI * 4));
+
+      const y = center.y + dist * elevation;
+      const planar = Math.max(1e-3, dist * Math.sqrt(Math.max(0.01, 1 - elevation * elevation)));
+      cam.position.set(center.x + planar * Math.cos(theta), y, center.z + planar * Math.sin(theta));
+      cam.up.set(0, 1, 0);
+      ctrls.target.copy(center);
+      cam.updateProjectionMatrix();
+      ctrls.update();
+
+      if (t >= 1) {
+        cameraTourFrameRef.current = null;
+        if (cameraTourRunIdRef.current === runId) {
+          cameraTourRunIdRef.current += 1;
+          emit("completed");
+        }
+        return;
+      }
+      cameraTourFrameRef.current = requestAnimationFrame(step);
+    };
+
+    cameraTourFrameRef.current = requestAnimationFrame(step);
+  }, [cameraTourCommand?.token, onCameraTourEvent]);
 
   useEffect(() => {
     const scene = sceneRef.current;

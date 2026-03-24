@@ -43,8 +43,12 @@ type AppSystemInfo = {
 
 type CaptureRect = { x: number; y: number; width: number; height: number };
 type AppCaptureRequest = { target: "scene" | "window"; rect?: CaptureRect | null };
+type AppCaptureListRequest = { limit?: number };
 type AppCaptureResponse =
   | { ok: true; path: string; folder: string }
+  | { ok: false; error: string };
+type AppCaptureListResponse =
+  | { ok: true; folder: string; paths: string[] }
   | { ok: false; error: string };
 
 const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
@@ -63,6 +67,8 @@ const screenshotStamp = () => {
   const pad = (n: number, size = 2) => String(n).padStart(size, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`;
 };
+
+const captureOutputFolder = () => path.resolve(process.cwd(), "output");
 
 const inferInstallType = (execPath: string, mode: AppRuntimeMode): AppInstallType => {
   if (mode === "development") return "development";
@@ -402,11 +408,29 @@ app.whenReady().then(async () => {
         return { ok: false, error: "Scene capture area is not available." };
       }
       const image = rect ? await win.webContents.capturePage(rect) : await win.webContents.capturePage();
-      const outputFolder = path.resolve(process.cwd(), "output");
+      const outputFolder = captureOutputFolder();
       await fs.promises.mkdir(outputFolder, { recursive: true });
       const filePath = path.join(outputFolder, `math3d-${target}-${screenshotStamp()}.png`);
       await fs.promises.writeFile(filePath, image.toPNG());
       return { ok: true, path: filePath, folder: outputFolder };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
+  ipcMain.handle("app:capture-list", async (_evt, req: AppCaptureListRequest | null | undefined): Promise<AppCaptureListResponse> => {
+    try {
+      const outputFolder = captureOutputFolder();
+      await fs.promises.mkdir(outputFolder, { recursive: true });
+      const rawLimit = Number(req?.limit);
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(500, Math.floor(rawLimit))) : 120;
+      const entries = await fs.promises.readdir(outputFolder, { withFileTypes: true });
+      const paths = entries
+        .filter((entry) => entry.isFile() && /\.(png|jpg|jpeg|webp)$/i.test(entry.name))
+        .map((entry) => entry.name)
+        .sort((a, b) => b.localeCompare(a))
+        .slice(0, limit)
+        .map((name) => path.join(outputFolder, name));
+      return { ok: true, folder: outputFolder, paths };
     } catch (error: any) {
       return { ok: false, error: String(error?.message ?? error) };
     }

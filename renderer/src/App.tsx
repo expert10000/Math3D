@@ -29,11 +29,12 @@ import {
   type ProbeInfo,
   type CameraTourCommand,
   type CameraTourEvent,
-  type CameraTourMode,
-  type CameraTourCaptureFormat,
-  type RenderQuality,
-  type ViewportDebugSnapshot,
-} from "./components/SurfaceViewer";
+    type CameraTourMode,
+    type CameraTourCaptureFormat,
+    type RenderQuality,
+    type SceneBackgroundMode,
+    type ViewportDebugSnapshot,
+  } from "./components/SurfaceViewer";
 import { GeometryViewer } from "./components/GeometryViewer";
 import { StereometryAnalyzerPanel } from "./components/StereometryAnalyzerPanel";
 import {
@@ -8062,7 +8063,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfacesCameraTourCaptureStatus, setSurfacesCameraTourCaptureStatus] = useState<string | null>(null);
   const [surfacesCameraTourCommand, setSurfacesCameraTourCommand] = useState<CameraTourCommand | null>(null);
   const surfacesCameraTourTokenRef = useRef(0);
-  const surfacesCameraTourSurfaceIdRef = useRef<SurfaceId | null>(null);
+  const surfacesCameraTourSurfaceIdRef = useRef<string | null>(null);
 
   // formulas for custom modes
   const [graphExpr, setGraphExpr] = useState("x*x - y*y"); // z=f(x,y)
@@ -8395,17 +8396,36 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
     pushSurfacesCameraTourCommand({ action: "stop" });
   }, [surfacesCameraTourStatus, surfacesCameraTourCaptureStatus, pushSurfacesCameraTourCommand]);
-  const playSurfacesImplicitTour = useCallback(
+  const playSurfacesTour = useCallback(
     (captureVideo: boolean) => {
-      if (mode !== "surfaces" || datasetKind !== "surface" || surfaceViewerKind !== "implicit") return;
+      if (mode !== "surfaces" || datasetKind !== "surface") return;
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const ext = surfacesCameraTourCaptureFormat === "mp4" ? "mp4" : "webm";
-      const defaultDomain = getDefaultImplicitDomain(implicitSurfaceId);
-      const xSpan = Math.max(0.05, Number(defaultDomain.xSpan) || 1);
-      const ySpan = Math.max(0.05, Number(defaultDomain.ySpan) || 1);
-      const zSpan = Math.max(xSpan, ySpan);
-      const focusRadius = Math.max(0.3, Math.hypot(xSpan, ySpan, zSpan));
-      surfacesCameraTourSurfaceIdRef.current = implicitSurfaceId;
+      let focusRadius = 2.8;
+      let tourKey = `${surfaceViewerKind}`;
+      if (surfaceViewerKind === "implicit") {
+        const defaultDomain = getDefaultImplicitDomain(implicitSurfaceId);
+        const xSpan = Math.max(0.05, Number(defaultDomain.xSpan) || 1);
+        const ySpan = Math.max(0.05, Number(defaultDomain.ySpan) || 1);
+        const zSpan = Math.max(xSpan, ySpan);
+        focusRadius = Math.max(0.3, Math.hypot(xSpan, ySpan, zSpan));
+        tourKey = `implicit:${implicitSurfaceId}`;
+      } else if (surfaceViewerKind === "graph") {
+        const span = getDefaultGraphSpan(graphSurfaceId);
+        focusRadius = Math.max(0.3, Math.hypot(span.xSpan, span.ySpan, Math.max(span.xSpan, span.ySpan)));
+        tourKey = `graph:${graphSurfaceId}`;
+      } else if (surfaceViewerKind === "param") {
+        const d = getParamDomainPreviewBounds(paramSurfaceId);
+        focusRadius = Math.max(0.3, Math.hypot(d.uMax - d.uMin, d.vMax - d.vMin, 1.2));
+        tourKey = `param:${paramSurfaceId}`;
+      } else if (surfaceViewerKind === "weierstrass") {
+        const preset =
+          WEIERSTRASS_PRESETS.find((p) => p.id === activeWeierstrassPresetId) ?? WEIERSTRASS_PRESETS[0];
+        const d = preset?.suggestedDomain ?? WEIERSTRASS_DEFAULTS.domain;
+        focusRadius = Math.max(0.3, Math.hypot(d.uMax - d.uMin, d.vMax - d.vMin, 1.2));
+        tourKey = `weierstrass:${preset?.id ?? "default"}`;
+      }
+      surfacesCameraTourSurfaceIdRef.current = tourKey;
       setSurfacesCameraTourPlayed(true);
       setSurfacesCameraTourCaptureStatus(captureVideo ? `Recording tour (${ext.toUpperCase()})...` : null);
       setSurfacesCameraTourStatus("playing");
@@ -8414,10 +8434,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         center: { x: 0, y: 0, z: 0 },
         radius: focusRadius,
         mode: surfacesCameraTourMode,
+        durationMs: 12000,
         captureVideo,
         captureFps: 30,
         captureFormat: surfacesCameraTourCaptureFormat,
-        captureFileName: captureVideo ? `implicit-tour-${implicitSurfaceId}-${stamp}.${ext}` : undefined,
+        captureFileName: captureVideo ? `${surfaceViewerKind}-tour-${stamp}.${ext}` : undefined,
       });
     },
     [
@@ -8426,16 +8447,82 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       surfaceViewerKind,
       surfacesCameraTourCaptureFormat,
       implicitSurfaceId,
+      graphSurfaceId,
+      paramSurfaceId,
+      activeWeierstrassPresetId,
       surfacesCameraTourMode,
       pushSurfacesCameraTourCommand,
     ]
   );
   const handlePlaySurfacesImplicitDemo = useCallback(() => {
-    playSurfacesImplicitTour(false);
-  }, [playSurfacesImplicitTour]);
+    playSurfacesTour(false);
+  }, [playSurfacesTour]);
   const handleCaptureSurfacesImplicitDemo = useCallback(() => {
-    playSurfacesImplicitTour(true);
-  }, [playSurfacesImplicitTour]);
+    playSurfacesTour(true);
+  }, [playSurfacesTour]);
+  const handleRunSurfaceGalleryDemo = useCallback(
+    (cardId: SurfaceGalleryCard["id"]) => {
+      if (surfacesCameraTourStatus === "playing") {
+        handleStopSurfacesCameraTour();
+      }
+      setMode("surfaces");
+      setDatasetKind("surface");
+      setCompareEnabled(false);
+      setCompareUseSnapshotB(false);
+      setShowViewportDebug(false);
+      setShowInViewportOverlayControls(false);
+      setShowPlanes(false);
+      setShowPrincipalProjections(false);
+      setShowBoundingBox(false);
+      setShowGaussMap(false);
+      setProbeEnabled(false);
+      setShowProbeNormal(false);
+      setShowProbeTangentPlane(false);
+      setShowProbeTangents(false);
+      setShowPrincipalDirections(false);
+      setShowPrincipalNormalPlanes(false);
+      setShowPrincipalLines(false);
+      setShowPrincipalGlyphs(false);
+      setShowCurvatureLines(false);
+      setShowRidges(false);
+      setShowValleys(false);
+      setImplicitOverlay("none");
+      setShowContours(cardId === "mexican_hat");
+      setShowChartGrid(cardId !== "mexican_hat");
+
+      if (cardId === "mexican_hat") {
+        setSurfaceViewerKind("graph");
+        setImplicitSurfaceId("graph_mexican");
+      } else if (cardId === "torus") {
+        setSurfaceViewerKind("param");
+        setParamSurfaceId("torus");
+      } else if (cardId === "mobius") {
+        setSurfaceViewerKind("param");
+        setParamSurfaceId("mobius");
+      } else {
+        setSurfaceViewerKind("weierstrass");
+        const presetId = cardId === "helicoid" ? "helicoid" : "enneper";
+        const preset = WEIERSTRASS_PRESETS.find((p) => p.id === presetId) ?? WEIERSTRASS_PRESETS[0];
+        if (preset) {
+          setWeierstrassGExpr(preset.gExpr);
+          setWeierstrassPhiExpr(preset.phiExpr);
+          setWeierstrassResolution(preset.resolution);
+          setWeierstrassRecenter(preset.recenterRescale);
+          setWeierstrassDomain({ ...preset.defaultDomain });
+          setActiveWeierstrassPresetId(preset.id);
+        }
+      }
+
+      setCameraOverride(null);
+      setCompareCameraOverride(null);
+      setCameraResetToken((t) => t + 1);
+      setWindowReframeToken((t) => t + 1);
+      window.setTimeout(() => {
+        playSurfacesTour(false);
+      }, 180);
+    },
+    [handleStopSurfacesCameraTour, playSurfacesTour, surfacesCameraTourStatus]
+  );
   const handleSurfacesCameraTourEvent = useCallback((event: CameraTourEvent) => {
     if (event === "capture_saved") {
       setSurfacesCameraTourCaptureStatus("Recording saved to file.");
@@ -8479,18 +8566,30 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     if (surfacesCameraTourStatus !== "playing") return;
     const activeSurfaceId = surfacesCameraTourSurfaceIdRef.current;
-    if (!activeSurfaceId || implicitSurfaceId === activeSurfaceId) return;
-    handleStopSurfacesCameraTour();
-  }, [surfacesCameraTourStatus, implicitSurfaceId, handleStopSurfacesCameraTour]);
-  useEffect(() => {
-    if (surfacesCameraTourStatus !== "playing") return;
-    if (mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "implicit") return;
+    if (!activeSurfaceId) return;
+    const currentKey =
+      mode !== "surfaces" || datasetKind !== "surface"
+        ? null
+        : surfaceViewerKind === "implicit"
+          ? `implicit:${implicitSurfaceId}`
+          : surfaceViewerKind === "graph"
+            ? `graph:${graphSurfaceId}`
+            : surfaceViewerKind === "param"
+              ? `param:${paramSurfaceId}`
+              : surfaceViewerKind === "weierstrass"
+                ? `weierstrass:${activeWeierstrassPresetId ?? "default"}`
+                : `${surfaceViewerKind}`;
+    if (currentKey && currentKey === activeSurfaceId) return;
     handleStopSurfacesCameraTour();
   }, [
     surfacesCameraTourStatus,
     mode,
     datasetKind,
     surfaceViewerKind,
+    implicitSurfaceId,
+    graphSurfaceId,
+    paramSurfaceId,
+    activeWeierstrassPresetId,
     handleStopSurfacesCameraTour,
   ]);
 
@@ -9643,6 +9742,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [wPlaneShowRays, setWPlaneShowRays] = useState(false);
   const [screenshotBusy, setScreenshotBusy] = useState<"scene" | "window" | null>(null);
   const [screenshotStatus, setScreenshotStatus] = useState<string | null>(null);
+  const [cleanScreenshotActive, setCleanScreenshotActive] = useState(false);
+  const [cleanScreenshotBackground, setCleanScreenshotBackground] = useState<"calm" | "transparent">("calm");
+  const [showThemeTools, setShowThemeTools] = useState(true);
+  const [showScreenshotTools, setShowScreenshotTools] = useState(true);
+  const [showScreenshotGallery, setShowScreenshotGallery] = useState(false);
+  const [recentScreenshotPaths, setRecentScreenshotPaths] = useState<string[]>([]);
+  const [screenshotGalleryFolder, setScreenshotGalleryFolder] = useState<string | null>(null);
   const [showStatusBar, setShowStatusBar] = useState(true);
   const [showViewportDebug, setShowViewportDebug] = useState(false);
   const [viewportDebugPrimary, setViewportDebugPrimary] = useState<ViewportDebugSnapshot | null>(null);
@@ -9738,6 +9844,21 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       height,
     };
   }, [mode]);
+  const loadScreenshotGallery = useCallback(async () => {
+    const listFn = window.appCapture?.listScreenshots;
+    if (typeof listFn !== "function") return;
+    try {
+      const result = await listFn({ limit: 120 });
+      if (!result.ok) {
+        setScreenshotStatus(`Screenshot gallery failed: ${result.error}`);
+        return;
+      }
+      setScreenshotGalleryFolder(result.folder);
+      setRecentScreenshotPaths(result.paths);
+    } catch (error: any) {
+      setScreenshotStatus(`Screenshot gallery failed: ${String(error?.message ?? error)}`);
+    }
+  }, []);
 
   const handleScreenshot = useCallback(
     async (target: "scene" | "window") => {
@@ -9757,6 +9878,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         );
         if (result.ok) {
           setScreenshotStatus(`Saved: ${result.path}`);
+          setScreenshotGalleryFolder(result.folder);
+          setRecentScreenshotPaths((prev) => [result.path, ...prev.filter((entry) => entry !== result.path)].slice(0, 12));
+          if (showScreenshotGallery && typeof window.appCapture?.listScreenshots === "function") {
+            void loadScreenshotGallery();
+          }
         } else {
           setScreenshotStatus(`Screenshot failed: ${result.error}`);
         }
@@ -9766,8 +9892,48 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         setScreenshotBusy(null);
       }
     },
-    [getSceneCaptureRect]
+    [getSceneCaptureRect, loadScreenshotGallery, showScreenshotGallery]
   );
+  const handleCleanScreenshot = useCallback(async () => {
+    if (screenshotBusy) return;
+    if (!(mode === "surfaces" || mode === "curves" || mode === "geometry")) {
+      setScreenshotStatus("Clean screenshot is available in Surfaces, Curves, and Geometry views.");
+      return;
+    }
+    const waitFrames = (count: number) =>
+      new Promise<void>((resolve) => {
+        const step = () => {
+          if (count <= 0) {
+            resolve();
+            return;
+          }
+          count -= 1;
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+
+    if (mode !== "surfaces" || datasetKind !== "surface") {
+      await handleScreenshot("scene");
+      return;
+    }
+
+    setShowViewportDebug(false);
+    setCleanScreenshotActive(true);
+    setCameraResetToken((t) => t + 1);
+    setWindowReframeToken((t) => t + 1);
+    try {
+      await waitFrames(3);
+      await handleScreenshot("scene");
+    } finally {
+      setCleanScreenshotActive(false);
+    }
+  }, [datasetKind, handleScreenshot, mode, screenshotBusy]);
+  useEffect(() => {
+    if (!showScreenshotGallery) return;
+    if (typeof window.appCapture?.listScreenshots !== "function") return;
+    void loadScreenshotGallery();
+  }, [loadScreenshotGallery, showScreenshotGallery]);
 
   // root style
   const rootStyle: React.CSSProperties =
@@ -9781,6 +9947,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           paddingBottom: showStatusBar ? 46 : 0,
         }
       : { ...styles.appRoot, overflowX: "hidden", paddingBottom: showStatusBar ? 46 : 0 };
+  const canLoadScreenshotFolder = typeof window.appCapture?.listScreenshots === "function";
 
 
 const mobiusEffectiveParams = useMemo(() => {
@@ -19769,16 +19936,29 @@ case "mobius":
   }, [geometryProceduralPick?.point, inspectPos, mode, probeInfo?.point]);
   const isPresentDisplayMode = displayMode === "present";
   const isInspectDisplayMode = displayMode === "inspect";
+  const cleanScreenshotSurfaceActive = cleanScreenshotActive && mode === "surfaces" && datasetKind === "surface";
+  const cleanScreenshotSceneBackgroundMode: SceneBackgroundMode = cleanScreenshotSurfaceActive
+    ? cleanScreenshotBackground === "transparent"
+      ? "transparent"
+      : "calm"
+    : "default";
+  const cleanScreenshotSceneContainerBackground =
+    cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
   const showSurfaceViewportPresetStrip =
-    mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode;
-  const compareLayoutEnabled = compareEnabled && !(mode === "surfaces" && isPresentDisplayMode);
-  const showSurfaceViewportDebug = showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode);
-  const showSurfacesRightPanel = mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel;
+    mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
+  const compareLayoutEnabled =
+    compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
+  const showSurfaceViewportDebug =
+    showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
+  const showSurfacesRightPanel =
+    (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
+    !cleanScreenshotSurfaceActive;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
-    !(mode === "surfaces" && isPresentDisplayMode);
+    !(mode === "surfaces" && isPresentDisplayMode) &&
+    !cleanScreenshotSurfaceActive;
   const statusCameraLabel = useMemo(() => {
     if (mode === "surfaces" && compareLayoutEnabled) {
       return compareCameraSync ? "camera sync on" : "camera sync off";
@@ -20495,6 +20675,186 @@ case "mobius":
               );
             })}
           </div>
+          <details style={{ position: "relative" }}>
+            <summary
+              style={{
+                listStyle: "none",
+                cursor: "pointer",
+                userSelect: "none",
+                padding: "5px 10px",
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              View
+            </summary>
+            <div
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "calc(100% + 6px)",
+                zIndex: 40,
+                width: 420,
+                maxWidth: "min(92vw, 420px)",
+                border: "1px solid #dbe4f0",
+                borderRadius: 10,
+                background: "#fff",
+                boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
+                padding: 10,
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
+                <button
+                  type="button"
+                  onClick={() => setShowThemeTools((v) => !v)}
+                  style={{ padding: "3px 8px", fontSize: 11 }}
+                  aria-pressed={showThemeTools}
+                >
+                  {showThemeTools ? "Hide" : "Show"}
+                </button>
+              </div>
+              {showThemeTools && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="dot">Dot Accent</option>
+                  </select>
+                  <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
+                    {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
+                      <option key={id} value={id}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                    <input
+                      type="checkbox"
+                      checked={showViewportDebug}
+                      onChange={(e) => setShowViewportDebug(e.target.checked)}
+                    />
+                    Viewport debug
+                  </label>
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+                <button
+                  type="button"
+                  onClick={() => setShowScreenshotTools((v) => !v)}
+                  style={{ padding: "3px 8px", fontSize: 11 }}
+                  aria-pressed={showScreenshotTools}
+                >
+                  {showScreenshotTools ? "Hide" : "Show"}
+                </button>
+              </div>
+              {showScreenshotTools && (
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                    Clean bg
+                    <select
+                      value={cleanScreenshotBackground}
+                      onChange={(e) =>
+                        setCleanScreenshotBackground(e.target.value === "transparent" ? "transparent" : "calm")
+                      }
+                    >
+                      <option value="calm">Calm</option>
+                      <option value="transparent">Transparent</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleCleanScreenshot()}
+                    disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                    title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
+                  >
+                    Clean shot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleScreenshot("scene")}
+                    disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                  >
+                    Scene shot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleScreenshot("window")}
+                    disabled={screenshotBusy !== null}
+                  >
+                    Window shot
+                  </button>
+                </div>
+              )}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshot gallery (optional)</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowScreenshotGallery((v) => !v)}
+                    style={{ padding: "3px 8px", fontSize: 11 }}
+                    aria-pressed={showScreenshotGallery}
+                  >
+                    {showScreenshotGallery ? "Hide" : "Show"}
+                  </button>
+                  {canLoadScreenshotFolder && showScreenshotGallery && (
+                    <button
+                      type="button"
+                      onClick={() => void loadScreenshotGallery()}
+                      style={{ padding: "3px 8px", fontSize: 11 }}
+                    >
+                      Refresh
+                    </button>
+                  )}
+                </div>
+              </div>
+              {showScreenshotGallery && (
+                <div
+                  style={{
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 8,
+                    padding: "6px 8px",
+                    background: "#f8fbff",
+                    display: "grid",
+                    gap: 6,
+                    maxHeight: 180,
+                    overflowY: "auto",
+                  }}
+                >
+                  {screenshotGalleryFolder && (
+                    <div style={{ fontSize: 10, opacity: 0.76 }}>
+                      Folder: {screenshotGalleryFolder}
+                    </div>
+                  )}
+                  {recentScreenshotPaths.length === 0 ? (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>
+                      {canLoadScreenshotFolder
+                        ? "No screenshots found in the output folder yet."
+                        : "No screenshots captured in this browser session yet."}
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 4 }}>
+                      {recentScreenshotPaths.map((entry) => {
+                        const label = entry.split(/[/\\]/).pop() ?? entry;
+                        return (
+                          <div key={entry} style={{ fontSize: 11, display: "grid", gap: 2 }}>
+                            <strong>{label}</strong>
+                            <span style={{ opacity: 0.78 }}>{entry}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </details>
         </div>
 
         <div style={styles.controls}>
@@ -20544,6 +20904,8 @@ case "mobius":
               onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
               onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
               onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+              onRunGalleryDemo={handleRunSurfaceGalleryDemo}
+              galleryDemoActive={surfacesCameraTourStatus === "playing"}
             />
           ) : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -20731,50 +21093,6 @@ case "mobius":
               />
             </div>
           )}
-          <div style={{ ...styles.group, gridColumn: "span 3" }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-                <option value="dot">Dot Accent</option>
-              </select>
-              <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
-                {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
-                  <option key={id} value={id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                <input
-                  type="checkbox"
-                  checked={showViewportDebug}
-                  onChange={(e) => setShowViewportDebug(e.target.checked)}
-                />
-                Viewport debug
-              </label>
-            </div>
-          </div>
-          <div style={{ ...styles.group, gridColumn: "span 3" }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  onClick={() => void handleScreenshot("scene")}
-                  disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
-                >
-                  Scene shot
-                </button>
-              <button
-                type="button"
-                onClick={() => void handleScreenshot("window")}
-                disabled={screenshotBusy !== null}
-              >
-                Window shot
-              </button>
-            </div>
-          </div>
         </div>
       </header>
 
@@ -20792,7 +21110,7 @@ case "mobius":
         {mode === "surfaces" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: surfaceLeftPanelWidth }}>
+            <div style={{ ...styles.panelLeft, width: surfaceLeftPanelWidth, display: cleanScreenshotSurfaceActive ? "none" : undefined }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
@@ -20872,9 +21190,9 @@ case "mobius":
                         gap: 6,
                       }}
                     >
-                      <div style={{ fontSize: 11, fontWeight: 700 }}>Camera Tour (Implicit Viewer)</div>
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>Camera Tour (Surface Viewer)</div>
                       <div style={{ fontSize: 10, opacity: 0.78 }}>
-                        Works for the currently active implicit object and stops on any manual camera interaction.
+                        Works for the currently active surface object and stops on any manual camera interaction.
                       </div>
                       <label style={{ fontSize: 10, fontWeight: 600, display: "grid", gap: 4 }}>
                         Render quality
@@ -21091,7 +21409,7 @@ case "mobius":
               )}
             </div>
 
-            <div onMouseDown={startDragLeft} style={splitterStyle} />
+            <div onMouseDown={startDragLeft} style={{ ...splitterStyle, display: cleanScreenshotSurfaceActive ? "none" : undefined }} />
 
             {/* MIDDLE */}
             <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
@@ -21105,7 +21423,7 @@ case "mobius":
                   borderRadius: 12,
                   boxShadow: "0 0 0 1px #e0e0e0",
                   overflow: "hidden",
-                  background: "#f8f9fb",
+                  background: cleanScreenshotSceneContainerBackground,
                   padding: compareLayoutEnabled ? 10 : 0,
                   boxSizing: "border-box",
                 }}
@@ -21202,7 +21520,7 @@ case "mobius":
                           height: "100%",
                           borderRadius: 10,
                           overflow: "hidden",
-                          background: "#f8f9fb",
+                          background: cleanScreenshotSceneContainerBackground,
                           boxShadow: "0 0 0 1px #e0e0e0",
                         }}
                       >
@@ -21349,7 +21667,7 @@ case "mobius":
                         style={{
                           borderRadius: 10,
                           overflow: "hidden",
-                          background: "#f8f9fb",
+                          background: cleanScreenshotSceneContainerBackground,
                           position: "relative",
                           minHeight: 0,
                           height: "100%",
@@ -21359,6 +21677,7 @@ case "mobius":
                         <ParamSurfaceViewer
                             surfaceId={primaryParamId}
                             renderQuality={surfaceRenderQuality}
+                            sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
                             customX={paramXExpr}
                             customY={paramYExpr}
                             customZ={paramZExpr}
@@ -21371,8 +21690,8 @@ case "mobius":
                             rmfRibbonTwistEnabled={rmfRibbonTwistEnabled}
                             rmfRibbonTwistTurns={rmfRibbonTwistTurns}
                             wireframe={primaryOverlay.showWireframe}
-                            showPlanes={primaryOverlay.showPlanes}
-                            showPrincipalProjections={showPrincipalProjections}
+                            showPlanes={cleanScreenshotSurfaceActive ? false : primaryOverlay.showPlanes}
+                            showPrincipalProjections={cleanScreenshotSurfaceActive ? false : showPrincipalProjections}
                             principalProjectionXY={principalProjectionXY}
                             principalProjectionYZ={principalProjectionYZ}
                             principalProjectionXZ={principalProjectionXZ}
@@ -21384,8 +21703,8 @@ case "mobius":
                             paramResolution={activeParamLikeResolution}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
-                            showChartGrid={primaryOverlay.showChartGrid}
-                            showOverlayControls={showInViewportOverlayControls}
+                            showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
@@ -21396,18 +21715,18 @@ case "mobius":
                             weierstrassRecenter={weierstrassRecenter}
                             onWeierstrassError={setWeierstrassError}
                             onWeierstrassPathDisagreement={setWeierstrassPathDisagreement}
-                            probeEnabled={probeEnabled}
-                            showProbeNormal={showProbeNormal}
-                            showProbeTangentPlane={showProbeTangentPlane}
-                            showProbeTangents={showProbeTangents}
-                            showPrincipalDirections={showPrincipalDirections}
-                            showPrincipalNormalPlanes={showPrincipalNormalPlanes}
-                            showPrincipalLines={showPrincipalLines}
-                            showPrincipalGlyphs={showPrincipalGlyphs}
+                            probeEnabled={cleanScreenshotSurfaceActive ? false : probeEnabled}
+                            showProbeNormal={cleanScreenshotSurfaceActive ? false : showProbeNormal}
+                            showProbeTangentPlane={cleanScreenshotSurfaceActive ? false : showProbeTangentPlane}
+                            showProbeTangents={cleanScreenshotSurfaceActive ? false : showProbeTangents}
+                            showPrincipalDirections={cleanScreenshotSurfaceActive ? false : showPrincipalDirections}
+                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive ? false : showPrincipalNormalPlanes}
+                            showPrincipalLines={cleanScreenshotSurfaceActive ? false : showPrincipalLines}
+                            showPrincipalGlyphs={cleanScreenshotSurfaceActive ? false : showPrincipalGlyphs}
                             principalGlyphDensity={principalGlyphDensity}
                             principalGlyphLength={principalGlyphLength}
                             principalGlyphMode={principalGlyphMode}
-                            showCurvatureLines={showCurvatureLines}
+                            showCurvatureLines={cleanScreenshotSurfaceActive ? false : showCurvatureLines}
                             curvatureLineField={curvatureLineField}
                             curvatureSeedSource={curvatureSeedSource}
                             curvatureSeedDensity={curvatureSeedDensity}
@@ -21415,8 +21734,8 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
-                            showRidges={showRidges}
-                            showValleys={showValleys}
+                            showRidges={cleanScreenshotSurfaceActive ? false : showRidges}
+                            showValleys={cleanScreenshotSurfaceActive ? false : showValleys}
                             ridgeValleySelectionOnly={ridgeValleySelectionOnly}
                             ridgeValleyMagMin={ridgeValleyMagMin}
                             ridgeValleyContrast={ridgeValleyContrast}
@@ -21427,7 +21746,7 @@ case "mobius":
                             ridgeValleyDecimate={ridgeValleyDecimate}
                             ridgeValleyMaxCurves={ridgeValleyMaxCurves}
                             ridgeValleyMinConf={ridgeValleyMinConf}
-                            showBoundingBox={primaryOverlay.showBoundingBox}
+                            showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
                             onViewportDebug={handlePrimaryViewportDebug}
@@ -21442,9 +21761,11 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
+                            cameraTourCommand={datasetKind === "surface" ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={datasetKind === "surface" ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
-                          gaussMapEnabled={showGaussMap}
+                          gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                           onGaussPoints={handleGaussPoints}
                           gaussHighlightPoint={gaussHighlightPoint}
@@ -21502,6 +21823,7 @@ case "mobius":
                         <SurfaceViewer
                               surfaceId={primarySurfaceId}
                               renderQuality={surfaceRenderQuality}
+                              sceneBackgroundMode={cleanScreenshotSceneBackgroundMode}
                               graphExpr={graphExpr}
                             implicitExpr={implicitExpr}
                             implicitMeshOverride={activeCgalMesh}
@@ -21511,8 +21833,8 @@ case "mobius":
                             implicitMeshToken={cgalMeshToken}
                             sampleMaxPoints={surfaceViewerKind === "graph" ? graphSampleMaxPoints : undefined}
                               wireframe={primaryOverlay.showWireframe}
-                              showPlanes={primaryOverlay.showPlanes}
-                              showPrincipalProjections={showPrincipalProjections}
+                              showPlanes={cleanScreenshotSurfaceActive ? false : primaryOverlay.showPlanes}
+                              showPrincipalProjections={cleanScreenshotSurfaceActive ? false : showPrincipalProjections}
                               principalProjectionXY={principalProjectionXY}
                               principalProjectionYZ={principalProjectionYZ}
                               principalProjectionXZ={principalProjectionXZ}
@@ -21526,13 +21848,13 @@ case "mobius":
                             implicitDomainSize={implicitDomainSizeFor(primarySurfaceId)}
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
-                            showChartGrid={primaryOverlay.showChartGrid}
-                            showOverlayControls={showInViewportOverlayControls}
+                            showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
                             graphDomain={activeGraphDomain}
-                            showBoundingBox={primaryOverlay.showBoundingBox}
+                            showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
                             onViewportDebug={handlePrimaryViewportDebug}
@@ -21540,18 +21862,18 @@ case "mobius":
                             graphProbeToken={graphProbeToken}
                             implicitProbeXYZ={implicitProbeXYZ}
                             implicitProbeToken={implicitProbeToken}
-                            probeEnabled={probeEnabled}
-                            showProbeNormal={showProbeNormal}
-                            showProbeTangentPlane={showProbeTangentPlane}
-                            showProbeTangents={showProbeTangents}
-                            showPrincipalDirections={showPrincipalDirections}
-                            showPrincipalNormalPlanes={showPrincipalNormalPlanes}
-                            showPrincipalLines={showPrincipalLines}
-                            showPrincipalGlyphs={showPrincipalGlyphs}
+                            probeEnabled={cleanScreenshotSurfaceActive ? false : probeEnabled}
+                            showProbeNormal={cleanScreenshotSurfaceActive ? false : showProbeNormal}
+                            showProbeTangentPlane={cleanScreenshotSurfaceActive ? false : showProbeTangentPlane}
+                            showProbeTangents={cleanScreenshotSurfaceActive ? false : showProbeTangents}
+                            showPrincipalDirections={cleanScreenshotSurfaceActive ? false : showPrincipalDirections}
+                            showPrincipalNormalPlanes={cleanScreenshotSurfaceActive ? false : showPrincipalNormalPlanes}
+                            showPrincipalLines={cleanScreenshotSurfaceActive ? false : showPrincipalLines}
+                            showPrincipalGlyphs={cleanScreenshotSurfaceActive ? false : showPrincipalGlyphs}
                             principalGlyphDensity={principalGlyphDensity}
                             principalGlyphLength={principalGlyphLength}
                             principalGlyphMode={principalGlyphMode}
-                            showCurvatureLines={showCurvatureLines}
+                            showCurvatureLines={cleanScreenshotSurfaceActive ? false : showCurvatureLines}
                             curvatureLineField={curvatureLineField}
                             curvatureSeedSource={curvatureSeedSource}
                             curvatureSeedDensity={curvatureSeedDensity}
@@ -21559,8 +21881,8 @@ case "mobius":
                             curvatureMaxSteps={curvatureMaxSteps}
                             curvatureMaxLines={curvatureMaxLines}
                             curvatureRebuildToken={curvatureRebuildToken}
-                            showRidges={showRidges}
-                            showValleys={showValleys}
+                            showRidges={cleanScreenshotSurfaceActive ? false : showRidges}
+                            showValleys={cleanScreenshotSurfaceActive ? false : showValleys}
                             ridgeValleySelectionOnly={ridgeValleySelectionOnly}
                             ridgeValleyMagMin={ridgeValleyMagMin}
                             ridgeValleyContrast={ridgeValleyContrast}
@@ -21575,25 +21897,17 @@ case "mobius":
                             onSetGraphExpr={setGraphExpr}
                             onSetImplicitExpr={setImplicitExpr}
                             // contours (remove if SurfaceViewer doesn't support yet)
-                            showContours={primaryOverlay.showContours}
+                            showContours={cleanScreenshotSurfaceActive ? false : primaryOverlay.showContours}
                             contourCount={contourCount}
                             isCameraLeader={cameraSyncEnabled}
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={
-                              datasetKind === "surface" && surfaceViewerKind === "implicit"
-                                ? surfacesCameraTourCommand
-                                : null
-                            }
-                            onCameraTourEvent={
-                              datasetKind === "surface" && surfaceViewerKind === "implicit"
-                                ? handleSurfacesCameraTourEvent
-                                : undefined
-                            }
+                            cameraTourCommand={datasetKind === "surface" ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={datasetKind === "surface" ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
-                          gaussMapEnabled={showGaussMap}
+                          gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
                           onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                         onGaussPoints={handleGaussPoints}
                         gaussHighlightPoint={gaussHighlightPoint}
@@ -21644,7 +21958,7 @@ case "mobius":
                             onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
                           />
                         )}
-                        {showParamSurfaceOverlayLauncher && !paramSurfaceOverlayOpen && (
+                        {showParamSurfaceOverlayLauncher && !paramSurfaceOverlayOpen && !cleanScreenshotSurfaceActive && (
                           <button
                             type="button"
                             onClick={() => setParamSurfaceOverlayOpen(true)}
@@ -21666,7 +21980,7 @@ case "mobius":
                             Open surface params
                           </button>
                         )}
-                        {showParamSurfaceOverlayLauncher && (
+                        {showParamSurfaceOverlayLauncher && !cleanScreenshotSurfaceActive && (
                           <ParamSurfaceOverlayDialog
                             open={paramSurfaceOverlayOpen}
                             activeTab={paramSurfaceOverlayTab}
@@ -21720,7 +22034,7 @@ case "mobius":
                               style={{
                                 borderRadius: 10,
                             overflow: "hidden",
-                            background: "#f8f9fb",
+                            background: cleanScreenshotSceneContainerBackground,
                             minHeight: 0,
                             height: "100%",
                           }}
@@ -24848,45 +25162,51 @@ const MapsPanel: React.FC<{ mapId: MapId }> = ({ mapId }) => {
 /* ---------------- Surfaces controls ---------------- */
 
 type SurfaceGalleryCard = {
-  id: "implicit" | "explicit" | "parametric" | "weierstrass";
+  id: "mexican_hat" | "torus" | "helicoid" | "enneper" | "mobius";
   title: string;
   subtitle: string;
+  typeTag: "Explicit" | "Parametric" | "Minimal Surface" | "Weierstrass" | "Constructed";
   description: string;
-  badge: "Implicit" | "Explicit" | "Parametric" | "Weierstrass";
   thumbDataUrl: string;
 };
 
 const makeSurfaceGalleryThumb = (
   title: string,
   subtitle: string,
-  badge: SurfaceGalleryCard["badge"],
-  shape: "implicit" | "explicit" | "parametric" | "weierstrass"
+  typeTag: SurfaceGalleryCard["typeTag"],
+  shape: "explicit" | "parametric" | "minimal" | "weierstrass" | "constructed"
 ) => {
   const palette =
-    badge === "Implicit"
-      ? { top: "#ecfeff", bottom: "#dbeafe", accent: "#0e7490", ink: "#164e63" }
-      : badge === "Explicit"
-        ? { top: "#fef9c3", bottom: "#fde68a", accent: "#b45309", ink: "#78350f" }
-        : badge === "Parametric"
-          ? { top: "#eef2ff", bottom: "#dbeafe", accent: "#4338ca", ink: "#312e81" }
-          : { top: "#f5f3ff", bottom: "#e9d5ff", accent: "#7c3aed", ink: "#581c87" };
+    typeTag === "Explicit"
+      ? { top: "#fef9c3", bottom: "#fde68a", accent: "#b45309", ink: "#78350f" }
+      : typeTag === "Parametric"
+        ? { top: "#eef2ff", bottom: "#dbeafe", accent: "#4338ca", ink: "#312e81" }
+        : typeTag === "Minimal Surface"
+          ? { top: "#ffedd5", bottom: "#fed7aa", accent: "#c2410c", ink: "#9a3412" }
+          : typeTag === "Constructed"
+            ? { top: "#ede9fe", bottom: "#ddd6fe", accent: "#5b21b6", ink: "#4c1d95" }
+            : { top: "#f5f3ff", bottom: "#e9d5ff", accent: "#7c3aed", ink: "#581c87" };
   const shapeSvg =
-    shape === "implicit"
-      ? `<path d="M20 56 C35 20, 58 20, 72 46 C86 70, 104 62, 112 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
-<path d="M22 66 C38 40, 62 40, 84 64" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />`
-      : shape === "explicit"
+    shape === "explicit"
         ? `<path d="M16 58 L114 28" fill="none" stroke="${palette.accent}" stroke-width="3" />
 <path d="M20 68 L118 38" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.6" />
 <path d="M20 48 L118 18" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.6" />`
-        : shape === "parametric"
+      : shape === "parametric"
           ? `<path d="M22 58 C34 30, 52 26, 66 44 C80 62, 98 56, 112 34" fill="none" stroke="${palette.accent}" stroke-width="3" />
 <path d="M28 66 C38 42, 56 40, 74 56 C90 70, 104 64, 112 48" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />
 <path d="M28 48 C42 22, 62 20, 82 36 C96 50, 106 48, 112 36" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.65" />`
-          : `<path d="M22 58 C36 26, 50 28, 66 46 C80 62, 96 56, 112 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
+        : shape === "minimal"
+          ? `<path d="M20 54 C30 24, 48 24, 64 42 C80 60, 98 58, 114 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<path d="M24 68 C40 42, 56 40, 72 56 C88 70, 104 62, 114 44" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.7" />`
+          : shape === "weierstrass"
+            ? `<path d="M22 58 C36 26, 50 28, 66 46 C80 62, 96 56, 112 30" fill="none" stroke="${palette.accent}" stroke-width="3" />
 <circle cx="40" cy="34" r="6" fill="none" stroke="${palette.accent}" stroke-width="2" />
 <circle cx="86" cy="38" r="5" fill="none" stroke="${palette.accent}" stroke-width="2" />
-<path d="M28 66 C40 48, 52 46, 66 58" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.7" />`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="132" height="84" viewBox="0 0 132 84">
+<path d="M28 66 C40 48, 52 46, 66 58" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.7" />`
+            : `<path d="M20 58 C34 30, 48 28, 66 44 C82 60, 98 58, 114 34" fill="none" stroke="${palette.accent}" stroke-width="3" />
+<path d="M28 34 L102 62" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.7" />
+<path d="M30 62 L104 34" fill="none" stroke="${palette.accent}" stroke-width="2" opacity="0.55" />`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="264" height="168" viewBox="0 0 132 84">
 <defs>
   <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="${palette.top}" />
@@ -24904,36 +25224,44 @@ ${shapeSvg}
 
 const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
   {
-    id: "implicit",
-    title: "Implicit surface",
-    subtitle: "f(x,y,z)=0",
-    description: "Level-set surfaces; start with sphere.",
-    badge: "Implicit",
-    thumbDataUrl: makeSurfaceGalleryThumb("Implicit", "f(x,y,z)=0", "Implicit", "implicit"),
+    id: "mexican_hat",
+    title: "Mexican Hat",
+    subtitle: "z = (1-r^2)e^(-r^2/2)",
+    typeTag: "Explicit",
+    description: "Ring with a central peak and smooth radial falloff.",
+    thumbDataUrl: makeSurfaceGalleryThumb("Mexican Hat", "Explicit", "Explicit", "explicit"),
   },
   {
-    id: "explicit",
-    title: "Explicit surface",
-    subtitle: "z=f(x,y)",
-    description: "Graph surfaces with slope/curvature analysis.",
-    badge: "Explicit",
-    thumbDataUrl: makeSurfaceGalleryThumb("Explicit", "z=f(x,y)", "Explicit", "explicit"),
+    id: "torus",
+    title: "Torus",
+    subtitle: "sigma(u,v)",
+    typeTag: "Parametric",
+    description: "Classic donut with strong major/minor curvature contrast.",
+    thumbDataUrl: makeSurfaceGalleryThumb("Torus", "Parametric", "Parametric", "parametric"),
   },
   {
-    id: "parametric",
-    title: "Parametric surface",
-    subtitle: "σ(u,v)",
-    description: "Parametric families like torus, Mobius, helicoid.",
-    badge: "Parametric",
-    thumbDataUrl: makeSurfaceGalleryThumb("Parametric", "sigma(u,v)", "Parametric", "parametric"),
+    id: "helicoid",
+    title: "Helicoid",
+    subtitle: "g(z)=exp(z)",
+    typeTag: "Minimal Surface",
+    description: "Helical minimal sheet with clean screw-symmetry structure.",
+    thumbDataUrl: makeSurfaceGalleryThumb("Helicoid", "Minimal", "Minimal Surface", "minimal"),
   },
   {
-    id: "weierstrass",
-    title: "Weierstrass",
-    subtitle: "Minimal surfaces",
-    description: "Holomorphic-data presets with safe domains.",
-    badge: "Weierstrass",
-    thumbDataUrl: makeSurfaceGalleryThumb("Weierstrass", "Minimal", "Weierstrass", "weierstrass"),
+    id: "enneper",
+    title: "Enneper",
+    subtitle: "g(z)=z, phi(z)=1",
+    typeTag: "Weierstrass",
+    description: "Canonical Weierstrass preset with recognizable self-folding.",
+    thumbDataUrl: makeSurfaceGalleryThumb("Enneper", "Weierstrass", "Weierstrass", "weierstrass"),
+  },
+  {
+    id: "mobius",
+    title: "Möbius Strip",
+    subtitle: "sigma(u,v)",
+    typeTag: "Constructed",
+    description: "One-sided strip for non-orientable topology visuals.",
+    thumbDataUrl: makeSurfaceGalleryThumb("Möbius", "Constructed", "Constructed", "constructed"),
   },
 ];
 
@@ -24971,6 +25299,8 @@ type SurfacesControlsProps = {
   onChangeRotationalProfileRExpr: (s: string) => void;
   onChangeRotationalProfileZExpr: (s: string) => void;
   onChangeRotationalProfilePointsText: (s: string) => void;
+  onRunGalleryDemo: (cardId: SurfaceGalleryCard["id"]) => void;
+  galleryDemoActive: boolean;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -25007,6 +25337,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeRotationalProfileRExpr,
   onChangeRotationalProfileZExpr,
   onChangeRotationalProfilePointsText,
+  onRunGalleryDemo,
+  galleryDemoActive,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -25017,36 +25349,39 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const isParamFormula = isSurface && viewerKind === "param" && paramSourceKind === "formula";
   const isParamSpline = isSurface && viewerKind === "param" && paramSourceKind === "spline";
   const isParamConstructed = isSurface && viewerKind === "param" && paramSourceKind === "constructed";
-  const surfaceGallerySelectedId: SurfaceGalleryCard["id"] =
-    isSurface && viewerKind === "implicit"
-      ? "implicit"
-      : isSurface && viewerKind === "graph"
-        ? "explicit"
-        : isSurface && viewerKind === "param"
-          ? "parametric"
-          : isSurface && viewerKind === "weierstrass"
-            ? "weierstrass"
-            : "implicit";
+  const surfaceGallerySelectedId: SurfaceGalleryCard["id"] | null =
+    isSurface && viewerKind === "graph" && surfaceId === "graph_mexican"
+      ? "mexican_hat"
+      : isSurface && viewerKind === "param" && paramId === "torus"
+        ? "torus"
+        : isSurface && viewerKind === "param" && paramId === "mobius"
+          ? "mobius"
+          : isSurface && viewerKind === "weierstrass" && activeWeierstrassPreset?.id === "helicoid"
+            ? "helicoid"
+            : isSurface && viewerKind === "weierstrass" && activeWeierstrassPreset?.id === "enneper"
+              ? "enneper"
+              : null;
   const openSurfaceGalleryCard = (cardId: SurfaceGalleryCard["id"]) => {
     onChangeDatasetKind("surface");
-    if (cardId === "implicit") {
-      onChangeViewerKind("implicit");
-      onChangeSurface("sphere");
-      return;
-    }
-    if (cardId === "explicit") {
+    if (cardId === "mexican_hat") {
       onChangeViewerKind("graph");
-      onChangeSurface("graph_saddle");
+      onChangeSurface("graph_mexican");
       return;
     }
-    if (cardId === "parametric") {
+    if (cardId === "torus") {
       onChangeViewerKind("param");
       onChangeParamId("torus");
       return;
     }
+    if (cardId === "mobius") {
+      onChangeViewerKind("param");
+      onChangeParamId("mobius");
+      return;
+    }
     onChangeViewerKind("weierstrass");
-    const firstPreset = WEIERSTRASS_PRESETS[0];
-    if (firstPreset) onApplyWeierstrassPreset(firstPreset);
+    const presetId = cardId === "helicoid" ? "helicoid" : "enneper";
+    const preset = WEIERSTRASS_PRESETS.find((p) => p.id === presetId) ?? WEIERSTRASS_PRESETS[0];
+    if (preset) onApplyWeierstrassPreset(preset);
   };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
   const compactForPresent = displayMode === "present";
@@ -25054,299 +25389,334 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const compareActive = compareUiEnabled && compareEnabled;
   const chipPadding = compactForPresent ? "3px 8px" : "4px 10px";
   const galleryPreviewHeight = compactForPresent ? 64 : 80;
+  const bandStyle: React.CSSProperties = {
+    border: "1px solid #dbe4f0",
+    borderRadius: 10,
+    background: "#f8fbff",
+    padding: "8px 10px",
+    display: "grid",
+    gap: 6,
+  };
+  const bandTitleStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#334155" };
 
   return (
     <div style={{ ...styles.group, gridColumn: "span 9", gap: compactForPresent ? 8 : 12 }}>
       {showSurfaceGallery && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
-          {SURFACE_GALLERY_CARDS.map((card) => {
-            const active = surfaceGallerySelectedId === card.id;
-            return (
-              <article
-                key={card.id}
-                data-testid={`surface-gallery-card-${card.id}`}
-                onClick={() => openSurfaceGalleryCard(card.id)}
-                style={{
-                  borderRadius: 8,
-                  border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
-                  background: active ? "#eef4ff" : "#fff",
-                  padding: 6,
-                  display: "grid",
-                  gap: 5,
-                  cursor: "pointer",
-                }}
-                title={card.description}
-              >
-                <img
-                  src={card.thumbDataUrl}
-                  alt={`${card.title} card`}
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Gallery cards</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", gap: 10 }}>
+            {SURFACE_GALLERY_CARDS.map((card) => {
+              const active = surfaceGallerySelectedId === card.id;
+              return (
+                <article
+                  key={card.id}
+                  data-testid={`surface-gallery-card-${card.id}`}
+                  onClick={() => openSurfaceGalleryCard(card.id)}
                   style={{
-                    width: "100%",
-                    height: galleryPreviewHeight,
-                    borderRadius: 6,
-                    border: "1px solid #dbe2ea",
-                    objectFit: "cover",
-                    background: "#f8fafc",
+                    borderRadius: 12,
+                    border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
+                    background: active ? "#eef4ff" : "#fff",
+                    padding: 8,
+                    display: "grid",
+                    gap: 7,
+                    cursor: "pointer",
                   }}
-                />
-                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
-                <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
-                <div
-                  style={{
-                    justifySelf: "start",
-                    fontSize: 9,
-                    border: "1px solid #cbd5e1",
-                    background: "#f8fafc",
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    fontWeight: 700,
-                  }}
+                  title={card.description}
                 >
-                  {card.badge}
-                </div>
-              </article>
-            );
-          })}
+                  <img
+                    src={card.thumbDataUrl}
+                    alt={`${card.title} card`}
+                    style={{
+                      width: "100%",
+                      height: Math.max(96, galleryPreviewHeight + 32),
+                      borderRadius: 8,
+                      border: "1px solid #dbe2ea",
+                      objectFit: "cover",
+                      background: "#f8fafc",
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 6,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.3 }}>{card.title}</div>
+                    <div
+                      style={{
+                        fontSize: 9,
+                        border: "1px solid #cbd5e1",
+                        background: "#f8fafc",
+                        borderRadius: 999,
+                        padding: "1px 6px",
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {card.typeTag}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, opacity: 0.8, lineHeight: 1.3 }}>{card.subtitle}</div>
+                  <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        openSurfaceGalleryCard(card.id);
+                      }}
+                      style={{ padding: "4px 10px", fontSize: 11 }}
+                    >
+                      Open
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRunGalleryDemo(card.id);
+                      }}
+                      disabled={galleryDemoActive}
+                      style={{ padding: "4px 10px", fontSize: 11 }}
+                    >
+                      Demo
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
-        <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Source kinds</span>
-        <button
-          type="button"
-          onClick={() => setShowSurfaceGallery((v) => !v)}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid #d1d5db",
-            background: showSurfaceGallery ? "#eef4ff" : "#fff",
-            fontWeight: showSurfaceGallery ? 700 : 500,
-            fontSize: 11,
-            cursor: "pointer",
-          }}
-          aria-expanded={showSurfaceGallery}
-        >
-          {showSurfaceGallery ? "Hide gallery" : "Show gallery"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("graph");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Explicit
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("implicit");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Implicit
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("param");
-            if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isParamFormula ? "#0a66c2" : "#ddd"),
-            background: isParamFormula ? "#e6f0ff" : "#fff",
-            fontWeight: isParamFormula ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Parametric formula
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("param");
-            if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isParamSpline ? "#0a66c2" : "#ddd"),
-            background: isParamSpline ? "#e6f0ff" : "#fff",
-            fontWeight: isParamSpline ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Spline surface
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("param");
-            if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isParamConstructed ? "#0a66c2" : "#ddd"),
-            background: isParamConstructed ? "#e6f0ff" : "#fff",
-            fontWeight: isParamConstructed ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Constructed
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            if (!isMesh) onChangeViewerKind("mesh");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isMesh ? "#0a66c2" : "#ddd"),
-            background: isMesh ? "#e6f0ff" : "#fff",
-            fontWeight: isMesh ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Mesh
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("mesh");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
-            background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
-            fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          SurfaceMesh
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("weierstrass");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
-            background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
-            fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Weierstrass
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            onChangeDatasetKind("surface");
-            onChangeViewerKind("complex");
-          }}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
-            background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
-            fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Complex map
-        </button>
-        <button
-          type="button"
-          onClick={() => onChangeDatasetKind("volume")}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (isVolume ? "#0a66c2" : "#ddd"),
-            background: isVolume ? "#e6f0ff" : "#fff",
-            fontWeight: isVolume ? 600 : 400,
-            cursor: "pointer",
-            fontSize: 11,
-          }}
-        >
-          Volume
-        </button>
-        <button
-          type="button"
-          onClick={() => openSurfaceGalleryCard("implicit")}
-          style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
-        >
-          New
-        </button>
-        <button
-          type="button"
-          onClick={() => openSurfaceGalleryCard("explicit")}
-          style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
-        >
-          Demo
-        </button>
-        <button
-          type="button"
-          onClick={onToggleCompare}
-          disabled={!compareUiEnabled || viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
-          style={{
-            padding: chipPadding,
-            borderRadius: 999,
-            border: "1px solid " + (compareActive ? "#0a66c2" : "#d1d5db"),
-            background: compareActive ? "#eef4ff" : "#fff",
-            fontWeight: compareActive ? 700 : 500,
-            fontSize: 11,
-            cursor: "pointer",
-          }}
-        >
-          Compare
-        </button>
-        {displayMode === "inspect" && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: "#334155", marginLeft: 4 }}>
-            Roles + pipeline focus
-          </span>
-        )}
+      <div style={bandStyle}>
+        <div style={bandTitleStyle}>Row B — Source and actions</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("graph");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
+                background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
+                fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Explicit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("implicit");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
+                background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
+                fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Implicit
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isParamFormula ? "#0a66c2" : "#ddd"),
+                background: isParamFormula ? "#e6f0ff" : "#fff",
+                fontWeight: isParamFormula ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Parametric
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isParamSpline ? "#0a66c2" : "#ddd"),
+                background: isParamSpline ? "#e6f0ff" : "#fff",
+                fontWeight: isParamSpline ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Spline
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isParamConstructed ? "#0a66c2" : "#ddd"),
+                background: isParamConstructed ? "#e6f0ff" : "#fff",
+                fontWeight: isParamConstructed ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Constructed
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("mesh");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
+                background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
+                fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Mesh
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("weierstrass");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
+                background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
+                fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Weierstrass
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("complex");
+              }}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
+                background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
+                fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Complex
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeDatasetKind("volume")}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (isVolume ? "#0a66c2" : "#ddd"),
+                background: isVolume ? "#e6f0ff" : "#fff",
+                fontWeight: isVolume ? 600 : 400,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              Volume
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
+            <button
+              type="button"
+              onClick={() => setShowSurfaceGallery((v) => !v)}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: showSurfaceGallery ? "#eef4ff" : "#fff",
+                fontWeight: showSurfaceGallery ? 700 : 500,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+              aria-expanded={showSurfaceGallery}
+            >
+              {showSurfaceGallery ? "Hide gallery" : "Show gallery"}
+            </button>
+            <button
+              type="button"
+              onClick={() => openSurfaceGalleryCard("mexican_hat")}
+              style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+            >
+              New
+            </button>
+            <button
+              type="button"
+              onClick={() => openSurfaceGalleryCard("torus")}
+              style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+            >
+              Demo
+            </button>
+            <button
+              type="button"
+              onClick={onToggleCompare}
+              disabled={!compareUiEnabled || viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
+              style={{
+                padding: chipPadding,
+                borderRadius: 999,
+                border: "1px solid " + (compareActive ? "#0a66c2" : "#d1d5db"),
+                background: compareActive ? "#eef4ff" : "#fff",
+                fontWeight: compareActive ? 700 : 500,
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Compare
+            </button>
+          </div>
+          {displayMode === "inspect" && (
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#334155", marginLeft: 4 }}>
+              Roles + pipeline focus
+            </span>
+          )}
+        </div>
       </div>
 
       {datasetKind !== "volume" && (
-        <div style={{ flex: 1 }}>
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Row C — Current preset gallery</div>
+          <div style={{ flex: 1 }}>
           {viewerKind === "implicit" && (
             <SurfacesButtons surfaceId={surfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeSurface} />
           )}
@@ -25441,51 +25811,42 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </div>
           )}
         </div>
+        </div>
       )}
 
-      {displayMode !== "present" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-            <input
-              type="checkbox"
-              checked={compareEnabled}
-              onChange={onToggleCompare}
-              disabled={viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
-            />
-            Compare
-          </label>
-          {compareEnabled && (
-            <>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={compareCameraSync}
-                  onChange={onToggleCompareCameraSync}
-                />
-                Sync cameras
-              </label>
-              <label
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
-                title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
-              >
-                <input
-                  type="checkbox"
-                  checked={compareDiffHeatmapEnabled}
-                  onChange={onToggleCompareDiffHeatmap}
-                  disabled={!compareDiffHeatmapAvailable}
-                />
-                Diff heatmap
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={compareIgnoreWorkbookOverlays}
-                  onChange={onToggleCompareIgnoreWorkbookOverlays}
-                />
-                Ignore workbook overlays
-              </label>
-            </>
-          )}
+      {displayMode !== "present" && compareEnabled && (
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Compare options</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={compareCameraSync}
+                onChange={onToggleCompareCameraSync}
+              />
+              Sync cameras
+            </label>
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+              title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
+            >
+              <input
+                type="checkbox"
+                checked={compareDiffHeatmapEnabled}
+                onChange={onToggleCompareDiffHeatmap}
+                disabled={!compareDiffHeatmapAvailable}
+              />
+              Diff heatmap
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={compareIgnoreWorkbookOverlays}
+                onChange={onToggleCompareIgnoreWorkbookOverlays}
+              />
+              Ignore workbook overlays
+            </label>
+          </div>
         </div>
       )}
 
@@ -25637,7 +25998,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
     <div style={{ display: "grid", gap: 8 }}>
       {showSourceKindTabs && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Source kinds</span>
+          <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Categories</span>
           <button
             type="button"
             onClick={() => ensureSourceKind("formula")}
@@ -25650,7 +26011,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               cursor: "pointer",
             }}
           >
-            Parametric formula
+            Parametric
           </button>
           <button
             type="button"
@@ -25664,7 +26025,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               cursor: "pointer",
             }}
           >
-            Spline surface
+            Spline
           </button>
           <button
             type="button"
@@ -27074,12 +27435,11 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
 }) => {
   const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
   const categoryLabel = selectedNode ? OBJECT_CATEGORY_LABELS[selectedNode.category] : "n/a";
-  const sceneRoleLabel = selectedNode
-    ? UNIFIED_SCENE_ROLE_LABELS[
-        selectedNode.sceneRole ??
-          inferUnifiedSceneRole(selectedNode.category, selectedNode.type, selectedNode.sourceDefinition)
-      ]
-    : "n/a";
+  const resolvedSceneRole = selectedNode
+    ? selectedNode.sceneRole ??
+      inferUnifiedSceneRole(selectedNode.category, selectedNode.type, selectedNode.sourceDefinition)
+    : null;
+  const sceneRoleLabel = resolvedSceneRole ? UNIFIED_SCENE_ROLE_LABELS[resolvedSceneRole] : "n/a";
   const creationLabel = useMemo(() => {
     if (!selectedNode) return "n/a";
     if (selectedNode.category === "sceneObject") {
@@ -27097,6 +27457,78 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
     if (selectedNode.category === "dataset") return "dataset generated from source";
     return "derived output from tools/analysis";
   }, [selectedNode, selectedSceneObject]);
+  const parentNode = useMemo(() => {
+    if (!selectedNode?.parentId) return null;
+    return nodeById.get(selectedNode.parentId) ?? null;
+  }, [selectedNode?.parentId, nodeById]);
+  const technicalDomainModule = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    const type = selectedNode.type.toLowerCase();
+    const src = selectedNode.sourceDefinition.toLowerCase();
+    if (type.includes("curve") || src.includes("curve")) return "Curve";
+    if (selectedNode.category === "sceneObject" || type.startsWith("scene/")) return "Geometry";
+    return "Surface";
+  }, [selectedNode]);
+  const technicalSourceKind = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    const type = selectedNode.type.toLowerCase();
+    const kind = objectTypeLabel.toLowerCase();
+    if (type.includes("implicit") || kind === "implicit") return "Implicit";
+    if (type.includes("graph") || kind === "explicit") return "Explicit";
+    if (
+      type.includes("param") ||
+      type.includes("weierstrass") ||
+      kind === "param" ||
+      kind === "weierstrass"
+    ) {
+      return "Parametric";
+    }
+    return "Mesh";
+  }, [objectTypeLabel, selectedNode]);
+  const technicalDerivedFrom = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    if (parentNode?.name) return parentNode.name;
+    if (selectedNode.category === "surfaceDefinition") return "root definition";
+    return "n/a";
+  }, [parentNode?.name, selectedNode]);
+  const technicalGeneratedBy = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    const id = selectedNode.id.toLowerCase();
+    const type = selectedNode.type.toLowerCase();
+    if (id.includes("wireframe")) return "wireframe overlay";
+    if (id.includes("chart-grid")) return "chart grid overlay";
+    if (id.includes("coordinate-planes")) return "coordinate planes overlay";
+    if (id.includes("bounding-box")) return "bounding-box overlay";
+    if (id.includes("curvature-field")) return "curvature shading";
+    if (id.includes("principal-directions")) return "principal-direction overlay";
+    if (id.includes("principal-lines")) return "principal-lines integration";
+    if (id.includes("curvature-lines")) return "curvature-lines integration";
+    if (id.includes("ridge-valley")) return "ridge/valley detection";
+    if (id.includes("geodesic")) return "geodesic analysis";
+    if (id.includes("compare-surface")) return "comparison overlay";
+    if (id.includes("volume-slices")) return "volume slice overlay";
+    if (id.includes("volume-isosurface")) return "isosurface extraction";
+    if (id.includes("volume-streamlines")) return "flow-line integration";
+    if (id.startsWith("derived:manual:")) return "manual pipeline action";
+    if (type.includes("dataset/surface-mesh")) return "surface meshing";
+    if (type.includes("dataset/volume-grid")) return "volume sampling";
+    if (selectedNode.category === "sceneObject") return "scene object tool";
+    return "pipeline tools";
+  }, [selectedNode]);
+  const technicalPipelineStage = useMemo(() => {
+    if (!selectedNode) return "n/a";
+    if (selectedNode.category === "surfaceDefinition") return "definition";
+    if (selectedNode.category === "sceneObject") return "scene composition";
+    if (selectedNode.category === "dataset") {
+      if (selectedNode.type.includes("surface-mesh")) return "evaluated mesh";
+      if (selectedNode.type.includes("volume")) return "evaluated volume";
+      return "evaluated dataset";
+    }
+    if (resolvedSceneRole === "overlay") return "overlay pass";
+    return "derived analysis";
+  }, [resolvedSceneRole, selectedNode]);
+  const showDerivedMeta =
+    resolvedSceneRole === "overlay" || resolvedSceneRole === "derivedResult" || selectedNode?.category === "dataset";
   const sceneParamRows = useMemo(() => {
     if (!selectedSceneObject || !("type" in selectedSceneObject)) return [] as Array<{ label: string; value: string }>;
     const entry = GEOMETRY_OBJECT_REGISTRY[selectedSceneObject.type];
@@ -27140,6 +27572,29 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
             <div><strong>Name:</strong> {selectedNode.name}</div>
             <div><strong>Category:</strong> {categoryLabel}</div>
             <div><strong>Scene role:</strong> {sceneRoleLabel}</div>
+            <div style={{ marginTop: 4, padding: 8, border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Technical badges</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                  Domain module: {technicalDomainModule}
+                </span>
+                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                  Source kind: {technicalSourceKind}
+                </span>
+                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                  Scene role: {sceneRoleLabel}
+                </span>
+              </div>
+              <div style={{ display: "grid", gap: 3 }}>
+                <div><strong>Derived from:</strong> {technicalDerivedFrom}</div>
+                {showDerivedMeta && (
+                  <>
+                    <div><strong>Generated by:</strong> {technicalGeneratedBy}</div>
+                    <div><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
+                  </>
+                )}
+              </div>
+            </div>
             <div><strong>Type:</strong> {objectTypeLabel}</div>
             <div><strong>Created from:</strong> {creationLabel}</div>
             <div><strong>Definition:</strong> {objectDefinitionLabel}</div>

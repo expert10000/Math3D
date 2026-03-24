@@ -63,6 +63,7 @@ export type ViewportDebugSnapshot = {
   };
 };
 export type RenderQuality = "performance" | "balanced" | "sharp";
+export type SceneBackgroundMode = "default" | "calm" | "transparent";
 export type CameraTourMode =
   | "balanced"
   | "orbit"
@@ -1053,6 +1054,7 @@ type Props = {
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
   renderQuality?: RenderQuality;
+  sceneBackgroundMode?: SceneBackgroundMode;
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   captureToken?: number;
@@ -1277,6 +1279,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     cameraOverride = null,
     cameraOverrideToken = 0,
     renderQuality = "balanced",
+    sceneBackgroundMode = "default",
     cameraTourCommand = null,
     onCameraTourEvent,
     captureToken = 0,
@@ -1399,6 +1402,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const planeGridAutoScale = planeGridSettings.autoGridScale;
   const planeGridDensity = planeGridSettings.gridDensity;
   const planeGridOpacity = planeGridSettings.planeOpacity;
+  const sceneBackgroundColor = sceneBackgroundMode === "calm" ? 0xf1f5fb : 0xf8f9fb;
+  const sceneBackgroundAlpha = sceneBackgroundMode === "transparent" ? 0 : 1;
 
   const mountRef = useRef<HTMLDivElement | null>(null);
 
@@ -2804,7 +2809,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const targetPixelRatio = devicePixelRatio * qualityScale;
     renderer.setPixelRatio(Math.min(targetPixelRatio, maxPixelRatio));
     renderer.setSize(width, height, false);
-    renderer.setClearColor(0xf8f9fb, 1);
+    renderer.setClearColor(sceneBackgroundColor, sceneBackgroundAlpha);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     renderer.domElement.style.display = "block";
@@ -4444,6 +4449,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     interruptCameraTour,
     stopCameraTour,
   ]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setClearColor(sceneBackgroundColor, sceneBackgroundAlpha);
+  }, [sceneBackgroundColor, sceneBackgroundAlpha]);
 
   useEffect(() => {
     const applyProbe = applyProbeFromDomainRef.current;

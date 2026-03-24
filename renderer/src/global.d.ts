@@ -182,6 +182,12 @@ declare global {
   type AppCaptureScreenshotResponse =
     | { ok: true; path: string; folder: string }
     | { ok: false; error: string };
+  type AppCaptureListRequest = {
+    limit?: number;
+  };
+  type AppCaptureListResponse =
+    | { ok: true; folder: string; paths: string[] }
+    | { ok: false; error: string };
 
   type AppWindowStatePacket = {
     reason?: string;
@@ -253,6 +259,7 @@ declare global {
     };
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
+      listScreenshots: (req?: AppCaptureListRequest) => Promise<AppCaptureListResponse>;
     };
     appWindow?: {
       onStateChange: (handler: (packet: AppWindowStatePacket) => void) => () => void;
