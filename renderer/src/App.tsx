@@ -281,6 +281,8 @@ type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh"
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
 type AppTheme = "light" | "dark" | "dot";
+type DisplayMode = "workspace" | "present" | "inspect";
+type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
 type AccentPresetId = "blue" | "teal" | "amber" | "rose";
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
@@ -702,6 +704,9 @@ const WORKBOOK_MANUAL_SAVE_NAME_KEY = "math3d.workbook.manualSaveName.v1";
 const SURFACE_RENDER_QUALITY_KEY = "math3d.surface.renderQuality.v1";
 const UI_THEME_KEY = "math3d.ui.theme.v1";
 const UI_ACCENT_KEY = "math3d.ui.accent.v1";
+const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
+const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
+const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
@@ -720,6 +725,16 @@ const isAppTheme = (value: string | null | undefined): value is AppTheme =>
   !!value && APP_THEMES.includes(value as AppTheme);
 const isAccentPresetId = (value: string | null | undefined): value is AccentPresetId =>
   !!value && Object.prototype.hasOwnProperty.call(ACCENT_PRESETS, value);
+const isDisplayMode = (value: string | null | undefined): value is DisplayMode =>
+  value === "workspace" || value === "present" || value === "inspect";
+const isViewportPreset = (value: string | null | undefined): value is ViewportPreset =>
+  value === "minimal" || value === "study" || value === "analysis" || value === "debug";
+const SURFACE_VIEWPORT_PRESET_OPTIONS: Array<{ id: ViewportPreset; label: string; hint: string }> = [
+  { id: "minimal", label: "Minimal", hint: "Surface-first framing" },
+  { id: "study", label: "Study", hint: "Single-grid learning view" },
+  { id: "analysis", label: "Analysis", hint: "Roles and technical overlays" },
+  { id: "debug", label: "Debug", hint: "All helpers visible" },
+];
 type WorkbookBundleAssetMode = "embedded" | "linked";
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
@@ -5719,6 +5734,20 @@ const App: React.FC = () => {
     return saved === "workbook" ? "workbook" : "inspector";
   });
   const [showRightPanel, setShowRightPanel] = useState(true);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
+    if (IS_REPLAY_MODE) return "workspace";
+    const saved = localStorage.getItem(UI_DISPLAY_MODE_KEY);
+    return isDisplayMode(saved) ? saved : "workspace";
+  });
+  const [surfaceViewportPreset, setSurfaceViewportPreset] = useState<ViewportPreset>(() => {
+    if (IS_REPLAY_MODE) return "study";
+    const saved = localStorage.getItem(UI_VIEWPORT_PRESET_KEY);
+    return isViewportPreset(saved) ? saved : "study";
+  });
+  const [showInViewportOverlayControls, setShowInViewportOverlayControls] = useState(() => {
+    if (IS_REPLAY_MODE) return false;
+    return localStorage.getItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY) === "1";
+  });
   const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
     if (IS_REPLAY_MODE) return "light";
     const saved = localStorage.getItem(UI_THEME_KEY);
@@ -5749,6 +5778,21 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_ACCENT_KEY, uiAccent);
   }, [uiAccent]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_DISPLAY_MODE_KEY, displayMode);
+  }, [displayMode]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_VIEWPORT_PRESET_KEY, surfaceViewportPreset);
+  }, [surfaceViewportPreset]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY, showInViewportOverlayControls ? "1" : "0");
+  }, [showInViewportOverlayControls]);
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
@@ -8553,6 +8597,156 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showContours, setShowContours] = useState(true);
   const [contourCount, setContourCount] = useState(12);
   const [implicitOverlay, setImplicitOverlay] = useState<"none" | "normals" | "curvature">("none");
+  const surfaceViewportPresetAppliedRef = useRef(false);
+
+  const applySurfaceViewportPreset = useCallback(
+    (preset: ViewportPreset) => {
+      setSurfaceViewportPreset(preset);
+      if (preset === "minimal") {
+        setShowInViewportOverlayControls(false);
+        setShowChartGrid(false);
+        setShowPlanes(false);
+        setShowPrincipalProjections(false);
+        setPlaneGridSettings((prev) => ({
+          ...prev,
+          showGrid: false,
+          showMinorGrid: false,
+          showLabels: false,
+        }));
+        setShowBoundingBox(false);
+        setShowGaussMap(false);
+        setShowContours(false);
+        setImplicitOverlay("none");
+        setProbeEnabled(false);
+        setShowProbeNormal(false);
+        setShowProbeTangentPlane(false);
+        setShowProbeTangents(false);
+        setShowPrincipalDirections(false);
+        setShowPrincipalNormalPlanes(false);
+        setShowPrincipalLines(false);
+        setShowPrincipalGlyphs(false);
+        setShowCurvatureLines(false);
+        setShowRidges(false);
+        setShowValleys(false);
+        return;
+      }
+      if (preset === "study") {
+        setShowInViewportOverlayControls(false);
+        setShowChartGrid(true);
+        setShowPlanes(false);
+        setShowPrincipalProjections(false);
+        setPlaneGridSettings((prev) => ({
+          ...prev,
+          showGrid: false,
+          showMinorGrid: false,
+          showLabels: false,
+        }));
+        setShowBoundingBox(false);
+        setShowGaussMap(false);
+        setShowContours(false);
+        setImplicitOverlay("none");
+        setProbeEnabled(true);
+        setShowProbeNormal(false);
+        setShowProbeTangentPlane(false);
+        setShowProbeTangents(false);
+        setShowPrincipalDirections(false);
+        setShowPrincipalNormalPlanes(false);
+        setShowPrincipalLines(false);
+        setShowPrincipalGlyphs(false);
+        setShowCurvatureLines(false);
+        setShowRidges(false);
+        setShowValleys(false);
+        return;
+      }
+      if (preset === "analysis") {
+        setShowInViewportOverlayControls(true);
+        setShowChartGrid(false);
+        setShowPlanes(true);
+        setShowPrincipalProjections(true);
+        setPlaneGridSettings((prev) => ({
+          ...prev,
+          showGrid: true,
+          showMinorGrid: false,
+          showLabels: true,
+          showXY: true,
+          showXZ: true,
+          showYZ: true,
+        }));
+        setShowBoundingBox(true);
+        setShowGaussMap(true);
+        setShowContours(true);
+        if (surfaceViewerKind === "implicit") setImplicitOverlay("normals");
+        else setImplicitOverlay("none");
+        setProbeEnabled(true);
+        setShowProbeNormal(true);
+        setShowProbeTangentPlane(true);
+        setShowProbeTangents(false);
+        setShowPrincipalDirections(true);
+        setShowPrincipalNormalPlanes(false);
+        setShowPrincipalLines(true);
+        setShowPrincipalGlyphs(true);
+        setShowCurvatureLines(true);
+        setShowRidges(true);
+        setShowValleys(true);
+        return;
+      }
+      setShowInViewportOverlayControls(true);
+      setShowChartGrid(true);
+      setShowPlanes(true);
+      setShowPrincipalProjections(true);
+      setPlaneGridSettings((prev) => ({
+        ...prev,
+        showGrid: true,
+        showMinorGrid: true,
+        showLabels: true,
+        showXY: true,
+        showXZ: true,
+        showYZ: true,
+      }));
+      setShowBoundingBox(true);
+      setShowGaussMap(true);
+      setShowContours(true);
+      if (surfaceViewerKind === "implicit") setImplicitOverlay("normals");
+      else setImplicitOverlay("none");
+      setProbeEnabled(true);
+      setShowProbeNormal(true);
+      setShowProbeTangentPlane(true);
+      setShowProbeTangents(true);
+      setShowPrincipalDirections(true);
+      setShowPrincipalNormalPlanes(true);
+      setShowPrincipalLines(true);
+      setShowPrincipalGlyphs(true);
+      setShowCurvatureLines(true);
+      setShowRidges(true);
+      setShowValleys(true);
+    },
+    [surfaceViewerKind]
+  );
+
+  useEffect(() => {
+    if (mode !== "surfaces" || datasetKind !== "surface" || surfaceViewportPresetAppliedRef.current) return;
+    surfaceViewportPresetAppliedRef.current = true;
+    applySurfaceViewportPreset(surfaceViewportPreset);
+  }, [applySurfaceViewportPreset, datasetKind, mode, surfaceViewportPreset]);
+
+  useEffect(() => {
+    if (mode !== "surfaces" || datasetKind !== "surface") return;
+    if (displayMode === "present") {
+      applySurfaceViewportPreset("minimal");
+      return;
+    }
+    if (displayMode === "inspect") {
+      applySurfaceViewportPreset("analysis");
+    }
+  }, [applySurfaceViewportPreset, datasetKind, displayMode, mode]);
+
+  useEffect(() => {
+    if (mode !== "surfaces" || datasetKind !== "surface") return;
+    if (surfaceViewportPreset === "debug") return;
+    if (!showChartGrid || !showPlanes) return;
+    if (surfaceViewportPreset === "analysis") setShowChartGrid(false);
+    else setShowPlanes(false);
+  }, [datasetKind, mode, showChartGrid, showPlanes, surfaceViewportPreset]);
 
   const [graphDomains, setGraphDomains] = useState<Record<string, GraphDomain>>(() => {
     const raw = safeParseRecord<GraphDomain>(localStorage.getItem("mathapp.domainState.graph.v1"));
@@ -9471,6 +9665,20 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
+
+  useEffect(() => {
+    if (mode !== "surfaces") return;
+    if (displayMode === "present") {
+      if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
+      if (rightPanelTab !== "inspector") setRightPanelTab("inspector");
+      if (showViewportDebug) setShowViewportDebug(false);
+      return;
+    }
+    if (displayMode === "inspect") {
+      if (!showRightPanel) setShowRightPanel(true);
+      if (rightPanelTab !== "inspector") setRightPanelTab("inspector");
+    }
+  }, [displayMode, mode, rightPanelTab, showRightPanel, showViewportDebug, surfacesLeftTab]);
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -19541,13 +19749,25 @@ case "mobius":
     if (!point) return null;
     return `point (${fmt(point.x)}, ${fmt(point.y)}, ${fmt(point.z)})`;
   }, [geometryProceduralPick?.point, inspectPos, mode, probeInfo?.point]);
+  const isPresentDisplayMode = displayMode === "present";
+  const isInspectDisplayMode = displayMode === "inspect";
+  const showSurfaceViewportPresetStrip =
+    mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode;
+  const compareLayoutEnabled = compareEnabled && !(mode === "surfaces" && isPresentDisplayMode);
+  const showSurfaceViewportDebug = showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode);
+  const showSurfacesRightPanel = mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel;
+  const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
+  const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
+  const showSurfaceSideCompanions =
+    (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
+    !(mode === "surfaces" && isPresentDisplayMode);
   const statusCameraLabel = useMemo(() => {
-    if (mode === "surfaces" && compareEnabled) {
+    if (mode === "surfaces" && compareLayoutEnabled) {
       return compareCameraSync ? "camera sync on" : "camera sync off";
     }
     if (cameraOverride) return "camera preset";
     return "camera free";
-  }, [cameraOverride, compareCameraSync, compareEnabled, mode]);
+  }, [cameraOverride, compareCameraSync, compareLayoutEnabled, mode]);
   const analysisRunning =
     cgalBusy ||
     vtkBusy ||
@@ -19569,9 +19789,10 @@ case "mobius":
     items.push(statusCameraLabel);
     if (mode === "surfaces") items.push(`${lightPreset} lighting`);
     if (statusPickedPointLabel) items.push(statusPickedPointLabel);
+    items.push(`display ${displayMode}`);
     items.push(analysisRunning ? "analysis running" : "analysis ready");
     if (mode === "surfaces") {
-      items.push(compareEnabled ? "compare mode active" : "compare mode off");
+      items.push(compareLayoutEnabled ? "compare mode active" : "compare mode off");
       if (IS_REPLAY_MODE) {
         items.push("workspace replay");
       } else {
@@ -19583,7 +19804,8 @@ case "mobius":
     return items;
   }, [
     analysisRunning,
-    compareEnabled,
+    compareLayoutEnabled,
+    displayMode,
     IS_REPLAY_MODE,
     lightPreset,
     mode,
@@ -20195,12 +20417,12 @@ case "mobius":
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 12,
+            gap: 10,
             flexWrap: "wrap",
-            marginBottom: 10,
+            marginBottom: 8,
           }}
         >
-          <h1 style={{ ...styles.h1, margin: 0 }}>Math3D</h1>
+          <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
 
           <div style={{ ...styles.tabs, margin: 0 }}>
             <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
@@ -20212,6 +20434,48 @@ case "mobius":
             <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
               Geometry
             </TabButton>
+          </div>
+
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              padding: 3,
+              borderRadius: 999,
+              border: "1px solid var(--border)",
+              background: "rgba(255,255,255,0.85)",
+            }}
+          >
+            {(
+              [
+                { id: "workspace", label: "Workspace" },
+                { id: "present", label: "Present" },
+                { id: "inspect", label: "Inspect" },
+              ] as const
+            ).map((entry) => {
+              const active = displayMode === entry.id;
+              return (
+                <button
+                  key={`display-mode-${entry.id}`}
+                  type="button"
+                  onClick={() => setDisplayMode(entry.id)}
+                  aria-pressed={active}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (active ? "#0a66c2" : "transparent"),
+                    background: active ? "#e6f0ff" : "transparent",
+                    color: active ? "#0a66c2" : "var(--text)",
+                    fontSize: 11,
+                    fontWeight: active ? 700 : 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {entry.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -20236,6 +20500,7 @@ case "mobius":
               compareCameraSync={compareCameraSync}
               compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
               compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+              displayMode={displayMode}
               onToggleCompare={() => {
                 setCompareEnabled((v) => !v);
                 if (rightPanelTab !== "workbook") setCameraSync(null);
@@ -20509,9 +20774,9 @@ case "mobius":
         {mode === "surfaces" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+            <div style={{ ...styles.panelLeft, width: surfaceLeftPanelWidth }}>
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {(["scene", "object", "inspect", "view", "analysis"] as const).map((tab) => (
+                {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -20533,7 +20798,7 @@ case "mobius":
               </div>
               {surfacesLeftTab === "scene" && (
                 <UnifiedObjectTreePanel
-                  title="Scene contents"
+                  title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
                   nodes={unifiedObjectNodes}
                   selectedId={unifiedTreeSelectedId}
                   onSelect={setUnifiedTreeSelectedId}
@@ -20821,7 +21086,7 @@ case "mobius":
                   boxShadow: "0 0 0 1px #e0e0e0",
                   overflow: "hidden",
                   background: "#f8f9fb",
-                  padding: compareEnabled ? 10 : 0,
+                  padding: compareLayoutEnabled ? 10 : 0,
                   boxSizing: "border-box",
                 }}
               >
@@ -20960,24 +21225,102 @@ case "mobius":
                 ) : (
                   <div
                     style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)
-                          ? "minmax(0,1fr) 320px"
-                          : "1fr",
-                      gridTemplateRows: "minmax(0,1fr)",
-                      gap: showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere) ? 10 : 0,
+                      display: "flex",
+                      flexDirection: "column",
                       height: "100%",
                       minHeight: 0,
                     }}
                   >
+                    {showSurfaceViewportPresetStrip && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
+                          padding: "8px 10px",
+                          borderBottom: "1px solid #e3e8f0",
+                          background: "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.95))",
+                        }}
+                      >
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", letterSpacing: 0.25 }}>
+                            Viewport
+                          </span>
+                          {SURFACE_VIEWPORT_PRESET_OPTIONS.map((entry) => {
+                            const active = surfaceViewportPreset === entry.id;
+                            return (
+                              <button
+                                key={`surface-viewport-preset-${entry.id}`}
+                                type="button"
+                                onClick={() => applySurfaceViewportPreset(entry.id)}
+                                title={entry.hint}
+                                aria-pressed={active}
+                                style={{
+                                  borderRadius: 999,
+                                  border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                                  background: active ? "#e6f0ff" : "#fff",
+                                  color: active ? "#0a66c2" : "#334155",
+                                  fontWeight: active ? 700 : 600,
+                                  fontSize: 11,
+                                  padding: "4px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {entry.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowInViewportOverlayControls((v) => !v)}
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid " + (showInViewportOverlayControls ? "#0a66c2" : "#d1d5db"),
+                              background: showInViewportOverlayControls ? "#e6f0ff" : "#fff",
+                              color: showInViewportOverlayControls ? "#0a66c2" : "#334155",
+                              fontWeight: showInViewportOverlayControls ? 700 : 600,
+                              fontSize: 11,
+                              padding: "4px 10px",
+                              cursor: "pointer",
+                            }}
+                            aria-pressed={showInViewportOverlayControls}
+                          >
+                            {showInViewportOverlayControls ? "Overlay controls: on" : "Overlay controls: off"}
+                          </button>
+                          <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                            {showChartGrid ? "Grid: chart" : showPlanes ? "Grid: planes" : "Grid: none"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          showSurfaceSideCompanions
+                            ? "minmax(0,1fr) 320px"
+                            : "1fr",
+                        gridTemplateRows: "minmax(0,1fr)",
+                        gap: showSurfaceSideCompanions ? 10 : 0,
+                        height: "100%",
+                        minHeight: 0,
+                        flex: 1,
+                        padding: showSurfaceViewportPresetStrip ? 8 : 0,
+                        boxSizing: "border-box",
+                      }}
+                    >
                   <div style={{ minWidth: 0, minHeight: 0 }}>
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: compareEnabled ? "1fr 1fr" : "1fr",
+                        gridTemplateColumns: compareLayoutEnabled ? "1fr 1fr" : "1fr",
                         gridTemplateRows: "minmax(0,1fr)",
-                        gap: compareEnabled ? 10 : 0,
+                        gap: compareLayoutEnabled ? 10 : 0,
                         height: "100%",
                         minHeight: 0,
                       }}
@@ -21022,6 +21365,7 @@ case "mobius":
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={primaryOverlay.showChartGrid}
+                            showOverlayControls={showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
@@ -21163,6 +21507,7 @@ case "mobius":
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={primaryOverlay.showChartGrid}
+                            showOverlayControls={showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             implicitOverlay={implicitOverlay}
@@ -21350,10 +21695,10 @@ case "mobius":
                         )}
                       </div>
 
-                          {compareEnabled && (
-                        <div
-                          style={{
-                            borderRadius: 10,
+                          {compareLayoutEnabled && (
+                            <div
+                              style={{
+                                borderRadius: 10,
                             overflow: "hidden",
                             background: "#f8f9fb",
                             minHeight: 0,
@@ -21390,6 +21735,7 @@ case "mobius":
                               colorMode={secondaryOverlay.colorMode}
                               colorPalette={secondaryOverlay.colorPalette}
                               showChartGrid={secondaryOverlay.showChartGrid}
+                              showOverlayControls={false}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               paramDomain={activeParamDomain}
@@ -21466,6 +21812,7 @@ case "mobius":
                               showContours={secondaryOverlay.showContours}
                               contourCount={contourCount}
                               showChartGrid={secondaryOverlay.showChartGrid}
+                              showOverlayControls={false}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               isCameraLeader={false}
@@ -21479,7 +21826,7 @@ case "mobius":
                     </div>
                   </div>
 
-                  {(showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) && (
+                  {showSurfaceSideCompanions && (
                     <div
                       style={{
                         minWidth: 240,
@@ -21532,193 +21879,207 @@ case "mobius":
                     </div>
                   )}
                 </div>
+                </div>
                 )}
               </div>
             </div>
 
-            {showRightPanel && <div onMouseDown={startDragRight} style={splitterStyle} />}
+            {showSurfacesRightPanel && <div onMouseDown={startDragRight} style={splitterStyle} />}
 
             {/* RIGHT */}
-            {showRightPanel && (
-            <div style={{ ...styles.panelLeft, width: rightWidth, maxWidth: maxRight }}>
-              <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                {(["inspector", "workbook"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setRightPanelTab(tab)}
-                    style={pill(rightPanelTab === tab)}
-                    aria-pressed={rightPanelTab === tab}
-                  >
-                    {tab === "inspector" ? "Inspector" : "Workbook"}
+            {showSurfacesRightPanel && (
+            <div style={{ ...styles.panelLeft, width: surfaceRightPanelWidth, maxWidth: maxRight }}>
+              {isPresentDisplayMode ? (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector (compact)</div>
+                  <div style={{ fontSize: 11, opacity: 0.78 }}>{statusViewerLabel}</div>
+                  {statusMeshLabel && <div style={{ fontSize: 11, opacity: 0.78 }}>{statusMeshLabel}</div>}
+                  <button type="button" onClick={() => setDisplayMode("workspace")} style={{ width: "fit-content" }}>
+                    Open full panels
                   </button>
-                ))}
-              </div>
-
-              {rightPanelTab === "inspector" ? (
-                <>
-                <SurfacesRightPanel
-                  viewerKind={surfaceViewerKind}
-                  surfaceId={activeEqSurfaceId}
-                  paramId={paramSurfaceId}
-                  surfaceMeshLabel={surfaceMeshLabel}
-                  surfaceMeshStats={surfaceMeshStats}
-                  surfaceMeshSource={surfaceMeshData?.source ?? null}
-                  onPickEqSurface={handlePickEqSurface}
-                  onPickParamSurface={handlePickParamSurface}
-                  implicitExpr={implicitExpr}
-                  onChangeImplicitExpr={setImplicitExpr}
-                  onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
-                  implicitResolution={implicitResolution}
-                  vtkPreviewBusy={vtkPreviewBusy}
-                  vtkPreviewError={vtkPreviewError}
-                  generateSurfaceStatus={generateSurfaceStatus}
-                  vtkPreviewTargetFaces={vtkPreviewTargetFaces}
-                  vtkPreviewUseDecimate={vtkPreviewUseDecimate}
-                  onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
-                  onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
-                  onRunVtkPreview={handleVtkPreviewImplicit}
-                  cgalHealthState={cgalHealthState}
-                  cgalBusy={cgalBusy}
-                  cgalError={cgalError}
-                  cgalTargetEdge={cgalTargetEdge}
-                  cgalAutoTargetEdge={cgalAutoTargetEdge}
-                  onChangeCgalTargetEdge={setCgalTargetEdge}
-                  onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
-                  cgalPadFrac={cgalPadFrac}
-                  onChangeCgalPadFrac={setCgalPadFrac}
-                  cgalTriBudgetEnabled={cgalTriBudgetEnabled}
-                  onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
-                  cgalTriBudget={cgalTriBudget}
-                  onChangeCgalTriBudget={setCgalTriBudget}
-                  cgalAutoEdge={cgalAutoEdge}
-                  cgalTriBudgetEdge={cgalTriBudgetEdge}
-                  cgalRadiusBound={cgalRadiusBound}
-                  onChangeCgalRadiusBound={setCgalRadiusBound}
-                  cgalMinTrisEnabled={cgalMinTrisEnabled}
-                  onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
-                  cgalMinTris={cgalMinTris}
-                  onChangeCgalMinTris={setCgalMinTris}
-                  cgalDomainDiag={cgalDomainDiag}
-                  cgalEffectiveEdge={cgalEffectiveEdge}
-                  cgalEstimatedTris={cgalEstimatedTris}
-                  cgalTooHeavy={cgalTooHeavy}
-                  cgalVerbose={cgalVerbose}
-                  onChangeCgalVerbose={setCgalVerbose}
-                  cgalPreflightSamples={cgalPreflightSamples}
-                  onChangeCgalPreflightSamples={setCgalPreflightSamples}
-                  onRunCgalMesh={handleRunCgalMesh}
-                  onStopCgalWorker={handleStopCgalWorker}
-                  cgalMeshInfo={cgalMeshInfo}
-                  probeInfo={probeInfo}
-                  onPickDomainUV={handlePickDomainUV}
-                  onPickDomainXY={handlePickDomainXY}
-                  onPickDomainXYZ={handlePickDomainXYZ}
-                  graphDomain={activeGraphDomain}
-                  onChangeGraphDomain={handleChangeGraphDomain}
-                  paramDomain={activeParamLikeDomain}
-                  onChangeParamDomain={handleChangeParamDomain}
-                  implicitDomain={activeImplicitDomain}
-                  onChangeImplicitDomain={handleChangeImplicitDomain}
-                  graphDomainPresets={graphDomainPresets}
-                  paramDomainPresets={paramDomainPresets}
-                  implicitDomainPresets={implicitDomainPresets}
-                  onSaveGraphDomainPreset={saveGraphDomainPreset}
-                  onSaveParamDomainPreset={saveParamDomainPreset}
-                  onSaveImplicitDomainPreset={saveImplicitDomainPreset}
-                  onApplyGraphDomainPreset={applyGraphDomainPreset}
-                  onApplyParamDomainPreset={applyParamDomainPreset}
-                  onApplyImplicitDomainPreset={applyImplicitDomainPreset}
-                  onRemoveGraphDomainPreset={removeGraphDomainPreset}
-                  onRemoveParamDomainPreset={removeParamDomainPreset}
-                  onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
-                />
-                <details style={{ marginTop: 10 }}>
-                  <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
-                  <div style={{ marginTop: 8 }}>
-                    {renderSurfacesInspectorPanel("tools")}
-                  </div>
-                </details>
-                </>
+                </div>
               ) : (
-                <WorkbookPanel
-                  workbooks={workbooks}
-                  activeWorkbookId={activeWorkbookId}
-                  activeStageId={activeStageId}
-                  computeStatusById={computeStatusById}
-                  workbookStatus={workbookStatus}
-                  onSelectWorkbook={setActiveWorkbookId}
-                  onCreateWorkbook={handleCreateWorkbook}
-                  onCreateWorkbookFromTemplate={handleCreateWorkbookFromTemplate}
-                  onCreateWorkbooksFromPack={handleCreateWorkbooksFromPack}
-                  onDuplicateWorkbook={handleDuplicateWorkbook}
-                  onDeleteWorkbook={handleDeleteWorkbook}
-                  onRenameWorkbook={handleRenameWorkbook}
-                  onSelectStage={setActiveStageId}
-                  onAddBlock={handleAddWorkbookBlock}
-                  onUpdateBlock={handleUpdateWorkbookBlock}
-                  onRemoveBlock={handleRemoveWorkbookBlock}
-                  onMoveBlock={handleMoveWorkbookBlock}
-                  onCaptureVisualize={handleCaptureVisualize}
-                  onApplyVisualize={handleApplyVisualize}
-                  onToggleVisualizeLive={handleToggleVisualizeLive}
-                  onRunComputeBlock={handleRunComputeBlock}
-                  onRunComputeStage={handleRunComputeStage}
-                  onRunAllStale={handleRunAllStale}
-                  onRunFromBlock={handleRunFromBlock}
-                  onClearWorkbookSelection={() => {
-                    setSelectionMaskOverride(null);
-                    setSelectionMask(null);
-                    setSelection(null);
-                    setSelectionSeed(null);
-                  }}
-                  paramCatalog={paramCatalog}
-                  onAddBlockParam={handleAddBlockParam}
-                  onRemoveBlockParam={handleRemoveBlockParam}
-                  onUpdateBlockParam={handleUpdateBlockParam}
-                  onToggleParamScrub={handleToggleParamScrub}
-                  onApplyParams={handleApplyParams}
-                  onAddKeyframe={handleAddKeyframe}
-                  onRemoveKeyframe={handleRemoveKeyframe}
-                  onUpdateInteraction={handleUpdateInteraction}
-                  onUpdateInteractionDirection={handleUpdateInteractionDirection}
-                  onArmInteraction={handleArmInteraction}
-                  onFinishInteraction={handleFinishInteraction}
-                  onClearInteraction={handleClearInteraction}
-                  onExportJson={handleExportWorkbooks}
-                  onExportMarkdown={handleExportWorkbooksMarkdown}
-                  onExportPdf={handleExportWorkbooksPdf}
-                  onExportReplayHtml={handleExportWorkbooksReplayHtml}
-                  onImportJson={handleImportWorkbooks}
-                  onSaveWorkbook={handleSaveWorkbook}
-                  onSaveWorkbookAs={handleSaveWorkbookAs}
-                  bundleAssetMode={workbookBundleAssetMode}
-                  onChangeBundleAssetMode={setWorkbookBundleAssetMode}
-                  workbookDirty={workbookDirty}
-                  lastManualSaveAt={workbookManualSaveAt}
-                  autosaveAt={workbookAutosaveAt}
-                  autosaveIntervalSec={WORKBOOK_AUTOSAVE_INTERVAL_SEC}
-                  snapshotAt={workbookSnapshotAt}
-                  snapshotHistory={workbookSnapshots.map((snap) => ({
-                    id: snap.id,
-                    name: snap.name,
-                    savedAt: snap.savedAt,
-                  }))}
-                  selectedSnapshotId={selectedWorkbookSnapshotId}
-                  onSelectSnapshot={handleSelectWorkbookSnapshot}
-                  onRestoreAutosave={handleRestoreWorkbookAutosave}
-                  onCreateSnapshot={handleSnapshotWorkbookSession}
-                  onRestoreSnapshot={handleRestoreWorkbookSnapshot}
-                  onRestoreSnapshotById={handleRestoreWorkbookSnapshotById}
-                  onDeleteSnapshot={handleDeleteWorkbookSnapshot}
-                  readOnly={IS_REPLAY_MODE}
-                  currentDatasetRef={currentDatasetRef}
-                  cameraReady={!!cameraSync}
-                  ghostOverlaysEnabled={workbookGhostOverlaysEnabled}
-                  onToggleGhostOverlays={(next) => setWorkbookGhostOverlaysEnabled(next)}
-                  templates={WORKBOOK_TEMPLATES}
-                  problemPacks={WORKBOOK_PROBLEM_PACKS}
-                />
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                    {(["inspector", "workbook"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setRightPanelTab(tab)}
+                        style={pill(rightPanelTab === tab)}
+                        aria-pressed={rightPanelTab === tab}
+                      >
+                        {tab === "inspector" ? "Inspector" : "Workbook"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {rightPanelTab === "inspector" ? (
+                    <>
+                    <SurfacesRightPanel
+                      viewerKind={surfaceViewerKind}
+                      surfaceId={activeEqSurfaceId}
+                      paramId={paramSurfaceId}
+                      surfaceMeshLabel={surfaceMeshLabel}
+                      surfaceMeshStats={surfaceMeshStats}
+                      surfaceMeshSource={surfaceMeshData?.source ?? null}
+                      onPickEqSurface={handlePickEqSurface}
+                      onPickParamSurface={handlePickParamSurface}
+                      implicitExpr={implicitExpr}
+                      onChangeImplicitExpr={setImplicitExpr}
+                      onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
+                      implicitResolution={implicitResolution}
+                      vtkPreviewBusy={vtkPreviewBusy}
+                      vtkPreviewError={vtkPreviewError}
+                      generateSurfaceStatus={generateSurfaceStatus}
+                      vtkPreviewTargetFaces={vtkPreviewTargetFaces}
+                      vtkPreviewUseDecimate={vtkPreviewUseDecimate}
+                      onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
+                      onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
+                      onRunVtkPreview={handleVtkPreviewImplicit}
+                      cgalHealthState={cgalHealthState}
+                      cgalBusy={cgalBusy}
+                      cgalError={cgalError}
+                      cgalTargetEdge={cgalTargetEdge}
+                      cgalAutoTargetEdge={cgalAutoTargetEdge}
+                      onChangeCgalTargetEdge={setCgalTargetEdge}
+                      onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
+                      cgalPadFrac={cgalPadFrac}
+                      onChangeCgalPadFrac={setCgalPadFrac}
+                      cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+                      onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
+                      cgalTriBudget={cgalTriBudget}
+                      onChangeCgalTriBudget={setCgalTriBudget}
+                      cgalAutoEdge={cgalAutoEdge}
+                      cgalTriBudgetEdge={cgalTriBudgetEdge}
+                      cgalRadiusBound={cgalRadiusBound}
+                      onChangeCgalRadiusBound={setCgalRadiusBound}
+                      cgalMinTrisEnabled={cgalMinTrisEnabled}
+                      onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
+                      cgalMinTris={cgalMinTris}
+                      onChangeCgalMinTris={setCgalMinTris}
+                      cgalDomainDiag={cgalDomainDiag}
+                      cgalEffectiveEdge={cgalEffectiveEdge}
+                      cgalEstimatedTris={cgalEstimatedTris}
+                      cgalTooHeavy={cgalTooHeavy}
+                      cgalVerbose={cgalVerbose}
+                      onChangeCgalVerbose={setCgalVerbose}
+                      cgalPreflightSamples={cgalPreflightSamples}
+                      onChangeCgalPreflightSamples={setCgalPreflightSamples}
+                      onRunCgalMesh={handleRunCgalMesh}
+                      onStopCgalWorker={handleStopCgalWorker}
+                      cgalMeshInfo={cgalMeshInfo}
+                      probeInfo={probeInfo}
+                      onPickDomainUV={handlePickDomainUV}
+                      onPickDomainXY={handlePickDomainXY}
+                      onPickDomainXYZ={handlePickDomainXYZ}
+                      graphDomain={activeGraphDomain}
+                      onChangeGraphDomain={handleChangeGraphDomain}
+                      paramDomain={activeParamLikeDomain}
+                      onChangeParamDomain={handleChangeParamDomain}
+                      implicitDomain={activeImplicitDomain}
+                      onChangeImplicitDomain={handleChangeImplicitDomain}
+                      graphDomainPresets={graphDomainPresets}
+                      paramDomainPresets={paramDomainPresets}
+                      implicitDomainPresets={implicitDomainPresets}
+                      onSaveGraphDomainPreset={saveGraphDomainPreset}
+                      onSaveParamDomainPreset={saveParamDomainPreset}
+                      onSaveImplicitDomainPreset={saveImplicitDomainPreset}
+                      onApplyGraphDomainPreset={applyGraphDomainPreset}
+                      onApplyParamDomainPreset={applyParamDomainPreset}
+                      onApplyImplicitDomainPreset={applyImplicitDomainPreset}
+                      onRemoveGraphDomainPreset={removeGraphDomainPreset}
+                      onRemoveParamDomainPreset={removeParamDomainPreset}
+                      onRemoveImplicitDomainPreset={removeImplicitDomainPreset}
+                    />
+                    <details style={{ marginTop: 10 }} open={isInspectDisplayMode}>
+                      <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Tools</summary>
+                      <div style={{ marginTop: 8 }}>
+                        {renderSurfacesInspectorPanel("tools")}
+                      </div>
+                    </details>
+                    </>
+                  ) : (
+                    <WorkbookPanel
+                      workbooks={workbooks}
+                      activeWorkbookId={activeWorkbookId}
+                      activeStageId={activeStageId}
+                      computeStatusById={computeStatusById}
+                      workbookStatus={workbookStatus}
+                      onSelectWorkbook={setActiveWorkbookId}
+                      onCreateWorkbook={handleCreateWorkbook}
+                      onCreateWorkbookFromTemplate={handleCreateWorkbookFromTemplate}
+                      onCreateWorkbooksFromPack={handleCreateWorkbooksFromPack}
+                      onDuplicateWorkbook={handleDuplicateWorkbook}
+                      onDeleteWorkbook={handleDeleteWorkbook}
+                      onRenameWorkbook={handleRenameWorkbook}
+                      onSelectStage={setActiveStageId}
+                      onAddBlock={handleAddWorkbookBlock}
+                      onUpdateBlock={handleUpdateWorkbookBlock}
+                      onRemoveBlock={handleRemoveWorkbookBlock}
+                      onMoveBlock={handleMoveWorkbookBlock}
+                      onCaptureVisualize={handleCaptureVisualize}
+                      onApplyVisualize={handleApplyVisualize}
+                      onToggleVisualizeLive={handleToggleVisualizeLive}
+                      onRunComputeBlock={handleRunComputeBlock}
+                      onRunComputeStage={handleRunComputeStage}
+                      onRunAllStale={handleRunAllStale}
+                      onRunFromBlock={handleRunFromBlock}
+                      onClearWorkbookSelection={() => {
+                        setSelectionMaskOverride(null);
+                        setSelectionMask(null);
+                        setSelection(null);
+                        setSelectionSeed(null);
+                      }}
+                      paramCatalog={paramCatalog}
+                      onAddBlockParam={handleAddBlockParam}
+                      onRemoveBlockParam={handleRemoveBlockParam}
+                      onUpdateBlockParam={handleUpdateBlockParam}
+                      onToggleParamScrub={handleToggleParamScrub}
+                      onApplyParams={handleApplyParams}
+                      onAddKeyframe={handleAddKeyframe}
+                      onRemoveKeyframe={handleRemoveKeyframe}
+                      onUpdateInteraction={handleUpdateInteraction}
+                      onUpdateInteractionDirection={handleUpdateInteractionDirection}
+                      onArmInteraction={handleArmInteraction}
+                      onFinishInteraction={handleFinishInteraction}
+                      onClearInteraction={handleClearInteraction}
+                      onExportJson={handleExportWorkbooks}
+                      onExportMarkdown={handleExportWorkbooksMarkdown}
+                      onExportPdf={handleExportWorkbooksPdf}
+                      onExportReplayHtml={handleExportWorkbooksReplayHtml}
+                      onImportJson={handleImportWorkbooks}
+                      onSaveWorkbook={handleSaveWorkbook}
+                      onSaveWorkbookAs={handleSaveWorkbookAs}
+                      bundleAssetMode={workbookBundleAssetMode}
+                      onChangeBundleAssetMode={setWorkbookBundleAssetMode}
+                      workbookDirty={workbookDirty}
+                      lastManualSaveAt={workbookManualSaveAt}
+                      autosaveAt={workbookAutosaveAt}
+                      autosaveIntervalSec={WORKBOOK_AUTOSAVE_INTERVAL_SEC}
+                      snapshotAt={workbookSnapshotAt}
+                      snapshotHistory={workbookSnapshots.map((snap) => ({
+                        id: snap.id,
+                        name: snap.name,
+                        savedAt: snap.savedAt,
+                      }))}
+                      selectedSnapshotId={selectedWorkbookSnapshotId}
+                      onSelectSnapshot={handleSelectWorkbookSnapshot}
+                      onRestoreAutosave={handleRestoreWorkbookAutosave}
+                      onCreateSnapshot={handleSnapshotWorkbookSession}
+                      onRestoreSnapshot={handleRestoreWorkbookSnapshot}
+                      onRestoreSnapshotById={handleRestoreWorkbookSnapshotById}
+                      onDeleteSnapshot={handleDeleteWorkbookSnapshot}
+                      readOnly={IS_REPLAY_MODE}
+                      currentDatasetRef={currentDatasetRef}
+                      cameraReady={!!cameraSync}
+                      ghostOverlaysEnabled={workbookGhostOverlaysEnabled}
+                      onToggleGhostOverlays={(next) => setWorkbookGhostOverlaysEnabled(next)}
+                      templates={WORKBOOK_TEMPLATES}
+                      problemPacks={WORKBOOK_PROBLEM_PACKS}
+                    />
+                  )}
+                </>
               )}
             </div>
             )}
@@ -24277,7 +24638,7 @@ case "mobius":
           </>
         )}
       </div>
-      {showViewportDebug && mode === "surfaces" && (
+      {showSurfaceViewportDebug && mode === "surfaces" && (
         <div
           style={{
             position: "fixed",
@@ -24300,7 +24661,7 @@ case "mobius":
           }}
         >
           {formatViewportDebug("Primary", viewportDebugPrimary)}
-          {compareEnabled ? `\n\n${formatViewportDebug("Secondary", viewportDebugSecondary)}` : ""}
+          {compareLayoutEnabled ? `\n\n${formatViewportDebug("Secondary", viewportDebugSecondary)}` : ""}
         </div>
       )}
       {showStatusBar && (
@@ -24531,6 +24892,7 @@ type SurfacesControlsProps = {
   compareCameraSync: boolean;
   compareDiffHeatmapEnabled: boolean;
   compareDiffHeatmapAvailable: boolean;
+  displayMode: DisplayMode;
   onToggleCompare: () => void;
   onToggleCompareIgnoreWorkbookOverlays: () => void;
   onToggleCompareCameraSync: () => void;
@@ -24566,6 +24928,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   compareCameraSync,
   compareDiffHeatmapEnabled,
   compareDiffHeatmapAvailable,
+  displayMode,
   onToggleCompare,
   onToggleCompareIgnoreWorkbookOverlays,
   onToggleCompareCameraSync,
@@ -24624,80 +24987,85 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     if (firstPreset) onApplyWeierstrassPreset(firstPreset);
   };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
+  const compactForPresent = displayMode === "present";
+  const compareUiEnabled = displayMode !== "present";
+  const compareActive = compareUiEnabled && compareEnabled;
+  const chipPadding = compactForPresent ? "3px 8px" : "4px 10px";
+  const galleryPreviewHeight = compactForPresent ? 64 : 80;
 
   return (
-    <div style={{ ...styles.group, gridColumn: "span 9", gap: 12 }}>
-      <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "grid", gap: 2 }}>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>Surface gallery</div>
-            <div style={{ fontSize: 10, opacity: 0.72 }}>Quick open cards</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSurfaceGallery((v) => !v)}
-            style={{ padding: "4px 10px", borderRadius: 999, fontSize: 12 }}
-            aria-expanded={showSurfaceGallery}
-          >
-            {showSurfaceGallery ? "Hide gallery" : "Show gallery"}
-          </button>
-        </div>
-        {showSurfaceGallery && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
-            {SURFACE_GALLERY_CARDS.map((card) => {
-              const active = surfaceGallerySelectedId === card.id;
-              return (
-                <article
-                  key={card.id}
-                  data-testid={`surface-gallery-card-${card.id}`}
-                  onClick={() => openSurfaceGalleryCard(card.id)}
+    <div style={{ ...styles.group, gridColumn: "span 9", gap: compactForPresent ? 8 : 12 }}>
+      {showSurfaceGallery && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 6 }}>
+          {SURFACE_GALLERY_CARDS.map((card) => {
+            const active = surfaceGallerySelectedId === card.id;
+            return (
+              <article
+                key={card.id}
+                data-testid={`surface-gallery-card-${card.id}`}
+                onClick={() => openSurfaceGalleryCard(card.id)}
+                style={{
+                  borderRadius: 8,
+                  border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
+                  background: active ? "#eef4ff" : "#fff",
+                  padding: 6,
+                  display: "grid",
+                  gap: 5,
+                  cursor: "pointer",
+                }}
+                title={card.description}
+              >
+                <img
+                  src={card.thumbDataUrl}
+                  alt={`${card.title} card`}
                   style={{
-                    borderRadius: 8,
-                    border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
-                    background: active ? "#eef4ff" : "#fff",
-                    padding: 6,
-                    display: "grid",
-                    gap: 5,
-                    cursor: "pointer",
+                    width: "100%",
+                    height: galleryPreviewHeight,
+                    borderRadius: 6,
+                    border: "1px solid #dbe2ea",
+                    objectFit: "cover",
+                    background: "#f8fafc",
                   }}
-                  title={card.description}
+                />
+                <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
+                <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
+                <div
+                  style={{
+                    justifySelf: "start",
+                    fontSize: 9,
+                    border: "1px solid #cbd5e1",
+                    background: "#f8fafc",
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    fontWeight: 700,
+                  }}
                 >
-                  <img
-                    src={card.thumbDataUrl}
-                    alt={`${card.title} card`}
-                    style={{
-                      width: "100%",
-                      height: 80,
-                      borderRadius: 6,
-                      border: "1px solid #dbe2ea",
-                      objectFit: "cover",
-                      background: "#f8fafc",
-                    }}
-                  />
-                  <div style={{ fontSize: 11, fontWeight: 700, lineHeight: 1.3 }}>{card.title}</div>
-                  <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
-                  <div
-                    style={{
-                      justifySelf: "start",
-                      fontSize: 9,
-                      border: "1px solid #cbd5e1",
-                      background: "#f8fafc",
-                      borderRadius: 999,
-                      padding: "1px 6px",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {card.badge}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                  {card.badge}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
 
-      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
         <span style={{ fontSize: 11, opacity: 0.75, fontWeight: 600 }}>Source kinds</span>
+        <button
+          type="button"
+          onClick={() => setShowSurfaceGallery((v) => !v)}
+          style={{
+            padding: chipPadding,
+            borderRadius: 999,
+            border: "1px solid #d1d5db",
+            background: showSurfaceGallery ? "#eef4ff" : "#fff",
+            fontWeight: showSurfaceGallery ? 700 : 500,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+          aria-expanded={showSurfaceGallery}
+        >
+          {showSurfaceGallery ? "Hide gallery" : "Show gallery"}
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -24705,12 +25073,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             onChangeViewerKind("graph");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isSurface && viewerKind === "graph" ? "#0a66c2" : "#ddd"),
             background: isSurface && viewerKind === "graph" ? "#e6f0ff" : "#fff",
             fontWeight: isSurface && viewerKind === "graph" ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Explicit
@@ -24722,12 +25091,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             onChangeViewerKind("implicit");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isSurface && viewerKind === "implicit" ? "#0a66c2" : "#ddd"),
             background: isSurface && viewerKind === "implicit" ? "#e6f0ff" : "#fff",
             fontWeight: isSurface && viewerKind === "implicit" ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Implicit
@@ -24740,12 +25110,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isParamFormula ? "#0a66c2" : "#ddd"),
             background: isParamFormula ? "#e6f0ff" : "#fff",
             fontWeight: isParamFormula ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Parametric formula
@@ -24758,12 +25129,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isParamSpline ? "#0a66c2" : "#ddd"),
             background: isParamSpline ? "#e6f0ff" : "#fff",
             fontWeight: isParamSpline ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Spline surface
@@ -24776,12 +25148,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isParamConstructed ? "#0a66c2" : "#ddd"),
             background: isParamConstructed ? "#e6f0ff" : "#fff",
             fontWeight: isParamConstructed ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Constructed
@@ -24793,12 +25166,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             if (!isMesh) onChangeViewerKind("mesh");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isMesh ? "#0a66c2" : "#ddd"),
             background: isMesh ? "#e6f0ff" : "#fff",
             fontWeight: isMesh ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Mesh
@@ -24810,12 +25184,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             onChangeViewerKind("mesh");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isMesh && viewerKind === "mesh" ? "#0a66c2" : "#ddd"),
             background: isMesh && viewerKind === "mesh" ? "#e6f0ff" : "#fff",
             fontWeight: isMesh && viewerKind === "mesh" ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           SurfaceMesh
@@ -24827,12 +25202,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             onChangeViewerKind("weierstrass");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isSurface && viewerKind === "weierstrass" ? "#0a66c2" : "#ddd"),
             background: isSurface && viewerKind === "weierstrass" ? "#e6f0ff" : "#fff",
             fontWeight: isSurface && viewerKind === "weierstrass" ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Weierstrass
@@ -24844,12 +25220,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             onChangeViewerKind("complex");
           }}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isMesh && viewerKind === "complex" ? "#0a66c2" : "#ddd"),
             background: isMesh && viewerKind === "complex" ? "#e6f0ff" : "#fff",
             fontWeight: isMesh && viewerKind === "complex" ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Complex map
@@ -24858,16 +25235,52 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           type="button"
           onClick={() => onChangeDatasetKind("volume")}
           style={{
-            padding: "4px 10px",
+            padding: chipPadding,
             borderRadius: 999,
             border: "1px solid " + (isVolume ? "#0a66c2" : "#ddd"),
             background: isVolume ? "#e6f0ff" : "#fff",
             fontWeight: isVolume ? 600 : 400,
             cursor: "pointer",
+            fontSize: 11,
           }}
         >
           Volume
         </button>
+        <button
+          type="button"
+          onClick={() => openSurfaceGalleryCard("implicit")}
+          style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+        >
+          New
+        </button>
+        <button
+          type="button"
+          onClick={() => openSurfaceGalleryCard("explicit")}
+          style={{ padding: chipPadding, borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 11 }}
+        >
+          Demo
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCompare}
+          disabled={!compareUiEnabled || viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
+          style={{
+            padding: chipPadding,
+            borderRadius: 999,
+            border: "1px solid " + (compareActive ? "#0a66c2" : "#d1d5db"),
+            background: compareActive ? "#eef4ff" : "#fff",
+            fontWeight: compareActive ? 700 : 500,
+            fontSize: 11,
+            cursor: "pointer",
+          }}
+        >
+          Compare
+        </button>
+        {displayMode === "inspect" && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: "#334155", marginLeft: 4 }}>
+            Roles + pipeline focus
+          </span>
+        )}
       </div>
 
       {datasetKind !== "volume" && (
@@ -24968,51 +25381,53 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-          <input
-            type="checkbox"
-            checked={compareEnabled}
-            onChange={onToggleCompare}
-            disabled={viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
-          />
-          Compare
-        </label>
-        {compareEnabled && (
-          <>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-              <input
-                type="checkbox"
-                checked={compareCameraSync}
-                onChange={onToggleCompareCameraSync}
-              />
-              Sync cameras
-            </label>
-            <label
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
-              title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
-            >
-              <input
-                type="checkbox"
-                checked={compareDiffHeatmapEnabled}
-                onChange={onToggleCompareDiffHeatmap}
-                disabled={!compareDiffHeatmapAvailable}
-              />
-              Diff heatmap
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-              <input
-                type="checkbox"
-                checked={compareIgnoreWorkbookOverlays}
-                onChange={onToggleCompareIgnoreWorkbookOverlays}
-              />
-              Ignore workbook overlays
-            </label>
-          </>
-        )}
-      </div>
+      {displayMode !== "present" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={compareEnabled}
+              onChange={onToggleCompare}
+              disabled={viewerKind === "weierstrass" || viewerKind === "mesh" || viewerKind === "complex" || isVolume}
+            />
+            Compare
+          </label>
+          {compareEnabled && (
+            <>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={compareCameraSync}
+                  onChange={onToggleCompareCameraSync}
+                />
+                Sync cameras
+              </label>
+              <label
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                title="Graph snapshots only: shows |ΔK| curvature heatmap on the left pane."
+              >
+                <input
+                  type="checkbox"
+                  checked={compareDiffHeatmapEnabled}
+                  onChange={onToggleCompareDiffHeatmap}
+                  disabled={!compareDiffHeatmapAvailable}
+                />
+                Diff heatmap
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={compareIgnoreWorkbookOverlays}
+                  onChange={onToggleCompareIgnoreWorkbookOverlays}
+                />
+                Ignore workbook overlays
+              </label>
+            </>
+          )}
+        </div>
+      )}
 
-      {compareEnabled && viewerKind !== "mesh" && viewerKind !== "complex" && !isVolume && (
+      {displayMode !== "present" && compareEnabled && viewerKind !== "mesh" && viewerKind !== "complex" && !isVolume && (
         <div style={{ flex: 1 }}>
           {viewerKind === "implicit" && (
             <SurfacesButtons surfaceId={compareSurfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeCompareSurface} />

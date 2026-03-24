@@ -349,6 +349,7 @@ type Props = {
   onProbe?: (info: ProbeInfo) => void;
   gaussMapEnabled?: boolean;
   onToggleGaussMap?: () => void;
+  showOverlayControls?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -1455,6 +1456,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   onProbe,
     gaussMapEnabled = false,
     onToggleGaussMap,
+    showOverlayControls = true,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -6149,225 +6151,230 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
 
-      {/* TOP-LEFT overlay: geodesic only */}
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          padding: 10,
-          borderRadius: 10,
-          background: "rgba(255,255,255,0.92)",
-          boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          userSelect: "none",
-        }}
-      >
-        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="checkbox"
-            checked={showGeodesic}
-            onChange={() => setShowGeodesic((s) => !s)}
-          />
-          Geodesic
-        </label>
-
-        {showGeodesic && (
-          <>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              {probeUV ? "Drag the tip to set direction" : "Probe a point first"}
-            </div>
-            <div style={{ opacity: probeUV ? 1 : 0.4 }}>
-              {picker ?? (
-                <DomainDirectionPicker
-                  u={0.5}
-                  v={0.5}
-                  du={geoDir.du}
-                  dv={geoDir.dv}
-                  onChangeDir={(du, dv) => setGeoDir({ du, dv })}
-                />
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          right: 12,
-          borderRadius: 8,
-          background: "rgba(255,255,255,0.92)",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          padding: "8px 10px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          fontSize: 11,
-          minWidth: 180,
-        }}
-      >
-        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="checkbox"
-            checked={slicePlaneEnabled}
-            onChange={(e) => setSlicePlaneEnabled(e.target.checked)}
-          />
-          <span>Slice plane</span>
-        </label>
-
-        {slicePlaneEnabled && (
-          <>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                type="button"
-                style={presetButtonStyle(slicePlanePreset === "xy")}
-                onClick={() => applySlicePreset("xy")}
-              >
-                XY
-              </button>
-              <button
-                type="button"
-                style={presetButtonStyle(slicePlanePreset === "yz")}
-                onClick={() => applySlicePreset("yz")}
-              >
-                YZ
-              </button>
-              <button
-                type="button"
-                style={presetButtonStyle(slicePlanePreset === "xz")}
-                onClick={() => applySlicePreset("xz")}
-              >
-                XZ
-              </button>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Theta</span>
-              <span>{sliceThetaDeg.toFixed(0)} deg</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={180}
-              step={1}
-              value={sliceThetaDeg}
-              onChange={(e) => {
-                setSlicePlaneTheta(toRad(Number(e.target.value)));
-                setSlicePlanePreset("custom");
-              }}
-            />
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Phi</span>
-              <span>{slicePhiDeg.toFixed(0)} deg</span>
-            </div>
-            <input
-              type="range"
-              min={-180}
-              max={180}
-              step={1}
-              value={slicePhiDeg}
-              onChange={(e) => {
-                setSlicePlanePhi(toRad(Number(e.target.value)));
-                setSlicePlanePreset("custom");
-              }}
-            />
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Offset</span>
-              <span>{slicePlaneOffset.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={-sliceOffsetRange}
-              max={sliceOffsetRange}
-              step={0.01}
-              value={slicePlaneOffset}
-              onChange={(e) => setSlicePlaneOffset(Number(e.target.value))}
-            />
-
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Plane size</span>
-              <span>{slicePlaneSize.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={0.5}
-              max={sliceSizeMax}
-              step={0.05}
-              value={slicePlaneSize}
-              onChange={(e) => setSlicePlaneSize(Number(e.target.value))}
-            />
-
-            <Slice2DPreview
-              enabled={slicePlaneEnabled}
-              planeSize={slicePreviewSpan}
-              polylines={slicePolylines2D}
-              onHover={setSliceHoverST}
-              onClickST={(pt) => {
-                const frame = sliceFrameRef.current ?? buildSliceFrame();
-                const xclick = frame.x0
-                  .clone()
-                  .add(frame.e1.clone().multiplyScalar(pt.s))
-                  .add(frame.e2.clone().multiplyScalar(pt.t));
-                const newOffset = frame.n.dot(xclick);
-                setSlicePlaneOffset(newOffset);
-              }}
-            />
-
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+      {showOverlayControls && (
+        <>
+          {/* TOP-LEFT overlay: geodesic only */}
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              left: 12,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(255,255,255,0.92)",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              userSelect: "none",
+            }}
+          >
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input
                 type="checkbox"
-                checked={sliceSnapToCurve}
-                onChange={(e) => setSliceSnapToCurve(e.target.checked)}
+                checked={showGeodesic}
+                onChange={() => setShowGeodesic((s) => !s)}
               />
-              <span>Snap hover to curve</span>
+              Geodesic
             </label>
 
-            </>
-        )}
-        {onToggleGaussMap && (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <input type="checkbox" checked={gaussMapEnabled} onChange={onToggleGaussMap} />
-            <span>Show Gauss map (S²)</span>
-          </label>
-        )}
-      </div>
+            {showGeodesic && (
+              <>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  {probeUV ? "Drag the tip to set direction" : "Probe a point first"}
+                </div>
+                <div style={{ opacity: probeUV ? 1 : 0.4 }}>
+                  {picker ?? (
+                    <DomainDirectionPicker
+                      u={0.5}
+                      v={0.5}
+                      du={geoDir.du}
+                      dv={geoDir.dv}
+                      onChangeDir={(du, dv) => setGeoDir({ du, dv })}
+                    />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
 
-      {/* BOTTOM-LEFT overlay: Axis gizmo + lock toggle */}
-      <div
-        style={{
-          position: "absolute",
-          left: 12,
-          bottom: 12,
-          borderRadius: 6,
-          background: "rgba(255,255,255,0.9)",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
-          padding: 6,
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          fontSize: 11,
-        }}
-      >
-        <AxisGizmo
-          size={96}
-          getMainCamera={() => cameraRef.current}
-          onSelectView={(view) => setViewMode(view)}
-        />
-        <label style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-          <input
-            type="checkbox"
-            checked={lockToPlane && viewMode !== "free"}
-            onChange={(e) => setLockToPlane(e.target.checked)}
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.92)",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              padding: "8px 10px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              fontSize: 11,
+              minWidth: 180,
+            }}
+          >
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={slicePlaneEnabled}
+                onChange={(e) => setSlicePlaneEnabled(e.target.checked)}
+              />
+              <span>Slice plane</span>
+            </label>
+
+            {slicePlaneEnabled && (
+              <>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    style={presetButtonStyle(slicePlanePreset === "xy")}
+                    onClick={() => applySlicePreset("xy")}
+                  >
+                    XY
+                  </button>
+                  <button
+                    type="button"
+                    style={presetButtonStyle(slicePlanePreset === "yz")}
+                    onClick={() => applySlicePreset("yz")}
+                  >
+                    YZ
+                  </button>
+                  <button
+                    type="button"
+                    style={presetButtonStyle(slicePlanePreset === "xz")}
+                    onClick={() => applySlicePreset("xz")}
+                  >
+                    XZ
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Theta</span>
+                  <span>{sliceThetaDeg.toFixed(0)} deg</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={180}
+                  step={1}
+                  value={sliceThetaDeg}
+                  onChange={(e) => {
+                    setSlicePlaneTheta(toRad(Number(e.target.value)));
+                    setSlicePlanePreset("custom");
+                  }}
+                />
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Phi</span>
+                  <span>{slicePhiDeg.toFixed(0)} deg</span>
+                </div>
+                <input
+                  type="range"
+                  min={-180}
+                  max={180}
+                  step={1}
+                  value={slicePhiDeg}
+                  onChange={(e) => {
+                    setSlicePlanePhi(toRad(Number(e.target.value)));
+                    setSlicePlanePreset("custom");
+                  }}
+                />
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Offset</span>
+                  <span>{slicePlaneOffset.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={-sliceOffsetRange}
+                  max={sliceOffsetRange}
+                  step={0.01}
+                  value={slicePlaneOffset}
+                  onChange={(e) => setSlicePlaneOffset(Number(e.target.value))}
+                />
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Plane size</span>
+                  <span>{slicePlaneSize.toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={sliceSizeMax}
+                  step={0.05}
+                  value={slicePlaneSize}
+                  onChange={(e) => setSlicePlaneSize(Number(e.target.value))}
+                />
+
+                <Slice2DPreview
+                  enabled={slicePlaneEnabled}
+                  planeSize={slicePreviewSpan}
+                  polylines={slicePolylines2D}
+                  onHover={setSliceHoverST}
+                  onClickST={(pt) => {
+                    const frame = sliceFrameRef.current ?? buildSliceFrame();
+                    const xclick = frame.x0
+                      .clone()
+                      .add(frame.e1.clone().multiplyScalar(pt.s))
+                      .add(frame.e2.clone().multiplyScalar(pt.t));
+                    const newOffset = frame.n.dot(xclick);
+                    setSlicePlaneOffset(newOffset);
+                  }}
+                />
+
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={sliceSnapToCurve}
+                    onChange={(e) => setSliceSnapToCurve(e.target.checked)}
+                  />
+                  <span>Snap hover to curve</span>
+                </label>
+
+                </>
+            )}
+            {onToggleGaussMap && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                <input type="checkbox" checked={gaussMapEnabled} onChange={onToggleGaussMap} />
+                <span>Show Gauss map (S²)</span>
+              </label>
+            )}
+          </div>
+        </>
+      )}
+
+      {showOverlayControls && (
+        <div
+          style={{
+            position: "absolute",
+            left: 12,
+            bottom: 12,
+            borderRadius: 6,
+            background: "rgba(255,255,255,0.9)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            padding: 6,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            fontSize: 11,
+          }}
+        >
+          <AxisGizmo
+            size={96}
+            getMainCamera={() => cameraRef.current}
+            onSelectView={(view) => setViewMode(view)}
           />
-          <span>Lock view to plane</span>
-        </label>
-      </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+            <input
+              type="checkbox"
+              checked={lockToPlane && viewMode !== "free"}
+              onChange={(e) => setLockToPlane(e.target.checked)}
+            />
+            <span>Lock view to plane</span>
+          </label>
+        </div>
+      )}
 
       {sliceHoverInfo && slicePlaneEnabled && (
         <div

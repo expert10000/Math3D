@@ -1100,6 +1100,7 @@ type Props = {
 
   gaussMapEnabled?: boolean;
   onToggleGaussMap?: () => void;
+  showOverlayControls?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -1323,6 +1324,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
     gaussMapEnabled = false,
     onToggleGaussMap,
+    showOverlayControls = true,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -3614,7 +3616,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const viewGizmo = new THREE.Group();
     viewGizmo.position.copy(center);
-    viewGizmo.visible = showViewGizmo;
+    viewGizmo.visible = showViewGizmo && showOverlayControls;
     viewGizmoRef.current = viewGizmo;
     scene.add(viewGizmo);
 
@@ -8455,8 +8457,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const gizmo = viewGizmoRef.current;
-    if (gizmo) gizmo.visible = showViewGizmo;
-  }, [showViewGizmo]);
+    if (gizmo) gizmo.visible = showViewGizmo && showOverlayControls;
+  }, [showViewGizmo, showOverlayControls]);
 
   /* ---------------- presets storage UI (unchanged logic) ---------------- */
 
@@ -8667,7 +8669,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         }}
       />
 
-      {sliceUiEnabled && (
+      {sliceUiEnabled && showOverlayControls && (
         <div
           style={{
             position: "absolute",
@@ -8898,99 +8900,101 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         </div>
       )}
 
-      <div
-        style={{
-          position: "absolute",
-          left: 12,
-          bottom: 12,
-          borderRadius: 12,
-          background:
-            "linear-gradient(145deg, rgba(250,252,255,0.98), rgba(228,236,246,0.96))",
-          border: "1px solid rgba(140,160,184,0.55)",
-          boxShadow:
-            "0 12px 26px rgba(30,45,70,0.18), inset 0 1px 2px rgba(255,255,255,0.9)",
-          padding: 10,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          fontSize: 12,
-          fontFamily:
-            "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
-          color: "#2b3441",
-          backdropFilter: "blur(6px)",
-        }}
-      >
+      {showOverlayControls && (
         <div
           style={{
+            position: "absolute",
+            left: 12,
+            bottom: 12,
+            borderRadius: 12,
+            background:
+              "linear-gradient(145deg, rgba(250,252,255,0.98), rgba(228,236,246,0.96))",
+            border: "1px solid rgba(140,160,184,0.55)",
+            boxShadow:
+              "0 12px 26px rgba(30,45,70,0.18), inset 0 1px 2px rgba(255,255,255,0.9)",
+            padding: 10,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            padding: "2px 2px 4px",
-            fontSize: 11,
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 700,
-            color: "#5a6676",
+            flexDirection: "column",
+            gap: 8,
+            fontSize: 12,
+            fontFamily:
+              "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+            color: "#2b3441",
+            backdropFilter: "blur(6px)",
           }}
         >
-          <span>View Gizmo</span>
-          <span
+          <div
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              background: "#4b82f6",
-              boxShadow: "0 0 8px rgba(75,130,246,0.55)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              padding: "2px 2px 4px",
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              fontWeight: 700,
+              color: "#5a6676",
             }}
+          >
+            <span>View Gizmo</span>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "#4b82f6",
+                boxShadow: "0 0 8px rgba(75,130,246,0.55)",
+              }}
+            />
+          </div>
+          <AxisGizmo
+            size={108}
+            getMainCamera={() => cameraRef.current}
+            onSelectView={(view) => setViewMode(view)}
           />
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "5px 8px",
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.75)",
+              border: "1px solid rgba(160,176,196,0.45)",
+              boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={lockToAxisPlane && viewMode !== "free"}
+              onChange={(e) => setLockToAxisPlane(e.target.checked)}
+              style={{ accentColor: "#3b82f6" }}
+            />
+            <span style={{ fontWeight: 600 }}>Lock view to axis</span>
+          </label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "5px 8px",
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.75)",
+              border: "1px solid rgba(160,176,196,0.45)",
+              boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={showViewGizmo}
+              onChange={(e) => setShowViewGizmo(e.target.checked)}
+              style={{ accentColor: "#3b82f6" }}
+            />
+            <span style={{ fontWeight: 600 }}>Show 3D gizmo</span>
+          </label>
         </div>
-        <AxisGizmo
-          size={108}
-          getMainCamera={() => cameraRef.current}
-          onSelectView={(view) => setViewMode(view)}
-        />
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "5px 8px",
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.75)",
-            border: "1px solid rgba(160,176,196,0.45)",
-            boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={lockToAxisPlane && viewMode !== "free"}
-            onChange={(e) => setLockToAxisPlane(e.target.checked)}
-            style={{ accentColor: "#3b82f6" }}
-          />
-          <span style={{ fontWeight: 600 }}>Lock view to axis</span>
-        </label>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "5px 8px",
-            borderRadius: 8,
-            background: "rgba(255,255,255,0.75)",
-            border: "1px solid rgba(160,176,196,0.45)",
-            boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showViewGizmo}
-            onChange={(e) => setShowViewGizmo(e.target.checked)}
-            style={{ accentColor: "#3b82f6" }}
-          />
-          <span style={{ fontWeight: 600 }}>Show 3D gizmo</span>
-        </label>
-      </div>
+      )}
 
       {(surfaceId === "graph_custom" || surfaceId === "implicit_custom") && (
         <div
