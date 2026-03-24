@@ -1,4 +1,4 @@
 # Analysis Artifacts
 
 - Dependency analysis and generated diagrams: `analysis/dependency/`
-- GitDiagram first-pass interactive link: `analysis/gitdiagram/`
+- Gitingest prompt-friendly digest for LLM architecture summaries: `analysis/gitingest/`

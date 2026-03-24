@@ -1,0 +1,3105 @@
+Directory structure:
+└── packages/
+    ├── core/
+    │   ├── README.md
+    │   ├── package.json
+    │   └── src/
+    │       ├── commands.ts
+    │       ├── index.ts
+    │       ├── math.ts
+    │       ├── sceneDocument.ts
+    │       ├── sceneObjects.ts
+    │       ├── serialization.ts
+    │       ├── validation.ts
+    │       ├── viewerTypes.ts
+    │       └── geometry/
+    │           ├── index.ts
+    │           └── curve-core/
+    │               ├── index.ts
+    │               ├── eval/
+    │               │   ├── arcLength.ts
+    │               │   ├── curvature.ts
+    │               │   ├── derivative.ts
+    │               │   ├── evaluateCurve.ts
+    │               │   ├── frenetFrame.ts
+    │               │   ├── index.ts
+    │               │   ├── secondDerivative.ts
+    │               │   └── torsion.ts
+    │               ├── model/
+    │               │   ├── Curve.ts
+    │               │   ├── Curve2D.ts
+    │               │   ├── Curve3D.ts
+    │               │   ├── CurveDomain.ts
+    │               │   ├── CurveEvalResult.ts
+    │               │   └── index.ts
+    │               ├── sampling/
+    │               │   ├── index.ts
+    │               │   ├── sampleAdaptive.ts
+    │               │   └── sampleUniform.ts
+    │               └── utils/
+    │                   ├── bbox.ts
+    │                   ├── index.ts
+    │                   ├── reparameterization.ts
+    │                   ├── validation.ts
+    │                   └── vector.ts
+    ├── renderer/
+    │   ├── package.json
+    │   └── src/
+    │       ├── index.ts
+    │       ├── layeredReferenceGrid.ts
+    │       ├── materials.ts
+    │       └── sceneBuilders.ts
+    ├── ui/
+    │   ├── package.json
+    │   └── src/
+    │       └── index.ts
+    └── workbook/
+        ├── package.json
+        └── src/
+            ├── index.ts
+            ├── operatorRegistry.ts
+            └── workbookModel.ts
+
+================================================
+FILE: core/README.md
+================================================
+# @math3d/core
+
+Shared domain package for scene models, command schema, serialization format, and validation.
+
+
+
+================================================
+FILE: core/package.json
+================================================
+{
+  "name": "@math3d/core",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}
+
+
+
+================================================
+FILE: core/src/commands.ts
+================================================
+import type { CameraPreset, OverlayDefinition, SceneDocument, SurfaceDefinition } from "./sceneDocument";
+import type { GeometryObject } from "./sceneObjects";
+
+export type SceneCommand =
+  | {
+      type: "scene.set-title";
+      title: string;
+    }
+  | {
+      type: "scene.set-metadata";
+      metadata: Record<string, string | number | boolean | null>;
+    }
+  | {
+      type: "object.upsert";
+      object: GeometryObject;
+    }
+  | {
+      type: "object.remove";
+      objectId: string;
+    }
+  | {
+      type: "surface.upsert";
+      surface: SurfaceDefinition;
+    }
+  | {
+      type: "surface.remove";
+      surfaceId: string;
+    }
+  | {
+      type: "overlay.upsert";
+      overlay: OverlayDefinition;
+    }
+  | {
+      type: "overlay.remove";
+      overlayId: string;
+    }
+  | {
+      type: "camera.upsert";
+      camera: CameraPreset;
+    }
+  | {
+      type: "camera.set-active";
+      cameraId: string | null;
+    }
+  | {
+      type: "scene.replace";
+      scene: SceneDocument;
+    };
+
+export type CommandEnvelope = {
+  id: string;
+  timestamp: number;
+  actor?: string;
+  command: SceneCommand;
+};
+
+
+
+================================================
+FILE: core/src/index.ts
+================================================
+export * from "./commands";
+export * from "./geometry";
+export * from "./math";
+export * from "./sceneDocument";
+export * from "./sceneObjects";
+export * from "./serialization";
+export * from "./validation";
+export * from "./viewerTypes";
+
+
+
+================================================
+FILE: core/src/math.ts
+================================================
+export type Vec2 = { x: number; y: number };
+
+export type Vec3 = { x: number; y: number; z: number };
+
+export const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+export const isVec3 = (value: unknown): value is Vec3 => {
+  if (!value || typeof value !== "object") return false;
+  const probe = value as Partial<Vec3>;
+  return isFiniteNumber(probe.x) && isFiniteNumber(probe.y) && isFiniteNumber(probe.z);
+};
+
+
+
+================================================
+FILE: core/src/sceneDocument.ts
+================================================
+import type { Vec3 } from "./math";
+import type { GeometryObject, GeometryScene } from "./sceneObjects";
+
+export type SurfaceDefinition =
+  | {
+      id: string;
+      kind: "explicit";
+      expression: string;
+      domain?: { xSpan: number; ySpan: number };
+      resolution?: number;
+    }
+  | {
+      id: string;
+      kind: "implicit";
+      expression: string;
+      domain?: { xSpan: number; ySpan: number; zSpan?: number };
+      resolution?: number;
+    }
+  | {
+      id: string;
+      kind: "parametric";
+      xExpr: string;
+      yExpr: string;
+      zExpr: string;
+      domain?: { uMin: number; uMax: number; vMin: number; vMax: number };
+      resolution?: number;
+    }
+  | {
+      id: string;
+      kind: "weierstrass";
+      gExpr: string;
+      phiExpr: string;
+      recenter?: boolean;
+      domain?: { uMin: number; uMax: number; vMin: number; vMax: number };
+      resolution?: number;
+    }
+  | {
+      id: string;
+      kind: "mesh";
+      source: string;
+      meshToken?: string;
+    };
+
+export type OverlayDefinition = {
+  id: string;
+  kind:
+    | "label"
+    | "grid"
+    | "axis"
+    | "wireframe"
+    | "contours"
+    | "probe"
+    | "principalDirections"
+    | "principalLines"
+    | "curvatureLines"
+    | "ridges"
+    | "valleys"
+    | "gaussMap"
+    | "boundingBox";
+  visible: boolean;
+  style?: Record<string, string | number | boolean | null>;
+};
+
+export type CameraPreset = {
+  id: string;
+  name: string;
+  position: Vec3;
+  target: Vec3;
+  up?: Vec3;
+  fovDeg?: number;
+};
+
+export type SceneDocument = {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  geometry?: GeometryScene;
+  objects?: GeometryObject[];
+  surfaces?: SurfaceDefinition[];
+  overlays?: OverlayDefinition[];
+  cameras?: CameraPreset[];
+  activeCameraId?: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+  extensions?: Record<string, unknown>;
+};
+
+
+
+================================================
+FILE: core/src/sceneObjects.ts
+================================================
+import type { Vec3 } from "./math";
+
+export type Point3 = Vec3 & {
+  id?: string;
+  label?: string;
+  color?: number;
+  size?: number;
+  opacity?: number;
+};
+
+export type Segment3 = {
+  a: Point3;
+  b: Point3;
+  color?: number;
+  opacity?: number;
+  radiusScale?: number;
+};
+
+export type Line3 = {
+  origin: Point3;
+  direction: Vec3;
+  length?: number;
+  color?: number;
+  opacity?: number;
+  radiusScale?: number;
+};
+
+export type Plane3 = {
+  point: Point3;
+  normal: Vec3;
+  size?: number;
+  color?: number;
+  opacity?: number;
+};
+
+export type Triangle3 = {
+  a: Point3;
+  b: Point3;
+  c: Point3;
+  color?: number;
+  opacity?: number;
+};
+
+export type Polygon3 = {
+  id?: string;
+  label?: string;
+  vertices: Point3[];
+  color?: number;
+  opacity?: number;
+};
+
+export type Polyhedron = {
+  faces: Polygon3[];
+  color?: number;
+  opacity?: number;
+};
+
+export type GeometryScene = {
+  points?: Point3[];
+  segments?: Segment3[];
+  lines?: Line3[];
+  planes?: Plane3[];
+  triangles?: Triangle3[];
+  polygons?: Polygon3[];
+  polyhedra?: Polyhedron[];
+};
+
+export type GeometryObjectType =
+  | "sphere"
+  | "box"
+  | "cylinder"
+  | "cone"
+  | "torus"
+  | "polyhedron";
+
+export type GeometryParamDef = {
+  id: string;
+  label: string;
+  kind: "number" | "toggle" | "select";
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type GeometryObjectTransform = {
+  position: Vec3;
+  rotation: Vec3;
+  scale: Vec3;
+};
+
+export type GeometryObjectMaterial = {
+  color?: number;
+  opacity?: number;
+};
+
+export type GeometryObject = {
+  id: string;
+  type: GeometryObjectType;
+  params: Record<string, number | boolean | string>;
+  transform: GeometryObjectTransform;
+  visible: boolean;
+  material: GeometryObjectMaterial;
+  name: string;
+  group?: string;
+};
+
+export type GeometryObjectRegistryEntry = {
+  type: GeometryObjectType;
+  label: string;
+  defaultParams: Record<string, number | boolean | string>;
+  params: GeometryParamDef[];
+};
+
+
+
+================================================
+FILE: core/src/serialization.ts
+================================================
+import type { CommandEnvelope } from "./commands";
+import type { SceneDocument } from "./sceneDocument";
+import { validateSceneDocument, type ValidationResult } from "./validation";
+
+export const SCENE_PROJECT_FORMAT = "math3d.scene-project";
+export const SCENE_PROJECT_VERSION = 1;
+
+export type SceneProjectDocument = {
+  format: typeof SCENE_PROJECT_FORMAT;
+  version: typeof SCENE_PROJECT_VERSION;
+  scene: SceneDocument;
+  commandLog?: CommandEnvelope[];
+  workbookId?: string;
+};
+
+export const createSceneProjectDocument = (scene: SceneDocument): SceneProjectDocument => ({
+  format: SCENE_PROJECT_FORMAT,
+  version: SCENE_PROJECT_VERSION,
+  scene,
+});
+
+export const serializeSceneProject = (document: SceneProjectDocument): string =>
+  JSON.stringify(document, null, 2);
+
+export const deserializeSceneProject = (serialized: string): ValidationResult<SceneProjectDocument> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch (error) {
+    return { ok: false, errors: [`Invalid JSON: ${String((error as Error).message ?? error)}`] };
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, errors: ["Project file must be a JSON object."] };
+  }
+
+  const candidate = parsed as Partial<SceneProjectDocument>;
+  if (candidate.format !== SCENE_PROJECT_FORMAT) {
+    return {
+      ok: false,
+      errors: [`Unsupported format '${String(candidate.format ?? "unknown")}'. Expected '${SCENE_PROJECT_FORMAT}'.`],
+    };
+  }
+  if (candidate.version !== SCENE_PROJECT_VERSION) {
+    return {
+      ok: false,
+      errors: [`Unsupported version '${String(candidate.version ?? "unknown")}'. Expected '${SCENE_PROJECT_VERSION}'.`],
+    };
+  }
+  const sceneResult = validateSceneDocument(candidate.scene);
+  if (!sceneResult.ok) return { ok: false, errors: sceneResult.errors };
+
+  return {
+    ok: true,
+    value: {
+      format: SCENE_PROJECT_FORMAT,
+      version: SCENE_PROJECT_VERSION,
+      scene: sceneResult.value,
+      commandLog: Array.isArray(candidate.commandLog) ? candidate.commandLog : undefined,
+      workbookId: typeof candidate.workbookId === "string" ? candidate.workbookId : undefined,
+    },
+  };
+};
+
+
+
+================================================
+FILE: core/src/validation.ts
+================================================
+import { isFiniteNumber, isVec3 } from "./math";
+import type { SceneDocument } from "./sceneDocument";
+import type { GeometryObject, GeometryScene } from "./sceneObjects";
+
+export type ValidationResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; errors: string[] };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const hasString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
+
+const validateGeometryScene = (value: unknown, errors: string[], path: string): value is GeometryScene => {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return false;
+  }
+  const checkPointList = (field: string) => {
+    const list = value[field];
+    if (list === undefined) return;
+    if (!Array.isArray(list)) {
+      errors.push(`${path}.${field} must be an array when provided.`);
+      return;
+    }
+    for (let i = 0; i < list.length; i += 1) {
+      const entry = list[i];
+      if (!isRecord(entry) || !isFiniteNumber(entry.x) || !isFiniteNumber(entry.y) || !isFiniteNumber(entry.z)) {
+        errors.push(`${path}.${field}[${i}] must be a point-like object {x,y,z}.`);
+      }
+    }
+  };
+  checkPointList("points");
+  return errors.length === 0;
+};
+
+const validateGeometryObject = (value: unknown, errors: string[], path: string): value is GeometryObject => {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be an object.`);
+    return false;
+  }
+  if (!hasString(value.id)) errors.push(`${path}.id is required.`);
+  if (!hasString(value.type)) errors.push(`${path}.type is required.`);
+  if (!isRecord(value.params)) errors.push(`${path}.params must be an object.`);
+  if (!isRecord(value.material)) errors.push(`${path}.material must be an object.`);
+  if (!isRecord(value.transform)) {
+    errors.push(`${path}.transform must be an object.`);
+  } else {
+    if (!isVec3(value.transform.position)) errors.push(`${path}.transform.position must be a Vec3.`);
+    if (!isVec3(value.transform.rotation)) errors.push(`${path}.transform.rotation must be a Vec3.`);
+    if (!isVec3(value.transform.scale)) errors.push(`${path}.transform.scale must be a Vec3.`);
+  }
+  return errors.length === 0;
+};
+
+export const validateSceneDocument = (value: unknown): ValidationResult<SceneDocument> => {
+  const errors: string[] = [];
+  if (!isRecord(value)) {
+    return { ok: false, errors: ["Scene document must be an object."] };
+  }
+  if (!hasString(value.id)) errors.push("scene.id is required.");
+  if (!hasString(value.title)) errors.push("scene.title is required.");
+  if (!isFiniteNumber(value.createdAt)) errors.push("scene.createdAt must be a finite number.");
+  if (!isFiniteNumber(value.updatedAt)) errors.push("scene.updatedAt must be a finite number.");
+
+  if (value.geometry !== undefined) {
+    validateGeometryScene(value.geometry, errors, "scene.geometry");
+  }
+
+  if (value.objects !== undefined) {
+    if (!Array.isArray(value.objects)) {
+      errors.push("scene.objects must be an array.");
+    } else {
+      for (let i = 0; i < value.objects.length; i += 1) {
+        validateGeometryObject(value.objects[i], errors, `scene.objects[${i}]`);
+      }
+    }
+  }
+
+  if (value.cameras !== undefined) {
+    if (!Array.isArray(value.cameras)) {
+      errors.push("scene.cameras must be an array.");
+    } else {
+      for (let i = 0; i < value.cameras.length; i += 1) {
+        const camera = value.cameras[i];
+        if (!isRecord(camera)) {
+          errors.push(`scene.cameras[${i}] must be an object.`);
+          continue;
+        }
+        if (!hasString(camera.id)) errors.push(`scene.cameras[${i}].id is required.`);
+        if (!hasString(camera.name)) errors.push(`scene.cameras[${i}].name is required.`);
+        if (!isVec3(camera.position)) errors.push(`scene.cameras[${i}].position must be Vec3.`);
+        if (!isVec3(camera.target)) errors.push(`scene.cameras[${i}].target must be Vec3.`);
+      }
+    }
+  }
+
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, value: value as SceneDocument };
+};
+
+
+
+================================================
+FILE: core/src/viewerTypes.ts
+================================================
+export type DatasetKind = "surface" | "volume";
+
+export type SurfaceType = "implicit" | "explicit" | "param" | "weierstrass" | "mesh";
+
+export type ColorMode =
+  | "solid"
+  | "height"
+  | "radius"
+  | "phase"
+  | "curvature"
+  | "gaussian"
+  | "mean"
+  | "k1"
+  | "k2";
+
+export type ColorPalette = "blueRed" | "rainbow" | "grayscale" | "redYellow";
+
+export type SurfaceId =
+  | "sphere"
+  | "hyperboloid"
+  | "hyperboloid_twoSheet"
+  | "ellipsoid"
+  | "torus_implicit"
+  | "gyroid"
+  | "superquadric"
+  | "roman"
+  | "scherk"
+  | "paraboloid"
+  | "cone"
+  | "cylinder"
+  | "graph_saddle"
+  | "graph_rotatedSaddle"
+  | "graph_monkey"
+  | "graph_wave"
+  | "graph_paraboloid"
+  | "graph_gaussian"
+  | "graph_ripple"
+  | "graph_mexican"
+  | "graph_sinSum"
+  | "graph_sinc"
+  | "graph_sinc2"
+  | "graph_custom"
+  | "implicit_custom"
+  | "surface_mesh";
+
+export type ParamSurfaceId =
+  | "plane"
+  | "bezierSurface"
+  | "bSplineSurface"
+  | "nurbsSurface"
+  | "cylinder"
+  | "cone"
+  | "rotationalDevelopable"
+  | "rotationalGraph"
+  | "rotationalBell"
+  | "rotationalSpheroid"
+  | "rotationalHyperboloid"
+  | "rotationalFreeProfile"
+  | "helicoid"
+  | "catenoid"
+  | "sphere"
+  | "ellipsoid"
+  | "torus"
+  | "mobius"
+  | "kleinBottle"
+  | "hyperbolicParaboloid"
+  | "enneper"
+  | "paraboloid"
+  | "pseudosphere"
+  | "dini"
+  | "twistedStrip"
+  | "sweepLinearExtrusion"
+  | "sweepDirectional"
+  | "sweepPath"
+  | "sweepHelical"
+  | "sweepScaled"
+  | "sweepTwisted"
+  | "ribbonRMF"
+  | "tubeConstant"
+  | "tubeVariable"
+  | "tubeClosed"
+  | "tubeOpen"
+  | "expCone"
+  | "helicoidUV"
+  | "boy"
+  | "weierstrass"
+  | "custom";
+
+
+
+================================================
+FILE: core/src/geometry/index.ts
+================================================
+export * as curveCore from "./curve-core";
+export * from "./curve-core";
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/index.ts
+================================================
+export * from "./eval";
+export * from "./model";
+export * from "./sampling";
+export * from "./utils";
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/arcLength.ts
+================================================
+import type { AnyCurve } from "../model";
+import type { Curve2D } from "../model/Curve2D";
+import type { Curve3D } from "../model/Curve3D";
+import { derivative } from "./derivative";
+
+export type ArcLengthOptions = {
+  segments?: number;
+};
+
+const simpsonIntegrate = (f: (t: number) => number, a: number, b: number, segments: number): number => {
+  const n = Math.max(2, segments + (segments % 2));
+  const h = (b - a) / n;
+  let sum = f(a) + f(b);
+  for (let i = 1; i < n; i += 1) {
+    const t = a + i * h;
+    sum += f(t) * (i % 2 === 0 ? 2 : 4);
+  }
+  return (h / 3) * sum;
+};
+
+export const arcLength = (curve: AnyCurve, a?: number, b?: number, options: ArcLengthOptions = {}): number => {
+  const a0 = a ?? curve.domain.tMin;
+  const b0 = b ?? curve.domain.tMax;
+  const lo = Math.max(curve.domain.tMin, Math.min(curve.domain.tMax, a0));
+  const hi = Math.max(curve.domain.tMin, Math.min(curve.domain.tMax, b0));
+  if (Math.abs(hi - lo) <= 1e-12) return 0;
+  if (curve.arcLength) return curve.arcLength(lo, hi);
+  const segments = Math.max(16, Math.floor(options.segments ?? 256));
+  const speed = (t: number): number => {
+    if (curve.dimension === 2) {
+      const d = derivative(curve as Curve2D, t);
+      return Math.hypot(d.x, d.y);
+    }
+    const d = derivative(curve as Curve3D, t);
+    return Math.hypot(d.x, d.y, d.z);
+  };
+  return simpsonIntegrate(speed, lo, hi, segments);
+};
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/curvature.ts
+================================================
+import type { Curve2D } from "../model/Curve2D";
+import type { Curve3D } from "../model/Curve3D";
+import { derivative } from "./derivative";
+import { secondDerivative } from "./secondDerivative";
+import { crossPoint3, lengthPoint } from "../utils/vector";
+
+export const curvature2D = (curve: Curve2D, t: number): number => {
+  const d1 = derivative(curve, t);
+  const d2 = secondDerivative(curve, t);
+  const num = Math.abs(d1.x * d2.y - d1.y * d2.x);
+  const den = Math.pow(Math.max(1e-12, d1.x * d1.x + d1.y * d1.y), 1.5);
+  return num / den;
+};
+
+export const curvature3D = (curve: Curve3D, t: number): number => {
+  const d1 = derivative(curve, t);
+  const d2 = secondDerivative(curve, t);
+  const cross = crossPoint3(d1, d2);
+  const num = Math.hypot(cross.x, cross.y, cross.z);
+  const den = Math.pow(Math.max(1e-12, lengthPoint(d1)), 3);
+  return num / den;
+};
+
+export const curvature = (curve: Curve2D | Curve3D, t: number): number => {
+  if (curve.dimension === 2) return curvature2D(curve, t);
+  return curvature3D(curve, t);
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/derivative.ts
+================================================
+import type { Vec2, Vec3 } from "../../../math";
+import type { Curve2D } from "../model/Curve2D";
+import type { Curve3D } from "../model/Curve3D";
+import { clampToDomain } from "../utils/reparameterization";
+import { scalePoint, subPoint } from "../utils/vector";
+
+type DerivativeOptions = {
+  step?: number;
+};
+
+const numericDerivative = (curve: Curve2D | Curve3D, t: number, step: number): Vec2 | Vec3 => {
+  const t0 = clampToDomain(curve, t - step);
+  const t1 = clampToDomain(curve, t + step);
+  if (Math.abs(t1 - t0) <= 1e-12) {
+    const p = curve.eval(t0);
+    return scalePoint(p, 0);
+  }
+  const p0 = curve.eval(t0);
+  const p1 = curve.eval(t1);
+  return scalePoint(subPoint(p1, p0), 1 / (t1 - t0));
+};
+
+export function derivative(curve: Curve2D, t: number, options?: DerivativeOptions): Vec2;
+export function derivative(curve: Curve3D, t: number, options?: DerivativeOptions): Vec3;
+export function derivative(curve: Curve2D | Curve3D, t: number, options: DerivativeOptions = {}): Vec2 | Vec3 {
+  const tc = clampToDomain(curve, t);
+  if (curve.derivative) return curve.derivative(tc);
+  const span = Math.max(1e-9, curve.domain.tMax - curve.domain.tMin);
+  const step = Math.max(1e-9, options.step ?? 1e-4 * span);
+  return numericDerivative(curve, tc, step);
+}
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/evaluateCurve.ts
+================================================
+import type { CurveEvalResult } from "../model";
+import type { Curve2D } from "../model/Curve2D";
+import type { Curve3D } from "../model/Curve3D";
+import { clampToDomain } from "../utils/reparameterization";
+import { derivative } from "./derivative";
+import { secondDerivative } from "./secondDerivative";
+
+export type EvaluateCurveOptions = {
+  clampToDomain?: boolean;
+  includeDerivative?: boolean;
+  includeSecondDerivative?: boolean;
+};
+
+export function evaluateCurve(curve: Curve2D, t: number, options?: EvaluateCurveOptions): CurveEvalResult;
+export function evaluateCurve(curve: Curve3D, t: number, options?: EvaluateCurveOptions): CurveEvalResult;
+export function evaluateCurve(
+  curve: Curve2D | Curve3D,
+  t: number,
+  options: EvaluateCurveOptions = {}
+): CurveEvalResult {
+  const tc = options.clampToDomain === false ? t : clampToDomain(curve, t);
+  const point = curve.eval(tc);
+  const out: CurveEvalResult = { t: tc, point };
+  if (options.includeDerivative) out.tangent = derivative(curve as never, tc);
+  if (options.includeSecondDerivative) out.secondDerivative = secondDerivative(curve as never, tc);
+  return out;
+}
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/frenetFrame.ts
+================================================
+import type { Vec3 } from "../../../math";
+import type { Curve3D } from "../model/Curve3D";
+import { curvature3D } from "./curvature";
+import { derivative } from "./derivative";
+import { secondDerivative } from "./secondDerivative";
+import { torsion } from "./torsion";
+import { crossPoint3, normalizePoint } from "../utils/vector";
+
+export type FrenetFrame = {
+  tangent: Vec3;
+  normal: Vec3;
+  binormal: Vec3;
+  curvature: number;
+  torsion: number;
+};
+
+const fallbackPerpendicular = (tangent: Vec3): Vec3 => {
+  const up = Math.abs(tangent.z) < 0.9 ? ({ x: 0, y: 0, z: 1 } as Vec3) : ({ x: 0, y: 1, z: 0 } as Vec3);
+  return normalizePoint(crossPoint3(up, tangent));
+};
+
+export const frenetFrame = (curve: Curve3D, t: number): FrenetFrame => {
+  const d1 = derivative(curve, t);
+  const d2 = secondDerivative(curve, t);
+  const tangent = normalizePoint(d1);
+  let binormal = normalizePoint(crossPoint3(d1, d2));
+  if (Math.hypot(binormal.x, binormal.y, binormal.z) <= 1e-9) {
+    const normalFallback = fallbackPerpendicular(tangent);
+    binormal = normalizePoint(crossPoint3(tangent, normalFallback));
+  }
+  const normal = normalizePoint(crossPoint3(binormal, tangent));
+  return {
+    tangent,
+    normal,
+    binormal,
+    curvature: curvature3D(curve, t),
+    torsion: torsion(curve, t),
+  };
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/index.ts
+================================================
+export * from "./arcLength";
+export * from "./curvature";
+export * from "./derivative";
+export * from "./evaluateCurve";
+export * from "./frenetFrame";
+export * from "./secondDerivative";
+export * from "./torsion";
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/secondDerivative.ts
+================================================
+import type { Vec2, Vec3 } from "../../../math";
+import type { Curve2D } from "../model/Curve2D";
+import type { Curve3D } from "../model/Curve3D";
+import { clampToDomain } from "../utils/reparameterization";
+import { addPoint, scalePoint, subPoint } from "../utils/vector";
+
+type SecondDerivativeOptions = {
+  step?: number;
+};
+
+const numericSecondDerivative = (curve: Curve2D | Curve3D, t: number, step: number): Vec2 | Vec3 => {
+  const t0 = clampToDomain(curve, t - step);
+  const t1 = clampToDomain(curve, t);
+  const t2 = clampToDomain(curve, t + step);
+  const h = Math.max(1e-12, 0.5 * (t2 - t0));
+  const p0 = curve.eval(t0);
+  const p1 = curve.eval(t1);
+  const p2 = curve.eval(t2);
+  return scalePoint(addPoint(subPoint(p2, scalePoint(p1, 2)), p0), 1 / (h * h));
+};
+
+export function secondDerivative(curve: Curve2D, t: number, options?: SecondDerivativeOptions): Vec2;
+export function secondDerivative(curve: Curve3D, t: number, options?: SecondDerivativeOptions): Vec3;
+export function secondDerivative(
+  curve: Curve2D | Curve3D,
+  t: number,
+  options: SecondDerivativeOptions = {}
+): Vec2 | Vec3 {
+  const tc = clampToDomain(curve, t);
+  if (curve.secondDerivative) return curve.secondDerivative(tc);
+  const span = Math.max(1e-9, curve.domain.tMax - curve.domain.tMin);
+  const step = Math.max(1e-8, options.step ?? 2e-4 * span);
+  return numericSecondDerivative(curve, tc, step);
+}
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/eval/torsion.ts
+================================================
+import type { Vec3 } from "../../../math";
+import type { Curve3D } from "../model/Curve3D";
+import { derivative } from "./derivative";
+import { secondDerivative } from "./secondDerivative";
+import { clampToDomain } from "../utils/reparameterization";
+import { crossPoint3 } from "../utils/vector";
+
+const thirdDerivative = (curve: Curve3D, t: number, step: number): Vec3 => {
+  const t0 = clampToDomain(curve, t - step);
+  const t1 = clampToDomain(curve, t + step);
+  const d20 = secondDerivative(curve, t0);
+  const d21 = secondDerivative(curve, t1);
+  const h = Math.max(1e-12, t1 - t0);
+  return {
+    x: (d21.x - d20.x) / h,
+    y: (d21.y - d20.y) / h,
+    z: (d21.z - d20.z) / h,
+  };
+};
+
+export const torsion = (curve: Curve3D, t: number, stepScale = 1e-3): number => {
+  const d1 = derivative(curve, t);
+  const d2 = secondDerivative(curve, t);
+  const span = Math.max(1e-9, curve.domain.tMax - curve.domain.tMin);
+  const step = Math.max(1e-8, span * stepScale);
+  const d3 = thirdDerivative(curve, t, step);
+  const cross = crossPoint3(d1, d2);
+  const crossLenSq = cross.x * cross.x + cross.y * cross.y + cross.z * cross.z;
+  if (crossLenSq <= 1e-12) return 0;
+  const triple = cross.x * d3.x + cross.y * d3.y + cross.z * d3.z;
+  return triple / crossLenSq;
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/Curve.ts
+================================================
+import type { CurveDomain } from "./CurveDomain";
+
+export type CurveKind =
+  | "parametric"
+  | "bezier"
+  | "bspline"
+  | "nurbs"
+  | "polyline"
+  | "custom";
+
+export type CurveFamily = "parametric" | "explicit" | "implicit" | "polyline";
+
+export type ParametricCurveSubtype = "2d" | "3d" | "polynomial" | "rational" | "spline" | "nurbs";
+
+export interface CurveBase {
+  id: string;
+  name: string;
+  kind: CurveKind;
+  family?: CurveFamily;
+  subtype?: ParametricCurveSubtype;
+  domain: CurveDomain;
+}
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/Curve2D.ts
+================================================
+import type { Vec2 } from "../../../math";
+import type { CurveBase } from "./Curve";
+
+export interface Curve2D extends CurveBase {
+  dimension: 2;
+  eval: (t: number) => Vec2;
+  derivative?: (t: number) => Vec2;
+  secondDerivative?: (t: number) => Vec2;
+  arcLength?: (a: number, b: number) => number;
+}
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/Curve3D.ts
+================================================
+import type { Vec3 } from "../../../math";
+import type { CurveBase } from "./Curve";
+
+export interface Curve3D extends CurveBase {
+  dimension: 3;
+  eval: (t: number) => Vec3;
+  derivative?: (t: number) => Vec3;
+  secondDerivative?: (t: number) => Vec3;
+  arcLength?: (a: number, b: number) => number;
+}
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/CurveDomain.ts
+================================================
+import { isFiniteNumber } from "../../../math";
+
+export type CurveDomain = {
+  tMin: number;
+  tMax: number;
+  closed?: boolean;
+};
+
+export const isCurveDomain = (value: unknown): value is CurveDomain => {
+  if (!value || typeof value !== "object") return false;
+  const probe = value as Partial<CurveDomain>;
+  if (!isFiniteNumber(probe.tMin) || !isFiniteNumber(probe.tMax)) return false;
+  return probe.tMax > probe.tMin;
+};
+
+export const normalizeCurveDomain = (domain: CurveDomain): CurveDomain => {
+  if (domain.tMax >= domain.tMin) return domain;
+  return { ...domain, tMin: domain.tMax, tMax: domain.tMin };
+};
+
+export const curveDomainSpan = (domain: CurveDomain): number => {
+  return Math.max(0, domain.tMax - domain.tMin);
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/CurveEvalResult.ts
+================================================
+import type { Vec2, Vec3 } from "../../../math";
+
+export type CurvePoint = Vec2 | Vec3;
+
+export type CurveEvalResult<TPoint extends CurvePoint = CurvePoint> = {
+  t: number;
+  point: TPoint;
+  tangent?: TPoint;
+  secondDerivative?: TPoint;
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/model/index.ts
+================================================
+export * from "./Curve";
+export * from "./Curve2D";
+export * from "./Curve3D";
+export * from "./CurveDomain";
+export * from "./CurveEvalResult";
+
+import type { Curve2D } from "./Curve2D";
+import type { Curve3D } from "./Curve3D";
+
+export type AnyCurve = Curve2D | Curve3D;
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/sampling/index.ts
+================================================
+export * from "./sampleAdaptive";
+export * from "./sampleUniform";
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/sampling/sampleAdaptive.ts
+================================================
+import type { AnyCurve, CurveEvalResult, CurvePoint } from "../model";
+import { clampToDomain } from "../utils/reparameterization";
+import { distancePoint, lerpPoint } from "../utils/vector";
+
+export type AdaptiveSamplingOptions = {
+  tolerance?: number;
+  maxDepth?: number;
+};
+
+const recurseAdaptive = (
+  curve: AnyCurve,
+  a: CurveEvalResult,
+  b: CurveEvalResult,
+  depth: number,
+  tolerance: number,
+  maxDepth: number,
+  out: CurveEvalResult[]
+): void => {
+  const tm = 0.5 * (a.t + b.t);
+  const pm = curve.eval(clampToDomain(curve, tm));
+  const linearMid = lerpPoint(a.point, b.point, 0.5);
+  const err = distancePoint(pm, linearMid);
+  if (depth >= maxDepth || err <= tolerance) {
+    out.push(b);
+    return;
+  }
+
+  const left: CurveEvalResult = { t: tm, point: pm };
+  recurseAdaptive(curve, a, left, depth + 1, tolerance, maxDepth, out);
+  recurseAdaptive(curve, left, b, depth + 1, tolerance, maxDepth, out);
+};
+
+export const sampleAdaptive = (curve: AnyCurve, options: AdaptiveSamplingOptions = {}): CurveEvalResult[] => {
+  const tolerance = Math.max(1e-9, options.tolerance ?? 1e-3);
+  const maxDepth = Math.max(1, Math.floor(options.maxDepth ?? 12));
+  const start: CurveEvalResult = { t: curve.domain.tMin, point: curve.eval(curve.domain.tMin) };
+  const end: CurveEvalResult = { t: curve.domain.tMax, point: curve.eval(curve.domain.tMax) };
+  const out: CurveEvalResult[] = [start];
+  recurseAdaptive(curve, start, end, 0, tolerance, maxDepth, out);
+  return out;
+};
+
+export const adaptiveSamplesToRenderPoints = <TPoint extends CurvePoint>(samples: CurveEvalResult[]): TPoint[] => {
+  return samples.map((row) => row.point as TPoint);
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/sampling/sampleUniform.ts
+================================================
+import type { AnyCurve, CurveEvalResult, CurvePoint } from "../model";
+
+export const sampleUniform = (curve: AnyCurve, sampleCount = 128): CurveEvalResult[] => {
+  const n = Math.max(2, Math.floor(sampleCount));
+  const tMin = curve.domain.tMin;
+  const tMax = curve.domain.tMax;
+  const dt = (tMax - tMin) / (n - 1);
+  const rows: CurveEvalResult[] = [];
+  for (let i = 0; i < n; i += 1) {
+    const t = i === n - 1 ? tMax : tMin + i * dt;
+    rows.push({ t, point: curve.eval(t) });
+  }
+  return rows;
+};
+
+export const samplesToPolyline = <TPoint extends CurvePoint>(samples: Array<{ point: TPoint }>): TPoint[] => {
+  return samples.map((row) => row.point);
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/utils/bbox.ts
+================================================
+import type { Vec2, Vec3 } from "../../../math";
+import type { AnyCurve, CurvePoint } from "../model";
+import { sampleUniform } from "../sampling";
+import { isVec3Point } from "./vector";
+
+export type BoundingBox2D = {
+  min: Vec2;
+  max: Vec2;
+};
+
+export type BoundingBox3D = {
+  min: Vec3;
+  max: Vec3;
+};
+
+export type CurveBoundingBox = BoundingBox2D | BoundingBox3D;
+
+export const bboxFromPoints = (points: CurvePoint[]): CurveBoundingBox | null => {
+  if (!points.length) return null;
+  const first = points[0];
+  if (isVec3Point(first)) {
+    const min: Vec3 = { ...first };
+    const max: Vec3 = { ...first };
+    for (let i = 1; i < points.length; i += 1) {
+      const p = points[i];
+      if (!isVec3Point(p)) continue;
+      min.x = Math.min(min.x, p.x);
+      min.y = Math.min(min.y, p.y);
+      min.z = Math.min(min.z, p.z);
+      max.x = Math.max(max.x, p.x);
+      max.y = Math.max(max.y, p.y);
+      max.z = Math.max(max.z, p.z);
+    }
+    return { min, max };
+  }
+
+  const min: Vec2 = { x: first.x, y: first.y };
+  const max: Vec2 = { x: first.x, y: first.y };
+  for (let i = 1; i < points.length; i += 1) {
+    const p = points[i];
+    min.x = Math.min(min.x, p.x);
+    min.y = Math.min(min.y, p.y);
+    max.x = Math.max(max.x, p.x);
+    max.y = Math.max(max.y, p.y);
+  }
+  return { min, max };
+};
+
+export const bboxFromCurve = (curve: AnyCurve, samples = 256): CurveBoundingBox | null => {
+  const sampled = sampleUniform(curve, samples);
+  return bboxFromPoints(sampled.map((row) => row.point));
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/utils/index.ts
+================================================
+export * from "./bbox";
+export * from "./reparameterization";
+export * from "./validation";
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/utils/reparameterization.ts
+================================================
+import type { AnyCurve } from "../model";
+import { curveDomainSpan } from "../model";
+import { distancePoint } from "./vector";
+
+export const clampToDomain = (curve: AnyCurve, t: number): number => {
+  if (t <= curve.domain.tMin) return curve.domain.tMin;
+  if (t >= curve.domain.tMax) return curve.domain.tMax;
+  return t;
+};
+
+export const normalizeCurveParameter = (curve: AnyCurve, t: number): number => {
+  const span = curveDomainSpan(curve.domain);
+  if (span <= 1e-12) return 0;
+  return (clampToDomain(curve, t) - curve.domain.tMin) / span;
+};
+
+export const denormalizeCurveParameter = (curve: AnyCurve, u: number): number => {
+  const uc = Math.min(1, Math.max(0, u));
+  return curve.domain.tMin + uc * curveDomainSpan(curve.domain);
+};
+
+export type ArcLengthTable = {
+  ts: number[];
+  lengths: number[];
+  totalLength: number;
+};
+
+export const buildArcLengthTable = (curve: AnyCurve, segments = 256): ArcLengthTable => {
+  const count = Math.max(2, Math.floor(segments));
+  const ts: number[] = new Array(count + 1);
+  const lengths: number[] = new Array(count + 1);
+  const tMin = curve.domain.tMin;
+  const tMax = curve.domain.tMax;
+  const dt = (tMax - tMin) / count;
+
+  let total = 0;
+  ts[0] = tMin;
+  lengths[0] = 0;
+  let prev = curve.eval(tMin);
+
+  for (let i = 1; i <= count; i += 1) {
+    const t = i === count ? tMax : tMin + i * dt;
+    ts[i] = t;
+    const next = curve.eval(t);
+    total += distancePoint(prev, next);
+    lengths[i] = total;
+    prev = next;
+  }
+
+  return { ts, lengths, totalLength: total };
+};
+
+export const invertArcLengthTable = (table: ArcLengthTable, s: number): number => {
+  if (table.totalLength <= 1e-12) return table.ts[0] ?? 0;
+  const target = Math.min(table.totalLength, Math.max(0, s));
+  const lengths = table.lengths;
+  const ts = table.ts;
+
+  let lo = 0;
+  let hi = lengths.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (lengths[mid] <= target) lo = mid;
+    else hi = mid;
+  }
+
+  const aLen = lengths[lo];
+  const bLen = lengths[lo + 1];
+  const aT = ts[lo];
+  const bT = ts[lo + 1];
+  const span = Math.max(1e-12, bLen - aLen);
+  const alpha = (target - aLen) / span;
+  return aT + (bT - aT) * alpha;
+};
+
+export const reparameterizeByArcLength = (curve: AnyCurve, segments = 256) => {
+  const table = buildArcLengthTable(curve, segments);
+  return {
+    table,
+    tToS: (t: number): number => {
+      const tc = clampToDomain(curve, t);
+      const ts = table.ts;
+      const lengths = table.lengths;
+      let lo = 0;
+      let hi = ts.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (ts[mid] <= tc) lo = mid;
+        else hi = mid;
+      }
+      const aT = ts[lo];
+      const bT = ts[lo + 1];
+      const aS = lengths[lo];
+      const bS = lengths[lo + 1];
+      const span = Math.max(1e-12, bT - aT);
+      const alpha = (tc - aT) / span;
+      return aS + (bS - aS) * alpha;
+    },
+    sToT: (s: number): number => invertArcLengthTable(table, s),
+    uToT: (u: number): number => invertArcLengthTable(table, Math.max(0, Math.min(1, u)) * table.totalLength),
+  };
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/utils/validation.ts
+================================================
+import type { AnyCurve, CurvePoint } from "../model";
+import { isCurveDomain } from "../model";
+import { finitePoint } from "./vector";
+
+const validId = (value: string): boolean => value.trim().length > 0;
+
+const closeEnough = (a: CurvePoint, b: CurvePoint, tolerance: number): boolean => {
+  if (Math.abs(a.x - b.x) > tolerance) return false;
+  if (Math.abs(a.y - b.y) > tolerance) return false;
+  if ("z" in a || "z" in b) {
+    const az = "z" in a ? a.z : 0;
+    const bz = "z" in b ? b.z : 0;
+    if (Math.abs(az - bz) > tolerance) return false;
+  }
+  return true;
+};
+
+export const validateCurve = (curve: AnyCurve, tolerance = 1e-6): string[] => {
+  const errors: string[] = [];
+  if (!validId(curve.id)) errors.push("curve.id must be a non-empty string.");
+  if (!validId(curve.name)) errors.push("curve.name must be a non-empty string.");
+  if (!isCurveDomain(curve.domain)) {
+    errors.push("curve.domain is invalid; require finite tMin, tMax, and tMax > tMin.");
+    return errors;
+  }
+
+  const start = curve.eval(curve.domain.tMin);
+  const end = curve.eval(curve.domain.tMax);
+  if (!finitePoint(start)) errors.push("curve.eval(tMin) returned non-finite coordinates.");
+  if (!finitePoint(end)) errors.push("curve.eval(tMax) returned non-finite coordinates.");
+
+  if (curve.derivative) {
+    const dMid = curve.derivative(0.5 * (curve.domain.tMin + curve.domain.tMax));
+    if (!finitePoint(dMid)) errors.push("curve.derivative(t) returned non-finite coordinates.");
+  }
+  if (curve.secondDerivative) {
+    const d2Mid = curve.secondDerivative(0.5 * (curve.domain.tMin + curve.domain.tMax));
+    if (!finitePoint(d2Mid)) errors.push("curve.secondDerivative(t) returned non-finite coordinates.");
+  }
+  if (curve.domain.closed && finitePoint(start) && finitePoint(end) && !closeEnough(start, end, tolerance)) {
+    errors.push("curve.domain.closed is true but endpoints are not coincident within tolerance.");
+  }
+
+  return errors;
+};
+
+export const isValidCurve = (curve: AnyCurve, tolerance = 1e-6): boolean => {
+  return validateCurve(curve, tolerance).length === 0;
+};
+
+
+
+
+================================================
+FILE: core/src/geometry/curve-core/utils/vector.ts
+================================================
+import type { Vec3 } from "../../../math";
+import type { CurvePoint } from "../model";
+
+export const isVec3Point = (value: CurvePoint): value is Vec3 => {
+  return "z" in value;
+};
+
+export const addPoint = <TPoint extends CurvePoint>(a: TPoint, b: TPoint): TPoint => {
+  if (isVec3Point(a) && isVec3Point(b)) return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z } as TPoint;
+  return { x: a.x + b.x, y: a.y + b.y } as TPoint;
+};
+
+export const subPoint = <TPoint extends CurvePoint>(a: TPoint, b: TPoint): TPoint => {
+  if (isVec3Point(a) && isVec3Point(b)) return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z } as TPoint;
+  return { x: a.x - b.x, y: a.y - b.y } as TPoint;
+};
+
+export const scalePoint = <TPoint extends CurvePoint>(a: TPoint, s: number): TPoint => {
+  if (isVec3Point(a)) return { x: a.x * s, y: a.y * s, z: a.z * s } as TPoint;
+  return { x: a.x * s, y: a.y * s } as TPoint;
+};
+
+export const dotPoint = (a: CurvePoint, b: CurvePoint): number => {
+  if (isVec3Point(a) && isVec3Point(b)) return a.x * b.x + a.y * b.y + a.z * b.z;
+  return a.x * b.x + a.y * b.y;
+};
+
+export const crossPoint3 = (a: CurvePoint, b: CurvePoint): Vec3 => {
+  const az = isVec3Point(a) ? a.z : 0;
+  const bz = isVec3Point(b) ? b.z : 0;
+  return {
+    x: a.y * bz - az * b.y,
+    y: az * b.x - a.x * bz,
+    z: a.x * b.y - a.y * b.x,
+  };
+};
+
+export const lengthPoint = (value: CurvePoint): number => {
+  return Math.sqrt(dotPoint(value, value));
+};
+
+export const distancePoint = (a: CurvePoint, b: CurvePoint): number => {
+  return lengthPoint(subPoint(a, b));
+};
+
+export const normalizePoint = <TPoint extends CurvePoint>(value: TPoint): TPoint => {
+  const len = lengthPoint(value);
+  if (len <= 1e-12) return scalePoint(value, 0);
+  return scalePoint(value, 1 / len);
+};
+
+export const lerpPoint = <TPoint extends CurvePoint>(a: TPoint, b: TPoint, alpha: number): TPoint => {
+  const oneMinus = 1 - alpha;
+  return addPoint(scalePoint(a, oneMinus), scalePoint(b, alpha));
+};
+
+export const finitePoint = (value: CurvePoint): boolean => {
+  if (!Number.isFinite(value.x) || !Number.isFinite(value.y)) return false;
+  if (isVec3Point(value)) return Number.isFinite(value.z);
+  return true;
+};
+
+
+
+================================================
+FILE: renderer/package.json
+================================================
+{
+  "name": "@math3d/renderer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@math3d/core": "file:../core",
+    "three": "^0.181.2"
+  }
+}
+
+
+
+================================================
+FILE: renderer/src/index.ts
+================================================
+export * from "./materials";
+export * from "./sceneBuilders";
+export * from "./layeredReferenceGrid";
+
+
+
+================================================
+FILE: renderer/src/layeredReferenceGrid.ts
+================================================
+import * as THREE from "three";
+
+export type LayeredReferenceGridOverlay = {
+  group: THREE.Group;
+  dispose: () => void;
+};
+
+export type LayeredReferenceGridOptions = {
+  halfSize: number;
+  majorStep?: number;
+  minorDivisions?: number;
+  labelEveryMajor?: number;
+  labelScale?: number;
+  lineLift?: number;
+  originDotRadius?: number;
+  showGrid?: boolean;
+  showMinorGrid?: boolean;
+  showLabels?: boolean;
+  showXY?: boolean;
+  showXZ?: boolean;
+  showYZ?: boolean;
+  autoGridScale?: boolean;
+  gridDensity?: number;
+  planeOpacity?: number;
+};
+
+export type ReferencePlaneGridSettings = {
+  showGrid: boolean;
+  showMinorGrid: boolean;
+  showLabels: boolean;
+  showXY: boolean;
+  showXZ: boolean;
+  showYZ: boolean;
+  autoGridScale: boolean;
+  gridDensity: number;
+  planeOpacity: number;
+};
+
+export const DEFAULT_REFERENCE_PLANE_GRID_SETTINGS: ReferencePlaneGridSettings = {
+  showGrid: true,
+  showMinorGrid: true,
+  showLabels: true,
+  showXY: true,
+  showXZ: true,
+  showYZ: true,
+  autoGridScale: true,
+  gridDensity: 10,
+  planeOpacity: 0.06,
+};
+
+type PlaneSpec = {
+  id: "xy" | "xz" | "yz";
+  rotation: [number, number, number];
+  tint: number;
+  labelColor: string;
+  axisU: "x" | "y" | "z";
+  axisV: "x" | "y" | "z";
+};
+
+const EPS = 1e-6;
+
+const AXIS_COLORS: Record<"x" | "y" | "z", number> = {
+  x: 0xe35b5b,
+  y: 0x44b572,
+  z: 0x4a83ff,
+};
+
+const PLANE_SPECS: PlaneSpec[] = [
+  {
+    id: "xy",
+    rotation: [0, 0, 0],
+    tint: 0x74abff,
+    labelColor: "#8db8ff",
+    axisU: "x",
+    axisV: "y",
+  },
+  {
+    id: "xz",
+    rotation: [-Math.PI / 2, 0, 0],
+    tint: 0x69ca84,
+    labelColor: "#8fe2a6",
+    axisU: "x",
+    axisV: "z",
+  },
+  {
+    id: "yz",
+    rotation: [0, Math.PI / 2, 0],
+    tint: 0xffa877,
+    labelColor: "#ffc498",
+    axisU: "z",
+    axisV: "y",
+  },
+];
+
+const chooseMajorStep = (rawStep: number) => {
+  const raw = Math.max(EPS, rawStep);
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const normalized = raw / magnitude;
+  if (normalized <= 1) return 1 * magnitude;
+  if (normalized <= 2) return 2 * magnitude;
+  if (normalized <= 5) return 5 * magnitude;
+  return 10 * magnitude;
+};
+
+const formatTickValue = (value: number) => {
+  if (Math.abs(value) <= EPS) return "0";
+  const rounded = Math.round(value);
+  if (Math.abs(value - rounded) <= 1e-6) return String(rounded);
+  const oneDecimal = Number(value.toFixed(1));
+  if (Math.abs(value - oneDecimal) <= 1e-6) return String(oneDecimal);
+  return String(Number(value.toFixed(2)));
+};
+
+const pushSegment = (
+  positions: number[],
+  colors: number[],
+  a: THREE.Vector3,
+  b: THREE.Vector3,
+  color: THREE.Color
+) => {
+  positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+  colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
+};
+
+const createLabelSprite = (text: string, color: string, worldScale: number) => {
+  const width = 128;
+  const height = 72;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(16,24,40,0.55)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(203,213,225,0.45)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, width - 2, height - 2);
+  ctx.fillStyle = color;
+  ctx.font = "600 32px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, width / 2, height / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  const material = new THREE.SpriteMaterial({
+    map: texture,
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    toneMapped: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.renderOrder = 300;
+  sprite.scale.set(worldScale * 1.4, worldScale * 0.78, 1);
+  return sprite;
+};
+
+const makeLineSegments = (
+  positions: number[],
+  colors: number[],
+  opacity: number,
+  fallbackColor: number
+) => {
+  if (!positions.length) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  const material = new THREE.LineBasicMaterial({
+    color: fallbackColor,
+    vertexColors: true,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const lines = new THREE.LineSegments(geometry, material);
+  lines.renderOrder = 120;
+  return lines;
+};
+
+const disposeGroupDeep = (group: THREE.Group) => {
+  group.traverse((obj) => {
+    const anyObj = obj as any;
+    if (anyObj.geometry && typeof anyObj.geometry.dispose === "function") {
+      anyObj.geometry.dispose();
+    }
+    const matAny = anyObj.material as THREE.Material | THREE.Material[] | undefined;
+    if (!matAny) return;
+    const disposeMaterial = (m: THREE.Material) => {
+      const anyMat = m as any;
+      if (anyMat?.map && typeof anyMat.map.dispose === "function") {
+        anyMat.map.dispose();
+      }
+      m.dispose();
+    };
+    if (Array.isArray(matAny)) matAny.forEach((m) => disposeMaterial(m));
+    else disposeMaterial(matAny);
+  });
+};
+
+export const createLayeredReferenceGrid = (
+  options: LayeredReferenceGridOptions
+): LayeredReferenceGridOverlay => {
+  const halfSize = Math.max(1, options.halfSize);
+  const showGrid = options.showGrid ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showGrid;
+  const showMinorGrid = options.showMinorGrid ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showMinorGrid;
+  const showLabels = options.showLabels ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showLabels;
+  const showXY = options.showXY ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXY;
+  const showXZ = options.showXZ ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXZ;
+  const showYZ = options.showYZ ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showYZ;
+  const autoGridScale = options.autoGridScale ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.autoGridScale;
+  const gridDensity = Math.max(4, Math.min(20, options.gridDensity ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.gridDensity));
+  const planeOpacity = Math.max(0, Math.min(0.45, options.planeOpacity ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.planeOpacity));
+  const targetMajorStep = (halfSize * 2) / Math.max(1, gridDensity);
+  const computedMajorStep = autoGridScale ? chooseMajorStep(targetMajorStep) : targetMajorStep;
+  const majorStep = Math.max(EPS, options.majorStep ?? computedMajorStep);
+  const minorDivisions = Math.max(2, Math.round(options.minorDivisions ?? 5));
+  const minorStep = majorStep / minorDivisions;
+  const lineLift = options.lineLift ?? Math.max(0.002, halfSize * 0.0012);
+  const labelScale = Math.max(0.5, options.labelScale ?? 1);
+  const originDotRadius = options.originDotRadius ?? Math.max(0.035, halfSize * 0.016);
+
+  const group = new THREE.Group();
+  group.name = "layered-reference-grid";
+
+  let labelEveryMajor = Math.max(1, Math.round(options.labelEveryMajor ?? 1));
+  const majorCount = Math.floor((halfSize + EPS) / majorStep);
+  if (majorCount > 8 && labelEveryMajor < 2) labelEveryMajor = 2;
+
+  for (const spec of PLANE_SPECS) {
+    if (
+      (spec.id === "xy" && !showXY) ||
+      (spec.id === "xz" && !showXZ) ||
+      (spec.id === "yz" && !showYZ)
+    ) {
+      continue;
+    }
+
+    const planeGroup = new THREE.Group();
+    planeGroup.name = `layered-reference-grid-${spec.id}`;
+    planeGroup.rotation.set(spec.rotation[0], spec.rotation[1], spec.rotation[2]);
+
+    const fillGeometry = new THREE.PlaneGeometry(halfSize * 2, halfSize * 2);
+    const fillMaterial = new THREE.MeshBasicMaterial({
+      color: spec.tint,
+      transparent: true,
+      opacity: planeOpacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
+    fillMesh.renderOrder = 90;
+    planeGroup.add(fillMesh);
+
+    const minorPositions: number[] = [];
+    const minorColors: number[] = [];
+    const majorPositions: number[] = [];
+    const majorColors: number[] = [];
+
+    const minorCount = Math.floor((halfSize + EPS) / minorStep);
+    for (let i = -minorCount; i <= minorCount; i++) {
+      const offset = i * minorStep;
+      if (Math.abs(offset) > halfSize + EPS) continue;
+      if (Math.abs(offset) <= EPS) continue;
+
+      const isMajor = i % minorDivisions === 0;
+      const normalized = Math.min(1, Math.abs(offset) / halfSize);
+      const fade = 1 - 0.72 * Math.pow(normalized, 1.2);
+      const intensity = isMajor ? 0.5 + 0.5 * fade : 0.24 + 0.46 * fade;
+      const c = new THREE.Color(spec.tint).multiplyScalar(intensity);
+      const targetPositions = isMajor ? majorPositions : minorPositions;
+      const targetColors = isMajor ? majorColors : minorColors;
+
+      pushSegment(
+        targetPositions,
+        targetColors,
+        new THREE.Vector3(offset, -halfSize, lineLift),
+        new THREE.Vector3(offset, halfSize, lineLift),
+        c
+      );
+      pushSegment(
+        targetPositions,
+        targetColors,
+        new THREE.Vector3(-halfSize, offset, lineLift),
+        new THREE.Vector3(halfSize, offset, lineLift),
+        c
+      );
+    }
+
+    if (showGrid) {
+      if (showMinorGrid) {
+        const minorLines = makeLineSegments(minorPositions, minorColors, 0.46, spec.tint);
+        if (minorLines) planeGroup.add(minorLines);
+      }
+
+      const majorLines = makeLineSegments(majorPositions, majorColors, 0.78, spec.tint);
+      if (majorLines) planeGroup.add(majorLines);
+
+      const axisUColor = AXIS_COLORS[spec.axisU];
+      const axisVColor = AXIS_COLORS[spec.axisV];
+      const axisU = makeLineSegments(
+        [-halfSize, 0, lineLift * 1.4, halfSize, 0, lineLift * 1.4],
+        [...new THREE.Color(axisUColor).toArray(), ...new THREE.Color(axisUColor).toArray()],
+        0.98,
+        axisUColor
+      );
+      const axisV = makeLineSegments(
+        [0, -halfSize, lineLift * 1.4, 0, halfSize, lineLift * 1.4],
+        [...new THREE.Color(axisVColor).toArray(), ...new THREE.Color(axisVColor).toArray()],
+        0.98,
+        axisVColor
+      );
+      if (axisU) planeGroup.add(axisU);
+      if (axisV) planeGroup.add(axisV);
+    }
+
+    if (showGrid && showLabels) {
+      for (let k = -majorCount; k <= majorCount; k++) {
+        if (k === 0 || k % labelEveryMajor !== 0) continue;
+        const tickValue = k * majorStep;
+        const text = formatTickValue(tickValue);
+        const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
+
+        const uLabel = createLabelSprite(text, spec.labelColor, labelSize);
+        if (uLabel) {
+          uLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
+          planeGroup.add(uLabel);
+        }
+
+        const vLabel = createLabelSprite(text, spec.labelColor, labelSize);
+        if (vLabel) {
+          vLabel.position.set(lineLift * 13, tickValue, lineLift * 2.4);
+          planeGroup.add(vLabel);
+        }
+      }
+    }
+
+    group.add(planeGroup);
+  }
+
+  const originDot = new THREE.Mesh(
+    new THREE.SphereGeometry(originDotRadius, 16, 16),
+    new THREE.MeshBasicMaterial({
+      color: 0xf8fafc,
+      transparent: true,
+      opacity: 0.96,
+      depthWrite: false,
+      toneMapped: false,
+    })
+  );
+  originDot.renderOrder = 210;
+  group.add(originDot);
+
+  if (showLabels) {
+    const zeroLabel = createLabelSprite("0", "#e2e8f0", Math.max(0.16, Math.min(0.56, halfSize * 0.1 * labelScale)));
+    if (zeroLabel) {
+      zeroLabel.position.set(lineLift * 20, lineLift * 20, lineLift * 24);
+      group.add(zeroLabel);
+    }
+  }
+
+  return {
+    group,
+    dispose: () => disposeGroupDeep(group),
+  };
+};
+
+
+
+================================================
+FILE: renderer/src/materials.ts
+================================================
+import * as THREE from "three";
+
+export const createDefaultSurfaceMaterial = (opts?: {
+  color?: number;
+  opacity?: number;
+  wireframe?: boolean;
+}): THREE.MeshStandardMaterial =>
+  new THREE.MeshStandardMaterial({
+    color: opts?.color ?? 0x8aa4ff,
+    transparent: (opts?.opacity ?? 1) < 1,
+    opacity: opts?.opacity ?? 1,
+    wireframe: !!opts?.wireframe,
+    metalness: 0.05,
+    roughness: 0.55,
+  });
+
+export const createDefaultLineMaterial = (opts?: { color?: number; opacity?: number }): THREE.LineBasicMaterial =>
+  new THREE.LineBasicMaterial({
+    color: opts?.color ?? 0x334155,
+    transparent: (opts?.opacity ?? 1) < 1,
+    opacity: opts?.opacity ?? 1,
+  });
+
+
+
+================================================
+FILE: renderer/src/sceneBuilders.ts
+================================================
+import * as THREE from "three";
+import type { GeometryScene, Point3, Segment3 } from "@math3d/core";
+import { createDefaultLineMaterial } from "./materials";
+
+const toVector3 = (p: Point3): THREE.Vector3 => new THREE.Vector3(p.x, p.y, p.z);
+
+const buildPointsObject = (points: Point3[]): THREE.Points => {
+  const geometry = new THREE.BufferGeometry();
+  const vertices = new Float32Array(points.length * 3);
+  for (let i = 0; i < points.length; i += 1) {
+    const p = points[i];
+    vertices[i * 3 + 0] = p.x;
+    vertices[i * 3 + 1] = p.y;
+    vertices[i * 3 + 2] = p.z;
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+  const material = new THREE.PointsMaterial({ size: 0.05, color: 0xef4444 });
+  return new THREE.Points(geometry, material);
+};
+
+const buildSegmentObject = (segments: Segment3[]): THREE.LineSegments => {
+  const geometry = new THREE.BufferGeometry();
+  const vertices = new Float32Array(segments.length * 2 * 3);
+  for (let i = 0; i < segments.length; i += 1) {
+    const a = segments[i].a;
+    const b = segments[i].b;
+    const base = i * 6;
+    vertices[base + 0] = a.x;
+    vertices[base + 1] = a.y;
+    vertices[base + 2] = a.z;
+    vertices[base + 3] = b.x;
+    vertices[base + 4] = b.y;
+    vertices[base + 5] = b.z;
+  }
+  geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+  return new THREE.LineSegments(geometry, createDefaultLineMaterial());
+};
+
+export const buildThreeSceneFromGeometry = (geometryScene: GeometryScene): THREE.Group => {
+  const root = new THREE.Group();
+  if (geometryScene.points?.length) root.add(buildPointsObject(geometryScene.points));
+  if (geometryScene.segments?.length) root.add(buildSegmentObject(geometryScene.segments));
+  if (geometryScene.lines?.length) {
+    for (const line of geometryScene.lines) {
+      const start = toVector3(line.origin);
+      const length = Math.max(0.1, line.length ?? 2);
+      const end = start.clone().add(new THREE.Vector3(line.direction.x, line.direction.y, line.direction.z).multiplyScalar(length));
+      const lineGeometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+      root.add(new THREE.Line(lineGeometry, createDefaultLineMaterial({ color: line.color, opacity: line.opacity })));
+    }
+  }
+  return root;
+};
+
+export const createReferenceGrid = (size = 20, divisions = 20): THREE.GridHelper =>
+  new THREE.GridHelper(size, divisions, 0x64748b, 0xcbd5e1);
+
+
+
+================================================
+FILE: ui/package.json
+================================================
+{
+  "name": "@math3d/ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}
+
+
+
+================================================
+FILE: ui/src/index.ts
+================================================
+export type InspectorFieldKind = "number" | "toggle" | "select" | "text";
+
+export type InspectorFieldDefinition = {
+  id: string;
+  label: string;
+  kind: InspectorFieldKind;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: Array<{ value: string; label: string }>;
+};
+
+export type InspectorSectionDefinition = {
+  id: string;
+  title: string;
+  fields: InspectorFieldDefinition[];
+};
+
+export type ToolbarActionDefinition = {
+  id: string;
+  label: string;
+  shortcut?: string;
+  group?: "file" | "edit" | "view" | "insert" | "analysis";
+};
+
+export type PanelDefinition = {
+  id: string;
+  title: string;
+  pinned?: boolean;
+  sections: InspectorSectionDefinition[];
+};
+
+export const createPanelDefinition = (
+  id: string,
+  title: string,
+  sections: InspectorSectionDefinition[]
+): PanelDefinition => ({
+  id,
+  title,
+  sections,
+});
+
+
+
+================================================
+FILE: workbook/package.json
+================================================
+{
+  "name": "@math3d/workbook",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@math3d/core": "file:../core"
+  }
+}
+
+
+
+================================================
+FILE: workbook/src/index.ts
+================================================
+export * from "./operatorRegistry";
+export * from "./workbookModel";
+
+
+
+================================================
+FILE: workbook/src/operatorRegistry.ts
+================================================
+import type { WorkbookPort } from "./workbookModel";
+
+export type WorkbookOperatorSpec = {
+  id: string;
+  label: string;
+  inputs: WorkbookPort[];
+  outputs: WorkbookPort[];
+  hidden?: boolean;
+  hint?: string[];
+};
+
+export const createOperatorRegistry = <T extends { id: string }>(entries: T[]) => {
+  const byId = new Map<string, T>();
+  entries.forEach((entry) => byId.set(entry.id, entry));
+  return {
+    list: entries,
+    byId,
+    get: (id?: string | null) => (id ? byId.get(id) : undefined),
+  };
+};
+
+export const BASE_COMPUTE_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "formula", label: "Formula", type: "formula", optional: true },
+  { id: "overlay", label: "Overlay", type: "overlay", optional: true },
+  { id: "curve", label: "Curve", type: "curve", optional: true },
+  { id: "points", label: "Points", type: "points", optional: true },
+  { id: "mask", label: "Mask", type: "mask", optional: true },
+  { id: "vector", label: "Vector", type: "vector", optional: true },
+];
+
+export const GEODESIC_INPUTS: WorkbookPort[] = [...BASE_COMPUTE_INPUTS];
+export const FIELD_SCALAR_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "scalar", label: "Scalar", type: "scalar", optional: true },
+];
+export const FIELD_VECTOR_INPUTS: WorkbookPort[] = [
+  { id: "dataset", label: "Dataset", type: "dataset" },
+  { id: "vector", label: "Vector", type: "vector", optional: true },
+];
+
+export const WORKBOOK_OPERATOR_CATALOG: WorkbookOperatorSpec[] = [
+  {
+    id: "chart.pointInfo",
+    label: "Point info + chart grid",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [],
+    hint: [
+      "Use after a Pick point interaction or probe hover.",
+      "Reports local chart coords + tangents + normal.",
+      "Also enables chart grid or wireframe in the view.",
+    ],
+  },
+  {
+    id: "surface.curvature",
+    label: "Curvature field + principal directions",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+    hint: [
+      "Turns on curvature coloring (K/H) with principal glyphs.",
+      "Use viewer toggles for ridges/valleys or lines.",
+    ],
+  },
+  {
+    id: "surface.geodesicDistance",
+    label: "Geodesic distance (heat)",
+    inputs: GEODESIC_INPUTS,
+    outputs: [{ id: "curve", label: "Curve", type: "curve" }],
+    hint: [
+      "Pick a seed point first. Optional second pick sets target.",
+      "Outputs heatmap + shortest path polyline.",
+    ],
+  },
+  {
+    id: "surface.parallelTransport",
+    label: "Parallel transport (curve)",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [],
+    hint: [
+      "Use after Draw curve + Pick direction (optional).",
+      "Transports the picked tangent direction along the curve.",
+      "Renders vectors along the curve.",
+    ],
+  },
+  {
+    id: "field.grad",
+    label: "Grad (scalar â†’ vector field)",
+    inputs: FIELD_SCALAR_INPUTS,
+    outputs: [{ id: "vector", label: "Vector", type: "vector" }],
+    hint: [
+      "Uses scalar field (defaults to K).",
+      "Renders tangent arrows (downsampled).",
+    ],
+  },
+  {
+    id: "field.div",
+    label: "Div (vector â†’ scalar field)",
+    inputs: FIELD_VECTOR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Uses vector field (defaults to grad(K)).",
+      "Stores scalar field for reuse.",
+    ],
+  },
+  {
+    id: "field.curl",
+    label: "Curl (vector â†’ scalar field)",
+    inputs: FIELD_VECTOR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Uses vector field (defaults to grad(K)).",
+      "Computes normal-component curl on the surface.",
+    ],
+  },
+  {
+    id: "field.laplacian",
+    label: "Laplacian (scalar â†’ scalar field)",
+    inputs: FIELD_SCALAR_INPUTS,
+    outputs: [{ id: "scalar", label: "Scalar", type: "scalar" }],
+    hint: [
+      "Equivalent to div(grad(scalar)).",
+      "Stores scalar field for reuse.",
+    ],
+  },
+  {
+    id: "point_info",
+    label: "Point info (legacy)",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [],
+    hidden: true,
+  },
+  {
+    id: "chart_grid",
+    label: "Chart grid + coords",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+  },
+  {
+    id: "curve_overlay",
+    label: "Curve overlay",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "curve", label: "Curve", type: "curve" }],
+  },
+  {
+    id: "direction_overlay",
+    label: "Direction overlay",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "curve", label: "Curve", type: "curve" }],
+  },
+  {
+    id: "selection_overlay",
+    label: "Selection overlay",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "mask", label: "Mask", type: "mask" }],
+  },
+  {
+    id: "curvature_field",
+    label: "Curvature field (legacy)",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+    hidden: true,
+  },
+  {
+    id: "geodesic_heat",
+    label: "Geodesic heat (legacy)",
+    inputs: GEODESIC_INPUTS,
+    outputs: [{ id: "curve", label: "Curve", type: "curve" }],
+    hidden: true,
+  },
+  {
+    id: "geodesic_path",
+    label: "Geodesic path",
+    inputs: GEODESIC_INPUTS,
+    outputs: [{ id: "curve", label: "Curve", type: "curve" }],
+  },
+  {
+    id: "principal_dirs",
+    label: "Principal directions",
+    inputs: BASE_COMPUTE_INPUTS,
+    outputs: [{ id: "overlay", label: "Overlay", type: "overlay" }],
+  },
+];
+
+export const WORKBOOK_OPERATOR_REGISTRY = createOperatorRegistry(WORKBOOK_OPERATOR_CATALOG);
+
+
+
+================================================
+FILE: workbook/src/workbookModel.ts
+================================================
+import type {
+  ColorMode,
+  ColorPalette,
+  DatasetKind,
+  ParamSurfaceId,
+  SurfaceId,
+  SurfaceType,
+} from "@math3d/core";
+
+export type WorkbookStageId = "define" | "compute" | "visualize" | "explain";
+export type WorkbookBlockType =
+  | "text"
+  | "formula"
+  | "visualize"
+  | "compute"
+  | "assert"
+  | "interaction";
+export type WorkbookValueType =
+  | "text"
+  | "formula"
+  | "dataset"
+  | "view"
+  | "snapshot"
+  | "overlay"
+  | "curve"
+  | "mask"
+  | "params"
+  | "mesh"
+  | "volume"
+  | "selection"
+  | "scalar"
+  | "vector"
+  | "points";
+
+export type WorkbookPort = {
+  id: string;
+  label: string;
+  type: WorkbookValueType;
+  optional?: boolean;
+};
+
+export type WorkbookParamKind = "number" | "select" | "toggle";
+export type WorkbookParamValue = number | string | boolean;
+export type WorkbookParamOption = { value: string; label: string };
+export type WorkbookParamDef = {
+  id: string;
+  label: string;
+  kind: WorkbookParamKind;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: WorkbookParamOption[];
+  defaultValue?: WorkbookParamValue;
+};
+export type WorkbookParamKeyframe = {
+  id: string;
+  label?: string;
+  values: Record<string, WorkbookParamValue>;
+  createdAt: number;
+};
+export type WorkbookParamState = {
+  defs: WorkbookParamDef[];
+  values: Record<string, WorkbookParamValue>;
+  scrub?: boolean;
+  keyframes?: WorkbookParamKeyframe[];
+};
+
+export type WorkbookInteractionKind =
+  | "pick_point"
+  | "draw_curve"
+  | "select_region"
+  | "pick_direction";
+export type WorkbookInteractionStatus = "idle" | "armed" | "captured";
+export type WorkbookPointOutput = {
+  point: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  uv?: { u: number; v: number };
+  xy?: { x: number; y: number };
+  tangentU?: { x: number; y: number; z: number };
+  tangentV?: { x: number; y: number; z: number };
+  meshKey?: string;
+  vertexIndex?: number;
+  faceIndex?: number;
+  bary?: [number, number, number];
+};
+export type WorkbookCurveOutput = {
+  points: { x: number; y: number; z: number }[];
+  closed?: boolean;
+};
+export type WorkbookMaskOutput = {
+  meshKey?: string;
+  indices: number[];
+  count: number;
+};
+export type WorkbookDirectionOutput = {
+  origin: { x: number; y: number; z: number };
+  direction: { x: number; y: number; z: number };
+  tangentU?: { x: number; y: number; z: number };
+  tangentV?: { x: number; y: number; z: number };
+};
+export type WorkbookInteractionData = {
+  kind: WorkbookInteractionKind;
+  status?: WorkbookInteractionStatus;
+  summary?: string;
+  point?: WorkbookPointOutput | null;
+  curve?: WorkbookCurveOutput | null;
+  mask?: WorkbookMaskOutput | null;
+  direction?: WorkbookDirectionOutput | null;
+  points?: { x: number; y: number; z: number }[];
+  directionAngle?: number;
+};
+
+export type WorkbookComputeRunStatus = "ok" | "stale" | "failed";
+export type WorkbookComputeTiming = {
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+};
+export type WorkbookComputeRun = {
+  inputHash: string;
+  status: WorkbookComputeRunStatus;
+  logs?: string[];
+  timing?: WorkbookComputeTiming;
+  cacheHit?: boolean;
+};
+export type WorkbookComputeInputRef = {
+  portId: string;
+  type: WorkbookValueType;
+  optional?: boolean;
+  missing?: boolean;
+  value?: string;
+  fromBlockId?: string;
+  fromBlockIds?: string[];
+  outputHash?: string;
+  outputHashes?: string[];
+};
+export type WorkbookPathEndpoint = {
+  meshKey?: string;
+  vertexIndex?: number;
+};
+export type WorkbookGeodesicPathOutput = {
+  indices: number[] | null;
+  length: number | null;
+  message?: string | null;
+  debugInfo?: string | null;
+  start?: WorkbookPathEndpoint | null;
+  end?: WorkbookPathEndpoint | null;
+};
+
+export type WorkbookCameraState = {
+  position: { x: number; y: number; z: number };
+  target: { x: number; y: number; z: number };
+  up: { x: number; y: number; z: number };
+};
+
+export type WorkbookViewSnapshot = {
+  datasetRef: string;
+  datasetKind: DatasetKind;
+  surfaceType?: SurfaceType;
+  viewerKind: string;
+  surfaceId?: SurfaceId;
+  paramId?: ParamSurfaceId;
+  graphExpr?: string;
+  implicitExpr?: string;
+  paramXExpr?: string;
+  paramYExpr?: string;
+  paramZExpr?: string;
+  weierstrassGExpr?: string;
+  weierstrassPhiExpr?: string;
+  weierstrassRecenter?: boolean;
+  graphDomain?: { xSpan: number; ySpan: number };
+  implicitDomain?: { xSpan: number; ySpan: number };
+  paramDomain?: { uMin: number; uMax: number; vMin: number; vMax: number };
+  weierstrassDomain?: { uMin: number; uMax: number; vMin: number; vMax: number };
+  graphResolution?: number;
+  implicitResolution?: number;
+  paramResolution?: number;
+  weierstrassResolution?: number;
+  colorMode?: ColorMode;
+  colorPalette?: ColorPalette;
+  showWireframe?: boolean;
+  showContours?: boolean;
+  showChartGrid?: boolean;
+  probeEnabled?: boolean;
+  showProbeNormal?: boolean;
+  showProbeTangentPlane?: boolean;
+  showProbeTangents?: boolean;
+  showPrincipalDirections?: boolean;
+  showPrincipalGlyphs?: boolean;
+  showPrincipalLines?: boolean;
+  showCurvatureLines?: boolean;
+  showRidges?: boolean;
+  showValleys?: boolean;
+  showGaussMap?: boolean;
+  showBoundingBox?: boolean;
+  showPlanes?: boolean;
+  volumeViewMode?: "slices" | "3d";
+  volumeIsoValue?: number;
+  volumeShowIsosurface?: boolean;
+  volumeShowStreamlines?: boolean;
+  camera?: WorkbookCameraState | null;
+  thumbnail?: string | null;
+  capturedAt: number;
+};
+
+export type WorkbookSnapshotSlot = "A" | "B";
+
+export type WorkbookComputeOutputs = {
+  viewPatch?: {
+    colorMode?: ColorMode;
+    showWireframe?: boolean;
+    showContours?: boolean;
+    showChartGrid?: boolean;
+    probeEnabled?: boolean;
+    showProbeNormal?: boolean;
+    showProbeTangentPlane?: boolean;
+    showProbeTangents?: boolean;
+    showPrincipalDirections?: boolean;
+    showPrincipalGlyphs?: boolean;
+  };
+  geodesicHeat?: {
+    polylines: { x: number; y: number; z: number }[][] | null;
+    length: number | null;
+    phi?: number[] | null;
+    meshToken?: number | null;
+    meshKey?: string | null;
+    message?: string | null;
+  };
+  curveOverlay?: {
+    polylines: { x: number; y: number; z: number }[][] | null;
+  };
+  directionOverlay?: {
+    polylines: { x: number; y: number; z: number }[][] | null;
+  };
+  selectionMask?: WorkbookMaskOutput | null;
+  geodesicPath?: WorkbookGeodesicPathOutput;
+};
+
+export type WorkbookComputeCacheEntry = {
+  inputHash: string;
+  outputHash: string;
+  status: "ok" | "failed";
+  summary?: string;
+  outputs?: WorkbookComputeOutputs;
+  logs?: string[];
+  timing?: WorkbookComputeTiming;
+  createdAt: number;
+};
+
+export type WorkbookBlock = {
+  id: string;
+  type: WorkbookBlockType;
+  title: string;
+  inputs?: WorkbookPort[];
+  outputs?: WorkbookPort[];
+  text?: string;
+  formula?: string;
+  params?: WorkbookParamState;
+  visualize?: {
+    live: boolean;
+    snapshot?: WorkbookViewSnapshot | null;
+    snapshotA?: WorkbookViewSnapshot | null;
+    snapshotB?: WorkbookViewSnapshot | null;
+    notes?: string;
+  };
+  compute?: {
+    operatorId?: string;
+    inputs?: WorkbookComputeInputRef[];
+    outputs?: WorkbookComputeOutputs;
+    lastRun?: WorkbookComputeRun;
+    status?: "idle" | "ok" | "stale" | "failed";
+    summary?: string;
+    datasetRef?: string;
+    lastRunAt?: number;
+    inputHash?: string;
+    outputHash?: string;
+    cache?: Record<string, WorkbookComputeCacheEntry>;
+  };
+  interaction?: WorkbookInteractionData;
+  assert?: {
+    expected?: string;
+    status?: "pending" | "pass" | "fail";
+  };
+};
+
+export type WorkbookStage = {
+  id: WorkbookStageId;
+  title: string;
+  blocks: WorkbookBlock[];
+};
+
+export type Workbook = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  stages: WorkbookStage[];
+};
+
+export type WorkbookTemplateBlockSpec = {
+  type: WorkbookBlockType;
+  title: string;
+  text?: string;
+  formula?: string;
+  computeOperatorId?: string;
+  interactionKind?: WorkbookInteractionKind;
+  visualizeLive?: boolean;
+  visualizeNotes?: string;
+  assertExpected?: string;
+  params?: WorkbookParamState;
+};
+
+export type WorkbookTemplateSpec = {
+  id: string;
+  title: string;
+  description: string;
+  tags: string[];
+  requiredOperators?: string[];
+  suggestedStages?: WorkbookStageId[];
+  stages: Array<{
+    id: WorkbookStageId;
+    title?: string;
+    blocks: WorkbookTemplateBlockSpec[];
+  }>;
+};
+
+export type WorkbookProblemPack = {
+  id: string;
+  title: string;
+  description: string;
+  topic: string;
+  difficulty: "intro" | "intermediate" | "advanced";
+  prerequisites: string[];
+  requiredOperators: string[];
+  suggestedStages: WorkbookStageId[];
+  tags: string[];
+  templateIds: string[];
+};
+
+export const WORKBOOK_STAGE_ORDER: { id: WorkbookStageId; title: string }[] = [
+  { id: "define", title: "Define" },
+  { id: "compute", title: "Compute" },
+  { id: "visualize", title: "Visualize" },
+  { id: "explain", title: "Explain / Check" },
+];
+
+export function createDefaultWorkbook(makeId: () => string): Workbook {
+  const now = Date.now();
+  return {
+    id: makeId(),
+    title: "Untitled Workbook",
+    updatedAt: now,
+    stages: [
+      {
+        id: "define",
+        title: "Define",
+        blocks: [
+          {
+            id: makeId(),
+            type: "text",
+            title: "Problem statement",
+            text: "Describe the surface or problem setup here.",
+            outputs: [{ id: "text", label: "Text", type: "text" }],
+          },
+          {
+            id: makeId(),
+            type: "formula",
+            title: "Surface formula",
+            formula: "x(u,v), y(u,v), z(u,v)",
+            outputs: [{ id: "formula", label: "Formula", type: "formula" }],
+          },
+        ],
+      },
+      {
+        id: "compute",
+        title: "Compute",
+        blocks: [],
+      },
+      {
+        id: "visualize",
+        title: "Visualize",
+        blocks: [
+          {
+            id: makeId(),
+            type: "visualize",
+            title: "Base view",
+            inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+            outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
+            visualize: { live: true, snapshotA: null, snapshotB: null },
+          },
+        ],
+      },
+      {
+        id: "explain",
+        title: "Explain / Check",
+        blocks: [
+          {
+            id: makeId(),
+            type: "text",
+            title: "Notes",
+            text: "Explain what the visualization shows and add sanity checks.",
+            outputs: [{ id: "text", label: "Text", type: "text" }],
+          },
+          {
+            id: makeId(),
+            type: "assert",
+            title: "Expected checks",
+            inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+            assert: { expected: "", status: "pending" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const buildBlockFromSpec = (spec: WorkbookTemplateBlockSpec, makeId: () => string): WorkbookBlock => {
+  const base: WorkbookBlock = { id: makeId(), type: spec.type, title: spec.title };
+  if (spec.params) base.params = spec.params;
+  if (spec.type === "text") return { ...base, text: spec.text ?? "" };
+  if (spec.type === "formula") return { ...base, formula: spec.formula ?? "" };
+  if (spec.type === "visualize")
+    return {
+      ...base,
+      visualize: {
+        live: spec.visualizeLive ?? true,
+        snapshotA: null,
+        snapshotB: null,
+        notes: spec.visualizeNotes,
+      },
+    };
+  if (spec.type === "compute")
+    return {
+      ...base,
+      compute: {
+        status: "stale",
+        operatorId: spec.computeOperatorId,
+        inputs: [],
+        outputs: undefined,
+        lastRun: undefined,
+        cache: {},
+      },
+    };
+  if (spec.type === "interaction")
+    return {
+      ...base,
+      interaction: { kind: spec.interactionKind ?? "pick_point", status: "idle" },
+    };
+  return {
+    ...base,
+    assert: { expected: spec.assertExpected ?? "", status: "pending" },
+  };
+};
+
+const buildWorkbookFromTemplate = (spec: WorkbookTemplateSpec, makeId: () => string): Workbook => {
+  const now = Date.now();
+  const stageMap = new Map(spec.stages.map((stage) => [stage.id, stage]));
+  const stages: WorkbookStage[] = WORKBOOK_STAGE_ORDER.map((stage) => {
+    const fromSpec = stageMap.get(stage.id);
+    return {
+      id: stage.id,
+      title: fromSpec?.title ?? stage.title,
+      blocks: (fromSpec?.blocks ?? []).map((block) => buildBlockFromSpec(block, makeId)),
+    };
+  });
+  return {
+    id: makeId(),
+    title: spec.title,
+    updatedAt: now,
+    stages,
+  };
+};
+
+export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
+  {
+    id: "compute_curvature",
+    title: "Compute curvature",
+    description: "Enable curvature coloring and interpret K/H/k1/k2 with a focused compute block.",
+    tags: ["curvature", "gauss map", "analysis"],
+    requiredOperators: ["surface.curvature"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          {
+            type: "text",
+            title: "Goal",
+            text: "Compute curvature invariants and explain where curvature is high or changes sign.",
+          },
+          {
+            type: "formula",
+            title: "Surface definition",
+            formula: "z = f(x,y) or Ïƒ(u,v) = (x,y,z)",
+          },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "compute",
+            title: "Curvature field",
+            computeOperatorId: "surface.curvature",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          {
+            type: "visualize",
+            title: "Curvature snapshot",
+            visualizeNotes: "Capture A/B with different domains or resolutions.",
+          },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "text",
+            title: "Interpretation",
+            text: "Describe where curvature concentrates and how it matches intuition.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "geodesics_from_point",
+    title: "Geodesics from point",
+    description: "Pick two points and compute a geodesic heat path and a shortest path.",
+    tags: ["geodesics", "paths", "distance"],
+    requiredOperators: ["surface.geodesicDistance", "geodesic_path"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          {
+            type: "text",
+            title: "Goal",
+            text: "Compare heatâ€‘method and shortestâ€‘path geodesics between two points.",
+          },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "interaction", title: "Pick start point", interactionKind: "pick_point" },
+          { type: "interaction", title: "Pick end point", interactionKind: "pick_point" },
+          { type: "compute", title: "Geodesic heat", computeOperatorId: "surface.geodesicDistance" },
+          { type: "compute", title: "Geodesic path", computeOperatorId: "geodesic_path" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Geodesic snapshots" },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "text",
+            title: "Observations",
+            text: "Compare the two geodesics and note any discrepancies or mesh artifacts.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "chart_and_basis",
+    title: "Chart + basis",
+    description: "Turn on chart grids and probe tangents to build intuition about surface coordinates.",
+    tags: ["atlas", "charts", "tangent basis"],
+    requiredOperators: ["chart_grid"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Inspect chart grids and tangent directions on the surface." },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "compute", title: "Chart grid + basis", computeOperatorId: "chart_grid" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Chart grid snapshot" },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "text",
+            title: "Notes",
+            text: "Describe how the chart grid aligns with principal directions or symmetry.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "transport_demo",
+    title: "Transport demo",
+    description: "Draw a curve and transport a direction field along it.",
+    tags: ["transport", "direction field", "geodesics"],
+    requiredOperators: ["surface.parallelTransport"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Transport a tangent direction along a curve and compare twisting." },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "interaction", title: "Draw curve", interactionKind: "draw_curve" },
+          { type: "interaction", title: "Pick direction", interactionKind: "pick_direction" },
+          { type: "compute", title: "Parallel transport", computeOperatorId: "surface.parallelTransport" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Transport snapshots" },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "text",
+            title: "Observations",
+            text: "Note how the transported direction aligns or twists across the surface.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "selection_stats",
+    title: "Selection + stats",
+    description: "Select a region and inspect selection stats, curvature histograms, and overlays.",
+    tags: ["selection", "stats", "curvature"],
+    requiredOperators: ["selection_overlay"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          {
+            type: "text",
+            title: "Goal",
+            text: "Select a meaningful region and summarize its curvature statistics.",
+          },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "interaction", title: "Select region", interactionKind: "select_region" },
+          { type: "compute", title: "Selection overlay", computeOperatorId: "selection_overlay" },
+          { type: "compute", title: "Curvature field", computeOperatorId: "surface.curvature" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Selection snapshot" },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "text",
+            title: "Stats summary",
+            text: "Record count, mean curvature, and any anomalies.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    id: "principal_directions",
+    title: "Principal directions",
+    description: "Overlay principal direction glyphs and interpret curvature directions.",
+    tags: ["principal directions", "curvature", "analysis"],
+    requiredOperators: ["principal_dirs", "surface.curvature"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Visualize principal directions and relate them to curvature." },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "compute", title: "Curvature field", computeOperatorId: "surface.curvature" },
+          { type: "compute", title: "Principal directions", computeOperatorId: "principal_dirs" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Principal direction snapshot" },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          { type: "text", title: "Interpretation", text: "Explain alignment and direction changes across the surface." },
+        ],
+      },
+    ],
+  },
+  {
+    id: "curve_overlay_demo",
+    title: "Curve overlay demo",
+    description: "Draw a curve on the surface and compare multiple overlays with ghosting.",
+    tags: ["curves", "overlays", "ghost overlays"],
+    requiredOperators: ["curve_overlay"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Draw curves and compare how overlays differ." },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          { type: "interaction", title: "Draw curve", interactionKind: "draw_curve" },
+          { type: "compute", title: "Curve overlay", computeOperatorId: "curve_overlay" },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          { type: "visualize", title: "Overlay snapshots", visualizeNotes: "Use Ghost overlays to compare iterations." },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          { type: "text", title: "Notes", text: "Describe how the curve overlay changed between attempts." },
+        ],
+      },
+    ],
+  },
+];
+
+export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
+  {
+    id: "pack_minimal_surfaces",
+    title: "Minimal surfaces starter pack",
+    description: "Weierstrass-friendly templates for studying minimal surfaces and curvature.",
+    topic: "Minimal surfaces",
+    difficulty: "intermediate",
+    prerequisites: ["Basic parametric surfaces", "Weierstrass mode"],
+    requiredOperators: ["surface.curvature", "chart_grid"],
+    suggestedStages: ["define", "visualize", "compute", "explain"],
+    tags: ["minimal surfaces", "weierstrass", "curvature"],
+    templateIds: ["compute_curvature", "chart_and_basis"],
+  },
+  {
+    id: "pack_geodesics",
+    title: "Geodesics toolkit",
+    description: "Geodesic heat + shortest path workflows with guided point picking.",
+    topic: "Geodesics",
+    difficulty: "intermediate",
+    prerequisites: ["Surface sampling", "Mesh-based geodesics"],
+    requiredOperators: ["surface.geodesicDistance", "geodesic_path"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["geodesics", "paths", "distance"],
+    templateIds: ["geodesics_from_point", "transport_demo"],
+  },
+  {
+    id: "pack_gauss_map",
+    title: "Gauss map + curvature",
+    description: "Use curvature and chart grids to read the Gauss map structure.",
+    topic: "Gauss map",
+    difficulty: "intro",
+    prerequisites: ["Basic curvature intuition"],
+    requiredOperators: ["surface.curvature", "chart_grid"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["gauss map", "curvature"],
+    templateIds: ["compute_curvature", "chart_and_basis"],
+  },
+  {
+    id: "pack_atlas",
+    title: "Atlas builder",
+    description: "Chart + basis templates for building a local atlas on surfaces.",
+    topic: "Atlas",
+    difficulty: "intro",
+    prerequisites: ["Parametric surfaces"],
+    requiredOperators: ["chart_grid"],
+    suggestedStages: ["define", "visualize", "compute", "explain"],
+    tags: ["atlas", "charts", "basis"],
+    templateIds: ["chart_and_basis"],
+  },
+  {
+    id: "pack_selection",
+    title: "Selection + overlays",
+    description: "Selection workflows that combine masks, curvature, and curve overlays.",
+    topic: "Selection",
+    difficulty: "intro",
+    prerequisites: ["Selection tools"],
+    requiredOperators: ["selection_overlay", "surface.curvature", "curve_overlay"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["selection", "overlays", "curves"],
+    templateIds: ["selection_stats", "curve_overlay_demo"],
+  },
+  {
+    id: "pack_principal_dirs",
+    title: "Principal directions",
+    description: "Curvature + principal direction overlays for surface analysis.",
+    topic: "Principal directions",
+    difficulty: "intermediate",
+    prerequisites: ["Curvature basics"],
+    requiredOperators: ["surface.curvature", "principal_dirs"],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["principal directions", "curvature"],
+    templateIds: ["principal_directions"],
+  },
+];
+
+export function createWorkbookFromTemplate(templateId: string, makeId: () => string): Workbook | null {
+  const spec = WORKBOOK_TEMPLATES.find((t) => t.id === templateId);
+  if (!spec) return null;
+  return buildWorkbookFromTemplate(spec, makeId);
+}
+
+

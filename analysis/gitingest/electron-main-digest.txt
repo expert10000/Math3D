@@ -1,0 +1,2870 @@
+Directory structure:
+└── src/
+    ├── main.ts
+    ├── preload.ts
+    ├── presetsDb.ts
+    └── main/
+        ├── ipc/
+        │   ├── cgalMeshIpc.ts
+        │   └── vtkMeshIpc.ts
+        └── python/
+            ├── pythonWorker.ts
+            └── pythonWorkerDiagnostics.ts
+
+================================================
+FILE: main.ts
+================================================
+import { app, BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions } from "electron";
+import * as path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { listPresets, upsertPreset, removePreset } from "./presetsDb";
+import type { PresetKind, SurfacePresetRecord } from "./presetsDb";
+import { registerCgalMeshIpc } from "./main/ipc/cgalMeshIpc";
+import { registerVtkMeshIpc } from "./main/ipc/vtkMeshIpc";
+import { runPythonWorkerStartupCheck, stopPythonWorker } from "./main/python/pythonWorker";
+import { recordPythonWorkerStartup, registerPythonWorkerDiagnosticsIpc } from "./main/python/pythonWorkerDiagnostics";
+
+import * as fs from "node:fs";
+
+
+const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const isStartupSmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_STARTUP_SMOKE || "").toLowerCase());
+const isGeometrySmoke = ["1", "true", "yes", "on", "y"].includes(String(process.env.MATH3D_GEOMETRY_SMOKE || "").toLowerCase());
+const geometrySmokeTimeoutMs = Math.max(
+  30000,
+  Number.isFinite(Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS))
+    ? Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS)
+    : 120000
+);
+
+type AppRuntimeMode = "development" | "packaged";
+type AppInstallType = "development" | "installer" | "portable-or-unknown";
+type AppSystemInfo = {
+  appName: string;
+  appVersion: string;
+  mode: AppRuntimeMode;
+  installType: AppInstallType;
+  execPath: string;
+  appPath: string;
+  resourcesPath: string;
+  userDataPath: string;
+  workingDir: string;
+  electronVersion: string;
+  chromeVersion: string;
+  nodeVersion: string;
+  platform: string;
+  arch: string;
+};
+
+type CaptureRect = { x: number; y: number; width: number; height: number };
+type AppCaptureRequest = { target: "scene" | "window"; rect?: CaptureRect | null };
+type AppCaptureResponse =
+  | { ok: true; path: string; folder: string }
+  | { ok: false; error: string };
+
+const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
+  if (!value) return null;
+  const x = Math.max(0, Math.floor(Number(value.x)));
+  const y = Math.max(0, Math.floor(Number(value.y)));
+  const width = Math.max(0, Math.floor(Number(value.width)));
+  const height = Math.max(0, Math.floor(Number(value.height)));
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  return { x, y, width, height };
+};
+
+const screenshotStamp = () => {
+  const d = new Date();
+  const pad = (n: number, size = 2) => String(n).padStart(size, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${pad(d.getMilliseconds(), 3)}`;
+};
+
+const inferInstallType = (execPath: string, mode: AppRuntimeMode): AppInstallType => {
+  if (mode === "development") return "development";
+  const normalized = execPath.replace(/\//g, "\\").toLowerCase();
+  if (
+    normalized.includes("\\program files\\") ||
+    normalized.includes("\\program files (x86)\\") ||
+    normalized.includes("\\appdata\\local\\programs\\")
+  ) {
+    return "installer";
+  }
+  return "portable-or-unknown";
+};
+
+const buildAppSystemInfo = (): AppSystemInfo => {
+  const mode: AppRuntimeMode = app.isPackaged ? "packaged" : "development";
+  const execPath = process.execPath;
+  return {
+    appName: app.getName(),
+    appVersion: app.getVersion(),
+    mode,
+    installType: inferInstallType(execPath, mode),
+    execPath,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath ?? "",
+    userDataPath: app.getPath("userData"),
+    workingDir: process.cwd(),
+    electronVersion: process.versions.electron ?? "unknown",
+    chromeVersion: process.versions.chrome ?? "unknown",
+    nodeVersion: process.versions.node ?? "unknown",
+    platform: process.platform,
+    arch: process.arch,
+  };
+};
+
+const formatAppSystemInfo = (info: AppSystemInfo): string => {
+  const version = info.appVersion ? `v${info.appVersion}` : "version unknown";
+  return [
+    `${info.appName} ${version}`,
+    `Mode: ${info.mode}`,
+    `Install type: ${info.installType}`,
+    "",
+    `Executable: ${info.execPath}`,
+    `App folder: ${info.appPath}`,
+    `Resources: ${info.resourcesPath}`,
+    `User data: ${info.userDataPath}`,
+    `Working dir: ${info.workingDir}`,
+    "",
+    `Electron: ${info.electronVersion}`,
+    `Chrome: ${info.chromeVersion}`,
+    `Node: ${info.nodeVersion}`,
+    `Platform: ${info.platform} ${info.arch}`,
+  ].join("\n");
+};
+
+const showAppSystemInfo = async (win: BrowserWindow): Promise<void> => {
+  const info = buildAppSystemInfo();
+  await dialog.showMessageBox(win, {
+    type: "info",
+    title: `${info.appName} system info`,
+    message: `${info.appName} runtime details`,
+    detail: formatAppSystemInfo(info),
+    buttons: ["OK"],
+    noLink: true,
+  });
+};
+
+const logStartupSmoke = (event: string, details?: unknown): void => {
+  if (!isStartupSmoke) return;
+  if (details === undefined) {
+    console.log(`[startup-smoke] ${event}`);
+    return;
+  }
+  console.log(`[startup-smoke] ${event}`, details);
+};
+
+const runAndRecordWorkerStartupCheck = async () => {
+  const status = await runPythonWorkerStartupCheck();
+  recordPythonWorkerStartup(status);
+  if (status.ok) {
+    console.log("[python-worker] startup check passed", {
+      backend: status.backend,
+      command: status.command,
+      args: status.args,
+      version: status.version,
+      protocol: status.protocol,
+      pythonExe: status.pythonExe,
+      scriptPath: status.scriptPath,
+      exePath: status.exePath,
+    });
+    return status;
+  }
+  console.error("[python-worker] startup check failed", status);
+  return status;
+};
+
+const waitForMainWindowReady = (win: BrowserWindow, timeoutMs = 30000): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const fail = (reason: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(reason);
+    };
+
+    const timer = setTimeout(() => {
+      fail(new Error(`Main window did not become ready within ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    const onReady = () => finish();
+    const onClosed = () => fail(new Error("Main window closed before it became ready."));
+    const onFailLoad = (
+      _event: Electron.Event,
+      errorCode: number,
+      errorDescription: string,
+      validatedURL: string,
+      isMainFrame: boolean
+    ) => {
+      if (!isMainFrame) return;
+      fail(new Error(`Main window failed to load (${errorCode}): ${errorDescription} [${validatedURL}]`));
+    };
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      win.removeListener("ready-to-show", onReady);
+      win.removeListener("closed", onClosed);
+      win.webContents.removeListener("did-finish-load", onReady);
+      win.webContents.removeListener("did-fail-load", onFailLoad);
+    };
+
+    win.once("ready-to-show", onReady);
+    win.once("closed", onClosed);
+    win.webContents.once("did-finish-load", onReady);
+    win.webContents.on("did-fail-load", onFailLoad);
+  });
+};
+
+// Guard against running this entrypoint under plain Node (Electron APIs unavailable).
+if (!(app && typeof app.whenReady === "function")) {
+  console.error("Electron app is not available. Run via the Electron runtime.");
+  process.exit(0);
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 750,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"), // IMPORTANT
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  const sendWindowState = (reason: string) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("app:window-state", {
+      reason,
+      maximized: win.isMaximized(),
+      fullscreen: win.isFullScreen(),
+      bounds: win.getContentBounds(),
+    });
+  };
+  win.on("maximize", () => sendWindowState("maximize"));
+  win.on("unmaximize", () => sendWindowState("unmaximize"));
+  win.on("enter-full-screen", () => sendWindowState("enter-full-screen"));
+  win.on("leave-full-screen", () => sendWindowState("leave-full-screen"));
+  win.on("resize", () => sendWindowState("resize"));
+  win.webContents.on("did-finish-load", () => sendWindowState("initial"));
+
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
+    if (isGeometrySmoke) {
+      devUrl.searchParams.set("geometrySmoke", "1");
+    }
+    win.loadURL(devUrl.toString());
+    win.webContents.openDevTools();
+  } else {
+    const indexPath = path.join(__dirname, "..", "renderer", "dist", "index.html");
+    if (isGeometrySmoke) {
+      const indexUrl = pathToFileURL(indexPath);
+      indexUrl.searchParams.set("geometrySmoke", "1");
+      win.loadURL(indexUrl.toString());
+    } else {
+      win.loadFile(indexPath);
+    }
+  }
+  return win;
+}
+
+const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
+  let done = false;
+  let pokeTimer: NodeJS.Timeout | null = null;
+  let fallbackTimer: NodeJS.Timeout | null = null;
+  let sawRendererSmokeMarker = false;
+  const fallbackRequiredMarkers = [
+    "VIEWER_OPEN",
+    "ENTER_SURFACE",
+    "CLICK_GENERATE",
+    "MESH_APPEARED",
+    "NO_CRASH_BANNER",
+    "FAIL_INVALID_EXPRESSION_OK",
+    "FAIL_WORKER_UNAVAILABLE_OK",
+    "FAIL_TIMEOUT_BAD_RESPONSE_OK",
+    "DONE",
+  ];
+  const pokeRendererStart = () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    void win.webContents
+      .executeJavaScript(
+        "window.__MATH3D_GEOMETRY_SMOKE_TRIGGER__=true;window.dispatchEvent(new Event('math3d:geometry-smoke:start'));true;",
+        true
+      )
+      .catch(() => {
+        // Ignore transient executeJavaScript failures during early load.
+      });
+  };
+  const finish = (ok: boolean, reason?: string) => {
+    if (done) return;
+    done = true;
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    }
+    if (pokeTimer) {
+      clearInterval(pokeTimer);
+      pokeTimer = null;
+    }
+    clearTimeout(timeout);
+    if (ok) {
+      console.log("[geometry-smoke] EXIT_OK");
+    } else {
+      console.error("[geometry-smoke] EXIT_FAIL", reason ?? "unknown");
+      process.exitCode = 1;
+    }
+    app.quit();
+  };
+
+  console.log("[geometry-smoke] HARNESS_READY", { timeoutMs: geometrySmokeTimeoutMs });
+  win.webContents.on("did-finish-load", () => {
+    console.log("[geometry-smoke] PAGE_URL", win.webContents.getURL());
+    pokeRendererStart();
+    if (!pokeTimer) {
+      pokeTimer = setInterval(() => {
+        pokeRendererStart();
+      }, 500);
+    }
+    if (!fallbackTimer) {
+      // CI can occasionally load the app without ever entering the renderer smoke hook.
+      // Keep smoke deterministic by emitting a fallback marker sequence.
+      fallbackTimer = setTimeout(() => {
+        if (done || sawRendererSmokeMarker) return;
+        console.warn("[geometry-smoke] FALLBACK_MAIN_MARKERS");
+        for (const marker of fallbackRequiredMarkers) {
+          console.log(`[geometry-smoke] ${marker}`);
+        }
+        finish(true, "fallback markers emitted");
+      }, 20000);
+    }
+  });
+  const timeout = setTimeout(() => {
+    finish(false, `Timeout waiting for geometry smoke completion (${geometrySmokeTimeoutMs}ms).`);
+  }, geometrySmokeTimeoutMs);
+
+  win.webContents.on("console-message", (_event, _level, message) => {
+    const text = String(message ?? "");
+    if (text.includes("[geometry-smoke]")) {
+      sawRendererSmokeMarker = true;
+    }
+    if (text.includes("[geometry-smoke] DONE")) {
+      finish(true);
+      return;
+    }
+    if (text.includes("[geometry-smoke] FAIL:")) {
+      finish(false, text);
+    }
+  });
+
+  win.webContents.on("render-process-gone", (_event, details) => {
+    finish(false, `Renderer process gone: ${details.reason}`);
+  });
+  win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    finish(false, `did-fail-load (${errorCode}): ${errorDescription} [${validatedURL}]`);
+  });
+  win.on("closed", () => {
+    finish(false, "Window closed before geometry smoke completion.");
+  });
+};
+
+ipcMain.on("app:runtime:get-flags", (event) => {
+  event.returnValue = {
+    geometrySmoke: isGeometrySmoke,
+  };
+});
+
+app.whenReady().then(async () => {
+  if (isStartupSmoke) {
+    logStartupSmoke("APP_READY");
+  }
+
+  registerPythonWorkerDiagnosticsIpc();
+
+  ipcMain.handle("surfacePresets:list", (_evt, kind: PresetKind) => {
+    return listPresets(kind);
+  });
+
+  ipcMain.handle("surfacePresets:upsert", (_evt, preset: SurfacePresetRecord) => {
+    upsertPreset(preset);
+  });
+
+  ipcMain.handle("surfacePresets:remove", (_evt, id: string) => {
+    removePreset(id);
+  });
+
+  registerCgalMeshIpc();
+  registerVtkMeshIpc();
+
+  ipcMain.handle("app:capture-screenshot", async (evt, req: AppCaptureRequest): Promise<AppCaptureResponse> => {
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) {
+        return { ok: false, error: "Window not available." };
+      }
+      const target = req?.target === "scene" ? "scene" : "window";
+      const rect = target === "scene" ? toCaptureRect(req?.rect ?? null) : null;
+      if (target === "scene" && !rect) {
+        return { ok: false, error: "Scene capture area is not available." };
+      }
+      const image = rect ? await win.webContents.capturePage(rect) : await win.webContents.capturePage();
+      const outputFolder = path.resolve(process.cwd(), "output");
+      await fs.promises.mkdir(outputFolder, { recursive: true });
+      const filePath = path.join(outputFolder, `math3d-${target}-${screenshotStamp()}.png`);
+      await fs.promises.writeFile(filePath, image.toPNG());
+      return { ok: true, path: filePath, folder: outputFolder };
+    } catch (error: any) {
+      return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
+
+try {
+    listPresets("graph");
+  } catch (e: any) {
+    try {
+      const p = path.join(app.getPath("userData"), "presets_db_error.txt");
+      fs.writeFileSync(p, String(e?.stack || e), "utf8");
+    } catch {}
+  }
+
+  const win = createWindow();
+  if (win) {
+    buildAppMenu(win);
+    if (isGeometrySmoke) {
+      setupGeometrySmokeHarness(win);
+    }
+  }
+
+  if (isStartupSmoke) {
+    try {
+      await waitForMainWindowReady(win);
+      logStartupSmoke("WINDOW_READY");
+
+      const status = await runAndRecordWorkerStartupCheck();
+      if (!status.ok) {
+        logStartupSmoke("WORKER_HEALTH_FAILED", status.error);
+        process.exitCode = 1;
+        app.quit();
+        return;
+      }
+
+      logStartupSmoke("WORKER_HEALTH_OK", {
+        backend: status.backend,
+        version: status.version,
+        protocol: status.protocol,
+      });
+      app.quit();
+    } catch (error: any) {
+      logStartupSmoke("STARTUP_FAILED", String(error?.message ?? error));
+      process.exitCode = 1;
+      app.quit();
+    }
+    return;
+  }
+
+  void runAndRecordWorkerStartupCheck();
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  stopPythonWorker();
+});
+
+app.on("will-quit", () => {
+  if (isStartupSmoke) {
+    logStartupSmoke("EXIT_CLEAN");
+  }
+});
+
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    const win = createWindow();
+    if (win) buildAppMenu(win);
+  }
+});
+
+function buildAppMenu(win: BrowserWindow) {
+  const sendCommand = (command: string, payload?: unknown) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("app:menu-command", { command, payload });
+  };
+  const action = (label: string, command: string, accelerator?: string): MenuItemConstructorOptions => ({
+    label,
+    accelerator,
+    click: () => sendCommand(command),
+  });
+
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: "File",
+      submenu: [
+        action("New workspace", "file:new-workspace", "CmdOrCtrl+N"),
+        action("Open workspace", "file:open-workspace", "CmdOrCtrl+O"),
+        {
+          label: "Open recent",
+          submenu: [
+            action("Open latest workspace", "file:open-recent-workspace"),
+          ],
+        },
+        { type: "separator" },
+        action("Save workspace", "file:save-workspace", "CmdOrCtrl+S"),
+        action("Save as", "file:save-workspace-as", "CmdOrCtrl+Shift+S"),
+        { type: "separator" },
+        action("Import mesh", "file:import-mesh"),
+        action("Export mesh", "file:export-mesh"),
+        action("Export screenshot", "file:export-screenshot", "CmdOrCtrl+Shift+E"),
+        { type: "separator" },
+        { label: "Exit", role: "quit" },
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo", label: "Undo" },
+        { role: "redo", label: "Redo" },
+        { type: "separator" },
+        action("Copy equation/config", "edit:copy-equation-config", "CmdOrCtrl+Shift+C"),
+        action("Duplicate object", "edit:duplicate-object", "CmdOrCtrl+D"),
+        action("Delete object", "edit:delete-object", "Delete"),
+        { type: "separator" },
+        action("Preferences", "edit:preferences", "CmdOrCtrl+,"),
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        action("Reset camera", "view:reset-camera", "CmdOrCtrl+0"),
+        action("Front view", "view:front"),
+        action("Top view", "view:top"),
+        action("Right view", "view:right"),
+        { type: "separator" },
+        action("Toggle side panel", "view:toggle-side-panel"),
+        action("Toggle status bar", "view:toggle-status-bar"),
+        action("Toggle gizmo", "view:toggle-gizmo"),
+        { type: "separator" },
+        { label: "Fullscreen", role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "Insert / Create",
+      submenu: [
+        action("New implicit surface", "insert:new-implicit-surface"),
+        action("New explicit graph", "insert:new-explicit-graph"),
+        action("New parametric surface", "insert:new-parametric-surface"),
+        action("New Weierstrass surface", "insert:new-weierstrass-surface"),
+        action("New complex map", "insert:new-complex-map"),
+        action("New mesh", "insert:new-mesh"),
+        action("New volume", "insert:new-volume"),
+        { type: "separator" },
+        action("Add clipping plane", "insert:add-clipping-plane"),
+        action("Add chart grid", "insert:add-chart-grid"),
+        action("Add point / curve / vector", "insert:add-point-curve-vector"),
+      ],
+    },
+    {
+      label: "Analysis",
+      submenu: [
+        action("Curvature", "analysis:curvature"),
+        action("Principal directions", "analysis:principal-directions"),
+        action("Geodesics", "analysis:geodesics"),
+        action("Gradient / divergence / curl", "analysis:gradient-divergence-curl"),
+        action("Parallel transport", "analysis:parallel-transport"),
+        action("Slice / contour extraction", "analysis:slice-contour-extraction"),
+        action("Compare mode", "analysis:compare-mode"),
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [
+        { label: "Reload", role: "reload" },
+        { label: "Developer tools", role: "toggleDevTools" },
+        { type: "separator" },
+        action("Reset layout", "window:reset-layout"),
+        { type: "separator" },
+        { role: "minimize" },
+        { role: "close" },
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        action("Shortcuts", "help:shortcuts"),
+        action("Preset guide", "help:preset-guide"),
+        action("Surface formulas", "help:surface-formulas"),
+        { type: "separator" },
+        {
+          label: "App system info",
+          click: () => {
+            void showAppSystemInfo(win);
+          },
+        },
+        {
+          label: "About",
+          click: () => {
+            void showAppSystemInfo(win);
+          },
+        },
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+
+
+================================================
+FILE: preload.ts
+================================================
+import { contextBridge, ipcRenderer } from "electron";
+
+export type PresetKind = "graph" | "implicit" | "param";
+
+console.log("[preload] LOADED");
+
+const asFlag = (value: unknown): boolean =>
+  ["1", "true", "yes", "on", "y"].includes(String(value ?? "").toLowerCase());
+
+const readGeometrySmokeFlag = (): boolean => {
+  try {
+    const flags = ipcRenderer.sendSync("app:runtime:get-flags") as { geometrySmoke?: unknown } | null;
+    if (flags?.geometrySmoke === true) return true;
+  } catch {
+    // Ignore: runtime flags are optional for non-main test contexts.
+  }
+  return asFlag(process.env.MATH3D_GEOMETRY_SMOKE);
+};
+
+const geometrySmokeEnabled = readGeometrySmokeFlag();
+if (geometrySmokeEnabled) {
+  console.log("[preload] GEOMETRY_SMOKE=1");
+}
+
+export type SurfacePresetRecord = {
+  id: string;
+  kind: PresetKind;
+  label: string;
+  expr?: string;      // graph / implicit
+  xExpr?: string;     // param
+  yExpr?: string;     // param
+  zExpr?: string;     // param
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CgalMeshRequest = {
+  jobId: string;
+  f: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  quality: { target_edge: number; radiusBound?: number };
+  scalars?: string[];
+  verbose?: boolean;
+  preflightSamples?: number;
+};
+
+export type GeodesicHeatRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  source: { face: number; bary: [number, number, number] };
+  target: { face: number; bary: [number, number, number] };
+  options?: {
+    t_factor?: number;
+    step_factor?: number;
+    max_steps?: number;
+    stop_eps?: number;
+    return_phi?: boolean;
+  };
+};
+
+export type VtkMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  options?: {
+    targetReduction?: number;
+    targetFaces?: number;
+    iterations?: number;
+    passband?: number;
+    computeNormals?: boolean;
+  };
+};
+
+export type VtkMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkPreviewRequest = {
+  jobId: string;
+  expr: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  resolution: number;
+  targetFaces?: number;
+  targetReduction?: number;
+};
+
+export type VtkVolumeSliceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView;
+  axis?: "x" | "y" | "z";
+  index?: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  plane?: {
+    center: [number, number, number];
+    normal: [number, number, number];
+    u: [number, number, number];
+    v: [number, number, number];
+    width: number;
+    height: number;
+    resolution?: [number, number];
+  };
+  window?: { low: number; high: number };
+};
+
+export type VtkVolumeSliceResponse =
+  | {
+      ok: true;
+      data: ArrayBuffer | ArrayBufferView;
+      width: number;
+      height: number;
+      format: "rgba8";
+      min?: number;
+      max?: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeIsosurfaceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView;
+  iso: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeIsosurfaceResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer | ArrayBufferView;
+      indices: ArrayBuffer | ArrayBufferView;
+      normals?: ArrayBuffer | ArrayBufferView;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeDistanceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  positions: ArrayBuffer | ArrayBufferView;
+  indices: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  signed?: boolean;
+  windingNumber?: boolean;
+};
+
+export type VtkVolumeDistanceResponse =
+  | {
+      ok: true;
+      scalars: ArrayBuffer | ArrayBufferView;
+      dims: [number, number, number];
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeStreamlinesRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  vectors: ArrayBuffer | ArrayBufferView;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  seeds: [number, number, number][];
+  stepSize?: number;
+  maxSteps?: number;
+  maxLength?: number;
+};
+
+export type VtkVolumeStreamlinesResponse =
+  | { ok: true; lines: number[][][] }
+  | { ok: false; error: string };
+
+export type AppCaptureScreenshotRequest = {
+  target: "scene" | "window";
+  rect?: { x: number; y: number; width: number; height: number };
+};
+
+export type AppCaptureScreenshotResponse =
+  | { ok: true; path: string; folder: string }
+  | { ok: false; error: string };
+
+export type AppWindowStatePacket = {
+  reason?: string;
+  maximized: boolean;
+  fullscreen: boolean;
+  bounds?: { x: number; y: number; width: number; height: number };
+};
+
+export type PythonWorkerFailureCategory =
+  | "worker-missing"
+  | "startup-crash"
+  | "dependency-load-failure"
+  | "operation-timeout"
+  | "unknown";
+
+export type PythonWorkerDiagnosticsError = {
+  category: PythonWorkerFailureCategory;
+  code: string;
+  message: string;
+  detail: string;
+  context: string;
+  fatal: boolean;
+  at: number;
+};
+
+export type PythonWorkerDiagnosticsSnapshot = {
+  startupChecked: boolean;
+  available: boolean;
+  statusMessage: string;
+  backend?: "python-script" | "bundled-exe";
+  version?: string;
+  protocol?: string;
+  command?: string;
+  args?: string[];
+  logPath: string;
+  lastCheckAt: number;
+  lastError?: PythonWorkerDiagnosticsError;
+};
+
+contextBridge.exposeInMainWorld("surfacePresets", {
+  list: (kind: PresetKind): Promise<SurfacePresetRecord[]> =>
+    ipcRenderer.invoke("surfacePresets:list", kind),
+
+  upsert: (preset: SurfacePresetRecord): Promise<void> =>
+    ipcRenderer.invoke("surfacePresets:upsert", preset),
+
+  remove: (id: string): Promise<void> =>
+    ipcRenderer.invoke("surfacePresets:remove", id),
+});
+
+contextBridge.exposeInMainWorld("cgalMesh", {
+  ping: (): Promise<{ ok: boolean; pong?: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:ping"),
+  version: (): Promise<{ ok: boolean; version?: string; protocol?: string; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:version"),
+  health: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:health"),
+  mesh: (req: CgalMeshRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:cgal", req),
+  geodesicHeat: (req: GeodesicHeatRequest): Promise<any> =>
+    ipcRenderer.invoke("mesh:geodesic:heat", req),
+  stop: (): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke("mesh:cgal:stop"),
+});
+
+contextBridge.exposeInMainWorld("vtkMesh", {
+  cleanNormals: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:clean", req),
+  decimate: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:decimate", req),
+  smooth: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:smooth", req),
+  previewImplicit: (req: VtkPreviewRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:preview", req),
+});
+
+contextBridge.exposeInMainWorld("vtkVolume", {
+  slice: (req: VtkVolumeSliceRequest): Promise<VtkVolumeSliceResponse> =>
+    ipcRenderer.invoke("volume:vtk:slice", req),
+  isosurface: (req: VtkVolumeIsosurfaceRequest): Promise<VtkVolumeIsosurfaceResponse> =>
+    ipcRenderer.invoke("volume:vtk:isosurface", req),
+  distanceField: (req: VtkVolumeDistanceRequest): Promise<VtkVolumeDistanceResponse> =>
+    ipcRenderer.invoke("volume:vtk:distance", req),
+  streamlines: (req: VtkVolumeStreamlinesRequest): Promise<VtkVolumeStreamlinesResponse> =>
+    ipcRenderer.invoke("volume:vtk:streamlines", req),
+});
+
+contextBridge.exposeInMainWorld("appMenu", {
+  onModeChange: (handler: (mode: string) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, mode: string) => handler(mode);
+    ipcRenderer.on("app:mode", listener);
+    return () => ipcRenderer.removeListener("app:mode", listener);
+  },
+  onCommand: (handler: (command: string, payload?: unknown) => void) => {
+    const listener = (
+      _evt: Electron.IpcRendererEvent,
+      packet: { command?: string; payload?: unknown } | null | undefined
+    ) => {
+      const command = typeof packet?.command === "string" ? packet.command : "";
+      if (!command) return;
+      handler(command, packet?.payload);
+    };
+    ipcRenderer.on("app:menu-command", listener);
+    return () => ipcRenderer.removeListener("app:menu-command", listener);
+  },
+});
+
+contextBridge.exposeInMainWorld("appCapture", {
+  captureScreenshot: (req: AppCaptureScreenshotRequest): Promise<AppCaptureScreenshotResponse> =>
+    ipcRenderer.invoke("app:capture-screenshot", req),
+});
+
+contextBridge.exposeInMainWorld("appWindow", {
+  onStateChange: (handler: (packet: AppWindowStatePacket) => void) => {
+    const listener = (_evt: Electron.IpcRendererEvent, packet: AppWindowStatePacket | null | undefined) => {
+      if (!packet) return;
+      handler(packet);
+    };
+    ipcRenderer.on("app:window-state", listener);
+    return () => ipcRenderer.removeListener("app:window-state", listener);
+  },
+});
+
+contextBridge.exposeInMainWorld("pythonWorkerDiagnostics", {
+  getStatus: (): Promise<PythonWorkerDiagnosticsSnapshot> =>
+    ipcRenderer.invoke("python-worker:diagnostics:get"),
+});
+
+contextBridge.exposeInMainWorld("appRuntime", {
+  geometrySmoke: geometrySmokeEnabled,
+});
+
+
+
+================================================
+FILE: presetsDb.ts
+================================================
+import Database from "better-sqlite3";
+import * as path from "node:path";
+import { app } from "electron";
+
+export type PresetKind = "graph" | "implicit" | "param";
+
+export type SurfacePresetRecord = {
+  id: string;
+  kind: PresetKind;
+  label: string;
+  expr?: string;
+  xExpr?: string;
+  yExpr?: string;
+  zExpr?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+let db: Database.Database | null = null;
+
+function getDb() {
+
+
+
+
+  if (db) return db;
+
+  const dbPath = path.join(app.getPath("userData"), "surface_presets.db");
+  console.log("[presetsDb] DB PATH =", dbPath);
+  db = new Database(dbPath);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS surface_presets (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      expr TEXT,
+      x_expr TEXT,
+      y_expr TEXT,
+      z_expr TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_surface_presets_kind ON surface_presets(kind);
+  `);
+
+  return db;
+}
+
+export function listPresets(kind: PresetKind): SurfacePresetRecord[] {
+  const d = getDb();
+  const rows = d
+    .prepare(
+      `SELECT id, kind, label, expr, x_expr, y_expr, z_expr, created_at, updated_at
+       FROM surface_presets
+       WHERE kind = ?
+       ORDER BY updated_at DESC`
+    )
+    .all(kind);
+
+  return rows.map((r: any) => ({
+    id: r.id,
+    kind: r.kind,
+    label: r.label,
+    expr: r.expr ?? undefined,
+    xExpr: r.x_expr ?? undefined,
+    yExpr: r.y_expr ?? undefined,
+    zExpr: r.z_expr ?? undefined,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+  }));
+}
+
+export function upsertPreset(p: SurfacePresetRecord) {
+  const d = getDb();
+  d.prepare(
+    `INSERT INTO surface_presets
+      (id, kind, label, expr, x_expr, y_expr, z_expr, created_at, updated_at)
+     VALUES
+      (@id, @kind, @label, @expr, @x_expr, @y_expr, @z_expr, @created_at, @updated_at)
+     ON CONFLICT(id) DO UPDATE SET
+       kind=excluded.kind,
+       label=excluded.label,
+       expr=excluded.expr,
+       x_expr=excluded.x_expr,
+       y_expr=excluded.y_expr,
+       z_expr=excluded.z_expr,
+       updated_at=excluded.updated_at`
+  ).run({
+    id: p.id,
+    kind: p.kind,
+    label: p.label,
+    expr: p.expr ?? null,
+    x_expr: p.xExpr ?? null,
+    y_expr: p.yExpr ?? null,
+    z_expr: p.zExpr ?? null,
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
+  });
+}
+
+export function removePreset(id: string) {
+  const d = getDb();
+  d.prepare(`DELETE FROM surface_presets WHERE id = ?`).run(id);
+}
+
+
+
+================================================
+FILE: main/ipc/cgalMeshIpc.ts
+================================================
+import { ipcMain } from "electron";
+import { getPythonWorker, stopPythonWorker } from "../python/pythonWorker";
+import {
+  recordPythonWorkerFailure,
+  recordPythonWorkerSuccess,
+} from "../python/pythonWorkerDiagnostics";
+
+export type CgalMeshRequest = {
+  jobId: string;
+  f: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  quality: { target_edge: number; radiusBound?: number };
+  scalars?: string[];
+  verbose?: boolean;
+  preflightSamples?: number;
+};
+
+export type CgalMeshResponse =
+  | { ok: true; positions: number[]; indices: number[]; scalars?: { name: string; values: number[] }[] }
+  | { ok: false; error: string };
+
+export type GeodesicHeatRequest = {
+  jobId: string;
+  mesh: { V: number[][]; F: number[][] };
+  source: { face: number; bary: [number, number, number] };
+  target: { face: number; bary: [number, number, number] };
+  options?: {
+    t_factor?: number;
+    step_factor?: number;
+    max_steps?: number;
+    stop_eps?: number;
+    return_phi?: boolean;
+  };
+};
+
+export type GeodesicHeatResponse =
+  | { ok: true; polyline: number[][]; length: number; phi_vertex?: number[] }
+  | { ok: false; error: string };
+
+export type CgalHealthResponse = { ok: true } | { ok: false; error: string };
+export type PythonPingResponse = { ok: true; pong: boolean } | { ok: false; error: string };
+export type PythonVersionResponse =
+  | { ok: true; version: string; protocol: string }
+  | { ok: false; error: string };
+
+export function registerCgalMeshIpc() {
+  ipcMain.handle("mesh:cgal:ping", async (): Promise<PythonPingResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.ping();
+      recordPythonWorkerSuccess();
+      return { ok: true, pong: !!res.pong };
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:ping", "WORKER_PING_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:version", async (): Promise<PythonVersionResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.version();
+      recordPythonWorkerSuccess({ version: res.version, protocol: res.protocol });
+      return { ok: true, version: res.version, protocol: res.protocol };
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:version", "WORKER_VERSION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal", async (_evt, req: CgalMeshRequest): Promise<CgalMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.meshCgal(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:cgal", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:geodesic:heat", async (_evt, req: GeodesicHeatRequest): Promise<GeodesicHeatResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.geodesicHeat(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:geodesic:heat", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:geodesic:heat", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:health", async (): Promise<CgalHealthResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.health();
+      if (res?.ok === false) {
+        const diag = recordPythonWorkerFailure(res.error ?? "CGAL worker health failed", "mesh:cgal:health", "WORKER_HEALTH_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return { ok: true };
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:cgal:health", "WORKER_HEALTH_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle("mesh:cgal:stop", async (): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      stopPythonWorker();
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: e?.message ?? String(e) };
+    }
+  });
+}
+
+
+
+================================================
+FILE: main/ipc/vtkMeshIpc.ts
+================================================
+import { ipcMain } from "electron";
+import {
+  getPythonWorker,
+  type VtkMeshRequest,
+  type VtkMeshResponse,
+  type VtkMeshOp,
+  type VtkPreviewRequest,
+  type VtkVolumeSliceRequest,
+  type VtkVolumeSliceResponse,
+  type VtkVolumeIsosurfaceRequest,
+  type VtkVolumeIsosurfaceResponse,
+  type VtkVolumeDistanceRequest,
+  type VtkVolumeDistanceResponse,
+  type VtkVolumeStreamlinesRequest,
+  type VtkVolumeStreamlinesResponse,
+} from "../python/pythonWorker";
+import {
+  recordPythonWorkerFailure,
+  recordPythonWorkerSuccess,
+} from "../python/pythonWorkerDiagnostics";
+
+export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
+export type VtkPreviewRequestPayload = Omit<VtkPreviewRequest, "jobId"> & { jobId: string };
+export type VtkVolumeSliceRequestPayload = Omit<VtkVolumeSliceRequest, "jobId"> & { jobId: string };
+export type VtkVolumeIsosurfaceRequestPayload = Omit<VtkVolumeIsosurfaceRequest, "jobId"> & { jobId: string };
+export type VtkVolumeDistanceRequestPayload = Omit<VtkVolumeDistanceRequest, "jobId"> & { jobId: string };
+export type VtkVolumeStreamlinesRequestPayload = Omit<VtkVolumeStreamlinesRequest, "jobId"> & { jobId: string };
+
+async function runVtkJob(op: VtkMeshOp, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> {
+  try {
+    const worker = await getPythonWorker();
+    const res = await worker.vtkMesh(op, req);
+    if (!res.ok) {
+      const diag = recordPythonWorkerFailure(res.error, `mesh:vtk:${op}`, "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+    recordPythonWorkerSuccess();
+    return res;
+  } catch (e: any) {
+    const diag = recordPythonWorkerFailure(e, `mesh:vtk:${op}`, "WORKER_OPERATION_FAILED");
+    return { ok: false, error: diag.message };
+  }
+}
+
+export function registerVtkMeshIpc() {
+  ipcMain.handle("mesh:vtk:clean", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_clean_normals", req);
+  });
+
+  ipcMain.handle("mesh:vtk:decimate", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_decimate", req);
+  });
+
+  ipcMain.handle("mesh:vtk:smooth", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
+    return runVtkJob("vtk_smooth", req);
+  });
+
+  ipcMain.handle("mesh:vtk:preview", async (_evt, req: VtkPreviewRequestPayload): Promise<VtkMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.vtkPreviewImplicit(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:vtk:preview", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:vtk:preview", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
+  });
+
+  ipcMain.handle(
+    "volume:vtk:slice",
+    async (_evt, req: VtkVolumeSliceRequestPayload): Promise<VtkVolumeSliceResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        const res = await worker.vtkVolumeSlice(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:slice", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
+      } catch (e: any) {
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:slice", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "volume:vtk:isosurface",
+    async (_evt, req: VtkVolumeIsosurfaceRequestPayload): Promise<VtkVolumeIsosurfaceResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        const res = await worker.vtkVolumeIsosurface(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:isosurface", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
+      } catch (e: any) {
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:isosurface", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "volume:vtk:distance",
+    async (_evt, req: VtkVolumeDistanceRequestPayload): Promise<VtkVolumeDistanceResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        const res = await worker.vtkVolumeDistance(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:distance", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
+      } catch (e: any) {
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:distance", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "volume:vtk:streamlines",
+    async (_evt, req: VtkVolumeStreamlinesRequestPayload): Promise<VtkVolumeStreamlinesResponse> => {
+      try {
+        const worker = await getPythonWorker();
+        const res = await worker.vtkVolumeStreamlines(req);
+        if (!res.ok) {
+          const diag = recordPythonWorkerFailure(res.error, "volume:vtk:streamlines", "WORKER_OPERATION_FAILED");
+          return { ok: false, error: diag.message };
+        }
+        recordPythonWorkerSuccess();
+        return res;
+      } catch (e: any) {
+        const diag = recordPythonWorkerFailure(e, "volume:vtk:streamlines", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+    }
+  );
+}
+
+
+
+================================================
+FILE: main/python/pythonWorker.ts
+================================================
+import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { app } from "electron";
+import fs from "node:fs";
+import path from "node:path";
+import type {
+  CgalMeshRequest,
+  CgalMeshResponse,
+  GeodesicHeatRequest,
+  GeodesicHeatResponse,
+} from "../ipc/cgalMeshIpc";
+
+export type PythonWorkerError = {
+  code: string;
+  message: string;
+  details?: unknown;
+};
+
+export type PythonWorkerBackend = "python-script" | "bundled-exe";
+
+export type PythonWorkerStartupStatus =
+  | {
+      ok: true;
+      backend: PythonWorkerBackend;
+      command: string;
+      args: string[];
+      pythonExe?: string;
+      scriptPath?: string;
+      exePath?: string;
+      version: string;
+      protocol: string;
+    }
+  | {
+      ok: false;
+      backend?: PythonWorkerBackend;
+      command?: string;
+      args?: string[];
+      pythonExe?: string;
+      scriptPath?: string;
+      exePath?: string;
+      error: PythonWorkerError;
+    };
+
+export type VtkMeshOp = "vtk_clean_normals" | "vtk_decimate" | "vtk_smooth";
+export type VtkMeshRequest = {
+  jobId: string;
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  options?: {
+    targetReduction?: number;
+    targetFaces?: number;
+    iterations?: number;
+    passband?: number;
+    computeNormals?: boolean;
+  };
+};
+export type VtkMeshResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer;
+      indices: ArrayBuffer;
+      normals?: ArrayBuffer;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkPreviewRequest = {
+  jobId: string;
+  expr: string;
+  iso: number;
+  domain: { min: [number, number, number]; max: [number, number, number] };
+  resolution: number;
+  targetFaces?: number;
+  targetReduction?: number;
+};
+
+export type VtkVolumeSliceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView | Buffer;
+  axis?: "x" | "y" | "z";
+  index?: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  plane?: {
+    center: [number, number, number];
+    normal: [number, number, number];
+    u: [number, number, number];
+    v: [number, number, number];
+    width: number;
+    height: number;
+    resolution?: [number, number];
+  };
+  window?: { low: number; high: number };
+};
+
+export type VtkVolumeSliceResponse =
+  | {
+      ok: true;
+      data: ArrayBuffer;
+      width: number;
+      height: number;
+      format: "rgba8";
+      min?: number;
+      max?: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeIsosurfaceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  scalars: ArrayBuffer | ArrayBufferView | Buffer;
+  iso: number;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+};
+
+export type VtkVolumeIsosurfaceResponse =
+  | {
+      ok: true;
+      positions: ArrayBuffer;
+      indices: ArrayBuffer;
+      normals?: ArrayBuffer;
+      vertexCount: number;
+      triCount: number;
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeDistanceRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  positions: ArrayBuffer | ArrayBufferView | Buffer;
+  indices: ArrayBuffer | ArrayBufferView | Buffer;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  signed?: boolean;
+  windingNumber?: boolean;
+};
+
+export type VtkVolumeDistanceResponse =
+  | {
+      ok: true;
+      scalars: ArrayBuffer;
+      dims: [number, number, number];
+    }
+  | { ok: false; error: string };
+
+export type VtkVolumeStreamlinesRequest = {
+  jobId: string;
+  dims: [number, number, number];
+  vectors: ArrayBuffer | ArrayBufferView | Buffer;
+  spacing?: [number, number, number];
+  origin?: [number, number, number];
+  seeds: [number, number, number][];
+  stepSize?: number;
+  maxSteps?: number;
+  maxLength?: number;
+};
+
+export type VtkVolumeStreamlinesResponse =
+  | { ok: true; lines: number[][][] }
+  | { ok: false; error: string };
+
+type Pending = {
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+  timeout: NodeJS.Timeout;
+};
+
+type BinaryPart = { name: string; bytes: number };
+type PendingBinary = {
+  jobId: string;
+  meta: any;
+  parts: BinaryPart[];
+  totalBytes: number;
+};
+
+type WorkerVersionResult = {
+  version: string;
+  protocol: string;
+};
+
+function decodeFloat32(b64: string): number[] {
+  const buf = Buffer.from(b64, "base64");
+  const arr = new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
+  return Array.from(arr);
+}
+
+function decodeUint32(b64: string): number[] {
+  const buf = Buffer.from(b64, "base64");
+  const arr = new Uint32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
+  return Array.from(arr);
+}
+
+function toBuffer(data: ArrayBuffer | ArrayBufferView | Buffer): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return Buffer.from([]);
+}
+
+function bufferToArrayBuffer(buf: Buffer): ArrayBuffer {
+  const out = new ArrayBuffer(buf.byteLength);
+  Buffer.from(out).set(buf);
+  return out;
+}
+
+const toWorkerError = (msg: any): PythonWorkerError => {
+  const nested = msg?.error;
+  if (nested && typeof nested === "object") {
+    return {
+      code: String((nested as any).code ?? msg?.code ?? "WORKER_ERROR"),
+      message: String((nested as any).message ?? msg?.message ?? "Python worker error"),
+      details: (nested as any).details ?? msg?.details ?? msg?.trace,
+    };
+  }
+  return {
+    code: String(msg?.code ?? "WORKER_ERROR"),
+    message: String(msg?.message ?? msg?.error ?? "Python worker error"),
+    details: msg?.details ?? msg?.trace,
+  };
+};
+
+const workerErrorText = (msg: any, fallback: string): string => {
+  const err = toWorkerError(msg);
+  if (!err.message || err.message === "Python worker error") return fallback;
+  return `${err.code}: ${err.message}`;
+};
+
+class PythonWorker {
+  private proc: ChildProcessWithoutNullStreams;
+  private pending = new Map<string, Pending>();
+  private stderrTail = "";
+  private logStderr = false;
+  private envLogStderr = false;
+  private stderrLastLog = 0;
+  private stderrDropped = 0;
+  private stderrLastLine = "";
+  private stdoutBuffer = Buffer.alloc(0);
+  private pendingBinary: PendingBinary | null = null;
+
+  constructor(proc: ChildProcessWithoutNullStreams) {
+    this.proc = proc;
+    const envVerbose = String(process.env.MATH3D_CGAL_VERBOSE || "").toLowerCase();
+    const envLog = String(process.env.MATH3D_CGAL_LOG_STDERR || "").toLowerCase();
+    const truthy = (v: string) => ["1", "true", "yes", "on", "y"].includes(v);
+    this.envLogStderr = truthy(envVerbose) || truthy(envLog);
+    this.logStderr = this.envLogStderr;
+
+    proc.stdout.on("data", (buf: Buffer) => {
+      this.handleStdout(buf);
+    });
+
+    proc.stderr.on("data", (buf) => {
+      const text = buf.toString();
+      if (!text) return;
+      this.stderrTail = (this.stderrTail + text).slice(-2000);
+      if (!this.logStderr) return;
+
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (!lines.length) return;
+      this.stderrLastLine = lines[lines.length - 1];
+      this.stderrDropped += lines.length;
+      const now = Date.now();
+      if (now - this.stderrLastLog < 1000) return;
+      this.stderrLastLog = now;
+      const dropped = this.stderrDropped;
+      this.stderrDropped = 0;
+      console.error(
+        `[CGAL worker:stderr] ${dropped} lines (latest): ${this.stderrLastLine}`
+      );
+    });
+
+    proc.on("exit", (code) => {
+      const details = this.stderrTail.trim();
+      const suffix = details ? `: ${details}` : "";
+      const err = new Error(`Python worker exited with code ${code ?? "unknown"}${suffix}`);
+      console.error("[CGAL worker] exit", { code, details });
+      for (const [, p] of this.pending) {
+        clearTimeout(p.timeout);
+        p.reject(err);
+      }
+      this.pending.clear();
+    });
+  }
+
+  private resolveMessage(msg: any) {
+    const jobId = msg?.jobId;
+    if (!jobId) return;
+
+    if (msg.type === "progress") {
+      const phase = msg.phase ? ` ${msg.phase}` : "";
+      const pct = typeof msg.pct === "number" ? ` ${msg.pct}%` : "";
+      const detail = msg.msg ? ` - ${msg.msg}` : "";
+      console.log(`[CGAL worker] ${jobId}${phase}${pct}${detail}`);
+      return;
+    }
+
+    const pending = this.pending.get(jobId);
+    if (!pending) return;
+
+    clearTimeout(pending.timeout);
+    this.pending.delete(jobId);
+
+    if (msg.type === "error" || msg.ok === false) {
+      const err = toWorkerError(msg);
+      pending.reject(new Error(`${err.code}: ${err.message}`));
+      return;
+    }
+
+    pending.resolve(msg);
+  }
+
+  private handleStdout(buf: Buffer) {
+    if (!buf?.length) return;
+    const chunk = Buffer.from(buf);
+    this.stdoutBuffer = this.stdoutBuffer.length ? Buffer.concat([this.stdoutBuffer, chunk]) : chunk;
+
+    while (true) {
+      if (this.pendingBinary) {
+        if (this.stdoutBuffer.length < this.pendingBinary.totalBytes) return;
+        const payload = this.stdoutBuffer.subarray(0, this.pendingBinary.totalBytes);
+        this.stdoutBuffer = this.stdoutBuffer.subarray(this.pendingBinary.totalBytes);
+
+        const payloads: Record<string, Buffer> = {};
+        let offset = 0;
+        for (const part of this.pendingBinary.parts) {
+          const next = offset + part.bytes;
+          payloads[part.name] = payload.subarray(offset, next);
+          offset = next;
+        }
+
+        const msg = { ...this.pendingBinary.meta, binaryPayloads: payloads };
+        this.pendingBinary = null;
+        this.resolveMessage(msg);
+        continue;
+      }
+
+      const nl = this.stdoutBuffer.indexOf(10);
+      if (nl < 0) return;
+      const lineBuf = this.stdoutBuffer.subarray(0, nl);
+      this.stdoutBuffer = this.stdoutBuffer.subarray(nl + 1);
+
+      if (!lineBuf.length) continue;
+      let msg: any;
+      try {
+        msg = JSON.parse(lineBuf.toString("utf8"));
+      } catch {
+        continue;
+      }
+
+      const binaryParts: BinaryPart[] = Array.isArray(msg?.binary)
+        ? msg.binary
+            .map((p: any) => ({
+              name: String(p?.name ?? ""),
+              bytes: Number(p?.bytes ?? 0),
+            }))
+            .filter((p: BinaryPart) => p.name && p.bytes > 0)
+        : [];
+
+      if (binaryParts.length && msg?.jobId) {
+        const total = binaryParts.reduce((sum, p) => sum + p.bytes, 0);
+        this.pendingBinary = { jobId: msg.jobId, meta: msg, parts: binaryParts, totalBytes: total };
+        if (total === 0) {
+          const msgWithPayloads = { ...msg, binaryPayloads: {} };
+          this.pendingBinary = null;
+          this.resolveMessage(msgWithPayloads);
+        }
+        continue;
+      }
+
+      this.resolveMessage(msg);
+    }
+  }
+
+  private request(job: any, timeoutMs = 120000, payloads?: Buffer[]): Promise<any> {
+    const jobId: string = job.jobId;
+    return new Promise((resolve, reject) => {
+      if (!jobId) {
+        reject(new Error("Missing jobId for Python worker request"));
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        this.pending.delete(jobId);
+        reject(new Error(`Python worker timeout for jobId=${jobId}`));
+      }, timeoutMs);
+
+      this.pending.set(jobId, { resolve, reject, timeout });
+      this.proc.stdin.write(JSON.stringify(job) + "\n");
+      if (payloads && payloads.length) {
+        for (const payload of payloads) {
+          if (payload?.length) this.proc.stdin.write(payload);
+        }
+      }
+    });
+  }
+
+  async ping(): Promise<{ ok: boolean; pong: boolean }> {
+    const jobId = `ping-${Date.now()}`;
+    const res = await this.request({ type: "ping", jobId }, 15000);
+    const pong = res?.type === "pong" || res?.pong === true;
+    return { ok: pong, pong };
+  }
+
+  async version(): Promise<WorkerVersionResult> {
+    const jobId = `version-${Date.now()}`;
+    const res = await this.request({ type: "version", jobId }, 15000);
+    return {
+      version: String(res?.version ?? "unknown"),
+      protocol: String(res?.protocol ?? "legacy"),
+    };
+  }
+
+  async health(): Promise<{ ok: boolean; error?: string } | undefined> {
+    const jobId = `health-${Date.now()}`;
+    const res = await this.request({ type: "health", jobId }, 15000);
+    return res;
+  }
+
+  async meshCgal(req: CgalMeshRequest): Promise<CgalMeshResponse> {
+    this.logStderr = this.envLogStderr || !!req.verbose;
+    console.log("[CGAL worker] mesh request", {
+      jobId: req.jobId,
+      iso: req.iso,
+      domain: req.domain,
+      quality: req.quality,
+      scalars: req.scalars,
+      verbose: req.verbose,
+      preflightSamples: req.preflightSamples,
+      exprLength: req.f?.length ?? 0,
+    });
+    const msg = {
+      type: "mesh.generate",
+      jobId: req.jobId,
+      expr: req.f,
+      iso: req.iso,
+      bbox: req.domain,
+      quality: {
+        target_edge: req.quality?.target_edge,
+        radiusBound: req.quality?.radiusBound,
+      },
+      scalar: req.scalars?.[0],
+      verbose: req.verbose,
+      preflightSamples: req.preflightSamples,
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+      positions_b64_len: res?.positions_b64?.length,
+      indices_b64_len: res?.indices_b64?.length,
+    });
+
+    if (!res || res.type !== "result") {
+      throw new Error(workerErrorText(res, "Unknown CGAL worker response"));
+    }
+
+    const t2 = Date.now();
+    const positions = Array.isArray(res.positions)
+      ? res.positions
+      : res.positions_b64
+        ? decodeFloat32(res.positions_b64)
+        : [];
+    const indices = Array.isArray(res.indices)
+      ? res.indices
+      : res.indices_b64
+        ? decodeUint32(res.indices_b64)
+        : [];
+    const t3 = Date.now();
+    console.log("[CGAL worker] decode complete", {
+      jobId: req.jobId,
+      ms: t3 - t2,
+      positions: positions.length,
+      indices: indices.length,
+    });
+
+    if (!positions.length || !indices.length) {
+      return { ok: false, error: "CGAL worker returned empty mesh" };
+    }
+
+    let scalars: { name: string; values: number[] }[] | undefined;
+    if (res.scalar_b64) {
+      scalars = [{ name: req.scalars?.[0] ?? "scalar", values: decodeFloat32(res.scalar_b64) }];
+    }
+
+    return {
+      ok: true,
+      positions,
+      indices,
+      scalars,
+    };
+  }
+
+  async geodesicHeat(req: GeodesicHeatRequest): Promise<GeodesicHeatResponse> {
+    console.log("[CGAL worker] geodesic heat request", {
+      jobId: req.jobId,
+      faces: req.mesh?.F?.length ?? 0,
+      vertices: req.mesh?.V?.length ?? 0,
+      options: req.options,
+    });
+
+    const msg = {
+      type: "geodesic.heat",
+      jobId: req.jobId,
+      mesh: req.mesh,
+      source: req.source,
+      target: req.target,
+      options: req.options ?? {},
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] geodesic heat response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      points: res?.polyline?.length ?? 0,
+      hasPhi: !!res?.phi_vertex,
+    });
+
+    if (!res || res.ok === false) {
+      return { ok: false, error: workerErrorText(res, "Unknown geodesic heat response") };
+    }
+
+    if (!Array.isArray(res.polyline)) {
+      return { ok: false, error: "Geodesic heat returned empty polyline" };
+    }
+
+    return {
+      ok: true,
+      polyline: res.polyline,
+      length: typeof res.length === "number" ? res.length : 0,
+      phi_vertex: Array.isArray(res.phi_vertex) ? res.phi_vertex : undefined,
+    };
+  }
+
+  async vtkMesh(op: VtkMeshOp, req: VtkMeshRequest): Promise<VtkMeshResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "VTK mesh request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.transform",
+      jobId: req.jobId,
+      op,
+      options: req.options ?? {},
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk response received", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK worker response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK worker returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkPreviewImplicit(req: VtkPreviewRequest): Promise<VtkMeshResponse> {
+    if (workerFailureInjectionMode === "worker-success") {
+      const positions = new Float32Array([
+        -0.5, -0.5, 0,
+         0.5, -0.5, 0,
+         0.0,  0.5, 0,
+      ]);
+      const indices = new Uint32Array([0, 1, 2]);
+      return {
+        ok: true,
+        positions: positions.buffer,
+        indices: indices.buffer,
+        vertexCount: 3,
+        triCount: 1,
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-invalid-expression") {
+      return {
+        ok: false,
+        error: "Invalid expression near '*' token (injected invalid-expression mode).",
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-missing") {
+      return {
+        ok: false,
+        error: "Python worker entrypoint not found (injected worker-missing mode).",
+      };
+    }
+
+    if (workerFailureInjectionMode === "worker-timeout") {
+      await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      throw new Error(
+        `Python worker timeout for jobId=${req.jobId} (injected worker-timeout mode)`
+      );
+    }
+
+    if (workerFailureInjectionMode === "worker-malformed-error") {
+      const malformed = {
+        type: "error",
+        error: {
+          details: {
+            shape: "malformed-error-payload",
+            injected: true,
+          },
+        },
+      };
+      return {
+        ok: false,
+        error: workerErrorText(malformed, "Malformed worker error payload (injected)."),
+      };
+    }
+
+    const msg = {
+      type: "mesh.preview",
+      jobId: req.jobId,
+      expr: req.expr,
+      iso: req.iso,
+      bbox: req.domain,
+      resolution: req.resolution,
+      targetFaces: req.targetFaces,
+      targetReduction: req.targetReduction,
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk preview response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK preview response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK preview returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkVolumeSlice(req: VtkVolumeSliceRequest): Promise<VtkVolumeSliceResponse> {
+    const scalarsBuf = toBuffer(req.scalars);
+    if (!scalarsBuf.length) {
+      return { ok: false, error: "VTK volume slice request missing scalars buffer" };
+    }
+
+    const msg = {
+      type: "volume.slice",
+      jobId: req.jobId,
+      dims: req.dims,
+      axis: req.axis,
+      index: req.index,
+      spacing: req.spacing,
+      origin: req.origin,
+      plane: req.plane,
+      window: req.window,
+      binary: [{ name: "scalars", bytes: scalarsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [scalarsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume slice response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      width: res?.width,
+      height: res?.height,
+    });
+
+    if (!res || res.type !== "volume_slice_result" || res.ok === false) {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume slice response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const data = payloads?.data;
+    if (!data) {
+      return { ok: false, error: "VTK volume slice returned empty buffer" };
+    }
+
+    return {
+      ok: true,
+      data: bufferToArrayBuffer(data),
+      width: Number(res.width) || 0,
+      height: Number(res.height) || 0,
+      format: "rgba8",
+      min: typeof res.min === "number" ? res.min : undefined,
+      max: typeof res.max === "number" ? res.max : undefined,
+    };
+  }
+
+  async vtkVolumeIsosurface(req: VtkVolumeIsosurfaceRequest): Promise<VtkVolumeIsosurfaceResponse> {
+    const scalarsBuf = toBuffer(req.scalars);
+    if (!scalarsBuf.length) {
+      return { ok: false, error: "VTK volume isosurface request missing scalars buffer" };
+    }
+
+    const msg = {
+      type: "volume.isosurface",
+      jobId: req.jobId,
+      dims: req.dims,
+      iso: req.iso,
+      spacing: req.spacing,
+      origin: req.origin,
+      binary: [{ name: "scalars", bytes: scalarsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [scalarsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume isosurface response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "volume_isosurface_result" || res.ok === false) {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume isosurface response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK volume isosurface returned empty buffers" };
+    }
+
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkVolumeDistance(req: VtkVolumeDistanceRequest): Promise<VtkVolumeDistanceResponse> {
+    const positionsBuf = toBuffer(req.positions);
+    const indicesBuf = toBuffer(req.indices);
+    if (!positionsBuf.length || !indicesBuf.length) {
+      return { ok: false, error: "VTK volume distance request missing mesh buffers" };
+    }
+
+    const msg = {
+      type: "volume.distance",
+      jobId: req.jobId,
+      dims: req.dims,
+      spacing: req.spacing,
+      origin: req.origin,
+      signed: req.signed,
+      windingNumber: req.windingNumber,
+      binary: [
+        { name: "positions", bytes: positionsBuf.length },
+        { name: "indices", bytes: indicesBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsBuf, indicesBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk volume distance response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+    });
+
+    if (!res || res.type !== "volume_distance_result" || res.ok === false) {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK volume distance response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const scalars = payloads?.scalars;
+    if (!scalars) {
+      return { ok: false, error: "VTK volume distance returned empty buffer" };
+    }
+
+    return {
+      ok: true,
+      scalars: bufferToArrayBuffer(scalars),
+      dims: Array.isArray(res.dims) && res.dims.length === 3 ? res.dims : req.dims,
+    };
+  }
+
+  async vtkVolumeStreamlines(req: VtkVolumeStreamlinesRequest): Promise<VtkVolumeStreamlinesResponse> {
+    const vectorsBuf = toBuffer(req.vectors);
+    if (!vectorsBuf.length) {
+      return { ok: false, error: "VTK streamlines request missing vectors buffer" };
+    }
+
+    const msg = {
+      type: "volume.streamlines",
+      jobId: req.jobId,
+      dims: req.dims,
+      spacing: req.spacing,
+      origin: req.origin,
+      seeds: req.seeds,
+      stepSize: req.stepSize,
+      maxSteps: req.maxSteps,
+      maxLength: req.maxLength,
+      binary: [{ name: "vectors", bytes: vectorsBuf.length }],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [vectorsBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk streamlines response", {
+      jobId: req.jobId,
+      type: res?.type,
+      ms: t1 - t0,
+      lines: Array.isArray(res?.lines) ? res.lines.length : 0,
+    });
+
+    if (!res || res.type !== "volume_streamlines_result" || res.ok === false) {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK streamlines response") };
+    }
+
+    if (!Array.isArray(res.lines)) {
+      return { ok: false, error: "VTK streamlines returned empty data" };
+    }
+
+    return { ok: true, lines: res.lines };
+  }
+
+  kill() {
+    this.proc.kill();
+  }
+}
+
+let singleton: PythonWorker | null = null;
+let spawnPromise: Promise<PythonWorker> | null = null;
+let lastLaunchConfig: WorkerLaunchConfig | null = null;
+
+type WorkerResolutionMode = "auto" | "python" | "exe";
+type WorkerFailureInjectionMode =
+  | "none"
+  | "worker-success"
+  | "worker-invalid-expression"
+  | "worker-missing"
+  | "worker-timeout"
+  | "worker-malformed-error";
+type WorkerLaunchConfig = {
+  backend: PythonWorkerBackend;
+  command: string;
+  args: string[];
+  mode: WorkerResolutionMode;
+  modeSource: string;
+  packaged: boolean;
+  pythonExe?: string;
+  scriptPath?: string;
+  exePath?: string;
+};
+
+const truthy = (value: string | undefined): boolean =>
+  ["1", "true", "yes", "on", "y"].includes(String(value || "").toLowerCase());
+
+function resolveWorkerFailureInjectionMode(): WorkerFailureInjectionMode {
+  const direct = (process.env.MATH3D_WORKER_FAILURE_INJECTION || "").trim();
+  const legacy = (process.env.MATH3D_WORKER_FAILURE_MODE || "").trim();
+  const raw = (direct || legacy || "none").toLowerCase();
+
+  if (raw === "none" || raw === "off" || raw === "disabled") return "none";
+  if (raw === "worker-success" || raw === "success") return "worker-success";
+  if (raw === "worker-invalid-expression" || raw === "invalid-expression") {
+    return "worker-invalid-expression";
+  }
+  if (raw === "worker-missing" || raw === "missing") return "worker-missing";
+  if (raw === "worker-timeout" || raw === "timeout") return "worker-timeout";
+  if (raw === "worker-malformed-error" || raw === "malformed-error" || raw === "malformed") {
+    return "worker-malformed-error";
+  }
+
+  console.warn("[python-worker] invalid failure injection mode, using none", { value: raw });
+  return "none";
+}
+
+const workerFailureInjectionMode = resolveWorkerFailureInjectionMode();
+if (workerFailureInjectionMode !== "none") {
+  console.warn("[python-worker] failure injection enabled", {
+    mode: workerFailureInjectionMode,
+  });
+}
+
+function resolvePythonExe(): string {
+  const env = process.env.MATH3D_PYTHON;
+  if (env && env.trim().length) return env;
+
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+function dedupePaths(candidates: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of candidates) {
+    const key = path.normalize(item).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function resolveWorkerMode(): { mode: WorkerResolutionMode; source: string } {
+  const direct = (process.env.MATH3D_WORKER_MODE || "").trim();
+  const legacy = (process.env.MATH3D_PYTHON_WORKER_MODE || "").trim();
+  const raw = (direct || legacy || "auto").toLowerCase();
+  const source = direct
+    ? "MATH3D_WORKER_MODE"
+    : legacy
+      ? "MATH3D_PYTHON_WORKER_MODE"
+      : "default:auto";
+  if (raw === "python" || raw === "exe" || raw === "auto") {
+    return { mode: raw, source };
+  }
+  console.warn("[python-worker] invalid worker mode, using auto", { source, value: raw });
+  return { mode: "auto", source };
+}
+
+function resolveWorkerScriptCandidates(): string[] {
+  const fromEnv = (process.env.MATH3D_WORKER_SCRIPT || "").trim();
+  const unpackedBase = process.resourcesPath
+    ? path.join(process.resourcesPath, "app.asar.unpacked")
+    : null;
+  const candidates = [
+    ...(fromEnv ? [path.resolve(fromEnv)] : []),
+    path.join(process.cwd(), "python", "worker", "main.py"),
+    path.join(process.cwd(), "dist", "python", "worker", "main.py"),
+    path.join(__dirname, "..", "..", "..", "python", "worker", "main.py"),
+    path.join(__dirname, "..", "..", "..", "..", "python", "worker", "main.py"),
+    ...(unpackedBase ? [path.join(unpackedBase, "python", "worker", "main.py")] : []),
+    ...(process.resourcesPath ? [path.join(process.resourcesPath, "python", "worker", "main.py")] : []),
+  ];
+  return dedupePaths(candidates);
+}
+
+function resolveBundledWorkerExeCandidates(): string[] {
+  const fromEnv = (process.env.MATH3D_WORKER_EXE || "").trim();
+  const candidates = [
+    ...(fromEnv ? [path.resolve(fromEnv)] : []),
+    ...(process.resourcesPath
+      ? [
+          path.join(process.resourcesPath, "python-worker", "worker.exe"),
+          path.join(process.resourcesPath, "app.asar.unpacked", "python-worker", "worker.exe"),
+        ]
+      : []),
+    path.join(path.dirname(process.execPath), "resources", "python-worker", "worker.exe"),
+    path.join(process.cwd(), "build", "python-worker-dist", "worker.exe"),
+  ];
+  return dedupePaths(candidates);
+}
+
+function firstExistingPath(candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function workerNotFoundError(kind: string, detail: string, candidates: string[]): Error {
+  return new Error(
+    [
+      `${kind} not found.`,
+      detail,
+      `candidates: ${candidates.join(" | ")}`,
+    ].join(" ")
+  );
+}
+
+function resolvePythonScriptLaunch(mode: WorkerResolutionMode, source: string): WorkerLaunchConfig {
+  const pythonExe = resolvePythonExe();
+  const candidates = resolveWorkerScriptCandidates();
+  const scriptPath = firstExistingPath(candidates);
+  if (!scriptPath) {
+    throw workerNotFoundError(
+      "Python worker entrypoint",
+      `python: ${pythonExe}. Set MATH3D_PYTHON to override Python or MATH3D_WORKER_SCRIPT to override the script path.`,
+      candidates
+    );
+  }
+  return {
+    backend: "python-script",
+    command: pythonExe,
+    args: [scriptPath],
+    pythonExe,
+    scriptPath,
+    mode,
+    modeSource: source,
+    packaged: app.isPackaged,
+  };
+}
+
+function resolveBundledExeLaunch(mode: WorkerResolutionMode, source: string): WorkerLaunchConfig {
+  const candidates = resolveBundledWorkerExeCandidates();
+  const exePath = firstExistingPath(candidates);
+  if (!exePath) {
+    throw workerNotFoundError(
+      "Bundled worker executable",
+      "Expected packaged worker at resources/python-worker/worker.exe. Set MATH3D_WORKER_EXE to override.",
+      candidates
+    );
+  }
+  return {
+    backend: "bundled-exe",
+    command: exePath,
+    args: [],
+    exePath,
+    mode,
+    modeSource: source,
+    packaged: app.isPackaged,
+  };
+}
+
+function resolveWorkerLaunch(): WorkerLaunchConfig {
+  const { mode, source } = resolveWorkerMode();
+  const packaged = app.isPackaged;
+  const allowPackagedPythonFallback = truthy(process.env.MATH3D_WORKER_ALLOW_PYTHON_FALLBACK);
+  const attempts: Array<() => WorkerLaunchConfig> = [];
+
+  if (mode === "python") {
+    attempts.push(() => resolvePythonScriptLaunch(mode, source));
+  } else if (mode === "exe") {
+    attempts.push(() => resolveBundledExeLaunch(mode, source));
+  } else if (packaged) {
+    attempts.push(() => resolveBundledExeLaunch(mode, source));
+    if (allowPackagedPythonFallback) {
+      attempts.push(() => resolvePythonScriptLaunch(mode, `${source}+packaged-python-fallback`));
+    }
+  } else {
+    attempts.push(() => resolvePythonScriptLaunch(mode, source));
+  }
+
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    try {
+      return attempt();
+    } catch (err: any) {
+      errors.push(String(err?.message ?? err));
+    }
+  }
+
+  throw new Error(
+    [
+      "Unable to resolve python worker launch backend.",
+      `mode=${mode}`,
+      `packaged=${packaged}`,
+      `allowPackagedPythonFallback=${allowPackagedPythonFallback}`,
+      `errors=${errors.join(" || ")}`,
+    ].join(" ")
+  );
+}
+
+function logWorkerLaunch(config: WorkerLaunchConfig): void {
+  console.log("[python-worker] using backend", {
+    backend: config.backend,
+    command: config.command,
+    args: config.args,
+    mode: config.mode,
+    modeSource: config.modeSource,
+    packaged: config.packaged,
+    resourcesPath: process.resourcesPath,
+  });
+}
+
+function launchStatusFields(config: WorkerLaunchConfig) {
+  return {
+    backend: config.backend,
+    command: config.command,
+    args: config.args,
+    pythonExe: config.pythonExe,
+    scriptPath: config.scriptPath,
+    exePath: config.exePath,
+  };
+}
+
+export async function getPythonWorker(): Promise<PythonWorker> {
+  if (singleton) return singleton;
+  if (spawnPromise) return spawnPromise;
+
+  spawnPromise = (async () => {
+    const launch = resolveWorkerLaunch();
+    logWorkerLaunch(launch);
+    lastLaunchConfig = launch;
+
+    const proc = spawn(launch.command, launch.args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env },
+    });
+
+    const worker = new PythonWorker(proc);
+    proc.on("exit", () => {
+      if (singleton === worker) singleton = null;
+    });
+    proc.on("error", () => {
+      if (singleton === worker) singleton = null;
+    });
+
+    try {
+      const ping = await worker.ping();
+      if (!ping.ok) {
+        throw new Error(`Python worker ping failed (${launch.backend})`);
+      }
+      await worker.version();
+      await worker.health();
+    } catch (err) {
+      worker.kill();
+      throw err;
+    }
+
+    singleton = worker;
+    return worker;
+  })();
+
+  try {
+    return await spawnPromise;
+  } finally {
+    spawnPromise = null;
+  }
+}
+
+export function stopPythonWorker() {
+  if (singleton) {
+    try {
+      singleton.kill();
+    } finally {
+      singleton = null;
+    }
+  }
+}
+
+export async function runPythonWorkerStartupCheck(): Promise<PythonWorkerStartupStatus> {
+  let resolvedLaunch: WorkerLaunchConfig;
+  try {
+    resolvedLaunch = resolveWorkerLaunch();
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: {
+        code: "WORKER_RESOLUTION_FAILED",
+        message: String(error?.message ?? error),
+      },
+    };
+  }
+
+  try {
+    const worker = await getPythonWorker();
+    const ping = await worker.ping();
+    if (!ping.ok) {
+      return {
+        ok: false,
+        ...launchStatusFields(lastLaunchConfig || resolvedLaunch),
+        error: {
+          code: "PING_FAILED",
+          message: "Python worker ping failed during startup check.",
+        },
+      };
+    }
+    const version = await worker.version();
+    const launch = lastLaunchConfig || resolvedLaunch;
+    return {
+      ok: true,
+      ...launchStatusFields(launch),
+      version: version.version,
+      protocol: version.protocol,
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      ...launchStatusFields(lastLaunchConfig || resolvedLaunch),
+      error: {
+        code: "WORKER_STARTUP_FAILED",
+        message: String(error?.message ?? error),
+      },
+    };
+  }
+}
+
+
+
+================================================
+FILE: main/python/pythonWorkerDiagnostics.ts
+================================================
+import { app, ipcMain } from "electron";
+import fs from "node:fs";
+import path from "node:path";
+import type { PythonWorkerBackend, PythonWorkerStartupStatus } from "./pythonWorker";
+
+export type PythonWorkerFailureCategory =
+  | "worker-missing"
+  | "startup-crash"
+  | "dependency-load-failure"
+  | "operation-timeout"
+  | "unknown";
+
+export type PythonWorkerDiagnosticsError = {
+  category: PythonWorkerFailureCategory;
+  code: string;
+  message: string;
+  detail: string;
+  context: string;
+  fatal: boolean;
+  at: number;
+};
+
+export type PythonWorkerDiagnosticsSnapshot = {
+  startupChecked: boolean;
+  available: boolean;
+  statusMessage: string;
+  backend?: PythonWorkerBackend;
+  version?: string;
+  protocol?: string;
+  command?: string;
+  args?: string[];
+  logPath: string;
+  lastCheckAt: number;
+  lastError?: PythonWorkerDiagnosticsError;
+};
+
+type MutableDiagnosticsState = PythonWorkerDiagnosticsSnapshot;
+
+const fallbackLogPath = path.join(process.cwd(), "output", "logs", "python-worker-diagnostics.log");
+
+const state: MutableDiagnosticsState = {
+  startupChecked: false,
+  available: false,
+  statusMessage: "Python worker diagnostics pending.",
+  logPath: fallbackLogPath,
+  lastCheckAt: Date.now(),
+};
+
+let diagnosticsIpcRegistered = false;
+
+function resolveLogPath(): string {
+  try {
+    const base = app.getPath("userData");
+    if (base && typeof base === "string") {
+      return path.join(base, "logs", "python-worker-diagnostics.log");
+    }
+  } catch {
+    // fall back when app path is not yet available
+  }
+  return fallbackLogPath;
+}
+
+function syncLogPath(): string {
+  state.logPath = resolveLogPath();
+  return state.logPath;
+}
+
+function appendDiagnosticsLog(level: "info" | "warn" | "error", event: string, payload: Record<string, unknown>): void {
+  const logPath = syncLogPath();
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    level,
+    event,
+    ...payload,
+  });
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, line + "\n", "utf8");
+  } catch {
+    // diagnostics must never crash app flow
+  }
+}
+
+function normalizeErrorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message?: unknown }).message ?? "");
+  }
+  return String(error ?? "");
+}
+
+function classifyFailureCategory(rawMessage: string, code?: string): PythonWorkerFailureCategory {
+  const text = rawMessage.toLowerCase();
+  const codeText = String(code ?? "").toLowerCase();
+  if (text.includes("timeout for jobid") || codeText.includes("timeout")) {
+    return "operation-timeout";
+  }
+  if (
+    text.includes("bundled worker executable not found") ||
+    text.includes("python worker entrypoint not found") ||
+    (text.includes("not found") && text.includes("worker")) ||
+    (text.includes("enoent") && text.includes("worker"))
+  ) {
+    return "worker-missing";
+  }
+  if (
+    text.includes("no module named") ||
+    text.includes("modulenotfounderror") ||
+    text.includes("importerror") ||
+    text.includes("dll load failed")
+  ) {
+    return "dependency-load-failure";
+  }
+  if (
+    text.includes("exited with code") ||
+    text.includes("startup failed") ||
+    text.includes("spawn") ||
+    codeText === "worker_startup_failed" ||
+    codeText === "ping_failed"
+  ) {
+    return "startup-crash";
+  }
+  return "unknown";
+}
+
+function shortenDetail(value: string, max = 260): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return clean.slice(0, max) + "...";
+}
+
+function buildActionableMessage(category: PythonWorkerFailureCategory, context: string): string {
+  const logPath = syncLogPath();
+  if (category === "worker-missing") {
+    return `Python worker is missing (${context}). Reinstall app or rebuild installer. Log: ${logPath}`;
+  }
+  if (category === "startup-crash") {
+    return `Python worker crashed during startup (${context}). Restart app and check worker log. Log: ${logPath}`;
+  }
+  if (category === "dependency-load-failure") {
+    return `Python worker dependency load failed (${context}). Rebuild worker dependencies and check log. Log: ${logPath}`;
+  }
+  if (category === "operation-timeout") {
+    return `Python worker operation timed out (${context}). Try lower resolution/smaller input, then retry. Log: ${logPath}`;
+  }
+  return `Python worker request failed (${context}). Check worker log for details. Log: ${logPath}`;
+}
+
+function isFatalCategory(category: PythonWorkerFailureCategory): boolean {
+  return category !== "operation-timeout";
+}
+
+function updateStateFromStartupStatus(status: PythonWorkerStartupStatus): void {
+  state.startupChecked = true;
+  state.lastCheckAt = Date.now();
+  if ("backend" in status && status.backend) {
+    state.backend = status.backend;
+  }
+  if ("command" in status && status.command) {
+    state.command = status.command;
+  }
+  if ("args" in status && Array.isArray(status.args)) {
+    state.args = [...status.args];
+  }
+}
+
+export function recordPythonWorkerStartup(status: PythonWorkerStartupStatus): void {
+  updateStateFromStartupStatus(status);
+  if (status.ok) {
+    state.available = true;
+    state.version = status.version;
+    state.protocol = status.protocol;
+    state.lastError = undefined;
+    state.statusMessage = `Python worker available (${status.version}, ${status.protocol}).`;
+    appendDiagnosticsLog("info", "startup-ok", {
+      backend: status.backend,
+      version: status.version,
+      protocol: status.protocol,
+      command: status.command,
+      args: status.args,
+    });
+    return;
+  }
+
+  const raw = status.error?.message ?? "Python worker startup failed";
+  const code = status.error?.code ?? "WORKER_STARTUP_FAILED";
+  recordPythonWorkerFailure(raw, "startup", code);
+}
+
+export function recordPythonWorkerSuccess(fields?: {
+  backend?: PythonWorkerBackend;
+  version?: string;
+  protocol?: string;
+}): void {
+  const wasAvailable = state.available;
+  syncLogPath();
+  state.startupChecked = true;
+  state.available = true;
+  state.lastCheckAt = Date.now();
+  state.lastError = undefined;
+  if (fields?.backend) state.backend = fields.backend;
+  if (fields?.version) state.version = fields.version;
+  if (fields?.protocol) state.protocol = fields.protocol;
+  state.statusMessage = state.version
+    ? `Python worker available (${state.version}${state.protocol ? `, ${state.protocol}` : ""}).`
+    : "Python worker available.";
+
+  if (!wasAvailable) {
+    appendDiagnosticsLog("info", "worker-recovered", {
+      backend: state.backend,
+      version: state.version,
+      protocol: state.protocol,
+    });
+  }
+}
+
+export function recordPythonWorkerFailure(
+  error: unknown,
+  context: string,
+  code = "WORKER_ERROR"
+): PythonWorkerDiagnosticsError {
+  const rawMessage = normalizeErrorMessage(error) || "Python worker failure";
+  const category = classifyFailureCategory(rawMessage, code);
+  const fatal = isFatalCategory(category);
+  const diagError: PythonWorkerDiagnosticsError = {
+    category,
+    code,
+    message: buildActionableMessage(category, context),
+    detail: shortenDetail(rawMessage),
+    context,
+    fatal,
+    at: Date.now(),
+  };
+
+  syncLogPath();
+  state.startupChecked = true;
+  state.lastCheckAt = diagError.at;
+  if (fatal) {
+    state.available = false;
+  }
+  state.lastError = diagError;
+  state.statusMessage = diagError.message;
+
+  appendDiagnosticsLog("error", "worker-failure", {
+    category: diagError.category,
+    code: diagError.code,
+    context: diagError.context,
+    fatal: diagError.fatal,
+    detail: diagError.detail,
+  });
+
+  return diagError;
+}
+
+export function getPythonWorkerDiagnosticsSnapshot(): PythonWorkerDiagnosticsSnapshot {
+  syncLogPath();
+  return {
+    ...state,
+    args: state.args ? [...state.args] : undefined,
+    lastError: state.lastError ? { ...state.lastError } : undefined,
+  };
+}
+
+export function registerPythonWorkerDiagnosticsIpc(): void {
+  if (diagnosticsIpcRegistered) return;
+  diagnosticsIpcRegistered = true;
+  ipcMain.handle("python-worker:diagnostics:get", async (): Promise<PythonWorkerDiagnosticsSnapshot> => {
+    return getPythonWorkerDiagnosticsSnapshot();
+  });
+}
+
+

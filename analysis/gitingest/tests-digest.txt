@@ -1,0 +1,623 @@
+Directory structure:
+└── tests/
+    └── e2e/
+        ├── object-scene.spec.ts
+        ├── packaged-desktop.spec.ts
+        ├── surface-functional.spec.ts
+        ├── worker-failure-injection.spec.ts
+        └── helpers/
+            └── surfaceAppHarness.ts
+
+================================================
+FILE: e2e/object-scene.spec.ts
+================================================
+import { expect, test, type Page } from "@playwright/test";
+import { _electron as electron, type ElectronApplication } from "playwright";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const repoRoot = path.resolve(__dirname, "..", "..");
+
+type GeometryStats = {
+  objectCount: number;
+  visibleCount: number;
+};
+
+const parseGeometryStats = (raw: string): GeometryStats => {
+  const match = raw.match(/(\d+)\s+objects\s+\((\d+)\s+visible\)/i);
+  if (!match) {
+    throw new Error(`Unable to parse geometry stats from: "${raw}"`);
+  }
+  return {
+    objectCount: Number(match[1]),
+    visibleCount: Number(match[2]),
+  };
+};
+
+const readGeometryStats = async (page: Page): Promise<GeometryStats> => {
+  const text = await page.getByTestId("geometry-scene-stats").innerText();
+  return parseGeometryStats(text);
+};
+
+const launchApp = async (env: Record<string, string | undefined>): Promise<{ app: ElectronApplication; page: Page }> => {
+  const launchEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ...env,
+    ELECTRON_ENABLE_LOGGING: "1",
+  };
+  delete launchEnv.ELECTRON_RUN_AS_NODE;
+
+  const app = await electron.launch({
+    args: ["."],
+    cwd: repoRoot,
+    env: launchEnv,
+  });
+  const page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  return { app, page };
+};
+
+const resetStorage = async (page: Page) => {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+};
+
+const openProceduralGeometry = async (page: Page) => {
+  await page.getByRole("button", { name: "Geometry", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Procedural", exact: true }).click();
+  await expect(page.getByTestId("geometry-scene-stats")).toBeVisible();
+};
+
+const openWorkbookPanel = async (page: Page) => {
+  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Workbook", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Workbook", exact: true }).click();
+};
+
+const installSaveCapture = async (page: Page) => {
+  await page.evaluate(() => {
+    const win = window as unknown as {
+      __math3dE2E?: { installed?: boolean; lastSavedText?: string | null };
+    };
+    if (win.__math3dE2E?.installed) return;
+    const originalCreateObjectURL = URL.createObjectURL.bind(URL);
+    win.__math3dE2E = { installed: true, lastSavedText: null };
+    URL.createObjectURL = (obj: Blob | MediaSource): string => {
+      if (obj instanceof Blob) {
+        void obj.text().then((text) => {
+          if (win.__math3dE2E) win.__math3dE2E.lastSavedText = text;
+        });
+      }
+      return originalCreateObjectURL(obj);
+    };
+  });
+};
+
+const saveWorkspace = async (page: Page): Promise<string> => {
+  await openWorkbookPanel(page);
+  await installSaveCapture(page);
+  await page.evaluate(() => {
+    const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+    if (win.__math3dE2E) win.__math3dE2E.lastSavedText = null;
+  });
+  await page.getByRole("button", { name: "Save", exact: true }).first().click();
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+      return win.__math3dE2E?.lastSavedText?.length ?? 0;
+    });
+  }).toBeGreaterThan(0);
+  const payload = await page.evaluate(() => {
+    const win = window as unknown as { __math3dE2E?: { lastSavedText?: string | null } };
+    return win.__math3dE2E?.lastSavedText ?? "";
+  });
+  const outPath = path.join(os.tmpdir(), `math3d-workspace-${Date.now()}-${Math.random().toString(16).slice(2)}.math3d`);
+  writeFileSync(outPath, payload, "utf8");
+  return outPath;
+};
+
+const openWorkspace = async (page: Page, filePath: string) => {
+  await openWorkbookPanel(page);
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Open...", exact: true }).first().click();
+  const chooser = await chooserPromise;
+  await chooser.setFiles(filePath);
+};
+
+test("Object/scene behavior: create, toggle visibility, remove, overlay state remains consistent", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-obj-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    const rows = page.getByTestId("geometry-object-row");
+    const toggles = page.getByTestId("geometry-object-visible-toggle");
+    const deletes = page.getByTestId("geometry-object-delete");
+
+    const initialRows = await rows.count();
+    const initialStats = await readGeometryStats(page);
+    expect(initialStats.objectCount).toBe(initialRows);
+
+    await page.getByTestId("geometry-add-object").click();
+    await expect.poll(async () => rows.count()).toBe(initialRows + 1);
+    const createdStats = await readGeometryStats(page);
+    expect(createdStats.objectCount).toBe(initialRows + 1);
+    expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
+
+    await expect(toggles.first()).toBeChecked();
+    await toggles.first().click();
+    await expect(toggles.first()).not.toBeChecked();
+    await expect.poll(async () => {
+      const stats = await readGeometryStats(page);
+      return stats.visibleCount;
+    }).toBe(createdStats.visibleCount - 1);
+
+    await deletes.first().click();
+    await expect.poll(async () => rows.count()).toBe(initialRows);
+    const finalStats = await readGeometryStats(page);
+    expect(finalStats.objectCount).toBe(initialStats.objectCount);
+    expect(finalStats.visibleCount).toBe(initialStats.visibleCount);
+
+    await expect(page.getByTestId("unified-object-tree")).toBeVisible();
+    await expect(page.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Geometry gallery: select vs add flow, quick add, and filtering", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-gallery-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let app: ElectronApplication | null = null;
+  try {
+    const launched = await launchApp(env);
+    app = launched.app;
+    const page = launched.page;
+
+    await resetStorage(page);
+    await openProceduralGeometry(page);
+
+    const rows = page.getByTestId("geometry-object-row");
+    const baseCount = await rows.count();
+
+    const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
+    await expect(sphereCard).toBeVisible();
+    await sphereCard.click();
+    await expect.poll(async () => rows.count()).toBe(baseCount);
+
+    await sphereCard.dblclick();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+
+    await page.getByTestId("geometry-gallery-quick-add-torus").click();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 2);
+
+    await page.getByTestId("geometry-gallery-search").fill("zzzz-no-match");
+    await expect(page.getByText("No gallery cards match this search/filter.")).toBeVisible();
+
+    await page.getByTestId("geometry-gallery-search").fill("");
+    await page.getByTestId("geometry-gallery-category-filter").selectOption("polyhedra");
+    await expect(page.getByTestId("geometry-gallery-card-cube")).toBeVisible();
+    await expect(page.getByTestId("geometry-gallery-card-sphere")).toHaveCount(0);
+  } finally {
+    if (app) {
+      await app.close();
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+test("Persistence: save workspace and reopen restores scene", async () => {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-persist-"));
+  const env = {
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+  };
+
+  let firstApp: ElectronApplication | null = null;
+  let secondApp: ElectronApplication | null = null;
+  let savedWorkspacePath: string | null = null;
+  try {
+    const first = await launchApp(env);
+    firstApp = first.app;
+    const firstPage = first.page;
+    await resetStorage(firstPage);
+    await openProceduralGeometry(firstPage);
+
+    const rows = firstPage.getByTestId("geometry-object-row");
+    const baseCount = await rows.count();
+
+    await firstPage.getByTestId("geometry-add-object").click();
+    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+    const savedStats = await readGeometryStats(firstPage);
+
+    savedWorkspacePath = await saveWorkspace(firstPage);
+    await expect.poll(async () => {
+      return firstPage.evaluate(() => Number(localStorage.getItem("math3d.workbook.manualSaveAt.v1") ?? 0));
+    }).toBeGreaterThan(0);
+
+    await firstApp.close();
+    firstApp = null;
+
+    const second = await launchApp(env);
+    secondApp = second.app;
+    const secondPage = second.page;
+
+    await openWorkspace(secondPage, savedWorkspacePath);
+    await openProceduralGeometry(secondPage);
+
+    const reopenedRows = secondPage.getByTestId("geometry-object-row");
+    await expect.poll(async () => reopenedRows.count()).toBe(savedStats.objectCount);
+    const reopenedStats = await readGeometryStats(secondPage);
+    expect(reopenedStats.objectCount).toBe(savedStats.objectCount);
+    expect(reopenedStats.visibleCount).toBe(savedStats.visibleCount);
+    await expect(secondPage.getByTestId("app-status-bar")).toContainText("Geometry viewer (procedural)");
+  } finally {
+    if (firstApp) {
+      await firstApp.close();
+    }
+    if (secondApp) {
+      await secondApp.close();
+    }
+    if (savedWorkspacePath) {
+      rmSync(savedWorkspacePath, { force: true });
+    }
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+});
+
+
+
+================================================
+FILE: e2e/packaged-desktop.spec.ts
+================================================
+import { expect, test } from "@playwright/test";
+import { _electron as electron, type ElectronApplication } from "playwright";
+import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const installRoot =
+  process.env.MATH3D_INSTALL_ROOT ??
+  path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Math3D");
+const installedAppExe =
+  process.env.MATH3D_INSTALLED_APP_EXE ?? path.join(installRoot, "Math3D.exe");
+const installedWorkerExe =
+  process.env.MATH3D_INSTALLED_WORKER_EXE ??
+  path.join(installRoot, "resources", "python-worker", "worker.exe");
+const runPackagedE2E = ["1", "true", "yes", "on"].includes(
+  String(process.env.MATH3D_RUN_PACKAGED_E2E ?? "").toLowerCase()
+);
+
+test.describe("Packaged desktop flow", () => {
+  test.skip(
+    !runPackagedE2E,
+    "Set MATH3D_RUN_PACKAGED_E2E=1 to run installed-app and bundled-worker packaged tests."
+  );
+  test.skip(
+    !(existsSync(installedAppExe) && existsSync(installedWorkerExe)),
+    `Installed app/worker not found. app=${installedAppExe} worker=${installedWorkerExe}`
+  );
+
+  test("installed app launches", async () => {
+    let app: ElectronApplication | null = null;
+    try {
+      const launchEnv: Record<string, string | undefined> = {
+        ...process.env,
+        ELECTRON_ENABLE_LOGGING: "1",
+      };
+      delete launchEnv.ELECTRON_RUN_AS_NODE;
+
+      app = await electron.launch({
+        executablePath: installedAppExe,
+        args: [],
+        env: launchEnv,
+      });
+      const page = await app.firstWindow();
+      await page.waitForLoadState("domcontentloaded");
+      await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+    } finally {
+      if (app) {
+        await app.close();
+      }
+    }
+  });
+
+  test("bundled worker responds and one tiny real operation succeeds", async () => {
+    const smokeScript = path.join(repoRoot, "scripts", "smoke-python-worker.mjs");
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      [smokeScript, "--exe", installedWorkerExe],
+      {
+        cwd: repoRoot,
+        timeout: 3 * 60 * 1000,
+        windowsHide: true,
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    );
+
+    expect(stdout).toContain("[smoke] ok");
+  });
+});
+
+
+
+================================================
+FILE: e2e/surface-functional.spec.ts
+================================================
+import { expect, test } from "@playwright/test";
+import {
+  assertGenerateButtonReset,
+  clickGenerate,
+  closeSurfaceApp,
+  launchSurfaceApp,
+  openSurfaceGenerator,
+  readWorkerStatusText,
+  setSimpleSurfaceExpression,
+  waitForWorkerReady,
+  type LaunchedSurfaceApp,
+} from "./helpers/surfaceAppHarness";
+
+test.describe("Surface functional flow", () => {
+  test("Test 1 â€” startup smoke", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp();
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+
+      await expect.poll(async () => (await readWorkerStatusText(ctx.page)).toLowerCase()).not.toContain(
+        "worker unavailable"
+      );
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 2 â€” simple geometry generate", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp({
+        MATH3D_WORKER_FAILURE_INJECTION: "worker-success",
+      });
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+      await ctx.page.getByTestId("sample-surface-button").first().click();
+
+      await setSimpleSurfaceExpression(ctx.page);
+      await clickGenerate(ctx.page);
+
+      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("3 vertices / 1 faces", {
+        timeout: 10_000,
+      });
+      await expect(ctx.page.getByText("Triangle surface mesh", { exact: true })).toBeVisible();
+      await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+
+  test("Test 3 â€” invalid input failure", async () => {
+    let ctx: LaunchedSurfaceApp | null = null;
+    try {
+      ctx = await launchSurfaceApp({
+        MATH3D_WORKER_FAILURE_INJECTION: "worker-invalid-expression",
+      });
+      await openSurfaceGenerator(ctx.page);
+      await waitForWorkerReady(ctx.page);
+      await ctx.page.getByTestId("sample-surface-button").first().click();
+
+      await ctx.page.getByTestId("surface-input").first().fill("x***y");
+      await clickGenerate(ctx.page);
+
+      const banner = ctx.page.getByTestId("error-banner").first();
+      await expect(banner).toBeVisible({ timeout: 60_000 });
+      const message = (await banner.innerText()).trim();
+      expect(message.length).toBeGreaterThan(12);
+      expect(/error|invalid|failed|worker|python/i.test(message)).toBeTruthy();
+
+      await assertGenerateButtonReset(ctx.page);
+
+      await setSimpleSurfaceExpression(ctx.page);
+      await expect(ctx.page.getByTestId("surface-input").first()).toHaveValue("x*x + y*y + z*z - 1");
+    } finally {
+      await closeSurfaceApp(ctx);
+    }
+  });
+});
+
+
+
+================================================
+FILE: e2e/worker-failure-injection.spec.ts
+================================================
+import { expect, test } from "@playwright/test";
+import {
+  assertGenerateButtonReset,
+  clickGenerate,
+  closeSurfaceApp,
+  launchSurfaceApp,
+  openSurfaceGenerator,
+  setSimpleSurfaceExpression,
+  waitForWorkerReady,
+  type LaunchedSurfaceApp,
+} from "./helpers/surfaceAppHarness";
+
+type FailureCase = {
+  name: string;
+  mode: string;
+  expectedMessage: RegExp;
+};
+
+const cases: FailureCase[] = [
+  {
+    name: "worker missing",
+    mode: "worker-missing",
+    expectedMessage: /worker is missing|worker unavailable|not found/i,
+  },
+  {
+    name: "worker timeout",
+    mode: "worker-timeout",
+    expectedMessage: /timed out|timeout/i,
+  },
+  {
+    name: "worker malformed error",
+    mode: "worker-malformed-error",
+    expectedMessage: /request failed|worker|python/i,
+  },
+];
+
+test.describe("Worker failure injection", () => {
+  for (const failureCase of cases) {
+    test(`handles ${failureCase.name} without UI hang`, async () => {
+      let ctx: LaunchedSurfaceApp | null = null;
+      try {
+        ctx = await launchSurfaceApp({
+          MATH3D_WORKER_FAILURE_INJECTION: failureCase.mode,
+        });
+
+        await openSurfaceGenerator(ctx.page);
+        await waitForWorkerReady(ctx.page);
+        await ctx.page.getByTestId("sample-surface-button").first().click();
+
+        await setSimpleSurfaceExpression(ctx.page);
+        await clickGenerate(ctx.page);
+
+        const banner = ctx.page.getByTestId("error-banner").first();
+        await expect(banner).toBeVisible({ timeout: 60_000 });
+        await expect(banner).toContainText(failureCase.expectedMessage);
+
+        await assertGenerateButtonReset(ctx.page);
+
+        await ctx.page.getByTestId("surface-input").first().fill("x*y + z");
+        await expect(ctx.page.getByTestId("surface-input").first()).toHaveValue("x*y + z");
+      } finally {
+        await closeSurfaceApp(ctx);
+      }
+    });
+  }
+});
+
+
+
+================================================
+FILE: e2e/helpers/surfaceAppHarness.ts
+================================================
+import { expect, type Page } from "@playwright/test";
+import { _electron as electron, type ElectronApplication } from "playwright";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const repoRoot = path.resolve(__dirname, "..", "..", "..");
+
+export type LaunchedSurfaceApp = {
+  app: ElectronApplication;
+  page: Page;
+  profileDir: string;
+};
+
+export async function launchSurfaceApp(
+  extraEnv: Record<string, string | undefined> = {}
+): Promise<LaunchedSurfaceApp> {
+  const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-surface-"));
+  const launchEnv: Record<string, string | undefined> = {
+    ...process.env,
+    ...extraEnv,
+    APPDATA: profileDir,
+    LOCALAPPDATA: profileDir,
+    ELECTRON_ENABLE_LOGGING: "1",
+  };
+  delete launchEnv.ELECTRON_RUN_AS_NODE;
+
+  const app = await electron.launch({
+    args: ["."],
+    cwd: repoRoot,
+    env: launchEnv,
+  });
+
+  const page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+
+  return { app, page, profileDir };
+}
+
+export async function closeSurfaceApp(ctx: LaunchedSurfaceApp | null): Promise<void> {
+  if (!ctx) return;
+  await ctx.app.close();
+  rmSync(ctx.profileDir, { recursive: true, force: true });
+}
+
+export async function resetSurfaceAppState(page: Page): Promise<void> {
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+}
+
+export async function readWorkerStatusText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
+    const blocks = Array.from(document.querySelectorAll("[data-testid='worker-status']"))
+      .map((el) => normalize((el as HTMLElement).innerText || el.textContent || ""))
+      .filter(Boolean);
+    return blocks.join("\n");
+  });
+}
+
+export async function openSurfaceGenerator(page: Page): Promise<void> {
+  await resetSurfaceAppState(page);
+  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await page.getByRole("button", { name: "Inspector", exact: true }).click();
+  await expect(page.getByTestId("surface-input").first()).toBeVisible();
+  await expect(page.getByTestId("generate-button").first()).toBeVisible();
+  await expect(page.getByTestId("worker-status").first()).toBeVisible();
+}
+
+export async function waitForWorkerReady(page: Page): Promise<void> {
+  await expect.poll(
+    async () => (await readWorkerStatusText(page)).toLowerCase(),
+    { timeout: 20_000 }
+  ).toContain("worker: ready");
+}
+
+export async function setSimpleSurfaceExpression(page: Page): Promise<void> {
+  await page.getByTestId("surface-input").first().fill("x*x + y*y + z*z - 1");
+}
+
+export async function clickGenerate(page: Page): Promise<void> {
+  await page.getByTestId("generate-button").first().click();
+}
+
+export async function assertGenerateButtonReset(page: Page): Promise<void> {
+  const generate = page.getByTestId("generate-button").first();
+  await expect(generate).toBeEnabled({ timeout: 15_000 });
+  await expect(generate).toHaveText(/preview \(VTK\)/i);
+}
+
+

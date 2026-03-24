@@ -1,0 +1,736 @@
+Directory structure:
+└── scripts/
+    ├── build-python-worker.ps1
+    ├── geometry-functional-smoke.mjs
+    ├── release-smoke.ps1
+    ├── smoke-python-worker.mjs
+    ├── startup-functional-smoke.mjs
+    └── verify-installer-worker.ps1
+
+================================================
+FILE: build-python-worker.ps1
+================================================
+param(
+  [switch]$SmokeTest
+)
+
+$ErrorActionPreference = "Stop"
+$repo = Resolve-Path (Join-Path $PSScriptRoot "..")
+Set-Location $repo
+
+python python/worker/freeze.py
+
+$exe = Join-Path $repo "build/python-worker-dist/worker.exe"
+if (!(Test-Path $exe)) {
+  throw "worker.exe not found at $exe"
+}
+
+if ($SmokeTest) {
+  & $exe --ping
+  & $exe --version
+  node (Join-Path $repo "scripts/smoke-python-worker.mjs") --exe $exe
+}
+
+Write-Host "worker build complete: $exe"
+
+
+
+================================================
+FILE: geometry-functional-smoke.mjs
+================================================
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const electronBinary = require("electron");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const timeoutMs = Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS || 150000);
+
+const requiredMarkers = [
+  "[geometry-smoke] VIEWER_OPEN",
+  "[geometry-smoke] ENTER_SURFACE",
+  "[geometry-smoke] CLICK_GENERATE",
+  "[geometry-smoke] MESH_APPEARED",
+  "[geometry-smoke] NO_CRASH_BANNER",
+  "[geometry-smoke] FAIL_INVALID_EXPRESSION_OK",
+  "[geometry-smoke] FAIL_WORKER_UNAVAILABLE_OK",
+  "[geometry-smoke] FAIL_TIMEOUT_BAD_RESPONSE_OK",
+  "[geometry-smoke] DONE",
+];
+
+const normalize = (text) => String(text || "").replace(/\r\n/g, "\n");
+
+async function run() {
+  const childEnv = {
+    ...process.env,
+    MATH3D_GEOMETRY_SMOKE: "1",
+    ELECTRON_ENABLE_LOGGING: "1",
+  };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
+
+  const child = spawn(electronBinary, ["."], {
+    cwd: repoRoot,
+    env: childEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString("utf8");
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString("utf8");
+  });
+
+  const result = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // no-op
+      }
+      reject(new Error(`Geometry smoke timed out after ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    });
+  });
+
+  const out = normalize(stdout);
+  const err = normalize(stderr);
+  const all = `${out}\n${err}`;
+  const missing = requiredMarkers.filter((marker) => !all.includes(marker));
+  const hasFailMarker = all.includes("[geometry-smoke] FAIL:");
+  const exitCode = Number(result.code ?? 1);
+  if (exitCode !== 0 || result.signal || hasFailMarker || missing.length) {
+    const details = [
+      `[geometry-smoke] failed: exitCode=${exitCode} signal=${result.signal ?? "none"}`,
+      hasFailMarker ? "detected FAIL marker" : "",
+      missing.length ? `missing markers: ${missing.join(", ")}` : "",
+      "[geometry-smoke] stdout:",
+      out.trim(),
+      "[geometry-smoke] stderr:",
+      err.trim(),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    throw new Error(details);
+  }
+
+  process.stdout.write("[geometry-smoke] ok happy-path + failure-path scenarios\n");
+}
+
+run().catch((error) => {
+  process.stderr.write(`${String(error?.message ?? error)}\n`);
+  process.exit(1);
+});
+
+
+
+================================================
+FILE: release-smoke.ps1
+================================================
+param(
+  [string]$InstallerPath = "",
+  [string]$InstallRoot = "",
+  [switch]$SkipBuild,
+  [switch]$SkipInstall,
+  [switch]$SkipLaunchCheck,
+  [switch]$StrictLaunchCheck
+)
+
+$ErrorActionPreference = "Stop"
+
+$repo = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+  $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs/Math3D"
+}
+
+if (-not $SkipBuild) {
+  $ciBackup = $env:CI
+  try {
+    # Prevent electron-builder CI auto-publish behavior in smoke runs.
+    $env:CI = "false"
+    Write-Host "[release-smoke] building installer (npm run dist:ci)"
+    npm run dist:ci
+    if ($LASTEXITCODE -ne 0) {
+      throw "npm run dist:ci failed (exit code $LASTEXITCODE)"
+    }
+  } finally {
+    if ($null -eq $ciBackup) {
+      Remove-Item Env:CI -ErrorAction SilentlyContinue
+    } else {
+      $env:CI = $ciBackup
+    }
+  }
+}
+
+$verifyScript = Join-Path $repo "scripts/verify-installer-worker.ps1"
+if (-not (Test-Path $verifyScript)) {
+  throw "Missing verify script: $verifyScript"
+}
+
+Write-Host "[release-smoke] verifying installer layout + worker smoke"
+& $verifyScript `
+  -InstallerPath $InstallerPath `
+  -InstallRoot $InstallRoot `
+  -SkipInstall:$SkipInstall.IsPresent `
+  -SkipLaunchCheck:$SkipLaunchCheck.IsPresent
+if ($LASTEXITCODE -ne 0) {
+  throw "verify-installer-worker failed (exit code $LASTEXITCODE)"
+}
+
+$installedExe = Join-Path $InstallRoot "Math3D.exe"
+if (-not (Test-Path $installedExe)) {
+  throw "Installed app executable not found: $installedExe"
+}
+
+if (-not $SkipLaunchCheck) {
+  Write-Host "[release-smoke] checking app launch"
+  $before = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+  $spawned = Start-Process -FilePath $installedExe -PassThru
+  Start-Sleep -Seconds 6
+  $after = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue)
+  $new = @($after | Where-Object { $before -notcontains $_.Id })
+  if ($new.Count -eq 0) {
+    if ($spawned.HasExited) {
+      if ($spawned.ExitCode -ne 0) {
+        throw "Installed app exited during launch check (exit code $($spawned.ExitCode))."
+      }
+      $msg = "Installed app launch check saw an early exit with code 0 (possible false-negative in this session)."
+      if ($StrictLaunchCheck) {
+        throw $msg
+      }
+      Write-Warning $msg
+    } else {
+      $msg = "Installed app launch check did not observe a new running Math3D process."
+      if ($StrictLaunchCheck) {
+        throw $msg
+      }
+      Write-Warning $msg
+    }
+  } else {
+    Write-Host "[release-smoke] app launch ok (pid(s): $($new.Id -join ', '))"
+    $new | Stop-Process -Force
+  }
+}
+
+$installedWorker = Join-Path $InstallRoot "resources/python-worker/worker.exe"
+if (-not (Test-Path $installedWorker)) {
+  throw "Installed worker missing: $installedWorker"
+}
+
+$nodeExe = (Get-Command node).Source
+$smokeScript = Join-Path $repo "scripts/smoke-python-worker.mjs"
+if (-not (Test-Path $smokeScript)) {
+  throw "Smoke script missing: $smokeScript"
+}
+
+Write-Host "[release-smoke] verifying worker without python/conda paths"
+$pathBackup = $env:PATH
+try {
+  $filtered = ($pathBackup -split ";" | Where-Object { $_ -and ($_ -notmatch "(?i)python|conda") }) -join ";"
+  if (-not [string]::IsNullOrWhiteSpace($filtered)) {
+    $env:PATH = $filtered
+  }
+  & $nodeExe $smokeScript --exe $installedWorker
+  if ($LASTEXITCODE -ne 0) {
+    throw "Installed worker smoke failed without python paths (exit code $LASTEXITCODE)"
+  }
+} finally {
+  $env:PATH = $pathBackup
+}
+
+Write-Host "[release-smoke] all release smoke checks passed"
+
+
+
+================================================
+FILE: smoke-python-worker.mjs
+================================================
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import path from "node:path";
+import process from "node:process";
+
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 2; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--exe" && i + 1 < argv.length) {
+      out.exe = argv[i + 1];
+      i += 1;
+    }
+  }
+  return out;
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let handle;
+  const timeout = new Promise((_, reject) => {
+    handle = setTimeout(() => reject(new Error(`Timeout: ${label}`)), timeoutMs);
+  });
+  return Promise.race([
+    promise.finally(() => {
+      if (handle) clearTimeout(handle);
+    }),
+    timeout,
+  ]);
+}
+
+function float32Buffer(values) {
+  const arr = Float32Array.from(values);
+  return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+
+function uint32Buffer(values) {
+  const arr = Uint32Array.from(values);
+  return Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+}
+
+class WorkerClient {
+  constructor(exePath) {
+    this.proc = spawn(exePath, [], { stdio: ["pipe", "pipe", "pipe"] });
+    this.buf = Buffer.alloc(0);
+    this.waiters = [];
+    this.stderrTail = "";
+
+    this.proc.stdout.on("data", (chunk) => {
+      this.buf = this.buf.length ? Buffer.concat([this.buf, chunk]) : Buffer.from(chunk);
+      this._pump();
+    });
+
+    this.proc.stderr.on("data", (chunk) => {
+      this.stderrTail = (this.stderrTail + chunk.toString("utf8")).slice(-4000);
+    });
+  }
+
+  _pump() {
+    while (this.waiters.length) {
+      const waiter = this.waiters[0];
+      if (waiter.kind === "line") {
+        const nl = this.buf.indexOf(10);
+        if (nl < 0) return;
+        const line = this.buf.subarray(0, nl).toString("utf8");
+        this.buf = this.buf.subarray(nl + 1);
+        this.waiters.shift();
+        waiter.resolve(line);
+        continue;
+      }
+      if (waiter.kind === "bytes") {
+        if (this.buf.length < waiter.count) return;
+        const payload = this.buf.subarray(0, waiter.count);
+        this.buf = this.buf.subarray(waiter.count);
+        this.waiters.shift();
+        waiter.resolve(payload);
+        continue;
+      }
+      return;
+    }
+  }
+
+  readLine(timeoutMs = 30000) {
+    const p = new Promise((resolve, reject) => {
+      this.waiters.push({ kind: "line", resolve, reject });
+      this._pump();
+    });
+    return withTimeout(p, timeoutMs, "readLine");
+  }
+
+  readBytes(count, timeoutMs = 60000) {
+    const p = new Promise((resolve, reject) => {
+      this.waiters.push({ kind: "bytes", count, resolve, reject });
+      this._pump();
+    });
+    return withTimeout(p, timeoutMs, `readBytes(${count})`);
+  }
+
+  async request(msg, payloads = []) {
+    this.proc.stdin.write(`${JSON.stringify(msg)}\n`);
+    for (const payload of payloads) {
+      if (payload?.length) {
+        this.proc.stdin.write(payload);
+      }
+    }
+    for (;;) {
+      const line = await this.readLine(60000);
+      let meta;
+      try {
+        meta = JSON.parse(line);
+      } catch (err) {
+        throw new Error(`Invalid JSON from worker: ${line}`);
+      }
+
+      if (meta?.jobId && msg?.jobId && meta.jobId !== msg.jobId) {
+        continue;
+      }
+      if (meta?.type === "progress") {
+        continue;
+      }
+      if (meta?.type === "error" || meta?.ok === false) {
+        const code = String(meta?.code ?? "WORKER_ERROR");
+        const message = String(meta?.message ?? "Worker error");
+        throw new Error(`${code}: ${message}`);
+      }
+
+      const binary = Array.isArray(meta?.binary) ? meta.binary : [];
+      let totalBytes = 0;
+      for (const part of binary) {
+        const n = Number(part?.bytes ?? 0);
+        if (Number.isFinite(n) && n > 0) totalBytes += n;
+      }
+      if (totalBytes > 0) {
+        await this.readBytes(totalBytes, 120000);
+      }
+      return meta;
+    }
+  }
+
+  close() {
+    try {
+      this.proc.kill();
+    } catch {
+      // no-op
+    }
+  }
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  const exePath = args.exe
+    ? path.resolve(args.exe)
+    : path.resolve(process.cwd(), "build", "python-worker-dist", "worker.exe");
+
+  const client = new WorkerClient(exePath);
+  try {
+    const ping = await client.request({ type: "ping", jobId: "smoke-ping" });
+    if (ping.type !== "pong") {
+      throw new Error(`Unexpected ping response: ${JSON.stringify(ping)}`);
+    }
+
+    const preview = await client.request({
+      type: "mesh.preview",
+      jobId: "smoke-preview",
+      expr: "x^2 + y^2 + z^2",
+      iso: 1.0,
+      bbox: { min: [-1.2, -1.2, -1.2], max: [1.2, 1.2, 1.2] },
+      resolution: 24,
+    });
+
+    if (preview.type !== "vtk_result" || !preview.ok) {
+      throw new Error(`Unexpected mesh.preview response: ${JSON.stringify(preview)}`);
+    }
+
+    const triCount = Number(preview.triCount ?? 0);
+    const vertexCount = Number(preview.vertexCount ?? 0);
+    if (!(triCount > 0 && vertexCount > 0)) {
+      throw new Error(`mesh.preview returned empty geometry: v=${vertexCount} t=${triCount}`);
+    }
+
+    const positions = float32Buffer([
+      0, 0, 0,
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1,
+    ]);
+    const indices = uint32Buffer([
+      0, 1, 2,
+      0, 1, 3,
+      0, 2, 3,
+      1, 2, 3,
+    ]);
+    const vtk = await client.request(
+      {
+        type: "mesh.transform",
+        jobId: "smoke-vtk-clean",
+        op: "vtk_clean_normals",
+        options: { computeNormals: true },
+        binary: [
+          { name: "positions", bytes: positions.length },
+          { name: "indices", bytes: indices.length },
+        ],
+      },
+      [positions, indices]
+    );
+    if (vtk.type !== "vtk_result" || vtk.ok === false) {
+      throw new Error(`Unexpected mesh.transform response: ${JSON.stringify(vtk)}`);
+    }
+    const vtkTriCount = Number(vtk.triCount ?? 0);
+    const vtkVertexCount = Number(vtk.vertexCount ?? 0);
+    if (!(vtkTriCount >= 4 && vtkVertexCount >= 4)) {
+      throw new Error(`mesh.transform returned invalid geometry: v=${vtkVertexCount} t=${vtkTriCount}`);
+    }
+
+    process.stdout.write(
+      `[smoke] ok ping + mesh.preview + mesh.transform(vtk_clean_normals) `
+      + `(preview_v=${vertexCount}, preview_t=${triCount}, vtk_v=${vtkVertexCount}, vtk_t=${vtkTriCount})\n`
+    );
+  } catch (err) {
+    const detail = client.stderrTail ? `\n[worker-stderr]\n${client.stderrTail}` : "";
+    throw new Error(`${String(err?.message ?? err)}${detail}`);
+  } finally {
+    client.close();
+  }
+}
+
+main().catch((err) => {
+  process.stderr.write(`[smoke] failed: ${String(err?.message ?? err)}\n`);
+  process.exit(1);
+});
+
+
+
+================================================
+FILE: startup-functional-smoke.mjs
+================================================
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import { createRequire } from "node:module";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+const electronBinary = require("electron");
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const timeoutMs = Number(process.env.MATH3D_STARTUP_SMOKE_TIMEOUT_MS || 90000);
+
+const requiredMarkers = [
+  "[startup-smoke] APP_READY",
+  "[startup-smoke] WINDOW_READY",
+  "[startup-smoke] WORKER_HEALTH_OK",
+  "[startup-smoke] EXIT_CLEAN",
+];
+
+function normalizeOutput(text) {
+  return String(text || "").replace(/\r\n/g, "\n");
+}
+
+async function run() {
+  const childEnv = {
+    ...process.env,
+    MATH3D_STARTUP_SMOKE: "1",
+    ELECTRON_ENABLE_LOGGING: "1",
+  };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
+
+  const child = spawn(electronBinary, ["."], {
+    cwd: repoRoot,
+    env: childEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  let stdout = "";
+  let stderr = "";
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString("utf8");
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString("utf8");
+  });
+
+  const result = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // no-op
+      }
+      const out = normalizeOutput(stdout);
+      const err = normalizeOutput(stderr);
+      reject(
+        new Error(
+          [
+            `Startup smoke timed out after ${timeoutMs}ms.`,
+            "[startup-smoke] stdout:",
+            out.trim(),
+            "[startup-smoke] stderr:",
+            err.trim(),
+          ].join("\n")
+        )
+      );
+    }, timeoutMs);
+
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      resolve({ code, signal });
+    });
+  });
+
+  const out = normalizeOutput(stdout);
+  const err = normalizeOutput(stderr);
+  const merged = `${out}\n${err}`;
+
+  const missing = requiredMarkers.filter((marker) => !merged.includes(marker));
+  const exitCode = Number(result.code ?? 1);
+  if (exitCode !== 0 || result.signal || missing.length) {
+    const details = [
+      `[startup-smoke] failed: exitCode=${exitCode} signal=${result.signal ?? "none"}`,
+      missing.length ? `missing markers: ${missing.join(", ")}` : "",
+      "[startup-smoke] stdout:",
+      out.trim(),
+      "[startup-smoke] stderr:",
+      err.trim(),
+    ].filter(Boolean).join("\n");
+    throw new Error(details);
+  }
+
+  process.stdout.write("[startup-smoke] ok app_launch + window_open + worker_health + clean_exit\n");
+}
+
+run().catch((error) => {
+  process.stderr.write(`${String(error?.message ?? error)}\n`);
+  process.exit(1);
+});
+
+
+
+================================================
+FILE: verify-installer-worker.ps1
+================================================
+param(
+  [string]$InstallerPath = "",
+  [string]$InstallRoot = "",
+  [switch]$SkipInstall,
+  [switch]$SkipSmoke,
+  [switch]$SkipLaunchCheck
+)
+
+$ErrorActionPreference = "Stop"
+
+$repo = Split-Path -Parent $PSScriptRoot
+
+function Invoke-WorkerCliSmoke {
+  param(
+    [Parameter(Mandatory = $true)][string]$WorkerPath
+  )
+
+  foreach ($check in @(
+    @{ Flag = "--ping"; ExpectedType = "pong" },
+    @{ Flag = "--version"; ExpectedType = "version" }
+  )) {
+    $raw = (& $WorkerPath $check.Flag | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+      throw "Worker CLI check failed: $WorkerPath $($check.Flag) (exit code $LASTEXITCODE)"
+    }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+      throw "Worker CLI check returned empty output: $WorkerPath $($check.Flag)"
+    }
+    try {
+      $obj = $raw | ConvertFrom-Json
+    } catch {
+      throw "Worker CLI check returned non-JSON output: $raw"
+    }
+    if ($obj.type -ne $check.ExpectedType -or -not $obj.ok) {
+      throw "Worker CLI check returned unexpected payload for $($check.Flag): $raw"
+    }
+  }
+}
+
+function Invoke-WorkerProtocolSmoke {
+  param(
+    [Parameter(Mandatory = $true)][string]$WorkerPath
+  )
+
+  $smokeScript = Join-Path $repo "scripts/smoke-python-worker.mjs"
+  if (-not (Test-Path $smokeScript)) {
+    throw "Smoke script not found: $smokeScript"
+  }
+  node $smokeScript --exe $WorkerPath
+  if ($LASTEXITCODE -ne 0) {
+    throw "Smoke test failed for worker: $WorkerPath (exit code $LASTEXITCODE)"
+  }
+}
+
+if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+  $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs/Math3D"
+}
+
+$unpackedWorker = Join-Path $repo "release/win-unpacked/resources/python-worker/worker.exe"
+if (-not (Test-Path $unpackedWorker)) {
+  throw "Missing packaged worker at $unpackedWorker. Run npm run dist first."
+}
+Write-Host "[verify] packaged worker found: $unpackedWorker"
+
+if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
+  $candidate = Get-ChildItem -Path (Join-Path $repo "release") -Filter "Math3D Setup *.exe" -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  if (-not $candidate) {
+    throw "No installer found in $repo/release (expected Math3D Setup *.exe)."
+  }
+  $InstallerPath = $candidate.FullName
+}
+
+if (-not $SkipInstall) {
+  Write-Host "[verify] installing from $InstallerPath"
+  $installerArgs = @("/S", "/D=$InstallRoot")
+  $proc = Start-Process -FilePath $InstallerPath -ArgumentList $installerArgs -Wait -PassThru
+  if ($proc.ExitCode -ne 0) {
+    throw "Installer failed (exit code $($proc.ExitCode)): $InstallerPath"
+  }
+}
+
+$installedWorker = Join-Path $InstallRoot "resources/python-worker/worker.exe"
+if (-not (Test-Path $installedWorker)) {
+  throw "Missing installed worker at $installedWorker"
+}
+Write-Host "[verify] installed worker found: $installedWorker"
+
+if (-not $SkipSmoke) {
+  Write-Host "[verify] running CLI smoke (packaged worker)"
+  Invoke-WorkerCliSmoke -WorkerPath $unpackedWorker
+
+  Write-Host "[verify] running protocol smoke (packaged worker)"
+  Invoke-WorkerProtocolSmoke -WorkerPath $unpackedWorker
+
+  Write-Host "[verify] running CLI smoke (installed worker)"
+  Invoke-WorkerCliSmoke -WorkerPath $installedWorker
+
+  Write-Host "[verify] running protocol smoke (installed worker)"
+  Invoke-WorkerProtocolSmoke -WorkerPath $installedWorker
+}
+
+if (-not $SkipLaunchCheck) {
+  $installedExe = Join-Path $InstallRoot "Math3D.exe"
+  if (Test-Path $installedExe) {
+    $before = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+    Start-Process -FilePath $installedExe
+    Start-Sleep -Seconds 6
+    $after = @(Get-Process -Name "Math3D" -ErrorAction SilentlyContinue)
+    $new = @($after | Where-Object { $before -notcontains $_.Id })
+    if ($new.Count -gt 0) {
+      Write-Host "[verify] launch check observed running Math3D process(es): $($new.Id -join ', ')"
+      $new | Stop-Process -Force
+    } else {
+      Write-Warning "[verify] launch check did not observe a persistent Math3D process in this session."
+    }
+  } else {
+    Write-Warning "[verify] installed app executable not found at $installedExe"
+  }
+}
+
+Write-Host "[verify] installer worker validation complete"
+
+
