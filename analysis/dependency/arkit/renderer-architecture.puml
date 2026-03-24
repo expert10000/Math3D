@@ -1,0 +1,388 @@
+@startuml
+
+scale max 1920 width
+left to right direction
+
+skinparam nodesep 25
+skinparam ranksep 50
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Tahoma
+skinparam defaultFontSize 12
+skinparam roundCorner 6
+skinparam dpi 150
+skinparam arrowColor black
+skinparam arrowThickness 0.5
+skinparam packageTitleAlignment left
+
+' oval
+skinparam usecase {
+  borderThickness 0.5
+}
+
+' rectangle
+skinparam rectangle {
+  borderThickness 0.5
+}
+
+' component
+skinparam component {
+  borderThickness 1
+}
+
+
+rectangle "analysis" as _analysis
+(App)
+rectangle "AxisGizmo" as _AxisGizmo
+(bakeSurface)
+rectangle "cgalMeshClient" as _cgalMeshClient
+(chebyshev)
+(ChebyshevRenderer)
+rectangle "ChebyshevScreen" as _ChebyshevScreen
+rectangle "colorMaps" as _colorMaps
+(colorPalette)
+rectangle "complex" as _complex
+rectangle "complexExpr" as _complexExpr
+(<b>complexExpr.test</b>)
+rectangle "complexMapSweep" as _complexMapSweep
+rectangle "construct" as _construct
+rectangle "ConstructionLabPanel" as _ConstructionLabPanel
+rectangle "contours" as _contours
+(curvatureDirections)
+rectangle "curvatureLines" as _curvatureLines
+rectangle "curvePresetFactory" as _curvePresetFactory
+(<b>curvePresetFactory.test</b>)
+rectangle "CurveViewer" as _CurveViewer
+rectangle "datasets" as _datasets
+rectangle "demoScene" as _demoScene
+rectangle "DiskStatsPanel" as _DiskStatsPanel
+(DomainDirectionPicker)
+rectangle "expression" as _expression
+(<b>expression.test</b>)
+rectangle "gaussDensity" as _gaussDensity
+(GaussMapPanel)
+rectangle "gaussMapUtils" as _gaussMapUtils
+rectangle "geodesic" as _geodesic
+rectangle "geodesicDisk" as _geodesicDisk
+rectangle "geodesicGraph" as _geodesicGraph
+rectangle "geodesicHeatClient" as _geodesicHeatClient
+rectangle "geodesicSelection" as _geodesicSelection
+rectangle "GeometryViewer" as _GeometryViewer
+(<b>global.d</b>)
+rectangle "<b>graphCurvature</b>" as _graphCurvature
+rectangle "graphGeodesicContinuous" as _graphGeodesicContinuous
+(<b>implicitBakeWorker</b>)
+rectangle "layeredReferenceGrid" as _layeredReferenceGrid
+(<b>LegendBar</b>)
+(<b>main</b>)
+rectangle "<b>maps</b>" as _maps
+rectangle "marchingCubes" as _marchingCubes
+rectangle "marchingSquares" as _marchingSquares
+(meshExport)
+(meshOps)
+rectangle "mobius" as _mobius
+(MobiusRenderer)
+(MobiusScreen)
+rectangle "objectGalleryCatalog" as _objectGalleryCatalog
+(operatorRegistry)
+(<b>operatorRegistry.test</b>)
+rectangle "paramGeodesicContinuous" as _paramGeodesicContinuous
+rectangle "ParamSurfaceViewer" as _ParamSurfaceViewer
+rectangle "PlanePlot" as _PlanePlot
+rectangle "polyhedra" as _polyhedra
+rectangle "principalCurvature" as _principalCurvature
+rectangle "principalStreamlines" as _principalStreamlines
+rectangle "<b>ProblemAnalyzerPanel</b>" as _ProblemAnalyzerPanel
+rectangle "problemGraph" as _problemGraph
+rectangle "problemPresets" as _problemPresets
+rectangle "proceduralObjects" as _proceduralObjects
+rectangle "pythonWorkerDiagnosticsClient" as _pythonWorkerDiagnosticsClient
+rectangle "render" as _render
+rectangle "renderPrimitives" as _renderPrimitives
+rectangle "ridgeValley" as _ridgeValley
+rectangle "ridgeValleyStitch" as _ridgeValleyStitch
+rectangle "RiemannSpherePlot" as _RiemannSpherePlot
+rectangle "rotationalSurface" as _rotationalSurface
+rectangle "selectionModel" as _selectionModel
+rectangle "selectionStats" as _selectionStats
+rectangle "SelectionStatsPanel" as _SelectionStatsPanel
+rectangle "Slice2DPreview" as _Slice2DPreview
+rectangle "sliceVolume" as _sliceVolume
+rectangle "splineSurface" as _splineSurface
+(<b>splineSurface.test</b>)
+rectangle "StandardMapRenderer" as _StandardMapRenderer
+rectangle "StereometryAnalyzerPanel" as _StereometryAnalyzerPanel
+(streamlines)
+rectangle "surfaceInvariants" as _surfaceInvariants
+rectangle "surfaceMesh" as _surfaceMesh
+(<b>SurfacePanel</b>)
+rectangle "surfaceQuery" as _surfaceQuery
+rectangle "surfaceSampling" as _surfaceSampling
+rectangle "SurfaceScreen" as _SurfaceScreen
+rectangle "SurfaceViewer" as _SurfaceViewer
+rectangle "TabButton" as _TabButton
+(<b>toyVolume</b>)
+rectangle "TransformRenderer" as _TransformRenderer
+(types)
+(uiStyles)
+rectangle "vec" as _vec
+rectangle "vectorPresets" as _vectorPresets
+rectangle "volumePresets" as _volumePresets
+rectangle "volumeSampling" as _volumeSampling
+rectangle "VolumeSliceHistogram" as _VolumeSliceHistogram
+rectangle "VolumeViewer" as _VolumeViewer
+rectangle "vtkMeshClient" as _vtkMeshClient
+rectangle "vtkVolumeClient" as _vtkVolumeClient
+(webWorkerProxyBridge)
+rectangle "weierstrass" as _weierstrass
+rectangle "weierstrassPresets" as _weierstrassPresets
+(workbookModel)
+(<b>workbookModel.test</b>)
+rectangle "WorkbookPanel" as _WorkbookPanel
+(<b>workerContracts.test</b>)
+
+
+_analysis --> (types)
+_analysis --> _vec
+(App) --> _analysis
+(App) --> (bakeSurface)
+(App) --> _cgalMeshClient
+(App) --> (ChebyshevRenderer)
+(App) --> _ChebyshevScreen
+(App) --> (colorPalette)
+(App) --> _complexMapSweep
+(App) --> _ConstructionLabPanel
+(App) --> _curvatureLines
+(App) --> _curvePresetFactory
+(App) --> _CurveViewer
+(App) --> _datasets
+(App) --> _demoScene
+(App) --> _DiskStatsPanel
+(App) --> _expression
+(App) --> (GaussMapPanel)
+(App) --> _gaussMapUtils
+(App) --> _geodesicDisk
+(App) --> _geodesicGraph
+(App) --> _geodesicHeatClient
+(App) --> _geodesicSelection
+(App) --> _GeometryViewer
+(App) --> _graphGeodesicContinuous
+(App) --> _layeredReferenceGrid
+(App) --> _marchingSquares
+(App) --> (meshExport)
+(App) --> (meshOps)
+(App) --> _mobius
+(App) --> (MobiusRenderer)
+(App) --> (MobiusScreen)
+(App) --> _objectGalleryCatalog
+(App) --> _paramGeodesicContinuous
+(App) --> _ParamSurfaceViewer
+(App) --> _PlanePlot
+(App) --> _polyhedra
+(App) --> _principalCurvature
+(App) --> _proceduralObjects
+(App) --> _pythonWorkerDiagnosticsClient
+(App) --> _render
+(App) --> _renderPrimitives
+(App) --> _RiemannSpherePlot
+(App) --> _rotationalSurface
+(App) --> _selectionModel
+(App) --> _selectionStats
+(App) --> _SelectionStatsPanel
+(App) --> _sliceVolume
+(App) --> _splineSurface
+(App) --> _StandardMapRenderer
+(App) --> _StereometryAnalyzerPanel
+(App) --> (streamlines)
+(App) --> _surfaceInvariants
+(App) --> _surfaceMesh
+(App) --> _surfaceQuery
+(App) --> _surfaceSampling
+(App) --> _SurfaceViewer
+(App) --> _TabButton
+(App) --> _TransformRenderer
+(App) --> (types)
+(App) --> (uiStyles)
+(App) --> _vectorPresets
+(App) --> _volumePresets
+(App) --> _volumeSampling
+(App) --> _VolumeSliceHistogram
+(App) --> _VolumeViewer
+(App) --> _vtkMeshClient
+(App) --> _vtkVolumeClient
+(App) --> _weierstrass
+(App) --> _weierstrassPresets
+(App) --> _WorkbookPanel
+(bakeSurface) --> _expression
+(bakeSurface) --> _ParamSurfaceViewer
+(bakeSurface) --> _rotationalSurface
+(bakeSurface) --> _splineSurface
+(bakeSurface) --> _surfaceMesh
+(bakeSurface) --> _SurfaceViewer
+(bakeSurface) --> _weierstrass
+(ChebyshevRenderer) --> (chebyshev)
+(ChebyshevRenderer) --> _PlanePlot
+_ChebyshevScreen --> (uiStyles)
+_complexExpr --> _complex
+(<b>complexExpr.test</b>) -[thickness=1]> _complex
+(<b>complexExpr.test</b>) -[thickness=1]> _complexExpr
+_complexMapSweep --> _expression
+_complexMapSweep --> _renderPrimitives
+_complexMapSweep --> _surfaceMesh
+_construct --> (types)
+_construct --> _vec
+_ConstructionLabPanel --> _analysis
+_ConstructionLabPanel --> _problemGraph
+_ConstructionLabPanel --> _SurfaceViewer
+_ConstructionLabPanel --> (types)
+_curvePresetFactory --> _expression
+(<b>curvePresetFactory.test</b>) -[thickness=1]> _curvePresetFactory
+_datasets --> _renderPrimitives
+_demoScene --> _analysis
+_demoScene --> _construct
+_demoScene --> _polyhedra
+_demoScene --> (types)
+_demoScene --> _vec
+_DiskStatsPanel --> _geodesicDisk
+_DiskStatsPanel ---> _selectionStats
+(<b>expression.test</b>) -[thickness=1]> _expression
+(GaussMapPanel) --> (colorPalette)
+(GaussMapPanel) ---> _gaussDensity
+(GaussMapPanel) --> _gaussMapUtils
+(GaussMapPanel) ---> _selectionModel
+(GaussMapPanel) ---> _surfaceSampling
+_geodesicSelection --> _geodesicGraph
+_GeometryViewer --> _polyhedra
+_GeometryViewer --> _render
+_GeometryViewer --> _renderPrimitives
+_GeometryViewer --> _surfaceMesh
+_GeometryViewer --> _SurfaceViewer
+_GeometryViewer --> (types)
+_GeometryViewer --> _vec
+_graphGeodesicContinuous --> _expression
+_graphGeodesicContinuous --> _SurfaceViewer
+(<b>implicitBakeWorker</b>) --[thickness=1]> _expression
+(<b>LegendBar</b>) --[thickness=1]> _colorMaps
+(<b>main</b>) -[thickness=1]> (App)
+(<b>main</b>) -[thickness=1]> (webWorkerProxyBridge)
+_marchingCubes --> _datasets
+(meshExport) --> _surfaceMesh
+(meshOps) --> _surfaceMesh
+_mobius --> _complex
+(MobiusRenderer) --> _complex
+(MobiusRenderer) --> _mobius
+(MobiusRenderer) --> _PlanePlot
+(MobiusScreen) --> _mobius
+(MobiusScreen) --> (uiStyles)
+_objectGalleryCatalog --> _proceduralObjects
+(<b>operatorRegistry.test</b>) -[thickness=1]> (operatorRegistry)
+_paramGeodesicContinuous --> _geodesic
+_ParamSurfaceViewer --> _AxisGizmo
+_ParamSurfaceViewer --> (colorPalette)
+_ParamSurfaceViewer --> (curvatureDirections)
+_ParamSurfaceViewer --> _curvatureLines
+_ParamSurfaceViewer --> (DomainDirectionPicker)
+_ParamSurfaceViewer --> _gaussMapUtils
+_ParamSurfaceViewer --> _geodesic
+_ParamSurfaceViewer --> _marchingSquares
+_ParamSurfaceViewer --> _paramGeodesicContinuous
+_ParamSurfaceViewer --> _principalCurvature
+_ParamSurfaceViewer --> _principalStreamlines
+_ParamSurfaceViewer --> _renderPrimitives
+_ParamSurfaceViewer --> _ridgeValley
+_ParamSurfaceViewer --> _ridgeValleyStitch
+_ParamSurfaceViewer --> _rotationalSurface
+_ParamSurfaceViewer ---> _selectionModel
+_ParamSurfaceViewer --> _Slice2DPreview
+_ParamSurfaceViewer --> _splineSurface
+_ParamSurfaceViewer ---> _surfaceSampling
+_ParamSurfaceViewer --> _SurfaceViewer
+_ParamSurfaceViewer --> _weierstrass
+_PlanePlot --> (colorPalette)
+_polyhedra --> (types)
+_polyhedra --> _vec
+_principalStreamlines --> _principalCurvature
+_ProblemAnalyzerPanel --[thickness=1]> _analysis
+_ProblemAnalyzerPanel --[thickness=1]> _problemPresets
+_problemGraph --> _analysis
+_problemGraph --> _construct
+_problemGraph --> (types)
+_problemGraph --> _vec
+_problemPresets --> _problemGraph
+_problemPresets --> (types)
+_proceduralObjects --> (types)
+_render --> (meshOps)
+_render --> _renderPrimitives
+_render --> _surfaceMesh
+_render --> _SurfaceViewer
+_render --> (types)
+_renderPrimitives --> _surfaceMesh
+_selectionModel --> _surfaceSampling
+_SelectionStatsPanel ---> _selectionStats
+_sliceVolume --> _datasets
+_sliceVolume ---> _marchingSquares
+_sliceVolume --> _renderPrimitives
+(<b>splineSurface.test</b>) -[thickness=1]> _splineSurface
+_StandardMapRenderer --> _complex
+_StandardMapRenderer --> _PlanePlot
+_StereometryAnalyzerPanel --> _analysis
+_StereometryAnalyzerPanel --> _demoScene
+_StereometryAnalyzerPanel --> _polyhedra
+(streamlines) --> _datasets
+(streamlines) --> _sliceVolume
+_surfaceInvariants --> _expression
+_surfaceInvariants --> _SurfaceViewer
+(<b>SurfacePanel</b>) -[thickness=1]> _SurfaceScreen
+(<b>SurfacePanel</b>) -[thickness=1]> (uiStyles)
+_surfaceQuery --> _datasets
+_surfaceQuery --> (meshOps)
+_surfaceQuery --> _paramGeodesicContinuous
+_surfaceQuery --> _surfaceMesh
+_SurfaceViewer --> _AxisGizmo
+_SurfaceViewer --> (colorPalette)
+_SurfaceViewer --> _contours
+_SurfaceViewer --> (curvatureDirections)
+_SurfaceViewer --> _curvatureLines
+_SurfaceViewer --> _expression
+_SurfaceViewer --> _gaussMapUtils
+_SurfaceViewer --> _geodesic
+_SurfaceViewer --> _marchingSquares
+_SurfaceViewer --> _principalCurvature
+_SurfaceViewer --> _principalStreamlines
+_SurfaceViewer --> _renderPrimitives
+_SurfaceViewer --> _ridgeValley
+_SurfaceViewer --> _ridgeValleyStitch
+_SurfaceViewer ---> _selectionModel
+_SurfaceViewer --> _Slice2DPreview
+_SurfaceViewer --> _surfaceMesh
+_SurfaceViewer ---> _surfaceSampling
+(<b>toyVolume</b>) -[thickness=1]> _datasets
+_TransformRenderer --> _complex
+_TransformRenderer --> _PlanePlot
+_vec --> (types)
+_vectorPresets --> _datasets
+_volumePresets --> _datasets
+_VolumeSliceHistogram ---> _sliceVolume
+_VolumeViewer --> _datasets
+_VolumeViewer --> _marchingCubes
+_VolumeViewer --> _renderPrimitives
+_VolumeViewer ---> _sliceVolume
+_VolumeViewer --> _vtkMeshClient
+_VolumeViewer --> _vtkVolumeClient
+_vtkVolumeClient ---> _sliceVolume
+_weierstrass --> _complex
+_weierstrass --> _complexExpr
+(<b>workbookModel.test</b>) -[thickness=1]> (workbookModel)
+_WorkbookPanel --> (bakeSurface)
+_WorkbookPanel --> (meshOps)
+_WorkbookPanel --> _splineSurface
+_WorkbookPanel --> _surfaceMesh
+_WorkbookPanel --> (uiStyles)
+(<b>workerContracts.test</b>) -[thickness=1]> _cgalMeshClient
+(<b>workerContracts.test</b>) -[thickness=1]> _geodesicHeatClient
+(<b>workerContracts.test</b>) -[thickness=1]> _pythonWorkerDiagnosticsClient
+(<b>workerContracts.test</b>) -[thickness=1]> _vtkMeshClient
+
+@enduml
+
+' View and edit on https://arkit.pro

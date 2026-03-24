@@ -1,0 +1,186 @@
+@startuml
+
+scale max 1920 width
+left to right direction
+
+skinparam nodesep 20
+skinparam ranksep 40
+skinparam monochrome true
+skinparam shadowing false
+skinparam defaultFontName Tahoma
+skinparam defaultFontSize 12
+skinparam roundCorner 6
+skinparam dpi 150
+skinparam arrowColor black
+skinparam arrowThickness 0.5
+skinparam packageTitleAlignment left
+
+' oval
+skinparam usecase {
+  borderThickness 0.5
+}
+
+' rectangle
+skinparam rectangle {
+  borderThickness 0.5
+}
+
+' component
+skinparam component {
+  borderThickness 1
+}
+
+
+rectangle "arcLength" as _arcLength
+rectangle "bbox" as _bbox
+rectangle "commands" as _commands
+(curvature)
+rectangle "Curve" as _Curve
+(curve-core)
+rectangle "Curve2D" as _Curve2D
+rectangle "Curve3D" as _Curve3D
+rectangle "CurveDomain" as _CurveDomain
+rectangle "CurveEvalResult" as _CurveEvalResult
+(derivative)
+(eval)
+rectangle "evaluateCurve" as _evaluateCurve
+rectangle "frenetFrame" as _frenetFrame
+(geometry)
+rectangle "layeredReferenceGrid" as _layeredReferenceGrid
+(materials)
+rectangle "math" as _math
+rectangle "model" as _model
+rectangle "operatorRegistry" as _operatorRegistry
+rectangle "reparameterization" as _reparameterization
+rectangle "sampleAdaptive" as _sampleAdaptive
+(sampleUniform)
+(sampling)
+(sceneBuilders)
+rectangle "sceneDocument" as _sceneDocument
+rectangle "sceneObjects" as _sceneObjects
+(secondDerivative)
+rectangle "serialization" as _serialization
+(<b>src</b>)
+(<b>src</b>)
+rectangle "<b>src</b>" as _src
+(<b>src</b>)
+rectangle "src/validation" as _src_validation
+(torsion)
+(utils)
+(utils/validation)
+(vector)
+rectangle "viewerTypes" as _viewerTypes
+rectangle "workbookModel" as _workbookModel
+
+
+_arcLength --> _Curve2D
+_arcLength --> _Curve3D
+_arcLength --> (derivative)
+_arcLength --> _model
+_bbox ---> _math
+_bbox --> _model
+_bbox --> (sampling)
+_bbox --> (vector)
+_commands --> _sceneDocument
+_commands --> _sceneObjects
+(curvature) --> _Curve2D
+(curvature) --> _Curve3D
+(curvature) --> (derivative)
+(curvature) --> (secondDerivative)
+(curvature) --> (vector)
+_Curve --> _CurveDomain
+(curve-core) --> (eval)
+(curve-core) --> _model
+(curve-core) --> (sampling)
+(curve-core) --> (utils)
+_Curve2D --> _Curve
+_Curve2D ---> _math
+_Curve3D --> _Curve
+_Curve3D ---> _math
+_CurveDomain ---> _math
+_CurveEvalResult ---> _math
+(derivative) --> _Curve2D
+(derivative) --> _Curve3D
+(derivative) ---> _math
+(derivative) --> _reparameterization
+(derivative) --> (vector)
+(eval) --> _arcLength
+(eval) --> (curvature)
+(eval) --> (derivative)
+(eval) --> _evaluateCurve
+(eval) --> _frenetFrame
+(eval) --> (secondDerivative)
+(eval) --> (torsion)
+_evaluateCurve --> _Curve2D
+_evaluateCurve --> _Curve3D
+_evaluateCurve --> (derivative)
+_evaluateCurve --> _model
+_evaluateCurve --> _reparameterization
+_evaluateCurve --> (secondDerivative)
+_frenetFrame --> (curvature)
+_frenetFrame --> _Curve3D
+_frenetFrame --> (derivative)
+_frenetFrame ---> _math
+_frenetFrame --> (secondDerivative)
+_frenetFrame --> (torsion)
+_frenetFrame --> (vector)
+(geometry) --> (curve-core)
+_model --> _Curve
+_model --> _Curve2D
+_model --> _Curve3D
+_model --> _CurveDomain
+_model --> _CurveEvalResult
+_operatorRegistry --> _workbookModel
+_reparameterization --> _model
+_reparameterization --> (vector)
+_sampleAdaptive --> _model
+_sampleAdaptive --> _reparameterization
+_sampleAdaptive --> (vector)
+(sampleUniform) --> _model
+(sampling) --> _sampleAdaptive
+(sampling) --> (sampleUniform)
+(sceneBuilders) --> (materials)
+_sceneDocument --> _math
+_sceneDocument --> _sceneObjects
+_sceneObjects --> _math
+(secondDerivative) --> _Curve2D
+(secondDerivative) --> _Curve3D
+(secondDerivative) ---> _math
+(secondDerivative) --> _reparameterization
+(secondDerivative) --> (vector)
+_serialization --> _commands
+_serialization --> _sceneDocument
+_serialization --> _src_validation
+(<b>src</b>) -[thickness=1]> _commands
+(<b>src</b>) -[thickness=1]> (geometry)
+(<b>src</b>) -[thickness=1]> _math
+(<b>src</b>) -[thickness=1]> _sceneDocument
+(<b>src</b>) -[thickness=1]> _sceneObjects
+(<b>src</b>) -[thickness=1]> _serialization
+(<b>src</b>) -[thickness=1]> _src_validation
+(<b>src</b>) -[thickness=1]> _viewerTypes
+(<b>src</b>) -[thickness=1]> _layeredReferenceGrid
+(<b>src</b>) -[thickness=1]> (materials)
+(<b>src</b>) -[thickness=1]> (sceneBuilders)
+(<b>src</b>) -[thickness=1]> _operatorRegistry
+(<b>src</b>) -[thickness=1]> _workbookModel
+_src_validation --> _math
+_src_validation --> _sceneDocument
+_src_validation --> _sceneObjects
+(torsion) --> _Curve3D
+(torsion) --> (derivative)
+(torsion) ---> _math
+(torsion) --> _reparameterization
+(torsion) --> (secondDerivative)
+(torsion) --> (vector)
+(utils) --> _bbox
+(utils) --> _reparameterization
+(utils) --> (utils/validation)
+(utils/validation) --> _model
+(utils/validation) --> (vector)
+(vector) ---> _math
+(vector) --> _model
+
+@enduml
+
+' View and edit on https://arkit.pro

@@ -44,13 +44,26 @@
     "test:app:e2e:packaged": "playwright test tests/e2e/packaged-desktop.spec.ts",
     "docs:api": "npx -y typedoc --options typedoc.json",
     "docs:site": "python -m mkdocs build --clean",
-    "docs:build": "npm run docs:api && npm run docs:site"
+    "docs:build": "npm run docs:api && npm run docs:site",
+    "analyze:deps:prepare": "node -e \"const fs=require('node:fs');['analysis/dependency/arkit','analysis/dependency/dependency-cruiser'].forEach((d)=>fs.mkdirSync(d,{recursive:true}));\"",
+    "analyze:deps:depcruise:err": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type err-long > analysis/dependency/dependency-cruiser/report.err.txt",
+    "analyze:deps:depcruise:json": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type json > analysis/dependency/dependency-cruiser/report.json",
+    "analyze:deps:depcruise:html": "npm run analyze:deps:prepare && depcruise --config analysis/dependency/dependency-cruiser.cjs apps packages renderer src scripts --output-type html > analysis/dependency/dependency-cruiser/report.html",
+    "analyze:deps:depcruise": "npm run analyze:deps:depcruise:err && npm run analyze:deps:depcruise:json && npm run analyze:deps:depcruise:html",
+    "analyze:deps:arkit:renderer": "npm run analyze:deps:prepare && arkit renderer/src -o analysis/dependency/arkit/renderer-architecture.puml",
+    "analyze:deps:arkit:electron": "npm run analyze:deps:prepare && arkit src -o analysis/dependency/arkit/electron-runtime-architecture.puml",
+    "analyze:deps:arkit:packages": "npm run analyze:deps:prepare && arkit packages -o analysis/dependency/arkit/packages-architecture.puml",
+    "analyze:deps:arkit:apps": "npm run analyze:deps:prepare && arkit apps -o analysis/dependency/arkit/apps-architecture.puml",
+    "analyze:deps:arkit": "npm run analyze:deps:arkit:renderer && npm run analyze:deps:arkit:electron && npm run analyze:deps:arkit:packages && npm run analyze:deps:arkit:apps",
+    "analyze:deps": "npm run analyze:deps:depcruise && npm run analyze:deps:arkit"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/d3": "^7.4.3",
+    "arkit": "^1.6.4",
     "concurrently": "^9.2.1",
+    "dependency-cruiser": "^17.3.9",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12"
   },
