@@ -19143,6 +19143,24 @@ case "mobius":
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleRenameGeometryObject(refId, name);
   }, [handleRenameGeometryObject, unifiedSelectedNode]);
+  const handleDuplicateUnifiedNode = useCallback(
+    (nodeId: string) => {
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (!node || node.category !== "sceneObject" || !node.objectRefId) return;
+      handleDuplicateGeometryObject(node.objectRefId);
+    },
+    [handleDuplicateGeometryObject, unifiedObjectModel.nodeById]
+  );
+  const handleRenameUnifiedNode = useCallback(
+    (nodeId: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (!node || node.category !== "sceneObject" || !node.objectRefId) return;
+      handleRenameGeometryObject(node.objectRefId, trimmed);
+    },
+    [handleRenameGeometryObject, unifiedObjectModel.nodeById]
+  );
   const handlePatchUnifiedSelectedTransform = useCallback((patch: GeometryTransformPatch) => {
     const refId = unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
@@ -20805,6 +20823,8 @@ case "mobius":
                   onFocus={handleFocusUnifiedNode}
                   onToggleVisibility={handleToggleUnifiedNodeVisibility}
                   onDeleteNode={handleDeleteUnifiedNode}
+                  onDuplicateNode={handleDuplicateUnifiedNode}
+                  onRenameNode={handleRenameUnifiedNode}
                   actions={unifiedPipelineActions}
                 />
               )}
@@ -21923,6 +21943,46 @@ case "mobius":
                       surfaceMeshLabel={surfaceMeshLabel}
                       surfaceMeshStats={surfaceMeshStats}
                       surfaceMeshSource={surfaceMeshData?.source ?? null}
+                      graphResolution={graphResolution}
+                      onSetGraphResolution={setGraphResolution}
+                      paramResolution={paramResolution}
+                      onSetParamResolution={setParamResolution}
+                      weierstrassResolution={weierstrassResolution}
+                      onSetWeierstrassResolution={setWeierstrassResolution}
+                      lightPreset={lightPreset}
+                      onChangeLightPreset={setLightPreset}
+                      materialRoughness={materialRoughness}
+                      onSetMaterialRoughness={setMaterialRoughness}
+                      materialMetalness={materialMetalness}
+                      onSetMaterialMetalness={setMaterialMetalness}
+                      materialOpacity={materialOpacity}
+                      onSetMaterialOpacity={setMaterialOpacity}
+                      showWireframe={showWireframe}
+                      onToggleWireframe={() => setShowWireframe((v) => !v)}
+                      showPlanes={showPlanes}
+                      onTogglePlanes={() => setShowPlanes((v) => !v)}
+                      showGaussMap={showGaussMap}
+                      onToggleGaussMap={() => setShowGaussMap((v) => !v)}
+                      showContours={showContours}
+                      onToggleContours={() => setShowContours((v) => !v)}
+                      contourCount={contourCount}
+                      onSetContourCount={setContourCount}
+                      showPrincipalDirections={showPrincipalDirections}
+                      onTogglePrincipalDirections={() => setShowPrincipalDirections((v) => !v)}
+                      showPrincipalLines={showPrincipalLines}
+                      onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
+                      showCurvatureLines={showCurvatureLines}
+                      onToggleCurvatureLines={() => setShowCurvatureLines((v) => !v)}
+                      canDuplicate={!!unifiedSelectedSceneObject && !unifiedSelectedSceneLocked}
+                      onDuplicate={handleDuplicateUnifiedSelectedObject}
+                      canExport={unifiedCanExportSelectedObject}
+                      onExport={() => {
+                        void handleExportUnifiedSelectedObject();
+                      }}
+                      canBake={unifiedCanBake}
+                      onBake={() => runUnifiedPipelineAction("bake")}
+                      canCompare={unifiedCanSendToCompare}
+                      onCompare={handleSendUnifiedObjectToCompare}
                       onPickEqSurface={handlePickEqSurface}
                       onPickParamSurface={handlePickParamSurface}
                       implicitExpr={implicitExpr}
@@ -22982,6 +23042,8 @@ case "mobius":
                       onFocus={handleFocusUnifiedNode}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
                       onDeleteNode={handleDeleteUnifiedNode}
+                      onDuplicateNode={handleDuplicateUnifiedNode}
+                      onRenameNode={handleRenameUnifiedNode}
                       actions={unifiedPipelineActions}
                     />
 
@@ -26450,6 +26512,8 @@ type UnifiedObjectTreePanelProps = {
   onFocus?: (id: string) => void;
   onToggleVisibility?: (id: string) => void;
   onDeleteNode?: (id: string) => void;
+  onDuplicateNode?: (id: string) => void;
+  onRenameNode?: (id: string, name: string) => void;
   actions: UnifiedPipelineAction[];
 };
 
@@ -26461,6 +26525,8 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onFocus,
   onToggleVisibility,
   onDeleteNode,
+  onDuplicateNode,
+  onRenameNode,
   actions,
 }) => {
   const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
@@ -26503,14 +26569,30 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     const roleLabel = UNIFIED_SCENE_ROLE_LABELS[role];
     const canToggleVisibility = !!node.canToggleVisibility && typeof node.visible === "boolean" && !!onToggleVisibility;
     const canDelete = !!node.canDelete && !!onDeleteNode;
+    const canDuplicate = node.category === "sceneObject" && !!onDuplicateNode;
+    const canRename = node.category === "sceneObject" && !!onRenameNode;
+    const roleIcon = role === "primaryObject" ? "P" : role === "overlay" ? "O" : role === "derivedResult" ? "D" : "R";
+    const sourceKind =
+      node.category === "surfaceDefinition"
+        ? "Surface definition"
+        : node.category === "sceneObject"
+          ? "Scene object"
+          : node.category === "dataset"
+            ? "Dataset"
+            : "Derived";
+    const derivedFrom = node.parentId ? (byId.get(node.parentId)?.name ?? null) : null;
     return (
       <div
         key={node.id}
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr auto",
+          gridTemplateColumns: "1fr auto auto",
           gap: 6,
-          alignItems: "start",
+          alignItems: "center",
+          border: active ? "1px solid #bfdbfe" : "1px solid #e2e8f0",
+          background: active ? "#eff6ff" : "#f8fafc",
+          borderRadius: 8,
+          padding: 6,
         }}
       >
         <button
@@ -26519,10 +26601,10 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           style={{
             width: "100%",
             textAlign: "left",
-            padding: "4px 6px",
+            padding: "2px 4px",
             borderRadius: 6,
-            border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
-            background: active ? "#eef4ff" : "#fff",
+            border: "1px solid transparent",
+            background: "transparent",
             cursor: "pointer",
             fontSize: 11,
             boxSizing: "border-box",
@@ -26530,21 +26612,29 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           }}
           title={node.sourceDefinition}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-              <span
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: 999,
-                  background: chipColor,
-                  flex: "0 0 auto",
-                  border: "1px solid rgba(0,0,0,0.08)",
-                }}
-              />
+          <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 8, alignItems: "start" }}>
+            <span
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 6,
+                border: `1px solid ${roleBadgeColor[role]}`,
+                color: roleBadgeColor[role],
+                background: "#fff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              {roleIcon}
+            </span>
+            <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span
                 style={{
                   fontWeight: active ? 700 : 600,
+                  color: "#0f172a",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -26552,82 +26642,229 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
               >
                 {node.name}
               </span>
-            </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <span
                 style={{
-                  opacity: 0.95,
-                  fontSize: 10,
-                  border: `1px solid ${roleBadgeColor[role]}`,
-                  color: roleBadgeColor[role],
-                  borderRadius: 999,
-                  padding: "1px 6px",
-                  background: "#fff",
-                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  flexWrap: "wrap",
                 }}
               >
-                {roleLabel}
+                <span
+                  style={{
+                    opacity: 0.95,
+                    fontSize: 10,
+                    border: `1px solid ${roleBadgeColor[role]}`,
+                    color: roleBadgeColor[role],
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    background: "#fff",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {roleLabel}
+                </span>
+                <span
+                  style={{
+                    opacity: 0.95,
+                    fontSize: 10,
+                    border: "1px solid #cbd5e1",
+                    color: "#475569",
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    background: "#fff",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {sourceKind}
+                </span>
+                <span
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 999,
+                    background: chipColor,
+                    border: "1px solid rgba(0,0,0,0.08)",
+                    flex: "0 0 auto",
+                  }}
+                />
+                <span
+                  style={{
+                    opacity: 0.88,
+                    fontSize: 10,
+                    border: "1px solid #dbe3ec",
+                    borderRadius: 999,
+                    padding: "1px 6px",
+                    background: "#fff",
+                    textTransform: "capitalize",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {typeLabel}
+                </span>
+                {canToggleVisibility && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: node.visible ? "#166534" : "#9a3412",
+                      border: "1px solid " + (node.visible ? "#86efac" : "#fdba74"),
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      background: "#fff",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {node.visible ? "visible" : "hidden"}
+                  </span>
+                )}
+                {derivedFrom && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: "#475569",
+                      border: "1px dashed #cbd5e1",
+                      borderRadius: 999,
+                      padding: "1px 6px",
+                      background: "#fff",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={`derived from ${derivedFrom}`}
+                  >
+                    from {derivedFrom}
+                  </span>
+                )}
               </span>
-              <span
-                style={{
-                  opacity: 0.9,
-                  fontSize: 10,
-                  border: "1px solid #cbd5e1",
-                  borderRadius: 999,
-                  padding: "1px 6px",
-                  background: "#f8fafc",
-                  textTransform: "capitalize",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {typeLabel}
-              </span>
+              {state ? <span style={{ opacity: 0.72, color: "#475569", marginTop: 1, fontSize: 10 }}>{state}</span> : null}
             </span>
           </div>
-          {state ? <div style={{ opacity: 0.7, marginTop: 2 }}>{state}</div> : null}
         </button>
 
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" }}>
-          {canToggleVisibility && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleVisibility?.(node.id);
-              }}
-              style={{ padding: "3px 6px", fontSize: 10 }}
-              title={node.visible ? "Hide" : "Show"}
-            >
-              {node.visible ? "Hide" : "Show"}
-            </button>
-          )}
-          {onFocus && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onFocus(node.id);
-              }}
-              style={{ padding: "3px 6px", fontSize: 10 }}
-              title="Select and open Object tab"
-            >
-              Focus
-            </button>
-          )}
-          {canDelete && (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onDeleteNode?.(node.id);
-              }}
-              style={{ padding: "3px 6px", fontSize: 10 }}
-              title="Delete / remove"
-            >
-              Delete
-            </button>
-          )}
-        </div>
+        {canToggleVisibility ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleVisibility?.(node.id);
+            }}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+            }}
+            title={node.visible ? "Hide" : "Show"}
+            aria-label={node.visible ? "Hide" : "Show"}
+          >
+            {node.visible ? (
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M1.5 12s3.7-6 10.5-6 10.5 6 10.5 6-3.7 6-10.5 6S1.5 12 1.5 12Z"
+                  fill="none"
+                  stroke="#1f2937"
+                  strokeWidth="1.6"
+                />
+                <circle cx="12" cy="12" r="3.2" fill="none" stroke="#1f2937" strokeWidth="1.6" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M1.5 12s3.7-6 10.5-6 10.5 6 10.5 6-3.7 6-10.5 6S1.5 12 1.5 12Z"
+                  fill="none"
+                  stroke="#6b7280"
+                  strokeWidth="1.6"
+                />
+                <line x1="4" y1="20" x2="20" y2="4" stroke="#6b7280" strokeWidth="1.8" />
+              </svg>
+            )}
+          </button>
+        ) : (
+          <span />
+        )}
+
+        <details onClick={(event) => event.stopPropagation()} style={{ position: "relative" }}>
+          <summary
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 8,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              listStyle: "none",
+            }}
+            title="Actions"
+          >
+            <svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
+              <circle cx="10" cy="4" r="1.7" fill="#334155" />
+              <circle cx="10" cy="10" r="1.7" fill="#334155" />
+              <circle cx="10" cy="16" r="1.7" fill="#334155" />
+            </svg>
+          </summary>
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 32,
+              zIndex: 8,
+              minWidth: 118,
+              borderRadius: 8,
+              border: "1px solid #dbe2ea",
+              background: "#fff",
+              boxShadow: "0 6px 18px rgba(15,23,42,0.15)",
+              padding: 4,
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            {onFocus && (
+              <button
+                type="button"
+                onClick={() => onFocus(node.id)}
+                style={{ textAlign: "left", padding: "5px 8px", fontSize: 11, borderRadius: 6 }}
+              >
+                Focus
+              </button>
+            )}
+            {canDuplicate && (
+              <button
+                type="button"
+                onClick={() => onDuplicateNode?.(node.id)}
+                style={{ textAlign: "left", padding: "5px 8px", fontSize: 11, borderRadius: 6 }}
+              >
+                Duplicate
+              </button>
+            )}
+            {canRename && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextName = window.prompt("Rename object", node.name);
+                  if (nextName != null) onRenameNode?.(node.id, nextName);
+                }}
+                style={{ textAlign: "left", padding: "5px 8px", fontSize: 11, borderRadius: 6 }}
+              >
+                Rename
+              </button>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                onClick={() => onDeleteNode?.(node.id)}
+                style={{ textAlign: "left", padding: "5px 8px", fontSize: 11, borderRadius: 6 }}
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        </details>
       </div>
     );
   };
@@ -33616,6 +33853,44 @@ type SurfacesRightPanelProps = {
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
   surfaceMeshSource: SurfaceMeshSource | null;
+  graphResolution: number;
+  onSetGraphResolution: (v: number) => void;
+  paramResolution: number;
+  onSetParamResolution: (v: number) => void;
+  weierstrassResolution: number;
+  onSetWeierstrassResolution: (v: number) => void;
+  lightPreset: "studio" | "soft" | "contrast" | "neutral" | "warm";
+  onChangeLightPreset: (preset: "studio" | "soft" | "contrast" | "neutral" | "warm") => void;
+  materialRoughness: number;
+  onSetMaterialRoughness: (v: number) => void;
+  materialMetalness: number;
+  onSetMaterialMetalness: (v: number) => void;
+  materialOpacity: number;
+  onSetMaterialOpacity: (v: number) => void;
+  showWireframe: boolean;
+  onToggleWireframe: () => void;
+  showPlanes: boolean;
+  onTogglePlanes: () => void;
+  showGaussMap: boolean;
+  onToggleGaussMap: () => void;
+  showContours: boolean;
+  onToggleContours: () => void;
+  contourCount: number;
+  onSetContourCount: (v: number) => void;
+  showPrincipalDirections: boolean;
+  onTogglePrincipalDirections: () => void;
+  showPrincipalLines: boolean;
+  onTogglePrincipalLines: () => void;
+  showCurvatureLines: boolean;
+  onToggleCurvatureLines: () => void;
+  canDuplicate: boolean;
+  onDuplicate: () => void;
+  canExport: boolean;
+  onExport: () => void;
+  canBake: boolean;
+  onBake: () => void;
+  canCompare: boolean;
+  onCompare: () => void;
 
   onPickEqSurface: (id: SurfaceId) => void;
   onPickParamSurface: (id: ParamSurfaceId) => void;
@@ -33699,6 +33974,44 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceMeshLabel,
   surfaceMeshStats,
   surfaceMeshSource,
+  graphResolution,
+  onSetGraphResolution,
+  paramResolution,
+  onSetParamResolution,
+  weierstrassResolution,
+  onSetWeierstrassResolution,
+  lightPreset,
+  onChangeLightPreset,
+  materialRoughness,
+  onSetMaterialRoughness,
+  materialMetalness,
+  onSetMaterialMetalness,
+  materialOpacity,
+  onSetMaterialOpacity,
+  showWireframe,
+  onToggleWireframe,
+  showPlanes,
+  onTogglePlanes,
+  showGaussMap,
+  onToggleGaussMap,
+  showContours,
+  onToggleContours,
+  contourCount,
+  onSetContourCount,
+  showPrincipalDirections,
+  onTogglePrincipalDirections,
+  showPrincipalLines,
+  onTogglePrincipalLines,
+  showCurvatureLines,
+  onToggleCurvatureLines,
+  canDuplicate,
+  onDuplicate,
+  canExport,
+  onExport,
+  canBake,
+  onBake,
+  canCompare,
+  onCompare,
   onPickEqSurface,
   onPickParamSurface,
   implicitExpr,
@@ -33829,19 +34142,110 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       : isParamViewer
         ? paramMeta
         : eqMeta;
+  const inspectorSectionCard: React.CSSProperties = {
+    marginBottom: 12,
+    padding: "10px 10px 12px",
+    border: "1px solid #dbe4ee",
+    borderRadius: 10,
+    background: "#f8fafc",
+  };
+  const inspectorSectionTitle: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 700,
+    marginBottom: 7,
+    color: "#0f172a",
+  };
+  const viewSourceKind = isMeshViewer
+    ? "Mesh object"
+    : isGraphViewer
+      ? "Explicit surface"
+      : isImplicitViewer
+        ? "Implicit surface"
+        : isWeierstrass
+          ? "Weierstrass minimal surface"
+          : "Parametric surface";
+  const activeResolution = isGraphViewer
+    ? graphResolution
+    : isWeierstrass
+      ? weierstrassResolution
+      : isParamViewer
+        ? paramResolution
+        : implicitResolution;
+  const pointPickSection = (
+    <div style={inspectorSectionCard}>
+      <div style={inspectorSectionTitle}>Point pick</div>
+
+      {!showDomainPicker ? (
+        <div style={{ fontSize: 11, opacity: 0.75 }}>
+          {isMeshViewer
+            ? "Domain picking is not used for SurfaceMesh. Use probe mode to pick points on the mesh."
+            : "Domain picking is available for graph, param, and Weierstrass surfaces. Use probe mode to pick points on implicit surfaces."}
+        </div>
+      ) : isParamViewer ? (
+        <>
+          <ParamDomainPreview
+            width={260}
+            height={220}
+            uMin={safeParamDomain.uMin}
+            uMax={safeParamDomain.uMax}
+            vMin={safeParamDomain.vMin}
+            vMax={safeParamDomain.vMax}
+            onPick={onPickDomainUV}
+            picked={probeInfo?.uv ?? null}
+          />
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+            Click to send (u,v) into the {isWeierstrass ? "Weierstrass" : "param"} surface viewer.
+          </div>
+        </>
+      ) : isGraphViewer ? (
+        <>
+          <XYDomainPreview
+            width={260}
+            height={220}
+            xSpan={safeGraphDomain.xSpan}
+            ySpan={safeGraphDomain.ySpan}
+            onPick={onPickDomainXY}
+            picked={probeInfo?.xy ?? null}
+          />
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+            Click to send (x,y) into the graph/implicit viewer.
+          </div>
+        </>
+      ) : (
+        <>
+          <XYDomainPreview
+            width={260}
+            height={220}
+            xSpan={safeImplicitDomain.xSpan}
+            ySpan={safeImplicitDomain.ySpan}
+            onPick={(xy) => onPickDomainXYZ({ x: xy.x, y: xy.y, z: 0 })}
+            picked={probeInfo?.point ? { x: probeInfo.point.x, y: probeInfo.point.y } : null}
+          />
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
+            Click to send (x,y, z=0) into the implicit viewer.
+          </div>
+        </>
+      )}
+
+      <div style={{ marginTop: 8, fontSize: 11, display: "grid", gap: 3 }}>
+        <div><strong>Selected point:</strong> {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}</div>
+        {probeInfo?.xy && <div><strong>Domain (x,y):</strong> ({fmt(probeInfo.xy.x)}, {fmt(probeInfo.xy.y)})</div>}
+        {probeInfo?.uv && <div><strong>Domain (u,v):</strong> ({fmt(probeInfo.uv.u)}, {fmt(probeInfo.uv.v)})</div>}
+      </div>
+    </div>
+  );
 
 
   return (
     <section>
       <h2 style={styles.h2}>Inspector</h2>
 
-      {/* What you are looking at */}
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>Active surface</div>
+      {/* Identity */}
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Identity</div>
+        <div style={{ fontSize: 12, opacity: 0.82 }}>Active surface</div>
         <div style={{ fontWeight: 700, marginTop: 2 }}>{activeMeta.label}</div>
-        <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
-          {activeMeta.formula}
-        </div>
+        <div style={{ fontSize: 11, opacity: 0.85, marginTop: 6 }}>Type: {viewSourceKind}</div>
         {isMeshViewer && surfaceMeshStats && (
           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
             {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
@@ -33850,66 +34254,100 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
       </div>
 
-      {/* Domain picker */}
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Pick a domain point</div>
-
-        {!showDomainPicker ? (
-          <div style={{ fontSize: 11, opacity: 0.75 }}>
-            {isMeshViewer
-              ? "Domain picking is not used for SurfaceMesh. Use probe mode to pick points on the mesh."
-              : "Domain picking is available for graph, param, and Weierstrass surfaces. Use probe mode to pick points on implicit surfaces."}
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Definition</div>
+        <div style={{ fontSize: 12, opacity: 0.82 }}>{activeMeta.formula}</div>
+        {!isImplicitViewer && (
+          <div style={{ fontSize: 11, opacity: 0.78, marginTop: 6 }}>
+            {activeMeta.note}
           </div>
-        ) : isParamViewer ? (
-          <>
-            <ParamDomainPreview
-              width={260}
-              height={220}
-              uMin={safeParamDomain.uMin}
-              uMax={safeParamDomain.uMax}
-              vMin={safeParamDomain.vMin}
-              vMax={safeParamDomain.vMax}
-              onPick={onPickDomainUV}
-              picked={probeInfo?.uv ?? null}
+        )}
+        {isImplicitViewer && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, opacity: 0.78, marginBottom: 6 }}>Implicit formula</div>
+            <input
+              data-testid="surface-input"
+              type="text"
+              value={implicitExpr}
+              onChange={(e) => onChangeImplicitExpr(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "6px 8px",
+                borderRadius: 8,
+                border: "1px solid #ccc",
+                fontFamily: "monospace",
+                fontSize: 12,
+                boxSizing: "border-box",
+              }}
             />
-            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Click to send (u,v) into the {isWeierstrass ? "Weierstrass" : "param"} surface viewer.
-            </div>
-          </>
-        ) : isGraphViewer ? (
-          <>
-            <XYDomainPreview
-              width={260}
-              height={220}
-              xSpan={safeGraphDomain.xSpan}
-              ySpan={safeGraphDomain.ySpan}
-              onPick={onPickDomainXY}
-              picked={probeInfo?.xy ?? null}
-            />
-            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Click to send (x,y) into the graph/implicit viewer.
-            </div>
-          </>
-        ) : (
-          <>
-            <XYDomainPreview
-              width={260}
-              height={220}
-              xSpan={safeImplicitDomain.xSpan}
-              ySpan={safeImplicitDomain.ySpan}
-              onPick={(xy) => onPickDomainXYZ({ x: xy.x, y: xy.y, z: 0 })}
-              picked={probeInfo?.point ? { x: probeInfo.point.x, y: probeInfo.point.y } : null}
-            />
-            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Click to send (x,y, z=0) into the implicit viewer.
-            </div>
-          </>
+          </div>
         )}
       </div>
 
       {(showDomainPicker || isImplicitViewer) && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Domain bounds</div>
+        <div style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>Domain</div>
+          <div style={{ fontSize: 11, marginBottom: 6 }}>
+            <strong>Resolution:</strong> {Math.round(activeResolution)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <input
+              type="range"
+              min={8}
+              max={220}
+              step={1}
+              value={Math.max(8, Math.min(220, Math.round(activeResolution)))}
+              onChange={(e) => {
+                const next = Math.max(8, Math.min(220, Number(e.target.value)));
+                if (!Number.isFinite(next)) return;
+                if (isGraphViewer) onSetGraphResolution(next);
+                else if (isWeierstrass) onSetWeierstrassResolution(next);
+                else if (isParamViewer) onSetParamResolution(next);
+              }}
+              style={{ flex: 1 }}
+            />
+            <input
+              type="number"
+              min={8}
+              max={220}
+              step={1}
+              value={Math.max(8, Math.min(220, Math.round(activeResolution)))}
+              onChange={(e) => {
+                const next = Math.max(8, Math.min(220, Number(e.target.value)));
+                if (!Number.isFinite(next)) return;
+                if (isGraphViewer) onSetGraphResolution(next);
+                else if (isWeierstrass) onSetWeierstrassResolution(next);
+                else if (isParamViewer) onSetParamResolution(next);
+              }}
+              style={{ width: 72 }}
+            />
+          </div>
+          {isImplicitViewer && (
+            <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
+              Implicit preview resolution is controlled in Definition/Analysis tools.
+            </div>
+          )}
+          {isGraphViewer && (
+            <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
+              x span: ±{fmt(safeGraphDomain.xSpan)} · y span: ±{fmt(safeGraphDomain.ySpan)}
+            </div>
+          )}
+          {isParamViewer && (
+            <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
+              u in [{fmt(safeParamDomain.uMin)}, {fmt(safeParamDomain.uMax)}], v in [{fmt(safeParamDomain.vMin)}, {fmt(safeParamDomain.vMax)}]
+            </div>
+          )}
+          {isImplicitViewer && (
+            <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
+              x span: ±{fmt(safeImplicitDomain.xSpan)} · y span: ±{fmt(safeImplicitDomain.ySpan)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(showDomainPicker || isImplicitViewer) && (
+        <div style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>Domain bounds</div>
           {isGraphViewer && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -34187,20 +34625,96 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       )}
 
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>View</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+          <div><strong>Source kind:</strong> {viewSourceKind}</div>
+          <div><strong>Viewer:</strong> {viewerKind}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 700 }}>Light</span>
+            {(["studio", "soft", "contrast", "neutral", "warm"] as const).map((preset) => (
+              <button
+                key={`inspector-light-${preset}`}
+                type="button"
+                onClick={() => onChangeLightPreset(preset)}
+                style={pill(lightPreset === preset)}
+                aria-pressed={lightPreset === preset}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showWireframe} onChange={onToggleWireframe} />
+            Wireframe
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            Roughness: {materialRoughness.toFixed(2)}
+            <input type="range" min={0} max={1} step={0.01} value={materialRoughness} onChange={(e) => onSetMaterialRoughness(Number(e.target.value))} />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            Metalness: {materialMetalness.toFixed(2)}
+            <input type="range" min={0} max={1} step={0.01} value={materialMetalness} onChange={(e) => onSetMaterialMetalness(Number(e.target.value))} />
+          </label>
+          <label style={{ display: "grid", gap: 4 }}>
+            Opacity: {materialOpacity.toFixed(2)}
+            <input type="range" min={0.1} max={1} step={0.01} value={materialOpacity} onChange={(e) => onSetMaterialOpacity(Number(e.target.value))} />
+          </label>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Analysis</div>
+        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showGaussMap} onChange={onToggleGaussMap} />
+            Gauss map
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showContours} onChange={onToggleContours} />
+            Slice/contours
+          </label>
+          {showContours && (
+            <label style={{ display: "grid", gap: 4 }}>
+              Contour count: {contourCount}
+              <input
+                type="range"
+                min={2}
+                max={48}
+                step={1}
+                value={Math.max(2, Math.min(48, Math.round(contourCount)))}
+                onChange={(e) => onSetContourCount(Math.max(2, Math.min(48, Number(e.target.value))))}
+              />
+            </label>
+          )}
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
+            Coordinate/slice planes
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showPrincipalDirections} onChange={onTogglePrincipalDirections} />
+            Principal directions
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showPrincipalLines} onChange={onTogglePrincipalLines} />
+            Principal lines
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={showCurvatureLines} onChange={onToggleCurvatureLines} />
+            Curvature overlays
+          </label>
+        </div>
+      </div>
+
       {isImplicitViewer && (
         <div
           data-testid="worker-status"
           style={{
-            marginBottom: 12,
-            padding: "8px 10px",
-            border: "1px solid #d0d5dd",
-            borderRadius: 8,
-            background: "#fff",
+            ...inspectorSectionCard,
             fontSize: 11,
-            display: "grid",
-            gap: 4,
           }}
         >
+          <div style={inspectorSectionTitle}>Analysis</div>
           <div style={{ color: workerReady ? "#1f894f" : "#b42318" }}>
             worker: {workerStatusLabel}
           </div>
@@ -34222,31 +34736,10 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       )}
 
-      {/* Custom implicit editor (optional, but handy) */}
       {isImplicitViewer && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Implicit formula</div>
-          <input
-            data-testid="surface-input"
-            type="text"
-            value={implicitExpr}
-            onChange={(e) => onChangeImplicitExpr(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "6px 8px",
-              borderRadius: 8,
-              border: "1px solid #ccc",
-              fontFamily: "monospace",
-              fontSize: 12,
-              boxSizing: "border-box",
-            }}
-          />
-            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
-              Use <code>x</code>, <code>y</code>, <code>z</code>, operators <code>+ - * / ^</code>, and functions
-              like <code>sin</code>, <code>cos</code>, <code>sqrt</code>, <code>abs</code>, <code>log</code>,
-              <code>exp</code>, <code>min</code>, <code>max</code>.
-            </div>
-            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+        <div style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>Analysis tools</div>
+          <div style={{ marginTop: 2, display: "grid", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Preview (VTK)</div>
                 <div style={{ fontSize: 11, color: vtkPreviewBusy ? "#b42318" : "#556" }}>
@@ -34569,16 +35062,33 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
               {!cgalReady && cgalHealthState?.errorCategory && (
                 <div style={{ fontSize: 10, color: "#b42318" }}>reason: {cgalHealthState.errorCategory}</div>
               )}
-            </div>
           </div>
-        )}
+        </div>
+      )}
 
-      <div style={{ marginBottom: 12, fontSize: 11, opacity: 0.75 }}>
-        Probe details, gradients, and curvature are available in the left Analysis tab.
-      </div>
+      {pointPickSection}
 
-      <details style={{ marginBottom: 12 }}>
-        <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Quick pick</summary>
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Actions</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+          <button type="button" onClick={onDuplicate} disabled={!canDuplicate} style={{ padding: "4px 8px" }}>
+            Duplicate
+          </button>
+          <button type="button" onClick={onExport} disabled={!canExport} style={{ padding: "4px 8px" }}>
+            Export
+          </button>
+          <button type="button" onClick={onBake} disabled={!canBake} style={{ padding: "4px 8px" }}>
+            Bake to mesh
+          </button>
+          <button type="button" onClick={onCompare} disabled={!canCompare} style={{ padding: "4px 8px" }}>
+            Compare
+          </button>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
+          Scene/object actions are available when a scene object is selected.
+        </div>
+        <details>
+          <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Quick pick</summary>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
           <div>
             <div style={{ fontSize: 11, opacity: 0.8, marginBottom: 4 }}>Implicit / Graph</div>
@@ -34626,7 +35136,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             </div>
           </div>
         </div>
-      </details>
+        </details>
+      </div>
     </section>
   );
 };
@@ -34743,7 +35254,7 @@ const XYDomainPreview = React.memo(function XYDomainPreview({
   const gridLines = 8;
 
   return (
-    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+    <div style={{ border: "1px solid #dbe4ee", borderRadius: 12, overflow: "hidden", background: "#ffffff" }}>
       <svg
         width={w}
         height={h}
@@ -34779,20 +35290,21 @@ const XYDomainPreview = React.memo(function XYDomainPreview({
         }}
       >
         {/* background */}
-        <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
+        <rect x={0} y={0} width={w} height={h} fill="#f8fbff" />
 
         {/* inner frame */}
-        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#fbfbfd" stroke="#e8e8ee" />
+        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#ffffff" stroke="#dbe4ee" />
 
         {/* grid */}
         {Array.from({ length: gridLines + 1 }).map((_, i) => {
           const t = i / gridLines;
           const x = pad + t * (w - 2 * pad);
           const y = pad + t * (h - 2 * pad);
+          const major = i === 0 || i === gridLines || i === gridLines / 2 || i % 2 === 0;
           return (
             <g key={i}>
-              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke="#eee" />
-              <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="#eee" />
+              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke={major ? "#d8e0ea" : "#edf2f7"} strokeWidth={major ? 1.1 : 1} />
+              <line x1={pad} y1={y} x2={w - pad} y2={y} stroke={major ? "#d8e0ea" : "#edf2f7"} strokeWidth={major ? 1.1 : 1} />
             </g>
           );
         })}
@@ -34802,8 +35314,22 @@ const XYDomainPreview = React.memo(function XYDomainPreview({
           const o = toPx(0, 0);
           return (
             <g>
-              <line x1={pad} y1={o.py} x2={w - pad} y2={o.py} stroke="#bbb" />
-              <line x1={o.px} y1={pad} x2={o.px} y2={h - pad} stroke="#bbb" />
+              <line x1={pad} y1={o.py} x2={w - pad} y2={o.py} stroke="#94a3b8" strokeWidth={1.3} />
+              <line x1={o.px} y1={pad} x2={o.px} y2={h - pad} stroke="#94a3b8" strokeWidth={1.3} />
+              <text x={w - pad - 8} y={o.py - 4} fontSize="10" fill="#64748b">x</text>
+              <text x={o.px + 4} y={pad + 11} fontSize="10" fill="#64748b">y</text>
+            </g>
+          );
+        })()}
+
+        {/* crosshair (disabled in drag mode to avoid flicker) */}
+        {!dragToPick && mode === "click" && (picked || hovered) && (() => {
+          const marker = picked ?? hovered!;
+          const p = toPx(marker.x, marker.y);
+          return (
+            <g>
+              <line x1={pad} y1={p.py} x2={w - pad} y2={p.py} stroke="#2563eb" strokeWidth={1} strokeDasharray="4 3" opacity={0.55} />
+              <line x1={p.px} y1={pad} x2={p.px} y2={h - pad} stroke="#2563eb" strokeWidth={1} strokeDasharray="4 3" opacity={0.55} />
             </g>
           );
         })()}
@@ -34813,15 +35339,16 @@ const XYDomainPreview = React.memo(function XYDomainPreview({
           const p = toPx(picked.x, picked.y);
           return (
             <g>
-              <circle cx={p.px} cy={p.py} r={5} fill="#ff3b30" />
-              <circle cx={p.px} cy={p.py} r={9} fill="none" stroke="#ff3b30" opacity={0.5} />
+              <circle cx={p.px} cy={p.py} r={10} fill="none" stroke="#ef4444" strokeWidth={1.5} opacity={0.45} />
+              <circle cx={p.px} cy={p.py} r={6} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} />
+              <circle cx={p.px} cy={p.py} r={2.2} fill="#ffffff" />
             </g>
           );
         })()}
       </svg>
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ opacity: 0.75 }}>x ? ±{xSpan.toFixed(2)}  y ? ±{ySpan.toFixed(2)}</span>
+        <span style={{ opacity: 0.75 }}>x in ±{xSpan.toFixed(2)}  y in ±{ySpan.toFixed(2)}  linked to 3D probe</span>
         <span style={{ fontFamily: "monospace", textAlign: "right" }}>
           {picked ? `pick ${fmt(picked.x)}, ${fmt(picked.y)}` : "pick (none)"}
           {mode !== "hover" && hovered ? ` | hover ${fmt(hovered.x)}, ${fmt(hovered.y)}` : ""}
@@ -34945,7 +35472,7 @@ const ParamDomainPreview = React.memo(function ParamDomainPreview({
   const gridLines = 8;
 
   return (
-    <div style={{ border: "1px solid #e6e6e6", borderRadius: 12, overflow: "hidden", background: "#fff" }}>
+    <div style={{ border: "1px solid #dbe4ee", borderRadius: 12, overflow: "hidden", background: "#ffffff" }}>
       <svg
         width={w}
         height={h}
@@ -34980,35 +35507,51 @@ const ParamDomainPreview = React.memo(function ParamDomainPreview({
           flushHoverPick();
         }}
       >
-        <rect x={0} y={0} width={w} height={h} fill="#ffffff" />
-        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#fbfbfd" stroke="#e8e8ee" />
+        <rect x={0} y={0} width={w} height={h} fill="#f8fbff" />
+        <rect x={pad} y={pad} width={w - 2 * pad} height={h - 2 * pad} fill="#ffffff" stroke="#dbe4ee" />
 
         {Array.from({ length: gridLines + 1 }).map((_, i) => {
           const t = i / gridLines;
           const x = pad + t * (w - 2 * pad);
           const y = pad + t * (h - 2 * pad);
+          const major = i === 0 || i === gridLines || i === gridLines / 2 || i % 2 === 0;
           return (
             <g key={i}>
-              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke="#eee" />
-              <line x1={pad} y1={y} x2={w - pad} y2={y} stroke="#eee" />
+              <line x1={x} y1={pad} x2={x} y2={h - pad} stroke={major ? "#d8e0ea" : "#edf2f7"} strokeWidth={major ? 1.1 : 1} />
+              <line x1={pad} y1={y} x2={w - pad} y2={y} stroke={major ? "#d8e0ea" : "#edf2f7"} strokeWidth={major ? 1.1 : 1} />
             </g>
           );
         })}
+
+        <text x={w - pad - 10} y={h - pad + 14} fontSize="10" fill="#64748b">u</text>
+        <text x={pad - 8} y={pad - 4} fontSize="10" fill="#64748b">v</text>
+
+        {!dragToPick && mode === "click" && (picked || hovered) && (() => {
+          const marker = picked ?? hovered!;
+          const p = toPx(marker.u, marker.v);
+          return (
+            <g>
+              <line x1={pad} y1={p.py} x2={w - pad} y2={p.py} stroke="#2563eb" strokeWidth={1} strokeDasharray="4 3" opacity={0.55} />
+              <line x1={p.px} y1={pad} x2={p.px} y2={h - pad} stroke="#2563eb" strokeWidth={1} strokeDasharray="4 3" opacity={0.55} />
+            </g>
+          );
+        })()}
 
         {/* picked marker */}
         {picked && (() => {
           const p = toPx(picked.u, picked.v);
           return (
             <g>
-              <circle cx={p.px} cy={p.py} r={5} fill="#ff3b30" />
-              <circle cx={p.px} cy={p.py} r={9} fill="none" stroke="#ff3b30" opacity={0.5} />
+              <circle cx={p.px} cy={p.py} r={10} fill="none" stroke="#ef4444" strokeWidth={1.5} opacity={0.45} />
+              <circle cx={p.px} cy={p.py} r={6} fill="#ef4444" stroke="#ffffff" strokeWidth={1.5} />
+              <circle cx={p.px} cy={p.py} r={2.2} fill="#ffffff" />
             </g>
           );
         })()}
       </svg>
 
       <div style={{ padding: "8px 10px", fontSize: 11, borderTop: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-        <span style={{ opacity: 0.75 }}>u∈[{fmt(uMin)},{fmt(uMax)}], v∈[{fmt(vMin)},{fmt(vMax)}]</span>
+        <span style={{ opacity: 0.75 }}>u in [{fmt(uMin)},{fmt(uMax)}], v in [{fmt(vMin)},{fmt(vMax)}], linked to 3D probe</span>
         <span style={{ fontFamily: "monospace", textAlign: "right" }}>
           {picked ? `pick ${fmt(picked.u)}, ${fmt(picked.v)}` : "pick (none)"}
           {mode !== "hover" && hovered ? ` | hover ${fmt(hovered.u)}, ${fmt(hovered.v)}` : ""}
