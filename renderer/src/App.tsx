@@ -708,6 +708,7 @@ const UI_ACCENT_KEY = "math3d.ui.accent.v1";
 const UI_DISPLAY_MODE_KEY = "math3d.ui.displayMode.v1";
 const UI_VIEWPORT_PRESET_KEY = "math3d.ui.viewportPreset.v1";
 const UI_VIEWPORT_OVERLAY_CONTROLS_KEY = "math3d.ui.viewportOverlayControls.v1";
+const UI_SURFACE_VIEW_GIZMO_KEY = "math3d.ui.surfaceViewGizmo.v1";
 const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
@@ -5749,6 +5750,10 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return false;
     return localStorage.getItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY) === "1";
   });
+  const [showSurfaceViewGizmo, setShowSurfaceViewGizmo] = useState(() => {
+    if (IS_REPLAY_MODE) return true;
+    return localStorage.getItem(UI_SURFACE_VIEW_GIZMO_KEY) !== "0";
+  });
   const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
     if (IS_REPLAY_MODE) return "light";
     const saved = localStorage.getItem(UI_THEME_KEY);
@@ -5794,6 +5799,11 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return;
     localStorage.setItem(UI_VIEWPORT_OVERLAY_CONTROLS_KEY, showInViewportOverlayControls ? "1" : "0");
   }, [showInViewportOverlayControls]);
+
+  useEffect(() => {
+    if (IS_REPLAY_MODE) return;
+    localStorage.setItem(UI_SURFACE_VIEW_GIZMO_KEY, showSurfaceViewGizmo ? "1" : "0");
+  }, [showSurfaceViewGizmo]);
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>(() => loadWorkbooks());
   const [activeWorkbookId, setActiveWorkbookId] = useState<string | null>(() => {
@@ -21367,6 +21377,8 @@ case "mobius":
                   onToggleWireframe={() => setShowWireframe((w) => !w)}
                   showBoundingBox={showBoundingBox}
                   onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                  showViewGizmo={showSurfaceViewGizmo}
+                  onToggleViewGizmo={() => setShowSurfaceViewGizmo((v) => !v)}
                   showPlanes={showPlanes}
                   onTogglePlanes={() => setShowPlanes((p) => !p)}
                   showPrincipalProjections={showPrincipalProjections}
@@ -21717,6 +21729,7 @@ case "mobius":
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
+                            showViewGizmo={showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
                             paramDomain={activeParamLikeDomain}
@@ -22159,6 +22172,7 @@ case "mobius":
                               contourCount={contourCount}
                               showChartGrid={secondaryOverlay.showChartGrid}
                               showOverlayControls={false}
+                              showViewGizmo={showSurfaceViewGizmo}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
                               isCameraLeader={false}
@@ -28258,6 +28272,8 @@ type SurfacesViewPanelProps = {
   onToggleWireframe: () => void;
   showBoundingBox: boolean;
   onToggleBoundingBox: () => void;
+  showViewGizmo: boolean;
+  onToggleViewGizmo: () => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
   showPrincipalProjections: boolean;
@@ -28300,6 +28316,8 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onToggleWireframe,
   showBoundingBox,
   onToggleBoundingBox,
+  showViewGizmo,
+  onToggleViewGizmo,
   showPlanes,
   onTogglePlanes,
   showPrincipalProjections,
@@ -28426,6 +28444,10 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
         <input type="checkbox" checked={showBoundingBox} onChange={onToggleBoundingBox} />
         Bounding box
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
+        <input type="checkbox" checked={showViewGizmo} onChange={onToggleViewGizmo} />
+        Show 3D gizmo
       </label>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
         <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />

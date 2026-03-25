@@ -240,7 +240,52 @@ export type ProbeInfo = {
   xy?: { x: number; y: number };
 };
 
-type GizmoView = "xy" | "xz" | "yz";
+type GizmoView = "xy" | "xyNeg" | "xz" | "xzNeg" | "yz" | "yzNeg" | "iso";
+type GizmoMenuView = "front" | "back" | "left" | "right" | "top" | "bottom" | "iso";
+
+const GIZMO_MENU_ITEMS: Array<{ id: GizmoMenuView; label: string }> = [
+  { id: "front", label: "Front" },
+  { id: "back", label: "Back" },
+  { id: "left", label: "Left" },
+  { id: "right", label: "Right" },
+  { id: "top", label: "Top" },
+  { id: "bottom", label: "Bottom" },
+  { id: "iso", label: "Iso" },
+];
+
+const iconCommonProps = {
+  width: 14,
+  height: 14,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.9,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true as const,
+};
+
+const LockGlyph: React.FC<{ locked: boolean }> = ({ locked }) => (
+  <svg {...iconCommonProps}>
+    <rect x="5" y="11" width="14" height="9" rx="2.3" />
+    <path d={locked ? "M8 11V8a4 4 0 1 1 8 0v3" : "M8 11V8a4 4 0 0 1 8 0"} />
+  </svg>
+);
+
+const ResetGlyph: React.FC = () => (
+  <svg {...iconCommonProps}>
+    <path d="M20 12a8 8 0 1 1-2.35-5.66" />
+    <path d="M20 5v5h-5" />
+  </svg>
+);
+
+const MenuGlyph: React.FC = () => (
+  <svg {...iconCommonProps}>
+    <circle cx="6" cy="12" r="1.7" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" />
+    <circle cx="18" cy="12" r="1.7" fill="currentColor" stroke="none" />
+  </svg>
+);
 
 /* ---------- helpers ---------- */
 
@@ -1103,6 +1148,7 @@ type Props = {
   gaussMapEnabled?: boolean;
   onToggleGaussMap?: () => void;
   showOverlayControls?: boolean;
+  showViewGizmo?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -1328,6 +1374,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     gaussMapEnabled = false,
     onToggleGaussMap,
     showOverlayControls = true,
+    showViewGizmo = true,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -1503,6 +1550,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   type ViewMode = "free" | GizmoView;
   const [viewMode, setViewMode] = useState<ViewMode>("free");
   const [lockToAxisPlane, setLockToAxisPlane] = useState(false);
+  const [viewGizmoMenuOpen, setViewGizmoMenuOpen] = useState(false);
   const [lockToSlicePlane, setLockToSlicePlane] = useState(false);
   const [slicePlaneEnabled, setSlicePlaneEnabled] = useState(false);
   const [slicePlanePreset, setSlicePlanePreset] = useState<SlicePreset>("xy");
@@ -1512,7 +1560,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const [slicePlaneSize, setSlicePlaneSize] = useState(3.5);
   const [slicePolylines2D, setSlicePolylines2D] = useState<Array<Array<{ s: number; t: number }>>>([]);
   const [sliceSnapToCurve, setSliceSnapToCurve] = useState(true);
-  const [showViewGizmo, setShowViewGizmo] = useState(true);
   const [sliceHoverST, setSliceHoverST] = useState<{ s: number; t: number } | null>(null);
   const [sliceHoverReadout, setSliceHoverReadout] = useState<{ s: number; t: number } | null>(null);
   const sliceHoverReadoutTimerRef = useRef<number | null>(null);
@@ -1674,11 +1721,24 @@ useEffect(() => {
     if (view === "xy") {
       cam.position.set(center.x, center.y, center.z + d);
       cam.up.set(0, 1, 0);
+    } else if (view === "xyNeg") {
+      cam.position.set(center.x, center.y, center.z - d);
+      cam.up.set(0, 1, 0);
     } else if (view === "xz") {
       cam.position.set(center.x, center.y + d, center.z);
       cam.up.set(0, 0, 1);
+    } else if (view === "xzNeg") {
+      cam.position.set(center.x, center.y - d, center.z);
+      cam.up.set(0, 0, -1);
     } else if (view === "yz") {
       cam.position.set(center.x + d, center.y, center.z);
+      cam.up.set(0, 1, 0);
+    } else if (view === "yzNeg") {
+      cam.position.set(center.x - d, center.y, center.z);
+      cam.up.set(0, 1, 0);
+    } else if (view === "iso") {
+      const isoDir = new THREE.Vector3(1, 0.85, 1.12).normalize();
+      cam.position.copy(center).addScaledVector(isoDir, d * 1.08);
       cam.up.set(0, 1, 0);
     }
 
@@ -1687,10 +1747,37 @@ useEffect(() => {
     controls.update();
   };
 
+  const applyNamedGizmoView = useCallback((view: GizmoMenuView) => {
+    const mapping: Record<GizmoMenuView, GizmoView> = {
+      front: "xy",
+      back: "xyNeg",
+      right: "yz",
+      left: "yzNeg",
+      top: "xz",
+      bottom: "xzNeg",
+      iso: "iso",
+    };
+    setViewMode(mapping[view]);
+    setViewGizmoMenuOpen(false);
+  }, []);
+
+  const handleResetCameraFromGizmo = useCallback(() => {
+    setViewMode("free");
+    setLockToAxisPlane(false);
+    setViewGizmoMenuOpen(false);
+    forceReframeRef.current?.();
+  }, []);
+
   useEffect(() => {
     setViewMode("free");
     setLockToAxisPlane(false);
+    setViewGizmoMenuOpen(false);
   }, [resetToken]);
+
+  useEffect(() => {
+    if (showOverlayControls && showViewGizmo) return;
+    setViewGizmoMenuOpen(false);
+  }, [showOverlayControls, showViewGizmo]);
 
   useEffect(() => {
     if (!windowReframeToken) return;
@@ -8911,99 +8998,159 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         </div>
       )}
 
-      {showOverlayControls && (
+      {showOverlayControls && showViewGizmo && (
         <div
           style={{
             position: "absolute",
             left: 12,
             bottom: 12,
-            borderRadius: 12,
-            background:
-              "linear-gradient(145deg, rgba(250,252,255,0.98), rgba(228,236,246,0.96))",
-            border: "1px solid rgba(140,160,184,0.55)",
-            boxShadow:
-              "0 12px 26px rgba(30,45,70,0.18), inset 0 1px 2px rgba(255,255,255,0.9)",
-            padding: 10,
+            borderRadius: 11,
+            background: "linear-gradient(150deg, rgba(250,252,255,0.95), rgba(226,236,247,0.92))",
+            border: "1px solid rgba(134,153,179,0.52)",
+            boxShadow: "0 10px 18px rgba(30,45,70,0.16), inset 0 1px 1px rgba(255,255,255,0.8)",
+            padding: "7px 7px 6px",
             display: "flex",
             flexDirection: "column",
-            gap: 8,
-            fontSize: 12,
-            fontFamily:
-              "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
-            color: "#2b3441",
-            backdropFilter: "blur(6px)",
+            gap: 5,
+            width: 152,
+            fontFamily: "\"Avenir Next\", \"Segoe UI\", \"Trebuchet MS\", \"Noto Sans\", sans-serif",
+            color: "#233042",
+            backdropFilter: "blur(5px)",
+            userSelect: "none",
           }}
         >
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-              padding: "2px 2px 4px",
-              fontSize: 11,
+              padding: "0 2px",
+              fontSize: 9,
               textTransform: "uppercase",
-              letterSpacing: "0.08em",
+              letterSpacing: "0.12em",
               fontWeight: 700,
-              color: "#5a6676",
+              color: "#6a7483",
+              opacity: 0.9,
             }}
           >
-            <span>View Gizmo</span>
-            <span
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: "#4b82f6",
-                boxShadow: "0 0 8px rgba(75,130,246,0.55)",
-              }}
-            />
+            View
           </div>
           <AxisGizmo
-            size={108}
+            size={138}
             getMainCamera={() => cameraRef.current}
-            onSelectView={(view) => setViewMode(view)}
+            onSelectView={(view) => {
+              setViewMode(view);
+              setViewGizmoMenuOpen(false);
+            }}
           />
-          <label
+          <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
-              padding: "5px 8px",
-              borderRadius: 8,
-              background: "rgba(255,255,255,0.75)",
-              border: "1px solid rgba(160,176,196,0.45)",
-              boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
+              gap: 6,
+              position: "relative",
             }}
           >
-            <input
-              type="checkbox"
-              checked={lockToAxisPlane && viewMode !== "free"}
-              onChange={(e) => setLockToAxisPlane(e.target.checked)}
-              style={{ accentColor: "#3b82f6" }}
-            />
-            <span style={{ fontWeight: 600 }}>Lock view to axis</span>
-          </label>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "5px 8px",
-              borderRadius: 8,
-              background: "rgba(255,255,255,0.75)",
-              border: "1px solid rgba(160,176,196,0.45)",
-              boxShadow: "inset 0 1px 1px rgba(255,255,255,0.8)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={showViewGizmo}
-              onChange={(e) => setShowViewGizmo(e.target.checked)}
-              style={{ accentColor: "#3b82f6" }}
-            />
-            <span style={{ fontWeight: 600 }}>Show 3D gizmo</span>
-          </label>
+            <button
+              type="button"
+              title={lockToAxisPlane ? "Unlock axis view" : "Lock view to axis"}
+              aria-label={lockToAxisPlane ? "Unlock axis view" : "Lock view to axis"}
+              aria-pressed={lockToAxisPlane}
+              onClick={() => setLockToAxisPlane((v) => !v)}
+              style={{
+                width: 31,
+                height: 28,
+                borderRadius: 7,
+                border: "1px solid " + (lockToAxisPlane ? "#2962d9" : "rgba(128,146,171,0.58)"),
+                background: lockToAxisPlane ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)",
+                color: lockToAxisPlane ? "#1d4ed8" : "#495669",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <LockGlyph locked={lockToAxisPlane} />
+            </button>
+            <button
+              type="button"
+              title="Reset camera"
+              aria-label="Reset camera"
+              onClick={handleResetCameraFromGizmo}
+              style={{
+                width: 31,
+                height: 28,
+                borderRadius: 7,
+                border: "1px solid rgba(128,146,171,0.58)",
+                background: "rgba(255,255,255,0.87)",
+                color: "#495669",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <ResetGlyph />
+            </button>
+            <button
+              type="button"
+              title={viewGizmoMenuOpen ? "Close view menu" : "Open view menu"}
+              aria-label={viewGizmoMenuOpen ? "Close view menu" : "Open view menu"}
+              aria-haspopup="menu"
+              aria-expanded={viewGizmoMenuOpen}
+              onClick={() => setViewGizmoMenuOpen((open) => !open)}
+              style={{
+                marginLeft: "auto",
+                width: 31,
+                height: 28,
+                borderRadius: 7,
+                border: "1px solid " + (viewGizmoMenuOpen ? "#2962d9" : "rgba(128,146,171,0.58)"),
+                background: viewGizmoMenuOpen ? "rgba(227,239,255,0.95)" : "rgba(255,255,255,0.87)",
+                color: viewGizmoMenuOpen ? "#1d4ed8" : "#495669",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <MenuGlyph />
+            </button>
+            {viewGizmoMenuOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  bottom: 34,
+                  zIndex: 20,
+                  minWidth: 88,
+                  padding: 4,
+                  borderRadius: 8,
+                  background: "rgba(248,251,255,0.97)",
+                  border: "1px solid rgba(132,149,173,0.62)",
+                  boxShadow: "0 8px 16px rgba(23,37,64,0.2)",
+                  display: "grid",
+                  gap: 2,
+                }}
+              >
+                {GIZMO_MENU_ITEMS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => applyNamedGizmoView(item.id)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      border: "1px solid transparent",
+                      background: "transparent",
+                      color: "#334155",
+                      textAlign: "left",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
