@@ -21110,7 +21110,16 @@ case "mobius":
         {mode === "surfaces" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
             {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: surfaceLeftPanelWidth, display: cleanScreenshotSurfaceActive ? "none" : undefined }}>
+            <div
+              style={{
+                ...styles.panelLeft,
+                width: surfaceLeftPanelWidth,
+                display: cleanScreenshotSurfaceActive ? "none" : "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                overflowY: surfacesLeftTab === "scene" ? "hidden" : "auto",
+              }}
+            >
               <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
@@ -21133,18 +21142,21 @@ case "mobius":
                 ))}
               </div>
               {surfacesLeftTab === "scene" && (
-                <UnifiedObjectTreePanel
-                  title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
-                  nodes={unifiedObjectNodes}
-                  selectedId={unifiedTreeSelectedId}
-                  onSelect={setUnifiedTreeSelectedId}
-                  onFocus={handleFocusUnifiedNode}
-                  onToggleVisibility={handleToggleUnifiedNodeVisibility}
-                  onDeleteNode={handleDeleteUnifiedNode}
-                  onDuplicateNode={handleDuplicateUnifiedNode}
-                  onRenameNode={handleRenameUnifiedNode}
-                  actions={unifiedPipelineActions}
-                />
+                <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
+                  <UnifiedObjectTreePanel
+                    title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
+                    nodes={unifiedObjectNodes}
+                    selectedId={unifiedTreeSelectedId}
+                    onSelect={setUnifiedTreeSelectedId}
+                    onFocus={handleFocusUnifiedNode}
+                    onToggleVisibility={handleToggleUnifiedNodeVisibility}
+                    onDeleteNode={handleDeleteUnifiedNode}
+                    onDuplicateNode={handleDuplicateUnifiedNode}
+                    onRenameNode={handleRenameUnifiedNode}
+                    actions={unifiedPipelineActions}
+                    fillHeight
+                  />
+                </div>
               )}
               {surfacesLeftTab === "object" && (
                 <>
@@ -26876,6 +26888,7 @@ type UnifiedObjectTreePanelProps = {
   onDuplicateNode?: (id: string) => void;
   onRenameNode?: (id: string, name: string) => void;
   actions: UnifiedPipelineAction[];
+  fillHeight?: boolean;
 };
 
 const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
@@ -26889,6 +26902,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onDuplicateNode,
   onRenameNode,
   actions,
+  fillHeight = false,
 }) => {
   const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -26971,6 +26985,23 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     }
     return resolved;
   }, [actions]);
+  const [selectedSectionOpen, setSelectedSectionOpen] = useState(false);
+  const [actionsSectionOpen, setActionsSectionOpen] = useState(false);
+  const [activeActionSection, setActiveActionSection] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selected) setSelectedSectionOpen(false);
+  }, [selected]);
+  useEffect(() => {
+    if (!groupedActionSections.length) {
+      setActiveActionSection(null);
+      return;
+    }
+    setActiveActionSection((current) =>
+      current && groupedActionSections.some((section) => section.key === current)
+        ? current
+        : groupedActionSections[0].key
+    );
+  }, [groupedActionSections]);
 
   const renderRow = (node: UnifiedObjectNode) => {
     const active = selectedId === node.id;
@@ -27203,62 +27234,85 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   return (
     <div
       data-testid="unified-object-tree"
-      style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}
+      style={{
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 10,
+        border: "1px solid #e2e8f0",
+        background: "#f8fafc",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: fillHeight ? 0 : undefined,
+        height: fillHeight ? "100%" : undefined,
+      }}
     >
       <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "grid", gap: 4 }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
-            Scene display mode
+            List mode
           </div>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 2,
-              border: "1px solid #cbd5e1",
-              borderRadius: 999,
-              background: "#fff",
-              padding: 2,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setListMode("grouped")}
-              aria-pressed={listMode === "grouped"}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 2 }}>
+            <div
               style={{
-                padding: "3px 10px",
-                fontSize: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 2,
+                border: "1px solid #cbd5e1",
                 borderRadius: 999,
-                border: "1px solid " + (listMode === "grouped" ? "#0a66c2" : "transparent"),
-                background: listMode === "grouped" ? "#e6f0ff" : "transparent",
-                color: listMode === "grouped" ? "#0a66c2" : "#334155",
-                fontWeight: listMode === "grouped" ? 700 : 600,
+                background: "#fff",
+                padding: 2,
               }}
             >
-              Grouped
-            </button>
-            <button
-              type="button"
-              onClick={() => setListMode("flat")}
-              aria-pressed={listMode === "flat"}
-              style={{
-                padding: "3px 10px",
-                fontSize: 10,
-                borderRadius: 999,
-                border: "1px solid " + (listMode === "flat" ? "#0a66c2" : "transparent"),
-                background: listMode === "flat" ? "#e6f0ff" : "transparent",
-                color: listMode === "flat" ? "#0a66c2" : "#334155",
-                fontWeight: listMode === "flat" ? 700 : 600,
-              }}
-            >
-              Flat
-            </button>
+              <button
+                type="button"
+                onClick={() => setListMode("grouped")}
+                aria-pressed={listMode === "grouped"}
+                style={{
+                  padding: "3px 10px",
+                  fontSize: 10,
+                  borderRadius: 999,
+                  border: "1px solid " + (listMode === "grouped" ? "#0a66c2" : "transparent"),
+                  background: listMode === "grouped" ? "#e6f0ff" : "transparent",
+                  color: listMode === "grouped" ? "#0a66c2" : "#334155",
+                  fontWeight: listMode === "grouped" ? 700 : 600,
+                }}
+              >
+                Grouped
+              </button>
+              <button
+                type="button"
+                onClick={() => setListMode("flat")}
+                aria-pressed={listMode === "flat"}
+                style={{
+                  padding: "3px 10px",
+                  fontSize: 10,
+                  borderRadius: 999,
+                  border: "1px solid " + (listMode === "flat" ? "#0a66c2" : "transparent"),
+                  background: listMode === "flat" ? "#e6f0ff" : "transparent",
+                  color: listMode === "flat" ? "#0a66c2" : "#334155",
+                  fontWeight: listMode === "flat" ? 700 : 600,
+                }}
+              >
+                Flat
+              </button>
+            </div>
           </div>
         </div>
       </div>
       {nodes.length ? (
-        <div style={{ display: "grid", gap: 5, maxHeight: 320, overflowY: "auto", overflowX: "hidden", paddingRight: 2 }}>
+        <div
+          style={{
+            display: "grid",
+            gap: 5,
+            maxHeight: fillHeight ? "none" : 320,
+            overflowY: "auto",
+            overflowX: "hidden",
+            paddingRight: 2,
+            flex: fillHeight ? 1 : undefined,
+            minHeight: fillHeight ? 0 : undefined,
+          }}
+        >
           {listMode === "flat"
             ? nodes.map((node) => renderRow(node))
             : roleOrder.map((role) => {
@@ -27278,83 +27332,157 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
         <div style={{ fontSize: 11, opacity: 0.75 }}>No objects yet.</div>
       )}
 
-      {selected && (
-        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11, overflowWrap: "anywhere", display: "grid", gap: 8 }}>
-          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
-              Selected object
+      <div style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setSelectedSectionOpen((prev) => !prev)}
+          disabled={!selected}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "6px 8px",
+            borderRadius: 8,
+            border: "1px solid #dbe4f0",
+            background: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#334155",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            opacity: selected ? 1 : 0.7,
+          }}
+          title={selected ? "Toggle selected object details" : "No selected object"}
+        >
+          <span>Selected object</span>
+          <span style={{ fontSize: 10, color: "#64748b" }}>
+            {selected ? (selectedSectionOpen ? "Collapse" : "Expand") : "None"}
+          </span>
+        </button>
+        {selected && selectedSectionOpen && (
+          <div style={{ marginTop: 8, fontSize: 11, overflowWrap: "anywhere", display: "grid", gap: 8 }}>
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                Selected object
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selected.name}</div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selected.name}</div>
-          </div>
-          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
-            <div><strong>ID:</strong> <code>{selected.id}</code></div>
-            <div><strong>Type:</strong> {selected.type}</div>
-            <div>
-              <strong>Role:</strong>{" "}
-              {UNIFIED_SCENE_ROLE_LABELS[
-                selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
-              ]}
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
+              <div><strong>ID:</strong> <code>{selected.id}</code></div>
+              <div><strong>Type:</strong> {selected.type}</div>
+              <div>
+                <strong>Role:</strong>{" "}
+                {UNIFIED_SCENE_ROLE_LABELS[
+                  selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
+                ]}
+              </div>
+            </div>
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
+              <div><strong>Source definition:</strong> {selected.sourceDefinition}</div>
+              <div><strong>Display:</strong> {selected.displayState || "n/a"}</div>
+              <div><strong>Visible:</strong> {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}</div>
+            </div>
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
+              {selectedDerivedNames.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {selectedDerivedNames.map((name, index) => (
+                    <span
+                      key={`selected-derived-${index}-${name}`}
+                      style={{
+                        fontSize: 10,
+                        border: "1px solid #dbe3ec",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        background: "#f8fafc",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.72 }}>none</div>
+              )}
             </div>
           </div>
-          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
-            <div><strong>Source definition:</strong> {selected.sourceDefinition}</div>
-            <div><strong>Display:</strong> {selected.displayState || "n/a"}</div>
-            <div><strong>Visible:</strong> {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}</div>
-          </div>
-          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
-            {selectedDerivedNames.length ? (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {selectedDerivedNames.map((name, index) => (
-                  <span
-                    key={`selected-derived-${index}-${name}`}
+        )}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={() => setActionsSectionOpen((prev) => !prev)}
+          style={{
+            width: "100%",
+            textAlign: "left",
+            padding: "6px 8px",
+            borderRadius: 8,
+            border: "1px solid #dbe4f0",
+            background: "#fff",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "#334155",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+          title="Toggle derive/bake/convert tools"
+        >
+          <span>Actions</span>
+          <span style={{ fontSize: 10, color: "#64748b" }}>{actionsSectionOpen ? "Collapse" : "Expand"}</span>
+        </button>
+        {actionsSectionOpen && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Derive / Bake / Convert</div>
+          <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {groupedActionSections.map((section) => {
+                const active = activeActionSection === section.key;
+                return (
+                  <button
+                    key={`action-tab-${section.key}`}
+                    type="button"
+                    onClick={() => setActiveActionSection(section.key)}
+                    aria-pressed={active}
                     style={{
+                      padding: "3px 10px",
                       fontSize: 10,
-                      border: "1px solid #dbe3ec",
                       borderRadius: 999,
-                      padding: "2px 8px",
-                      background: "#f8fafc",
+                      border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
+                      background: active ? "#e6f0ff" : "#fff",
+                      color: active ? "#0a66c2" : "#475569",
+                      fontWeight: active ? 700 : 600,
                       whiteSpace: "nowrap",
                     }}
                   >
-                    {name}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div style={{ opacity: 0.72 }}>none</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Derive / Bake / Convert</div>
-        <div style={{ display: "grid", gap: 8 }}>
-          {groupedActionSections.map((section) => (
-            <div key={`action-group-${section.key}`} style={{ display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                {section.label}
-              </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {section.actions.map((action) => (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={action.onRun}
-                    disabled={action.disabled}
-                    title={action.hint}
-                    style={{ padding: "4px 8px", fontSize: 11 }}
-                  >
-                    {action.label}
+                    {section.label} ({section.actions.length})
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(groupedActionSections.find((section) => section.key === activeActionSection)?.actions ?? []).map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  onClick={action.onRun}
+                  disabled={action.disabled}
+                  title={action.hint}
+                  style={{ padding: "4px 8px", fontSize: 11 }}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          </div>
+        )}
       </div>
     </div>
   );
