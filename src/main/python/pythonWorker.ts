@@ -414,9 +414,9 @@ class PythonWorker {
     };
   }
 
-  async health(): Promise<{ ok: boolean; error?: string } | undefined> {
+  async health(timeoutMs = workerHealthTimeoutMs): Promise<{ ok: boolean; error?: string } | undefined> {
     const jobId = `health-${Date.now()}`;
-    const res = await this.request({ type: "health", jobId }, 15000);
+    const res = await this.request({ type: "health", jobId }, timeoutMs);
     return res;
   }
 
@@ -912,6 +912,20 @@ type WorkerLaunchConfig = {
 const truthy = (value: string | undefined): boolean =>
   ["1", "true", "yes", "on", "y"].includes(String(value || "").toLowerCase());
 
+function resolveTimeoutMs(envName: string, fallbackMs: number, minMs: number, maxMs: number): number {
+  const raw = Number(process.env[envName]);
+  if (!Number.isFinite(raw)) return fallbackMs;
+  return Math.max(minMs, Math.min(maxMs, Math.floor(raw)));
+}
+
+const workerHealthTimeoutMs = resolveTimeoutMs("MATH3D_WORKER_HEALTH_TIMEOUT_MS", 15000, 1000, 300000);
+const workerStartupHealthTimeoutMs = resolveTimeoutMs(
+  "MATH3D_WORKER_STARTUP_HEALTH_TIMEOUT_MS",
+  45000,
+  1000,
+  300000
+);
+
 function resolveWorkerFailureInjectionMode(): WorkerFailureInjectionMode {
   const direct = (process.env.MATH3D_WORKER_FAILURE_INJECTION || "").trim();
   const legacy = (process.env.MATH3D_WORKER_FAILURE_MODE || "").trim();
@@ -1158,7 +1172,7 @@ export async function getPythonWorker(): Promise<PythonWorker> {
         throw new Error(`Python worker ping failed (${launch.backend})`);
       }
       await worker.version();
-      await worker.health();
+      await worker.health(workerStartupHealthTimeoutMs);
     } catch (err) {
       worker.kill();
       throw err;
