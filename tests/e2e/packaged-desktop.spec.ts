@@ -45,7 +45,7 @@ test.describe("Packaged desktop flow", () => {
       });
       const page = await app.firstWindow();
       await page.waitForLoadState("domcontentloaded");
-      await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
     } finally {
       if (app) {
         await app.close();

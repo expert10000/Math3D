@@ -33,7 +33,7 @@ export async function launchSurfaceApp(
 
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 
   return { app, page, profileDir };
 }
@@ -48,7 +48,7 @@ export async function resetSurfaceAppState(page: Page): Promise<void> {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 }
 
 export async function readWorkerStatusText(page: Page): Promise<string> {

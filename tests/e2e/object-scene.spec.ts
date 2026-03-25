@@ -42,14 +42,14 @@ const launchApp = async (env: Record<string, string | undefined>): Promise<{ app
   });
   const page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
-  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
 };
 
 const resetStorage = async (page: Page) => {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Math3D", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
 const openProceduralGeometry = async (page: Page) => {
