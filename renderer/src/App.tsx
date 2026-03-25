@@ -26908,24 +26908,73 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     const part = raw.includes("/") ? raw.split("/").pop() ?? raw : raw;
     return part.replaceAll("-", " ");
   };
-  const categoryBadgeColor: Record<UnifiedObjectCategory, string> = {
-    sceneObject: "#334155",
-    surfaceDefinition: "#0f766e",
-    dataset: "#1d4ed8",
-    derived: "#7c3aed",
-  };
   const roleBadgeColor: Record<UnifiedSceneRole, string> = {
     primaryObject: "#0369a1",
     overlay: "#0f766e",
     derivedResult: "#7c3aed",
     referenceObject: "#6b7280",
   };
+  const renderRoleGlyph = (role: UnifiedSceneRole, color: string, fallback: string) => {
+    if (role === "primaryObject") {
+      return (
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          <path d="M4 6 10 3l6 3-6 3-6-3Z" fill="none" stroke={color} strokeWidth="1.6" />
+          <path d="M4 6v7l6 4 6-4V6" fill="none" stroke={color} strokeWidth="1.6" />
+        </svg>
+      );
+    }
+    if (role === "overlay") {
+      return (
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          <rect x="3" y="6" width="9" height="9" rx="1.2" fill="none" stroke={color} strokeWidth="1.5" />
+          <rect x="8" y="3" width="9" height="9" rx="1.2" fill="none" stroke={color} strokeWidth="1.5" />
+        </svg>
+      );
+    }
+    if (role === "derivedResult") {
+      return (
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          <path d="M10 2.5l1.8 4 4.2.4-3.1 2.8.9 4.2L10 12l-3.8 1.9.9-4.2L4 6.9l4.2-.4L10 2.5Z" fill="none" stroke={color} strokeWidth="1.4" />
+        </svg>
+      );
+    }
+    return <span style={{ fontSize: 10, fontWeight: 700 }}>{fallback}</span>;
+  };
+  const selectedDerivedNames = useMemo(
+    () => (selected ? selected.derivedProductIds.map((id) => byId.get(id)?.name ?? id) : []),
+    [selected, byId]
+  );
+  const groupedActionSections = useMemo(() => {
+    const byAction = new Map(actions.map((action) => [action.id, action]));
+    const sections = [
+      {
+        key: "generate",
+        label: "Generate",
+        actionIds: ["wireframe", "pointCloud", "chartGrid", "normals", "curvature", "geodesic", "slice"],
+      },
+      { key: "convert", label: "Convert", actionIds: ["bake"] },
+      { key: "output", label: "Output", actionIds: ["export"] },
+    ];
+    const used = new Set<string>();
+    const resolved = sections
+      .map((section) => {
+        const grouped = section.actionIds
+          .map((id) => byAction.get(id))
+          .filter((action): action is UnifiedPipelineAction => !!action);
+        grouped.forEach((action) => used.add(action.id));
+        return { key: section.key, label: section.label, actions: grouped };
+      })
+      .filter((section) => section.actions.length > 0);
+    const remaining = actions.filter((action) => !used.has(action.id));
+    if (remaining.length) {
+      resolved.push({ key: "other", label: "Other", actions: remaining });
+    }
+    return resolved;
+  }, [actions]);
 
   const renderRow = (node: UnifiedObjectNode) => {
     const active = selectedId === node.id;
-    const state = node.displayState.trim();
     const typeLabel = shortTypeLabel(node.type);
-    const chipColor = node.colorHex || categoryBadgeColor[node.category];
     const role = node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition);
     const roleLabel = UNIFIED_SCENE_ROLE_LABELS[role];
     const canToggleVisibility = !!node.canToggleVisibility && typeof node.visible === "boolean" && !!onToggleVisibility;
@@ -26942,6 +26991,8 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
             ? "Dataset"
             : "Derived";
     const derivedFrom = node.parentId ? (byId.get(node.parentId)?.name ?? null) : null;
+    const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
+    const metadataLine = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
     return (
       <div
         key={node.id}
@@ -26950,10 +27001,11 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           gridTemplateColumns: "1fr auto auto",
           gap: 6,
           alignItems: "center",
-          border: active ? "1px solid #bfdbfe" : "1px solid #e2e8f0",
-          background: active ? "#eff6ff" : "#f8fafc",
+          border: active ? "1px solid #93c5fd" : "1px solid #e2e8f0",
+          background: active ? "#eaf2ff" : "#f8fafc",
+          boxShadow: active ? "inset 3px 0 0 #2563eb" : undefined,
           borderRadius: 8,
-          padding: 6,
+          padding: "6px 6px 6px 8px",
         }}
       >
         <button
@@ -26973,7 +27025,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
           }}
           title={node.sourceDefinition}
         >
-          <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 8, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "20px 1fr", gap: 8, alignItems: "center" }}>
             <span
               style={{
                 width: 20,
@@ -26986,10 +27038,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 alignItems: "center",
                 justifyContent: "center",
                 fontSize: 10,
-                fontWeight: 700,
               }}
             >
-              {roleIcon}
+              {renderRoleGlyph(role, roleBadgeColor[role], roleIcon)}
             </span>
             <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span
@@ -27005,97 +27056,16 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
               </span>
               <span
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 5,
-                  flexWrap: "wrap",
+                  fontSize: 10,
+                  color: "#64748b",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
+                title={metadataLine}
               >
-                <span
-                  style={{
-                    opacity: 0.95,
-                    fontSize: 10,
-                    border: `1px solid ${roleBadgeColor[role]}`,
-                    color: roleBadgeColor[role],
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    background: "#fff",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {roleLabel}
-                </span>
-                <span
-                  style={{
-                    opacity: 0.95,
-                    fontSize: 10,
-                    border: "1px solid #cbd5e1",
-                    color: "#475569",
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    background: "#fff",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {sourceKind}
-                </span>
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: 999,
-                    background: chipColor,
-                    border: "1px solid rgba(0,0,0,0.08)",
-                    flex: "0 0 auto",
-                  }}
-                />
-                <span
-                  style={{
-                    opacity: 0.88,
-                    fontSize: 10,
-                    border: "1px solid #dbe3ec",
-                    borderRadius: 999,
-                    padding: "1px 6px",
-                    background: "#fff",
-                    textTransform: "capitalize",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {typeLabel}
-                </span>
-                {canToggleVisibility && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: node.visible ? "#166534" : "#9a3412",
-                      border: "1px solid " + (node.visible ? "#86efac" : "#fdba74"),
-                      borderRadius: 999,
-                      padding: "1px 6px",
-                      background: "#fff",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {node.visible ? "visible" : "hidden"}
-                  </span>
-                )}
-                {derivedFrom && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: "#475569",
-                      border: "1px dashed #cbd5e1",
-                      borderRadius: 999,
-                      padding: "1px 6px",
-                      background: "#fff",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={`derived from ${derivedFrom}`}
-                  >
-                    from {derivedFrom}
-                  </span>
-                )}
+                {metadataLine}
               </span>
-              {state ? <span style={{ opacity: 0.72, color: "#475569", marginTop: 1, fontSize: 10 }}>{state}</span> : null}
             </span>
           </div>
         </button>
@@ -27235,39 +27205,56 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
       data-testid="unified-object-tree"
       style={{ marginTop: 10, padding: 10, borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 700 }}>{title}</div>
-        <div style={{ display: "inline-flex", gap: 4 }}>
-          <button
-            type="button"
-            onClick={() => setListMode("grouped")}
-            aria-pressed={listMode === "grouped"}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+            Scene display mode
+          </div>
+          <div
             style={{
-              padding: "3px 8px",
-              fontSize: 10,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 2,
+              border: "1px solid #cbd5e1",
               borderRadius: 999,
-              border: "1px solid " + (listMode === "grouped" ? "#0a66c2" : "#d1d5db"),
-              background: listMode === "grouped" ? "#e6f0ff" : "#fff",
-              fontWeight: listMode === "grouped" ? 700 : 500,
+              background: "#fff",
+              padding: 2,
             }}
           >
-            Grouped
-          </button>
-          <button
-            type="button"
-            onClick={() => setListMode("flat")}
-            aria-pressed={listMode === "flat"}
-            style={{
-              padding: "3px 8px",
-              fontSize: 10,
-              borderRadius: 999,
-              border: "1px solid " + (listMode === "flat" ? "#0a66c2" : "#d1d5db"),
-              background: listMode === "flat" ? "#e6f0ff" : "#fff",
-              fontWeight: listMode === "flat" ? 700 : 500,
-            }}
-          >
-            Flat
-          </button>
+            <button
+              type="button"
+              onClick={() => setListMode("grouped")}
+              aria-pressed={listMode === "grouped"}
+              style={{
+                padding: "3px 10px",
+                fontSize: 10,
+                borderRadius: 999,
+                border: "1px solid " + (listMode === "grouped" ? "#0a66c2" : "transparent"),
+                background: listMode === "grouped" ? "#e6f0ff" : "transparent",
+                color: listMode === "grouped" ? "#0a66c2" : "#334155",
+                fontWeight: listMode === "grouped" ? 700 : 600,
+              }}
+            >
+              Grouped
+            </button>
+            <button
+              type="button"
+              onClick={() => setListMode("flat")}
+              aria-pressed={listMode === "flat"}
+              style={{
+                padding: "3px 10px",
+                fontSize: 10,
+                borderRadius: 999,
+                border: "1px solid " + (listMode === "flat" ? "#0a66c2" : "transparent"),
+                background: listMode === "flat" ? "#e6f0ff" : "transparent",
+                color: listMode === "flat" ? "#0a66c2" : "#334155",
+                fontWeight: listMode === "flat" ? 700 : 600,
+              }}
+            >
+              Flat
+            </button>
+          </div>
         </div>
       </div>
       {nodes.length ? (
@@ -27292,57 +27279,80 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
       )}
 
       {selected && (
-        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11, overflowWrap: "anywhere" }}>
-          <div>
-            <strong>ID:</strong> <code>{selected.id}</code>
+        <div style={{ marginTop: 10, borderTop: "1px solid #dbe5ef", paddingTop: 8, fontSize: 11, overflowWrap: "anywhere", display: "grid", gap: 8 }}>
+          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+              Selected object
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selected.name}</div>
           </div>
-          <div>
-            <strong>Name:</strong> {selected.name}
+          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
+            <div><strong>ID:</strong> <code>{selected.id}</code></div>
+            <div><strong>Type:</strong> {selected.type}</div>
+            <div>
+              <strong>Role:</strong>{" "}
+              {UNIFIED_SCENE_ROLE_LABELS[
+                selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
+              ]}
+            </div>
           </div>
-          <div>
-            <strong>Type:</strong> {selected.type}
+          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
+            <div><strong>Source definition:</strong> {selected.sourceDefinition}</div>
+            <div><strong>Display:</strong> {selected.displayState || "n/a"}</div>
+            <div><strong>Visible:</strong> {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}</div>
           </div>
-          <div>
-            <strong>Scene role:</strong>{" "}
-            {UNIFIED_SCENE_ROLE_LABELS[
-              selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
-            ]}
-          </div>
-          <div>
-            <strong>Source definition:</strong> {selected.sourceDefinition}
-          </div>
-          <div>
-            <strong>Display state:</strong> {selected.displayState || "n/a"}
-          </div>
-          <div>
-            <strong>Visible:</strong>{" "}
-            {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}
-          </div>
-          <div>
-            <strong>Derived products:</strong>{" "}
-            {selected.derivedProductIds.length
-              ? selected.derivedProductIds
-                  .map((id) => byId.get(id)?.name ?? id)
-                  .join(", ")
-              : "none"}
+          <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
+            {selectedDerivedNames.length ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {selectedDerivedNames.map((name, index) => (
+                  <span
+                    key={`selected-derived-${index}-${name}`}
+                    style={{
+                      fontSize: 10,
+                      border: "1px solid #dbe3ec",
+                      borderRadius: 999,
+                      padding: "2px 8px",
+                      background: "#f8fafc",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ opacity: 0.72 }}>none</div>
+            )}
           </div>
         </div>
       )}
 
       <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Derive / Bake / Convert</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          {actions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              onClick={action.onRun}
-              disabled={action.disabled}
-              title={action.hint}
-              style={{ padding: "4px 8px", fontSize: 11 }}
-            >
-              {action.label}
-            </button>
+        <div style={{ display: "grid", gap: 8 }}>
+          {groupedActionSections.map((section) => (
+            <div key={`action-group-${section.key}`} style={{ display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                {section.label}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {section.actions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={action.onRun}
+                    disabled={action.disabled}
+                    title={action.hint}
+                    style={{ padding: "4px 8px", fontSize: 11 }}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -27561,6 +27571,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
       hasNormals,
     };
   }, [selectedSceneObject]);
+  const derivedProductNames = useMemo(() => {
+    if (!selectedNode?.derivedProductIds.length) return [] as string[];
+    return selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id);
+  }, [selectedNode, nodeById]);
   const visibleActionLabel = selectedVisible ? "Hide" : "Show";
 
   return (
@@ -27568,60 +27582,87 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object identity</div>
         {selectedNode ? (
-          <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
-            <div><strong>Name:</strong> {selectedNode.name}</div>
-            <div><strong>Category:</strong> {categoryLabel}</div>
-            <div><strong>Scene role:</strong> {sceneRoleLabel}</div>
-            <div style={{ marginTop: 4, padding: 8, border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Technical badges</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
-                  Domain module: {technicalDomainModule}
-                </span>
-                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
-                  Source kind: {technicalSourceKind}
-                </span>
-                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
-                  Scene role: {sceneRoleLabel}
-                </span>
+          <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
+                Selected object
               </div>
-              <div style={{ display: "grid", gap: 3 }}>
-                <div><strong>Derived from:</strong> {technicalDerivedFrom}</div>
-                {showDerivedMeta && (
-                  <>
-                    <div><strong>Generated by:</strong> {technicalGeneratedBy}</div>
-                    <div><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
-                  </>
-                )}
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selectedNode.name}</div>
+            </div>
+
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
+              <div><strong>ID:</strong> {selectedNode.id}</div>
+              <div><strong>Type:</strong> {selectedNode.type}</div>
+              <div><strong>Role:</strong> {sceneRoleLabel}</div>
+              <div><strong>Category:</strong> {categoryLabel}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                  Domain: {technicalDomainModule}
+                </span>
+                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                  Source: {technicalSourceKind}
+                </span>
               </div>
             </div>
-            <div><strong>Type:</strong> {objectTypeLabel}</div>
-            <div><strong>Created from:</strong> {creationLabel}</div>
-            <div><strong>Definition:</strong> {objectDefinitionLabel}</div>
-            <div><strong>Domain / ranges:</strong> {objectDomainLabel}</div>
-            <div><strong>Resolution / sampling:</strong> {objectSamplingLabel}</div>
-            <div><strong>Display state:</strong> {selectedNode.displayState || "n/a"}</div>
-            <div>
-              <strong>Derived:</strong>{" "}
-              {selectedNode.derivedProductIds.length
-                ? selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id).join(", ")
-                : "none"}
+
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
+              <div><strong>Created from:</strong> {creationLabel}</div>
+              <div><strong>Definition:</strong> {objectDefinitionLabel}</div>
+              <div><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
+              <div><strong>Visible:</strong> {typeof selectedNode.visible === "boolean" ? (selectedNode.visible ? "yes" : "no") : "n/a"}</div>
+              <div><strong>Domain / ranges:</strong> {objectDomainLabel}</div>
+              <div><strong>Resolution / sampling:</strong> {objectSamplingLabel}</div>
+              <div><strong>Derived from:</strong> {technicalDerivedFrom}</div>
+              {showDerivedMeta && (
+                <>
+                  <div><strong>Generated by:</strong> {technicalGeneratedBy}</div>
+                  <div><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
+                </>
+              )}
+              {selectedSceneMeshStats && (
+                <div>
+                  <strong>Mesh stats:</strong> {selectedSceneMeshStats.vertCount.toLocaleString()} verts,{" "}
+                  {selectedSceneMeshStats.triCount.toLocaleString()} tris
+                </div>
+              )}
+              {sceneMeshDetails && (
+                <>
+                  <div><strong>Mesh source:</strong> {sceneMeshDetails.sourceLabel}</div>
+                  <div><strong>Topology:</strong> {sceneMeshDetails.vertCount.toLocaleString()} verts, {sceneMeshDetails.triCount.toLocaleString()} tris</div>
+                  <div><strong>Normals:</strong> {sceneMeshDetails.hasNormals ? "present" : "missing"}</div>
+                </>
+              )}
             </div>
-            {selectedSceneMeshStats && (
-              <div>
-                <strong>Mesh stats:</strong> {selectedSceneMeshStats.vertCount.toLocaleString()} verts,{" "}
-                {selectedSceneMeshStats.triCount.toLocaleString()} tris
-              </div>
-            )}
-            {sceneMeshDetails && (
-              <>
-                <div><strong>Mesh source:</strong> {sceneMeshDetails.sourceLabel}</div>
-                <div><strong>Topology:</strong> {sceneMeshDetails.vertCount.toLocaleString()} verts, {sceneMeshDetails.triCount.toLocaleString()} tris</div>
-                <div><strong>Normals:</strong> {sceneMeshDetails.hasNormals ? "present" : "missing"}</div>
-              </>
-            )}
+
+            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
+              {derivedProductNames.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {derivedProductNames.map((name) => (
+                    <span
+                      key={name}
+                      style={{
+                        fontSize: 10,
+                        border: "1px solid #dbe3ec",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        background: "#f8fafc",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {name}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.72 }}>none</div>
+              )}
+            </div>
+
             {sceneParamRows.length > 0 && (
-              <div style={{ marginTop: 6 }}>
+              <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Parameters</div>
                 <div style={{ display: "grid", gap: 3 }}>
                   {sceneParamRows.map((row) => (
