@@ -13,7 +13,6 @@ import {
   type SphereLine as RiemannSphereLine,
   type SpherePoint as RiemannSpherePoint,
 } from "./components/RiemannSpherePlot";
-import TabButton from "./components/TabButton";
 import GaussMapPanel from "./components/GaussMapPanel";
 import { SelectionStatsPanel } from "./components/SelectionStatsPanel";
 import { DiskStatsPanel } from "./components/DiskStatsPanel";
@@ -20031,6 +20030,62 @@ case "mobius":
     unifiedSelectedNode,
     workbookDirty,
   ]);
+  const sectionNavEntries = [
+    { id: "surfaces", label: "Surfaces" },
+    { id: "curves", label: "Curves" },
+    { id: "geometry", label: "Geometry" },
+  ] as const;
+  const displayModeEntries = [
+    { id: "workspace", label: "Workspace" },
+    { id: "present", label: "Present" },
+    { id: "inspect", label: "Inspect" },
+  ] as const;
+  const activeSectionLabel = sectionNavEntries.find((entry) => entry.id === mode)?.label ?? "Viewer";
+  const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
+  const headerContextLabel = `${activeSectionLabel} / ${activeDisplayLabel}`;
+  const topNavGroupLabelStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 700,
+    color: "#475569",
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  };
+  const topNavBandStyle: React.CSSProperties = {
+    border: "1px solid #dbe4f0",
+    borderRadius: 10,
+    background: "#f8fbff",
+    padding: "6px 8px",
+    display: "flex",
+    alignItems: "flex-end",
+    gap: 10,
+    flexWrap: "wrap",
+  };
+  const topNavGroupStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 4,
+  };
+  const topNavSegmentStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: 3,
+    borderRadius: 999,
+    border: "1px solid #d1d9e5",
+    background: "#fff",
+    flexWrap: "wrap",
+  };
+  const topNavButtonStyle = (active: boolean): React.CSSProperties => ({
+    padding: "5px 11px",
+    borderRadius: 999,
+    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+    background: active ? "#dbeafe" : "#fff",
+    color: active ? "#0f2a4a" : "var(--text)",
+    fontSize: 11,
+    fontWeight: active ? 700 : 600,
+    cursor: "pointer",
+    boxShadow: active ? "0 2px 8px rgba(10,102,194,0.18)" : "none",
+    whiteSpace: "nowrap",
+  });
 
   const formatViewportDebug = useCallback((label: string, snapshot: ViewportDebugSnapshot | null) => {
     if (!snapshot) return `${label}: (no data yet)`;
@@ -20624,83 +20679,28 @@ case "mobius":
         </div>
       )}
       <header style={styles.header}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            marginBottom: 8,
-          }}
-        >
-          <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
-
-          <div style={{ ...styles.tabs, margin: 0 }}>
-            <TabButton active={mode === "surfaces"} onClick={() => setMode("surfaces")}>
-              Surfaces
-            </TabButton>
-            <TabButton active={mode === "curves"} onClick={() => setMode("curves")}>
-              Curves
-            </TabButton>
-            <TabButton active={mode === "geometry"} onClick={() => setMode("geometry")}>
-              Geometry
-            </TabButton>
-          </div>
-
+        <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
           <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: 3,
-              borderRadius: 999,
-              border: "1px solid var(--border)",
-              background: "rgba(255,255,255,0.85)",
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: 10,
+              flexWrap: "wrap",
             }}
           >
-            {(
-              [
-                { id: "workspace", label: "Workspace" },
-                { id: "present", label: "Present" },
-                { id: "inspect", label: "Inspect" },
-              ] as const
-            ).map((entry) => {
-              const active = displayMode === entry.id;
-              return (
-                <button
-                  key={`display-mode-${entry.id}`}
-                  type="button"
-                  onClick={() => setDisplayMode(entry.id)}
-                  aria-pressed={active}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (active ? "#0a66c2" : "transparent"),
-                    background: active ? "#e6f0ff" : "transparent",
-                    color: active ? "#0a66c2" : "var(--text)",
-                    fontSize: 11,
-                    fontWeight: active ? 700 : 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </div>
+            <div style={{ display: "grid", gap: 2 }}>
+              <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.04em" }}>
+                {headerContextLabel}
+              </div>
+            </div>
           <details style={{ position: "relative" }}>
             <summary
               style={{
+                ...topNavButtonStyle(false),
                 listStyle: "none",
-                cursor: "pointer",
                 userSelect: "none",
-                padding: "5px 10px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                fontSize: 11,
-                fontWeight: 700,
               }}
             >
               View
@@ -20869,6 +20869,47 @@ case "mobius":
               )}
             </div>
           </details>
+        </div>
+          <div style={topNavBandStyle}>
+            <div style={topNavGroupStyle}>
+              <div style={topNavGroupLabelStyle}>Section</div>
+              <div style={topNavSegmentStyle}>
+                {sectionNavEntries.map((entry) => {
+                  const active = mode === entry.id;
+                  return (
+                    <button
+                      key={`mode-${entry.id}`}
+                      type="button"
+                      onClick={() => setMode(entry.id)}
+                      aria-pressed={active}
+                      style={topNavButtonStyle(active)}
+                    >
+                      {entry.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ ...topNavGroupStyle, marginLeft: "auto" }}>
+              <div style={topNavGroupLabelStyle}>Mode</div>
+              <div style={topNavSegmentStyle}>
+                {displayModeEntries.map((entry) => {
+                  const active = displayMode === entry.id;
+                  return (
+                    <button
+                      key={`display-mode-${entry.id}`}
+                      type="button"
+                      onClick={() => setDisplayMode(entry.id)}
+                      aria-pressed={active}
+                      style={topNavButtonStyle(active)}
+                    >
+                      {entry.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style={styles.controls}>
