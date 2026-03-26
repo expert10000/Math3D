@@ -20036,9 +20036,9 @@ case "mobius":
     { id: "geometry", label: "Geometry" },
   ] as const;
   const displayModeEntries = [
-    { id: "workspace", label: "Workspace" },
-    { id: "present", label: "Present" },
-    { id: "inspect", label: "Inspect" },
+    { id: "workspace", label: "Workspace", icon: "W" },
+    { id: "present", label: "Present", icon: "P" },
+    { id: "inspect", label: "Inspect", icon: "I" },
   ] as const;
   const activeSectionLabel = sectionNavEntries.find((entry) => entry.id === mode)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
@@ -20931,6 +20931,7 @@ case "mobius":
                       aria-pressed={active}
                       style={topNavButtonStyle(active)}
                     >
+                      <span style={{ fontSize: 10, opacity: active ? 1 : 0.72, marginRight: 5 }}>{entry.icon}</span>
                       {entry.label}
                     </button>
                   );
@@ -25325,6 +25326,111 @@ ${shapeSvg}
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+type PresetThumbKind =
+  | "graph"
+  | "implicit"
+  | "parametric"
+  | "spline"
+  | "constructed"
+  | "rotational"
+  | "sweep"
+  | "tube"
+  | "ruled"
+  | "weierstrass";
+
+const PRESET_THUMB_CACHE = new Map<string, string>();
+
+const escapeSvgText = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+const hashThumbString = (value: string) => {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+};
+
+const makePresetThumb = (id: string, label: string, subtitle: string, kind: PresetThumbKind): string => {
+  const key = `${id}|${label}|${subtitle}|${kind}`;
+  const cached = PRESET_THUMB_CACHE.get(key);
+  if (cached) return cached;
+
+  const palette =
+    kind === "graph"
+      ? { top: "#dbeafe", bottom: "#e0f2fe", stroke: "#1d4ed8", ink: "#1e3a8a" }
+      : kind === "implicit"
+        ? { top: "#dcfce7", bottom: "#d1fae5", stroke: "#0f766e", ink: "#115e59" }
+        : kind === "spline"
+          ? { top: "#ede9fe", bottom: "#ddd6fe", stroke: "#6d28d9", ink: "#4c1d95" }
+          : kind === "sweep"
+            ? { top: "#cffafe", bottom: "#e0f2fe", stroke: "#0f766e", ink: "#134e4a" }
+            : kind === "tube"
+              ? { top: "#dcfce7", bottom: "#ecfccb", stroke: "#166534", ink: "#14532d" }
+              : kind === "ruled"
+                ? { top: "#fef3c7", bottom: "#fde68a", stroke: "#b45309", ink: "#78350f" }
+                : kind === "rotational"
+                  ? { top: "#dbeafe", bottom: "#dcfce7", stroke: "#1d4ed8", ink: "#1e3a8a" }
+                  : kind === "weierstrass"
+                    ? { top: "#f5f3ff", bottom: "#e9d5ff", stroke: "#7c3aed", ink: "#581c87" }
+                    : kind === "constructed"
+                      ? { top: "#ede9fe", bottom: "#dbeafe", stroke: "#4338ca", ink: "#312e81" }
+                      : { top: "#e0f2fe", bottom: "#dbeafe", stroke: "#1d4ed8", ink: "#1e3a8a" };
+
+  const h = hashThumbString(key);
+  const variant = h % 4;
+  const ribbons =
+    variant === 0
+      ? `<path d="M18 56 C30 26, 52 24, 66 42 C80 58, 100 54, 114 32" fill="none" stroke="${palette.stroke}" stroke-width="3"/>
+<path d="M22 66 C40 46, 58 44, 76 56 C92 66, 104 58, 114 44" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.7"/>`
+      : variant === 1
+        ? `<path d="M18 50 L114 34" fill="none" stroke="${palette.stroke}" stroke-width="3"/>
+<path d="M20 62 L114 46" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.72"/>
+<path d="M20 38 L114 22" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.62"/>`
+        : variant === 2
+          ? `<ellipse cx="48" cy="44" rx="20" ry="10" fill="none" stroke="${palette.stroke}" stroke-width="2.2"/>
+<ellipse cx="82" cy="44" rx="22" ry="12" fill="none" stroke="${palette.stroke}" stroke-width="2.2" opacity="0.78"/>
+<path d="M22 62 C42 48, 92 48, 112 62" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.65"/>`
+          : `<path d="M24 30 L104 60" fill="none" stroke="${palette.stroke}" stroke-width="2.2"/>
+<path d="M24 60 L104 30" fill="none" stroke="${palette.stroke}" stroke-width="2.2" opacity="0.7"/>
+<path d="M18 46 C34 26, 58 24, 80 42 C94 54, 104 54, 114 42" fill="none" stroke="${palette.stroke}" stroke-width="2.6"/>`;
+
+  const toneTag =
+    kind === "graph"
+      ? "z=f(x,y)"
+      : kind === "implicit"
+        ? "f(x,y,z)=0"
+        : kind === "spline"
+          ? "spline"
+          : kind;
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="180" viewBox="0 0 180 90">
+<defs>
+  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="${palette.top}" />
+    <stop offset="100%" stop-color="${palette.bottom}" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="179" height="89" rx="12" fill="url(#g)" stroke="#d1d5db" />
+<path d="M10 20 H170 M10 34 H170 M10 48 H170 M10 62 H170" stroke="#ffffff" opacity="0.3" />
+${ribbons}
+<rect x="10" y="66" width="160" height="14" rx="5" fill="#ffffff" opacity="0.84" />
+<text x="14" y="75" font-family="Segoe UI, Arial, sans-serif" font-size="8.6" font-weight="700" fill="${palette.ink}">${escapeSvgText(label)}</text>
+<text x="14" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="7.4" fill="${palette.ink}" opacity="0.85">${escapeSvgText(toneTag)}</text>
+<text x="108" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="6.8" fill="${palette.ink}" opacity="0.72">${escapeSvgText(subtitle.slice(0, 28))}</text>
+</svg>`;
+
+  const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  PRESET_THUMB_CACHE.set(key, url);
+  return url;
+};
+
 const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
   {
     id: "mexican_hat",
@@ -25491,6 +25597,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     if (preset) onApplyWeierstrassPreset(preset);
   };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
+  const [showExtendedFamilies, setShowExtendedFamilies] = useState(false);
   const compactForPresent = displayMode === "present";
   const compareUiEnabled = displayMode !== "present";
   const compareActive = compareUiEnabled && compareEnabled;
@@ -25502,6 +25609,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     !isVolume;
   const chipPadding = compactForPresent ? "3px 8px" : "4px 10px";
   const galleryPreviewHeight = compactForPresent ? 64 : 80;
+  const showExtendedFamilyButtons =
+    showExtendedFamilies || (isSurface && (viewerKind === "mesh" || viewerKind === "weierstrass"));
   const activeFamilyLabel = isVolume
     ? "Volume"
     : viewerKind === "graph"
@@ -25526,6 +25635,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       ? ` -> ${constructedSubtype[0].toUpperCase()}${constructedSubtype.slice(1)}`
       : "";
   const workflowPath = `Surfaces -> ${activeFamilyLabel}${activeSubtypeLabel}`;
+  const activeSurfaceMeta =
+    viewerKind === "implicit" || viewerKind === "graph" ? SURFACES_EQ_META_BY_ID.get(surfaceId) ?? null : null;
+  const activeParamMeta = viewerKind === "param" ? PARAM_SURFACES_META.find((entry) => entry.id === paramId) ?? null : null;
+  const activeWeierstrassInfo = viewerKind === "weierstrass" ? activeWeierstrassPreset ?? WEIERSTRASS_PRESETS[0] ?? null : null;
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -25725,25 +25838,36 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               >
                 Constructed
               </button>
+              {showExtendedFamilyButtons && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChangeDatasetKind("surface");
+                      onChangeViewerKind("mesh");
+                    }}
+                    style={toolbarChipStyle(isSurface && isMesh, "family")}
+                  >
+                    Mesh
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChangeDatasetKind("surface");
+                      onChangeViewerKind("weierstrass");
+                    }}
+                    style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
+                  >
+                    Weierstrass
+                  </button>
+                </>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("mesh");
-                }}
-                style={toolbarChipStyle(isSurface && isMesh, "family")}
+                onClick={() => setShowExtendedFamilies((v) => !v)}
+                style={toolbarChipStyle(showExtendedFamilyButtons, "tool")}
               >
-                Mesh
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("weierstrass");
-                }}
-                style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
-              >
-                Weierstrass
+                {showExtendedFamilyButtons ? "Less" : "More"}
               </button>
             </div>
           </div>
@@ -25815,109 +25939,225 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
             Choose subtype, then choose a preset.
           </div>
-          <div style={{ flex: 1 }}>
-            {viewerKind === "implicit" && (
-              <SurfacesButtons
-                surfaceId={surfaceId}
-                surfaces={implicitSurfaces}
-                onChangeSurface={onChangeSurface}
-                presetLayout="cards"
-              />
-            )}
-            {viewerKind === "graph" && (
-              <SurfacesButtons
-                surfaceId={surfaceId}
-                surfaces={graphSurfaces}
-                onChangeSurface={onChangeSurface}
-                presetLayout="cards"
-              />
-            )}
-            {viewerKind === "param" && (
-              <ParamSurfacesButtons
-                paramId={paramId}
-                onChangeParamId={onChangeParamId}
-                rotationalProfileMode={rotationalProfileMode}
-                rotationalProfileRExpr={rotationalProfileRExpr}
-                rotationalProfileZExpr={rotationalProfileZExpr}
-                rotationalProfilePointsText={rotationalProfilePointsText}
-                onChangeRotationalProfileMode={onChangeRotationalProfileMode}
-              onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
-              onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
-              onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
-              onEditRotationalProfile={onEditRotationalProfile}
-              showSourceKindTabs={false}
-              presetLayout="cards"
-            />
-            )}
-            {viewerKind === "weierstrass" && (
-              <div style={{ marginBottom: 4 }}>
-                <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-                  Presets avoid singularities on boundaries; adjust domains carefully near poles.
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: compactForPresent ? "1fr" : "minmax(0, 1fr) minmax(260px, 340px)",
+              gap: 12,
+              alignItems: "start",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              {viewerKind === "implicit" && (
+                <SurfacesButtons
+                  surfaceId={surfaceId}
+                  surfaces={implicitSurfaces}
+                  onChangeSurface={onChangeSurface}
+                  presetLayout="cards"
+                />
+              )}
+              {viewerKind === "graph" && (
+                <SurfacesButtons
+                  surfaceId={surfaceId}
+                  surfaces={graphSurfaces}
+                  onChangeSurface={onChangeSurface}
+                  presetLayout="cards"
+                />
+              )}
+              {viewerKind === "param" && (
+                <ParamSurfacesButtons
+                  paramId={paramId}
+                  onChangeParamId={onChangeParamId}
+                  rotationalProfileMode={rotationalProfileMode}
+                  rotationalProfileRExpr={rotationalProfileRExpr}
+                  rotationalProfileZExpr={rotationalProfileZExpr}
+                  rotationalProfilePointsText={rotationalProfilePointsText}
+                  onChangeRotationalProfileMode={onChangeRotationalProfileMode}
+                  onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
+                  onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
+                  onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
+                  onEditRotationalProfile={onEditRotationalProfile}
+                  showSourceKindTabs={false}
+                  presetLayout="cards"
+                />
+              )}
+              {viewerKind === "weierstrass" && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                    Presets avoid singularities on boundaries; adjust domains carefully near poles.
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                    {WEIERSTRASS_PRESETS.map((p) => {
+                      const active = activeWeierstrassPreset?.id === p.id;
+                      const thumb = makePresetThumb(
+                        `w-${p.id}`,
+                        p.label,
+                        `g=${p.gExpr}`,
+                        "weierstrass"
+                      );
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => onApplyWeierstrassPreset(p)}
+                          style={{
+                            textAlign: "left",
+                            borderRadius: 10,
+                            border: active ? "2px solid #0a66c2" : "1px solid #d6deea",
+                            background: active ? "#eaf2ff" : "#fff",
+                            padding: "9px 10px",
+                            display: "grid",
+                            gap: 4,
+                            cursor: "pointer",
+                            boxShadow: active ? "0 4px 12px rgba(10, 102, 194, 0.2)" : "none",
+                          }}
+                        >
+                          <img
+                            src={thumb}
+                            alt={`${p.label} preset`}
+                            style={{
+                              width: "100%",
+                              height: 88,
+                              objectFit: "cover",
+                              borderRadius: 8,
+                              border: "1px solid #dbe4f0",
+                              background: "#f8fafc",
+                            }}
+                          />
+                          <div style={{ fontSize: 12, fontWeight: 800 }}>{p.label}</div>
+                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                            g(z) = {p.gExpr}
+                          </div>
+                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                            phi(z) = {p.phiExpr}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-                  {WEIERSTRASS_PRESETS.map((p) => {
-                    const active = activeWeierstrassPreset?.id === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => onApplyWeierstrassPreset(p)}
-                        style={{
-                          textAlign: "left",
-                          borderRadius: 10,
-                          border: active ? "2px solid #0a66c2" : "1px solid #d6deea",
-                          background: active ? "#eaf2ff" : "#fff",
-                          padding: "9px 10px",
-                          display: "grid",
-                          gap: 4,
-                          cursor: "pointer",
-                          boxShadow: active ? "0 4px 12px rgba(10, 102, 194, 0.2)" : "none",
-                        }}
-                      >
-                        <div style={{ fontSize: 12, fontWeight: 800 }}>{p.label}</div>
-                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                          g(z) = {p.gExpr}
-                        </div>
-                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                          phi(z) = {p.phiExpr}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#334155", opacity: 0.9 }}>{p.safeDomainReason}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {activeWeierstrassPreset && (
-                  <div
+              )}
+            </div>
+            <aside
+              style={{
+                border: "1px solid #dbe4f0",
+                borderRadius: 10,
+                background: "#fff",
+                padding: "10px 11px",
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Selected preset</div>
+              {(viewerKind === "implicit" || viewerKind === "graph") && activeSurfaceMeta && (
+                <>
+                  <img
+                    src={makePresetThumb(
+                      surfaceId,
+                      activeSurfaceMeta.label,
+                      activeSurfaceMeta.formula,
+                      viewerKind === "graph" ? "graph" : "implicit"
+                    )}
+                    alt={`${activeSurfaceMeta.label} selected`}
                     style={{
-                      marginTop: 10,
-                      border: "1px solid #dbe4f0",
+                      width: "100%",
+                      height: 96,
+                      objectFit: "cover",
                       borderRadius: 8,
-                      background: "#fff",
-                      padding: "8px 10px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      flexWrap: "wrap",
+                      border: "1px solid #dbe4f0",
                     }}
-                  >
+                  />
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeSurfaceMeta.label}</div>
+                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                    {activeSurfaceMeta.formula}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{activeSurfaceMeta.note}</div>
+                </>
+              )}
+              {viewerKind === "param" && activeParamMeta && (
+                <>
+                  {(() => {
+                    const kind: PresetThumbKind = isSplineParamSurfaceId(activeParamMeta.id)
+                      ? "spline"
+                      : isSweepParamSurfaceId(activeParamMeta.id)
+                        ? "sweep"
+                        : isTubeParamSurfaceId(activeParamMeta.id)
+                          ? "tube"
+                          : isRuledParamSurfaceId(activeParamMeta.id)
+                            ? "ruled"
+                            : isRotationalParamSurfaceId(activeParamMeta.id)
+                              ? "rotational"
+                              : "parametric";
+                    return (
+                      <img
+                        src={makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind)}
+                        alt={`${activeParamMeta.label} selected`}
+                        style={{
+                          width: "100%",
+                          height: 96,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1px solid #dbe4f0",
+                        }}
+                      />
+                    );
+                  })()}
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeParamMeta.label}</div>
+                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                    {activeParamMeta.formula}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{activeParamMeta.note}</div>
+                  {isParamConstructed && constructedSubtype === "rotational" && (
                     <button
                       type="button"
-                      onClick={() => onApplySuggestedDomain(activeWeierstrassPreset)}
-                      style={{ padding: "4px 10px" }}
+                      onClick={() => {
+                        if (paramId !== "rotationalFreeProfile") onChangeParamId("rotationalFreeProfile");
+                        onChangeRotationalProfileMode("formula");
+                        onEditRotationalProfile();
+                      }}
+                      style={{ padding: "4px 10px", justifySelf: "start" }}
                     >
-                      Apply suggested domain
+                      Edit profile
                     </button>
-                    <details style={{ fontSize: 11, opacity: 0.9 }}>
-                      <summary style={{ cursor: "pointer", userSelect: "none" }}>Suggested safe domain</summary>
-                      <div style={{ marginTop: 4 }}>
-                        u range: [{fmt(activeWeierstrassPreset.suggestedDomain.uMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.uMax)}], v range: [{fmt(activeWeierstrassPreset.suggestedDomain.vMin)}, {fmt(activeWeierstrassPreset.suggestedDomain.vMax)}]
-                      </div>
-                      <div style={{ marginTop: 4 }}>{activeWeierstrassPreset.safeDomainReason}</div>
-                    </details>
+                  )}
+                </>
+              )}
+              {viewerKind === "weierstrass" && activeWeierstrassInfo && (
+                <>
+                  <img
+                    src={makePresetThumb(
+                      `w-${activeWeierstrassInfo.id}`,
+                      activeWeierstrassInfo.label,
+                      `g=${activeWeierstrassInfo.gExpr}`,
+                      "weierstrass"
+                    )}
+                    alt={`${activeWeierstrassInfo.label} selected`}
+                    style={{
+                      width: "100%",
+                      height: 96,
+                      objectFit: "cover",
+                      borderRadius: 8,
+                      border: "1px solid #dbe4f0",
+                    }}
+                  />
+                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeWeierstrassInfo.label}</div>
+                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                    g(z) = {activeWeierstrassInfo.gExpr}
                   </div>
-                )}
-              </div>
-            )}
+                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                    phi(z) = {activeWeierstrassInfo.phiExpr}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>{activeWeierstrassInfo.safeDomainReason}</div>
+                  <button
+                    type="button"
+                    onClick={() => onApplySuggestedDomain(activeWeierstrassInfo)}
+                    style={{ padding: "4px 10px", justifySelf: "start" }}
+                  >
+                    Apply suggested domain
+                  </button>
+                </>
+              )}
+            </aside>
           </div>
         </div>
       )}
@@ -25983,18 +26223,18 @@ type SurfacesButtonsProps = {
 };
 
 const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, onChangeSurface, presetLayout = "chips" }) => {
-  const cardToneFor = (id: SurfaceId): { bg: string; label: string } => {
-    if (id === "implicit_custom") return { bg: "linear-gradient(135deg, #fef9c3, #fef3c7)", label: "f(x,y,z)=0" };
-    if (isGraphSurface(id)) return { bg: "linear-gradient(135deg, #dbeafe, #e0f2fe)", label: "z=f(x,y)" };
-    return { bg: "linear-gradient(135deg, #dcfce7, #e0f2fe)", label: "implicit" };
-  };
   if (presetLayout === "cards") {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
         {surfaces.map((s) => {
           const meta = SURFACES_EQ_META_BY_ID.get(s.id);
           const active = surfaceId === s.id;
-          const tone = cardToneFor(s.id);
+          const thumb = makePresetThumb(
+            s.id,
+            s.label,
+            meta?.formula ?? "",
+            isGraphSurface(s.id) ? "graph" : "implicit"
+          );
           return (
             <button
               key={s.id}
@@ -26013,24 +26253,18 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, 
               }}
               title={meta?.note}
             >
-              <div
+              <img
+                src={thumb}
+                alt={`${s.label} preset`}
                 style={{
-                  borderRadius: 7,
+                  width: "100%",
+                  height: 86,
+                  objectFit: "cover",
+                  borderRadius: 8,
                   border: "1px solid #dbe4f0",
-                  background: tone.bg,
-                  padding: "5px 7px",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: "#334155",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
+                  background: "#f8fafc",
                 }}
-              >
-                <span>{tone.label}</span>
-                <span style={{ opacity: 0.65 }}>preview</span>
-              </div>
+              />
               <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
               {meta?.formula && (
                 <div
@@ -26328,18 +26562,21 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                     : isRotationalParamSurfaceId(s.id)
                       ? "rotational"
                       : "param";
-            const toneBg =
+            const thumbKind: PresetThumbKind =
               sourceTag === "spline"
-                ? "linear-gradient(135deg, #ede9fe, #dbeafe)"
+                ? "spline"
                 : sourceTag === "sweep"
-                  ? "linear-gradient(135deg, #e0f2fe, #dbeafe)"
+                  ? "sweep"
                   : sourceTag === "tube"
-                    ? "linear-gradient(135deg, #dcfce7, #e0f2fe)"
+                    ? "tube"
                     : sourceTag === "ruled"
-                      ? "linear-gradient(135deg, #fef3c7, #fef9c3)"
+                      ? "ruled"
                       : sourceTag === "rotational"
-                        ? "linear-gradient(135deg, #dbeafe, #dcfce7)"
-                        : "linear-gradient(135deg, #f1f5f9, #dbeafe)";
+                        ? "rotational"
+                        : sourceTag === "param"
+                          ? "parametric"
+                          : "constructed";
+            const thumb = makePresetThumb(s.id, s.label, s.formula, thumbKind);
             return (
               <button
                 key={s.id}
@@ -26358,25 +26595,28 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 }}
                 title={s.note}
               >
+                <img
+                  src={thumb}
+                  alt={`${s.label} preset`}
+                  style={{
+                    width: "100%",
+                    height: 88,
+                    objectFit: "cover",
+                    borderRadius: 8,
+                    border: "1px solid #dbe4f0",
+                    background: "#f8fafc",
+                  }}
+                />
                 <div
                   style={{
-                    borderRadius: 7,
-                    border: "1px solid #dbe4f0",
-                    background: toneBg,
-                    padding: "5px 7px",
                     fontSize: 10,
                     fontWeight: 700,
-                    color: "#334155",
+                    color: "#475569",
                     textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 8,
+                    letterSpacing: "0.04em",
                   }}
                 >
-                  <span>{sourceTag}</span>
-                  <span style={{ opacity: 0.65 }}>preset</span>
+                  {sourceTag}
                 </div>
                 <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
                 <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
