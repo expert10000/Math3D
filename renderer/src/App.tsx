@@ -20707,7 +20707,7 @@ case "mobius":
         </div>
       )}
       <header style={styles.header}>
-        <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+        <div style={{ display: "grid", gap: 12, marginBottom: 10 }}>
           <div
             style={{
               display: "flex",
@@ -20919,7 +20919,7 @@ case "mobius":
               </div>
             </div>
             <div style={{ ...topNavGroupStyle, marginLeft: "auto" }}>
-              <div style={topNavGroupLabelStyle}>Mode</div>
+              <div style={topNavGroupLabelStyle}>Display mode</div>
               <div style={topNavSegmentStyle}>
                 {displayModeEntries.map((entry) => {
                   const active = displayMode === entry.id;
@@ -25552,11 +25552,11 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     return {
       padding: chipPadding,
       borderRadius: 999,
-      border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+      border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
       background: active ? fill : "#fff",
       color: active ? "#0f2a4a" : "#1f2937",
       fontWeight: active ? 700 : 550,
-      boxShadow: active ? "0 2px 8px rgba(10,102,194,0.18)" : "none",
+      boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
       cursor: disabled ? "not-allowed" : "pointer",
       fontSize: 11,
       opacity: disabled ? 0.55 : 1,
@@ -25565,7 +25565,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   };
 
   return (
-    <div style={{ ...styles.group, gridColumn: "span 9", gap: compactForPresent ? 8 : 12 }}>
+    <div style={{ ...styles.group, gridColumn: "span 12", gap: compactForPresent ? 10 : 14 }}>
       {showSurfaceGallery && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Surface gallery</div>
@@ -25665,9 +25665,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           )}
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{workflowPath}</div>
+        <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+          1. Choose family 2. Choose subtype 3. Choose preset 4. Edit / create / compare
+        </div>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={toolbarGroupStyle}>
-            <div style={toolbarGroupTitleStyle}>Surface family</div>
+            <div style={toolbarGroupTitleStyle}>1. Surface family</div>
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
                 type="button"
@@ -25745,31 +25748,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </div>
           </div>
 
-          <div style={toolbarGroupStyle}>
-            <div style={toolbarGroupTitleStyle}>Advanced</div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("complex");
-                }}
-                style={toolbarChipStyle(isSurface && isComplex, "advanced")}
-              >
-                Complex
-              </button>
-              <button
-                type="button"
-                onClick={() => onChangeDatasetKind("volume")}
-                style={toolbarChipStyle(isVolume, "advanced")}
-              >
-                Volume
-              </button>
-            </div>
-          </div>
-
           <div style={{ ...toolbarGroupStyle, marginLeft: "auto" }}>
-            <div style={toolbarGroupTitleStyle}>Tools</div>
+            <div style={toolbarGroupTitleStyle}>4. Tools</div>
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
                 type="button"
@@ -25800,6 +25780,29 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 style={toolbarChipStyle(compareActive, "tool", !canToggleCompare)}
               >
                 Compare
+              </button>
+            </div>
+          </div>
+
+          <div style={toolbarGroupStyle}>
+            <div style={toolbarGroupTitleStyle}>Advanced</div>
+            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChangeDatasetKind("surface");
+                  onChangeViewerKind("complex");
+                }}
+                style={toolbarChipStyle(isSurface && isComplex, "advanced")}
+              >
+                Complex
+              </button>
+              <button
+                type="button"
+                onClick={() => onChangeDatasetKind("volume")}
+                style={toolbarChipStyle(isVolume, "advanced")}
+              >
+                Volume
               </button>
             </div>
           </div>
