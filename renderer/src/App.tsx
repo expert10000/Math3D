@@ -20042,7 +20042,35 @@ case "mobius":
   ] as const;
   const activeSectionLabel = sectionNavEntries.find((entry) => entry.id === mode)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
-  const headerContextLabel = `${activeSectionLabel} / ${activeDisplayLabel}`;
+  const headerSurfacesFamilyLabel =
+    datasetKind === "volume"
+      ? "Volume"
+      : surfaceViewerKind === "graph"
+        ? "Explicit"
+        : surfaceViewerKind === "implicit"
+          ? "Implicit"
+          : surfaceViewerKind === "param"
+            ? (() => {
+                const source = paramSurfaceSourceKindFor(paramSurfaceId);
+                if (source === "spline") return "Spline";
+                if (source === "constructed") return "Constructed";
+                return "Parametric";
+              })()
+            : surfaceViewerKind === "mesh"
+              ? "Mesh"
+              : surfaceViewerKind === "weierstrass"
+                ? "Weierstrass"
+                : surfaceViewerKind === "complex"
+                  ? "Complex"
+                  : "Surfaces";
+  const headerSurfacesSubtypeLabel =
+    surfaceViewerKind === "param" && paramSurfaceSourceKindFor(paramSurfaceId) === "constructed"
+      ? constructedParamSubtypeFor(paramSurfaceId)
+      : null;
+  const headerContextLabel =
+    mode === "surfaces"
+      ? `Surfaces -> ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` -> ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
+      : `${activeSectionLabel} / ${activeDisplayLabel}`;
   const topNavGroupLabelStyle: React.CSSProperties = {
     fontSize: 10,
     fontWeight: 700,
@@ -20959,6 +20987,10 @@ case "mobius":
               onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
               onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
               onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+              onEditRotationalProfile={() => {
+                setParamSurfaceOverlayTab("rotational");
+                setParamSurfaceOverlayOpen(true);
+              }}
               onRunGalleryDemo={handleRunSurfaceGalleryDemo}
               galleryDemoActive={surfacesCameraTourStatus === "playing"}
             />
@@ -25370,6 +25402,7 @@ type SurfacesControlsProps = {
   onChangeRotationalProfileRExpr: (s: string) => void;
   onChangeRotationalProfileZExpr: (s: string) => void;
   onChangeRotationalProfilePointsText: (s: string) => void;
+  onEditRotationalProfile?: () => void;
   onRunGalleryDemo: (cardId: SurfaceGalleryCard["id"]) => void;
   galleryDemoActive: boolean;
 };
@@ -25408,6 +25441,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onChangeRotationalProfileRExpr,
   onChangeRotationalProfileZExpr,
   onChangeRotationalProfilePointsText,
+  onEditRotationalProfile = () => {},
   onRunGalleryDemo,
   galleryDemoActive,
 }) => {
@@ -25804,12 +25838,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 rotationalProfileZExpr={rotationalProfileZExpr}
                 rotationalProfilePointsText={rotationalProfilePointsText}
                 onChangeRotationalProfileMode={onChangeRotationalProfileMode}
-                onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
-                onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
-                onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
-                showSourceKindTabs={false}
-                presetLayout="cards"
-              />
+              onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
+              onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
+              onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
+              onEditRotationalProfile={onEditRotationalProfile}
+              showSourceKindTabs={false}
+              presetLayout="cards"
+            />
             )}
             {viewerKind === "weierstrass" && (
               <div style={{ marginBottom: 4 }}>
@@ -25945,12 +25980,18 @@ type SurfacesButtonsProps = {
 };
 
 const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, onChangeSurface, presetLayout = "chips" }) => {
+  const cardToneFor = (id: SurfaceId): { bg: string; label: string } => {
+    if (id === "implicit_custom") return { bg: "linear-gradient(135deg, #fef9c3, #fef3c7)", label: "f(x,y,z)=0" };
+    if (isGraphSurface(id)) return { bg: "linear-gradient(135deg, #dbeafe, #e0f2fe)", label: "z=f(x,y)" };
+    return { bg: "linear-gradient(135deg, #dcfce7, #e0f2fe)", label: "implicit" };
+  };
   if (presetLayout === "cards") {
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
         {surfaces.map((s) => {
           const meta = SURFACES_EQ_META_BY_ID.get(s.id);
           const active = surfaceId === s.id;
+          const tone = cardToneFor(s.id);
           return (
             <button
               key={s.id}
@@ -25969,6 +26010,24 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, 
               }}
               title={meta?.note}
             >
+              <div
+                style={{
+                  borderRadius: 7,
+                  border: "1px solid #dbe4f0",
+                  background: tone.bg,
+                  padding: "5px 7px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#334155",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <span>{tone.label}</span>
+                <span style={{ opacity: 0.65 }}>preview</span>
+              </div>
               <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
               {meta?.formula && (
                 <div
@@ -26024,6 +26083,7 @@ type ParamSurfacesButtonsProps = {
   onChangeRotationalProfileRExpr?: (s: string) => void;
   onChangeRotationalProfileZExpr?: (s: string) => void;
   onChangeRotationalProfilePointsText?: (s: string) => void;
+  onEditRotationalProfile?: () => void;
   showProfileEditor?: boolean;
   showSourceKindTabs?: boolean;
   presetLayout?: "chips" | "cards";
@@ -26040,6 +26100,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   onChangeRotationalProfileRExpr = () => {},
   onChangeRotationalProfileZExpr = () => {},
   onChangeRotationalProfilePointsText = () => {},
+  onEditRotationalProfile = () => {},
   showProfileEditor = false,
   showSourceKindTabs = true,
   presetLayout = "chips",
@@ -26194,10 +26255,23 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               background: "#fff",
               padding: "8px 10px",
               display: "grid",
-              gap: 4,
+              gap: 6,
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Profile map</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Profile map</div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (paramId !== "rotationalFreeProfile") onChangeParamId("rotationalFreeProfile");
+                  onChangeRotationalProfileMode("formula");
+                  onEditRotationalProfile();
+                }}
+                style={{ padding: "3px 9px", fontSize: 11 }}
+              >
+                Edit profile
+              </button>
+            </div>
             <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
               (r(v), z(v)) {"->"} (r(v) cos u, r(v) sin u, z(v))
             </div>
@@ -26240,6 +26314,29 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
           {entries.map((s) => {
             const active = paramId === s.id;
+            const sourceTag = isSplineParamSurfaceId(s.id)
+              ? "spline"
+              : isSweepParamSurfaceId(s.id)
+                ? "sweep"
+                : isTubeParamSurfaceId(s.id)
+                  ? "tube"
+                  : isRuledParamSurfaceId(s.id)
+                    ? "ruled"
+                    : isRotationalParamSurfaceId(s.id)
+                      ? "rotational"
+                      : "param";
+            const toneBg =
+              sourceTag === "spline"
+                ? "linear-gradient(135deg, #ede9fe, #dbeafe)"
+                : sourceTag === "sweep"
+                  ? "linear-gradient(135deg, #e0f2fe, #dbeafe)"
+                  : sourceTag === "tube"
+                    ? "linear-gradient(135deg, #dcfce7, #e0f2fe)"
+                    : sourceTag === "ruled"
+                      ? "linear-gradient(135deg, #fef3c7, #fef9c3)"
+                      : sourceTag === "rotational"
+                        ? "linear-gradient(135deg, #dbeafe, #dcfce7)"
+                        : "linear-gradient(135deg, #f1f5f9, #dbeafe)";
             return (
               <button
                 key={s.id}
@@ -26258,6 +26355,26 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 }}
                 title={s.note}
               >
+                <div
+                  style={{
+                    borderRadius: 7,
+                    border: "1px solid #dbe4f0",
+                    background: toneBg,
+                    padding: "5px 7px",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: "#334155",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.03em",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                  }}
+                >
+                  <span>{sourceTag}</span>
+                  <span style={{ opacity: 0.65 }}>preset</span>
+                </div>
                 <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
                 <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
                   {s.formula}
