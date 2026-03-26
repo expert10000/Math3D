@@ -20084,13 +20084,14 @@ case "mobius":
     background: "#f8fbff",
     padding: "6px 8px",
     display: "flex",
-    alignItems: "flex-end",
-    gap: 10,
+    alignItems: "flex-start",
+    gap: 12,
     flexWrap: "wrap",
   };
   const topNavGroupStyle: React.CSSProperties = {
     display: "grid",
     gap: 4,
+    minWidth: 140,
   };
   const topNavSegmentStyle: React.CSSProperties = {
     display: "inline-flex",
@@ -20723,181 +20724,7 @@ case "mobius":
                 {headerContextLabel}
               </div>
             </div>
-          <details style={{ position: "relative" }}>
-            <summary
-              style={{
-                ...topNavButtonStyle(false),
-                listStyle: "none",
-                userSelect: "none",
-              }}
-            >
-              View
-            </summary>
-            <div
-              style={{
-                position: "absolute",
-                right: 0,
-                top: "calc(100% + 6px)",
-                zIndex: 40,
-                width: 420,
-                maxWidth: "min(92vw, 420px)",
-                border: "1px solid #dbe4f0",
-                borderRadius: 10,
-                background: "#fff",
-                boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
-                padding: 10,
-                display: "grid",
-                gap: 10,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
-                <button
-                  type="button"
-                  onClick={() => setShowThemeTools((v) => !v)}
-                  style={{ padding: "3px 8px", fontSize: 11 }}
-                  aria-pressed={showThemeTools}
-                >
-                  {showThemeTools ? "Hide" : "Show"}
-                </button>
-              </div>
-              {showThemeTools && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                    <option value="dot">Dot Accent</option>
-                  </select>
-                  <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
-                    {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
-                      <option key={id} value={id}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                    <input
-                      type="checkbox"
-                      checked={showViewportDebug}
-                      onChange={(e) => setShowViewportDebug(e.target.checked)}
-                    />
-                    Viewport debug
-                  </label>
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
-                <button
-                  type="button"
-                  onClick={() => setShowScreenshotTools((v) => !v)}
-                  style={{ padding: "3px 8px", fontSize: 11 }}
-                  aria-pressed={showScreenshotTools}
-                >
-                  {showScreenshotTools ? "Hide" : "Show"}
-                </button>
-              </div>
-              {showScreenshotTools && (
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                    Clean bg
-                    <select
-                      value={cleanScreenshotBackground}
-                      onChange={(e) =>
-                        setCleanScreenshotBackground(e.target.value === "transparent" ? "transparent" : "calm")
-                      }
-                    >
-                      <option value="calm">Calm</option>
-                      <option value="transparent">Transparent</option>
-                    </select>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void handleCleanScreenshot()}
-                    disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
-                    title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
-                  >
-                    Clean shot
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleScreenshot("scene")}
-                    disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
-                  >
-                    Scene shot
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleScreenshot("window")}
-                    disabled={screenshotBusy !== null}
-                  >
-                    Window shot
-                  </button>
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshot gallery (optional)</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowScreenshotGallery((v) => !v)}
-                    style={{ padding: "3px 8px", fontSize: 11 }}
-                    aria-pressed={showScreenshotGallery}
-                  >
-                    {showScreenshotGallery ? "Hide" : "Show"}
-                  </button>
-                  {canLoadScreenshotFolder && showScreenshotGallery && (
-                    <button
-                      type="button"
-                      onClick={() => void loadScreenshotGallery()}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
-                    >
-                      Refresh
-                    </button>
-                  )}
-                </div>
-              </div>
-              {showScreenshotGallery && (
-                <div
-                  style={{
-                    border: "1px solid #dbe4f0",
-                    borderRadius: 8,
-                    padding: "6px 8px",
-                    background: "#f8fbff",
-                    display: "grid",
-                    gap: 6,
-                    maxHeight: 180,
-                    overflowY: "auto",
-                  }}
-                >
-                  {screenshotGalleryFolder && (
-                    <div style={{ fontSize: 10, opacity: 0.76 }}>
-                      Folder: {screenshotGalleryFolder}
-                    </div>
-                  )}
-                  {recentScreenshotPaths.length === 0 ? (
-                    <div style={{ fontSize: 11, opacity: 0.75 }}>
-                      {canLoadScreenshotFolder
-                        ? "No screenshots found in the output folder yet."
-                        : "No screenshots captured in this browser session yet."}
-                    </div>
-                  ) : (
-                    <div style={{ display: "grid", gap: 4 }}>
-                      {recentScreenshotPaths.map((entry) => {
-                        const label = entry.split(/[/\\]/).pop() ?? entry;
-                        return (
-                          <div key={entry} style={{ fontSize: 11, display: "grid", gap: 2 }}>
-                            <strong>{label}</strong>
-                            <span style={{ opacity: 0.78 }}>{entry}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </details>
-        </div>
+          </div>
           <div style={topNavBandStyle}>
             <div style={topNavGroupStyle}>
               <div style={topNavGroupLabelStyle}>Section</div>
@@ -20937,6 +20764,184 @@ case "mobius":
                   );
                 })}
               </div>
+            </div>
+            <div style={topNavGroupStyle}>
+              <div style={topNavGroupLabelStyle}>View</div>
+              <details style={{ position: "relative" }}>
+                <summary
+                  style={{
+                    ...topNavButtonStyle(false),
+                    listStyle: "none",
+                    userSelect: "none",
+                  }}
+                >
+                  <span style={{ fontSize: 10, opacity: 0.78, marginRight: 5 }}>V</span>
+                  View
+                </summary>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: "calc(100% + 6px)",
+                    zIndex: 40,
+                    width: 420,
+                    maxWidth: "min(92vw, 420px)",
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 10,
+                    background: "#fff",
+                    boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
+                    padding: 10,
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
+                    <button
+                      type="button"
+                      onClick={() => setShowThemeTools((v) => !v)}
+                      style={{ padding: "3px 8px", fontSize: 11 }}
+                      aria-pressed={showThemeTools}
+                    >
+                      {showThemeTools ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showThemeTools && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="dot">Dot Accent</option>
+                      </select>
+                      <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
+                        {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
+                          <option key={id} value={id}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                        <input
+                          type="checkbox"
+                          checked={showViewportDebug}
+                          onChange={(e) => setShowViewportDebug(e.target.checked)}
+                        />
+                        Viewport debug
+                      </label>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+                    <button
+                      type="button"
+                      onClick={() => setShowScreenshotTools((v) => !v)}
+                      style={{ padding: "3px 8px", fontSize: 11 }}
+                      aria-pressed={showScreenshotTools}
+                    >
+                      {showScreenshotTools ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {showScreenshotTools && (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                        Clean bg
+                        <select
+                          value={cleanScreenshotBackground}
+                          onChange={(e) =>
+                            setCleanScreenshotBackground(e.target.value === "transparent" ? "transparent" : "calm")
+                          }
+                        >
+                          <option value="calm">Calm</option>
+                          <option value="transparent">Transparent</option>
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleCleanScreenshot()}
+                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                        title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
+                      >
+                        Clean shot
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleScreenshot("scene")}
+                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                      >
+                        Scene shot
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleScreenshot("window")}
+                        disabled={screenshotBusy !== null}
+                      >
+                        Window shot
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshot gallery (optional)</div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowScreenshotGallery((v) => !v)}
+                        style={{ padding: "3px 8px", fontSize: 11 }}
+                        aria-pressed={showScreenshotGallery}
+                      >
+                        {showScreenshotGallery ? "Hide" : "Show"}
+                      </button>
+                      {canLoadScreenshotFolder && showScreenshotGallery && (
+                        <button
+                          type="button"
+                          onClick={() => void loadScreenshotGallery()}
+                          style={{ padding: "3px 8px", fontSize: 11 }}
+                        >
+                          Refresh
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {showScreenshotGallery && (
+                    <div
+                      style={{
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 8,
+                        padding: "6px 8px",
+                        background: "#f8fbff",
+                        display: "grid",
+                        gap: 6,
+                        maxHeight: 180,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {screenshotGalleryFolder && (
+                        <div style={{ fontSize: 10, opacity: 0.76 }}>
+                          Folder: {screenshotGalleryFolder}
+                        </div>
+                      )}
+                      {recentScreenshotPaths.length === 0 ? (
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                          {canLoadScreenshotFolder
+                            ? "No screenshots found in the output folder yet."
+                            : "No screenshots captured in this browser session yet."}
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {recentScreenshotPaths.map((entry) => {
+                            const label = entry.split(/[/\\]/).pop() ?? entry;
+                            return (
+                              <div key={entry} style={{ fontSize: 11, display: "grid", gap: 2 }}>
+                                <strong>{label}</strong>
+                                <span style={{ opacity: 0.78 }}>{entry}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -25651,7 +25656,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const toolbarGroupStyle: React.CSSProperties = {
     display: "grid",
     gap: 5,
-    minWidth: 170,
+    minWidth: 0,
   };
   const toolbarGroupTitleStyle: React.CSSProperties = {
     fontSize: 10,
@@ -25782,7 +25787,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           1. Choose family 2. Choose subtype 3. Choose preset 4. Edit / create / compare
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={toolbarGroupStyle}>
+          <div style={{ ...toolbarGroupStyle, flex: "1 1 520px", minWidth: 280 }}>
             <div style={toolbarGroupTitleStyle}>1. Surface family</div>
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
@@ -25872,7 +25877,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </div>
           </div>
 
-          <div style={{ ...toolbarGroupStyle, marginLeft: "auto" }}>
+          <div style={{ ...toolbarGroupStyle, flex: "0 1 auto", marginLeft: "auto" }}>
             <div style={toolbarGroupTitleStyle}>4. Tools</div>
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
@@ -25908,7 +25913,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </div>
           </div>
 
-          <div style={toolbarGroupStyle}>
+          <div style={{ ...toolbarGroupStyle, flex: "0 1 auto" }}>
             <div style={toolbarGroupTitleStyle}>Advanced</div>
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
@@ -25941,13 +25946,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           </div>
           <div
             style={{
-              display: "grid",
-              gridTemplateColumns: compactForPresent ? "1fr" : "minmax(0, 1fr) minmax(260px, 340px)",
+              display: "flex",
               gap: 12,
-              alignItems: "start",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
             }}
           >
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: "1 1 560px" }}>
               {viewerKind === "implicit" && (
                 <SurfacesButtons
                   surfaceId={surfaceId}
@@ -26040,6 +26045,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             </div>
             <aside
               style={{
+                flex: "1 1 280px",
+                maxWidth: 360,
                 border: "1px solid #dbe4f0",
                 borderRadius: 10,
                 background: "#fff",

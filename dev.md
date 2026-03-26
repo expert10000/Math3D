@@ -32,6 +32,11 @@ User-facing setup/run/build instructions are now in [readme.md](readme.md).
 - Added curvature line streamlines and ridge/valley overlays.
 - Added geodesic distance heatmaps for graph/param/Weierstrass mesh flows.
 - Added VTK worker operations for mesh/volume processing and streamlines.
+- Refined Surfaces UI hierarchy with grouped `Surface family`/`Tools`/`Advanced` controls,
+  stronger active states, and progressive disclosure (`More/Less`) for lower-frequency families.
+- Reworked preset selection into a thumbnail card gallery with a linked details pane
+  (selected preset, formula/profile map, and quick actions) and integrated top header/navigation
+  controls into one coherent section/mode/view system.
 
 ## Browser + Worker Notes
 
