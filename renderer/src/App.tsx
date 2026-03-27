@@ -23175,6 +23175,7 @@ case "mobius":
                                 card.diagramThumbnailDataUrl,
                                 galleryCardViewMode
                               );
+                              const cardFallbackThumb = card.diagramThumbnailDataUrl;
                               const secondaryLine = card.defaultRecipe?.type
                                 ? `${card.badge} · ${card.defaultRecipe.type}`
                                 : `${card.badge} · ${section.label}`;
@@ -23238,6 +23239,7 @@ case "mobius":
                                       className="gallery-scan-card-preview-image"
                                       loading="lazy"
                                       decoding="async"
+                                      onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
                                     />
                                     <button
                                       type="button"
@@ -23342,6 +23344,9 @@ case "mobius":
                             }}
                             loading="lazy"
                             decoding="async"
+                            onError={(event) =>
+                              handleGalleryImageLoadError(event, geometryGallerySelectedCard.diagramThumbnailDataUrl)
+                            }
                           />
                           <div style={{ display: "grid", gap: 4 }}>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>{geometryGallerySelectedCard.name}</div>
@@ -23455,6 +23460,9 @@ case "mobius":
                                       }}
                                       loading="lazy"
                                       decoding="async"
+                                      onError={(event) =>
+                                        handleGalleryImageLoadError(event, presetDef.diagramThumbnailDataUrl)
+                                      }
                                     />
                                     <span style={{ display: "grid", gap: 2 }}>
                                       <span style={{ fontSize: 11, fontWeight: 700 }}>{presetDef.label}</span>
@@ -25484,28 +25492,84 @@ const presetSilhouetteSvg = (id: string, kind: PresetThumbKind, stroke: string):
 <path d="M56 64 C74 48, 96 46, 120 58" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.68" />`;
 };
 
-const CAPTURED_PRESET_THUMBS: Record<string, string> = {
-  "graph:graph_saddle": "../../gallery-images/captured/surfaces/explicit/graph_saddle.png",
-  "graph:graph_wave": "../../gallery-images/captured/surfaces/explicit/graph_wave.png",
-  "graph:graph_mexican": "../../gallery-images/captured/surfaces/explicit/graph_mexican.png",
-  "implicit:sphere": "../../gallery-images/captured/surfaces/implicit/sphere.png",
-  "implicit:hyperboloid": "../../gallery-images/captured/surfaces/implicit/hyperboloid.png",
-  "implicit:paraboloid": "../../gallery-images/captured/surfaces/implicit/paraboloid.png",
-  "implicit:cone": "../../gallery-images/captured/surfaces/implicit/cone.png",
-  "implicit:cylinder": "../../gallery-images/captured/surfaces/implicit/cylinder.png",
-  "implicit:torus_implicit": "../../gallery-images/captured/surfaces/implicit/torus_implicit.png",
-  "rotational:rotationalGraph": "../../gallery-images/captured/surfaces/parametric/rotationalGraph.png",
-  "rotational:cylinder": "../../gallery-images/captured/surfaces/parametric/cylinder.png",
-  "rotational:cone": "../../gallery-images/captured/surfaces/parametric/cone.png",
-  "spline:bezierSurface": "../../gallery-images/captured/surfaces/spline/bezierSurface.png",
-  "spline:bSplineSurface": "../../gallery-images/captured/surfaces/spline/bSplineSurface.png",
-  "spline:nurbsSurface": "../../gallery-images/captured/surfaces/spline/nurbsSurface.png",
-  "weierstrass:w-helicoid": "../../gallery-images/captured/surfaces/weierstrass/helicoid.png",
-  "weierstrass:w-enneper": "../../gallery-images/captured/surfaces/weierstrass/enneper.png",
+const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<string>>> = {
+  graph: new Set([
+    "graph_saddle",
+    "graph_rotatedSaddle",
+    "graph_monkey",
+    "graph_wave",
+    "graph_paraboloid",
+    "graph_gaussian",
+    "graph_ripple",
+    "graph_mexican",
+    "graph_sinSum",
+    "graph_sinc",
+    "graph_sinc2",
+    "graph_custom",
+  ]),
+  implicit: new Set([
+    "sphere",
+    "hyperboloid",
+    "paraboloid",
+    "cone",
+    "cylinder",
+    "hyperboloid_twoSheet",
+    "ellipsoid",
+    "torus_implicit",
+    "gyroid",
+    "superquadric",
+    "roman",
+    "scherk",
+    "implicit_custom",
+  ]),
+  parametric: new Set([
+    "rotationalDevelopable",
+    "rotationalGraph",
+    "rotationalBell",
+    "rotationalSpheroid",
+    "rotationalHyperboloid",
+    "cylinder",
+    "cone",
+  ]),
+  spline: new Set(["bezierSurface", "bSplineSurface", "nurbsSurface", "rotationalFreeProfile"]),
+  rotational: new Set([
+    "rotationalDevelopable",
+    "rotationalGraph",
+    "rotationalBell",
+    "rotationalSpheroid",
+    "rotationalHyperboloid",
+    "cylinder",
+    "cone",
+  ]),
+  sweep: new Set([
+    "sweepLinearExtrusion",
+    "sweepDirectional",
+    "sweepPath",
+    "sweepHelical",
+    "sweepScaled",
+    "sweepTwisted",
+    "ribbonRMF",
+  ]),
+  tube: new Set(["tubeConstant", "tubeVariable", "tubeClosed", "tubeOpen"]),
+  ruled: new Set(["plane", "cylinder", "cone", "helicoid", "hyperbolicParaboloid", "helicoidUV"]),
+  weierstrass: new Set(["enneper", "enneper2", "helicoid", "catenoid", "trig"]),
 };
 
-const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null =>
-  CAPTURED_PRESET_THUMBS[`${kind}:${id}`] ?? null;
+const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null => {
+  const normalizedId = kind === "weierstrass" && id.startsWith("w-") ? id.slice(2) : id;
+  const capturedIds = CAPTURED_PRESET_IDS_BY_KIND[kind];
+  if (!capturedIds?.has(normalizedId)) return null;
+  if (kind === "graph") return `../../gallery-images/captured/surfaces/explicit/${normalizedId}.png`;
+  if (kind === "implicit") return `../../gallery-images/captured/surfaces/implicit/${normalizedId}.png`;
+  if (kind === "parametric") return `../../gallery-images/captured/surfaces/parametric/${normalizedId}.png`;
+  if (kind === "spline") return `../../gallery-images/captured/surfaces/spline/${normalizedId}.png`;
+  if (kind === "rotational") return `../../gallery-images/captured/surfaces/constructed/rotational/${normalizedId}.png`;
+  if (kind === "sweep") return `../../gallery-images/captured/surfaces/constructed/sweep/${normalizedId}.png`;
+  if (kind === "tube") return `../../gallery-images/captured/surfaces/constructed/tube/${normalizedId}.png`;
+  if (kind === "ruled") return `../../gallery-images/captured/surfaces/constructed/ruled/${normalizedId}.png`;
+  if (kind === "weierstrass") return `../../gallery-images/captured/surfaces/weierstrass/${normalizedId}.png`;
+  return null;
+};
 
 const makePresetThumb = (
   id: string,
@@ -25586,6 +25650,16 @@ const thumbByViewMode = (
   diagramThumb: string,
   viewMode: GalleryCardViewMode
 ): string => (viewMode === "diagram" ? diagramThumb : renderedThumb);
+
+const handleGalleryImageLoadError = (
+  event: React.SyntheticEvent<HTMLImageElement>,
+  fallbackSrc: string
+): void => {
+  const img = event.currentTarget;
+  if (!fallbackSrc || img.dataset.fallbackApplied === "1") return;
+  img.dataset.fallbackApplied = "1";
+  img.src = fallbackSrc;
+};
 
 const geometryCardComplexityScore = (card: GeometryGalleryCard): number => {
   let score = 2;
@@ -26051,6 +26125,50 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const galleryPreviewHeight = compactForPresent ? 64 : 80;
   const showExtendedFamilyButtons =
     showExtendedFamilies || (isSurface && (viewerKind === "mesh" || viewerKind === "weierstrass"));
+  const familyChipStripRef = useRef<HTMLDivElement | null>(null);
+  const [familyChipCanScrollLeft, setFamilyChipCanScrollLeft] = useState(false);
+  const [familyChipCanScrollRight, setFamilyChipCanScrollRight] = useState(false);
+  const refreshFamilyChipScrollState = useCallback(() => {
+    const el = familyChipStripRef.current;
+    if (!el) {
+      setFamilyChipCanScrollLeft(false);
+      setFamilyChipCanScrollRight(false);
+      return;
+    }
+    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
+    const canScrollLeft = el.scrollLeft > 2;
+    const canScrollRight = el.scrollLeft < maxScrollLeft - 2;
+    setFamilyChipCanScrollLeft((prev) => (prev === canScrollLeft ? prev : canScrollLeft));
+    setFamilyChipCanScrollRight((prev) => (prev === canScrollRight ? prev : canScrollRight));
+  }, []);
+  const scrollFamilyChipStrip = useCallback((direction: "left" | "right") => {
+    const el = familyChipStripRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction === "left" ? -220 : 220, behavior: "smooth" });
+  }, []);
+  const onFamilyChipStripWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const el = familyChipStripRef.current;
+    if (!el) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    if (el.scrollWidth <= el.clientWidth + 2) return;
+    event.preventDefault();
+    el.scrollBy({ left: event.deltaY });
+  }, []);
+  useEffect(() => {
+    const el = familyChipStripRef.current;
+    if (!el) return;
+    const onScroll = () => refreshFamilyChipScrollState();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    onScroll();
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [refreshFamilyChipScrollState]);
+  useEffect(() => {
+    refreshFamilyChipScrollState();
+  }, [refreshFamilyChipScrollState, showExtendedFamilyButtons, compactForPresent]);
   const activeFamilyLabel = isVolume
     ? "Volume"
     : viewerKind === "graph"
@@ -26164,6 +26282,21 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       whiteSpace: "nowrap",
     };
   };
+  const familyStripArrowStyle = (enabled: boolean): React.CSSProperties => ({
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    border: "1px solid #cbd5e1",
+    background: enabled ? "#fff" : "#f8fafc",
+    color: enabled ? "#1f2937" : "#94a3b8",
+    boxShadow: "none",
+    padding: 0,
+    lineHeight: 1,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: enabled ? "pointer" : "not-allowed",
+    flex: "0 0 auto",
+  });
 
   return (
     <div style={{ ...styles.group, gridColumn: "span 12", gap: compactForPresent ? 10 : 14 }}>
@@ -26297,98 +26430,132 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
           <div style={{ ...toolbarGroupStyle, flex: "1 1 520px", minWidth: 280 }}>
             <div style={toolbarGroupTitleStyle}>1. Surface family</div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <button
                 type="button"
-                data-testid="surface-family-explicit"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("graph");
-                }}
-                style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
+                aria-label="Scroll family list left"
+                onClick={() => scrollFamilyChipStrip("left")}
+                disabled={!familyChipCanScrollLeft}
+                style={familyStripArrowStyle(familyChipCanScrollLeft)}
               >
-                Explicit
+                {"<"}
               </button>
-              <button
-                type="button"
-                data-testid="surface-family-implicit"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("implicit");
+              <div
+                ref={familyChipStripRef}
+                onWheel={onFamilyChipStripWheel}
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  alignItems: "center",
+                  flexWrap: "nowrap",
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  paddingBottom: 2,
+                  scrollbarWidth: "thin",
+                  minWidth: 0,
                 }}
-                style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
               >
-                Implicit
-              </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-explicit"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("graph");
+                  }}
+                  style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
+                >
+                  Explicit
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-implicit"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("implicit");
+                  }}
+                  style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
+                >
+                  Implicit
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-parametric"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+                  }}
+                  style={toolbarChipStyle(isParamFormula, "family")}
+                >
+                  Parametric
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-spline"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
+                  }}
+                  style={toolbarChipStyle(isParamSpline, "family")}
+                >
+                  Spline
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-constructed"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+                  }}
+                  style={toolbarChipStyle(isParamConstructed, "family")}
+                >
+                  Constructed
+                </button>
+                {showExtendedFamilyButtons && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="surface-family-mesh"
+                      onClick={() => {
+                        onChangeDatasetKind("surface");
+                        onChangeViewerKind("mesh");
+                      }}
+                      style={toolbarChipStyle(isSurface && isMesh, "family")}
+                    >
+                      Mesh
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="surface-family-weierstrass"
+                      onClick={() => {
+                        onChangeDatasetKind("surface");
+                        onChangeViewerKind("weierstrass");
+                      }}
+                      style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
+                    >
+                      Weierstrass
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  data-testid="surface-family-more"
+                  onClick={() => setShowExtendedFamilies((v) => !v)}
+                  style={toolbarChipStyle(showExtendedFamilyButtons, "tool")}
+                >
+                  {showExtendedFamilyButtons ? "Less" : "More"}
+                </button>
+              </div>
               <button
                 type="button"
-                data-testid="surface-family-parametric"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("param");
-                  if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
-                }}
-                style={toolbarChipStyle(isParamFormula, "family")}
+                aria-label="Scroll family list right"
+                onClick={() => scrollFamilyChipStrip("right")}
+                disabled={!familyChipCanScrollRight}
+                style={familyStripArrowStyle(familyChipCanScrollRight)}
               >
-                Parametric
-              </button>
-              <button
-                type="button"
-                data-testid="surface-family-spline"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("param");
-                  if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
-                }}
-                style={toolbarChipStyle(isParamSpline, "family")}
-              >
-                Spline
-              </button>
-              <button
-                type="button"
-                data-testid="surface-family-constructed"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("param");
-                  if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
-                }}
-                style={toolbarChipStyle(isParamConstructed, "family")}
-              >
-                Constructed
-              </button>
-              {showExtendedFamilyButtons && (
-                <>
-                  <button
-                    type="button"
-                    data-testid="surface-family-mesh"
-                    onClick={() => {
-                      onChangeDatasetKind("surface");
-                      onChangeViewerKind("mesh");
-                    }}
-                    style={toolbarChipStyle(isSurface && isMesh, "family")}
-                  >
-                    Mesh
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="surface-family-weierstrass"
-                    onClick={() => {
-                      onChangeDatasetKind("surface");
-                      onChangeViewerKind("weierstrass");
-                    }}
-                    style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
-                  >
-                    Weierstrass
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                data-testid="surface-family-more"
-                onClick={() => setShowExtendedFamilies((v) => !v)}
-                style={toolbarChipStyle(showExtendedFamilyButtons, "tool")}
-              >
-                {showExtendedFamilyButtons ? "Less" : "More"}
+                {">"}
               </button>
             </div>
           </div>
@@ -26566,6 +26733,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                         "weierstrass",
                         cardViewMode
                       );
+                      const thumbFallback = makePresetThumb(`w-${p.id}`, p.label, `g=${p.gExpr}`, "weierstrass", "diagram");
                       const chips = chipsForWeierstrassPreset(p.id);
                       const summary = compactSummary(p.safeDomainReason ?? "Minimal surface from Weierstrass data.");
                       return (
@@ -26599,6 +26767,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                               className="gallery-scan-card-preview-image"
                               loading="lazy"
                               decoding="async"
+                              onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
                             />
                             <span className="gallery-scan-card-inline-action">Open</span>
                           </div>
@@ -26646,23 +26815,37 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Selected preset</div>
               {(viewerKind === "implicit" || viewerKind === "graph") && activeSurfaceMeta && (
                 <>
-                  <img
-                    src={makePresetThumb(
+                  {(() => {
+                    const thumbKind: PresetThumbKind = viewerKind === "graph" ? "graph" : "implicit";
+                    const selectedThumb = makePresetThumb(
                       surfaceId,
                       activeSurfaceMeta.label,
                       activeSurfaceMeta.formula,
-                      viewerKind === "graph" ? "graph" : "implicit",
+                      thumbKind,
                       cardViewMode
-                    )}
-                    alt={`${activeSurfaceMeta.label} selected`}
-                    style={{
-                      width: "100%",
-                      height: 96,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      border: "1px solid #dbe4f0",
-                    }}
-                  />
+                    );
+                    const selectedFallbackThumb = makePresetThumb(
+                      surfaceId,
+                      activeSurfaceMeta.label,
+                      activeSurfaceMeta.formula,
+                      thumbKind,
+                      "diagram"
+                    );
+                    return (
+                      <img
+                        src={selectedThumb}
+                        alt={`${activeSurfaceMeta.label} selected`}
+                        style={{
+                          width: "100%",
+                          height: 96,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1px solid #dbe4f0",
+                        }}
+                        onError={(event) => handleGalleryImageLoadError(event, selectedFallbackThumb)}
+                      />
+                    );
+                  })()}
                   <div style={{ fontSize: 13, fontWeight: 800 }}>{activeSurfaceMeta.label}</div>
                   <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
                     {activeSurfaceMeta.formula}
@@ -26686,13 +26869,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                               : "parametric";
                     return (
                       <img
-                        src={makePresetThumb(
-                          activeParamMeta.id,
-                          activeParamMeta.label,
-                          activeParamMeta.formula,
-                          kind,
-                          cardViewMode
-                        )}
+                        src={makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind, cardViewMode)}
                         alt={`${activeParamMeta.label} selected`}
                         style={{
                           width: "100%",
@@ -26701,6 +26878,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           borderRadius: 8,
                           border: "1px solid #dbe4f0",
                         }}
+                        onError={(event) =>
+                          handleGalleryImageLoadError(
+                            event,
+                            makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind, "diagram")
+                          )
+                        }
                       />
                     );
                   })()}
@@ -26742,6 +26925,18 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                       borderRadius: 8,
                       border: "1px solid #dbe4f0",
                     }}
+                    onError={(event) =>
+                      handleGalleryImageLoadError(
+                        event,
+                        makePresetThumb(
+                          `w-${activeWeierstrassInfo.id}`,
+                          activeWeierstrassInfo.label,
+                          `g=${activeWeierstrassInfo.gExpr}`,
+                          "weierstrass",
+                          "diagram"
+                        )
+                      )
+                    }
                   />
                   <div style={{ fontSize: 13, fontWeight: 800 }}>{activeWeierstrassInfo.label}</div>
                   <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
@@ -26848,6 +27043,13 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
             isGraphSurface(s.id) ? "graph" : "implicit",
             cardViewMode
           );
+          const thumbFallback = makePresetThumb(
+            s.id,
+            s.label,
+            meta?.formula ?? "",
+            isGraphSurface(s.id) ? "graph" : "implicit",
+            "diagram"
+          );
           const summary = compactSummary(meta?.note ?? "");
           const chips = chipsForEqSurface(s.id);
           return (
@@ -26881,6 +27083,7 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
                   className="gallery-scan-card-preview-image"
                   loading="lazy"
                   decoding="async"
+                  onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
                 />
                 <span className="gallery-scan-card-inline-action">Open</span>
               </div>
@@ -27258,6 +27461,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                         : sourceTag === "param"
                           ? "parametric"
                           : "constructed";
+            const thumb = makePresetThumb(s.id, s.label, s.formula, thumbKind, cardViewMode);
+            const thumbFallback = makePresetThumb(s.id, s.label, s.formula, thumbKind, "diagram");
             const chips = chipsForParamSurface(s.id, sourceTag);
             const summary = compactSummary(s.note);
             return (
@@ -27286,11 +27491,12 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               >
                 <div className="gallery-scan-card-preview">
                   <img
-                    src={makePresetThumb(s.id, s.label, s.formula, thumbKind, cardViewMode)}
+                    src={thumb}
                     alt={`${s.label} preset`}
                     className="gallery-scan-card-preview-image"
                     loading="lazy"
                     decoding="async"
+                    onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
                   />
                   <span className="gallery-scan-card-inline-action">Open</span>
                 </div>
