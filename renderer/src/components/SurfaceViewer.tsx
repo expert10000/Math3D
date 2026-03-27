@@ -8760,6 +8760,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div
         ref={mountRef}
+        data-testid="surface-viewer-canvas-host"
         style={{
           width: "100%",
           height: "100%",

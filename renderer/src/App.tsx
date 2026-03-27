@@ -23083,59 +23083,53 @@ case "mobius":
 
                     <div
                       data-testid="geometry-gallery"
-                      style={{ display: "grid", gap: 10, maxHeight: 360, overflowY: "auto", paddingRight: 2 }}
+                      className="gallery-panel-scroll"
                     >
                       {geometryGallerySections.map((section) => (
-                        <div key={section.category.id} style={{ display: "grid", gap: 6 }}>
-                          <div
-                            style={{
-                              fontSize: 10,
-                              letterSpacing: "0.08em",
-                              textTransform: "uppercase",
-                              fontWeight: 700,
-                              opacity: 0.82,
-                              display: "flex",
-                              justifyContent: "space-between",
-                            }}
-                          >
+                        <div key={section.category.id} className="gallery-section">
+                          <div className="gallery-section-header">
                             <span>{section.category.label}</span>
                             <span>{section.cards.length}</span>
                           </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(154px, 1fr))", gap: 6 }}>
+                          <div className="gallery-card-grid">
                             {section.cards.map((card) => {
                               const selected = geometryGallerySelectedCard?.id === card.id;
                               const favorite = geometryGalleryFavoriteCardIds.has(card.id);
+                              const secondaryLine = card.defaultRecipe?.type
+                                ? `${card.badge} · ${card.defaultRecipe.type}`
+                                : `${card.badge} · ${section.category.label}`;
+                              const summary = compactSummary(card.description, 72);
+                              const chips = withPrimaryFirst(card.badge, [
+                                ...card.tags.slice(0, 2),
+                                card.demoReady ? "Demo-ready" : "Planned",
+                              ]);
                               return (
                                 <article
                                   key={card.id}
+                                  role="button"
+                                  tabIndex={0}
                                   data-testid={`geometry-gallery-card-${card.id}`}
                                   onClick={() => handleSelectGeometryGalleryCard(card.id)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      handleSelectGeometryGalleryCard(card.id);
+                                    }
+                                  }}
                                   onDoubleClick={() => {
                                     handleSelectGeometryGalleryCard(card.id);
                                     if (card.supported) handleAddGeometryGalleryDefault(card);
                                   }}
-                                  style={{
-                                    borderRadius: 8,
-                                    border: selected ? "1px solid #0a66c2" : "1px solid #d9e1ea",
-                                    background: selected ? "#eef4ff" : "#fff",
-                                    padding: 6,
-                                    display: "grid",
-                                    gap: 5,
-                                    cursor: "pointer",
-                                  }}
+                                  className={`gallery-scan-card geometry-gallery-scan-card${
+                                    selected ? " is-selected" : ""
+                                  }${!card.supported ? " is-disabled" : ""}`}
+                                  title={`${card.name}\n${card.description}`}
                                 >
-                                  <div style={{ position: "relative" }}>
+                                  <div className="gallery-scan-card-preview">
                                     <img
                                       src={card.thumbnailDataUrl}
                                       alt={`${card.name} card`}
-                                      style={{
-                                        width: "100%",
-                                        height: 84,
-                                        borderRadius: 6,
-                                        border: "1px solid #dbe2ea",
-                                        objectFit: "cover",
-                                        background: "#f8fafc",
-                                      }}
+                                      className="gallery-scan-card-preview-image"
                                     />
                                     <button
                                       type="button"
@@ -23144,18 +23138,7 @@ case "mobius":
                                         handleToggleGeometryGalleryFavorite(card.id);
                                       }}
                                       title={favorite ? "Remove favorite" : "Mark as favorite"}
-                                      style={{
-                                        position: "absolute",
-                                        top: 4,
-                                        left: 4,
-                                        fontSize: 10,
-                                        lineHeight: 1.1,
-                                        padding: "2px 6px",
-                                        borderRadius: 999,
-                                        border: "1px solid #cbd5e1",
-                                        background: favorite ? "#fef3c7" : "#fff",
-                                        cursor: "pointer",
-                                      }}
+                                      className={`gallery-scan-card-badge-btn ${favorite ? "is-favorite" : ""}`}
                                     >
                                       {favorite ? "Fav" : "Star"}
                                     </button>
@@ -23168,55 +23151,35 @@ case "mobius":
                                         if (card.supported) handleAddGeometryGalleryDefault(card);
                                       }}
                                       title={card.supported ? "Quick add default" : "Not yet available"}
-                                      style={{
-                                        position: "absolute",
-                                        top: 4,
-                                        right: 4,
-                                        fontSize: 10,
-                                        lineHeight: 1.1,
-                                        padding: "2px 6px",
-                                        borderRadius: 999,
-                                        border: "1px solid #cbd5e1",
-                                        background: "#fff",
-                                        cursor: card.supported ? "pointer" : "not-allowed",
-                                        opacity: card.supported ? 1 : 0.6,
-                                      }}
+                                      className="gallery-scan-card-action-btn"
                                     >
                                       +Add
                                     </button>
                                   </div>
-                                  <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.3 }}>{card.name}</div>
-                                  <div style={{ fontSize: 10, opacity: 0.8, lineHeight: 1.35 }}>{card.description}</div>
-                                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                                    <span
-                                      style={{
-                                        fontSize: 9,
-                                        border: "1px solid #cbd5e1",
-                                        background: "#f8fafc",
-                                        borderRadius: 999,
-                                        padding: "1px 6px",
-                                        fontWeight: 700,
-                                      }}
-                                    >
-                                      {card.badge}
-                                    </span>
-                                    {card.tags.slice(0, 2).map((tag) => (
-                                      <span
-                                        key={`${card.id}-${tag}`}
-                                        style={{
-                                          fontSize: 9,
-                                          border: "1px solid #d9e1ea",
-                                          borderRadius: 999,
-                                          padding: "1px 6px",
-                                          background: "#fff",
-                                        }}
-                                      >
-                                        {tag}
-                                      </span>
-                                    ))}
+                                  <div className="gallery-scan-card-meta">
+                                    <div className="gallery-scan-card-title-row">
+                                      <div className="gallery-scan-card-title">{card.name}</div>
+                                      <div className="gallery-scan-card-title-tools">
+                                        <span className="gallery-scan-card-info-pill" title={card.description}>
+                                          i
+                                        </span>
+                                        {selected && <span className="gallery-scan-card-selected-pill">Selected</span>}
+                                      </div>
+                                    </div>
+                                    <div className="gallery-scan-card-formula">{secondaryLine}</div>
+                                    <div className="gallery-scan-card-chips">
+                                      {chips.map((tag) => (
+                                        <span key={`${card.id}-${tag}`} className="gallery-scan-card-chip">
+                                          {tag}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="gallery-scan-card-summary" title={card.description}>
+                                      {summary}
+                                    </div>
                                   </div>
                                   {!card.supported && (
-                                    <div style={{ fontSize: 9, color: "#8a5a00", fontWeight: 600 }}>Coming soon</div>
+                                    <div className="gallery-scan-card-warning">Coming soon</div>
                                   )}
                                 </article>
                               );
@@ -25353,16 +25316,80 @@ const escapeSvgText = (value: string) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-const hashThumbString = (value: string) => {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i += 1) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+const presetSilhouetteSvg = (id: string, kind: PresetThumbKind, stroke: string): string => {
+  const key = id.toLowerCase();
+  if (key.includes("sphere") || key.includes("ellipsoid")) {
+    return `<circle cx="90" cy="42" r="22" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<ellipse cx="90" cy="42" rx="14" ry="22" fill="none" stroke="${stroke}" stroke-width="2.1" opacity="0.7" />
+<ellipse cx="90" cy="42" rx="22" ry="9" fill="none" stroke="${stroke}" stroke-width="2.1" opacity="0.7" />`;
   }
-  return h >>> 0;
+  if (key.includes("cone")) {
+    return `<path d="M90 16 L58 61 H122 Z" fill="none" stroke="${stroke}" stroke-width="3.3" />
+<ellipse cx="90" cy="61" rx="32" ry="9" fill="none" stroke="${stroke}" stroke-width="2.4" opacity="0.8" />`;
+  }
+  if (key.includes("cylinder")) {
+    return `<ellipse cx="90" cy="20" rx="24" ry="8" fill="none" stroke="${stroke}" stroke-width="3.1" />
+<path d="M66 20 V62 M114 20 V62" fill="none" stroke="${stroke}" stroke-width="3.1" />
+<ellipse cx="90" cy="62" rx="24" ry="8" fill="none" stroke="${stroke}" stroke-width="3.1" />`;
+  }
+  if (key.includes("paraboloid") || key.includes("mexican") || key.includes("gaussian")) {
+    return `<path d="M52 58 C62 34, 74 24, 90 24 C106 24, 118 34, 128 58" fill="none" stroke="${stroke}" stroke-width="3.3" />
+<path d="M58 58 C66 40, 76 32, 90 32 C104 32, 114 40, 122 58" fill="none" stroke="${stroke}" stroke-width="2.1" opacity="0.74" />`;
+  }
+  if (key.includes("hyperboloid")) {
+    return `<path d="M63 16 C77 36, 77 48, 63 70" fill="none" stroke="${stroke}" stroke-width="3.1" />
+<path d="M117 16 C103 36, 103 48, 117 70" fill="none" stroke="${stroke}" stroke-width="3.1" />
+<ellipse cx="90" cy="21" rx="18" ry="6" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.72" />
+<ellipse cx="90" cy="65" rx="18" ry="6" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.72" />`;
+  }
+  if (key.includes("torus")) {
+    return `<ellipse cx="90" cy="44" rx="35" ry="18" fill="none" stroke="${stroke}" stroke-width="3.4" />
+<ellipse cx="90" cy="44" rx="16" ry="8" fill="none" stroke="${stroke}" stroke-width="2.6" />`;
+  }
+  if (key.includes("saddle") || key.includes("ripple") || key.includes("sinc") || key.includes("wave")) {
+    return `<path d="M46 58 C64 30, 80 30, 98 52 C110 68, 122 64, 134 40" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<path d="M46 44 C64 22, 82 22, 100 44 C112 58, 123 56, 134 36" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.68" />`;
+  }
+  if (kind === "weierstrass") {
+    return `<path d="M52 58 C66 26, 84 24, 100 44 C110 58, 122 56, 132 34" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<circle cx="70" cy="30" r="6" fill="none" stroke="${stroke}" stroke-width="2.1" />
+<circle cx="110" cy="38" r="5" fill="none" stroke="${stroke}" stroke-width="2.1" />`;
+  }
+  if (kind === "spline") {
+    return `<path d="M48 58 C60 20, 80 20, 92 58" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<path d="M92 58 C102 20, 122 20, 134 58" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<path d="M48 58 H134" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.65" />`;
+  }
+  return `<path d="M50 54 C62 26, 82 24, 98 42 C112 58, 124 54, 134 34" fill="none" stroke="${stroke}" stroke-width="3.2" />
+<path d="M56 64 C74 48, 96 46, 120 58" fill="none" stroke="${stroke}" stroke-width="2" opacity="0.68" />`;
 };
 
+const CAPTURED_PRESET_THUMBS: Record<string, string> = {
+  "graph:graph_saddle": "../../gallery-images/captured/surfaces/explicit/graph_saddle.png",
+  "graph:graph_wave": "../../gallery-images/captured/surfaces/explicit/graph_wave.png",
+  "graph:graph_mexican": "../../gallery-images/captured/surfaces/explicit/graph_mexican.png",
+  "implicit:sphere": "../../gallery-images/captured/surfaces/implicit/sphere.png",
+  "implicit:hyperboloid": "../../gallery-images/captured/surfaces/implicit/hyperboloid.png",
+  "implicit:paraboloid": "../../gallery-images/captured/surfaces/implicit/paraboloid.png",
+  "implicit:cone": "../../gallery-images/captured/surfaces/implicit/cone.png",
+  "implicit:cylinder": "../../gallery-images/captured/surfaces/implicit/cylinder.png",
+  "implicit:torus_implicit": "../../gallery-images/captured/surfaces/implicit/torus_implicit.png",
+  "rotational:rotationalGraph": "../../gallery-images/captured/surfaces/parametric/rotationalGraph.png",
+  "rotational:cylinder": "../../gallery-images/captured/surfaces/parametric/cylinder.png",
+  "rotational:cone": "../../gallery-images/captured/surfaces/parametric/cone.png",
+  "spline:bezierSurface": "../../gallery-images/captured/surfaces/spline/bezierSurface.png",
+  "spline:bSplineSurface": "../../gallery-images/captured/surfaces/spline/bSplineSurface.png",
+  "spline:nurbsSurface": "../../gallery-images/captured/surfaces/spline/nurbsSurface.png",
+  "weierstrass:w-helicoid": "../../gallery-images/captured/surfaces/weierstrass/helicoid.png",
+  "weierstrass:w-enneper": "../../gallery-images/captured/surfaces/weierstrass/enneper.png",
+};
+
+const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null =>
+  CAPTURED_PRESET_THUMBS[`${kind}:${id}`] ?? null;
+
 const makePresetThumb = (id: string, label: string, subtitle: string, kind: PresetThumbKind): string => {
+  const captured = capturedPresetThumbPath(id, kind);
+  if (captured) return captured;
   const key = `${id}|${label}|${subtitle}|${kind}`;
   const cached = PRESET_THUMB_CACHE.get(key);
   if (cached) return cached;
@@ -25387,24 +25414,7 @@ const makePresetThumb = (id: string, label: string, subtitle: string, kind: Pres
                     : kind === "constructed"
                       ? { top: "#ede9fe", bottom: "#dbeafe", stroke: "#4338ca", ink: "#312e81" }
                       : { top: "#e0f2fe", bottom: "#dbeafe", stroke: "#1d4ed8", ink: "#1e3a8a" };
-
-  const h = hashThumbString(key);
-  const variant = h % 4;
-  const ribbons =
-    variant === 0
-      ? `<path d="M18 56 C30 26, 52 24, 66 42 C80 58, 100 54, 114 32" fill="none" stroke="${palette.stroke}" stroke-width="3"/>
-<path d="M22 66 C40 46, 58 44, 76 56 C92 66, 104 58, 114 44" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.7"/>`
-      : variant === 1
-        ? `<path d="M18 50 L114 34" fill="none" stroke="${palette.stroke}" stroke-width="3"/>
-<path d="M20 62 L114 46" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.72"/>
-<path d="M20 38 L114 22" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.62"/>`
-        : variant === 2
-          ? `<ellipse cx="48" cy="44" rx="20" ry="10" fill="none" stroke="${palette.stroke}" stroke-width="2.2"/>
-<ellipse cx="82" cy="44" rx="22" ry="12" fill="none" stroke="${palette.stroke}" stroke-width="2.2" opacity="0.78"/>
-<path d="M22 62 C42 48, 92 48, 112 62" fill="none" stroke="${palette.stroke}" stroke-width="2" opacity="0.65"/>`
-          : `<path d="M24 30 L104 60" fill="none" stroke="${palette.stroke}" stroke-width="2.2"/>
-<path d="M24 60 L104 30" fill="none" stroke="${palette.stroke}" stroke-width="2.2" opacity="0.7"/>
-<path d="M18 46 C34 26, 58 24, 80 42 C94 54, 104 54, 114 42" fill="none" stroke="${palette.stroke}" stroke-width="2.6"/>`;
+  const shape = presetSilhouetteSvg(id, kind, palette.stroke);
 
   const toneTag =
     kind === "graph"
@@ -25423,17 +25433,159 @@ const makePresetThumb = (id: string, label: string, subtitle: string, kind: Pres
   </linearGradient>
 </defs>
 <rect x="0.5" y="0.5" width="179" height="89" rx="12" fill="url(#g)" stroke="#d1d5db" />
-<path d="M10 20 H170 M10 34 H170 M10 48 H170 M10 62 H170" stroke="#ffffff" opacity="0.3" />
-${ribbons}
-<rect x="10" y="66" width="160" height="14" rx="5" fill="#ffffff" opacity="0.84" />
-<text x="14" y="75" font-family="Segoe UI, Arial, sans-serif" font-size="8.6" font-weight="700" fill="${palette.ink}">${escapeSvgText(label)}</text>
+<rect x="12" y="14" width="156" height="56" rx="10" fill="#ffffff" opacity="0.24" />
+<path d="M16 24 H164 M16 38 H164 M16 52 H164 M16 66 H164" stroke="#ffffff" opacity="0.26" />
+${shape}
+<rect x="10" y="68" width="160" height="12" rx="5" fill="#ffffff" opacity="0.86" />
+<text x="14" y="76" font-family="Segoe UI, Arial, sans-serif" font-size="8.1" font-weight="700" fill="${palette.ink}">${escapeSvgText(label)}</text>
 <text x="14" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="7.4" fill="${palette.ink}" opacity="0.85">${escapeSvgText(toneTag)}</text>
-<text x="108" y="13" font-family="Segoe UI, Arial, sans-serif" font-size="6.8" fill="${palette.ink}" opacity="0.72">${escapeSvgText(subtitle.slice(0, 28))}</text>
 </svg>`;
 
   const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   PRESET_THUMB_CACHE.set(key, url);
   return url;
+};
+
+const compactSummary = (value: string, maxLen = 74): string => {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  const firstSentence = normalized.split(/[.!?]/)[0]?.trim() ?? normalized;
+  if (!firstSentence) return normalized.slice(0, maxLen);
+  if (firstSentence.length <= maxLen) return firstSentence;
+  return `${firstSentence.slice(0, maxLen - 1).trimEnd()}…`;
+};
+
+const withPrimaryFirst = (first: string, chips: string[]): string[] => {
+  const values = [first, ...chips].map((v) => v.trim()).filter(Boolean);
+  return Array.from(new Set(values)).slice(0, 4);
+};
+
+const EQ_FORMULA_LINE_MAP: Partial<Record<SurfaceId, string>> = {
+  sphere: "x² + y² + z² = R²",
+  hyperboloid: "x² + y² - z² = 1",
+  paraboloid: "z = x² + y²",
+  cone: "x² + y² = z²",
+  cylinder: "x² + y² = R²",
+  hyperboloid_twoSheet: "z²/c² - x²/a² - y²/b² = 1",
+  ellipsoid: "x²/a² + y²/b² + z²/c² = 1",
+  torus_implicit: "(sqrt(x²+y²)-R)² + z² = r²",
+  graph_saddle: "z = x² - y²",
+  graph_rotatedSaddle: "z = 2xy",
+  graph_wave: "z = sin(x) cos(y)",
+  graph_mexican: "z = (1-r²)e^(-r²/2)",
+};
+
+const EQ_CARD_CHIPS_BY_ID: Partial<Record<SurfaceId, readonly string[]>> = {
+  sphere: ["Implicit", "Quadric", "Closed", "Symmetric"],
+  hyperboloid: ["Implicit", "Quadric", "Open", "Ruled"],
+  paraboloid: ["Implicit", "Quadric", "Open", "Rotational"],
+  cone: ["Implicit", "Quadric", "Open", "Ruled"],
+  cylinder: ["Implicit", "Quadric", "Open", "Ruled"],
+  hyperboloid_twoSheet: ["Implicit", "Quadric", "Open"],
+  ellipsoid: ["Implicit", "Quadric", "Closed", "Symmetric"],
+  torus_implicit: ["Implicit", "Closed", "Rotational"],
+  gyroid: ["Implicit", "Minimal", "Periodic", "Open"],
+  superquadric: ["Implicit", "Closed", "Quadric-like"],
+  roman: ["Implicit", "Algebraic", "Self-intersecting"],
+  scherk: ["Implicit", "Minimal", "Ruled", "Open"],
+  graph_saddle: ["Explicit", "Open", "Ruled"],
+  graph_rotatedSaddle: ["Explicit", "Open", "Ruled"],
+  graph_monkey: ["Explicit", "Open", "Cubic"],
+  graph_wave: ["Explicit", "Open", "Periodic"],
+  graph_paraboloid: ["Explicit", "Open", "Convex"],
+  graph_gaussian: ["Explicit", "Open", "Symmetric"],
+  graph_ripple: ["Explicit", "Open", "Radial"],
+  graph_mexican: ["Explicit", "Open", "Radial"],
+  graph_sinSum: ["Explicit", "Open", "Periodic"],
+  graph_sinc: ["Explicit", "Open", "Radial"],
+  graph_sinc2: ["Explicit", "Open", "Radial"],
+  graph_custom: ["Explicit", "Custom"],
+  implicit_custom: ["Implicit", "Custom"],
+};
+
+const PARAM_FORMULA_LINE_MAP: Partial<Record<ParamSurfaceId, string>> = {
+  torus: "sigma(u,v) = ((R+r cos v) cos u, ...)",
+  mobius: "sigma(u,v) = Mobius strip param",
+  cylinder: "sigma(u,v) = (r cos u, r sin u, v)",
+  cone: "sigma(u,v) = (v cos u, v sin u, v)",
+  catenoid: "sigma(u,v) = (cosh(v) cos u, ...)",
+  helicoid: "sigma(u,v) = (v cos u, v sin u, a u)",
+};
+
+const PARAM_CARD_CHIPS_BY_ID: Partial<Record<ParamSurfaceId, readonly string[]>> = {
+  torus: ["Parametric", "Closed", "Rotational"],
+  mobius: ["Parametric", "Closed", "Non-orientable"],
+  cylinder: ["Parametric", "Rotational", "Ruled", "Open"],
+  cone: ["Parametric", "Rotational", "Ruled", "Open"],
+  catenoid: ["Parametric", "Minimal", "Rotational"],
+  helicoid: ["Parametric", "Minimal", "Ruled"],
+  bezierSurface: ["Spline", "Patch"],
+  bSplineSurface: ["Spline", "Patch"],
+  nurbsSurface: ["Spline", "Rational", "Patch"],
+  rotationalFreeProfile: ["Spline", "Rotational", "Custom"],
+};
+
+const WEIERSTRASS_CARD_CHIPS_BY_ID: Record<string, readonly string[]> = {
+  helicoid: ["Weierstrass", "Minimal", "Ruled"],
+  enneper: ["Weierstrass", "Minimal", "Self-intersecting"],
+};
+
+const EQ_QUADRIC_IDS = new Set<SurfaceId>([
+  "sphere",
+  "hyperboloid",
+  "paraboloid",
+  "cone",
+  "cylinder",
+  "hyperboloid_twoSheet",
+  "ellipsoid",
+  "torus_implicit",
+]);
+
+const EQ_CLOSED_IDS = new Set<SurfaceId>(["sphere", "ellipsoid", "torus_implicit", "superquadric"]);
+const EQ_RULED_IDS = new Set<SurfaceId>(["hyperboloid", "cone", "cylinder", "graph_saddle", "graph_rotatedSaddle", "scherk"]);
+
+const formulaForEqSurface = (surfaceId: SurfaceId, fallback: string): string =>
+  EQ_FORMULA_LINE_MAP[surfaceId] ?? fallback;
+
+const formulaForParamSurface = (surfaceId: ParamSurfaceId, fallback: string): string =>
+  PARAM_FORMULA_LINE_MAP[surfaceId] ?? fallback;
+
+const chipsForEqSurface = (surfaceId: SurfaceId): string[] => {
+  const mapped = EQ_CARD_CHIPS_BY_ID[surfaceId];
+  if (mapped?.length) return [...mapped].slice(0, 4);
+  const chips: string[] = [];
+  chips.push(isGraphSurface(surfaceId) ? "Explicit" : "Implicit");
+  if (EQ_QUADRIC_IDS.has(surfaceId)) chips.push("Quadric");
+  if (EQ_RULED_IDS.has(surfaceId)) chips.push("Ruled");
+  if (EQ_CLOSED_IDS.has(surfaceId)) chips.push("Closed");
+  if (!EQ_CLOSED_IDS.has(surfaceId) && !surfaceId.includes("custom")) chips.push("Open");
+  if (surfaceId.includes("custom")) chips.push("Custom");
+  if (surfaceId === "sphere" || surfaceId === "ellipsoid" || surfaceId === "cylinder") chips.push("Symmetric");
+  return chips.slice(0, 4);
+};
+
+const chipsForParamSurface = (surfaceId: ParamSurfaceId, sourceTag: string): string[] => {
+  const mapped = PARAM_CARD_CHIPS_BY_ID[surfaceId];
+  if (mapped?.length) return [...mapped].slice(0, 4);
+  const chips: string[] = [];
+  chips.push(sourceTag[0].toUpperCase() + sourceTag.slice(1));
+  if (isRotationalParamSurfaceId(surfaceId)) chips.push("Rotational");
+  if (isRuledParamSurfaceId(surfaceId)) chips.push("Ruled");
+  if (isSweepParamSurfaceId(surfaceId)) chips.push("Sweep");
+  if (isTubeParamSurfaceId(surfaceId)) chips.push("Tube");
+  if (isSplineParamSurfaceId(surfaceId)) chips.push("Spline");
+  if (surfaceId === "torus" || surfaceId === "mobius") chips.push("Closed");
+  if (surfaceId === "mobius") chips.push("Non-orientable");
+  return chips.slice(0, 4);
+};
+
+const chipsForWeierstrassPreset = (presetId: string): string[] => {
+  const mapped = WEIERSTRASS_CARD_CHIPS_BY_ID[presetId];
+  if (mapped?.length) return [...mapped].slice(0, 4);
+  const chips = ["Weierstrass", "Minimal"];
+  if (presetId.includes("helicoid")) chips.push("Ruled");
+  if (presetId.includes("enneper")) chips.push("Self-intersecting");
+  return chips.slice(0, 4);
 };
 
 const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
@@ -25792,6 +25944,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
               <button
                 type="button"
+                data-testid="surface-family-explicit"
                 onClick={() => {
                   onChangeDatasetKind("surface");
                   onChangeViewerKind("graph");
@@ -25802,6 +25955,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="surface-family-implicit"
                 onClick={() => {
                   onChangeDatasetKind("surface");
                   onChangeViewerKind("implicit");
@@ -25812,6 +25966,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="surface-family-parametric"
                 onClick={() => {
                   onChangeDatasetKind("surface");
                   onChangeViewerKind("param");
@@ -25823,6 +25978,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="surface-family-spline"
                 onClick={() => {
                   onChangeDatasetKind("surface");
                   onChangeViewerKind("param");
@@ -25834,6 +25990,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
               <button
                 type="button"
+                data-testid="surface-family-constructed"
                 onClick={() => {
                   onChangeDatasetKind("surface");
                   onChangeViewerKind("param");
@@ -25847,6 +26004,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 <>
                   <button
                     type="button"
+                    data-testid="surface-family-mesh"
                     onClick={() => {
                       onChangeDatasetKind("surface");
                       onChangeViewerKind("mesh");
@@ -25857,6 +26015,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   </button>
                   <button
                     type="button"
+                    data-testid="surface-family-weierstrass"
                     onClick={() => {
                       onChangeDatasetKind("surface");
                       onChangeViewerKind("weierstrass");
@@ -25869,6 +26028,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               )}
               <button
                 type="button"
+                data-testid="surface-family-more"
                 onClick={() => setShowExtendedFamilies((v) => !v)}
                 style={toolbarChipStyle(showExtendedFamilyButtons, "tool")}
               >
@@ -25991,7 +26151,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
                     Presets avoid singularities on boundaries; adjust domains carefully near poles.
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                  <div className="surface-card-grid" data-testid="weierstrass-preset-grid">
                     {WEIERSTRASS_PRESETS.map((p) => {
                       const active = activeWeierstrassPreset?.id === p.id;
                       const thumb = makePresetThumb(
@@ -26000,41 +26160,42 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                         `g=${p.gExpr}`,
                         "weierstrass"
                       );
+                      const chips = chipsForWeierstrassPreset(p.id);
+                      const summary = compactSummary(p.safeDomainReason ?? "Minimal surface from Weierstrass data.");
                       return (
                         <button
                           key={p.id}
                           type="button"
+                          data-testid={`weierstrass-preset-card-${p.id}`}
                           onClick={() => onApplyWeierstrassPreset(p)}
-                          style={{
-                            textAlign: "left",
-                            borderRadius: 10,
-                            border: active ? "2px solid #0a66c2" : "1px solid #d6deea",
-                            background: active ? "#eaf2ff" : "#fff",
-                            padding: "9px 10px",
-                            display: "grid",
-                            gap: 4,
-                            cursor: "pointer",
-                            boxShadow: active ? "0 4px 12px rgba(10, 102, 194, 0.2)" : "none",
-                          }}
+                          className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
+                          title={`${p.label}\n${p.safeDomainReason}`}
                         >
-                          <img
-                            src={thumb}
-                            alt={`${p.label} preset`}
-                            style={{
-                              width: "100%",
-                              height: 88,
-                              objectFit: "cover",
-                              borderRadius: 8,
-                              border: "1px solid #dbe4f0",
-                              background: "#f8fafc",
-                            }}
-                          />
-                          <div style={{ fontSize: 12, fontWeight: 800 }}>{p.label}</div>
-                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                            g(z) = {p.gExpr}
+                          <div className="gallery-scan-card-preview">
+                            <img src={thumb} alt={`${p.label} preset`} className="gallery-scan-card-preview-image" />
+                            <span className="gallery-scan-card-inline-action">Open</span>
                           </div>
-                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                            phi(z) = {p.phiExpr}
+                          <div className="gallery-scan-card-meta">
+                            <div className="gallery-scan-card-title-row">
+                              <div className="gallery-scan-card-title">{p.label}</div>
+                              <div className="gallery-scan-card-title-tools">
+                                <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
+                                  i
+                                </span>
+                                {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
+                              </div>
+                            </div>
+                            <div className="gallery-scan-card-formula">{`g(z) = ${p.gExpr}`}</div>
+                            <div className="gallery-scan-card-chips">
+                              {chips.map((chip) => (
+                                <span key={`${p.id}-${chip}`} className="gallery-scan-card-chip">
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
+                              {summary}
+                            </div>
                           </div>
                         </button>
                       );
@@ -26232,59 +26393,58 @@ type SurfacesButtonsProps = {
 const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, onChangeSurface, presetLayout = "chips" }) => {
   if (presetLayout === "cards") {
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+      <div className="surface-card-grid" data-testid="surface-preset-grid">
         {surfaces.map((s) => {
           const meta = SURFACES_EQ_META_BY_ID.get(s.id);
           const active = surfaceId === s.id;
+          const formulaLine = meta?.formula ? formulaForEqSurface(s.id, meta.formula) : "";
           const thumb = makePresetThumb(
             s.id,
             s.label,
             meta?.formula ?? "",
             isGraphSurface(s.id) ? "graph" : "implicit"
           );
+          const summary = compactSummary(meta?.note ?? "");
+          const chips = chipsForEqSurface(s.id);
           return (
             <button
               key={s.id}
               type="button"
+              data-testid={`surface-preset-card-${s.id}`}
               onClick={() => onChangeSurface(s.id)}
-              style={{
-                textAlign: "left",
-                borderRadius: 10,
-                border: active ? "2px solid #0a66c2" : "1px solid #d6deea",
-                background: active ? "#eaf2ff" : "#fff",
-                padding: "9px 10px",
-                display: "grid",
-                gap: 4,
-                cursor: "pointer",
-                boxShadow: active ? "0 4px 12px rgba(10, 102, 194, 0.2)" : "none",
-              }}
+              className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
               title={meta?.note}
             >
-              <img
-                src={thumb}
-                alt={`${s.label} preset`}
-                style={{
-                  width: "100%",
-                  height: 86,
-                  objectFit: "cover",
-                  borderRadius: 8,
-                  border: "1px solid #dbe4f0",
-                  background: "#f8fafc",
-                }}
-              />
-              <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
-              {meta?.formula && (
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "#1f2937",
-                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-                  }}
-                >
-                  {meta.formula}
+              <div className="gallery-scan-card-preview">
+                <img src={thumb} alt={`${s.label} preset`} className="gallery-scan-card-preview-image" />
+                <span className="gallery-scan-card-inline-action">Open</span>
+              </div>
+              <div className="gallery-scan-card-meta">
+                <div className="gallery-scan-card-title-row">
+                  <div className="gallery-scan-card-title">{s.label}</div>
+                  <div className="gallery-scan-card-title-tools">
+                    {meta?.note && (
+                      <span className="gallery-scan-card-info-pill" title={meta.note}>
+                        i
+                      </span>
+                    )}
+                    {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
+                  </div>
                 </div>
-              )}
-              {meta?.note && <div style={{ fontSize: 10, color: "#475569" }}>{meta.note}</div>}
+                {!!formulaLine && <div className="gallery-scan-card-formula">{formulaLine}</div>}
+                <div className="gallery-scan-card-chips">
+                  {chips.map((chip) => (
+                    <span key={`${s.id}-${chip}`} className="gallery-scan-card-chip">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+                {meta?.note && (
+                  <div className="gallery-scan-card-summary" title={meta.note}>
+                    {summary}
+                  </div>
+                )}
+              </div>
             </button>
           );
         })}
@@ -26481,6 +26641,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               <button
                 key={`constructed-subtype-${key}`}
                 type="button"
+                data-testid={`param-constructed-subtype-${key}`}
                 onClick={() => ensureConstructedSubtype(key)}
                 style={chipStyle(constructedSubtype === key)}
               >
@@ -26525,6 +26686,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
               <button
                 key={f.value}
                 type="button"
+                data-testid={`param-rotational-family-${f.value}`}
                 onClick={() => setRotationalFamilyFilter(f.value)}
                 style={chipStyle(rotationalFamilyFilter === f.value)}
               >
@@ -26555,9 +26717,10 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
         </div>
       )}
       {presetLayout === "cards" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+        <div className="surface-card-grid" data-testid="param-preset-grid">
           {entries.map((s) => {
             const active = paramId === s.id;
+            const formulaLine = formulaForParamSurface(s.id, s.formula);
             const sourceTag = isSplineParamSurfaceId(s.id)
               ? "spline"
               : isSweepParamSurfaceId(s.id)
@@ -26580,56 +26743,47 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                       ? "ruled"
                       : sourceTag === "rotational"
                         ? "rotational"
-                        : sourceTag === "param"
-                          ? "parametric"
-                          : "constructed";
+                : sourceTag === "param"
+                  ? "parametric"
+                  : "constructed";
             const thumb = makePresetThumb(s.id, s.label, s.formula, thumbKind);
+            const chips = chipsForParamSurface(s.id, sourceTag);
+            const summary = compactSummary(s.note);
             return (
               <button
                 key={s.id}
                 type="button"
+                data-testid={`param-preset-card-${s.id}`}
                 onClick={() => onChangeParamId(s.id)}
-                style={{
-                  textAlign: "left",
-                  borderRadius: 10,
-                  border: active ? "2px solid #0a66c2" : "1px solid #d6deea",
-                  background: active ? "#eaf2ff" : "#fff",
-                  padding: "9px 10px",
-                  display: "grid",
-                  gap: 4,
-                  cursor: "pointer",
-                  boxShadow: active ? "0 4px 12px rgba(10, 102, 194, 0.2)" : "none",
-                }}
+                className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
                 title={s.note}
               >
-                <img
-                  src={thumb}
-                  alt={`${s.label} preset`}
-                  style={{
-                    width: "100%",
-                    height: 88,
-                    objectFit: "cover",
-                    borderRadius: 8,
-                    border: "1px solid #dbe4f0",
-                    background: "#f8fafc",
-                  }}
-                />
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#475569",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {sourceTag}
+                <div className="gallery-scan-card-preview">
+                  <img src={thumb} alt={`${s.label} preset`} className="gallery-scan-card-preview-image" />
+                  <span className="gallery-scan-card-inline-action">Open</span>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 800 }}>{s.label}</div>
-                <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                  {s.formula}
+                <div className="gallery-scan-card-meta">
+                  <div className="gallery-scan-card-title-row">
+                    <div className="gallery-scan-card-title">{s.label}</div>
+                    <div className="gallery-scan-card-title-tools">
+                      <span className="gallery-scan-card-info-pill" title={s.note}>
+                        i
+                      </span>
+                      {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
+                    </div>
+                  </div>
+                  <div className="gallery-scan-card-formula">{formulaLine}</div>
+                  <div className="gallery-scan-card-chips">
+                    {chips.map((chip) => (
+                      <span key={`${s.id}-${chip}`} className="gallery-scan-card-chip">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="gallery-scan-card-summary" title={s.note}>
+                    {summary}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: "#475569" }}>{s.note}</div>
               </button>
             );
           })}

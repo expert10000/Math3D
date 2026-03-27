@@ -151,6 +151,26 @@ ${shapeForStyle(style, palette.accent)}
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
+const CAPTURED_OBJECT_THUMB_IDS = new Set<string>([
+  "sphere",
+  "box",
+  "cylinder",
+  "cone",
+  "torus",
+  "tetrahedron",
+  "cube",
+  "octahedron",
+  "dodecahedron",
+  "icosahedron",
+  "prism",
+  "pyramid",
+]);
+
+const capturedObjectThumbPath = (objectId: string): string | null =>
+  CAPTURED_OBJECT_THUMB_IDS.has(objectId)
+    ? `../../gallery-images/captured/objects/${objectId}.png`
+    : null;
+
 const preset = (
   cardId: string,
   id: string,
@@ -166,7 +186,7 @@ const preset = (
   description,
   tags,
   recipe,
-  thumbnailDataUrl: buildThumbnail(label, "Preset", visualStyle, badge),
+  thumbnailDataUrl: capturedObjectThumbPath(cardId) ?? buildThumbnail(label, "Preset", visualStyle, badge),
 });
 
 const unsupportedCard = (
@@ -186,14 +206,14 @@ const unsupportedCard = (
   demoReady: false,
   supported: false,
   visualStyle,
-  thumbnailDataUrl: buildThumbnail(name, "Planned", visualStyle, badge),
+  thumbnailDataUrl: capturedObjectThumbPath(id) ?? buildThumbnail(name, "Planned", visualStyle, badge),
   presets: [],
   comingSoonNote: "Planned for a future update.",
 });
 
 const supportedCard = (card: Omit<GeometryGalleryCard, "thumbnailDataUrl">): GeometryGalleryCard => ({
   ...card,
-  thumbnailDataUrl: buildThumbnail(card.name, card.badge, card.visualStyle, card.badge),
+  thumbnailDataUrl: capturedObjectThumbPath(card.id) ?? buildThumbnail(card.name, card.badge, card.visualStyle, card.badge),
 });
 
 export const GEOMETRY_GALLERY_CATEGORIES: GeometryGalleryCategory[] = [
@@ -685,4 +705,3 @@ export const GEOMETRY_GALLERY_DEFAULT_CARD_ID = "box";
 export const GEOMETRY_GALLERY_CARD_BY_ID = new Map(
   GEOMETRY_GALLERY_CARDS.map((card) => [card.id, card] as const)
 );
-

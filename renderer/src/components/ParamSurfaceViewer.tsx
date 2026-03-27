@@ -6291,7 +6291,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      <div ref={mountRef} data-testid="surface-viewer-canvas-host" style={{ width: "100%", height: "100%" }} />
 
       {showOverlayControls && (
         <>

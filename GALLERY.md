@@ -2,6 +2,31 @@
 
 This file is a quick catalog of Geometry Viewer object cards and starter presets.
 
+## Auto-capture rendered thumbnails
+
+Run:
+
+```bash
+npm run test:app:e2e:thumbnails
+```
+
+By default, rendered screenshots are written to `gallery-images/captured/` with a `manifest.json`.
+Override output folder with `MATH3D_THUMBNAIL_OUT_DIR`.
+
+## Visual regression snapshots
+
+Run gallery card visual checks:
+
+```bash
+npm run test:app:e2e:visual
+```
+
+When card UI changes intentionally, refresh baselines with:
+
+```bash
+npx playwright test tests/e2e/gallery-visual.spec.ts --update-snapshots
+```
+
 ## Basic solids
 
 | Preview | Object | Type | Description | Example presets |

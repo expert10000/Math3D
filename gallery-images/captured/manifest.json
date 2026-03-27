@@ -1,0 +1,405 @@
+{
+  "generatedAt": "2026-03-27T00:44:34.060Z",
+  "outputRoot": "gallery-images/captured",
+  "objects": [
+    {
+      "id": "sphere",
+      "file": "gallery-images/captured/objects/sphere.png"
+    },
+    {
+      "id": "box",
+      "file": "gallery-images/captured/objects/box.png"
+    },
+    {
+      "id": "cylinder",
+      "file": "gallery-images/captured/objects/cylinder.png"
+    },
+    {
+      "id": "cone",
+      "file": "gallery-images/captured/objects/cone.png"
+    },
+    {
+      "id": "torus",
+      "file": "gallery-images/captured/objects/torus.png"
+    },
+    {
+      "id": "tetrahedron",
+      "file": "gallery-images/captured/objects/tetrahedron.png"
+    },
+    {
+      "id": "cube",
+      "file": "gallery-images/captured/objects/cube.png"
+    },
+    {
+      "id": "octahedron",
+      "file": "gallery-images/captured/objects/octahedron.png"
+    },
+    {
+      "id": "dodecahedron",
+      "file": "gallery-images/captured/objects/dodecahedron.png"
+    },
+    {
+      "id": "icosahedron",
+      "file": "gallery-images/captured/objects/icosahedron.png"
+    },
+    {
+      "id": "prism",
+      "file": "gallery-images/captured/objects/prism.png"
+    },
+    {
+      "id": "pyramid",
+      "file": "gallery-images/captured/objects/pyramid.png"
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "graph_saddle",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_saddle.png"
+    },
+    {
+      "id": "graph_rotatedSaddle",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_rotatedSaddle.png"
+    },
+    {
+      "id": "graph_monkey",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_monkey.png"
+    },
+    {
+      "id": "graph_wave",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_wave.png"
+    },
+    {
+      "id": "graph_paraboloid",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_paraboloid.png"
+    },
+    {
+      "id": "graph_gaussian",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_gaussian.png"
+    },
+    {
+      "id": "graph_ripple",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_ripple.png"
+    },
+    {
+      "id": "graph_mexican",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_mexican.png"
+    },
+    {
+      "id": "graph_sinSum",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_sinSum.png"
+    },
+    {
+      "id": "graph_sinc",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_sinc.png"
+    },
+    {
+      "id": "graph_sinc2",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_sinc2.png"
+    },
+    {
+      "id": "graph_custom",
+      "family": "explicit",
+      "file": "gallery-images/captured/surfaces/explicit/graph_custom.png"
+    },
+    {
+      "id": "sphere",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/sphere.png"
+    },
+    {
+      "id": "hyperboloid",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/hyperboloid.png"
+    },
+    {
+      "id": "paraboloid",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/paraboloid.png"
+    },
+    {
+      "id": "cone",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/cone.png"
+    },
+    {
+      "id": "cylinder",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/cylinder.png"
+    },
+    {
+      "id": "hyperboloid_twoSheet",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/hyperboloid_twoSheet.png"
+    },
+    {
+      "id": "ellipsoid",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/ellipsoid.png"
+    },
+    {
+      "id": "torus_implicit",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/torus_implicit.png"
+    },
+    {
+      "id": "gyroid",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/gyroid.png"
+    },
+    {
+      "id": "superquadric",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/superquadric.png"
+    },
+    {
+      "id": "roman",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/roman.png"
+    },
+    {
+      "id": "scherk",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/scherk.png"
+    },
+    {
+      "id": "implicit_custom",
+      "family": "implicit",
+      "file": "gallery-images/captured/surfaces/implicit/implicit_custom.png"
+    },
+    {
+      "id": "rotationalDevelopable",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/rotationalDevelopable.png"
+    },
+    {
+      "id": "rotationalGraph",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/rotationalGraph.png"
+    },
+    {
+      "id": "rotationalBell",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/rotationalBell.png"
+    },
+    {
+      "id": "rotationalSpheroid",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/rotationalSpheroid.png"
+    },
+    {
+      "id": "rotationalHyperboloid",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/rotationalHyperboloid.png"
+    },
+    {
+      "id": "cylinder",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/cylinder.png"
+    },
+    {
+      "id": "cone",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/cone.png"
+    },
+    {
+      "id": "bezierSurface",
+      "family": "spline",
+      "file": "gallery-images/captured/surfaces/spline/bezierSurface.png"
+    },
+    {
+      "id": "bSplineSurface",
+      "family": "spline",
+      "file": "gallery-images/captured/surfaces/spline/bSplineSurface.png"
+    },
+    {
+      "id": "nurbsSurface",
+      "family": "spline",
+      "file": "gallery-images/captured/surfaces/spline/nurbsSurface.png"
+    },
+    {
+      "id": "rotationalFreeProfile",
+      "family": "spline",
+      "file": "gallery-images/captured/surfaces/spline/rotationalFreeProfile.png"
+    },
+    {
+      "id": "rotationalDevelopable",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalDevelopable.png"
+    },
+    {
+      "id": "rotationalGraph",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalGraph.png"
+    },
+    {
+      "id": "rotationalBell",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalBell.png"
+    },
+    {
+      "id": "rotationalSpheroid",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalSpheroid.png"
+    },
+    {
+      "id": "rotationalHyperboloid",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalHyperboloid.png"
+    },
+    {
+      "id": "cylinder",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/cylinder.png"
+    },
+    {
+      "id": "cone",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured/surfaces/constructed/rotational/cone.png"
+    },
+    {
+      "id": "sweepLinearExtrusion",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepLinearExtrusion.png"
+    },
+    {
+      "id": "sweepDirectional",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepDirectional.png"
+    },
+    {
+      "id": "sweepPath",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepPath.png"
+    },
+    {
+      "id": "sweepHelical",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepHelical.png"
+    },
+    {
+      "id": "sweepScaled",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepScaled.png"
+    },
+    {
+      "id": "sweepTwisted",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/sweepTwisted.png"
+    },
+    {
+      "id": "ribbonRMF",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured/surfaces/constructed/sweep/ribbonRMF.png"
+    },
+    {
+      "id": "tubeConstant",
+      "family": "constructed",
+      "subtype": "tube",
+      "file": "gallery-images/captured/surfaces/constructed/tube/tubeConstant.png"
+    },
+    {
+      "id": "tubeVariable",
+      "family": "constructed",
+      "subtype": "tube",
+      "file": "gallery-images/captured/surfaces/constructed/tube/tubeVariable.png"
+    },
+    {
+      "id": "tubeClosed",
+      "family": "constructed",
+      "subtype": "tube",
+      "file": "gallery-images/captured/surfaces/constructed/tube/tubeClosed.png"
+    },
+    {
+      "id": "tubeOpen",
+      "family": "constructed",
+      "subtype": "tube",
+      "file": "gallery-images/captured/surfaces/constructed/tube/tubeOpen.png"
+    },
+    {
+      "id": "plane",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/plane.png"
+    },
+    {
+      "id": "cylinder",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/cylinder.png"
+    },
+    {
+      "id": "cone",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/cone.png"
+    },
+    {
+      "id": "helicoid",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/helicoid.png"
+    },
+    {
+      "id": "hyperbolicParaboloid",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/hyperbolicParaboloid.png"
+    },
+    {
+      "id": "helicoidUV",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured/surfaces/constructed/ruled/helicoidUV.png"
+    },
+    {
+      "id": "enneper",
+      "family": "weierstrass",
+      "file": "gallery-images/captured/surfaces/weierstrass/enneper.png"
+    },
+    {
+      "id": "enneper2",
+      "family": "weierstrass",
+      "file": "gallery-images/captured/surfaces/weierstrass/enneper2.png"
+    },
+    {
+      "id": "helicoid",
+      "family": "weierstrass",
+      "file": "gallery-images/captured/surfaces/weierstrass/helicoid.png"
+    },
+    {
+      "id": "catenoid",
+      "family": "weierstrass",
+      "file": "gallery-images/captured/surfaces/weierstrass/catenoid.png"
+    },
+    {
+      "id": "trig",
+      "family": "weierstrass",
+      "file": "gallery-images/captured/surfaces/weierstrass/trig.png"
+    }
+  ]
+}
