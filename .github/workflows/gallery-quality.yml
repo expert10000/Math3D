@@ -1,0 +1,61 @@
+name: Gallery Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "renderer/**"
+      - "tests/e2e/**"
+      - "gallery-images/**"
+      - ".github/workflows/gallery-quality.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "playwright.config.ts"
+  pull_request:
+    paths:
+      - "renderer/**"
+      - "tests/e2e/**"
+      - "gallery-images/**"
+      - ".github/workflows/gallery-quality.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "playwright.config.ts"
+
+jobs:
+  gallery-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: |
+            package-lock.json
+            renderer/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build core
+        run: npm run build:core
+
+      - name: Gallery visual regression
+        run: npm run test:app:e2e:visual
+
+      - name: Gallery thumbnail capture
+        run: npm run test:app:e2e:thumbnails
+
+      - name: Upload playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gallery-e2e-artifacts
+          path: |
+            test-results/**
+            playwright-report/**
+          if-no-files-found: ignore

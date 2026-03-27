@@ -24,6 +24,8 @@ export type GeometryGalleryPreset = {
   description: string;
   tags: string[];
   recipe: GeometryGalleryRecipe;
+  renderedThumbnailDataUrl: string;
+  diagramThumbnailDataUrl: string;
   thumbnailDataUrl: string;
 };
 
@@ -47,6 +49,8 @@ export type GeometryGalleryCard = {
   tags: string[];
   demoReady: boolean;
   supported: boolean;
+  renderedThumbnailDataUrl: string;
+  diagramThumbnailDataUrl: string;
   thumbnailDataUrl: string;
   defaultRecipe?: GeometryGalleryRecipe;
   presets: GeometryGalleryPreset[];
@@ -180,14 +184,20 @@ const preset = (
   recipe: GeometryGalleryRecipe,
   visualStyle: GeometryGalleryVisualStyle,
   badge: GeometryGalleryBadge
-): GeometryGalleryPreset => ({
-  id: `${cardId}:${id}`,
-  label,
-  description,
-  tags,
-  recipe,
-  thumbnailDataUrl: capturedObjectThumbPath(cardId) ?? buildThumbnail(label, "Preset", visualStyle, badge),
-});
+): GeometryGalleryPreset => {
+  const diagramThumb = buildThumbnail(label, "Preset", visualStyle, badge);
+  const renderedThumb = capturedObjectThumbPath(cardId) ?? diagramThumb;
+  return {
+    id: `${cardId}:${id}`,
+    label,
+    description,
+    tags,
+    recipe,
+    renderedThumbnailDataUrl: renderedThumb,
+    diagramThumbnailDataUrl: diagramThumb,
+    thumbnailDataUrl: renderedThumb,
+  };
+};
 
 const unsupportedCard = (
   id: string,
@@ -196,25 +206,39 @@ const unsupportedCard = (
   categoryId: GeometryGalleryCategoryId,
   badge: GeometryGalleryBadge,
   visualStyle: GeometryGalleryVisualStyle
-): GeometryGalleryCard => ({
-  id,
-  name,
-  description,
-  categoryId,
-  badge,
-  tags: ["Planned", "Gallery"],
-  demoReady: false,
-  supported: false,
-  visualStyle,
-  thumbnailDataUrl: capturedObjectThumbPath(id) ?? buildThumbnail(name, "Planned", visualStyle, badge),
-  presets: [],
-  comingSoonNote: "Planned for a future update.",
-});
+): GeometryGalleryCard => {
+  const diagramThumb = buildThumbnail(name, "Planned", visualStyle, badge);
+  const renderedThumb = capturedObjectThumbPath(id) ?? diagramThumb;
+  return {
+    id,
+    name,
+    description,
+    categoryId,
+    badge,
+    tags: ["Planned", "Gallery"],
+    demoReady: false,
+    supported: false,
+    visualStyle,
+    renderedThumbnailDataUrl: renderedThumb,
+    diagramThumbnailDataUrl: diagramThumb,
+    thumbnailDataUrl: renderedThumb,
+    presets: [],
+    comingSoonNote: "Planned for a future update.",
+  };
+};
 
-const supportedCard = (card: Omit<GeometryGalleryCard, "thumbnailDataUrl">): GeometryGalleryCard => ({
-  ...card,
-  thumbnailDataUrl: capturedObjectThumbPath(card.id) ?? buildThumbnail(card.name, card.badge, card.visualStyle, card.badge),
-});
+const supportedCard = (
+  card: Omit<GeometryGalleryCard, "thumbnailDataUrl" | "renderedThumbnailDataUrl" | "diagramThumbnailDataUrl">
+): GeometryGalleryCard => {
+  const diagramThumb = buildThumbnail(card.name, card.badge, card.visualStyle, card.badge);
+  const renderedThumb = capturedObjectThumbPath(card.id) ?? diagramThumb;
+  return {
+    ...card,
+    renderedThumbnailDataUrl: renderedThumb,
+    diagramThumbnailDataUrl: diagramThumb,
+    thumbnailDataUrl: renderedThumb,
+  };
+};
 
 export const GEOMETRY_GALLERY_CATEGORIES: GeometryGalleryCategory[] = [
   { id: "basic-solids", label: "Basic solids", description: "Core editable 3D primitives." },

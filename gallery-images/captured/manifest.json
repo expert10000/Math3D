@@ -1,38 +1,30 @@
 {
-  "generatedAt": "2026-03-27T00:44:34.060Z",
+  "generatedAt": "2026-03-27T01:01:22.277Z",
   "outputRoot": "gallery-images/captured",
   "objects": [
     {
-      "id": "sphere",
-      "file": "gallery-images/captured/objects/sphere.png"
-    },
-    {
       "id": "box",
       "file": "gallery-images/captured/objects/box.png"
-    },
-    {
-      "id": "cylinder",
-      "file": "gallery-images/captured/objects/cylinder.png"
     },
     {
       "id": "cone",
       "file": "gallery-images/captured/objects/cone.png"
     },
     {
+      "id": "cylinder",
+      "file": "gallery-images/captured/objects/cylinder.png"
+    },
+    {
+      "id": "sphere",
+      "file": "gallery-images/captured/objects/sphere.png"
+    },
+    {
       "id": "torus",
       "file": "gallery-images/captured/objects/torus.png"
     },
     {
-      "id": "tetrahedron",
-      "file": "gallery-images/captured/objects/tetrahedron.png"
-    },
-    {
       "id": "cube",
       "file": "gallery-images/captured/objects/cube.png"
-    },
-    {
-      "id": "octahedron",
-      "file": "gallery-images/captured/objects/octahedron.png"
     },
     {
       "id": "dodecahedron",
@@ -43,12 +35,20 @@
       "file": "gallery-images/captured/objects/icosahedron.png"
     },
     {
+      "id": "octahedron",
+      "file": "gallery-images/captured/objects/octahedron.png"
+    },
+    {
       "id": "prism",
       "file": "gallery-images/captured/objects/prism.png"
     },
     {
       "id": "pyramid",
       "file": "gallery-images/captured/objects/pyramid.png"
+    },
+    {
+      "id": "tetrahedron",
+      "file": "gallery-images/captured/objects/tetrahedron.png"
     }
   ],
   "surfaces": [

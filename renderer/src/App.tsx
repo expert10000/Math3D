@@ -280,6 +280,8 @@ type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
+type GalleryCardViewMode = "rendered" | "diagram";
+type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
@@ -4511,6 +4513,8 @@ const App: React.FC = () => {
     GEOMETRY_GALLERY_DEFAULT_CARD_ID
   );
   const [geometryGallerySelectedPresetId, setGeometryGallerySelectedPresetId] = useState<string | null>(null);
+  const [galleryCardViewMode, setGalleryCardViewMode] = useState<GalleryCardViewMode>("rendered");
+  const [geometryGallerySortPreset, setGeometryGallerySortPreset] = useState<GallerySortPreset>("family");
   const [geometryGallerySearchText, setGeometryGallerySearchText] = useState("");
   const [geometryGalleryCategoryFilter, setGeometryGalleryCategoryFilter] =
     useState<GeometryGalleryCategoryFilter>("all");
@@ -4606,14 +4610,43 @@ const App: React.FC = () => {
     geometryGalleryFavoritesOnly,
     geometryGallerySearchText,
   ]);
-  const geometryGallerySections = useMemo(
-    () =>
-      GEOMETRY_GALLERY_CATEGORIES.map((category) => ({
-        category,
-        cards: geometryGalleryVisibleCards.filter((card) => card.categoryId === category.id),
-      })).filter((section) => section.cards.length),
-    [geometryGalleryVisibleCards]
+  const sortedGeometryGalleryVisibleCards = useMemo(
+    () => sortGeometryCards(geometryGalleryVisibleCards, geometryGallerySortPreset),
+    [geometryGallerySortPreset, geometryGalleryVisibleCards]
   );
+  const geometryGallerySections = useMemo(
+    () => {
+      if (geometryGallerySortPreset === "family") {
+        return GEOMETRY_GALLERY_CATEGORIES.map((category) => ({
+          key: category.id,
+          label: category.label,
+          cards: sortedGeometryGalleryVisibleCards.filter((card) => card.categoryId === category.id),
+        })).filter((section) => section.cards.length);
+      }
+      const label = GALLERY_SORT_OPTIONS.find((entry) => entry.value === geometryGallerySortPreset)?.label ?? "Name";
+      return [
+        {
+          key: `sorted-${geometryGallerySortPreset}`,
+          label: `All cards · ${label}`,
+          cards: sortedGeometryGalleryVisibleCards,
+        },
+      ].filter((section) => section.cards.length);
+    },
+    [geometryGallerySortPreset, sortedGeometryGalleryVisibleCards]
+  );
+  const geometryGalleryThumbUrls = useMemo(() => {
+    const urls: string[] = [];
+    for (const section of geometryGallerySections) {
+      for (const card of section.cards) {
+        urls.push(thumbByViewMode(card.renderedThumbnailDataUrl, card.diagramThumbnailDataUrl, galleryCardViewMode));
+        for (const preset of card.presets) {
+          urls.push(thumbByViewMode(preset.renderedThumbnailDataUrl, preset.diagramThumbnailDataUrl, galleryCardViewMode));
+        }
+      }
+    }
+    return urls;
+  }, [galleryCardViewMode, geometryGallerySections]);
+  useGalleryThumbPrefetch(geometryGalleryThumbUrls);
   const handleSelectGeometryGalleryCard = useCallback((cardId: string) => {
     const card = GEOMETRY_GALLERY_CARD_BY_ID.get(cardId);
     if (!card) return;
@@ -4630,12 +4663,12 @@ const App: React.FC = () => {
     });
   }, []);
   useEffect(() => {
-    if (!geometryGalleryVisibleCards.length) return;
-    if (geometryGalleryVisibleCards.some((card) => card.id === geometryGallerySelectedCardId)) return;
-    const fallback = geometryGalleryVisibleCards[0];
+    if (!sortedGeometryGalleryVisibleCards.length) return;
+    if (sortedGeometryGalleryVisibleCards.some((card) => card.id === geometryGallerySelectedCardId)) return;
+    const fallback = sortedGeometryGalleryVisibleCards[0];
     setGeometryGallerySelectedCardId(fallback.id);
     setGeometryGallerySelectedPresetId(null);
-  }, [geometryGallerySelectedCardId, geometryGalleryVisibleCards]);
+  }, [geometryGallerySelectedCardId, sortedGeometryGalleryVisibleCards]);
   useEffect(() => {
     if (!geometryGallerySelectedCard) return;
     if (!geometryGallerySelectedPresetId) return;
@@ -20999,6 +21032,8 @@ case "mobius":
               }}
               onRunGalleryDemo={handleRunSurfaceGalleryDemo}
               galleryDemoActive={surfacesCameraTourStatus === "playing"}
+              cardViewMode={galleryCardViewMode}
+              onChangeCardViewMode={setGalleryCardViewMode}
             />
           ) : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -23075,6 +23110,45 @@ case "mobius":
                           />
                           Demo-ready only
                         </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+                          Sort
+                          <select
+                            value={geometryGallerySortPreset}
+                            onChange={(e) => setGeometryGallerySortPreset(e.target.value as GallerySortPreset)}
+                            style={{ padding: "3px 6px", fontSize: 11 }}
+                          >
+                            {GALLERY_SORT_OPTIONS.map((option) => (
+                              <option key={`geometry-gallery-sort-${option.value}`} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
+                          {([
+                            { id: "rendered" as const, label: "Rendered" },
+                            { id: "diagram" as const, label: "Diagram" },
+                          ] as const).map((modeOption) => (
+                            <button
+                              key={`geometry-gallery-view-${modeOption.id}`}
+                              type="button"
+                              onClick={() => setGalleryCardViewMode(modeOption.id)}
+                              aria-pressed={galleryCardViewMode === modeOption.id}
+                              style={{
+                                border: "none",
+                                borderRight: modeOption.id === "rendered" ? "1px solid #cbd5e1" : "none",
+                                borderRadius: 0,
+                                padding: "3px 8px",
+                                fontSize: 10,
+                                boxShadow: "none",
+                                background: galleryCardViewMode === modeOption.id ? "#dbeafe" : "#fff",
+                                fontWeight: galleryCardViewMode === modeOption.id ? 700 : 500,
+                              }}
+                            >
+                              {modeOption.label}
+                            </button>
+                          ))}
+                        </div>
                         <div style={{ marginLeft: "auto", fontSize: 10, opacity: 0.72 }}>
                           {geometryGalleryVisibleCards.length} cards
                         </div>
@@ -23083,21 +23157,27 @@ case "mobius":
 
                     <div
                       data-testid="geometry-gallery"
+                      data-gallery-grid="true"
                       className="gallery-panel-scroll"
                     >
                       {geometryGallerySections.map((section) => (
-                        <div key={section.category.id} className="gallery-section">
+                        <div key={section.key} className="gallery-section">
                           <div className="gallery-section-header">
-                            <span>{section.category.label}</span>
+                            <span>{section.label}</span>
                             <span>{section.cards.length}</span>
                           </div>
                           <div className="gallery-card-grid">
                             {section.cards.map((card) => {
                               const selected = geometryGallerySelectedCard?.id === card.id;
                               const favorite = geometryGalleryFavoriteCardIds.has(card.id);
+                              const cardThumb = thumbByViewMode(
+                                card.renderedThumbnailDataUrl,
+                                card.diagramThumbnailDataUrl,
+                                galleryCardViewMode
+                              );
                               const secondaryLine = card.defaultRecipe?.type
                                 ? `${card.badge} · ${card.defaultRecipe.type}`
-                                : `${card.badge} · ${section.category.label}`;
+                                : `${card.badge} · ${section.label}`;
                               const summary = compactSummary(card.description, 72);
                               const chips = withPrimaryFirst(card.badge, [
                                 ...card.tags.slice(0, 2),
@@ -23111,7 +23191,33 @@ case "mobius":
                                   data-testid={`geometry-gallery-card-${card.id}`}
                                   onClick={() => handleSelectGeometryGalleryCard(card.id)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
+                                    if (e.key === "ArrowLeft") {
+                                      e.preventDefault();
+                                      focusGalleryCardNeighbor(e.currentTarget, "left");
+                                      return;
+                                    }
+                                    if (e.key === "ArrowRight") {
+                                      e.preventDefault();
+                                      focusGalleryCardNeighbor(e.currentTarget, "right");
+                                      return;
+                                    }
+                                    if (e.key === "ArrowUp") {
+                                      e.preventDefault();
+                                      focusGalleryCardNeighbor(e.currentTarget, "up");
+                                      return;
+                                    }
+                                    if (e.key === "ArrowDown") {
+                                      e.preventDefault();
+                                      focusGalleryCardNeighbor(e.currentTarget, "down");
+                                      return;
+                                    }
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleSelectGeometryGalleryCard(card.id);
+                                      if (card.supported) handleAddGeometryGalleryDefault(card);
+                                      return;
+                                    }
+                                    if (e.key === " ") {
                                       e.preventDefault();
                                       handleSelectGeometryGalleryCard(card.id);
                                     }
@@ -23127,9 +23233,11 @@ case "mobius":
                                 >
                                   <div className="gallery-scan-card-preview">
                                     <img
-                                      src={card.thumbnailDataUrl}
+                                      src={cardThumb}
                                       alt={`${card.name} card`}
                                       className="gallery-scan-card-preview-image"
+                                      loading="lazy"
+                                      decoding="async"
                                     />
                                     <button
                                       type="button"
@@ -23218,7 +23326,11 @@ case "mobius":
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Selected card</div>
                         <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
                           <img
-                            src={geometryGallerySelectedCard.thumbnailDataUrl}
+                            src={thumbByViewMode(
+                              geometryGallerySelectedCard.renderedThumbnailDataUrl,
+                              geometryGallerySelectedCard.diagramThumbnailDataUrl,
+                              galleryCardViewMode
+                            )}
                             alt={`${geometryGallerySelectedCard.name} selected`}
                             style={{
                               width: "100%",
@@ -23228,6 +23340,8 @@ case "mobius":
                               objectFit: "cover",
                               background: "#fff",
                             }}
+                            loading="lazy"
+                            decoding="async"
                           />
                           <div style={{ display: "grid", gap: 4 }}>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>{geometryGallerySelectedCard.name}</div>
@@ -23325,7 +23439,11 @@ case "mobius":
                                     }}
                                   >
                                     <img
-                                      src={presetDef.thumbnailDataUrl}
+                                      src={thumbByViewMode(
+                                        presetDef.renderedThumbnailDataUrl,
+                                        presetDef.diagramThumbnailDataUrl,
+                                        galleryCardViewMode
+                                      )}
                                       alt={`${presetDef.label} preset`}
                                       style={{
                                         width: 48,
@@ -23335,6 +23453,8 @@ case "mobius":
                                         objectFit: "cover",
                                         background: "#fff",
                                       }}
+                                      loading="lazy"
+                                      decoding="async"
                                     />
                                     <span style={{ display: "grid", gap: 2 }}>
                                       <span style={{ fontSize: 11, fontWeight: 700 }}>{presetDef.label}</span>
@@ -25387,10 +25507,18 @@ const CAPTURED_PRESET_THUMBS: Record<string, string> = {
 const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null =>
   CAPTURED_PRESET_THUMBS[`${kind}:${id}`] ?? null;
 
-const makePresetThumb = (id: string, label: string, subtitle: string, kind: PresetThumbKind): string => {
-  const captured = capturedPresetThumbPath(id, kind);
-  if (captured) return captured;
-  const key = `${id}|${label}|${subtitle}|${kind}`;
+const makePresetThumb = (
+  id: string,
+  label: string,
+  subtitle: string,
+  kind: PresetThumbKind,
+  viewMode: GalleryCardViewMode = "rendered"
+): string => {
+  if (viewMode === "rendered") {
+    const captured = capturedPresetThumbPath(id, kind);
+    if (captured) return captured;
+  }
+  const key = `${id}|${label}|${subtitle}|${kind}|${viewMode}`;
   const cached = PRESET_THUMB_CACHE.get(key);
   if (cached) return cached;
 
@@ -25444,6 +25572,156 @@ ${shape}
   const url = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
   PRESET_THUMB_CACHE.set(key, url);
   return url;
+};
+
+const GALLERY_SORT_OPTIONS: Array<{ value: GallerySortPreset; label: string }> = [
+  { value: "name", label: "Name" },
+  { value: "family", label: "Family" },
+  { value: "complexity", label: "Complexity" },
+  { value: "demoReady", label: "Demo-ready" },
+];
+
+const thumbByViewMode = (
+  renderedThumb: string,
+  diagramThumb: string,
+  viewMode: GalleryCardViewMode
+): string => (viewMode === "diagram" ? diagramThumb : renderedThumb);
+
+const geometryCardComplexityScore = (card: GeometryGalleryCard): number => {
+  let score = 2;
+  if (card.badge === "Primitive") score += 0;
+  else if (card.badge === "Polyhedron") score += 1;
+  else if (card.badge === "Curve") score += 2;
+  else if (card.badge === "Surface") score += 3;
+  else score += 1;
+  if (!card.supported) score += 3;
+  if (!card.demoReady) score += 1;
+  if (card.tags.some((tag) => /advanced|custom|special/i.test(tag))) score += 1;
+  return score;
+};
+
+const compareGeometryCards = (a: GeometryGalleryCard, b: GeometryGalleryCard, sort: GallerySortPreset): number => {
+  if (sort === "name") return a.name.localeCompare(b.name);
+  if (sort === "complexity") {
+    const c = geometryCardComplexityScore(a) - geometryCardComplexityScore(b);
+    return c !== 0 ? c : a.name.localeCompare(b.name);
+  }
+  if (sort === "demoReady") {
+    const d = Number(b.demoReady) - Number(a.demoReady);
+    return d !== 0 ? d : a.name.localeCompare(b.name);
+  }
+  return a.name.localeCompare(b.name);
+};
+
+const sortGeometryCards = (cards: GeometryGalleryCard[], sort: GallerySortPreset): GeometryGalleryCard[] =>
+  [...cards].sort((a, b) => compareGeometryCards(a, b, sort));
+
+const surfacePresetComplexityScore = (id: string, note?: string): number => {
+  let score = 2;
+  const lower = id.toLowerCase();
+  if (lower.includes("custom")) score += 3;
+  if (lower.includes("weier") || lower.includes("enneper") || lower.includes("gyroid")) score += 2;
+  if (lower.includes("spline")) score += 1;
+  if ((note ?? "").length > 68) score += 1;
+  return score;
+};
+
+const compareSurfaceEntries = (
+  a: { id: string; label: string; note?: string; demoReady?: boolean },
+  b: { id: string; label: string; note?: string; demoReady?: boolean },
+  sort: GallerySortPreset
+): number => {
+  if (sort === "name") return a.label.localeCompare(b.label);
+  if (sort === "complexity") {
+    const c = surfacePresetComplexityScore(a.id, a.note) - surfacePresetComplexityScore(b.id, b.note);
+    return c !== 0 ? c : a.label.localeCompare(b.label);
+  }
+  if (sort === "demoReady") {
+    const d = Number(Boolean(b.demoReady)) - Number(Boolean(a.demoReady));
+    return d !== 0 ? d : a.label.localeCompare(b.label);
+  }
+  return a.label.localeCompare(b.label);
+};
+
+const gridColumnsForCards = (cards: HTMLElement[]): number => {
+  if (cards.length <= 1) return 1;
+  const firstTop = cards[0].offsetTop;
+  let columns = 0;
+  for (const card of cards) {
+    if (card.offsetTop !== firstTop) break;
+    columns += 1;
+  }
+  return Math.max(1, columns || cards.length);
+};
+
+const focusGalleryCardNeighbor = (current: HTMLElement, direction: "left" | "right" | "up" | "down"): void => {
+  const container =
+    current.closest<HTMLElement>("[data-gallery-grid='true']") ??
+    current.closest<HTMLElement>("[data-testid='geometry-gallery']");
+  if (!container) return;
+  const cards = Array.from(
+    container.querySelectorAll<HTMLElement>(
+      ".gallery-scan-card, [data-testid^='surface-gallery-card-'], [data-testid^='geometry-gallery-card-']"
+    )
+  )
+    .filter((el) => el.offsetParent !== null)
+    .filter((el) => !el.hasAttribute("disabled"));
+  const index = cards.indexOf(current);
+  if (index < 0 || !cards.length) return;
+  const columns = gridColumnsForCards(cards);
+  const delta = direction === "left" ? -1 : direction === "right" ? 1 : direction === "up" ? -columns : columns;
+  const targetIndex = Math.max(0, Math.min(cards.length - 1, index + delta));
+  cards[targetIndex]?.focus();
+};
+
+const useGalleryThumbPrefetch = (urls: string[]) => {
+  const uniqueUrls = useMemo(() => Array.from(new Set(urls.filter(Boolean))), [urls]);
+  useEffect(() => {
+    if (!uniqueUrls.length) return;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: IdleRequestCallback) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let disposed = false;
+    let index = 0;
+    const scheduled = new Set<number>();
+    const batchSize = 5;
+
+    const schedule = (cb: () => void) => {
+      if (typeof win.requestIdleCallback === "function") {
+        const id = win.requestIdleCallback(() => cb());
+        scheduled.add(id);
+      } else {
+        const id = window.setTimeout(cb, 32);
+        scheduled.add(id);
+      }
+    };
+
+    const runBatch = () => {
+      if (disposed) return;
+      const batch = uniqueUrls.slice(index, index + batchSize);
+      index += batchSize;
+      for (const url of batch) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = url;
+        if (typeof img.decode === "function") {
+          void img.decode().catch(() => undefined);
+        }
+      }
+      if (index < uniqueUrls.length) schedule(runBatch);
+    };
+
+    schedule(runBatch);
+    return () => {
+      disposed = true;
+      for (const id of scheduled) {
+        if (typeof win.cancelIdleCallback === "function") win.cancelIdleCallback(id);
+        else window.clearTimeout(id);
+      }
+      scheduled.clear();
+    };
+  }, [uniqueUrls]);
 };
 
 const compactSummary = (value: string, maxLen = 74): string => {
@@ -25668,6 +25946,8 @@ type SurfacesControlsProps = {
   onEditRotationalProfile?: () => void;
   onRunGalleryDemo: (cardId: SurfaceGalleryCard["id"]) => void;
   galleryDemoActive: boolean;
+  cardViewMode: GalleryCardViewMode;
+  onChangeCardViewMode: (mode: GalleryCardViewMode) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -25707,6 +25987,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   onEditRotationalProfile = () => {},
   onRunGalleryDemo,
   galleryDemoActive,
+  cardViewMode,
+  onChangeCardViewMode,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -25755,6 +26037,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
   const [showExtendedFamilies, setShowExtendedFamilies] = useState(false);
+  const [surfaceCardSortPreset, setSurfaceCardSortPreset] = useState<GallerySortPreset>("family");
   const compactForPresent = displayMode === "present";
   const compareUiEnabled = displayMode !== "present";
   const compareActive = compareUiEnabled && compareEnabled;
@@ -25796,6 +26079,54 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     viewerKind === "implicit" || viewerKind === "graph" ? SURFACES_EQ_META_BY_ID.get(surfaceId) ?? null : null;
   const activeParamMeta = viewerKind === "param" ? PARAM_SURFACES_META.find((entry) => entry.id === paramId) ?? null : null;
   const activeWeierstrassInfo = viewerKind === "weierstrass" ? activeWeierstrassPreset ?? WEIERSTRASS_PRESETS[0] ?? null : null;
+  const sortedImplicitSurfaces = useMemo(() => {
+    if (surfaceCardSortPreset === "family") return implicitSurfaces;
+    return [...implicitSurfaces].sort((a, b) =>
+      compareSurfaceEntries(
+        { id: a.id, label: a.label, note: SURFACES_EQ_META_BY_ID.get(a.id)?.note, demoReady: !a.id.includes("custom") },
+        { id: b.id, label: b.label, note: SURFACES_EQ_META_BY_ID.get(b.id)?.note, demoReady: !b.id.includes("custom") },
+        surfaceCardSortPreset
+      )
+    );
+  }, [implicitSurfaces, surfaceCardSortPreset]);
+  const sortedGraphSurfaces = useMemo(() => {
+    if (surfaceCardSortPreset === "family") return graphSurfaces;
+    return [...graphSurfaces].sort((a, b) =>
+      compareSurfaceEntries(
+        { id: a.id, label: a.label, note: SURFACES_EQ_META_BY_ID.get(a.id)?.note, demoReady: !a.id.includes("custom") },
+        { id: b.id, label: b.label, note: SURFACES_EQ_META_BY_ID.get(b.id)?.note, demoReady: !b.id.includes("custom") },
+        surfaceCardSortPreset
+      )
+    );
+  }, [graphSurfaces, surfaceCardSortPreset]);
+  const sortedWeierstrassPresets = useMemo(() => {
+    if (surfaceCardSortPreset === "family") return WEIERSTRASS_PRESETS;
+    return [...WEIERSTRASS_PRESETS].sort((a, b) =>
+      compareSurfaceEntries(
+        { id: a.id, label: a.label, note: a.safeDomainReason, demoReady: true },
+        { id: b.id, label: b.label, note: b.safeDomainReason, demoReady: true },
+        surfaceCardSortPreset
+      )
+    );
+  }, [surfaceCardSortPreset]);
+  const surfacePresetThumbUrls = useMemo(() => {
+    const urls: string[] = [];
+    const appendEq = (entry: { id: SurfaceId; label: string }) => {
+      const meta = SURFACES_EQ_META_BY_ID.get(entry.id);
+      urls.push(makePresetThumb(entry.id, entry.label, meta?.formula ?? "", isGraphSurface(entry.id) ? "graph" : "implicit", cardViewMode));
+    };
+    if (viewerKind === "implicit") {
+      sortedImplicitSurfaces.forEach(appendEq);
+    } else if (viewerKind === "graph") {
+      sortedGraphSurfaces.forEach(appendEq);
+    } else if (viewerKind === "weierstrass") {
+      for (const preset of sortedWeierstrassPresets) {
+        urls.push(makePresetThumb(`w-${preset.id}`, preset.label, `g=${preset.gExpr}`, "weierstrass", cardViewMode));
+      }
+    }
+    return urls;
+  }, [cardViewMode, sortedGraphSurfaces, sortedImplicitSurfaces, sortedWeierstrassPresets, viewerKind]);
+  useGalleryThumbPrefetch(surfacePresetThumbUrls);
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -25839,14 +26170,37 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {showSurfaceGallery && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Surface gallery</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", gap: 10 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", gap: 10 }}
+            data-gallery-grid="true"
+          >
             {SURFACE_GALLERY_CARDS.map((card) => {
               const active = surfaceGallerySelectedId === card.id;
               return (
                 <article
                   key={card.id}
+                  role="button"
+                  tabIndex={0}
                   data-testid={`surface-gallery-card-${card.id}`}
                   onClick={() => openSurfaceGalleryCard(card.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "left");
+                    } else if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "right");
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "up");
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "down");
+                    } else if (e.key === "Enter") {
+                      e.preventDefault();
+                      openSurfaceGalleryCard(card.id);
+                    }
+                  }}
                   style={{
                     borderRadius: 12,
                     border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
@@ -25861,6 +26215,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   <img
                     src={card.thumbDataUrl}
                     alt={`${card.title} card`}
+                    loading="lazy"
+                    decoding="async"
                     style={{
                       width: "100%",
                       height: Math.max(96, galleryPreviewHeight + 32),
@@ -26101,8 +26457,51 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {datasetKind !== "volume" && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Preset gallery</div>
-          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
-            Choose subtype, then choose a preset.
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+              Choose subtype, then choose a preset.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+                Sort
+                <select
+                  value={surfaceCardSortPreset}
+                  onChange={(e) => setSurfaceCardSortPreset(e.target.value as GallerySortPreset)}
+                  style={{ padding: "3px 6px", fontSize: 11 }}
+                >
+                  {GALLERY_SORT_OPTIONS.map((option) => (
+                    <option key={`surface-gallery-sort-${option.value}`} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
+                {([
+                  { id: "rendered" as const, label: "Rendered" },
+                  { id: "diagram" as const, label: "Diagram" },
+                ] as const).map((modeOption) => (
+                  <button
+                    key={`surface-gallery-view-${modeOption.id}`}
+                    type="button"
+                    onClick={() => onChangeCardViewMode(modeOption.id)}
+                    aria-pressed={cardViewMode === modeOption.id}
+                    style={{
+                      border: "none",
+                      borderRight: modeOption.id === "rendered" ? "1px solid #cbd5e1" : "none",
+                      borderRadius: 0,
+                      padding: "3px 8px",
+                      fontSize: 10,
+                      boxShadow: "none",
+                      background: cardViewMode === modeOption.id ? "#dbeafe" : "#fff",
+                      fontWeight: cardViewMode === modeOption.id ? 700 : 500,
+                    }}
+                  >
+                    {modeOption.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div
             style={{
@@ -26116,17 +26515,21 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               {viewerKind === "implicit" && (
                 <SurfacesButtons
                   surfaceId={surfaceId}
-                  surfaces={implicitSurfaces}
+                  surfaces={sortedImplicitSurfaces}
                   onChangeSurface={onChangeSurface}
                   presetLayout="cards"
+                  sortPreset={surfaceCardSortPreset}
+                  cardViewMode={cardViewMode}
                 />
               )}
               {viewerKind === "graph" && (
                 <SurfacesButtons
                   surfaceId={surfaceId}
-                  surfaces={graphSurfaces}
+                  surfaces={sortedGraphSurfaces}
                   onChangeSurface={onChangeSurface}
                   presetLayout="cards"
+                  sortPreset={surfaceCardSortPreset}
+                  cardViewMode={cardViewMode}
                 />
               )}
               {viewerKind === "param" && (
@@ -26144,6 +26547,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   onEditRotationalProfile={onEditRotationalProfile}
                   showSourceKindTabs={false}
                   presetLayout="cards"
+                  sortPreset={surfaceCardSortPreset}
+                  cardViewMode={cardViewMode}
                 />
               )}
               {viewerKind === "weierstrass" && (
@@ -26151,14 +26556,15 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
                     Presets avoid singularities on boundaries; adjust domains carefully near poles.
                   </div>
-                  <div className="surface-card-grid" data-testid="weierstrass-preset-grid">
-                    {WEIERSTRASS_PRESETS.map((p) => {
+                  <div className="surface-card-grid" data-testid="weierstrass-preset-grid" data-gallery-grid="true">
+                    {sortedWeierstrassPresets.map((p) => {
                       const active = activeWeierstrassPreset?.id === p.id;
                       const thumb = makePresetThumb(
                         `w-${p.id}`,
                         p.label,
                         `g=${p.gExpr}`,
-                        "weierstrass"
+                        "weierstrass",
+                        cardViewMode
                       );
                       const chips = chipsForWeierstrassPreset(p.id);
                       const summary = compactSummary(p.safeDomainReason ?? "Minimal surface from Weierstrass data.");
@@ -26168,11 +26574,32 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           type="button"
                           data-testid={`weierstrass-preset-card-${p.id}`}
                           onClick={() => onApplyWeierstrassPreset(p)}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "left");
+                            } else if (e.key === "ArrowRight") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "right");
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "up");
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "down");
+                            }
+                          }}
                           className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
                           title={`${p.label}\n${p.safeDomainReason}`}
                         >
                           <div className="gallery-scan-card-preview">
-                            <img src={thumb} alt={`${p.label} preset`} className="gallery-scan-card-preview-image" />
+                            <img
+                              src={thumb}
+                              alt={`${p.label} preset`}
+                              className="gallery-scan-card-preview-image"
+                              loading="lazy"
+                              decoding="async"
+                            />
                             <span className="gallery-scan-card-inline-action">Open</span>
                           </div>
                           <div className="gallery-scan-card-meta">
@@ -26224,7 +26651,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                       surfaceId,
                       activeSurfaceMeta.label,
                       activeSurfaceMeta.formula,
-                      viewerKind === "graph" ? "graph" : "implicit"
+                      viewerKind === "graph" ? "graph" : "implicit",
+                      cardViewMode
                     )}
                     alt={`${activeSurfaceMeta.label} selected`}
                     style={{
@@ -26258,7 +26686,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                               : "parametric";
                     return (
                       <img
-                        src={makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind)}
+                        src={makePresetThumb(
+                          activeParamMeta.id,
+                          activeParamMeta.label,
+                          activeParamMeta.formula,
+                          kind,
+                          cardViewMode
+                        )}
                         alt={`${activeParamMeta.label} selected`}
                         style={{
                           width: "100%",
@@ -26297,7 +26731,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                       `w-${activeWeierstrassInfo.id}`,
                       activeWeierstrassInfo.label,
                       `g=${activeWeierstrassInfo.gExpr}`,
-                      "weierstrass"
+                      "weierstrass",
+                      cardViewMode
                     )}
                     alt={`${activeWeierstrassInfo.label} selected`}
                     style={{
@@ -26388,12 +26823,20 @@ type SurfacesButtonsProps = {
   surfaces: { id: SurfaceId; label: string }[];
   onChangeSurface: (s: SurfaceId) => void;
   presetLayout?: "chips" | "cards";
+  sortPreset?: GallerySortPreset;
+  cardViewMode?: GalleryCardViewMode;
 };
 
-const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, onChangeSurface, presetLayout = "chips" }) => {
+const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
+  surfaceId,
+  surfaces,
+  onChangeSurface,
+  presetLayout = "chips",
+  cardViewMode = "rendered",
+}) => {
   if (presetLayout === "cards") {
     return (
-      <div className="surface-card-grid" data-testid="surface-preset-grid">
+      <div className="surface-card-grid" data-testid="surface-preset-grid" data-gallery-grid="true">
         {surfaces.map((s) => {
           const meta = SURFACES_EQ_META_BY_ID.get(s.id);
           const active = surfaceId === s.id;
@@ -26402,7 +26845,8 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, 
             s.id,
             s.label,
             meta?.formula ?? "",
-            isGraphSurface(s.id) ? "graph" : "implicit"
+            isGraphSurface(s.id) ? "graph" : "implicit",
+            cardViewMode
           );
           const summary = compactSummary(meta?.note ?? "");
           const chips = chipsForEqSurface(s.id);
@@ -26412,11 +26856,32 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({ surfaceId, surfaces, 
               type="button"
               data-testid={`surface-preset-card-${s.id}`}
               onClick={() => onChangeSurface(s.id)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  focusGalleryCardNeighbor(e.currentTarget, "left");
+                } else if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  focusGalleryCardNeighbor(e.currentTarget, "right");
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  focusGalleryCardNeighbor(e.currentTarget, "up");
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  focusGalleryCardNeighbor(e.currentTarget, "down");
+                }
+              }}
               className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
               title={meta?.note}
             >
               <div className="gallery-scan-card-preview">
-                <img src={thumb} alt={`${s.label} preset`} className="gallery-scan-card-preview-image" />
+                <img
+                  src={thumb}
+                  alt={`${s.label} preset`}
+                  className="gallery-scan-card-preview-image"
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span className="gallery-scan-card-inline-action">Open</span>
               </div>
               <div className="gallery-scan-card-meta">
@@ -26491,6 +26956,8 @@ type ParamSurfacesButtonsProps = {
   showProfileEditor?: boolean;
   showSourceKindTabs?: boolean;
   presetLayout?: "chips" | "cards";
+  sortPreset?: GallerySortPreset;
+  cardViewMode?: GalleryCardViewMode;
 };
 
 const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
@@ -26508,6 +26975,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   showProfileEditor = false,
   showSourceKindTabs = true,
   presetLayout = "chips",
+  sortPreset = "family",
+  cardViewMode = "rendered",
 }) => {
   const [sourceKind, setSourceKind] = useState<ParamSurfaceSourceKind>(paramSurfaceSourceKindFor(paramId));
   const [constructedSubtype, setConstructedSubtype] = useState<ConstructedParamSubtype>(constructedParamSubtypeFor(paramId));
@@ -26543,6 +27012,49 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
     }
     return PARAM_SURFACES_META.filter((s) => !isConstructedParamSurfaceId(s.id) && !isSplineParamSurfaceId(s.id));
   }, [sourceKind, constructedSubtype, rotationalFamilyFilter]);
+  const sortedEntries = useMemo(() => {
+    if (sortPreset === "family") return entries;
+    return [...entries].sort((a, b) =>
+      compareSurfaceEntries(
+        { id: a.id, label: a.label, note: a.note, demoReady: !a.id.includes("custom") },
+        { id: b.id, label: b.label, note: b.note, demoReady: !b.id.includes("custom") },
+        sortPreset
+      )
+    );
+  }, [entries, sortPreset]);
+  const paramThumbUrls = useMemo(
+    () =>
+      sortedEntries.map((entry) => {
+        const sourceTag = isSplineParamSurfaceId(entry.id)
+          ? "spline"
+          : isSweepParamSurfaceId(entry.id)
+            ? "sweep"
+            : isTubeParamSurfaceId(entry.id)
+              ? "tube"
+              : isRuledParamSurfaceId(entry.id)
+                ? "ruled"
+                : isRotationalParamSurfaceId(entry.id)
+                  ? "rotational"
+                  : "param";
+        const thumbKind: PresetThumbKind =
+          sourceTag === "spline"
+            ? "spline"
+            : sourceTag === "sweep"
+              ? "sweep"
+              : sourceTag === "tube"
+                ? "tube"
+                : sourceTag === "ruled"
+                  ? "ruled"
+                  : sourceTag === "rotational"
+                    ? "rotational"
+                    : sourceTag === "param"
+                      ? "parametric"
+                      : "constructed";
+        return makePresetThumb(entry.id, entry.label, entry.formula, thumbKind, cardViewMode);
+      }),
+    [cardViewMode, sortedEntries]
+  );
+  useGalleryThumbPrefetch(paramThumbUrls);
   const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
   const showRotationalProfileEditorInline =
     showProfileEditor &&
@@ -26717,8 +27229,8 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
         </div>
       )}
       {presetLayout === "cards" ? (
-        <div className="surface-card-grid" data-testid="param-preset-grid">
-          {entries.map((s) => {
+        <div className="surface-card-grid" data-testid="param-preset-grid" data-gallery-grid="true">
+          {sortedEntries.map((s) => {
             const active = paramId === s.id;
             const formulaLine = formulaForParamSurface(s.id, s.formula);
             const sourceTag = isSplineParamSurfaceId(s.id)
@@ -26743,10 +27255,9 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                       ? "ruled"
                       : sourceTag === "rotational"
                         ? "rotational"
-                : sourceTag === "param"
-                  ? "parametric"
-                  : "constructed";
-            const thumb = makePresetThumb(s.id, s.label, s.formula, thumbKind);
+                        : sourceTag === "param"
+                          ? "parametric"
+                          : "constructed";
             const chips = chipsForParamSurface(s.id, sourceTag);
             const summary = compactSummary(s.note);
             return (
@@ -26755,11 +27266,32 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 type="button"
                 data-testid={`param-preset-card-${s.id}`}
                 onClick={() => onChangeParamId(s.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    focusGalleryCardNeighbor(e.currentTarget, "left");
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    focusGalleryCardNeighbor(e.currentTarget, "right");
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    focusGalleryCardNeighbor(e.currentTarget, "up");
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    focusGalleryCardNeighbor(e.currentTarget, "down");
+                  }
+                }}
                 className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
                 title={s.note}
               >
                 <div className="gallery-scan-card-preview">
-                  <img src={thumb} alt={`${s.label} preset`} className="gallery-scan-card-preview-image" />
+                  <img
+                    src={makePresetThumb(s.id, s.label, s.formula, thumbKind, cardViewMode)}
+                    alt={`${s.label} preset`}
+                    className="gallery-scan-card-preview-image"
+                    loading="lazy"
+                    decoding="async"
+                  />
                   <span className="gallery-scan-card-inline-action">Open</span>
                 </div>
                 <div className="gallery-scan-card-meta">
