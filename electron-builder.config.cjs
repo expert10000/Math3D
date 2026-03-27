@@ -19,6 +19,7 @@ const config = {
     "dist/**/*",
     "package.json",
     "renderer/dist/**/*",
+    "gallery-images/**/*",
     "python/**/*",
     "py/**/*",
   ],

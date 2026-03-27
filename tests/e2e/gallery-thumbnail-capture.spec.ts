@@ -87,9 +87,36 @@ const settleRenderer = async (page: Page): Promise<void> => {
   );
 };
 
+const prepareSurfaceCaptureUi = async (page: Page): Promise<void> => {
+  const surfaceParamOverlay = page.locator('[aria-label="Surface parameter overlay"]');
+  if ((await surfaceParamOverlay.count()) > 0 && (await surfaceParamOverlay.first().isVisible())) {
+    const closeButton = surfaceParamOverlay.first().getByRole("button", { name: "Close", exact: true });
+    if (await closeButton.isVisible()) {
+      await closeButton.click();
+    }
+  }
+
+  await page.evaluate(() => {
+    const styleId = "math3d-thumb-capture-clean-ui";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      [data-testid="app-status-bar"] { display: none !important; }
+      [aria-label="Surface parameter overlay"] { display: none !important; }
+      div:has(> [data-testid="surface-viewer-canvas-host"]) > :not([data-testid="surface-viewer-canvas-host"]) {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  });
+  await page.waitForTimeout(120);
+};
+
 const captureScene = async (page: Page, outPath: string): Promise<void> => {
   const host = page.getByTestId("surface-viewer-canvas-host").first();
   await expect(host).toBeVisible();
+  await prepareSurfaceCaptureUi(page);
   await settleRenderer(page);
   mkdirSync(path.dirname(outPath), { recursive: true });
   await host.screenshot({ path: outPath });

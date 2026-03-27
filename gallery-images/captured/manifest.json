@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-27T01:01:22.277Z",
+  "generatedAt": "2026-03-27T17:20:27.578Z",
   "outputRoot": "gallery-images/captured",
   "objects": [
     {
@@ -178,39 +178,74 @@
       "file": "gallery-images/captured/surfaces/implicit/implicit_custom.png"
     },
     {
-      "id": "rotationalDevelopable",
+      "id": "catenoid",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/rotationalDevelopable.png"
+      "file": "gallery-images/captured/surfaces/parametric/catenoid.png"
     },
     {
-      "id": "rotationalGraph",
+      "id": "sphere",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/rotationalGraph.png"
+      "file": "gallery-images/captured/surfaces/parametric/sphere.png"
     },
     {
-      "id": "rotationalBell",
+      "id": "ellipsoid",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/rotationalBell.png"
+      "file": "gallery-images/captured/surfaces/parametric/ellipsoid.png"
     },
     {
-      "id": "rotationalSpheroid",
+      "id": "paraboloid",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/rotationalSpheroid.png"
+      "file": "gallery-images/captured/surfaces/parametric/paraboloid.png"
     },
     {
-      "id": "rotationalHyperboloid",
+      "id": "pseudosphere",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/rotationalHyperboloid.png"
+      "file": "gallery-images/captured/surfaces/parametric/pseudosphere.png"
     },
     {
-      "id": "cylinder",
+      "id": "dini",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/cylinder.png"
+      "file": "gallery-images/captured/surfaces/parametric/dini.png"
     },
     {
-      "id": "cone",
+      "id": "twistedStrip",
       "family": "parametric",
-      "file": "gallery-images/captured/surfaces/parametric/cone.png"
+      "file": "gallery-images/captured/surfaces/parametric/twistedStrip.png"
+    },
+    {
+      "id": "torus",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/torus.png"
+    },
+    {
+      "id": "mobius",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/mobius.png"
+    },
+    {
+      "id": "kleinBottle",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/kleinBottle.png"
+    },
+    {
+      "id": "enneper",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/enneper.png"
+    },
+    {
+      "id": "expCone",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/expCone.png"
+    },
+    {
+      "id": "boy",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/boy.png"
+    },
+    {
+      "id": "custom",
+      "family": "parametric",
+      "file": "gallery-images/captured/surfaces/parametric/custom.png"
     },
     {
       "id": "bezierSurface",
@@ -261,18 +296,6 @@
       "family": "constructed",
       "subtype": "rotational",
       "file": "gallery-images/captured/surfaces/constructed/rotational/rotationalHyperboloid.png"
-    },
-    {
-      "id": "cylinder",
-      "family": "constructed",
-      "subtype": "rotational",
-      "file": "gallery-images/captured/surfaces/constructed/rotational/cylinder.png"
-    },
-    {
-      "id": "cone",
-      "family": "constructed",
-      "subtype": "rotational",
-      "file": "gallery-images/captured/surfaces/constructed/rotational/cone.png"
     },
     {
       "id": "sweepLinearExtrusion",

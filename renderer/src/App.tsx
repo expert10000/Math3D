@@ -2368,6 +2368,15 @@ const ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
 ]);
 
 const isRotationalParamSurfaceId = (id: ParamSurfaceId): boolean => ROTATIONAL_PARAM_SURFACE_IDS.has(id);
+const CONSTRUCTED_ROTATIONAL_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
+  "rotationalDevelopable",
+  "rotationalGraph",
+  "rotationalBell",
+  "rotationalSpheroid",
+  "rotationalHyperboloid",
+]);
+const isConstructedRotationalParamSurfaceId = (id: ParamSurfaceId): boolean =>
+  CONSTRUCTED_ROTATIONAL_PARAM_SURFACE_IDS.has(id);
 const SWEEP_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
   "sweepLinearExtrusion",
   "sweepDirectional",
@@ -2402,7 +2411,7 @@ const SPLINE_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
 ]);
 const isSplineParamSurfaceId = (id: ParamSurfaceId): boolean => SPLINE_PARAM_SURFACE_IDS.has(id);
 const CONSTRUCTED_PARAM_SURFACE_IDS = new Set<ParamSurfaceId>([
-  ...ROTATIONAL_PARAM_SURFACE_IDS,
+  ...CONSTRUCTED_ROTATIONAL_PARAM_SURFACE_IDS,
   ...SWEEP_PARAM_SURFACE_IDS,
   ...TUBE_PARAM_SURFACE_IDS,
   ...RULED_PARAM_SURFACE_IDS,
@@ -25523,13 +25532,27 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
     "implicit_custom",
   ]),
   parametric: new Set([
+    "boy",
+    "catenoid",
+    "cone",
+    "custom",
+    "cylinder",
+    "dini",
+    "ellipsoid",
+    "enneper",
+    "expCone",
+    "kleinBottle",
+    "mobius",
+    "paraboloid",
+    "pseudosphere",
     "rotationalDevelopable",
     "rotationalGraph",
     "rotationalBell",
     "rotationalSpheroid",
     "rotationalHyperboloid",
-    "cylinder",
-    "cone",
+    "sphere",
+    "torus",
+    "twistedStrip",
   ]),
   spline: new Set(["bezierSurface", "bSplineSurface", "nurbsSurface", "rotationalFreeProfile"]),
   rotational: new Set([
@@ -26856,17 +26879,18 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               {viewerKind === "param" && activeParamMeta && (
                 <>
                   {(() => {
-                    const kind: PresetThumbKind = isSplineParamSurfaceId(activeParamMeta.id)
-                      ? "spline"
-                      : isSweepParamSurfaceId(activeParamMeta.id)
-                        ? "sweep"
-                        : isTubeParamSurfaceId(activeParamMeta.id)
-                          ? "tube"
-                          : isRuledParamSurfaceId(activeParamMeta.id)
-                            ? "ruled"
-                            : isRotationalParamSurfaceId(activeParamMeta.id)
-                              ? "rotational"
-                              : "parametric";
+                    const kind: PresetThumbKind =
+                      paramSourceKind === "spline"
+                        ? "spline"
+                        : paramSourceKind === "constructed"
+                          ? constructedSubtype === "sweep"
+                            ? "sweep"
+                            : constructedSubtype === "tube"
+                              ? "tube"
+                              : constructedSubtype === "ruled"
+                                ? "ruled"
+                                : "rotational"
+                          : "parametric";
                     return (
                       <img
                         src={makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind, cardViewMode)}
@@ -27200,7 +27224,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
     if (sourceKind === "constructed") {
       if (constructedSubtype === "rotational") {
         const rotationalEntries = PARAM_SURFACES_META.filter(
-          (s) => isRotationalParamSurfaceId(s.id) && !isSplineParamSurfaceId(s.id)
+          (s) => isConstructedRotationalParamSurfaceId(s.id) && !isSplineParamSurfaceId(s.id)
         );
         if (rotationalFamilyFilter === "all") return rotationalEntries;
         return rotationalEntries.filter((s) => rotationalProfileFamilyFor(s.id) === rotationalFamilyFilter);
@@ -27228,17 +27252,18 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   const paramThumbUrls = useMemo(
     () =>
       sortedEntries.map((entry) => {
-        const sourceTag = isSplineParamSurfaceId(entry.id)
-          ? "spline"
-          : isSweepParamSurfaceId(entry.id)
-            ? "sweep"
-            : isTubeParamSurfaceId(entry.id)
-              ? "tube"
-              : isRuledParamSurfaceId(entry.id)
-                ? "ruled"
-                : isRotationalParamSurfaceId(entry.id)
-                  ? "rotational"
-                  : "param";
+        const sourceTag =
+          sourceKind === "spline"
+            ? "spline"
+            : sourceKind === "constructed"
+              ? constructedSubtype === "sweep"
+                ? "sweep"
+                : constructedSubtype === "tube"
+                  ? "tube"
+                  : constructedSubtype === "ruled"
+                    ? "ruled"
+                    : "rotational"
+              : "parametric";
         const thumbKind: PresetThumbKind =
           sourceTag === "spline"
             ? "spline"
@@ -27250,7 +27275,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                   ? "ruled"
                   : sourceTag === "rotational"
                     ? "rotational"
-                    : sourceTag === "param"
+                    : sourceTag === "parametric"
                       ? "parametric"
                       : "constructed";
         return makePresetThumb(entry.id, entry.label, entry.formula, thumbKind, cardViewMode);
@@ -27279,7 +27304,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
   const ensureConstructedSubtype = (next: ConstructedParamSubtype) => {
     setConstructedSubtype(next);
     if (next === "rotational") {
-      if (!isRotationalParamSurfaceId(paramId) || isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+      if (!isConstructedRotationalParamSurfaceId(paramId) || isSplineParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
       return;
     }
     if (next === "sweep") {
@@ -27436,17 +27461,18 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
           {sortedEntries.map((s) => {
             const active = paramId === s.id;
             const formulaLine = formulaForParamSurface(s.id, s.formula);
-            const sourceTag = isSplineParamSurfaceId(s.id)
-              ? "spline"
-              : isSweepParamSurfaceId(s.id)
-                ? "sweep"
-                : isTubeParamSurfaceId(s.id)
-                  ? "tube"
-                  : isRuledParamSurfaceId(s.id)
-                    ? "ruled"
-                    : isRotationalParamSurfaceId(s.id)
-                      ? "rotational"
-                      : "param";
+            const sourceTag =
+              sourceKind === "spline"
+                ? "spline"
+                : sourceKind === "constructed"
+                  ? constructedSubtype === "sweep"
+                    ? "sweep"
+                    : constructedSubtype === "tube"
+                      ? "tube"
+                      : constructedSubtype === "ruled"
+                        ? "ruled"
+                        : "rotational"
+                  : "parametric";
             const thumbKind: PresetThumbKind =
               sourceTag === "spline"
                 ? "spline"
@@ -27458,7 +27484,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                       ? "ruled"
                       : sourceTag === "rotational"
                         ? "rotational"
-                        : sourceTag === "param"
+                        : sourceTag === "parametric"
                           ? "parametric"
                           : "constructed";
             const thumb = makePresetThumb(s.id, s.label, s.formula, thumbKind, cardViewMode);

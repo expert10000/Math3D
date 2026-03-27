@@ -357,6 +357,7 @@ type Props = {
   gaussMapEnabled?: boolean;
   onToggleGaussMap?: () => void;
   showOverlayControls?: boolean;
+  showViewGizmo?: boolean;
   onGaussPoints?: (points: GaussPoint[]) => void;
   gaussHighlightPoint?: { x: number; y: number; z: number } | null;
   sampleMaxPoints?: number;
@@ -1467,6 +1468,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     gaussMapEnabled = false,
     onToggleGaussMap,
     showOverlayControls = true,
+    showViewGizmo = true,
     onGaussPoints,
     gaussHighlightPoint = null,
     sampleMaxPoints = 900,
@@ -6486,7 +6488,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         </>
       )}
 
-      {showOverlayControls && (
+      {showOverlayControls && showViewGizmo && (
         <div
           style={{
             position: "absolute",
