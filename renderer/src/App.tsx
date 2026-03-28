@@ -9823,6 +9823,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(320);
   const minRight = 240;
   const maxRight = 640;
+  const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2">("layout1");
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
@@ -9841,6 +9842,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
     prevModeRef.current = mode;
   }, [mode]);
+  useEffect(() => {
+    if (mode !== "surfaces") return;
+    if (surfacesLayoutVariant !== "layout2") return;
+    if (surfacesPanelState !== "work") setSurfacesPanelState("work");
+    if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
+  }, [mode, surfacesLayoutVariant, surfacesPanelState, surfacesLeftTab]);
 
   useEffect(() => {
     if (mode !== "surfaces") return;
@@ -21043,11 +21050,106 @@ case "mobius":
           </div>
         </div>
 
-        <div style={mode === "surfaces" ? { display: "none" } : styles.controls}>
+        <div style={styles.controls}>
           {mode === "maps" ? (
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
           ) : mode === "surfaces" ? (
-            null
+            <>
+              <div style={{ ...styles.group, ...styles.groupWide, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Surfaces layout</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfacesLayoutVariant("layout1");
+                    setSurfacesPanelState("browse");
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (surfacesLayoutVariant === "layout1" ? "#0a66c2" : "#d1d5db"),
+                    background: surfacesLayoutVariant === "layout1" ? "#e6f0ff" : "#fff",
+                    fontWeight: surfacesLayoutVariant === "layout1" ? 700 : 550,
+                  }}
+                >
+                  Layout 1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfacesLayoutVariant("layout2");
+                    setSurfacesPanelState("work");
+                    setSurfacesLeftTab("scene");
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (surfacesLayoutVariant === "layout2" ? "#0a66c2" : "#d1d5db"),
+                    background: surfacesLayoutVariant === "layout2" ? "#e6f0ff" : "#fff",
+                    fontWeight: surfacesLayoutVariant === "layout2" ? 700 : 550,
+                  }}
+                >
+                  Layout 2
+                </button>
+              </div>
+              {surfacesLayoutVariant === "layout2" && (
+                <div style={{ gridColumn: "span 12" }}>
+                  <SurfacesControls
+                    panelMode="browse"
+                    onEnterWorkMode={enterSurfacesWorkMode}
+                    viewerKind={surfaceViewerKind}
+                    onChangeViewerKind={handleChangeViewerKind}
+                    datasetKind={datasetKind}
+                    onChangeDatasetKind={setDatasetKind}
+                    surfaceId={activeEqSurfaceId}
+                    onChangeSurface={handlePickEqSurface}
+                    paramId={paramSurfaceId}
+                    onChangeParamId={handlePickParamSurface}
+                    activeWeierstrassPreset={activeWeierstrassPreset}
+                    onApplyWeierstrassPreset={applyWeierstrassPreset}
+                    onApplySuggestedDomain={applySuggestedDomain}
+                    compareEnabled={compareEnabled}
+                    compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+                    compareCameraSync={compareCameraSync}
+                    compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+                    compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+                    displayMode={displayMode}
+                    onToggleCompare={() => {
+                      setCompareEnabled((v) => !v);
+                      if (rightPanelTab !== "workbook") setCameraSync(null);
+                    }}
+                    onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+                    onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+                    onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
+                    compareSurfaceId={compareSurfaceId}
+                    onChangeCompareSurface={(id) => {
+                      setCompareSurfaceId(id);
+                      setCompareUseSnapshotB(false);
+                    }}
+                    compareParamId={compareParamId}
+                    onChangeCompareParamId={(id) => {
+                      setCompareParamId(id);
+                      setCompareUseSnapshotB(false);
+                    }}
+                    rotationalProfileMode={rotationalProfileMode}
+                    rotationalProfileRExpr={rotationalProfileRExpr}
+                    rotationalProfileZExpr={rotationalProfileZExpr}
+                    rotationalProfilePointsText={rotationalProfilePointsText}
+                    onChangeRotationalProfileMode={setRotationalProfileMode}
+                    onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+                    onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+                    onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                    onEditRotationalProfile={() => {
+                      setParamSurfaceOverlayTab("rotational");
+                      setParamSurfaceOverlayOpen(true);
+                    }}
+                    onRunGalleryDemo={handleRunSurfaceGalleryDemo}
+                    galleryDemoActive={surfacesCameraTourStatus === "playing"}
+                    cardViewMode={galleryCardViewMode}
+                    onChangeCardViewMode={setGalleryCardViewMode}
+                  />
+                </div>
+              )}
+            </>
           ) : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -21261,7 +21363,7 @@ case "mobius":
                 overflowY: "auto",
               }}
             >
-              {surfacesPanelState === "work" && (
+              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && (
                 <div
                   style={{
                     border: "1px solid #dbe4f0",
@@ -21286,61 +21388,63 @@ case "mobius":
                   </button>
                 </div>
               )}
-              <SurfacesControls
-                panelMode={surfacesPanelState}
-                onEnterWorkMode={enterSurfacesWorkMode}
-                viewerKind={surfaceViewerKind}
-                onChangeViewerKind={handleChangeViewerKind}
-                datasetKind={datasetKind}
-                onChangeDatasetKind={setDatasetKind}
-                surfaceId={activeEqSurfaceId}
-                onChangeSurface={handlePickEqSurface}
-                paramId={paramSurfaceId}
-                onChangeParamId={handlePickParamSurface}
-                activeWeierstrassPreset={activeWeierstrassPreset}
-                onApplyWeierstrassPreset={applyWeierstrassPreset}
-                onApplySuggestedDomain={applySuggestedDomain}
-                compareEnabled={compareEnabled}
-                compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
-                compareCameraSync={compareCameraSync}
-                compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
-                compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
-                displayMode={displayMode}
-                onToggleCompare={() => {
-                  setCompareEnabled((v) => !v);
-                  if (rightPanelTab !== "workbook") setCameraSync(null);
-                }}
-                onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
-                onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
-                onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
-                compareSurfaceId={compareSurfaceId}
-                onChangeCompareSurface={(id) => {
-                  setCompareSurfaceId(id);
-                  setCompareUseSnapshotB(false);
-                }}
-                compareParamId={compareParamId}
-                onChangeCompareParamId={(id) => {
-                  setCompareParamId(id);
-                  setCompareUseSnapshotB(false);
-                }}
-                rotationalProfileMode={rotationalProfileMode}
-                rotationalProfileRExpr={rotationalProfileRExpr}
-                rotationalProfileZExpr={rotationalProfileZExpr}
-                rotationalProfilePointsText={rotationalProfilePointsText}
-                onChangeRotationalProfileMode={setRotationalProfileMode}
-                onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
-                onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
-                onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
-                onEditRotationalProfile={() => {
-                  setParamSurfaceOverlayTab("rotational");
-                  setParamSurfaceOverlayOpen(true);
-                }}
-                onRunGalleryDemo={handleRunSurfaceGalleryDemo}
-                galleryDemoActive={surfacesCameraTourStatus === "playing"}
-                cardViewMode={galleryCardViewMode}
-                onChangeCardViewMode={setGalleryCardViewMode}
-              />
-              <div style={{ display: surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
+              {surfacesLayoutVariant === "layout1" && (
+                <SurfacesControls
+                  panelMode={surfacesPanelState}
+                  onEnterWorkMode={enterSurfacesWorkMode}
+                  viewerKind={surfaceViewerKind}
+                  onChangeViewerKind={handleChangeViewerKind}
+                  datasetKind={datasetKind}
+                  onChangeDatasetKind={setDatasetKind}
+                  surfaceId={activeEqSurfaceId}
+                  onChangeSurface={handlePickEqSurface}
+                  paramId={paramSurfaceId}
+                  onChangeParamId={handlePickParamSurface}
+                  activeWeierstrassPreset={activeWeierstrassPreset}
+                  onApplyWeierstrassPreset={applyWeierstrassPreset}
+                  onApplySuggestedDomain={applySuggestedDomain}
+                  compareEnabled={compareEnabled}
+                  compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+                  compareCameraSync={compareCameraSync}
+                  compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+                  compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+                  displayMode={displayMode}
+                  onToggleCompare={() => {
+                    setCompareEnabled((v) => !v);
+                    if (rightPanelTab !== "workbook") setCameraSync(null);
+                  }}
+                  onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+                  onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+                  onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
+                  compareSurfaceId={compareSurfaceId}
+                  onChangeCompareSurface={(id) => {
+                    setCompareSurfaceId(id);
+                    setCompareUseSnapshotB(false);
+                  }}
+                  compareParamId={compareParamId}
+                  onChangeCompareParamId={(id) => {
+                    setCompareParamId(id);
+                    setCompareUseSnapshotB(false);
+                  }}
+                  rotationalProfileMode={rotationalProfileMode}
+                  rotationalProfileRExpr={rotationalProfileRExpr}
+                  rotationalProfileZExpr={rotationalProfileZExpr}
+                  rotationalProfilePointsText={rotationalProfilePointsText}
+                  onChangeRotationalProfileMode={setRotationalProfileMode}
+                  onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+                  onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+                  onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                  onEditRotationalProfile={() => {
+                    setParamSurfaceOverlayTab("rotational");
+                    setParamSurfaceOverlayOpen(true);
+                  }}
+                  onRunGalleryDemo={handleRunSurfaceGalleryDemo}
+                  galleryDemoActive={surfacesCameraTourStatus === "playing"}
+                  cardViewMode={galleryCardViewMode}
+                  onChangeCardViewMode={setGalleryCardViewMode}
+                />
+              )}
+              <div style={{ display: surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
                     key={tab}
@@ -21361,7 +21465,7 @@ case "mobius":
                   </button>
                 ))}
               </div>
-              {surfacesPanelState === "work" && surfacesLeftTab === "scene" && (
+              {(surfacesLayoutVariant === "layout2" || (surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
@@ -21378,7 +21482,7 @@ case "mobius":
                   />
                 </div>
               )}
-              {surfacesPanelState === "work" && surfacesLeftTab === "object" && (
+              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
                   <SurfacesObjectPanel
                     selectedNode={unifiedSelectedNode}
@@ -21539,7 +21643,7 @@ case "mobius":
                   )}
                 </>
               )}
-              {surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
+              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
                   viewerKind={surfaceViewerKind}
                   inspectEnabled={inspectEnabled}
@@ -21566,7 +21670,7 @@ case "mobius":
                   onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
                 />
               )}
-              {surfacesPanelState === "work" && surfacesLeftTab === "view" && (
+              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
                   renderQuality={surfaceRenderQuality}
                   onChangeRenderQuality={setSurfaceRenderQuality}
@@ -21635,7 +21739,7 @@ case "mobius":
                   }
                 />
               )}
-              {surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
+              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {renderSurfacesInspectorPanel("analysis")}
