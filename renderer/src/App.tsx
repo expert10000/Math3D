@@ -23465,14 +23465,16 @@ case "mobius":
                                   title={`${card.name}\n${card.description}`}
                                 >
                                   <div className="gallery-scan-card-preview">
-                                    <img
-                                      src={cardThumb}
-                                      alt={`${card.name} card`}
-                                      className="gallery-scan-card-preview-image"
-                                      loading="lazy"
-                                      decoding="async"
-                                      onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
-                                    />
+                                    <div className="gallery-scan-card-preview-frame">
+                                      <img
+                                        src={cardThumb}
+                                        alt={`${card.name} card`}
+                                        className="gallery-scan-card-preview-image"
+                                        loading="lazy"
+                                        decoding="async"
+                                        onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
+                                      />
+                                    </div>
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -23484,29 +23486,11 @@ case "mobius":
                                     >
                                       {favorite ? "Fav" : "Star"}
                                     </button>
-                                    <button
-                                      type="button"
-                                      data-testid={`geometry-gallery-quick-add-${card.id}`}
-                                      disabled={!card.supported || !card.defaultRecipe}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (card.supported) handleAddGeometryGalleryDefault(card);
-                                      }}
-                                      title={card.supported ? "Quick add default" : "Not yet available"}
-                                      className="gallery-scan-card-action-btn"
-                                    >
-                                      +Add
-                                    </button>
                                   </div>
                                   <div className="gallery-scan-card-meta">
                                     <div className="gallery-scan-card-title-row">
                                       <div className="gallery-scan-card-title">{card.name}</div>
-                                      <div className="gallery-scan-card-title-tools">
-                                        <span className="gallery-scan-card-info-pill" title={card.description}>
-                                          i
-                                        </span>
-                                        {selected && <span className="gallery-scan-card-selected-pill">Selected</span>}
-                                      </div>
+                                      {selected && <span className="gallery-scan-card-selected-pill">Selected in browser</span>}
                                     </div>
                                     <div className="gallery-scan-card-formula">{secondaryLine}</div>
                                     <div className="gallery-scan-card-chips">
@@ -23518,6 +23502,28 @@ case "mobius":
                                     </div>
                                     <div className="gallery-scan-card-summary" title={card.description}>
                                       {summary}
+                                    </div>
+                                    <div className="gallery-scan-card-footer">
+                                      <button
+                                        type="button"
+                                        data-testid={`geometry-gallery-quick-add-${card.id}`}
+                                        disabled={!card.supported || !card.defaultRecipe}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (!card.supported) return;
+                                          handleSelectGeometryGalleryCard(card.id);
+                                          handleAddGeometryGalleryDefault(card);
+                                        }}
+                                        title={card.supported ? "Open default in scene" : "Not yet available"}
+                                        className="gallery-scan-card-action-btn"
+                                      >
+                                        Open
+                                      </button>
+                                      <div className="gallery-scan-card-footer-tools">
+                                        <span className="gallery-scan-card-info-pill" title={card.description}>
+                                          i
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
                                   {!card.supported && (
@@ -23571,8 +23577,9 @@ case "mobius":
                               height: 64,
                               borderRadius: 6,
                               border: "1px solid #dbe2ea",
-                              objectFit: "cover",
-                              background: "#fff",
+                              objectFit: "contain",
+                              background: "linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%)",
+                              padding: 4,
                             }}
                             loading="lazy"
                             decoding="async"
@@ -26897,25 +26904,21 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           title={`${p.label}\n${p.safeDomainReason}`}
                         >
                           <div className="gallery-scan-card-preview">
-                            <img
-                              src={thumb}
-                              alt={`${p.label} preset`}
-                              className="gallery-scan-card-preview-image"
-                              loading="lazy"
-                              decoding="async"
-                              onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
-                            />
-                            <span className="gallery-scan-card-inline-action">Open</span>
+                            <div className="gallery-scan-card-preview-frame">
+                              <img
+                                src={thumb}
+                                alt={`${p.label} preset`}
+                                className="gallery-scan-card-preview-image"
+                                loading="lazy"
+                                decoding="async"
+                                onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
+                              />
+                            </div>
                           </div>
                           <div className="gallery-scan-card-meta">
                             <div className="gallery-scan-card-title-row">
                               <div className="gallery-scan-card-title">{p.label}</div>
-                              <div className="gallery-scan-card-title-tools">
-                                <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
-                                  i
-                                </span>
-                                {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
-                              </div>
+                              {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
                             </div>
                             <div className="gallery-scan-card-formula">{`g(z) = ${p.gExpr}`}</div>
                             <div className="gallery-scan-card-chips">
@@ -26927,6 +26930,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                             </div>
                             <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
                               {summary}
+                            </div>
+                            <div className="gallery-scan-card-footer">
+                              <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
+                                {active ? "Focus in scene" : "Open"}
+                              </span>
+                              <div className="gallery-scan-card-footer-tools">
+                                <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
+                                  i
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </button>
@@ -27104,27 +27117,21 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
               title={meta?.note}
             >
               <div className="gallery-scan-card-preview">
-                <img
-                  src={thumb}
-                  alt={`${s.label} preset`}
-                  className="gallery-scan-card-preview-image"
-                  loading="lazy"
-                  decoding="async"
-                  onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
-                />
-                <span className="gallery-scan-card-inline-action">Open</span>
+                <div className="gallery-scan-card-preview-frame">
+                  <img
+                    src={thumb}
+                    alt={`${s.label} preset`}
+                    className="gallery-scan-card-preview-image"
+                    loading="lazy"
+                    decoding="async"
+                    onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
+                  />
+                </div>
               </div>
               <div className="gallery-scan-card-meta">
                 <div className="gallery-scan-card-title-row">
                   <div className="gallery-scan-card-title">{s.label}</div>
-                  <div className="gallery-scan-card-title-tools">
-                    {meta?.note && (
-                      <span className="gallery-scan-card-info-pill" title={meta.note}>
-                        i
-                      </span>
-                    )}
-                    {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
-                  </div>
+                  {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
                 </div>
                 {!!formulaLine && <div className="gallery-scan-card-formula">{formulaLine}</div>}
                 <div className="gallery-scan-card-chips">
@@ -27139,6 +27146,18 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
                     {summary}
                   </div>
                 )}
+                <div className="gallery-scan-card-footer">
+                  <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
+                    {active ? "Focus in scene" : "Open"}
+                  </span>
+                  <div className="gallery-scan-card-footer-tools">
+                    {meta?.note && (
+                      <span className="gallery-scan-card-info-pill" title={meta.note}>
+                        i
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </button>
           );
@@ -27518,25 +27537,21 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 title={s.note}
               >
                 <div className="gallery-scan-card-preview">
-                  <img
-                    src={thumb}
-                    alt={`${s.label} preset`}
-                    className="gallery-scan-card-preview-image"
-                    loading="lazy"
-                    decoding="async"
-                    onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
-                  />
-                  <span className="gallery-scan-card-inline-action">Open</span>
+                  <div className="gallery-scan-card-preview-frame">
+                    <img
+                      src={thumb}
+                      alt={`${s.label} preset`}
+                      className="gallery-scan-card-preview-image"
+                      loading="lazy"
+                      decoding="async"
+                      onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
+                    />
+                  </div>
                 </div>
                 <div className="gallery-scan-card-meta">
                   <div className="gallery-scan-card-title-row">
                     <div className="gallery-scan-card-title">{s.label}</div>
-                    <div className="gallery-scan-card-title-tools">
-                      <span className="gallery-scan-card-info-pill" title={s.note}>
-                        i
-                      </span>
-                      {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
-                    </div>
+                    {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
                   </div>
                   <div className="gallery-scan-card-formula">{formulaLine}</div>
                   <div className="gallery-scan-card-chips">
@@ -27548,6 +27563,16 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                   </div>
                   <div className="gallery-scan-card-summary" title={s.note}>
                     {summary}
+                  </div>
+                  <div className="gallery-scan-card-footer">
+                    <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
+                      {active ? "Focus in scene" : "Open"}
+                    </span>
+                    <div className="gallery-scan-card-footer-tools">
+                      <span className="gallery-scan-card-info-pill" title={s.note}>
+                        i
+                      </span>
+                    </div>
                   </div>
                 </div>
               </button>

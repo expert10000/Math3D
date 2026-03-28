@@ -15,7 +15,7 @@
   --radius: 12px;
   --radius-sm: 8px;
   --gallery-card-bg: #ffffff;
-  --gallery-card-preview-bg: linear-gradient(180deg, #f0f9ff 0%, #e6f7f2 100%);
+  --gallery-card-preview-bg: linear-gradient(180deg, #e2e8f0 0%, #dbe5ef 100%);
   --gallery-card-border: #d6deea;
   --gallery-card-border-active: #2563eb;
   --gallery-card-selected-bg: #eff6ff;
@@ -49,7 +49,7 @@ html[data-theme="dark"] {
   --shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
   --shadow-soft: 0 6px 14px rgba(0, 0, 0, 0.28);
   --gallery-card-bg: #17202d;
-  --gallery-card-preview-bg: linear-gradient(180deg, #1a2a38 0%, #203244 100%);
+  --gallery-card-preview-bg: linear-gradient(180deg, #172334 0%, #1f2d3d 100%);
   --gallery-card-border: #334155;
   --gallery-card-border-active: #60a5fa;
   --gallery-card-selected-bg: #1d2a3c;
@@ -245,7 +245,7 @@ button:focus-visible {
 .gallery-scan-card.is-selected {
   border-color: var(--gallery-card-border-active);
   background: var(--gallery-card-selected-bg);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.16);
 }
 
 .gallery-scan-card.is-disabled {
@@ -255,25 +255,37 @@ button:focus-visible {
 .gallery-scan-card-preview {
   position: relative;
   background: var(--gallery-card-preview-bg);
-  padding: 6px 6px 5px;
+  padding: 8px;
+}
+
+.gallery-scan-card-preview-frame {
+  width: 100%;
+  height: 102px;
+  border-radius: 8px;
+  border: 1px solid #d1dae5;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.86) 0%, rgba(241, 245, 249, 0.72) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .gallery-scan-card-preview-image {
   width: 100%;
-  height: 94px;
-  border-radius: 7px;
-  border: 1px solid #dbe2ea;
-  object-fit: cover;
-  background: #f8fafc;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: transparent;
+  padding: 5px;
   display: block;
 }
 
 .gallery-scan-card-meta {
   background: var(--gallery-card-bg);
   border-top: 1px solid var(--gallery-card-meta-border);
-  padding: 7px 8px 8px;
+  padding: 8px;
   display: grid;
-  gap: 4px;
+  gap: 5px;
 }
 
 .gallery-scan-card-title-row {
@@ -312,11 +324,11 @@ button:focus-visible {
 .gallery-scan-card-selected-pill {
   font-size: 9px;
   font-weight: 700;
-  border: 1px solid #93c5fd;
-  background: #dbeafe;
-  color: #1e3a8a;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
   border-radius: 999px;
-  padding: 1px 6px;
+  padding: 2px 7px;
 }
 
 .gallery-scan-card-formula {
@@ -356,6 +368,37 @@ button:focus-visible {
   min-height: 24px;
 }
 
+.gallery-scan-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.gallery-scan-card-footer-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gallery-scan-card-cta {
+  font-size: 10px;
+  line-height: 1.1;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid #c7d3e0;
+  background: rgba(255, 255, 255, 0.96);
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.gallery-scan-card-cta.is-active {
+  border-color: #93c5fd;
+  background: #e0edff;
+  color: #1e3a8a;
+}
+
 .gallery-scan-card-warning {
   font-size: 9px;
   color: #8a5a00;
@@ -363,11 +406,10 @@ button:focus-visible {
   padding: 0 8px 7px;
 }
 
-.gallery-scan-card-badge-btn,
-.gallery-scan-card-action-btn,
-.gallery-scan-card-inline-action {
+.gallery-scan-card-badge-btn {
   position: absolute;
   top: 10px;
+  left: 10px;
   font-size: 10px;
   line-height: 1.1;
   padding: 2px 6px;
@@ -377,17 +419,21 @@ button:focus-visible {
   color: #1e293b;
 }
 
-.gallery-scan-card-badge-btn {
-  left: 10px;
-}
-
 .gallery-scan-card-badge-btn.is-favorite {
   background: #fef3c7;
   border-color: #fcd34d;
 }
 
 .gallery-scan-card-action-btn {
-  right: 10px;
+  border: 1px solid #c7d3e0;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1e293b;
+  font-size: 10px;
+  line-height: 1.1;
+  padding: 3px 8px;
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .gallery-scan-card-action-btn:disabled {
@@ -395,8 +441,20 @@ button:focus-visible {
   cursor: not-allowed;
 }
 
-.gallery-scan-card-inline-action {
-  right: 10px;
-  pointer-events: none;
-  font-weight: 700;
+html[data-theme="dark"] .gallery-scan-card-preview-frame {
+  border-color: #334155;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.78) 100%);
+}
+
+html[data-theme="dark"] .gallery-scan-card-cta,
+html[data-theme="dark"] .gallery-scan-card-action-btn {
+  border-color: #475569;
+  background: rgba(30, 41, 59, 0.96);
+  color: #e2e8f0;
+}
+
+html[data-theme="dark"] .gallery-scan-card-cta.is-active {
+  border-color: #60a5fa;
+  background: #1e3a8a;
+  color: #dbeafe;
 }

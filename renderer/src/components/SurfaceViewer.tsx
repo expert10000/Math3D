@@ -1622,6 +1622,48 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   }, [stopCameraTour]);
 
   useEffect(() => {
+    const onCaptureAutoFit = (event: Event) => {
+      const cam = cameraRef.current;
+      const controls = controlsRef.current;
+      if (!cam || !controls) return;
+
+      const center = centerRef.current;
+      const radius = radiusRef.current;
+      if (!Number.isFinite(radius) || radius <= 0) return;
+
+      const detail = (event as CustomEvent<{ padding?: number; direction?: { x?: number; y?: number; z?: number } }>)
+        .detail;
+      const paddingRaw = Number(detail?.padding);
+      const padding = Number.isFinite(paddingRaw) ? Math.max(1, Math.min(1.4, paddingRaw)) : 1.12;
+
+      const fovY = THREE.MathUtils.degToRad(cam.fov);
+      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * cam.aspect);
+      const minFov = Math.max(1e-3, Math.min(fovY, fovX));
+      const requiredDist = (radius * padding) / Math.sin(minFov * 0.5);
+      if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+
+      const dir = new THREE.Vector3(1, 0.74, 1.22);
+      const dx = Number(detail?.direction?.x);
+      const dy = Number(detail?.direction?.y);
+      const dz = Number(detail?.direction?.z);
+      if (Number.isFinite(dx) && Number.isFinite(dy) && Number.isFinite(dz)) {
+        dir.set(dx, dy, dz);
+      }
+      if (dir.lengthSq() < 1e-8) dir.set(1, 0.74, 1.22);
+      dir.normalize();
+
+      cam.position.copy(center).addScaledVector(dir, requiredDist);
+      cam.up.set(0, 1, 0);
+      controls.target.copy(center);
+      cam.lookAt(center);
+      controls.update();
+    };
+
+    window.addEventListener("math3d:capture-autofit", onCaptureAutoFit as EventListener);
+    return () => window.removeEventListener("math3d:capture-autofit", onCaptureAutoFit as EventListener);
+  }, []);
+
+  useEffect(() => {
     selectRegionEnabledRef.current = selectRegionEnabled;
   }, [selectRegionEnabled]);
 

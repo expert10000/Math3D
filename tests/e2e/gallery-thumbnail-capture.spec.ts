@@ -75,6 +75,16 @@ const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Surfaces", exact: true }).click();
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
   await expect(page.getByTestId("surface-viewer-canvas-host").first()).toBeVisible();
+  await page.getByRole("button", { name: "Layout 3", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Main view", exact: true })).toBeVisible();
+};
+
+const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
+  const galleryButton = page.getByRole("button", { name: "Gallery", exact: true });
+  if ((await galleryButton.count()) > 0 && (await galleryButton.first().isVisible())) {
+    await galleryButton.first().click();
+  }
+  await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
 };
 
 const settleRenderer = async (page: Page): Promise<void> => {
@@ -113,10 +123,43 @@ const prepareSurfaceCaptureUi = async (page: Page): Promise<void> => {
   await page.waitForTimeout(120);
 };
 
+const resetCameraIfAvailable = async (page: Page): Promise<void> => {
+  const candidates = [
+    page.getByRole("button", { name: "Reset camera", exact: true }),
+    page.getByRole("button", { name: "Reset camera view", exact: true }),
+  ];
+  for (const locator of candidates) {
+    const count = await locator.count();
+    for (let i = 0; i < count; i++) {
+      const button = locator.nth(i);
+      if (!(await button.isVisible())) continue;
+      await button.click();
+      await settleRenderer(page);
+      return;
+    }
+  }
+};
+
+const autoFitCameraForCapture = async (page: Page): Promise<void> => {
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("math3d:capture-autofit", {
+        detail: {
+          padding: 1.12,
+          direction: { x: 1, y: 0.74, z: 1.22 },
+        },
+      })
+    );
+  });
+  await settleRenderer(page);
+};
+
 const captureScene = async (page: Page, outPath: string): Promise<void> => {
   const host = page.getByTestId("surface-viewer-canvas-host").first();
   await expect(host).toBeVisible();
+  await resetCameraIfAvailable(page);
   await prepareSurfaceCaptureUi(page);
+  await autoFitCameraForCapture(page);
   await settleRenderer(page);
   mkdirSync(path.dirname(outPath), { recursive: true });
   await host.screenshot({ path: outPath });
@@ -183,9 +226,11 @@ const captureSurfaceCards = async (
     folder: string;
   }
 ): Promise<void> => {
+  await ensureSurfacesGalleryMode(page);
   await expect.poll(async () => page.locator(`[data-testid^='${options.testIdPrefix}']`).count()).toBeGreaterThan(0);
   const ids = await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true });
   for (const id of ids) {
+    await ensureSurfacesGalleryMode(page);
     const card = page.getByTestId(`${options.testIdPrefix}${id}`);
     if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
     await card.first().scrollIntoViewIfNeeded();
@@ -199,6 +244,7 @@ const captureSurfaceCards = async (
       file: toPosixRelative(outPath),
     });
   }
+  await ensureSurfacesGalleryMode(page);
 };
 
 test.setTimeout(20 * 60 * 1000);
@@ -226,6 +272,7 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
     await captureObjectGallery(page, outputRoot, manifest);
 
     await openSurfacesWorkspace(page);
+    await ensureSurfacesGalleryMode(page);
 
     await page.getByTestId("surface-family-explicit").click();
     await captureSurfaceCards(page, outputRoot, manifest, {
