@@ -53,9 +53,7 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     boxShadow: "var(--shadow-soft)",
     background: "var(--panel-strong)",
     margin: "6px 10px 0",
-    maxHeight: "min(18vh, 190px)",
-    overflowY: "auto",
-    overscrollBehavior: "contain",
+    overflow: "visible",
   },
   h1: {
     margin: "0 0 6px 0",

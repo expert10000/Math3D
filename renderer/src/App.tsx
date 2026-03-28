@@ -9823,9 +9823,24 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(320);
   const minRight = 240;
   const maxRight = 640;
+  const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
+  const prevModeRef = useRef<Mode>(mode);
+  const enterSurfacesWorkMode = useCallback(() => {
+    setSurfacesPanelState("work");
+  }, []);
+  const returnToSurfacesBrowse = useCallback(() => {
+    setSurfacesPanelState("browse");
+  }, []);
+
+  useEffect(() => {
+    if (mode === "surfaces" && prevModeRef.current !== "surfaces") {
+      setSurfacesPanelState("browse");
+    }
+    prevModeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "surfaces") return;
@@ -20113,6 +20128,46 @@ case "mobius":
     mode === "surfaces"
       ? `Surfaces -> ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` -> ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
       : `${activeSectionLabel} / ${activeDisplayLabel}`;
+  const surfacesWorkSubtypeLabel =
+    surfaceViewerKind === "graph"
+      ? "Graph"
+      : surfaceViewerKind === "implicit"
+        ? "Level Set"
+        : surfaceViewerKind === "param"
+          ? (() => {
+              const source = paramSurfaceSourceKindFor(paramSurfaceId);
+              if (source === "spline") return "Spline";
+              if (source === "constructed") {
+                const subtype = constructedParamSubtypeFor(paramSurfaceId);
+                return `${subtype[0].toUpperCase()}${subtype.slice(1)}`;
+              }
+              return "Formula";
+            })()
+          : surfaceViewerKind === "weierstrass"
+            ? "Minimal"
+            : surfaceViewerKind === "mesh"
+              ? "Imported"
+              : surfaceViewerKind === "complex"
+                ? "Map"
+                : datasetKind === "volume"
+                  ? "Field"
+                  : "Preset";
+  const surfacesWorkPresetLabel =
+    surfaceViewerKind === "graph" || surfaceViewerKind === "implicit"
+      ? (SURFACES_EQ_META_BY_ID.get(activeEqSurfaceId)?.label ?? "Preset")
+      : surfaceViewerKind === "param"
+        ? (PARAM_SURFACES_META.find((entry) => entry.id === paramSurfaceId)?.label ?? "Preset")
+        : surfaceViewerKind === "weierstrass"
+          ? (activeWeierstrassPreset?.label ?? "Preset")
+          : surfaceViewerKind === "mesh"
+            ? "Mesh Workspace"
+            : surfaceViewerKind === "complex"
+              ? "Complex Workspace"
+              : datasetKind === "volume"
+                ? "Volume Workspace"
+                : "Preset";
+  const surfacesWorkBreadcrumb =
+    `Surfaces / ${headerSurfacesFamilyLabel} / ${surfacesWorkSubtypeLabel} / ${surfacesWorkPresetLabel}`;
   const topNavGroupLabelStyle: React.CSSProperties = {
     fontSize: 10,
     fontWeight: 700,
@@ -20988,62 +21043,11 @@ case "mobius":
           </div>
         </div>
 
-        <div style={styles.controls}>
+        <div style={mode === "surfaces" ? { display: "none" } : styles.controls}>
           {mode === "maps" ? (
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
           ) : mode === "surfaces" ? (
-            <SurfacesControls
-              viewerKind={surfaceViewerKind}
-              onChangeViewerKind={handleChangeViewerKind}
-              datasetKind={datasetKind}
-              onChangeDatasetKind={setDatasetKind}
-              surfaceId={activeEqSurfaceId}
-              onChangeSurface={handlePickEqSurface}
-              paramId={paramSurfaceId}
-              onChangeParamId={setParamSurfaceId}
-              activeWeierstrassPreset={activeWeierstrassPreset}
-              onApplyWeierstrassPreset={applyWeierstrassPreset}
-              onApplySuggestedDomain={applySuggestedDomain}
-              compareEnabled={compareEnabled}
-              compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
-              compareCameraSync={compareCameraSync}
-              compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
-              compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
-              displayMode={displayMode}
-              onToggleCompare={() => {
-                setCompareEnabled((v) => !v);
-                if (rightPanelTab !== "workbook") setCameraSync(null);
-              }}
-              onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
-              onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
-              onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
-              compareSurfaceId={compareSurfaceId}
-              onChangeCompareSurface={(id) => {
-                setCompareSurfaceId(id);
-                setCompareUseSnapshotB(false);
-              }}
-              compareParamId={compareParamId}
-              onChangeCompareParamId={(id) => {
-                setCompareParamId(id);
-                setCompareUseSnapshotB(false);
-              }}
-              rotationalProfileMode={rotationalProfileMode}
-              rotationalProfileRExpr={rotationalProfileRExpr}
-              rotationalProfileZExpr={rotationalProfileZExpr}
-              rotationalProfilePointsText={rotationalProfilePointsText}
-              onChangeRotationalProfileMode={setRotationalProfileMode}
-              onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
-              onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
-              onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
-              onEditRotationalProfile={() => {
-                setParamSurfaceOverlayTab("rotational");
-                setParamSurfaceOverlayOpen(true);
-              }}
-              onRunGalleryDemo={handleRunSurfaceGalleryDemo}
-              galleryDemoActive={surfacesCameraTourStatus === "playing"}
-              cardViewMode={galleryCardViewMode}
-              onChangeCardViewMode={setGalleryCardViewMode}
-            />
+            null
           ) : mode === "curves" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -21254,10 +21258,89 @@ case "mobius":
                 display: cleanScreenshotSurfaceActive ? "none" : "flex",
                 flexDirection: "column",
                 minHeight: 0,
-                overflowY: surfacesLeftTab === "scene" ? "hidden" : "auto",
+                overflowY: "auto",
               }}
             >
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              {surfacesPanelState === "work" && (
+                <div
+                  style={{
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 10,
+                    background: "#f8fbff",
+                    padding: "6px 8px",
+                    marginBottom: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{surfacesWorkBreadcrumb}</div>
+                  <button
+                    type="button"
+                    onClick={returnToSurfacesBrowse}
+                    style={{ padding: "4px 10px", fontSize: 11 }}
+                  >
+                    Back to gallery
+                  </button>
+                </div>
+              )}
+              <SurfacesControls
+                panelMode={surfacesPanelState}
+                onEnterWorkMode={enterSurfacesWorkMode}
+                viewerKind={surfaceViewerKind}
+                onChangeViewerKind={handleChangeViewerKind}
+                datasetKind={datasetKind}
+                onChangeDatasetKind={setDatasetKind}
+                surfaceId={activeEqSurfaceId}
+                onChangeSurface={handlePickEqSurface}
+                paramId={paramSurfaceId}
+                onChangeParamId={handlePickParamSurface}
+                activeWeierstrassPreset={activeWeierstrassPreset}
+                onApplyWeierstrassPreset={applyWeierstrassPreset}
+                onApplySuggestedDomain={applySuggestedDomain}
+                compareEnabled={compareEnabled}
+                compareIgnoreWorkbookOverlays={compareIgnoreWorkbookOverlays}
+                compareCameraSync={compareCameraSync}
+                compareDiffHeatmapEnabled={compareDiffHeatmapEnabled}
+                compareDiffHeatmapAvailable={compareDiffHeatmapAvailable}
+                displayMode={displayMode}
+                onToggleCompare={() => {
+                  setCompareEnabled((v) => !v);
+                  if (rightPanelTab !== "workbook") setCameraSync(null);
+                }}
+                onToggleCompareIgnoreWorkbookOverlays={() => setCompareIgnoreWorkbookOverlays((v) => !v)}
+                onToggleCompareCameraSync={() => setCompareCameraSync((v) => !v)}
+                onToggleCompareDiffHeatmap={() => setCompareDiffHeatmapEnabled((v) => !v)}
+                compareSurfaceId={compareSurfaceId}
+                onChangeCompareSurface={(id) => {
+                  setCompareSurfaceId(id);
+                  setCompareUseSnapshotB(false);
+                }}
+                compareParamId={compareParamId}
+                onChangeCompareParamId={(id) => {
+                  setCompareParamId(id);
+                  setCompareUseSnapshotB(false);
+                }}
+                rotationalProfileMode={rotationalProfileMode}
+                rotationalProfileRExpr={rotationalProfileRExpr}
+                rotationalProfileZExpr={rotationalProfileZExpr}
+                rotationalProfilePointsText={rotationalProfilePointsText}
+                onChangeRotationalProfileMode={setRotationalProfileMode}
+                onChangeRotationalProfileRExpr={setRotationalProfileRExpr}
+                onChangeRotationalProfileZExpr={setRotationalProfileZExpr}
+                onChangeRotationalProfilePointsText={setRotationalProfilePointsText}
+                onEditRotationalProfile={() => {
+                  setParamSurfaceOverlayTab("rotational");
+                  setParamSurfaceOverlayOpen(true);
+                }}
+                onRunGalleryDemo={handleRunSurfaceGalleryDemo}
+                galleryDemoActive={surfacesCameraTourStatus === "playing"}
+                cardViewMode={galleryCardViewMode}
+                onChangeCardViewMode={setGalleryCardViewMode}
+              />
+              <div style={{ display: surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
                     key={tab}
@@ -21278,7 +21361,7 @@ case "mobius":
                   </button>
                 ))}
               </div>
-              {surfacesLeftTab === "scene" && (
+              {surfacesPanelState === "work" && surfacesLeftTab === "scene" && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
@@ -21295,7 +21378,7 @@ case "mobius":
                   />
                 </div>
               )}
-              {surfacesLeftTab === "object" && (
+              {surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
                   <SurfacesObjectPanel
                     selectedNode={unifiedSelectedNode}
@@ -21456,7 +21539,7 @@ case "mobius":
                   )}
                 </>
               )}
-              {surfacesLeftTab === "inspect" && (
+              {surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
                   viewerKind={surfaceViewerKind}
                   inspectEnabled={inspectEnabled}
@@ -21483,7 +21566,7 @@ case "mobius":
                   onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
                 />
               )}
-              {surfacesLeftTab === "view" && (
+              {surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
                   renderQuality={surfaceRenderQuality}
                   onChangeRenderQuality={setSurfaceRenderQuality}
@@ -21552,7 +21635,7 @@ case "mobius":
                   }
                 />
               )}
-              {surfacesLeftTab === "analysis" && (
+              {surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {renderSurfacesInspectorPanel("analysis")}
@@ -26007,6 +26090,8 @@ const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
 ];
 
 type SurfacesControlsProps = {
+  panelMode: "browse" | "work";
+  onEnterWorkMode: () => void;
   viewerKind: SurfaceViewerKind;
   onChangeViewerKind: (k: SurfaceViewerKind) => void;
   datasetKind: DatasetKind;
@@ -26048,6 +26133,8 @@ type SurfacesControlsProps = {
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
+  panelMode,
+  onEnterWorkMode,
   viewerKind,
   onChangeViewerKind,
   datasetKind,
@@ -26134,6 +26221,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
   const [showExtendedFamilies, setShowExtendedFamilies] = useState(false);
+  const [showActionMore, setShowActionMore] = useState(false);
   const [surfaceCardSortPreset, setSurfaceCardSortPreset] = useState<GallerySortPreset>("family");
   const compactForPresent = displayMode === "present";
   const compareUiEnabled = displayMode !== "present";
@@ -26145,53 +26233,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     viewerKind !== "complex" &&
     !isVolume;
   const chipPadding = compactForPresent ? "3px 8px" : "4px 10px";
-  const galleryPreviewHeight = compactForPresent ? 64 : 80;
   const showExtendedFamilyButtons =
     showExtendedFamilies || (isSurface && (viewerKind === "mesh" || viewerKind === "weierstrass"));
-  const familyChipStripRef = useRef<HTMLDivElement | null>(null);
-  const [familyChipCanScrollLeft, setFamilyChipCanScrollLeft] = useState(false);
-  const [familyChipCanScrollRight, setFamilyChipCanScrollRight] = useState(false);
-  const refreshFamilyChipScrollState = useCallback(() => {
-    const el = familyChipStripRef.current;
-    if (!el) {
-      setFamilyChipCanScrollLeft(false);
-      setFamilyChipCanScrollRight(false);
-      return;
-    }
-    const maxScrollLeft = Math.max(0, el.scrollWidth - el.clientWidth);
-    const canScrollLeft = el.scrollLeft > 2;
-    const canScrollRight = el.scrollLeft < maxScrollLeft - 2;
-    setFamilyChipCanScrollLeft((prev) => (prev === canScrollLeft ? prev : canScrollLeft));
-    setFamilyChipCanScrollRight((prev) => (prev === canScrollRight ? prev : canScrollRight));
-  }, []);
-  const scrollFamilyChipStrip = useCallback((direction: "left" | "right") => {
-    const el = familyChipStripRef.current;
-    if (!el) return;
-    el.scrollBy({ left: direction === "left" ? -220 : 220, behavior: "smooth" });
-  }, []);
-  const onFamilyChipStripWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
-    const el = familyChipStripRef.current;
-    if (!el) return;
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-    if (el.scrollWidth <= el.clientWidth + 2) return;
-    event.preventDefault();
-    el.scrollBy({ left: event.deltaY });
-  }, []);
-  useEffect(() => {
-    const el = familyChipStripRef.current;
-    if (!el) return;
-    const onScroll = () => refreshFamilyChipScrollState();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    onScroll();
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, [refreshFamilyChipScrollState]);
-  useEffect(() => {
-    refreshFamilyChipScrollState();
-  }, [refreshFamilyChipScrollState, showExtendedFamilyButtons, compactForPresent]);
+  const activeSurfaceMeta =
+    viewerKind === "implicit" || viewerKind === "graph" ? SURFACES_EQ_META_BY_ID.get(surfaceId) ?? null : null;
+  const activeParamMeta = viewerKind === "param" ? PARAM_SURFACES_META.find((entry) => entry.id === paramId) ?? null : null;
+  const activeWeierstrassInfo = viewerKind === "weierstrass" ? activeWeierstrassPreset ?? WEIERSTRASS_PRESETS[0] ?? null : null;
   const activeFamilyLabel = isVolume
     ? "Volume"
     : viewerKind === "graph"
@@ -26208,18 +26255,42 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             ? "Mesh"
             : viewerKind === "weierstrass"
               ? "Weierstrass"
-              : viewerKind === "complex"
+            : viewerKind === "complex"
                 ? "Complex"
                 : "Surfaces";
-  const activeSubtypeLabel =
-    viewerKind === "param" && paramSourceKind === "constructed" && constructedSubtype
-      ? ` -> ${constructedSubtype[0].toUpperCase()}${constructedSubtype.slice(1)}`
-      : "";
-  const workflowPath = `Surfaces -> ${activeFamilyLabel}${activeSubtypeLabel}`;
-  const activeSurfaceMeta =
-    viewerKind === "implicit" || viewerKind === "graph" ? SURFACES_EQ_META_BY_ID.get(surfaceId) ?? null : null;
-  const activeParamMeta = viewerKind === "param" ? PARAM_SURFACES_META.find((entry) => entry.id === paramId) ?? null : null;
-  const activeWeierstrassInfo = viewerKind === "weierstrass" ? activeWeierstrassPreset ?? WEIERSTRASS_PRESETS[0] ?? null : null;
+  const activeSubtypeLabel = isVolume
+    ? "Field"
+    : viewerKind === "graph"
+      ? "Graph"
+      : viewerKind === "implicit"
+        ? "Level Set"
+        : viewerKind === "param"
+          ? paramSourceKind === "constructed" && constructedSubtype
+            ? `${constructedSubtype[0].toUpperCase()}${constructedSubtype.slice(1)}`
+            : paramSourceKind === "spline"
+              ? "Spline"
+              : "Formula"
+          : viewerKind === "mesh"
+            ? "Imported"
+            : viewerKind === "weierstrass"
+              ? "Minimal"
+              : viewerKind === "complex"
+                ? "Map"
+                : "Preset";
+  const activePresetLabel = isVolume
+    ? "Volume Workspace"
+    : viewerKind === "graph" || viewerKind === "implicit"
+      ? activeSurfaceMeta?.label ?? "Preset"
+      : viewerKind === "param"
+        ? activeParamMeta?.label ?? "Preset"
+        : viewerKind === "weierstrass"
+          ? activeWeierstrassInfo?.label ?? "Preset"
+          : viewerKind === "mesh"
+            ? "Mesh Workspace"
+            : viewerKind === "complex"
+              ? "Complex Workspace"
+              : "Preset";
+  const workflowPath = `Surfaces -> ${activeFamilyLabel} -> ${activeSubtypeLabel} -> ${activePresetLabel}`;
   const sortedImplicitSurfaces = useMemo(() => {
     if (surfaceCardSortPreset === "family") return implicitSurfaces;
     return [...implicitSurfaces].sort((a, b) =>
@@ -26250,24 +26321,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       )
     );
   }, [surfaceCardSortPreset]);
-  const surfacePresetThumbUrls = useMemo(() => {
-    const urls: string[] = [];
-    const appendEq = (entry: { id: SurfaceId; label: string }) => {
-      const meta = SURFACES_EQ_META_BY_ID.get(entry.id);
-      urls.push(makePresetThumb(entry.id, entry.label, meta?.formula ?? "", isGraphSurface(entry.id) ? "graph" : "implicit", cardViewMode));
-    };
-    if (viewerKind === "implicit") {
-      sortedImplicitSurfaces.forEach(appendEq);
-    } else if (viewerKind === "graph") {
-      sortedGraphSurfaces.forEach(appendEq);
-    } else if (viewerKind === "weierstrass") {
-      for (const preset of sortedWeierstrassPresets) {
-        urls.push(makePresetThumb(`w-${preset.id}`, preset.label, `g=${preset.gExpr}`, "weierstrass", cardViewMode));
-      }
-    }
-    return urls;
-  }, [cardViewMode, sortedGraphSurfaces, sortedImplicitSurfaces, sortedWeierstrassPresets, viewerKind]);
-  useGalleryThumbPrefetch(surfacePresetThumbUrls);
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -26277,20 +26330,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     gap: 8,
   };
   const bandTitleStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#334155" };
-  const toolbarGroupStyle: React.CSSProperties = {
-    display: "grid",
-    gap: 5,
-    minWidth: 0,
-  };
-  const toolbarGroupTitleStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
-    color: "#475569",
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-  };
-  const toolbarChipStyle = (active: boolean, variant: "family" | "advanced" | "tool", disabled = false): React.CSSProperties => {
-    const fill = variant === "tool" ? "#dbeafe" : variant === "advanced" ? "#e2e8f0" : "#dbeafe";
+  const toolbarChipStyle = (active: boolean, variant: "family" | "tool" | "aux", disabled = false): React.CSSProperties => {
+    const fill = variant === "family" ? "#dbeafe" : variant === "tool" ? "#edf4ff" : "#f1f5f9";
     return {
       padding: chipPadding,
       borderRadius: 999,
@@ -26305,346 +26346,264 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       whiteSpace: "nowrap",
     };
   };
-  const familyStripArrowStyle = (enabled: boolean): React.CSSProperties => ({
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    border: "1px solid #cbd5e1",
-    background: enabled ? "#fff" : "#f8fafc",
-    color: enabled ? "#1f2937" : "#94a3b8",
-    boxShadow: "none",
-    padding: 0,
-    lineHeight: 1,
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: enabled ? "pointer" : "not-allowed",
-    flex: "0 0 auto",
-  });
+  const stickyTopStyle: React.CSSProperties = {
+    display: "grid",
+    gap: 4,
+  };
+  const contextBarStyle: React.CSSProperties = {
+    border: "1px solid #dbe4f0",
+    borderRadius: 10,
+    background: "#f8fbff",
+    padding: "4px 8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  };
+  const actionBarStyle: React.CSSProperties = {
+    border: "1px solid #e2e8f0",
+    borderRadius: 10,
+    background: "#ffffff",
+    padding: "4px 8px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    flexWrap: "wrap",
+  };
 
   return (
-    <div style={{ ...styles.group, gridColumn: "span 12", gap: compactForPresent ? 10 : 14 }}>
-      {showSurfaceGallery && (
-        <div style={bandStyle}>
-          <div style={bandTitleStyle}>Surface gallery</div>
-          <div
-            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", gap: 10 }}
-            data-gallery-grid="true"
-          >
-            {SURFACE_GALLERY_CARDS.map((card) => {
-              const active = surfaceGallerySelectedId === card.id;
-              return (
-                <article
-                  key={card.id}
-                  role="button"
-                  tabIndex={0}
-                  data-testid={`surface-gallery-card-${card.id}`}
-                  onClick={() => openSurfaceGalleryCard(card.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowLeft") {
-                      e.preventDefault();
-                      focusGalleryCardNeighbor(e.currentTarget, "left");
-                    } else if (e.key === "ArrowRight") {
-                      e.preventDefault();
-                      focusGalleryCardNeighbor(e.currentTarget, "right");
-                    } else if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      focusGalleryCardNeighbor(e.currentTarget, "up");
-                    } else if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      focusGalleryCardNeighbor(e.currentTarget, "down");
-                    } else if (e.key === "Enter") {
-                      e.preventDefault();
-                      openSurfaceGalleryCard(card.id);
-                    }
-                  }}
+    <div style={{ display: "grid", gap: compactForPresent ? 8 : 10 }}>
+      {panelMode === "browse" && (
+      <div style={stickyTopStyle}>
+        <div style={contextBarStyle}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0, flexWrap: "wrap" }} aria-label={workflowPath}>
+            {(["Surfaces", activeFamilyLabel, activeSubtypeLabel, activePresetLabel] as const).map((segment, index) => (
+              <React.Fragment key={`surface-context-${segment}-${index}`}>
+                {index > 0 && <span style={{ fontSize: 11, color: "#64748b" }}>/</span>}
+                <span
                   style={{
-                    borderRadius: 12,
-                    border: active ? "1px solid #0a66c2" : "1px solid #d9e1ea",
-                    background: active ? "#eef4ff" : "#fff",
-                    padding: 8,
-                    display: "grid",
-                    gap: 7,
-                    cursor: "pointer",
+                    padding: "2px 8px",
+                    borderRadius: 999,
+                    border: "1px solid #dbe4f0",
+                    background: index === 0 ? "#f1f5f9" : "#fff",
+                    fontSize: 11,
+                    fontWeight: index >= 2 ? 700 : 600,
+                    color: "#1e293b",
                   }}
-                  title={card.description}
                 >
-                  <img
-                    src={card.thumbDataUrl}
-                    alt={`${card.title} card`}
-                    loading="lazy"
-                    decoding="async"
-                    style={{
-                      width: "100%",
-                      height: Math.max(96, galleryPreviewHeight + 32),
-                      borderRadius: 8,
-                      border: "1px solid #dbe2ea",
-                      objectFit: "cover",
-                      background: "#f8fafc",
-                    }}
-                  />
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 6,
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.3 }}>{card.title}</div>
-                    <div
-                      style={{
-                        fontSize: 9,
-                        border: "1px solid #cbd5e1",
-                        background: "#f8fafc",
-                        borderRadius: 999,
-                        padding: "1px 6px",
-                        fontWeight: 700,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {card.typeTag}
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 10, opacity: 0.8, lineHeight: 1.3 }}>{card.subtitle}</div>
-                  <div style={{ fontSize: 10, opacity: 0.78, lineHeight: 1.3 }}>{card.description}</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openSurfaceGalleryCard(card.id);
-                      }}
-                      style={{ padding: "4px 10px", fontSize: 11 }}
-                    >
-                      Open
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onRunGalleryDemo(card.id);
-                      }}
-                      disabled={galleryDemoActive}
-                      style={{ padding: "4px 10px", fontSize: 11 }}
-                    >
-                      Demo
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+                  {segment}
+                </span>
+              </React.Fragment>
+            ))}
+            {displayMode === "inspect" && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#334155", marginLeft: 4 }}>Inspect</span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 4, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              data-testid="surface-family-explicit"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("graph");
+              }}
+              style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
+            >
+              Explicit
+            </button>
+            <button
+              type="button"
+              data-testid="surface-family-implicit"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("implicit");
+              }}
+              style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
+            >
+              Implicit
+            </button>
+            <button
+              type="button"
+              data-testid="surface-family-parametric"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+              }}
+              style={toolbarChipStyle(isParamFormula, "family")}
+            >
+              Parametric
+            </button>
+            <button
+              type="button"
+              data-testid="surface-family-spline"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
+              }}
+              style={toolbarChipStyle(isParamSpline, "family")}
+            >
+              Spline
+            </button>
+            <button
+              type="button"
+              data-testid="surface-family-constructed"
+              onClick={() => {
+                onChangeDatasetKind("surface");
+                onChangeViewerKind("param");
+                if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+              }}
+              style={toolbarChipStyle(isParamConstructed, "family")}
+            >
+              Constructed
+            </button>
+            {showExtendedFamilyButtons && (
+              <>
+                <button
+                  type="button"
+                  data-testid="surface-family-mesh"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("mesh");
+                  }}
+                  style={toolbarChipStyle(isSurface && isMesh, "family")}
+                >
+                  Mesh
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-weierstrass"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("weierstrass");
+                  }}
+                  style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
+                >
+                  Weierstrass
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              data-testid="surface-family-more"
+              onClick={() => setShowExtendedFamilies((v) => !v)}
+              style={toolbarChipStyle(showExtendedFamilyButtons, "aux")}
+            >
+              {showExtendedFamilyButtons ? "Less" : "More"}
+            </button>
+          </div>
+        </div>
+
+      </div>
+      )}
+
+      {panelMode === "work" && (
+        <div style={actionBarStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flexWrap: "wrap" }}>
+            <span
+              style={{ fontSize: 10, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}
+              title="Legacy reference: 1. Choose family 2. Choose subtype 3. Choose preset 4. Edit / create / compare"
+            >
+              Actions
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowSurfaceGallery((v) => !v)}
+              style={toolbarChipStyle(showSurfaceGallery, "tool")}
+              aria-expanded={showSurfaceGallery}
+            >
+              Gallery
+            </button>
+            <button type="button" onClick={() => openSurfaceGalleryCard("mexican_hat")} style={toolbarChipStyle(false, "tool")}>
+              New
+            </button>
+            <button type="button" onClick={() => openSurfaceGalleryCard("torus")} style={toolbarChipStyle(false, "tool")}>
+              Demo
+            </button>
+            <button
+              type="button"
+              onClick={onToggleCompare}
+              disabled={!canToggleCompare}
+              style={toolbarChipStyle(compareActive, "tool", !canToggleCompare)}
+            >
+              Compare
+            </button>
+            <button type="button" onClick={() => setShowActionMore((v) => !v)} style={toolbarChipStyle(showActionMore, "aux")}>
+              {showActionMore ? "Less" : "More"}
+            </button>
+            {showActionMore && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("complex");
+                  }}
+                  style={toolbarChipStyle(isSurface && isComplex, "aux")}
+                >
+                  Complex
+                </button>
+                <button type="button" onClick={() => onChangeDatasetKind("volume")} style={toolbarChipStyle(isVolume, "aux")}>
+                  Volume
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      <div style={bandStyle}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-          <div style={bandTitleStyle}>Surface workflow</div>
-          {displayMode === "inspect" && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#334155" }}>
-              Inspect mode: roles + pipeline focus
-            </span>
-          )}
-        </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#1e293b" }}>{workflowPath}</div>
-        <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
-          1. Choose family 2. Choose subtype 3. Choose preset 4. Edit / create / compare
-        </div>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div style={{ ...toolbarGroupStyle, flex: "1 1 520px", minWidth: 280 }}>
-            <div style={toolbarGroupTitleStyle}>1. Surface family</div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <button
-                type="button"
-                aria-label="Scroll family list left"
-                onClick={() => scrollFamilyChipStrip("left")}
-                disabled={!familyChipCanScrollLeft}
-                style={familyStripArrowStyle(familyChipCanScrollLeft)}
-              >
-                {"<"}
-              </button>
-              <div
-                ref={familyChipStripRef}
-                onWheel={onFamilyChipStripWheel}
-                style={{
-                  display: "flex",
-                  gap: 4,
-                  alignItems: "center",
-                  flexWrap: "nowrap",
-                  overflowX: "auto",
-                  overflowY: "hidden",
-                  paddingBottom: 2,
-                  scrollbarWidth: "thin",
-                  minWidth: 0,
-                }}
-              >
+      {panelMode === "work" && showSurfaceGallery && (
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Surface gallery</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {SURFACE_GALLERY_CARDS.map((card) => {
+              const active = surfaceGallerySelectedId === card.id;
+              return (
                 <button
+                  key={card.id}
+                  data-testid={`surface-gallery-card-${card.id}`}
                   type="button"
-                  data-testid="surface-family-explicit"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("graph");
+                  onClick={() => openSurfaceGalleryCard(card.id)}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                    background: active ? "#e6f0ff" : "#fff",
+                    fontWeight: active ? 700 : 550,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
                   }}
-                  style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
+                  title={card.description}
                 >
-                  Explicit
+                  {card.title}
                 </button>
-                <button
-                  type="button"
-                  data-testid="surface-family-implicit"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("implicit");
-                  }}
-                  style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
-                >
-                  Implicit
-                </button>
-                <button
-                  type="button"
-                  data-testid="surface-family-parametric"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("param");
-                    if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
-                  }}
-                  style={toolbarChipStyle(isParamFormula, "family")}
-                >
-                  Parametric
-                </button>
-                <button
-                  type="button"
-                  data-testid="surface-family-spline"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("param");
-                    if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
-                  }}
-                  style={toolbarChipStyle(isParamSpline, "family")}
-                >
-                  Spline
-                </button>
-                <button
-                  type="button"
-                  data-testid="surface-family-constructed"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("param");
-                    if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
-                  }}
-                  style={toolbarChipStyle(isParamConstructed, "family")}
-                >
-                  Constructed
-                </button>
-                {showExtendedFamilyButtons && (
-                  <>
-                    <button
-                      type="button"
-                      data-testid="surface-family-mesh"
-                      onClick={() => {
-                        onChangeDatasetKind("surface");
-                        onChangeViewerKind("mesh");
-                      }}
-                      style={toolbarChipStyle(isSurface && isMesh, "family")}
-                    >
-                      Mesh
-                    </button>
-                    <button
-                      type="button"
-                      data-testid="surface-family-weierstrass"
-                      onClick={() => {
-                        onChangeDatasetKind("surface");
-                        onChangeViewerKind("weierstrass");
-                      }}
-                      style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
-                    >
-                      Weierstrass
-                    </button>
-                  </>
-                )}
-                <button
-                  type="button"
-                  data-testid="surface-family-more"
-                  onClick={() => setShowExtendedFamilies((v) => !v)}
-                  style={toolbarChipStyle(showExtendedFamilyButtons, "tool")}
-                >
-                  {showExtendedFamilyButtons ? "Less" : "More"}
-                </button>
-              </div>
-              <button
-                type="button"
-                aria-label="Scroll family list right"
-                onClick={() => scrollFamilyChipStrip("right")}
-                disabled={!familyChipCanScrollRight}
-                style={familyStripArrowStyle(familyChipCanScrollRight)}
-              >
-                {">"}
-              </button>
-            </div>
-          </div>
-
-          <div style={{ ...toolbarGroupStyle, flex: "0 1 auto", marginLeft: "auto" }}>
-            <div style={toolbarGroupTitleStyle}>4. Tools</div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
-              <button
-                type="button"
-                onClick={() => setShowSurfaceGallery((v) => !v)}
-                style={toolbarChipStyle(showSurfaceGallery, "tool")}
-                aria-expanded={showSurfaceGallery}
-              >
-                Gallery
-              </button>
-              <button
-                type="button"
-                onClick={() => openSurfaceGalleryCard("mexican_hat")}
-                style={toolbarChipStyle(false, "tool")}
-              >
-                New
-              </button>
-              <button
-                type="button"
-                onClick={() => openSurfaceGalleryCard("torus")}
-                style={toolbarChipStyle(false, "tool")}
-              >
-                Demo
-              </button>
-              <button
-                type="button"
-                onClick={onToggleCompare}
-                disabled={!canToggleCompare}
-                style={toolbarChipStyle(compareActive, "tool", !canToggleCompare)}
-              >
-                Compare
-              </button>
-            </div>
-          </div>
-
-          <div style={{ ...toolbarGroupStyle, flex: "0 1 auto" }}>
-            <div style={toolbarGroupTitleStyle}>Advanced</div>
-            <div style={{ display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap", rowGap: 4 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChangeDatasetKind("surface");
-                  onChangeViewerKind("complex");
-                }}
-                style={toolbarChipStyle(isSurface && isComplex, "advanced")}
-              >
-                Complex
-              </button>
-              <button
-                type="button"
-                onClick={() => onChangeDatasetKind("volume")}
-                style={toolbarChipStyle(isVolume, "advanced")}
-              >
-                Volume
-              </button>
-            </div>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => onRunGalleryDemo(surfaceGallerySelectedId ?? "torus")}
+              disabled={galleryDemoActive}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid #d1d5db",
+                background: "#fff",
+                fontWeight: 550,
+                cursor: galleryDemoActive ? "not-allowed" : "pointer",
+                opacity: galleryDemoActive ? 0.6 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Demo active preset
+            </button>
           </div>
         </div>
-      </div>
+      )}
 
-      {datasetKind !== "volume" && (
+      {panelMode === "browse" && datasetKind !== "volume" && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Preset gallery</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -26666,325 +26625,105 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   ))}
                 </select>
               </label>
-              <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
-                {([
-                  { id: "rendered" as const, label: "Rendered" },
-                  { id: "diagram" as const, label: "Diagram" },
-                ] as const).map((modeOption) => (
-                  <button
-                    key={`surface-gallery-view-${modeOption.id}`}
-                    type="button"
-                    onClick={() => onChangeCardViewMode(modeOption.id)}
-                    aria-pressed={cardViewMode === modeOption.id}
-                    style={{
-                      border: "none",
-                      borderRight: modeOption.id === "rendered" ? "1px solid #cbd5e1" : "none",
-                      borderRadius: 0,
-                      padding: "3px 8px",
-                      fontSize: 10,
-                      boxShadow: "none",
-                      background: cardViewMode === modeOption.id ? "#dbeafe" : "#fff",
-                      fontWeight: cardViewMode === modeOption.id ? 700 : 500,
-                    }}
-                  >
-                    {modeOption.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={onEnterWorkMode}
+                style={{ padding: "4px 10px", fontSize: 11 }}
+              >
+                Open scene controls
+              </button>
             </div>
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "flex-start",
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ minWidth: 0, flex: "1 1 560px" }}>
-              {viewerKind === "implicit" && (
-                <SurfacesButtons
-                  surfaceId={surfaceId}
-                  surfaces={sortedImplicitSurfaces}
-                  onChangeSurface={onChangeSurface}
-                  presetLayout="cards"
-                  sortPreset={surfaceCardSortPreset}
-                  cardViewMode={cardViewMode}
-                />
-              )}
-              {viewerKind === "graph" && (
-                <SurfacesButtons
-                  surfaceId={surfaceId}
-                  surfaces={sortedGraphSurfaces}
-                  onChangeSurface={onChangeSurface}
-                  presetLayout="cards"
-                  sortPreset={surfaceCardSortPreset}
-                  cardViewMode={cardViewMode}
-                />
-              )}
-              {viewerKind === "param" && (
-                <ParamSurfacesButtons
-                  paramId={paramId}
-                  onChangeParamId={onChangeParamId}
-                  rotationalProfileMode={rotationalProfileMode}
-                  rotationalProfileRExpr={rotationalProfileRExpr}
-                  rotationalProfileZExpr={rotationalProfileZExpr}
-                  rotationalProfilePointsText={rotationalProfilePointsText}
-                  onChangeRotationalProfileMode={onChangeRotationalProfileMode}
-                  onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
-                  onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
-                  onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
-                  onEditRotationalProfile={onEditRotationalProfile}
-                  showSourceKindTabs={false}
-                  presetLayout="cards"
-                  sortPreset={surfaceCardSortPreset}
-                  cardViewMode={cardViewMode}
-                />
-              )}
-              {viewerKind === "weierstrass" && (
-                <div style={{ marginBottom: 4 }}>
-                  <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-                    Presets avoid singularities on boundaries; adjust domains carefully near poles.
-                  </div>
-                  <div className="surface-card-grid" data-testid="weierstrass-preset-grid" data-gallery-grid="true">
-                    {sortedWeierstrassPresets.map((p) => {
-                      const active = activeWeierstrassPreset?.id === p.id;
-                      const thumb = makePresetThumb(
-                        `w-${p.id}`,
-                        p.label,
-                        `g=${p.gExpr}`,
-                        "weierstrass",
-                        cardViewMode
-                      );
-                      const thumbFallback = makePresetThumb(`w-${p.id}`, p.label, `g=${p.gExpr}`, "weierstrass", "diagram");
-                      const chips = chipsForWeierstrassPreset(p.id);
-                      const summary = compactSummary(p.safeDomainReason ?? "Minimal surface from Weierstrass data.");
-                      return (
-                        <button
-                          key={p.id}
-                          type="button"
-                          data-testid={`weierstrass-preset-card-${p.id}`}
-                          onClick={() => onApplyWeierstrassPreset(p)}
-                          onKeyDown={(e) => {
-                            if (e.key === "ArrowLeft") {
-                              e.preventDefault();
-                              focusGalleryCardNeighbor(e.currentTarget, "left");
-                            } else if (e.key === "ArrowRight") {
-                              e.preventDefault();
-                              focusGalleryCardNeighbor(e.currentTarget, "right");
-                            } else if (e.key === "ArrowUp") {
-                              e.preventDefault();
-                              focusGalleryCardNeighbor(e.currentTarget, "up");
-                            } else if (e.key === "ArrowDown") {
-                              e.preventDefault();
-                              focusGalleryCardNeighbor(e.currentTarget, "down");
-                            }
-                          }}
-                          className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
-                          title={`${p.label}\n${p.safeDomainReason}`}
-                        >
-                          <div className="gallery-scan-card-preview">
-                            <img
-                              src={thumb}
-                              alt={`${p.label} preset`}
-                              className="gallery-scan-card-preview-image"
-                              loading="lazy"
-                              decoding="async"
-                              onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
-                            />
-                            <span className="gallery-scan-card-inline-action">Open</span>
-                          </div>
-                          <div className="gallery-scan-card-meta">
-                            <div className="gallery-scan-card-title-row">
-                              <div className="gallery-scan-card-title">{p.label}</div>
-                              <div className="gallery-scan-card-title-tools">
-                                <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
-                                  i
-                                </span>
-                                {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
-                              </div>
-                            </div>
-                            <div className="gallery-scan-card-formula">{`g(z) = ${p.gExpr}`}</div>
-                            <div className="gallery-scan-card-chips">
-                              {chips.map((chip) => (
-                                <span key={`${p.id}-${chip}`} className="gallery-scan-card-chip">
-                                  {chip}
-                                </span>
-                              ))}
-                            </div>
-                            <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
-                              {summary}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {viewerKind === "implicit" && (
+              <SurfacesButtons
+                surfaceId={surfaceId}
+                surfaces={sortedImplicitSurfaces}
+                onChangeSurface={onChangeSurface}
+                presetLayout="chips"
+                sortPreset={surfaceCardSortPreset}
+                cardViewMode={cardViewMode}
+              />
+            )}
+            {viewerKind === "graph" && (
+              <SurfacesButtons
+                surfaceId={surfaceId}
+                surfaces={sortedGraphSurfaces}
+                onChangeSurface={onChangeSurface}
+                presetLayout="chips"
+                sortPreset={surfaceCardSortPreset}
+                cardViewMode={cardViewMode}
+              />
+            )}
+            {viewerKind === "param" && (
+              <ParamSurfacesButtons
+                paramId={paramId}
+                onChangeParamId={onChangeParamId}
+                rotationalProfileMode={rotationalProfileMode}
+                rotationalProfileRExpr={rotationalProfileRExpr}
+                rotationalProfileZExpr={rotationalProfileZExpr}
+                rotationalProfilePointsText={rotationalProfilePointsText}
+                onChangeRotationalProfileMode={onChangeRotationalProfileMode}
+                onChangeRotationalProfileRExpr={onChangeRotationalProfileRExpr}
+                onChangeRotationalProfileZExpr={onChangeRotationalProfileZExpr}
+                onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
+                onEditRotationalProfile={onEditRotationalProfile}
+                showSourceKindTabs={false}
+                presetLayout="chips"
+                sortPreset={surfaceCardSortPreset}
+                cardViewMode={cardViewMode}
+              />
+            )}
+            {viewerKind === "weierstrass" && (
+              <>
+                <div style={{ fontSize: 11, color: "#475569" }}>
+                  Presets avoid singularities on boundaries; adjust domains carefully near poles.
                 </div>
-              )}
-            </div>
-            <aside
-              style={{
-                flex: "1 1 280px",
-                maxWidth: 360,
-                border: "1px solid #dbe4f0",
-                borderRadius: 10,
-                background: "#fff",
-                padding: "10px 11px",
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Selected preset</div>
-              {(viewerKind === "implicit" || viewerKind === "graph") && activeSurfaceMeta && (
-                <>
-                  {(() => {
-                    const thumbKind: PresetThumbKind = viewerKind === "graph" ? "graph" : "implicit";
-                    const selectedThumb = makePresetThumb(
-                      surfaceId,
-                      activeSurfaceMeta.label,
-                      activeSurfaceMeta.formula,
-                      thumbKind,
-                      cardViewMode
-                    );
-                    const selectedFallbackThumb = makePresetThumb(
-                      surfaceId,
-                      activeSurfaceMeta.label,
-                      activeSurfaceMeta.formula,
-                      thumbKind,
-                      "diagram"
-                    );
-                    return (
-                      <img
-                        src={selectedThumb}
-                        alt={`${activeSurfaceMeta.label} selected`}
-                        style={{
-                          width: "100%",
-                          height: 96,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                          border: "1px solid #dbe4f0",
-                        }}
-                        onError={(event) => handleGalleryImageLoadError(event, selectedFallbackThumb)}
-                      />
-                    );
-                  })()}
-                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeSurfaceMeta.label}</div>
-                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                    {activeSurfaceMeta.formula}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{activeSurfaceMeta.note}</div>
-                </>
-              )}
-              {viewerKind === "param" && activeParamMeta && (
-                <>
-                  {(() => {
-                    const kind: PresetThumbKind =
-                      paramSourceKind === "spline"
-                        ? "spline"
-                        : paramSourceKind === "constructed"
-                          ? constructedSubtype === "sweep"
-                            ? "sweep"
-                            : constructedSubtype === "tube"
-                              ? "tube"
-                              : constructedSubtype === "ruled"
-                                ? "ruled"
-                                : "rotational"
-                          : "parametric";
-                    return (
-                      <img
-                        src={makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind, cardViewMode)}
-                        alt={`${activeParamMeta.label} selected`}
-                        style={{
-                          width: "100%",
-                          height: 96,
-                          objectFit: "cover",
-                          borderRadius: 8,
-                          border: "1px solid #dbe4f0",
-                        }}
-                        onError={(event) =>
-                          handleGalleryImageLoadError(
-                            event,
-                            makePresetThumb(activeParamMeta.id, activeParamMeta.label, activeParamMeta.formula, kind, "diagram")
-                          )
-                        }
-                      />
-                    );
-                  })()}
-                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeParamMeta.label}</div>
-                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                    {activeParamMeta.formula}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{activeParamMeta.note}</div>
-                  {isParamConstructed && constructedSubtype === "rotational" && (
+                <div style={styles.presetsRow}>
+                  {sortedWeierstrassPresets.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => onApplyWeierstrassPreset(p)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 6,
+                        border: "1px solid " + (activeWeierstrassPreset?.id === p.id ? "#0a66c2" : "#ddd"),
+                        background: activeWeierstrassPreset?.id === p.id ? "#e6f0ff" : "#fff",
+                        fontWeight: activeWeierstrassPreset?.id === p.id ? 600 : 400,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={`${p.label}: ${p.safeDomainReason}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                {activeWeierstrassInfo && (
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                      g(z) = {activeWeierstrassInfo.gExpr}
+                    </div>
+                    <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                      phi(z) = {activeWeierstrassInfo.phiExpr}
+                    </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (paramId !== "rotationalFreeProfile") onChangeParamId("rotationalFreeProfile");
-                        onChangeRotationalProfileMode("formula");
-                        onEditRotationalProfile();
-                      }}
+                      onClick={() => onApplySuggestedDomain(activeWeierstrassInfo)}
                       style={{ padding: "4px 10px", justifySelf: "start" }}
                     >
-                      Edit profile
+                      Apply suggested domain
                     </button>
-                  )}
-                </>
-              )}
-              {viewerKind === "weierstrass" && activeWeierstrassInfo && (
-                <>
-                  <img
-                    src={makePresetThumb(
-                      `w-${activeWeierstrassInfo.id}`,
-                      activeWeierstrassInfo.label,
-                      `g=${activeWeierstrassInfo.gExpr}`,
-                      "weierstrass",
-                      cardViewMode
-                    )}
-                    alt={`${activeWeierstrassInfo.label} selected`}
-                    style={{
-                      width: "100%",
-                      height: 96,
-                      objectFit: "cover",
-                      borderRadius: 8,
-                      border: "1px solid #dbe4f0",
-                    }}
-                    onError={(event) =>
-                      handleGalleryImageLoadError(
-                        event,
-                        makePresetThumb(
-                          `w-${activeWeierstrassInfo.id}`,
-                          activeWeierstrassInfo.label,
-                          `g=${activeWeierstrassInfo.gExpr}`,
-                          "weierstrass",
-                          "diagram"
-                        )
-                      )
-                    }
-                  />
-                  <div style={{ fontSize: 13, fontWeight: 800 }}>{activeWeierstrassInfo.label}</div>
-                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                    g(z) = {activeWeierstrassInfo.gExpr}
                   </div>
-                  <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                    phi(z) = {activeWeierstrassInfo.phiExpr}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>{activeWeierstrassInfo.safeDomainReason}</div>
-                  <button
-                    type="button"
-                    onClick={() => onApplySuggestedDomain(activeWeierstrassInfo)}
-                    style={{ padding: "4px 10px", justifySelf: "start" }}
-                  >
-                    Apply suggested domain
-                  </button>
-                </>
-              )}
-            </aside>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {displayMode !== "present" && compareEnabled && (
+      {panelMode === "work" && displayMode !== "present" && compareEnabled && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Compare options</div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -27020,7 +26759,12 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </div>
       )}
 
-      {displayMode !== "present" && compareEnabled && viewerKind !== "mesh" && viewerKind !== "complex" && !isVolume && (
+      {panelMode === "work" &&
+        displayMode !== "present" &&
+        compareEnabled &&
+        viewerKind !== "mesh" &&
+        viewerKind !== "complex" &&
+        !isVolume && (
         <div style={{ flex: 1 }}>
           {viewerKind === "implicit" && (
             <SurfacesButtons surfaceId={compareSurfaceId} surfaces={implicitSurfaces} onChangeSurface={onChangeCompareSurface} />
@@ -27249,39 +26993,38 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
       )
     );
   }, [entries, sortPreset]);
-  const paramThumbUrls = useMemo(
-    () =>
-      sortedEntries.map((entry) => {
-        const sourceTag =
-          sourceKind === "spline"
-            ? "spline"
-            : sourceKind === "constructed"
-              ? constructedSubtype === "sweep"
-                ? "sweep"
-                : constructedSubtype === "tube"
-                  ? "tube"
-                  : constructedSubtype === "ruled"
-                    ? "ruled"
-                    : "rotational"
-              : "parametric";
-        const thumbKind: PresetThumbKind =
-          sourceTag === "spline"
-            ? "spline"
-            : sourceTag === "sweep"
+  const paramThumbUrls = useMemo(() => {
+    if (presetLayout !== "cards") return [];
+    return sortedEntries.map((entry) => {
+      const sourceTag =
+        sourceKind === "spline"
+          ? "spline"
+          : sourceKind === "constructed"
+            ? constructedSubtype === "sweep"
               ? "sweep"
-              : sourceTag === "tube"
+              : constructedSubtype === "tube"
                 ? "tube"
-                : sourceTag === "ruled"
+                : constructedSubtype === "ruled"
                   ? "ruled"
-                  : sourceTag === "rotational"
-                    ? "rotational"
-                    : sourceTag === "parametric"
-                      ? "parametric"
-                      : "constructed";
-        return makePresetThumb(entry.id, entry.label, entry.formula, thumbKind, cardViewMode);
-      }),
-    [cardViewMode, sortedEntries]
-  );
+                  : "rotational"
+            : "parametric";
+      const thumbKind: PresetThumbKind =
+        sourceTag === "spline"
+          ? "spline"
+          : sourceTag === "sweep"
+            ? "sweep"
+            : sourceTag === "tube"
+              ? "tube"
+              : sourceTag === "ruled"
+                ? "ruled"
+                : sourceTag === "rotational"
+                  ? "rotational"
+                  : sourceTag === "parametric"
+                    ? "parametric"
+                    : "constructed";
+      return makePresetThumb(entry.id, entry.label, entry.formula, thumbKind, cardViewMode);
+    });
+  }, [cardViewMode, constructedSubtype, presetLayout, sourceKind, sortedEntries]);
   useGalleryThumbPrefetch(paramThumbUrls);
   const rotationalDefaults = getDefaultRotationalProfileExpressions(paramId);
   const showRotationalProfileEditorInline =
@@ -27554,7 +27297,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
         </div>
       ) : (
         <div style={styles.presetsRow}>
-          {entries.map((s) => (
+          {sortedEntries.map((s) => (
             <button
               key={s.id}
               type="button"
