@@ -25,6 +25,11 @@ type CaptureManifest = {
   surfaces: SurfaceCaptureEntry[];
 };
 
+type CaptureViewPolicy = {
+  padding: number;
+  direction: { x: number; y: number; z: number };
+};
+
 const resolveOutputRoot = (): string => {
   const raw = process.env.MATH3D_THUMBNAIL_OUT_DIR?.trim();
   if (!raw) return path.join(repoRoot, "gallery-images", "captured");
@@ -35,6 +40,94 @@ const toPosixRelative = (absolutePath: string): string =>
   path.relative(repoRoot, absolutePath).split(path.sep).join("/");
 
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? 450);
+
+const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
+  // ~74% occupancy target for recognizable silhouettes with breathing room.
+  padding: 1.34,
+  direction: { x: 1, y: 0.68, z: 1.2 },
+};
+
+const OPEN_SURFACE_CAPTURE_POLICY: CaptureViewPolicy = {
+  // Lower pitch helps preserve profile/waist/rim readability for open surfaces.
+  padding: 1.4,
+  direction: { x: 1.08, y: 0.58, z: 1.24 },
+};
+
+const SURFACE_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>> = {
+  sphere: { padding: 1.4, direction: { x: 1, y: 0.72, z: 1.18 } },
+  hyperboloid: { padding: 1.38, direction: { x: 1.1, y: 0.6, z: 1.24 } },
+  paraboloid: { padding: 1.36, direction: { x: 1.12, y: 0.56, z: 1.2 } },
+  cone: { padding: 1.36, direction: { x: 1.06, y: 0.58, z: 1.22 } },
+  cylinder: { padding: 1.36, direction: { x: 1.04, y: 0.6, z: 1.22 } },
+  graph_paraboloid: { padding: 1.36, direction: { x: 1.12, y: 0.56, z: 1.2 } },
+};
+
+const OBJECT_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>> = {
+  sphere: { padding: 1.4, direction: { x: 1, y: 0.72, z: 1.18 } },
+  torus: { padding: 1.34, direction: { x: 1.03, y: 0.66, z: 1.2 } },
+  cone: { padding: 1.36, direction: { x: 1.06, y: 0.58, z: 1.22 } },
+  cylinder: { padding: 1.36, direction: { x: 1.04, y: 0.6, z: 1.22 } },
+};
+
+const OPEN_SURFACE_HINTS = [
+  "open",
+  "paraboloid",
+  "hyperboloid",
+  "saddle",
+  "wave",
+  "sinc",
+  "ripple",
+  "gyroid",
+  "scherk",
+  "helicoid",
+  "enneper",
+  "boy",
+  "dini",
+  "mobius",
+  "klein",
+  "tube",
+  "sweep",
+  "ruled",
+];
+
+const mergeCapturePolicy = (
+  base: CaptureViewPolicy,
+  override?: Partial<CaptureViewPolicy>
+): CaptureViewPolicy => ({
+  padding: override?.padding ?? base.padding,
+  direction: {
+    x: override?.direction?.x ?? base.direction.x,
+    y: override?.direction?.y ?? base.direction.y,
+    z: override?.direction?.z ?? base.direction.z,
+  },
+});
+
+const resolveSurfaceCapturePolicy = (id: string, family: string, subtype?: string): CaptureViewPolicy => {
+  const key = id.trim().toLowerCase();
+  const isOpenLike =
+    family === "explicit" ||
+    family === "weierstrass" ||
+    subtype === "ruled" ||
+    subtype === "sweep" ||
+    OPEN_SURFACE_HINTS.some((hint) => key.includes(hint));
+  const base = isOpenLike ? OPEN_SURFACE_CAPTURE_POLICY : CANONICAL_CAPTURE_POLICY;
+  const direct = SURFACE_CAPTURE_POLICY_OVERRIDES[key];
+  if (direct) return mergeCapturePolicy(base, direct);
+  for (const [match, override] of Object.entries(SURFACE_CAPTURE_POLICY_OVERRIDES)) {
+    if (key.includes(match)) return mergeCapturePolicy(base, override);
+  }
+  return base;
+};
+
+const resolveObjectCapturePolicy = (id: string): CaptureViewPolicy => {
+  const key = id.trim().toLowerCase();
+  const direct = OBJECT_CAPTURE_POLICY_OVERRIDES[key];
+  if (direct) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, direct);
+  for (const [match, override] of Object.entries(OBJECT_CAPTURE_POLICY_OVERRIDES)) {
+    if (key.includes(match)) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, override);
+  }
+  return CANONICAL_CAPTURE_POLICY;
+};
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
@@ -140,26 +233,37 @@ const resetCameraIfAvailable = async (page: Page): Promise<void> => {
   }
 };
 
-const autoFitCameraForCapture = async (page: Page): Promise<void> => {
-  await page.evaluate(() => {
+const autoFitCameraForCapture = async (
+  page: Page,
+  policy: CaptureViewPolicy = CANONICAL_CAPTURE_POLICY
+): Promise<void> => {
+  const padding = Number.isFinite(policy.padding) ? policy.padding : CANONICAL_CAPTURE_POLICY.padding;
+  const dx = Number.isFinite(policy.direction.x) ? policy.direction.x : CANONICAL_CAPTURE_POLICY.direction.x;
+  const dy = Number.isFinite(policy.direction.y) ? policy.direction.y : CANONICAL_CAPTURE_POLICY.direction.y;
+  const dz = Number.isFinite(policy.direction.z) ? policy.direction.z : CANONICAL_CAPTURE_POLICY.direction.z;
+  await page.evaluate((payload: { padding: number; dx: number; dy: number; dz: number }) => {
     window.dispatchEvent(
       new CustomEvent("math3d:capture-autofit", {
         detail: {
-          padding: 1.12,
-          direction: { x: 1, y: 0.74, z: 1.22 },
+          padding: payload.padding,
+          direction: { x: payload.dx, y: payload.dy, z: payload.dz },
         },
       })
     );
-  });
+  }, { padding, dx, dy, dz });
   await settleRenderer(page);
 };
 
-const captureScene = async (page: Page, outPath: string): Promise<void> => {
+const captureScene = async (
+  page: Page,
+  outPath: string,
+  policy: CaptureViewPolicy = CANONICAL_CAPTURE_POLICY
+): Promise<void> => {
   const host = page.getByTestId("surface-viewer-canvas-host").first();
   await expect(host).toBeVisible();
   await resetCameraIfAvailable(page);
   await prepareSurfaceCaptureUi(page);
-  await autoFitCameraForCapture(page);
+  await autoFitCameraForCapture(page, policy);
   await settleRenderer(page);
   mkdirSync(path.dirname(outPath), { recursive: true });
   await host.screenshot({ path: outPath });
@@ -210,7 +314,7 @@ const captureObjectGallery = async (
     await expect.poll(async () => page.getByTestId("geometry-object-row").count()).toBeGreaterThan(0);
 
     const outPath = path.join(outputRoot, "objects", `${id}.png`);
-    await captureScene(page, outPath);
+    await captureScene(page, outPath, resolveObjectCapturePolicy(id));
     manifest.objects.push({ id, file: toPosixRelative(outPath) });
   }
 };
@@ -236,7 +340,7 @@ const captureSurfaceCards = async (
     await card.first().scrollIntoViewIfNeeded();
     await card.first().click();
     const outPath = path.join(outputRoot, options.folder, `${id}.png`);
-    await captureScene(page, outPath);
+    await captureScene(page, outPath, resolveSurfaceCapturePolicy(id, options.family, options.subtype));
     manifest.surfaces.push({
       id,
       family: options.family,

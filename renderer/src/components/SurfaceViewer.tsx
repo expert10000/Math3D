@@ -1634,7 +1634,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       const detail = (event as CustomEvent<{ padding?: number; direction?: { x?: number; y?: number; z?: number } }>)
         .detail;
       const paddingRaw = Number(detail?.padding);
-      const padding = Number.isFinite(paddingRaw) ? Math.max(1, Math.min(1.4, paddingRaw)) : 1.12;
+      const padding = Number.isFinite(paddingRaw) ? Math.max(1.1, Math.min(1.8, paddingRaw)) : 1.34;
 
       const fovY = THREE.MathUtils.degToRad(cam.fov);
       const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * cam.aspect);
@@ -1642,14 +1642,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       const requiredDist = (radius * padding) / Math.sin(minFov * 0.5);
       if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
 
-      const dir = new THREE.Vector3(1, 0.74, 1.22);
+      const dir = new THREE.Vector3(1, 0.68, 1.2);
       const dx = Number(detail?.direction?.x);
       const dy = Number(detail?.direction?.y);
       const dz = Number(detail?.direction?.z);
       if (Number.isFinite(dx) && Number.isFinite(dy) && Number.isFinite(dz)) {
         dir.set(dx, dy, dz);
       }
-      if (dir.lengthSq() < 1e-8) dir.set(1, 0.74, 1.22);
+      if (dir.lengthSq() < 1e-8) dir.set(1, 0.68, 1.2);
       dir.normalize();
 
       cam.position.copy(center).addScaledVector(dir, requiredDist);

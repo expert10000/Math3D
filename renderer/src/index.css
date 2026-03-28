@@ -190,15 +190,16 @@ button:focus-visible {
 /* ---- Gallery scan cards ---- */
 .gallery-panel-scroll {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   max-height: 360px;
   overflow-y: auto;
   padding-right: 2px;
+  scrollbar-width: thin;
 }
 
 .gallery-section {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
 .gallery-section-header {
@@ -214,18 +215,18 @@ button:focus-visible {
 .gallery-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(154px, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .surface-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .gallery-scan-card {
   text-align: left;
-  border-radius: 11px;
+  border-radius: 10px;
   border: 1px solid var(--gallery-card-border);
   background: var(--gallery-card-bg);
   padding: 0;
@@ -239,8 +240,27 @@ button:focus-visible {
 
 .gallery-scan-card:hover {
   transform: translateY(-2px);
-  border-color: #93c5fd;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  border-color: #84aedd;
+  box-shadow: 0 9px 18px rgba(15, 23, 42, 0.12);
+}
+
+.gallery-scan-card:hover .gallery-scan-card-preview-frame {
+  border-color: #8eb6e1;
+  filter: brightness(1.05) saturate(1.05);
+}
+
+.gallery-scan-card:hover .gallery-scan-card-cta,
+.gallery-scan-card:hover .gallery-scan-card-action-btn {
+  border-color: #84aedd;
+  background: #f3f8ff;
+  color: #163766;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.18);
+}
+
+.gallery-scan-card:hover .gallery-scan-card-cta.is-active {
+  border-color: #6ea1db;
+  background: #dce9ff;
+  color: #1e3a8a;
 }
 
 .gallery-scan-card:focus-visible {
@@ -272,13 +292,13 @@ button:focus-visible {
 .gallery-scan-card-preview {
   position: relative;
   background: var(--gallery-card-preview-bg);
-  padding: 8px;
+  padding: 6px;
 }
 
 .gallery-scan-card-preview-frame {
   width: 100%;
-  height: 102px;
-  border-radius: 8px;
+  height: 94px;
+  border-radius: 7px;
   border: 1px solid #d1dae5;
   background: linear-gradient(180deg, rgba(248, 250, 252, 0.86) 0%, rgba(241, 245, 249, 0.72) 100%);
   display: flex;
@@ -293,24 +313,24 @@ button:focus-visible {
   object-fit: contain;
   object-position: center;
   background: transparent;
-  padding: 5px;
+  padding: 4px;
   display: block;
 }
 
 .gallery-scan-card-meta {
   background: var(--gallery-card-bg);
   border-top: 1px solid var(--gallery-card-meta-border);
-  padding: 8px;
+  padding: 7px;
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .gallery-scan-card-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  min-height: 17px;
+  gap: 5px;
+  min-height: 16px;
 }
 
 .gallery-scan-card-title {
@@ -367,7 +387,7 @@ button:focus-visible {
 
 .gallery-scan-card-chips {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   flex-wrap: wrap;
 }
 
@@ -391,12 +411,12 @@ button:focus-visible {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 24px;
+  min-height: 20px;
 }
 
 .surface-preset-card .gallery-scan-card-summary {
   -webkit-line-clamp: 1;
-  min-height: 13px;
+  min-height: 12px;
 }
 
 .gallery-scan-card-footer {
@@ -404,7 +424,7 @@ button:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  min-height: 22px;
+  min-height: 20px;
 }
 
 .gallery-scan-card-footer-tools {
@@ -416,7 +436,7 @@ button:focus-visible {
 .gallery-scan-card-cta {
   font-size: 10px;
   line-height: 1.1;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: 999px;
   border: 1px solid #c7d3e0;
   background: rgba(255, 255, 255, 0.96);
@@ -462,7 +482,7 @@ button:focus-visible {
   color: #1e293b;
   font-size: 10px;
   line-height: 1.1;
-  padding: 3px 8px;
+  padding: 2px 8px;
   font-weight: 700;
   box-shadow: none;
 }
@@ -488,4 +508,17 @@ html[data-theme="dark"] .gallery-scan-card-cta.is-active {
   border-color: #60a5fa;
   background: #1e3a8a;
   color: #dbeafe;
+}
+
+html[data-theme="dark"] .gallery-scan-card:hover .gallery-scan-card-preview-frame {
+  border-color: #5b85b5;
+  filter: brightness(1.08) saturate(1.04);
+}
+
+html[data-theme="dark"] .gallery-scan-card:hover .gallery-scan-card-cta,
+html[data-theme="dark"] .gallery-scan-card:hover .gallery-scan-card-action-btn {
+  border-color: #5b85b5;
+  background: #24354c;
+  color: #e5edf8;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.32);
 }
