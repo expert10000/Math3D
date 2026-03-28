@@ -23460,7 +23460,7 @@ case "mobius":
                                     if (card.supported) handleAddGeometryGalleryDefault(card);
                                   }}
                                   className={`gallery-scan-card geometry-gallery-scan-card${
-                                    selected ? " is-selected" : ""
+                                    selected ? " is-browser-selected" : ""
                                   }${!card.supported ? " is-disabled" : ""}`}
                                   title={`${card.name}\n${card.description}`}
                                 >
@@ -23490,7 +23490,12 @@ case "mobius":
                                   <div className="gallery-scan-card-meta">
                                     <div className="gallery-scan-card-title-row">
                                       <div className="gallery-scan-card-title">{card.name}</div>
-                                      {selected && <span className="gallery-scan-card-selected-pill">Selected in browser</span>}
+                                      {selected && (
+                                        <span className="gallery-scan-card-selected-pill is-browser">Selected in browser</span>
+                                      )}
+                                    </div>
+                                    <div className="gallery-scan-card-summary" title={card.description}>
+                                      {summary}
                                     </div>
                                     <div className="gallery-scan-card-formula">{secondaryLine}</div>
                                     <div className="gallery-scan-card-chips">
@@ -23499,9 +23504,6 @@ case "mobius":
                                           {tag}
                                         </span>
                                       ))}
-                                    </div>
-                                    <div className="gallery-scan-card-summary" title={card.description}>
-                                      {summary}
                                     </div>
                                     <div className="gallery-scan-card-footer">
                                       <button
@@ -23517,7 +23519,7 @@ case "mobius":
                                         title={card.supported ? "Open default in scene" : "Not yet available"}
                                         className="gallery-scan-card-action-btn"
                                       >
-                                        Open
+                                        {selected ? "Open in scene" : "Open"}
                                       </button>
                                       <div className="gallery-scan-card-footer-tools">
                                         <span className="gallery-scan-card-info-pill" title={card.description}>
@@ -26900,7 +26902,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                               focusGalleryCardNeighbor(e.currentTarget, "down");
                             }
                           }}
-                          className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
+                          className={`gallery-scan-card surface-preset-card${active ? " is-scene-active" : ""}`}
                           title={`${p.label}\n${p.safeDomainReason}`}
                         >
                           <div className="gallery-scan-card-preview">
@@ -26918,7 +26920,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           <div className="gallery-scan-card-meta">
                             <div className="gallery-scan-card-title-row">
                               <div className="gallery-scan-card-title">{p.label}</div>
-                              {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
+                              {active && <span className="gallery-scan-card-selected-pill is-scene">Active in scene</span>}
+                            </div>
+                            <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
+                              {summary}
                             </div>
                             <div className="gallery-scan-card-formula">{`g(z) = ${p.gExpr}`}</div>
                             <div className="gallery-scan-card-chips">
@@ -26927,9 +26932,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                                   {chip}
                                 </span>
                               ))}
-                            </div>
-                            <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
-                              {summary}
                             </div>
                             <div className="gallery-scan-card-footer">
                               <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
@@ -27113,7 +27115,7 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
                   focusGalleryCardNeighbor(e.currentTarget, "down");
                 }
               }}
-              className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
+              className={`gallery-scan-card surface-preset-card${active ? " is-scene-active" : ""}`}
               title={meta?.note}
             >
               <div className="gallery-scan-card-preview">
@@ -27131,8 +27133,13 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
               <div className="gallery-scan-card-meta">
                 <div className="gallery-scan-card-title-row">
                   <div className="gallery-scan-card-title">{s.label}</div>
-                  {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
+                  {active && <span className="gallery-scan-card-selected-pill is-scene">Active in scene</span>}
                 </div>
+                {meta?.note && (
+                  <div className="gallery-scan-card-summary" title={meta.note}>
+                    {summary}
+                  </div>
+                )}
                 {!!formulaLine && <div className="gallery-scan-card-formula">{formulaLine}</div>}
                 <div className="gallery-scan-card-chips">
                   {chips.map((chip) => (
@@ -27141,11 +27148,6 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
                     </span>
                   ))}
                 </div>
-                {meta?.note && (
-                  <div className="gallery-scan-card-summary" title={meta.note}>
-                    {summary}
-                  </div>
-                )}
                 <div className="gallery-scan-card-footer">
                   <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
                     {active ? "Focus in scene" : "Open"}
@@ -27533,7 +27535,7 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                     focusGalleryCardNeighbor(e.currentTarget, "down");
                   }
                 }}
-                className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
+                className={`gallery-scan-card surface-preset-card${active ? " is-scene-active" : ""}`}
                 title={s.note}
               >
                 <div className="gallery-scan-card-preview">
@@ -27551,7 +27553,10 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                 <div className="gallery-scan-card-meta">
                   <div className="gallery-scan-card-title-row">
                     <div className="gallery-scan-card-title">{s.label}</div>
-                    {active && <span className="gallery-scan-card-selected-pill">Active in scene</span>}
+                    {active && <span className="gallery-scan-card-selected-pill is-scene">Active in scene</span>}
+                  </div>
+                  <div className="gallery-scan-card-summary" title={s.note}>
+                    {summary}
                   </div>
                   <div className="gallery-scan-card-formula">{formulaLine}</div>
                   <div className="gallery-scan-card-chips">
@@ -27560,9 +27565,6 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                         {chip}
                       </span>
                     ))}
-                  </div>
-                  <div className="gallery-scan-card-summary" title={s.note}>
-                    {summary}
                   </div>
                   <div className="gallery-scan-card-footer">
                     <span className={`gallery-scan-card-cta${active ? " is-active" : ""}`}>
