@@ -9823,7 +9823,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(320);
   const minRight = 240;
   const maxRight = 640;
-  const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2">("layout1");
+  const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3">("layout1");
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
@@ -21090,6 +21090,22 @@ case "mobius":
                 >
                   Layout 2
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfacesLayoutVariant("layout3");
+                    setSurfacesPanelState("browse");
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (surfacesLayoutVariant === "layout3" ? "#0a66c2" : "#d1d5db"),
+                    background: surfacesLayoutVariant === "layout3" ? "#e6f0ff" : "#fff",
+                    fontWeight: surfacesLayoutVariant === "layout3" ? 700 : 550,
+                  }}
+                >
+                  Layout 3
+                </button>
               </div>
               {surfacesLayoutVariant === "layout2" && (
                 <div style={{ gridColumn: "span 12" }}>
@@ -21388,9 +21404,10 @@ case "mobius":
                   </button>
                 </div>
               )}
-              {surfacesLayoutVariant === "layout1" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && (
                 <SurfacesControls
-                  panelMode={surfacesPanelState}
+                  panelMode={surfacesLayoutVariant === "layout1" ? surfacesPanelState : "browse"}
+                  browsePresetLayout={surfacesLayoutVariant === "layout3" ? "cards" : "chips"}
                   onEnterWorkMode={enterSurfacesWorkMode}
                   viewerKind={surfaceViewerKind}
                   onChangeViewerKind={handleChangeViewerKind}
@@ -21465,7 +21482,7 @@ case "mobius":
                   </button>
                 ))}
               </div>
-              {(surfacesLayoutVariant === "layout2" || (surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
+              {(surfacesLayoutVariant === "layout2" || (surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
@@ -26195,6 +26212,7 @@ const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
 
 type SurfacesControlsProps = {
   panelMode: "browse" | "work";
+  browsePresetLayout?: "chips" | "cards";
   onEnterWorkMode: () => void;
   viewerKind: SurfaceViewerKind;
   onChangeViewerKind: (k: SurfaceViewerKind) => void;
@@ -26238,6 +26256,7 @@ type SurfacesControlsProps = {
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   panelMode,
+  browsePresetLayout = "chips",
   onEnterWorkMode,
   viewerKind,
   onChangeViewerKind,
@@ -26425,6 +26444,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       )
     );
   }, [surfaceCardSortPreset]);
+  const browseCardMode = browsePresetLayout === "cards";
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -26724,18 +26744,47 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 >
                   {GALLERY_SORT_OPTIONS.map((option) => (
                     <option key={`surface-gallery-sort-${option.value}`} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
+                    {option.label}
+                  </option>
+                ))}
                 </select>
               </label>
-              <button
-                type="button"
-                onClick={onEnterWorkMode}
-                style={{ padding: "4px 10px", fontSize: 11 }}
-              >
-                Open scene controls
-              </button>
+              {browseCardMode && (
+                <div style={{ display: "inline-flex", border: "1px solid #cbd5e1", borderRadius: 999, overflow: "hidden" }}>
+                  {([
+                    { id: "rendered" as const, label: "Rendered" },
+                    { id: "diagram" as const, label: "Diagram" },
+                  ] as const).map((modeOption) => (
+                    <button
+                      key={`surface-gallery-view-${modeOption.id}`}
+                      type="button"
+                      onClick={() => onChangeCardViewMode(modeOption.id)}
+                      aria-pressed={cardViewMode === modeOption.id}
+                      style={{
+                        border: "none",
+                        borderRight: modeOption.id === "rendered" ? "1px solid #cbd5e1" : "none",
+                        borderRadius: 0,
+                        padding: "3px 8px",
+                        fontSize: 10,
+                        boxShadow: "none",
+                        background: cardViewMode === modeOption.id ? "#dbeafe" : "#fff",
+                        fontWeight: cardViewMode === modeOption.id ? 700 : 500,
+                      }}
+                    >
+                      {modeOption.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {browsePresetLayout === "chips" && (
+                <button
+                  type="button"
+                  onClick={onEnterWorkMode}
+                  style={{ padding: "4px 10px", fontSize: 11 }}
+                >
+                  Open scene controls
+                </button>
+              )}
             </div>
           </div>
           <div style={{ display: "grid", gap: 8 }}>
@@ -26744,7 +26793,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 surfaceId={surfaceId}
                 surfaces={sortedImplicitSurfaces}
                 onChangeSurface={onChangeSurface}
-                presetLayout="chips"
+                presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
                 cardViewMode={cardViewMode}
               />
@@ -26754,7 +26803,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 surfaceId={surfaceId}
                 surfaces={sortedGraphSurfaces}
                 onChangeSurface={onChangeSurface}
-                presetLayout="chips"
+                presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
                 cardViewMode={cardViewMode}
               />
@@ -26773,7 +26822,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 onChangeRotationalProfilePointsText={onChangeRotationalProfilePointsText}
                 onEditRotationalProfile={onEditRotationalProfile}
                 showSourceKindTabs={false}
-                presetLayout="chips"
+                presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
                 cardViewMode={cardViewMode}
               />
@@ -26783,27 +26832,98 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 <div style={{ fontSize: 11, color: "#475569" }}>
                   Presets avoid singularities on boundaries; adjust domains carefully near poles.
                 </div>
-                <div style={styles.presetsRow}>
-                  {sortedWeierstrassPresets.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => onApplyWeierstrassPreset(p)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 6,
-                        border: "1px solid " + (activeWeierstrassPreset?.id === p.id ? "#0a66c2" : "#ddd"),
-                        background: activeWeierstrassPreset?.id === p.id ? "#e6f0ff" : "#fff",
-                        fontWeight: activeWeierstrassPreset?.id === p.id ? 600 : 400,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={`${p.label}: ${p.safeDomainReason}`}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
+                {browseCardMode ? (
+                  <div className="surface-card-grid" data-testid="weierstrass-preset-grid" data-gallery-grid="true">
+                    {sortedWeierstrassPresets.map((p) => {
+                      const active = activeWeierstrassPreset?.id === p.id;
+                      const thumb = makePresetThumb(`w-${p.id}`, p.label, `g=${p.gExpr}`, "weierstrass", cardViewMode);
+                      const thumbFallback = makePresetThumb(`w-${p.id}`, p.label, `g=${p.gExpr}`, "weierstrass", "diagram");
+                      const chips = chipsForWeierstrassPreset(p.id);
+                      const summary = compactSummary(p.safeDomainReason ?? "Minimal surface from Weierstrass data.");
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          data-testid={`weierstrass-preset-card-${p.id}`}
+                          onClick={() => onApplyWeierstrassPreset(p)}
+                          onKeyDown={(e) => {
+                            if (e.key === "ArrowLeft") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "left");
+                            } else if (e.key === "ArrowRight") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "right");
+                            } else if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "up");
+                            } else if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              focusGalleryCardNeighbor(e.currentTarget, "down");
+                            }
+                          }}
+                          className={`gallery-scan-card surface-preset-card${active ? " is-selected" : ""}`}
+                          title={`${p.label}\n${p.safeDomainReason}`}
+                        >
+                          <div className="gallery-scan-card-preview">
+                            <img
+                              src={thumb}
+                              alt={`${p.label} preset`}
+                              className="gallery-scan-card-preview-image"
+                              loading="lazy"
+                              decoding="async"
+                              onError={(event) => handleGalleryImageLoadError(event, thumbFallback)}
+                            />
+                            <span className="gallery-scan-card-inline-action">Open</span>
+                          </div>
+                          <div className="gallery-scan-card-meta">
+                            <div className="gallery-scan-card-title-row">
+                              <div className="gallery-scan-card-title">{p.label}</div>
+                              <div className="gallery-scan-card-title-tools">
+                                <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
+                                  i
+                                </span>
+                                {active && <span className="gallery-scan-card-selected-pill">Selected</span>}
+                              </div>
+                            </div>
+                            <div className="gallery-scan-card-formula">{`g(z) = ${p.gExpr}`}</div>
+                            <div className="gallery-scan-card-chips">
+                              {chips.map((chip) => (
+                                <span key={`${p.id}-${chip}`} className="gallery-scan-card-chip">
+                                  {chip}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="gallery-scan-card-summary" title={p.safeDomainReason}>
+                              {summary}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={styles.presetsRow}>
+                    {sortedWeierstrassPresets.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => onApplyWeierstrassPreset(p)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          border: "1px solid " + (activeWeierstrassPreset?.id === p.id ? "#0a66c2" : "#ddd"),
+                          background: activeWeierstrassPreset?.id === p.id ? "#e6f0ff" : "#fff",
+                          fontWeight: activeWeierstrassPreset?.id === p.id ? 600 : 400,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={`${p.label}: ${p.safeDomainReason}`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {activeWeierstrassInfo && (
                   <div style={{ display: "grid", gap: 4 }}>
                     <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
