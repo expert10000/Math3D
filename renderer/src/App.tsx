@@ -9831,6 +9831,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const prevModeRef = useRef<Mode>(mode);
   const enterSurfacesWorkMode = useCallback(() => {
     setSurfacesPanelState("work");
+    setSurfacesLeftTab("scene");
   }, []);
   const returnToSurfacesBrowse = useCallback(() => {
     setSurfacesPanelState("browse");
@@ -21106,6 +21107,24 @@ case "mobius":
                 >
                   Layout 3
                 </button>
+                {surfacesLayoutVariant === "layout3" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (surfacesPanelState === "browse") enterSurfacesWorkMode();
+                      else returnToSurfacesBrowse();
+                    }}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid #0a66c2",
+                      background: "#e6f0ff",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {surfacesPanelState === "browse" ? "Main view" : "Gallery"}
+                  </button>
+                )}
               </div>
               {surfacesLayoutVariant === "layout2" && (
                 <div style={{ gridColumn: "span 12" }}>
@@ -21379,7 +21398,7 @@ case "mobius":
                 overflowY: "auto",
               }}
             >
-              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && (
                 <div
                   style={{
                     border: "1px solid #dbe4f0",
@@ -21406,7 +21425,7 @@ case "mobius":
               )}
               {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && (
                 <SurfacesControls
-                  panelMode={surfacesLayoutVariant === "layout1" ? surfacesPanelState : "browse"}
+                  panelMode={surfacesPanelState}
                   browsePresetLayout={surfacesLayoutVariant === "layout3" ? "cards" : "chips"}
                   onEnterWorkMode={enterSurfacesWorkMode}
                   viewerKind={surfaceViewerKind}
@@ -21461,7 +21480,7 @@ case "mobius":
                   onChangeCardViewMode={setGalleryCardViewMode}
                 />
               )}
-              <div style={{ display: surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
+              <div style={{ display: (surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
                     key={tab}
@@ -21482,7 +21501,7 @@ case "mobius":
                   </button>
                 ))}
               </div>
-              {(surfacesLayoutVariant === "layout2" || (surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
+              {(surfacesLayoutVariant === "layout2" || ((surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
@@ -21499,7 +21518,7 @@ case "mobius":
                   />
                 </div>
               )}
-              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
                   <SurfacesObjectPanel
                     selectedNode={unifiedSelectedNode}
@@ -21660,7 +21679,7 @@ case "mobius":
                   )}
                 </>
               )}
-              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
                   viewerKind={surfaceViewerKind}
                   inspectEnabled={inspectEnabled}
@@ -21687,7 +21706,7 @@ case "mobius":
                   onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
                 />
               )}
-              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
                   renderQuality={surfaceRenderQuality}
                   onChangeRenderQuality={setSurfaceRenderQuality}
@@ -21756,7 +21775,7 @@ case "mobius":
                   }
                 />
               )}
-              {surfacesLayoutVariant === "layout1" && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
+              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {renderSurfacesInspectorPanel("analysis")}
@@ -26445,6 +26464,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     );
   }, [surfaceCardSortPreset]);
   const browseCardMode = browsePresetLayout === "cards";
+  const autoOpenSceneFromCard = panelMode === "browse" && browseCardMode;
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -26792,7 +26812,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <SurfacesButtons
                 surfaceId={surfaceId}
                 surfaces={sortedImplicitSurfaces}
-                onChangeSurface={onChangeSurface}
+                onChangeSurface={(id) => {
+                  onChangeSurface(id);
+                  if (autoOpenSceneFromCard) onEnterWorkMode();
+                }}
                 presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
                 cardViewMode={cardViewMode}
@@ -26802,7 +26825,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <SurfacesButtons
                 surfaceId={surfaceId}
                 surfaces={sortedGraphSurfaces}
-                onChangeSurface={onChangeSurface}
+                onChangeSurface={(id) => {
+                  onChangeSurface(id);
+                  if (autoOpenSceneFromCard) onEnterWorkMode();
+                }}
                 presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
                 cardViewMode={cardViewMode}
@@ -26811,7 +26837,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             {viewerKind === "param" && (
               <ParamSurfacesButtons
                 paramId={paramId}
-                onChangeParamId={onChangeParamId}
+                onChangeParamId={(id) => {
+                  onChangeParamId(id);
+                  if (autoOpenSceneFromCard) onEnterWorkMode();
+                }}
                 rotationalProfileMode={rotationalProfileMode}
                 rotationalProfileRExpr={rotationalProfileRExpr}
                 rotationalProfileZExpr={rotationalProfileZExpr}
@@ -26845,7 +26874,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           key={p.id}
                           type="button"
                           data-testid={`weierstrass-preset-card-${p.id}`}
-                          onClick={() => onApplyWeierstrassPreset(p)}
+                          onClick={() => {
+                            onApplyWeierstrassPreset(p);
+                            if (autoOpenSceneFromCard) onEnterWorkMode();
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === "ArrowLeft") {
                               e.preventDefault();
@@ -26907,7 +26939,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => onApplyWeierstrassPreset(p)}
+                        onClick={() => {
+                          onApplyWeierstrassPreset(p);
+                          if (autoOpenSceneFromCard) onEnterWorkMode();
+                        }}
                         style={{
                           padding: "6px 10px",
                           borderRadius: 6,
