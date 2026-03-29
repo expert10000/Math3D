@@ -10033,6 +10033,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [mode, surfacesLayoutVariant, surfacesPanelState, surfacesLeftTab]);
 
   useEffect(() => {
+    if (mode !== "surfaces" || surfacesPanelState === "browse") {
+      if (surfaceFormulaEditorOpen) setSurfaceFormulaEditorOpen(false);
+      if (paramSurfaceOverlayOpen) setParamSurfaceOverlayOpen(false);
+    }
+  }, [mode, paramSurfaceOverlayOpen, surfaceFormulaEditorOpen, surfacesPanelState]);
+
+  useEffect(() => {
     if (mode !== "surfaces") return;
     if (displayMode === "present") {
       if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
