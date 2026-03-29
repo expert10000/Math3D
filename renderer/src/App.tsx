@@ -21422,12 +21422,39 @@ case "mobius":
                       setParamSurfaceOverlayTab("rotational");
                       setParamSurfaceOverlayOpen(true);
                     }}
-                    onRunGalleryDemo={handleRunSurfaceGalleryDemo}
-                    galleryDemoActive={surfacesCameraTourStatus === "playing"}
-                    cardViewMode={galleryCardViewMode}
-                    onChangeCardViewMode={setGalleryCardViewMode}
-                  />
-                </div>
+                  onRunGalleryDemo={handleRunSurfaceGalleryDemo}
+                  galleryDemoActive={surfacesCameraTourStatus === "playing"}
+                  cardViewMode={galleryCardViewMode}
+                  onChangeCardViewMode={setGalleryCardViewMode}
+                  quickEditCustomLabel={
+                    surfaceViewerKind === "graph"
+                      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
+                      : surfaceViewerKind === "implicit"
+                        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
+                        : surfaceViewerKind === "param"
+                          ? (paramSurfaceId === "custom" ? "Already custom" : "Edit custom σ(u,v)")
+                          : null
+                  }
+                  quickEditCustomEnabled={
+                    surfaceViewerKind === "graph"
+                      ? canEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? canEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? canEditParamAsCustom
+                          : false
+                  }
+                  onQuickEditCustom={
+                    surfaceViewerKind === "graph"
+                      ? handleEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? handleEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? handleEditParamAsCustom
+                          : undefined
+                  }
+                />
+              </div>
               )}
             </>
           ) : mode === "curves" ? (
@@ -21723,6 +21750,33 @@ case "mobius":
                   galleryDemoActive={surfacesCameraTourStatus === "playing"}
                   cardViewMode={galleryCardViewMode}
                   onChangeCardViewMode={setGalleryCardViewMode}
+                  quickEditCustomLabel={
+                    surfaceViewerKind === "graph"
+                      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
+                      : surfaceViewerKind === "implicit"
+                        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
+                        : surfaceViewerKind === "param"
+                          ? (paramSurfaceId === "custom" ? "Already custom" : "Edit custom σ(u,v)")
+                          : null
+                  }
+                  quickEditCustomEnabled={
+                    surfaceViewerKind === "graph"
+                      ? canEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? canEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? canEditParamAsCustom
+                          : false
+                  }
+                  onQuickEditCustom={
+                    surfaceViewerKind === "graph"
+                      ? handleEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? handleEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? handleEditParamAsCustom
+                          : undefined
+                  }
                 />
               )}
               <div style={{ display: (surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
@@ -26552,6 +26606,9 @@ type SurfacesControlsProps = {
   galleryDemoActive: boolean;
   cardViewMode: GalleryCardViewMode;
   onChangeCardViewMode: (mode: GalleryCardViewMode) => void;
+  quickEditCustomLabel?: string | null;
+  quickEditCustomEnabled?: boolean;
+  onQuickEditCustom?: () => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -26596,6 +26653,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   galleryDemoActive,
   cardViewMode,
   onChangeCardViewMode,
+  quickEditCustomLabel = null,
+  quickEditCustomEnabled = false,
+  onQuickEditCustom = () => {},
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -26947,6 +27007,16 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             <button type="button" onClick={() => openSurfaceGalleryCard("torus")} style={toolbarChipStyle(false, "tool")}>
               Demo
             </button>
+            {quickEditCustomLabel && (
+              <button
+                type="button"
+                onClick={onQuickEditCustom}
+                disabled={!quickEditCustomEnabled}
+                style={toolbarChipStyle(false, "tool", !quickEditCustomEnabled)}
+              >
+                {quickEditCustomLabel}
+              </button>
+            )}
             <button
               type="button"
               onClick={onToggleCompare}
