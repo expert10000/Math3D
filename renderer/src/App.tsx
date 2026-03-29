@@ -21122,7 +21122,7 @@ case "mobius":
                       fontWeight: 700,
                     }}
                   >
-                    {surfacesPanelState === "browse" ? "Main view" : "Gallery"}
+                    {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
                   </button>
                 )}
               </div>
@@ -26473,7 +26473,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     );
   }, [surfaceCardSortPreset]);
   const browseCardMode = browsePresetLayout === "cards";
-  const autoOpenSceneFromCard = panelMode === "browse" && browseCardMode;
   const bandStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -26805,15 +26804,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   ))}
                 </div>
               )}
-              {browsePresetLayout === "chips" && (
-                <button
-                  type="button"
-                  onClick={onEnterWorkMode}
-                  style={{ padding: "4px 10px", fontSize: 11 }}
-                >
-                  Open scene controls
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={onEnterWorkMode}
+                style={{ padding: "4px 10px", fontSize: 11 }}
+              >
+                Show Scene/Object tabs
+              </button>
             </div>
           </div>
           <div style={{ display: "grid", gap: 8 }}>
@@ -26823,7 +26820,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 surfaces={sortedImplicitSurfaces}
                 onChangeSurface={(id) => {
                   onChangeSurface(id);
-                  if (autoOpenSceneFromCard) onEnterWorkMode();
                 }}
                 presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
@@ -26836,7 +26832,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 surfaces={sortedGraphSurfaces}
                 onChangeSurface={(id) => {
                   onChangeSurface(id);
-                  if (autoOpenSceneFromCard) onEnterWorkMode();
                 }}
                 presetLayout={browseCardMode ? "cards" : "chips"}
                 sortPreset={surfaceCardSortPreset}
@@ -26848,7 +26843,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 paramId={paramId}
                 onChangeParamId={(id) => {
                   onChangeParamId(id);
-                  if (autoOpenSceneFromCard) onEnterWorkMode();
                 }}
                 rotationalProfileMode={rotationalProfileMode}
                 rotationalProfileRExpr={rotationalProfileRExpr}
@@ -26885,7 +26879,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                           data-testid={`weierstrass-preset-card-${p.id}`}
                           onClick={() => {
                             onApplyWeierstrassPreset(p);
-                            if (autoOpenSceneFromCard) onEnterWorkMode();
                           }}
                           onKeyDown={(e) => {
                             if (e.key === "ArrowLeft") {
@@ -26956,7 +26949,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                         type="button"
                         onClick={() => {
                           onApplyWeierstrassPreset(p);
-                          if (autoOpenSceneFromCard) onEnterWorkMode();
                         }}
                         style={{
                           padding: "6px 10px",
