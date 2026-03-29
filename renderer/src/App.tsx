@@ -2118,6 +2118,46 @@ const IMPLICIT_EXPR_PRESETS: { id: SurfaceId; label: string; expr: string }[] = 
   { id: "scherk", label: "Scherk surface", expr: "sin(z) - (0.5*(exp(x) - exp(-x)))*(0.5*(exp(y) - exp(-y)))" },
 ];
 
+function getEditableGraphCustomExpr(id: SurfaceId): string | null {
+  switch (id) {
+    case "graph_saddle":
+      return "0.4*(x*x - y*y)";
+    case "graph_rotatedSaddle":
+      return "0.4*(x*x + y*y - 2*x*y)";
+    case "graph_monkey":
+      return "0.2*(x*x*x - 3*x*y*y)";
+    case "graph_wave":
+      return "0.6*sin(1.3*x)*cos(1.3*y)";
+    case "graph_paraboloid":
+      return "0.3*(x*x + y*y)";
+    case "graph_gaussian":
+      return "exp(-0.7*(x*x + y*y))";
+    case "graph_ripple":
+      return "sqrt(x*x + y*y) < 1e-4 ? 1 : sin(3*sqrt(x*x + y*y))/(3*sqrt(x*x + y*y))";
+    case "graph_mexican":
+      return "(1 - (x*x + y*y))*exp(-0.5*(x*x + y*y))";
+    case "graph_sinSum":
+      return "0.45*(sin(x) + cos(y))";
+    case "graph_sinc":
+      return "sqrt(x*x + y*y) < 1e-4 ? 1 : sin(sqrt(x*x + y*y))/sqrt(x*x + y*y)";
+    case "graph_sinc2":
+      return "sin(2*sqrt(x*x + y*y))/(1 + x*x + y*y)";
+    default:
+      return null;
+  }
+}
+
+function getEditableImplicitCustomExpr(id: SurfaceId, fallback: string): string | null {
+  if (id === "implicit_custom") {
+    const trimmed = fallback.trim();
+    return trimmed.length ? trimmed : "x*x + y*y + z*z - 1";
+  }
+  const preset = IMPLICIT_EXPR_PRESETS.find((p) => p.id === id);
+  if (preset?.expr?.trim()) return preset.expr.trim();
+  const trimmed = fallback.trim();
+  return trimmed.length ? trimmed : null;
+}
+
 const pillRow: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
@@ -2527,6 +2567,147 @@ function getParamDomainPreviewBounds(id: ParamSurfaceId) {
     // defaults for everything else (safe generic)
     default:
       return { uMin: -Math.PI, uMax: Math.PI, vMin: -1, vMax: 1 };
+  }
+}
+
+type ParamCustomExpr = { xExpr: string; yExpr: string; zExpr: string };
+
+function getEditableParamCustomExpr(
+  id: ParamSurfaceId,
+  options: {
+    rotationalProfileMode: RotationalProfileMode;
+    rotationalProfileRExpr: string;
+    rotationalProfileZExpr: string;
+  }
+): ParamCustomExpr | null {
+  if (id === "custom" || id === "bezierSurface" || id === "bSplineSurface" || id === "nurbsSurface") {
+    return null;
+  }
+  if (id === "rotationalFreeProfile") {
+    if (options.rotationalProfileMode === "formula") {
+      const rExpr = options.rotationalProfileRExpr.trim() || "0.55 + 0.12*v + 0.08*v*v - 0.015*v*v*v";
+      const zExpr = options.rotationalProfileZExpr.trim() || "v + 0.15*sin(1.7*v)";
+      return {
+        xExpr: `(${rExpr})*cos(u)`,
+        yExpr: `(${rExpr})*sin(u)`,
+        zExpr,
+      };
+    }
+    return {
+      xExpr: "(0.55 + 0.12*v + 0.08*v*v - 0.015*v*v*v)*cos(u)",
+      yExpr: "(0.55 + 0.12*v + 0.08*v*v - 0.015*v*v*v)*sin(u)",
+      zExpr: "v + 0.15*sin(1.7*v)",
+    };
+  }
+  switch (id) {
+    case "plane":
+      return { xExpr: "u", yExpr: "v", zExpr: "0" };
+    case "cylinder":
+      return { xExpr: "cos(u)", yExpr: "sin(u)", zExpr: "v" };
+    case "cone":
+      return { xExpr: "v*cos(u)", yExpr: "v*sin(u)", zExpr: "v" };
+    case "rotationalDevelopable":
+      return { xExpr: "(1 + 0.35*v)*cos(u)", yExpr: "(1 + 0.35*v)*sin(u)", zExpr: "v" };
+    case "rotationalGraph":
+      return { xExpr: "(0.55 + 0.35*v*v)*cos(u)", yExpr: "(0.55 + 0.35*v*v)*sin(u)", zExpr: "v" };
+    case "rotationalBell":
+      return { xExpr: "(1 + 0.2*sin(3*v))*cos(u)", yExpr: "(1 + 0.2*sin(3*v))*sin(u)", zExpr: "v" };
+    case "rotationalHyperboloid":
+      return { xExpr: "0.8*cosh(v)*cos(u)", yExpr: "0.8*cosh(v)*sin(u)", zExpr: "0.9*sinh(v)" };
+    case "helicoid":
+      return { xExpr: "v*cos(u)", yExpr: "v*sin(u)", zExpr: "0.4*u" };
+    case "catenoid":
+      return { xExpr: "cosh(v)*cos(u)", yExpr: "cosh(v)*sin(u)", zExpr: "v" };
+    case "sphere":
+      return { xExpr: "sin(v)*cos(u)", yExpr: "sin(v)*sin(u)", zExpr: "cos(v)" };
+    case "rotationalSpheroid":
+      return { xExpr: "1.15*sin(v)*cos(u)", yExpr: "1.15*sin(v)*sin(u)", zExpr: "0.75*cos(v)" };
+    case "ellipsoid":
+      return { xExpr: "1.3*sin(v)*cos(u)", yExpr: "0.95*sin(v)*sin(u)", zExpr: "0.7*cos(v)" };
+    case "torus":
+      return { xExpr: "(1.4 + 0.5*cos(v))*cos(u)", yExpr: "(1.4 + 0.5*cos(v))*sin(u)", zExpr: "0.5*sin(v)" };
+    case "mobius":
+      return {
+        xExpr: "(1 + (v/2)*cos(u/2))*cos(u)",
+        yExpr: "(1 + (v/2)*cos(u/2))*sin(u)",
+        zExpr: "(v/2)*sin(u/2)",
+      };
+    case "kleinBottle":
+      return {
+        xExpr: "(u < pi ? (4*(1 - cos(u)/2)*cos(u)*(1 + sin(u)) + 2*cos(v)) : (4*(1 - cos(u)/2)*cos(u) + 2*cos(v + pi)))",
+        yExpr: "2*sin(v)",
+        zExpr: "4*(1 - cos(u)/2)*sin(u)",
+      };
+    case "hyperbolicParaboloid":
+      return { xExpr: "u", yExpr: "v", zExpr: "u*v" };
+    case "paraboloid":
+      return { xExpr: "v*cos(u)", yExpr: "v*sin(u)", zExpr: "0.6*v*v" };
+    case "enneper":
+      return { xExpr: "u - (u*u*u)/3 + u*v*v", yExpr: "v - (v*v*v)/3 + v*u*u", zExpr: "u*u - v*v" };
+    case "pseudosphere":
+      return { xExpr: "cos(u)/cosh(v)", yExpr: "sin(u)/cosh(v)", zExpr: "v - tanh(v)" };
+    case "dini":
+      return {
+        xExpr: "cos(u)*sin(v)",
+        yExpr: "sin(u)*sin(v)",
+        zExpr: "cos(v) + log((tan(v/2) > 1e-6) ? tan(v/2) : 1e-6) + 0.2*u",
+      };
+    case "twistedStrip":
+      return { xExpr: "(1 + v*cos(2*u))*cos(u)", yExpr: "(1 + v*cos(2*u))*sin(u)", zExpr: "v*sin(2*u)" };
+    case "sweepLinearExtrusion":
+      return { xExpr: "0.62*cos(u) + 0.08*cos(3*u)", yExpr: "0.36*sin(u)", zExpr: "v" };
+    case "sweepDirectional":
+      return { xExpr: "0.52*cos(u) + 0.45*v", yExpr: "0.3*sin(u) + 0.2*v", zExpr: "v" };
+    case "sweepPath":
+      return { xExpr: "0.85*cos(0.7*v) + 0.22*cos(u)", yExpr: "0.55*sin(1.1*v) + 0.22*sin(u)", zExpr: "v" };
+    case "sweepHelical":
+      return {
+        xExpr: "(1.2 + 0.22*cos(u))*cos(v)",
+        yExpr: "(1.2 + 0.22*cos(u))*sin(v)",
+        zExpr: "0.35*v + 0.22*sin(u)",
+      };
+    case "sweepScaled":
+      return {
+        xExpr: "(0.55 + 0.24*sin(0.9*v))*cos(u)",
+        yExpr: "0.62*(0.55 + 0.24*sin(0.9*v))*sin(u)",
+        zExpr: "v",
+      };
+    case "sweepTwisted":
+      return { xExpr: "0.72*cos(u + 1.6*v)", yExpr: "0.36*sin(u + 1.6*v)", zExpr: "v" };
+    case "ribbonRMF":
+      return { xExpr: "0.3*u", yExpr: "0", zExpr: "v" };
+    case "tubeConstant":
+      return { xExpr: "0.45*cos(u)", yExpr: "0.45*sin(u)", zExpr: "v" };
+    case "tubeVariable":
+      return {
+        xExpr: "(0.3 + 0.13*(1 + sin(1.35*v)))*cos(u)",
+        yExpr: "(0.3 + 0.13*(1 + sin(1.35*v)))*sin(u)",
+        zExpr: "v",
+      };
+    case "tubeClosed":
+      return {
+        xExpr: "(1.25 + 0.32*cos(u))*cos(v)",
+        yExpr: "(1.25 + 0.32*cos(u))*sin(v)",
+        zExpr: "0.32*sin(u)",
+      };
+    case "tubeOpen":
+      return {
+        xExpr: "(1.2 + 0.24*cos(u))*cos(v)",
+        yExpr: "0.24*sin(u)",
+        zExpr: "(1.2 + 0.24*cos(u))*sin(v)",
+      };
+    case "expCone":
+      return { xExpr: "v*cos(u)", yExpr: "v*sin(u)", zExpr: "log(v > 1e-9 ? v : 1e-9)" };
+    case "helicoidUV":
+      return { xExpr: "u*cos(v)", yExpr: "u*sin(v)", zExpr: "v" };
+    case "boy":
+      return {
+        xExpr: "(1.41421356237*cos(u)*cos(2*v) + cos(2*u)*sin(2*v)) / (2 - 1.41421356237*sin(3*u)*sin(2*v))",
+        yExpr: "(1.41421356237*sin(u)*cos(2*v) - sin(2*u)*sin(2*v)) / (2 - 1.41421356237*sin(3*u)*sin(2*v))",
+        zExpr: "cos(3*u) / (2 - 1.41421356237*sin(3*u)*sin(2*v))",
+      };
+    default:
+      return null;
   }
 }
 
@@ -10994,6 +11175,64 @@ case "mobius":
     setParamSurfaceId(id);
     if (compareEnabled) setCompareUseSnapshotA(false);
   };
+
+  const editableGraphCustomExpr = useMemo(
+    () => getEditableGraphCustomExpr(graphSurfaceId),
+    [graphSurfaceId]
+  );
+  const canEditGraphAsCustom =
+    surfaceViewerKind === "graph" && graphSurfaceId !== "graph_custom" && !!editableGraphCustomExpr;
+  const handleEditGraphAsCustom = useCallback(() => {
+    if (!editableGraphCustomExpr) return;
+    const domain = normalizeGraphDomain(activeGraphDomain, getDefaultGraphSpan("graph_custom"));
+    setGraphExpr(editableGraphCustomExpr);
+    setGraphDomains((prev) => ({ ...prev, graph_custom: domain }));
+    setDatasetKind("surface");
+    setSurfaceViewerKind("graph");
+    setGraphSurfaceId("graph_custom");
+    if (compareEnabled) setCompareUseSnapshotA(false);
+  }, [activeGraphDomain, compareEnabled, editableGraphCustomExpr]);
+
+  const editableImplicitCustomExpr = useMemo(
+    () => getEditableImplicitCustomExpr(implicitSurfaceId, implicitExpr),
+    [implicitSurfaceId, implicitExpr]
+  );
+  const canEditImplicitAsCustom =
+    surfaceViewerKind === "implicit" && implicitSurfaceId !== "implicit_custom" && !!editableImplicitCustomExpr;
+  const handleEditImplicitAsCustom = useCallback(() => {
+    if (!editableImplicitCustomExpr) return;
+    const domain = normalizeImplicitDomain(activeImplicitDomain, getDefaultImplicitDomain("implicit_custom"));
+    setImplicitExpr(editableImplicitCustomExpr);
+    setImplicitDomains((prev) => ({ ...prev, implicit_custom: domain }));
+    setDatasetKind("surface");
+    setSurfaceViewerKind("implicit");
+    setImplicitSurfaceId("implicit_custom");
+    if (compareEnabled) setCompareUseSnapshotA(false);
+  }, [activeImplicitDomain, compareEnabled, editableImplicitCustomExpr]);
+
+  const editableParamCustomExpr = useMemo(
+    () =>
+      getEditableParamCustomExpr(paramSurfaceId, {
+        rotationalProfileMode,
+        rotationalProfileRExpr,
+        rotationalProfileZExpr,
+      }),
+    [paramSurfaceId, rotationalProfileMode, rotationalProfileRExpr, rotationalProfileZExpr]
+  );
+  const canEditParamAsCustom =
+    surfaceViewerKind === "param" && paramSurfaceId !== "custom" && !!editableParamCustomExpr;
+  const handleEditParamAsCustom = useCallback(() => {
+    if (!editableParamCustomExpr) return;
+    const domain = normalizeParamDomain(activeParamDomain, getParamDomainPreviewBounds("custom"));
+    setParamXExpr(editableParamCustomExpr.xExpr);
+    setParamYExpr(editableParamCustomExpr.yExpr);
+    setParamZExpr(editableParamCustomExpr.zExpr);
+    setParamDomains((prev) => ({ ...prev, custom: domain }));
+    setDatasetKind("surface");
+    setSurfaceViewerKind("param");
+    setParamSurfaceId("custom");
+    if (compareEnabled) setCompareUseSnapshotA(false);
+  }, [activeParamDomain, compareEnabled, editableParamCustomExpr]);
 
   const handlePickEqSurface = (id: SurfaceId) => {
     setDatasetKind("surface");
@@ -20387,6 +20626,10 @@ case "mobius":
                   implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
                 onChangeImplicitExpr={setImplicitExpr}
+                  canEditGraphAsCustom={canEditGraphAsCustom}
+                  onEditGraphAsCustom={handleEditGraphAsCustom}
+                  canEditImplicitAsCustom={canEditImplicitAsCustom}
+                  onEditImplicitAsCustom={handleEditImplicitAsCustom}
                   paramXExpr={paramXExpr}
                   paramYExpr={paramYExpr}
                   paramZExpr={paramZExpr}
@@ -20491,6 +20734,8 @@ case "mobius":
                   onChangeParamXExpr={setParamXExpr}
                   onChangeParamYExpr={setParamYExpr}
                   onChangeParamZExpr={setParamZExpr}
+                  canEditParamAsCustom={canEditParamAsCustom}
+                  onEditParamAsCustom={handleEditParamAsCustom}
                   onChangeBezierControlGridText={setBezierControlGridText}
                   onChangeBSplineControlGridText={setBSplineControlGridText}
                   onChangeBSplineDegreeU={setBSplineDegreeU}
@@ -21708,6 +21953,33 @@ case "mobius":
               )}
               {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
+                  editCustomLabel={
+                    surfaceViewerKind === "graph"
+                      ? "Edit as Custom z=f(x,y)"
+                      : surfaceViewerKind === "implicit"
+                        ? "Edit as Custom f(x,y,z)"
+                        : surfaceViewerKind === "param"
+                          ? "Edit as Custom σ(u,v)"
+                          : null
+                  }
+                  canEditCustom={
+                    surfaceViewerKind === "graph"
+                      ? canEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? canEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? canEditParamAsCustom
+                          : false
+                  }
+                  onEditCustom={
+                    surfaceViewerKind === "graph"
+                      ? handleEditGraphAsCustom
+                      : surfaceViewerKind === "implicit"
+                        ? handleEditImplicitAsCustom
+                        : surfaceViewerKind === "param"
+                          ? handleEditParamAsCustom
+                          : null
+                  }
                   renderQuality={surfaceRenderQuality}
                   onChangeRenderQuality={setSurfaceRenderQuality}
                   colorModes={viewColorModes}
@@ -29683,6 +29955,9 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
 };
 
 type SurfacesViewPanelProps = {
+  editCustomLabel: string | null;
+  canEditCustom: boolean;
+  onEditCustom: (() => void) | null;
   renderQuality: RenderQuality;
   onChangeRenderQuality: (quality: RenderQuality) => void;
   colorModes: ColorMode[];
@@ -29727,6 +30002,9 @@ type SurfacesViewPanelProps = {
 };
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
+  editCustomLabel,
+  canEditCustom,
+  onEditCustom,
   renderQuality,
   onChangeRenderQuality,
   colorModes,
@@ -29770,6 +30048,20 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onChangePlaneOpacity,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+    {editCustomLabel && onEditCustom && (
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Edit preset</div>
+        <button
+          type="button"
+          onClick={onEditCustom}
+          disabled={!canEditCustom}
+          style={{ padding: "4px 10px" }}
+        >
+          {editCustomLabel}
+        </button>
+      </div>
+    )}
+
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
       <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Render quality</div>
       <div style={pillRow}>
@@ -30120,6 +30412,10 @@ type SurfacesLeftPanelProps = {
   implicitExpr: string;
   onChangeGraphExpr: (s: string) => void;
   onChangeImplicitExpr: (s: string) => void;
+  canEditGraphAsCustom: boolean;
+  onEditGraphAsCustom: () => void;
+  canEditImplicitAsCustom: boolean;
+  onEditImplicitAsCustom: () => void;
 
   paramXExpr: string;
   paramYExpr: string;
@@ -30225,6 +30521,8 @@ type SurfacesLeftPanelProps = {
   onChangeParamXExpr: (s: string) => void;
   onChangeParamYExpr: (s: string) => void;
   onChangeParamZExpr: (s: string) => void;
+  canEditParamAsCustom: boolean;
+  onEditParamAsCustom: () => void;
   onChangeBezierControlGridText: (s: string) => void;
   onChangeBSplineControlGridText: (s: string) => void;
   onChangeBSplineDegreeU: (n: number) => void;
@@ -30648,8 +30946,12 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onVtkSmooth,
   graphExpr,
   implicitExpr,
-  onChangeGraphExpr,
-  onChangeImplicitExpr,
+onChangeGraphExpr,
+onChangeImplicitExpr,
+  canEditGraphAsCustom,
+  onEditGraphAsCustom,
+  canEditImplicitAsCustom,
+  onEditImplicitAsCustom,
   paramXExpr,
   paramYExpr,
   paramZExpr,
@@ -30754,6 +31056,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onChangeParamXExpr,
   onChangeParamYExpr,
   onChangeParamZExpr,
+  canEditParamAsCustom,
+  onEditParamAsCustom,
   onChangeBezierControlGridText,
   onChangeBSplineControlGridText,
   onChangeBSplineDegreeU,
@@ -34964,6 +35268,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
       {viewerKind === "param" && <p style={styles.hint}>{paramMeta.note}</p>}
       {viewerKind === "weierstrass" && <p style={styles.hint}>{WEIERSTRASS_META.note}</p>}
 
+      {viewerKind === "graph" && isGraphAny && !isGraphCustom && (
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={onEditGraphAsCustom}
+            disabled={!canEditGraphAsCustom}
+            style={{ padding: "4px 10px" }}
+          >
+            Edit as Custom z=f(x,y)
+          </button>
+          <div style={styles.hint}>
+            Copies this explicit preset equation into editable custom graph mode.
+          </div>
+        </div>
+      )}
+
       {/* custom graph formula */}
       {isGraphCustom && (
         <div style={{ marginTop: 12 }}>
@@ -35019,6 +35339,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               style={{ flex: 1 }}
             />
             <span style={{ width: 28, textAlign: "right", opacity: showContours ? 1 : 0.5 }}>{contourCount}</span>
+          </div>
+        </div>
+      )}
+
+      {viewerKind === "implicit" && isImplicitAny && !isImplicitCustom && (
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={onEditImplicitAsCustom}
+            disabled={!canEditImplicitAsCustom}
+            style={{ padding: "4px 10px" }}
+          >
+            Edit as Custom f(x,y,z)
+          </button>
+          <div style={styles.hint}>
+            Copies this implicit preset equation into editable custom implicit mode.
           </div>
         </div>
       )}
@@ -35609,6 +35945,22 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {viewerKind === "param" && !isParamCustom && (
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={onEditParamAsCustom}
+            disabled={!canEditParamAsCustom}
+            style={{ padding: "4px 10px" }}
+          >
+            Edit as Custom σ(u,v)
+          </button>
+          <div style={styles.hint}>
+            Copies the active parametric preset into editable <code>x(u,v)</code>, <code>y(u,v)</code>, <code>z(u,v)</code>.
+          </div>
         </div>
       )}
 
