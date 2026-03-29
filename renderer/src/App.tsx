@@ -8346,6 +8346,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rotationalAxisDirection, setRotationalAxisDirection] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_DIRECTION);
   const [paramSurfaceOverlayOpen, setParamSurfaceOverlayOpen] = useState(true);
   const [paramSurfaceOverlayTab, setParamSurfaceOverlayTab] = useState<ParamSurfaceOverlayTab>("rotational");
+  const [surfaceFormulaEditorOpen, setSurfaceFormulaEditorOpen] = useState(false);
   const [rmfRibbonTwistEnabled, setRmfRibbonTwistEnabled] = useState(false);
   const [rmfRibbonTwistTurns, setRmfRibbonTwistTurns] = useState(1);
   const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
@@ -11233,6 +11234,60 @@ case "mobius":
     setParamSurfaceId("custom");
     if (compareEnabled) setCompareUseSnapshotA(false);
   }, [activeParamDomain, compareEnabled, editableParamCustomExpr]);
+
+  const openSurfaceFormulaEditor = useCallback(() => {
+    if (surfaceViewerKind === "graph") {
+      if (graphSurfaceId !== "graph_custom") {
+        if (!canEditGraphAsCustom) return;
+        handleEditGraphAsCustom();
+      }
+      setSurfaceFormulaEditorOpen(true);
+      return;
+    }
+    if (surfaceViewerKind === "implicit") {
+      if (implicitSurfaceId !== "implicit_custom") {
+        if (!canEditImplicitAsCustom) return;
+        handleEditImplicitAsCustom();
+      }
+      setSurfaceFormulaEditorOpen(true);
+      return;
+    }
+    if (surfaceViewerKind === "param") {
+      if (paramSurfaceId !== "custom") {
+        if (!canEditParamAsCustom) return;
+        handleEditParamAsCustom();
+      }
+      setSurfaceFormulaEditorOpen(true);
+      return;
+    }
+    if (surfaceViewerKind === "weierstrass") {
+      setSurfaceFormulaEditorOpen(true);
+    }
+  }, [
+    canEditGraphAsCustom,
+    canEditImplicitAsCustom,
+    canEditParamAsCustom,
+    graphSurfaceId,
+    handleEditGraphAsCustom,
+    handleEditImplicitAsCustom,
+    handleEditParamAsCustom,
+    implicitSurfaceId,
+    paramSurfaceId,
+    surfaceViewerKind,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "surfaces" || datasetKind !== "surface") setSurfaceFormulaEditorOpen(false);
+  }, [datasetKind, mode]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSurfaceFormulaEditorOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [surfaceFormulaEditorOpen]);
 
   const handlePickEqSurface = (id: SurfaceId) => {
     setDatasetKind("surface");
@@ -20263,6 +20318,32 @@ case "mobius":
     cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
   const showSurfaceViewportPresetStrip =
     mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
+  const showSurfaceFormulaEditorLauncher =
+    mode === "surfaces" &&
+    datasetKind === "surface" &&
+    (surfaceViewerKind === "graph" ||
+      surfaceViewerKind === "implicit" ||
+      surfaceViewerKind === "param" ||
+      surfaceViewerKind === "weierstrass") &&
+    !cleanScreenshotSurfaceActive;
+  const canOpenSurfaceFormulaEditor =
+    surfaceViewerKind === "graph"
+      ? graphSurfaceId === "graph_custom" || canEditGraphAsCustom
+      : surfaceViewerKind === "implicit"
+        ? implicitSurfaceId === "implicit_custom" || canEditImplicitAsCustom
+        : surfaceViewerKind === "param"
+          ? paramSurfaceId === "custom" || canEditParamAsCustom
+          : surfaceViewerKind === "weierstrass";
+  const surfaceFormulaEditorTitle =
+    surfaceViewerKind === "graph"
+      ? "Explicit editor"
+      : surfaceViewerKind === "implicit"
+        ? "Implicit editor"
+        : surfaceViewerKind === "param"
+          ? "Parametric editor"
+          : surfaceViewerKind === "weierstrass"
+            ? "Weierstrass editor"
+            : "Surface editor";
   const compareLayoutEnabled =
     compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfaceViewportDebug =
@@ -22313,6 +22394,49 @@ case "mobius":
                           })}
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          {showSurfaceFormulaEditorLauncher && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (surfaceFormulaEditorOpen) {
+                                  setSurfaceFormulaEditorOpen(false);
+                                  return;
+                                }
+                                openSurfaceFormulaEditor();
+                              }}
+                              disabled={!canOpenSurfaceFormulaEditor}
+                              style={{
+                                borderRadius: 999,
+                                border:
+                                  "1px solid " +
+                                  (surfaceFormulaEditorOpen ? "#0a66c2" : canOpenSurfaceFormulaEditor ? "#d1d5db" : "#d5d9e0"),
+                                background:
+                                  surfaceFormulaEditorOpen
+                                    ? "#e6f0ff"
+                                    : canOpenSurfaceFormulaEditor
+                                      ? "#fff"
+                                      : "#f8fafc",
+                                color:
+                                  surfaceFormulaEditorOpen
+                                    ? "#0a66c2"
+                                    : canOpenSurfaceFormulaEditor
+                                      ? "#334155"
+                                      : "#94a3b8",
+                                fontWeight: surfaceFormulaEditorOpen ? 700 : 600,
+                                fontSize: 11,
+                                padding: "4px 10px",
+                                cursor: canOpenSurfaceFormulaEditor ? "pointer" : "not-allowed",
+                              }}
+                              aria-pressed={surfaceFormulaEditorOpen}
+                              title={
+                                canOpenSurfaceFormulaEditor
+                                  ? `${surfaceFormulaEditorOpen ? "Close" : "Open"} ${surfaceFormulaEditorTitle.toLowerCase()}`
+                                  : "Choose an editable preset first."
+                              }
+                            >
+                              {surfaceFormulaEditorOpen ? "Editor: on" : "Open editor"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setShowInViewportOverlayControls((v) => !v)}
@@ -22727,6 +22851,155 @@ case "mobius":
                             onChangeNurbsKnotVText={setNurbsKnotVText}
                             onChangeNurbsWeightsText={setNurbsWeightsText}
                           />
+                        )}
+                        {showSurfaceFormulaEditorLauncher && surfaceFormulaEditorOpen && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 12,
+                              right: 12,
+                              zIndex: 8,
+                              width: "min(560px, calc(100% - 24px))",
+                              maxHeight: "calc(100% - 24px)",
+                              overflowY: "auto",
+                              borderRadius: 12,
+                              border: "1px solid #c8d5e6",
+                              background: "rgba(255,255,255,0.98)",
+                              boxShadow: "0 18px 38px rgba(15,23,42,0.22)",
+                              padding: 12,
+                              display: "grid",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{surfaceFormulaEditorTitle}</div>
+                              <button type="button" onClick={() => setSurfaceFormulaEditorOpen(false)} style={{ padding: "4px 10px" }}>
+                                Close
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, color: "#475467" }}>
+                              Editing here updates the active surface immediately.
+                            </div>
+
+                            {surfaceViewerKind === "graph" && (
+                              <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                z = f(x, y)
+                                <textarea
+                                  value={graphExpr}
+                                  onChange={(e) => setGraphExpr(e.target.value)}
+                                  rows={5}
+                                  spellCheck={false}
+                                  style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    borderRadius: 8,
+                                    border: "1px solid #cbd5e1",
+                                    padding: "8px 10px",
+                                    fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                    fontSize: 13,
+                                    resize: "vertical",
+                                  }}
+                                />
+                              </label>
+                            )}
+
+                            {surfaceViewerKind === "implicit" && (
+                              <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                f(x, y, z) = 0
+                                <textarea
+                                  value={implicitExpr}
+                                  onChange={(e) => setImplicitExpr(e.target.value)}
+                                  rows={5}
+                                  spellCheck={false}
+                                  style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    borderRadius: 8,
+                                    border: "1px solid #cbd5e1",
+                                    padding: "8px 10px",
+                                    fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                    fontSize: 13,
+                                    resize: "vertical",
+                                  }}
+                                />
+                              </label>
+                            )}
+
+                            {surfaceViewerKind === "param" && (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                {(
+                                  [
+                                    ["x(u,v)", paramXExpr, setParamXExpr],
+                                    ["y(u,v)", paramYExpr, setParamYExpr],
+                                    ["z(u,v)", paramZExpr, setParamZExpr],
+                                  ] as const
+                                ).map(([label, value, setter]) => (
+                                  <label key={`surface-formula-${label}`} style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                    {label}
+                                    <textarea
+                                      value={value}
+                                      onChange={(e) => setter(e.target.value)}
+                                      rows={3}
+                                      spellCheck={false}
+                                      style={{
+                                        width: "100%",
+                                        boxSizing: "border-box",
+                                        borderRadius: 8,
+                                        border: "1px solid #cbd5e1",
+                                        padding: "8px 10px",
+                                        fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                        fontSize: 13,
+                                        resize: "vertical",
+                                      }}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            {surfaceViewerKind === "weierstrass" && (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                  g(z)
+                                  <textarea
+                                    value={weierstrassGExpr}
+                                    onChange={(e) => setWeierstrassGExpr(e.target.value)}
+                                    rows={3}
+                                    spellCheck={false}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #cbd5e1",
+                                      padding: "8px 10px",
+                                      fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                      fontSize: 13,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </label>
+                                <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
+                                  phi(z)
+                                  <textarea
+                                    value={weierstrassPhiExpr}
+                                    onChange={(e) => setWeierstrassPhiExpr(e.target.value)}
+                                    rows={3}
+                                    spellCheck={false}
+                                    style={{
+                                      width: "100%",
+                                      boxSizing: "border-box",
+                                      borderRadius: 8,
+                                      border: "1px solid #cbd5e1",
+                                      padding: "8px 10px",
+                                      fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                      fontSize: 13,
+                                      resize: "vertical",
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
 
