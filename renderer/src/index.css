@@ -291,20 +291,21 @@ button:focus-visible {
 
 .gallery-scan-card-preview {
   position: relative;
-  background: var(--gallery-card-preview-bg);
-  padding: 6px;
+  padding: 8px;
 }
 
 .gallery-scan-card-preview-frame {
   width: 100%;
-  height: 94px;
-  border-radius: 7px;
-  border: 1px solid #d1dae5;
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.86) 0%, rgba(241, 245, 249, 0.72) 100%);
+  aspect-ratio: 16 / 10;
+  min-height: 94px;
+  border-radius: 11px;
+  border: 1px solid #cfdae7;
+  background: var(--gallery-card-preview-bg);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
 
 .gallery-scan-card-preview-image {
@@ -313,7 +314,7 @@ button:focus-visible {
   object-fit: contain;
   object-position: center;
   background: transparent;
-  padding: 4px;
+  padding: 0;
   display: block;
 }
 

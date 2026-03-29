@@ -25872,7 +25872,7 @@ const makePresetThumb = (
           ? "spline"
           : kind;
 
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="360" height="180" viewBox="0 0 180 90">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 180 90" preserveAspectRatio="none">
 <defs>
   <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="${palette.top}" />

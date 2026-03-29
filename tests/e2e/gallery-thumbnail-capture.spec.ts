@@ -40,33 +40,34 @@ const toPosixRelative = (absolutePath: string): string =>
   path.relative(repoRoot, absolutePath).split(path.sep).join("/");
 
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? 450);
+const THUMBNAIL_ASPECT = 16 / 10;
 
 const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
-  // ~74% occupancy target for recognizable silhouettes with breathing room.
-  padding: 1.34,
+  // Targets ~65-75% object fill in the final 16:10 crop.
+  padding: 1.74,
   direction: { x: 1, y: 0.68, z: 1.2 },
 };
 
 const OPEN_SURFACE_CAPTURE_POLICY: CaptureViewPolicy = {
   // Lower pitch helps preserve profile/waist/rim readability for open surfaces.
-  padding: 1.4,
+  padding: 1.8,
   direction: { x: 1.08, y: 0.58, z: 1.24 },
 };
 
 const SURFACE_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>> = {
-  sphere: { padding: 1.4, direction: { x: 1, y: 0.72, z: 1.18 } },
-  hyperboloid: { padding: 1.38, direction: { x: 1.1, y: 0.6, z: 1.24 } },
-  paraboloid: { padding: 1.36, direction: { x: 1.12, y: 0.56, z: 1.2 } },
-  cone: { padding: 1.36, direction: { x: 1.06, y: 0.58, z: 1.22 } },
-  cylinder: { padding: 1.36, direction: { x: 1.04, y: 0.6, z: 1.22 } },
-  graph_paraboloid: { padding: 1.36, direction: { x: 1.12, y: 0.56, z: 1.2 } },
+  sphere: { padding: 1.8, direction: { x: 1, y: 0.72, z: 1.18 } },
+  hyperboloid: { padding: 1.8, direction: { x: 1.1, y: 0.6, z: 1.24 } },
+  paraboloid: { padding: 1.78, direction: { x: 1.12, y: 0.56, z: 1.2 } },
+  cone: { padding: 1.78, direction: { x: 1.06, y: 0.58, z: 1.22 } },
+  cylinder: { padding: 1.78, direction: { x: 1.04, y: 0.6, z: 1.22 } },
+  graph_paraboloid: { padding: 1.78, direction: { x: 1.12, y: 0.56, z: 1.2 } },
 };
 
 const OBJECT_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>> = {
-  sphere: { padding: 1.4, direction: { x: 1, y: 0.72, z: 1.18 } },
-  torus: { padding: 1.34, direction: { x: 1.03, y: 0.66, z: 1.2 } },
-  cone: { padding: 1.36, direction: { x: 1.06, y: 0.58, z: 1.22 } },
-  cylinder: { padding: 1.36, direction: { x: 1.04, y: 0.6, z: 1.22 } },
+  sphere: { padding: 1.8, direction: { x: 1, y: 0.72, z: 1.18 } },
+  torus: { padding: 1.74, direction: { x: 1.03, y: 0.66, z: 1.2 } },
+  cone: { padding: 1.78, direction: { x: 1.06, y: 0.58, z: 1.22 } },
+  cylinder: { padding: 1.78, direction: { x: 1.04, y: 0.6, z: 1.22 } },
 };
 
 const OPEN_SURFACE_HINTS = [
@@ -157,11 +158,43 @@ const resetStorage = async (page: Page): Promise<void> => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
+const setCheckboxValueIfVisible = async (page: Page, label: string, checked: boolean): Promise<void> => {
+  const control = page.getByLabel(label, { exact: true });
+  const count = await control.count();
+  for (let i = 0; i < count; i++) {
+    const box = control.nth(i);
+    if (!(await box.isVisible())) continue;
+    const current = await box.isChecked();
+    if (current === checked) return;
+    if (checked) await box.check();
+    else await box.uncheck();
+    await settleRenderer(page);
+    return;
+  }
+};
+
+const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
+  const transformTab = page.getByRole("button", { name: "Transform", exact: true });
+  if ((await transformTab.count()) > 0 && (await transformTab.first().isVisible())) {
+    await transformTab.first().click();
+    await settleRenderer(page);
+  }
+  await setCheckboxValueIfVisible(page, "Enable transform gizmo", false);
+  await setCheckboxValueIfVisible(page, "Bounding box", false);
+  await setCheckboxValueIfVisible(page, "Show 3D gizmo", false);
+  const sceneTab = page.getByRole("button", { name: "Scene", exact: true });
+  if ((await sceneTab.count()) > 0 && (await sceneTab.first().isVisible())) {
+    await sceneTab.first().click();
+    await settleRenderer(page);
+  }
+};
+
 const openProceduralGeometry = async (page: Page): Promise<void> => {
   await page.getByRole("button", { name: "Geometry", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Procedural", exact: true }).click();
   await expect(page.getByTestId("geometry-gallery")).toBeVisible();
+  await prepareGeometryCaptureUi(page);
 };
 
 const openSurfacesWorkspace = async (page: Page): Promise<void> => {
@@ -178,6 +211,13 @@ const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
     await galleryButton.first().click();
   }
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
+};
+
+const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 3"): Promise<void> => {
+  const button = page.getByRole("button", { name: layoutLabel, exact: true });
+  if ((await button.count()) === 0 || !(await button.first().isVisible())) return;
+  await button.first().click();
+  await settleRenderer(page);
 };
 
 const settleRenderer = async (page: Page): Promise<void> => {
@@ -241,17 +281,64 @@ const autoFitCameraForCapture = async (
   const dx = Number.isFinite(policy.direction.x) ? policy.direction.x : CANONICAL_CAPTURE_POLICY.direction.x;
   const dy = Number.isFinite(policy.direction.y) ? policy.direction.y : CANONICAL_CAPTURE_POLICY.direction.y;
   const dz = Number.isFinite(policy.direction.z) ? policy.direction.z : CANONICAL_CAPTURE_POLICY.direction.z;
-  await page.evaluate((payload: { padding: number; dx: number; dy: number; dz: number }) => {
+  await page.evaluate((payload: { padding: number; dx: number; dy: number; dz: number; aspect: number }) => {
     window.dispatchEvent(
       new CustomEvent("math3d:capture-autofit", {
         detail: {
           padding: payload.padding,
           direction: { x: payload.dx, y: payload.dy, z: payload.dz },
+          aspect: payload.aspect,
         },
       })
     );
-  }, { padding, dx, dy, dz });
+  }, { padding, dx, dy, dz, aspect: THUMBNAIL_ASPECT });
   await settleRenderer(page);
+};
+
+const centeredAspectClip = (
+  box: { x: number; y: number; width: number; height: number },
+  aspect: number
+): { x: number; y: number; width: number; height: number } => {
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : THUMBNAIL_ASPECT;
+  const hostWidth = Math.max(1, box.width);
+  const hostHeight = Math.max(1, box.height);
+  const hostAspect = hostWidth / hostHeight;
+
+  let clipWidth = hostWidth;
+  let clipHeight = hostHeight;
+  if (hostAspect > safeAspect) {
+    clipWidth = hostHeight * safeAspect;
+  } else if (hostAspect < safeAspect) {
+    clipHeight = hostWidth / safeAspect;
+  }
+
+  const x = box.x + (hostWidth - clipWidth) * 0.5;
+  const y = box.y + (hostHeight - clipHeight) * 0.5;
+  return {
+    x: Math.max(0, x),
+    y: Math.max(0, y),
+    width: Math.max(1, clipWidth),
+    height: Math.max(1, clipHeight),
+  };
+};
+
+const largestCaptureHost = async (page: Page) => {
+  const hosts = page.getByTestId("surface-viewer-canvas-host");
+  const count = await hosts.count();
+  let bestIndex = -1;
+  let bestArea = 0;
+  for (let i = 0; i < count; i++) {
+    const host = hosts.nth(i);
+    if (!(await host.isVisible())) continue;
+    const box = await host.boundingBox();
+    if (!box) continue;
+    const area = Math.max(0, box.width) * Math.max(0, box.height);
+    if (area > bestArea) {
+      bestArea = area;
+      bestIndex = i;
+    }
+  }
+  return bestIndex >= 0 ? hosts.nth(bestIndex) : hosts.first();
 };
 
 const captureScene = async (
@@ -259,14 +346,17 @@ const captureScene = async (
   outPath: string,
   policy: CaptureViewPolicy = CANONICAL_CAPTURE_POLICY
 ): Promise<void> => {
-  const host = page.getByTestId("surface-viewer-canvas-host").first();
+  const host = await largestCaptureHost(page);
   await expect(host).toBeVisible();
   await resetCameraIfAvailable(page);
   await prepareSurfaceCaptureUi(page);
   await autoFitCameraForCapture(page, policy);
   await settleRenderer(page);
   mkdirSync(path.dirname(outPath), { recursive: true });
-  await host.screenshot({ path: outPath });
+  const hostBox = await host.boundingBox();
+  if (!hostBox) throw new Error("Capture host bounding box unavailable.");
+  const clip = centeredAspectClip(hostBox, THUMBNAIL_ASPECT);
+  await page.screenshot({ path: outPath, clip });
 };
 
 const clearGeometryObjects = async (page: Page): Promise<void> => {
@@ -312,6 +402,7 @@ const captureObjectGallery = async (
     await clearGeometryObjects(page);
     await quickAdd.click();
     await expect.poll(async () => page.getByTestId("geometry-object-row").count()).toBeGreaterThan(0);
+    await settleRenderer(page);
 
     const outPath = path.join(outputRoot, "objects", `${id}.png`);
     await captureScene(page, outPath, resolveObjectCapturePolicy(id));
@@ -335,12 +426,16 @@ const captureSurfaceCards = async (
   const ids = await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true });
   for (const id of ids) {
     await ensureSurfacesGalleryMode(page);
+    await setSurfacesLayout(page, "Layout 3");
     const card = page.getByTestId(`${options.testIdPrefix}${id}`);
     if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
     await card.first().scrollIntoViewIfNeeded();
     await card.first().click();
+    await settleRenderer(page);
+    await setSurfacesLayout(page, "Layout 1");
     const outPath = path.join(outputRoot, options.folder, `${id}.png`);
     await captureScene(page, outPath, resolveSurfaceCapturePolicy(id, options.family, options.subtype));
+    await setSurfacesLayout(page, "Layout 3");
     manifest.surfaces.push({
       id,
       family: options.family,

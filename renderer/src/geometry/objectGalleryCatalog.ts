@@ -135,7 +135,7 @@ const buildThumbnail = (
   badge: GeometryGalleryBadge
 ) => {
   const palette = paletteForBadge(badge);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="132" height="84" viewBox="0 0 132 84">
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100" viewBox="0 0 132 84" preserveAspectRatio="none">
 <defs>
   <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0%" stop-color="${palette.top}" />

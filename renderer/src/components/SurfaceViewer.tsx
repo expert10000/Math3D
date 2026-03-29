@@ -1629,18 +1629,15 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
       const center = centerRef.current;
       const radius = radiusRef.current;
-      if (!Number.isFinite(radius) || radius <= 0) return;
-
       const detail = (event as CustomEvent<{ padding?: number; direction?: { x?: number; y?: number; z?: number } }>)
         .detail;
       const paddingRaw = Number(detail?.padding);
-      const padding = Number.isFinite(paddingRaw) ? Math.max(1.1, Math.min(1.8, paddingRaw)) : 1.34;
-
+      const padding = Number.isFinite(paddingRaw) ? Math.max(1.05, Math.min(1.8, paddingRaw)) : 1.34;
+      const aspectRaw = Number((detail as { aspect?: number } | undefined)?.aspect);
+      const effectiveAspect = Number.isFinite(aspectRaw) ? Math.max(0.75, Math.min(3, aspectRaw)) : cam.aspect;
       const fovY = THREE.MathUtils.degToRad(cam.fov);
-      const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * cam.aspect);
-      const minFov = Math.max(1e-3, Math.min(fovY, fovX));
-      const requiredDist = (radius * padding) / Math.sin(minFov * 0.5);
-      if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+      const tanY = Math.tan(Math.max(1e-3, fovY * 0.5));
+      const tanX = tanY * Math.max(1e-3, effectiveAspect);
 
       const dir = new THREE.Vector3(1, 0.68, 1.2);
       const dx = Number(detail?.direction?.x);
@@ -1651,6 +1648,47 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
       }
       if (dir.lengthSq() < 1e-8) dir.set(1, 0.68, 1.2);
       dir.normalize();
+
+      let requiredDist = Number.NaN;
+      const sampleSet = sampleSetRef.current;
+      const samples = sampleSet?.samples;
+      if (samples?.length && Number.isFinite(tanX) && tanX > 1e-6 && Number.isFinite(tanY) && tanY > 1e-6) {
+        const forward = dir.clone().multiplyScalar(-1);
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        const right = new THREE.Vector3().crossVectors(worldUp, forward);
+        if (right.lengthSq() < 1e-8) {
+          worldUp.set(0, 0, 1);
+          right.crossVectors(worldUp, forward);
+        }
+        right.normalize();
+        const up = new THREE.Vector3().crossVectors(forward, right).normalize();
+        const rel = new THREE.Vector3();
+        let maxDist = 0;
+        let used = 0;
+        for (const sample of samples) {
+          const p = sample?.position;
+          if (!p) continue;
+          rel.copy(p).sub(center);
+          const alongViewDir = rel.dot(dir);
+          const projectedX = Math.abs(rel.dot(right));
+          const projectedY = Math.abs(rel.dot(up));
+          const distForX = alongViewDir + (projectedX * padding) / tanX;
+          const distForY = alongViewDir + (projectedY * padding) / tanY;
+          maxDist = Math.max(maxDist, alongViewDir + 1e-3, distForX, distForY);
+          used += 1;
+        }
+        if (used > 0 && Number.isFinite(maxDist) && maxDist > 0) {
+          requiredDist = maxDist;
+        }
+      }
+
+      if (!(Number.isFinite(requiredDist) && requiredDist > 0)) {
+        if (!Number.isFinite(radius) || radius <= 0) return;
+        const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * effectiveAspect);
+        const minFov = Math.max(1e-3, Math.min(fovY, fovX));
+        requiredDist = (radius * padding) / Math.sin(minFov * 0.5);
+        if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+      }
 
       cam.position.copy(center).addScaledVector(dir, requiredDist);
       cam.up.set(0, 1, 0);
