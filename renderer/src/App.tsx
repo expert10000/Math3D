@@ -23196,6 +23196,50 @@ case "mobius":
                           )}
                           <button
                             type="button"
+                            onClick={handleConvertToMesh}
+                            disabled={!surfaceMeshExportable}
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid " + (surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
+                              background: surfaceMeshExportable ? "#e6f0ff" : "#fff",
+                              color: surfaceMeshExportable ? "#0a66c2" : "#94a3b8",
+                              fontWeight: 700,
+                              fontSize: 11,
+                              padding: "4px 10px",
+                              cursor: surfaceMeshExportable ? "pointer" : "not-allowed",
+                            }}
+                            title={
+                              surfaceMeshExportable
+                                ? "Promote current surface definition to SurfaceMesh dataset."
+                                : "Surface must be bake-ready to promote."
+                            }
+                          >
+                            Promote to SurfaceMesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDatasetToGeometryScene}
+                            disabled={!unifiedCanConvertToMeshObject}
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid " + (unifiedCanConvertToMeshObject ? "#0f766e" : "#d1d5db"),
+                              background: unifiedCanConvertToMeshObject ? "#e7f8f3" : "#fff",
+                              color: unifiedCanConvertToMeshObject ? "#0f766e" : "#94a3b8",
+                              fontWeight: 700,
+                              fontSize: 11,
+                              padding: "4px 10px",
+                              cursor: unifiedCanConvertToMeshObject ? "pointer" : "not-allowed",
+                            }}
+                            title={
+                              unifiedCanConvertToMeshObject
+                                ? "Bake current SurfaceMesh into a detached Mesh object (Geometry module)."
+                                : "SurfaceMesh dataset is required before baking to Mesh."
+                            }
+                          >
+                            Bake to Mesh
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setShowInViewportOverlayControls((v) => !v)}
                             style={{
                               borderRadius: 999,
