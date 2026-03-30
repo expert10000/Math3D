@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install renderer dependencies
+        run: npm --prefix renderer ci
+
       - name: Build core
         run: npm run build:core
 
