@@ -20722,7 +20722,7 @@ case "mobius":
     () => [
       {
         id: "bake",
-        label: "Bake to mesh",
+        label: "Bake to SurfaceMesh",
         disabled: !unifiedCanBake,
         onRun: () => runUnifiedPipelineAction("bake"),
       },
@@ -21079,17 +21079,67 @@ case "mobius":
     unifiedSelectedNode,
     workbookDirty,
   ]);
-  const sectionNavEntries = [
-    { id: "surfaces", label: "Surfaces" },
-    { id: "curves", label: "Curves" },
-    { id: "geometry", label: "Geometry" },
-  ] as const;
+  const sectionNavEntries: Array<{
+    id: "surfaces" | "mesh" | "volume" | "curves" | "geometry";
+    label: string;
+    active: boolean;
+    disabled?: boolean;
+    onSelect: () => void;
+  }> = [
+    {
+      id: "surfaces",
+      label: "Surfaces",
+      active: mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind !== "mesh",
+      onSelect: () => {
+        setMode("surfaces");
+        setDatasetKind("surface");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
+        if (surfaceViewerKind === "mesh") handleChangeViewerKind("implicit");
+      },
+    },
+    {
+      id: "mesh",
+      label: "Mesh",
+      active: mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "mesh",
+      onSelect: () => {
+        setMode("surfaces");
+        setDatasetKind("surface");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
+        handleChangeViewerKind("mesh");
+      },
+    },
+    {
+      id: "volume",
+      label: "Volume",
+      active: mode === "surfaces" && datasetKind === "volume",
+      onSelect: () => {
+        setMode("surfaces");
+        setDatasetKind("volume");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
+      },
+    },
+    {
+      id: "curves",
+      label: "Curves",
+      active: mode === "curves",
+      onSelect: () => setMode("curves"),
+    },
+    {
+      id: "geometry",
+      label: "Geometry",
+      active: mode === "geometry",
+      onSelect: () => setMode("geometry"),
+    },
+  ];
   const displayModeEntries = [
     { id: "workspace", label: "Workspace", icon: "W" },
     { id: "present", label: "Present", icon: "P" },
     { id: "inspect", label: "Inspect", icon: "I" },
   ] as const;
-  const activeSectionLabel = sectionNavEntries.find((entry) => entry.id === mode)?.label ?? "Viewer";
+  const activeSectionLabel = sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
   const headerSurfacesFamilyLabel =
     datasetKind === "volume"
@@ -21825,14 +21875,20 @@ case "mobius":
               <div style={topNavGroupLabelStyle}>Section</div>
               <div style={topNavSegmentStyle}>
                 {sectionNavEntries.map((entry) => {
-                  const active = mode === entry.id;
+                  const active = entry.active;
+                  const disabled = !!entry.disabled;
                   return (
                     <button
                       key={`mode-${entry.id}`}
                       type="button"
-                      onClick={() => setMode(entry.id)}
+                      onClick={entry.onSelect}
+                      disabled={disabled}
                       aria-pressed={active}
-                      style={topNavButtonStyle(active)}
+                      style={{
+                        ...topNavButtonStyle(active),
+                        opacity: disabled ? 0.5 : 1,
+                        cursor: disabled ? "not-allowed" : "pointer",
+                      }}
                     >
                       {entry.label}
                     </button>
@@ -23438,7 +23494,6 @@ case "mobius":
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
                         suspendPointerInteractions={surfaceFormulaEditorOpen}
-                        suspendRendering={surfaceFormulaEditorOpen}
                       />
                         )}
                         {showRotationalSplineOverlay && (
@@ -23571,46 +23626,49 @@ case "mobius":
                               <>
                                 <div
                                   style={{
-                                    fontSize: 11,
-                                    fontWeight: 700,
-                                    color: surfaceFormulaEditorValidation.ok ? "#166534" : "#b42318",
-                                    background: surfaceFormulaEditorValidation.ok ? "#ecfdf3" : "#fef2f2",
-                                    border: "1px solid " + (surfaceFormulaEditorValidation.ok ? "#c7e9d3" : "#f6c7cc"),
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 7,
+                                    fontSize: 10.5,
+                                    color: "#475569",
+                                    background: "#f8fafc",
+                                    border: "1px solid #dbe4ef",
                                     borderRadius: 8,
-                                    padding: "6px 8px",
+                                    padding: "5px 8px",
                                   }}
                                 >
-                                  {surfaceFormulaEditorValidation.ok ? "Valid expression" : "Needs attention"} · manual apply
+                                  <span
+                                    style={{
+                                      fontWeight: 800,
+                                      color: surfaceFormulaEditorValidation.ok ? "#166534" : "#b42318",
+                                    }}
+                                  >
+                                    Parse
+                                  </span>
+                                  <span style={{ fontWeight: 700 }}>
+                                    {surfaceFormulaEditorValidation.ok ? "ready" : "needs fix"}
+                                  </span>
+                                  <span style={{ marginLeft: "auto", fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                                    Manual apply mode
+                                  </span>
                                 </div>
-                                <div style={{ fontSize: 10, color: "#64748b", marginTop: -2 }}>
-                                  {surfaceFormulaEditorValidation.detail}
-                                </div>
-                                <div style={{ overflowY: "auto", display: "grid", gap: 10, paddingRight: 2 }}>
+                                <div style={{ overflowY: "auto", display: "grid", gap: 12, paddingRight: 2 }}>
                                   {surfaceViewerKind === "graph" && (
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 700 }}>Expression: z = ...</div>
-                                      {surfaceFormulaEditorSourceHint?.kind === "graph" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setGraphExprDraft(surfaceFormulaEditorSourceHint.expr);
-                                            flushGraphExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
-                                          }}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #bfdbfe",
-                                            background: "#eff6ff",
-                                            color: "#1d4ed8",
-                                            fontSize: 10,
-                                            fontWeight: 700,
-                                            padding: "4px 8px",
-                                            textAlign: "left",
-                                          }}
-                                        >
-                                          {`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
-                                        </button>
-                                      )}
-                                      <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 8,
+                                        borderRadius: 10,
+                                        border: "1px solid #dbe4ef",
+                                        background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.92) 100%)",
+                                        padding: 9,
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: 0.2 }}>
+                                        Expression · z = f(x,y)
+                                      </div>
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>Examples</span>
                                         {["x^2-y^2", "sin(x)*cos(y)", "x*y"].map((chip) => (
                                           <button
                                             key={chip}
@@ -23619,137 +23677,203 @@ case "mobius":
                                               setGraphExprDraft(chip);
                                               flushGraphExprFromEditor(chip, true);
                                             }}
-                                            style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 10, padding: "2px 7px" }}
+                                            style={{
+                                              borderRadius: 999,
+                                              border: "1px solid #d1d9e5",
+                                              background: "#f8fafc",
+                                              color: "#1f2937",
+                                              fontSize: 10,
+                                              fontWeight: 600,
+                                              padding: "2px 8px",
+                                            }}
                                           >
                                             {chip}
                                           </button>
                                         ))}
-                                      </div>
-                                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                                        <button
-                                          type="button"
-                                          onClick={applyGraphEditorDraft}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #0a66c2",
-                                            background: "#e6f0ff",
-                                            color: "#0a66c2",
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            padding: "4px 8px",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Apply
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setGraphExprDraft(graphExpr);
-                                          }}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #d1d5db",
-                                            background: "#fff",
-                                            color: "#334155",
-                                            fontSize: 11,
-                                            fontWeight: 600,
-                                            padding: "4px 8px",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Revert
-                                        </button>
-                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter to apply</span>
-                                      </div>
-                                      <div style={{ position: "relative" }}>
-                                        <textarea
-                                          ref={(el) => {
-                                            surfaceFormulaPrimaryInputRef.current = el;
-                                          }}
-                                          tabIndex={0}
-                                          wrap="off"
-                                          value={graphExprDraft}
-                                          onFocus={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "graph");
-                                          }}
-                                          onBlur={() => {
-                                            clearFormulaGhostCaret("graph");
-                                          }}
-                                          onMouseUp={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "graph");
-                                          }}
-                                          onKeyUp={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "graph");
-                                          }}
-                                          onSelect={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "graph");
-                                          }}
-                                          onScroll={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "graph");
-                                          }}
-                                          onChange={(e) => {
-                                            const input = e.currentTarget;
-                                            handleGraphExprDraftChange(input.value);
-                                            requestAnimationFrame(() => updateFormulaGhostCaret(input, "graph"));
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                                              e.preventDefault();
-                                              applyGraphEditorDraft();
-                                              return;
-                                            }
-                                            applyTextareaKeyFallback(e, setGraphExprDraft, "graph");
-                                          }}
-                                          rows={6}
-                                          spellCheck={false}
-                                          style={{ position: "relative", zIndex: 4, pointerEvents: "auto", borderRadius: 9, border: "2px solid #93c5fd", padding: "8px 10px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 14, fontWeight: 600, resize: "vertical", cursor: "text", caretColor: "#0f172a" }}
-                                        />
-                                        {formulaGhostCaret?.kind === "graph" && (
-                                          <div
-                                            aria-hidden
+                                        {surfaceFormulaEditorSourceHint?.kind === "graph" && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setGraphExprDraft(surfaceFormulaEditorSourceHint.expr);
+                                              flushGraphExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
+                                            }}
                                             style={{
-                                              position: "absolute",
-                                              left: formulaGhostCaret.left,
-                                              top: formulaGhostCaret.top,
-                                              width: 2,
-                                              height: formulaGhostCaret.height,
-                                              background: "#0f172a",
-                                              borderRadius: 1,
-                                              pointerEvents: "none",
-                                              opacity: 0.95,
-                                              zIndex: 6,
+                                              borderRadius: 999,
+                                              border: "1px solid #bfdbfe",
+                                              background: "#eff6ff",
+                                              color: "#1d4ed8",
+                                              fontSize: 10,
+                                              fontWeight: 700,
+                                              padding: "2px 9px",
+                                              maxWidth: "100%",
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                            title={`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
+                                          >
+                                            {`Use ${surfaceFormulaEditorSourceHint.label}`}
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div
+                                        style={{
+                                          borderRadius: 9,
+                                          border: "1px solid #c6d4e8",
+                                          background:
+                                            "repeating-linear-gradient(0deg, rgba(15,23,42,0.02) 0px, rgba(15,23,42,0.02) 1px, rgba(255,255,255,0.95) 1px, rgba(255,255,255,0.95) 24px)",
+                                          padding: 6,
+                                        }}
+                                      >
+                                        <div style={{ position: "relative" }}>
+                                          <textarea
+                                            ref={(el) => {
+                                              surfaceFormulaPrimaryInputRef.current = el;
+                                            }}
+                                            tabIndex={0}
+                                            wrap="off"
+                                            value={graphExprDraft}
+                                            onFocus={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "graph");
+                                            }}
+                                            onBlur={() => {
+                                              clearFormulaGhostCaret("graph");
+                                            }}
+                                            onMouseUp={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "graph");
+                                            }}
+                                            onKeyUp={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "graph");
+                                            }}
+                                            onSelect={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "graph");
+                                            }}
+                                            onScroll={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "graph");
+                                            }}
+                                            onChange={(e) => {
+                                              const input = e.currentTarget;
+                                              handleGraphExprDraftChange(input.value);
+                                              requestAnimationFrame(() => updateFormulaGhostCaret(input, "graph"));
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                                e.preventDefault();
+                                                applyGraphEditorDraft();
+                                                return;
+                                              }
+                                              applyTextareaKeyFallback(e, setGraphExprDraft, "graph");
+                                            }}
+                                            rows={8}
+                                            spellCheck={false}
+                                            style={{
+                                              position: "relative",
+                                              zIndex: 4,
+                                              width: "100%",
+                                              minHeight: 152,
+                                              pointerEvents: "auto",
+                                              borderRadius: 9,
+                                              border: "2px solid #93c5fd",
+                                              background: "rgba(255,255,255,0.9)",
+                                              padding: "10px 12px",
+                                              fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                              fontSize: 15,
+                                              lineHeight: 1.45,
+                                              fontWeight: 600,
+                                              resize: "vertical",
+                                              cursor: "text",
+                                              caretColor: "#0f172a",
+                                              boxSizing: "border-box",
                                             }}
                                           />
-                                        )}
+                                          {formulaGhostCaret?.kind === "graph" && (
+                                            <div
+                                              aria-hidden
+                                              style={{
+                                                position: "absolute",
+                                                left: formulaGhostCaret.left,
+                                                top: formulaGhostCaret.top,
+                                                width: 2,
+                                                height: formulaGhostCaret.height,
+                                                background: "#0f172a",
+                                                borderRadius: 1,
+                                                pointerEvents: "none",
+                                                opacity: 0.95,
+                                                zIndex: 6,
+                                              }}
+                                            />
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                                        <div
+                                          style={{
+                                            fontSize: 10.5,
+                                            color: surfaceFormulaEditorValidation.ok ? "#166534" : "#b42318",
+                                            background: surfaceFormulaEditorValidation.ok ? "#f0fdf4" : "#fef2f2",
+                                            border: "1px solid " + (surfaceFormulaEditorValidation.ok ? "#bbf7d0" : "#fecaca"),
+                                            borderRadius: 8,
+                                            padding: "4px 7px",
+                                          }}
+                                        >
+                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} · {surfaceFormulaEditorValidation.detail}
+                                        </div>
+                                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            onClick={applyGraphEditorDraft}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #0a66c2",
+                                              background: "#e6f0ff",
+                                              color: "#0a66c2",
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              padding: "4px 8px",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Apply
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setGraphExprDraft(graphExpr);
+                                            }}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #d1d5db",
+                                              background: "#fff",
+                                              color: "#334155",
+                                              fontSize: 11,
+                                              fontWeight: 600,
+                                              padding: "4px 8px",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Revert
+                                          </button>
+                                          <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter</span>
+                                        </div>
                                       </div>
                                     </div>
                                   )}
                                   {surfaceViewerKind === "implicit" && (
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 700 }}>Expression: F(x,y,z) = 0</div>
-                                      {surfaceFormulaEditorSourceHint?.kind === "implicit" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setImplicitExprDraft(surfaceFormulaEditorSourceHint.expr);
-                                            flushImplicitExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
-                                          }}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #bfdbfe",
-                                            background: "#eff6ff",
-                                            color: "#1d4ed8",
-                                            fontSize: 10,
-                                            fontWeight: 700,
-                                            padding: "4px 8px",
-                                            textAlign: "left",
-                                          }}
-                                        >
-                                          {`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
-                                        </button>
-                                      )}
-                                      <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 8,
+                                        borderRadius: 10,
+                                        border: "1px solid #dbe4ef",
+                                        background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.92) 100%)",
+                                        padding: 9,
+                                      }}
+                                    >
+                                      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", letterSpacing: 0.2 }}>
+                                        Expression · F(x,y,z) = 0
+                                      </div>
+                                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>Examples</span>
                                         {["x^2+y^2+z^2-1", "x^2+y^2-z^2-1", "sin(x)*cos(y)+sin(z)"].map((chip) => (
                                           <button
                                             key={chip}
@@ -23758,109 +23882,184 @@ case "mobius":
                                               setImplicitExprDraft(chip);
                                               flushImplicitExprFromEditor(chip, true);
                                             }}
-                                            style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 10, padding: "2px 7px" }}
+                                            style={{
+                                              borderRadius: 999,
+                                              border: "1px solid #d1d9e5",
+                                              background: "#f8fafc",
+                                              color: "#1f2937",
+                                              fontSize: 10,
+                                              fontWeight: 600,
+                                              padding: "2px 8px",
+                                            }}
                                           >
                                             {chip}
                                           </button>
                                         ))}
-                                      </div>
-                                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                                        <button
-                                          type="button"
-                                          onClick={applyImplicitEditorDraft}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #0a66c2",
-                                            background: "#e6f0ff",
-                                            color: "#0a66c2",
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            padding: "4px 8px",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Apply
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setImplicitExprDraft(implicitExpr);
-                                          }}
-                                          style={{
-                                            borderRadius: 8,
-                                            border: "1px solid #d1d5db",
-                                            background: "#fff",
-                                            color: "#334155",
-                                            fontSize: 11,
-                                            fontWeight: 600,
-                                            padding: "4px 8px",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Revert
-                                        </button>
-                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter to apply</span>
-                                      </div>
-                                      <div style={{ position: "relative" }}>
-                                        <textarea
-                                          ref={(el) => {
-                                            surfaceFormulaPrimaryInputRef.current = el;
-                                          }}
-                                          tabIndex={0}
-                                          wrap="off"
-                                          value={implicitExprDraft}
-                                          onFocus={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
-                                          }}
-                                          onBlur={() => {
-                                            clearFormulaGhostCaret("implicit");
-                                          }}
-                                          onMouseUp={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
-                                          }}
-                                          onKeyUp={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
-                                          }}
-                                          onSelect={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
-                                          }}
-                                          onScroll={(e) => {
-                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
-                                          }}
-                                          onChange={(e) => {
-                                            const input = e.currentTarget;
-                                            handleImplicitExprDraftChange(input.value);
-                                            requestAnimationFrame(() => updateFormulaGhostCaret(input, "implicit"));
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-                                              e.preventDefault();
-                                              applyImplicitEditorDraft();
-                                              return;
-                                            }
-                                            applyTextareaKeyFallback(e, setImplicitExprDraft, "implicit");
-                                          }}
-                                          rows={6}
-                                          spellCheck={false}
-                                          style={{ position: "relative", zIndex: 4, pointerEvents: "auto", borderRadius: 9, border: "2px solid #93c5fd", padding: "8px 10px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 14, fontWeight: 600, resize: "vertical", cursor: "text", caretColor: "#0f172a" }}
-                                        />
-                                        {formulaGhostCaret?.kind === "implicit" && (
-                                          <div
-                                            aria-hidden
+                                        {surfaceFormulaEditorSourceHint?.kind === "implicit" && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setImplicitExprDraft(surfaceFormulaEditorSourceHint.expr);
+                                              flushImplicitExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
+                                            }}
                                             style={{
-                                              position: "absolute",
-                                              left: formulaGhostCaret.left,
-                                              top: formulaGhostCaret.top,
-                                              width: 2,
-                                              height: formulaGhostCaret.height,
-                                              background: "#0f172a",
-                                              borderRadius: 1,
-                                              pointerEvents: "none",
-                                              opacity: 0.95,
-                                              zIndex: 6,
+                                              borderRadius: 999,
+                                              border: "1px solid #bfdbfe",
+                                              background: "#eff6ff",
+                                              color: "#1d4ed8",
+                                              fontSize: 10,
+                                              fontWeight: 700,
+                                              padding: "2px 9px",
+                                              maxWidth: "100%",
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                            title={`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
+                                          >
+                                            {`Use ${surfaceFormulaEditorSourceHint.label}`}
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div
+                                        style={{
+                                          borderRadius: 9,
+                                          border: "1px solid #c6d4e8",
+                                          background:
+                                            "repeating-linear-gradient(0deg, rgba(15,23,42,0.02) 0px, rgba(15,23,42,0.02) 1px, rgba(255,255,255,0.95) 1px, rgba(255,255,255,0.95) 24px)",
+                                          padding: 6,
+                                        }}
+                                      >
+                                        <div style={{ position: "relative" }}>
+                                          <textarea
+                                            ref={(el) => {
+                                              surfaceFormulaPrimaryInputRef.current = el;
+                                            }}
+                                            tabIndex={0}
+                                            wrap="off"
+                                            value={implicitExprDraft}
+                                            onFocus={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                            }}
+                                            onBlur={() => {
+                                              clearFormulaGhostCaret("implicit");
+                                            }}
+                                            onMouseUp={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                            }}
+                                            onKeyUp={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                            }}
+                                            onSelect={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                            }}
+                                            onScroll={(e) => {
+                                              updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                            }}
+                                            onChange={(e) => {
+                                              const input = e.currentTarget;
+                                              handleImplicitExprDraftChange(input.value);
+                                              requestAnimationFrame(() => updateFormulaGhostCaret(input, "implicit"));
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                                e.preventDefault();
+                                                applyImplicitEditorDraft();
+                                                return;
+                                              }
+                                              applyTextareaKeyFallback(e, setImplicitExprDraft, "implicit");
+                                            }}
+                                            rows={8}
+                                            spellCheck={false}
+                                            style={{
+                                              position: "relative",
+                                              zIndex: 4,
+                                              width: "100%",
+                                              minHeight: 152,
+                                              pointerEvents: "auto",
+                                              borderRadius: 9,
+                                              border: "2px solid #93c5fd",
+                                              background: "rgba(255,255,255,0.9)",
+                                              padding: "10px 12px",
+                                              fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
+                                              fontSize: 15,
+                                              lineHeight: 1.45,
+                                              fontWeight: 600,
+                                              resize: "vertical",
+                                              cursor: "text",
+                                              caretColor: "#0f172a",
+                                              boxSizing: "border-box",
                                             }}
                                           />
-                                        )}
+                                          {formulaGhostCaret?.kind === "implicit" && (
+                                            <div
+                                              aria-hidden
+                                              style={{
+                                                position: "absolute",
+                                                left: formulaGhostCaret.left,
+                                                top: formulaGhostCaret.top,
+                                                width: 2,
+                                                height: formulaGhostCaret.height,
+                                                background: "#0f172a",
+                                                borderRadius: 1,
+                                                pointerEvents: "none",
+                                                opacity: 0.95,
+                                                zIndex: 6,
+                                              }}
+                                            />
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                                        <div
+                                          style={{
+                                            fontSize: 10.5,
+                                            color: surfaceFormulaEditorValidation.ok ? "#166534" : "#b42318",
+                                            background: surfaceFormulaEditorValidation.ok ? "#f0fdf4" : "#fef2f2",
+                                            border: "1px solid " + (surfaceFormulaEditorValidation.ok ? "#bbf7d0" : "#fecaca"),
+                                            borderRadius: 8,
+                                            padding: "4px 7px",
+                                          }}
+                                        >
+                                          {surfaceFormulaEditorValidation.ok ? "Parse ok" : "Parse issue"} · {surfaceFormulaEditorValidation.detail}
+                                        </div>
+                                        <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                          <button
+                                            type="button"
+                                            onClick={applyImplicitEditorDraft}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #0a66c2",
+                                              background: "#e6f0ff",
+                                              color: "#0a66c2",
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              padding: "4px 8px",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Apply
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setImplicitExprDraft(implicitExpr);
+                                            }}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #d1d5db",
+                                              background: "#fff",
+                                              color: "#334155",
+                                              fontSize: 11,
+                                              fontWeight: 600,
+                                              padding: "4px 8px",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Revert
+                                          </button>
+                                          <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter</span>
+                                        </div>
                                       </div>
                                     </div>
                                   )}
@@ -24037,97 +24236,182 @@ case "mobius":
                                     </div>
                                   )}
                                 </div>
-                                <div style={{ display: "grid", gap: 6 }}>
-                                  <button type="button" onClick={() => setSurfaceFormulaEditorAdvancedOpen((v) => !v)} style={{ borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 11, fontWeight: 700, padding: "5px 8px", textAlign: "left" }}>
-                                    {surfaceFormulaEditorAdvancedOpen ? "Advanced: hide" : "Advanced: domain · mesh density · clipping"}
+                                <div style={{ display: "grid", gap: surfaceFormulaEditorAdvancedOpen ? 7 : 0 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSurfaceFormulaEditorAdvancedOpen((v) => !v)}
+                                    aria-expanded={surfaceFormulaEditorAdvancedOpen}
+                                    style={{
+                                      borderRadius: 8,
+                                      border: "1px solid #cbd5e1",
+                                      background: "#f8fafc",
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      padding: "6px 8px",
+                                      textAlign: "left",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 8,
+                                    }}
+                                  >
+                                    <span>Advanced settings</span>
+                                    <span style={{ fontFamily: "monospace", color: "#64748b" }}>
+                                      {surfaceFormulaEditorAdvancedOpen ? "[hide]" : "[show]"}
+                                    </span>
                                   </button>
                                   {surfaceFormulaEditorAdvancedOpen && (
                                     <div style={{ display: "grid", gap: 7, borderRadius: 8, border: "1px solid #dbe4ef", background: "#f8fafc", padding: 8 }}>
-                                      {(surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                                      <div style={{ display: "grid", gap: 6, borderRadius: 8, border: "1px solid #d9e2ec", background: "#fff", padding: 7 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: "#334155" }}>Domain</div>
+                                        {(surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              X span
+                                              <input
+                                                type="number"
+                                                min={0.1}
+                                                step={0.1}
+                                                value={surfaceViewerKind === "graph" ? activeGraphDomain.xSpan : activeImplicitDomain.xSpan}
+                                                onChange={(e) => {
+                                                  const v = Number(e.target.value);
+                                                  if (!Number.isFinite(v)) return;
+                                                  if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, xSpan: v });
+                                                  else handleChangeImplicitDomain({ ...activeImplicitDomain, xSpan: v });
+                                                }}
+                                                style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                              />
+                                            </label>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              Y span
+                                              <input
+                                                type="number"
+                                                min={0.1}
+                                                step={0.1}
+                                                value={surfaceViewerKind === "graph" ? activeGraphDomain.ySpan : activeImplicitDomain.ySpan}
+                                                onChange={(e) => {
+                                                  const v = Number(e.target.value);
+                                                  if (!Number.isFinite(v)) return;
+                                                  if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, ySpan: v });
+                                                  else handleChangeImplicitDomain({ ...activeImplicitDomain, ySpan: v });
+                                                }}
+                                                style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                              />
+                                            </label>
+                                          </div>
+                                        )}
+                                        {(surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && (
+                                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              U min
+                                              <input type="number" step={0.1} value={activeParamLikeDomain.uMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                            </label>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              U max
+                                              <input type="number" step={0.1} value={activeParamLikeDomain.uMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                            </label>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              V min
+                                              <input type="number" step={0.1} value={activeParamLikeDomain.vMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                            </label>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              V max
+                                              <input type="number" step={0.1} value={activeParamLikeDomain.vMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                            </label>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6, borderRadius: 8, border: "1px solid #d9e2ec", background: "#fff", padding: 7 }}>
+                                        <div style={{ fontSize: 11, fontWeight: 800, color: "#334155" }}>Meshing</div>
                                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                                           <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            X span
+                                            Mesh density
                                             <input
                                               type="number"
-                                              min={0.1}
-                                              step={0.1}
-                                              value={surfaceViewerKind === "graph" ? activeGraphDomain.xSpan : activeImplicitDomain.xSpan}
+                                              min={20}
+                                              max={480}
+                                              value={surfaceViewerKind === "graph" ? graphResolution : surfaceViewerKind === "implicit" ? implicitResolution : surfaceViewerKind === "param" ? paramResolution : weierstrassResolution}
                                               onChange={(e) => {
-                                                const v = Number(e.target.value);
+                                                const v = Math.max(20, Math.min(480, Math.round(Number(e.target.value))));
                                                 if (!Number.isFinite(v)) return;
-                                                if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, xSpan: v });
-                                                else handleChangeImplicitDomain({ ...activeImplicitDomain, xSpan: v });
+                                                if (surfaceViewerKind === "graph") setGraphResolution(v);
+                                                else if (surfaceViewerKind === "implicit") setImplicitResolution(v);
+                                                else if (surfaceViewerKind === "param") setParamResolution(v);
+                                                else setWeierstrassResolution(v);
                                               }}
                                               style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
                                             />
                                           </label>
                                           <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            Y span
-                                            <input
-                                              type="number"
-                                              min={0.1}
-                                              step={0.1}
-                                              value={surfaceViewerKind === "graph" ? activeGraphDomain.ySpan : activeImplicitDomain.ySpan}
-                                              onChange={(e) => {
-                                                const v = Number(e.target.value);
-                                                if (!Number.isFinite(v)) return;
-                                                if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, ySpan: v });
-                                                else handleChangeImplicitDomain({ ...activeImplicitDomain, ySpan: v });
-                                              }}
-                                              style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
-                                            />
+                                            Bounds
+                                            <button
+                                              type="button"
+                                              onClick={() => setShowBoundingBox((v) => !v)}
+                                              style={{ borderRadius: 7, border: "1px solid " + (showBoundingBox ? "#0a66c2" : "#cbd5e1"), background: showBoundingBox ? "#e6f0ff" : "#fff", color: showBoundingBox ? "#0a66c2" : "#334155", fontSize: 11, fontWeight: 700, padding: "5px 8px" }}
+                                            >
+                                              {showBoundingBox ? "Visible" : "Hidden"}
+                                            </button>
                                           </label>
                                         </div>
-                                      )}
-                                      {(surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && (
-                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            U min
-                                            <input type="number" step={0.1} value={activeParamLikeDomain.uMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
-                                          </label>
-                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            U max
-                                            <input type="number" step={0.1} value={activeParamLikeDomain.uMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
-                                          </label>
-                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            V min
-                                            <input type="number" step={0.1} value={activeParamLikeDomain.vMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
-                                          </label>
-                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                            V max
-                                            <input type="number" step={0.1} value={activeParamLikeDomain.vMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
-                                          </label>
-                                        </div>
-                                      )}
-                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                          Mesh density
-                                          <input
-                                            type="number"
-                                            min={20}
-                                            max={480}
-                                            value={surfaceViewerKind === "graph" ? graphResolution : surfaceViewerKind === "implicit" ? implicitResolution : surfaceViewerKind === "param" ? paramResolution : weierstrassResolution}
-                                            onChange={(e) => {
-                                              const v = Math.max(20, Math.min(480, Math.round(Number(e.target.value))));
-                                              if (!Number.isFinite(v)) return;
-                                              if (surfaceViewerKind === "graph") setGraphResolution(v);
-                                              else if (surfaceViewerKind === "implicit") setImplicitResolution(v);
-                                              else if (surfaceViewerKind === "param") setParamResolution(v);
-                                              else setWeierstrassResolution(v);
-                                            }}
-                                            style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
-                                          />
-                                        </label>
-                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
-                                          Clipping
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                           <button
                                             type="button"
-                                            onClick={() => setShowBoundingBox((v) => !v)}
-                                            style={{ borderRadius: 7, border: "1px solid " + (showBoundingBox ? "#0a66c2" : "#cbd5e1"), background: showBoundingBox ? "#e6f0ff" : "#fff", color: showBoundingBox ? "#0a66c2" : "#334155", fontSize: 11, fontWeight: 700, padding: "5px 8px" }}
+                                            onClick={handleConvertToMesh}
+                                            disabled={surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #0a66c2",
+                                              background: "#e6f0ff",
+                                              color: "#0a66c2",
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              padding: "4px 9px",
+                                              cursor:
+                                                surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              opacity:
+                                                surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length
+                                                  ? 0.55
+                                                  : 1,
+                                            }}
                                           >
-                                            {showBoundingBox ? "Bounds on" : "Bounds off"}
+                                            Bake to SurfaceMesh viewer
                                           </button>
-                                        </label>
+                                          <button
+                                            type="button"
+                                            onClick={handleDatasetToGeometryScene}
+                                            disabled={datasetKind === "volume" || !surfaceMeshData?.positions?.length}
+                                            style={{
+                                              borderRadius: 8,
+                                              border: "1px solid #94a3b8",
+                                              background: "#fff",
+                                              color: "#334155",
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              padding: "4px 9px",
+                                              cursor:
+                                                datasetKind === "volume" || !surfaceMeshData?.positions?.length
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              opacity:
+                                                datasetKind === "volume" || !surfaceMeshData?.positions?.length
+                                                  ? 0.55
+                                                  : 1,
+                                            }}
+                                          >
+                                            Open in Geometry module
+                                          </button>
+                                          {surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length ? (
+                                            <span style={{ fontSize: 10, color: "#64748b" }}>
+                                              Run gcalc (CGAL) first, then bake.
+                                            </span>
+                                          ) : (
+                                            <span style={{ fontSize: 10, color: "#64748b" }}>
+                                              Bake stays in Surfaces. Geometry opens independent mesh scene.
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   )}
@@ -32866,7 +33150,7 @@ onChangeImplicitExpr,
   const [leftTab, setLeftTab] = useState<"controls" | "analysis" | "theory">(initialLeftTab ?? "controls");
   const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
-  const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk">("surface_mesh");
+  const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
   const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
@@ -34801,6 +35085,14 @@ onChangeImplicitExpr,
         >
           Python mesh ops (VTK)
         </button>
+        <button
+          type="button"
+          onClick={() => setMeshToolsTab("volume")}
+          style={pill(meshToolsTab === "volume")}
+          aria-pressed={meshToolsTab === "volume"}
+        >
+          Volume bridge
+        </button>
       </div>
       {meshToolsTab === "surface_mesh" && (
       <div style={{ ...cardStyle, marginTop: 0 }}>
@@ -35107,53 +35399,59 @@ onChangeImplicitExpr,
             )}
           </>
         )}
-        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600 }}>Volume bridge</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 6 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <input
-              type="checkbox"
-              checked={volumeDistanceSigned}
-              onChange={(e) => onToggleVolumeDistanceSigned(e.target.checked)}
-            />
-            Signed (winding number)
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-            <input
-              type="checkbox"
-              checked={volumeDistanceAutoBounds}
-              onChange={(e) => onToggleVolumeDistanceAutoBounds(e.target.checked)}
-            />
-            Auto bounds (fit mesh)
-          </label>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-          <button
-            type="button"
-            onClick={onBuildDistanceVolume}
-            disabled={volumeDistanceBusy || !pythonWorkerAvailable}
-            style={{ padding: "4px 10px" }}
-          >
-            {volumeDistanceBusy ? "Building..." : "Surface → Volume (distance)"}
-          </button>
-        </div>
-        {!pythonWorkerAvailable && (
-          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
-            {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+      </div>
+      )}
+
+      {meshToolsTab === "volume" && (
+      <div style={{ ...cardStyle, marginTop: 0 }}>
+        <div style={{ marginTop: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{"Surface -> Volume bridge"}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeDistanceSigned}
+                onChange={(e) => onToggleVolumeDistanceSigned(e.target.checked)}
+              />
+              Signed (winding number)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={volumeDistanceAutoBounds}
+                onChange={(e) => onToggleVolumeDistanceAutoBounds(e.target.checked)}
+              />
+              Auto bounds (fit mesh)
+            </label>
           </div>
-        )}
-        {!pythonWorkerAvailable && pythonWorkerLogPath && (
-          <div style={{ fontSize: 10, color: "#667085", marginTop: 4, wordBreak: "break-all" }}>
-            log: {pythonWorkerLogPath}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={onBuildDistanceVolume}
+              disabled={volumeDistanceBusy || !pythonWorkerAvailable}
+              style={{ padding: "4px 10px" }}
+            >
+              {volumeDistanceBusy ? "Building..." : "Surface -> Volume (distance)"}
+            </button>
           </div>
-        )}
-        <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-          Builds a {volumeDistanceSigned ? "signed" : "unsigned"} distance field on{" "}
-          {volumeDistanceAutoBounds ? "auto mesh bounds" : "the current sampling box"}. Use the Volume panel to view
-          slices/isosurface.
-        </div>
-        {volumeDistanceError && (
-          <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>
-        )}
+          {!pythonWorkerAvailable && (
+            <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
+              {pythonWorkerStatusMessage ?? "Python worker unavailable."}
+            </div>
+          )}
+          {!pythonWorkerAvailable && pythonWorkerLogPath && (
+            <div style={{ fontSize: 10, color: "#667085", marginTop: 4, wordBreak: "break-all" }}>
+              log: {pythonWorkerLogPath}
+            </div>
+          )}
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
+            Builds a {volumeDistanceSigned ? "signed" : "unsigned"} distance field on{" "}
+            {volumeDistanceAutoBounds ? "auto mesh bounds" : "the current sampling box"}. Then open the Volume viewer in 3D mode.
+          </div>
+          {volumeDistanceError && (
+            <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{volumeDistanceError}</div>
+          )}
         </div>
       </div>
       )}
@@ -38984,7 +39282,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             Export
           </button>
           <button type="button" onClick={onBake} disabled={!canBake} style={{ padding: "4px 8px" }}>
-            Bake to mesh
+            Bake to SurfaceMesh
           </button>
           <button type="button" onClick={onCompare} disabled={!canCompare} style={{ padding: "4px 8px" }}>
             Compare
