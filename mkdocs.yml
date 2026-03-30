@@ -14,6 +14,7 @@ nav:
   - Guides:
       - Playwright E2E Tests: playwright-e2e-tests.md
       - Release Smoke Tests: release-smoke-tests.md
+      - Surface Formula Editor Debug: surface-formula-editor-debug.md
   - Python Worker:
       - Runtime: python-worker-runtime.md
       - Protocol: python-worker-protocol.md

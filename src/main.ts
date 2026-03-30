@@ -22,6 +22,15 @@ const geometrySmokeTimeoutMs = Math.max(
     : 120000
 );
 
+// Work around Windows occlusion/background throttling glitches that can freeze
+// interactive text controls until a maximize/minimize/devtools reframe occurs.
+if (process.platform === "win32") {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+  app.commandLine.appendSwitch("disable-renderer-backgrounding");
+  app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+}
+
 type AppRuntimeMode = "development" | "packaged";
 type AppInstallType = "development" | "installer" | "portable-or-unknown";
 type AppSystemInfo = {
@@ -229,7 +238,13 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"), // IMPORTANT
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
+  });
+  win.once("ready-to-show", () => {
+    if (win.isDestroyed()) return;
+    win.show();
+    win.focus();
   });
 
   const sendWindowState = (reason: string) => {

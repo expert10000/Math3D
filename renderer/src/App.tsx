@@ -2118,7 +2118,11 @@ const IMPLICIT_EXPR_PRESETS: { id: SurfaceId; label: string; expr: string }[] = 
   { id: "scherk", label: "Scherk surface", expr: "sin(z) - (0.5*(exp(x) - exp(-x)))*(0.5*(exp(y) - exp(-y)))" },
 ];
 
-function getEditableGraphCustomExpr(id: SurfaceId): string | null {
+function getEditableGraphCustomExpr(id: SurfaceId, fallback: string): string | null {
+  if (id === "graph_custom") {
+    const trimmed = fallback.trim();
+    return trimmed.length ? trimmed : "x*x - y*y";
+  }
   switch (id) {
     case "graph_saddle":
       return "0.4*(x*x - y*y)";
@@ -2142,8 +2146,10 @@ function getEditableGraphCustomExpr(id: SurfaceId): string | null {
       return "sqrt(x*x + y*y) < 1e-4 ? 1 : sin(sqrt(x*x + y*y))/sqrt(x*x + y*y)";
     case "graph_sinc2":
       return "sin(2*sqrt(x*x + y*y))/(1 + x*x + y*y)";
-    default:
-      return null;
+    default: {
+      const trimmed = fallback.trim();
+      return trimmed.length ? trimmed : "x*x - y*y";
+    }
   }
 }
 
@@ -8347,6 +8353,42 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramSurfaceOverlayOpen, setParamSurfaceOverlayOpen] = useState(true);
   const [paramSurfaceOverlayTab, setParamSurfaceOverlayTab] = useState<ParamSurfaceOverlayTab>("rotational");
   const [surfaceFormulaEditorOpen, setSurfaceFormulaEditorOpen] = useState(false);
+  const [surfaceFormulaEditorCollapsed, setSurfaceFormulaEditorCollapsed] = useState(false);
+  const [surfaceFormulaEditorAdvancedOpen, setSurfaceFormulaEditorAdvancedOpen] = useState(false);
+  const [surfaceFormulaEditorSourceHint, setSurfaceFormulaEditorSourceHint] = useState<{
+    kind: "graph" | "implicit";
+    label: string;
+    expr: string;
+  } | null>(null);
+  const surfaceFormulaPrimaryInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const surfaceFormulaEditorPanelRef = useRef<HTMLDivElement | null>(null);
+  const surfaceFormulaEditorLastTargetRef = useRef<string | null>(null);
+  const surfaceFormulaEditorWasOpenRef = useRef(false);
+  const graphEditorCommitTimerRef = useRef<number | null>(null);
+  const implicitEditorCommitTimerRef = useRef<number | null>(null);
+  const [graphExprDraft, setGraphExprDraft] = useState(graphExpr);
+  const [implicitExprDraft, setImplicitExprDraft] = useState(implicitExpr);
+  const [formulaGhostCaret, setFormulaGhostCaret] = useState<{
+    kind: "graph" | "implicit";
+    left: number;
+    top: number;
+    height: number;
+  } | null>(null);
+  const formulaEditorDebugEnabled = true;
+  const logFormulaEditorDebug = useCallback(
+    (event: string, payload?: Record<string, unknown>) => {
+      if (!formulaEditorDebugEnabled) return;
+      const active = typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
+      console.log(`[FormulaEditorDebug] ${event}`, {
+        tMs: Math.round(typeof performance !== "undefined" ? performance.now() : Date.now()),
+        activeTag: active?.tagName ?? null,
+        activeId: active?.id ?? null,
+        activeClass: typeof active?.className === "string" ? active.className : null,
+        ...(payload ?? {}),
+      });
+    },
+    [formulaEditorDebugEnabled]
+  );
   const [rmfRibbonTwistEnabled, setRmfRibbonTwistEnabled] = useState(false);
   const [rmfRibbonTwistTurns, setRmfRibbonTwistTurns] = useState(1);
   const [weierstrassGExpr, setWeierstrassGExpr] = useState(WEIERSTRASS_DEFAULTS.gExpr);
@@ -9245,6 +9287,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     graphSurfaceId,
     implicitSurfaceId,
   ]);
+  const surfaceFormulaEditorTargetKey =
+    mode === "surfaces" &&
+    datasetKind === "surface" &&
+    (surfaceViewerKind === "graph" ||
+      surfaceViewerKind === "implicit" ||
+      surfaceViewerKind === "param" ||
+      surfaceViewerKind === "weierstrass")
+      ? currentDatasetRef
+      : null;
   const cameraSyncEnabled = compareEnabled || rightPanelTab === "workbook";
   const compareCameraSyncEnabled = compareEnabled && compareCameraSync;
   const workbookGraph = useMemo(() => {
@@ -10033,11 +10084,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [mode, surfacesLayoutVariant, surfacesPanelState, surfacesLeftTab]);
 
   useEffect(() => {
-    if (mode !== "surfaces" || surfacesPanelState === "browse") {
+    if (mode !== "surfaces") {
       if (surfaceFormulaEditorOpen) setSurfaceFormulaEditorOpen(false);
       if (paramSurfaceOverlayOpen) setParamSurfaceOverlayOpen(false);
     }
-  }, [mode, paramSurfaceOverlayOpen, surfaceFormulaEditorOpen, surfacesPanelState]);
+  }, [mode, paramSurfaceOverlayOpen, surfaceFormulaEditorOpen]);
 
   useEffect(() => {
     if (mode !== "surfaces") return;
@@ -10228,13 +10279,6 @@ const mobiusEffectiveParams = useMemo(() => {
 }, [mode, mobiusParams, mobiusSubTab, mobiusDecompStep]);
 
     
-  useEffect(() => {
-    console.log(
-      "[App] color",
-      { colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId }
-    );
-  }, [colorMode, colorPalette, surfaceViewerKind, activeEqSurfaceId, paramSurfaceId]);
-
   const availableColorModes = useMemo(
     () => colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshData?.label),
     [surfaceViewerKind, surfaceMeshData?.label]
@@ -11185,8 +11229,8 @@ case "mobius":
   };
 
   const editableGraphCustomExpr = useMemo(
-    () => getEditableGraphCustomExpr(graphSurfaceId),
-    [graphSurfaceId]
+    () => getEditableGraphCustomExpr(graphSurfaceId, graphExpr),
+    [graphExpr, graphSurfaceId]
   );
   const canEditGraphAsCustom =
     surfaceViewerKind === "graph" && graphSurfaceId !== "graph_custom" && !!editableGraphCustomExpr;
@@ -11241,47 +11285,318 @@ case "mobius":
     setParamSurfaceId("custom");
     if (compareEnabled) setCompareUseSnapshotA(false);
   }, [activeParamDomain, compareEnabled, editableParamCustomExpr]);
+  const setGraphExprFromEditor = useCallback(
+    (value: string) => {
+      if (graphSurfaceId !== "graph_custom") {
+        const domain = normalizeGraphDomain(activeGraphDomain, getDefaultGraphSpan("graph_custom"));
+        setGraphDomains((prev) => ({ ...prev, graph_custom: domain }));
+        setDatasetKind("surface");
+        setSurfaceViewerKind("graph");
+        setGraphSurfaceId("graph_custom");
+        setCompareUseSnapshotA(false);
+        setCompareUseSnapshotB(false);
+      }
+      setGraphExpr(value);
+    },
+    [activeGraphDomain, graphSurfaceId]
+  );
+  const setImplicitExprFromEditor = useCallback(
+    (value: string) => {
+      if (implicitSurfaceId !== "implicit_custom") {
+        const domain = normalizeImplicitDomain(activeImplicitDomain, getDefaultImplicitDomain("implicit_custom"));
+        setImplicitDomains((prev) => ({ ...prev, implicit_custom: domain }));
+        setDatasetKind("surface");
+        setSurfaceViewerKind("implicit");
+        setImplicitSurfaceId("implicit_custom");
+        setCompareUseSnapshotA(false);
+        setCompareUseSnapshotB(false);
+      }
+      setImplicitExpr(value);
+    },
+    [activeImplicitDomain, implicitSurfaceId]
+  );
+  const flushGraphExprFromEditor = useCallback(
+    (value: string, immediate = false) => {
+      logFormulaEditorDebug("graph.flush.request", { immediate, len: value.length });
+      if (immediate) {
+        if (graphEditorCommitTimerRef.current != null) {
+          window.clearTimeout(graphEditorCommitTimerRef.current);
+          graphEditorCommitTimerRef.current = null;
+        }
+        const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        setGraphExprFromEditor(value);
+        logFormulaEditorDebug("graph.flush.commit", { immediate: true, len: value.length });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const dtMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+            logFormulaEditorDebug("graph.flush.frame", { immediate: true, dtMs: Math.round(dtMs) });
+          });
+        }
+        return;
+      }
+      if (graphEditorCommitTimerRef.current != null) window.clearTimeout(graphEditorCommitTimerRef.current);
+      graphEditorCommitTimerRef.current = window.setTimeout(() => {
+        const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        setGraphExprFromEditor(value);
+        logFormulaEditorDebug("graph.flush.commit", { immediate: false, len: value.length });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const dtMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+            logFormulaEditorDebug("graph.flush.frame", { immediate: false, dtMs: Math.round(dtMs) });
+          });
+        }
+        graphEditorCommitTimerRef.current = null;
+      }, 350);
+    },
+    [logFormulaEditorDebug, setGraphExprFromEditor]
+  );
+  const flushImplicitExprFromEditor = useCallback(
+    (value: string, immediate = false) => {
+      logFormulaEditorDebug("implicit.flush.request", { immediate, len: value.length });
+      if (immediate) {
+        if (implicitEditorCommitTimerRef.current != null) {
+          window.clearTimeout(implicitEditorCommitTimerRef.current);
+          implicitEditorCommitTimerRef.current = null;
+        }
+        const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        setImplicitExprFromEditor(value);
+        logFormulaEditorDebug("implicit.flush.commit", { immediate: true, len: value.length });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const dtMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+            logFormulaEditorDebug("implicit.flush.frame", { immediate: true, dtMs: Math.round(dtMs) });
+          });
+        }
+        return;
+      }
+      if (implicitEditorCommitTimerRef.current != null) window.clearTimeout(implicitEditorCommitTimerRef.current);
+      implicitEditorCommitTimerRef.current = window.setTimeout(() => {
+        const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+        setImplicitExprFromEditor(value);
+        logFormulaEditorDebug("implicit.flush.commit", { immediate: false, len: value.length });
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => {
+            const dtMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+            logFormulaEditorDebug("implicit.flush.frame", { immediate: false, dtMs: Math.round(dtMs) });
+          });
+        }
+        implicitEditorCommitTimerRef.current = null;
+      }, 350);
+    },
+    [logFormulaEditorDebug, setImplicitExprFromEditor]
+  );
+  const handleGraphExprDraftChange = useCallback(
+    (value: string) => {
+      setGraphExprDraft(value);
+      logFormulaEditorDebug("graph.input.change", { len: value.length });
+    },
+    [logFormulaEditorDebug]
+  );
+  const handleImplicitExprDraftChange = useCallback(
+    (value: string) => {
+      setImplicitExprDraft(value);
+      logFormulaEditorDebug("implicit.input.change", { len: value.length });
+    },
+    [logFormulaEditorDebug]
+  );
+  const applyGraphEditorDraft = useCallback(() => {
+    flushGraphExprFromEditor(graphExprDraft, true);
+  }, [flushGraphExprFromEditor, graphExprDraft]);
+  const applyImplicitEditorDraft = useCallback(() => {
+    flushImplicitExprFromEditor(implicitExprDraft, true);
+  }, [flushImplicitExprFromEditor, implicitExprDraft]);
+  const setParamExprFromEditor = useCallback(
+    (axis: "x" | "y" | "z", value: string) => {
+      if (paramSurfaceId !== "custom") {
+        if (!canEditParamAsCustom || !editableParamCustomExpr) return;
+        const domain = normalizeParamDomain(activeParamDomain, getParamDomainPreviewBounds("custom"));
+        setParamDomains((prev) => ({ ...prev, custom: domain }));
+        setDatasetKind("surface");
+        setSurfaceViewerKind("param");
+        setParamSurfaceId("custom");
+        setCompareUseSnapshotA(false);
+        setCompareUseSnapshotB(false);
+        setParamXExpr(axis === "x" ? value : editableParamCustomExpr.xExpr);
+        setParamYExpr(axis === "y" ? value : editableParamCustomExpr.yExpr);
+        setParamZExpr(axis === "z" ? value : editableParamCustomExpr.zExpr);
+        return;
+      }
+      if (axis === "x") setParamXExpr(value);
+      else if (axis === "y") setParamYExpr(value);
+      else setParamZExpr(value);
+    },
+    [activeParamDomain, canEditParamAsCustom, editableParamCustomExpr, paramSurfaceId]
+  );
+
+  const clearFormulaGhostCaret = useCallback((kind: "graph" | "implicit") => {
+    setFormulaGhostCaret((prev) => (prev && prev.kind === kind ? null : prev));
+  }, []);
+
+  const updateFormulaGhostCaret = useCallback((input: HTMLTextAreaElement, kind: "graph" | "implicit") => {
+    if (!input.isConnected || document.activeElement !== input) {
+      clearFormulaGhostCaret(kind);
+      return;
+    }
+    const start = input.selectionStart ?? 0;
+    const end = input.selectionEnd ?? start;
+    if (start !== end) {
+      clearFormulaGhostCaret(kind);
+      return;
+    }
+
+    const style = window.getComputedStyle(input);
+    const fontSize = parseFloat(style.fontSize) || 14;
+    const lineHeightRaw = parseFloat(style.lineHeight);
+    const lineHeight = Number.isFinite(lineHeightRaw) ? lineHeightRaw : fontSize * 1.3;
+    const padLeft = parseFloat(style.paddingLeft) || 0;
+    const padTop = parseFloat(style.paddingTop) || 0;
+
+    const before = input.value.slice(0, start);
+    const lines = before.split("\n");
+    const row = Math.max(0, lines.length - 1);
+    const col = lines[lines.length - 1]?.length ?? 0;
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const font = style.font || `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    if (ctx) ctx.font = font;
+    const probe = "MMMMMMMMMM";
+    const charWidth = ctx ? Math.max(1, ctx.measureText(probe).width / probe.length) : Math.max(1, fontSize * 0.6);
+
+    const rawLeft = input.clientLeft + padLeft + col * charWidth - input.scrollLeft;
+    const rawTop = input.clientTop + padTop + row * lineHeight - input.scrollTop;
+    const left = Math.max(input.clientLeft + 1, Math.min(input.clientWidth - 2, rawLeft));
+    const top = Math.max(input.clientTop + 1, Math.min(input.clientHeight - 2, rawTop));
+    const height = Math.max(10, Math.min(lineHeight, input.clientHeight - top - 1));
+
+    setFormulaGhostCaret({ kind, left, top, height });
+  }, [clearFormulaGhostCaret]);
+
+  const applyTextareaKeyFallback = useCallback(
+    (
+      event: React.KeyboardEvent<HTMLTextAreaElement>,
+      setDraft: React.Dispatch<React.SetStateAction<string>>,
+      kind: "graph" | "implicit"
+    ) => {
+      const native = event.nativeEvent as KeyboardEvent;
+      if (event.ctrlKey || event.metaKey || event.altKey || native.isComposing) return;
+      const key = event.key;
+      const insertText = key === "Enter" ? "\n" : key.length === 1 ? key : null;
+      if (!insertText) return;
+
+      const input = event.currentTarget;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? start;
+      const next = input.value.slice(0, start) + insertText + input.value.slice(end);
+      const nextPos = start + insertText.length;
+      event.preventDefault();
+      setDraft(next);
+      requestAnimationFrame(() => {
+        if (!input.isConnected) return;
+        try {
+          input.focus({ preventScroll: true });
+        } catch {
+          input.focus();
+        }
+        input.setSelectionRange(nextPos, nextPos);
+        updateFormulaGhostCaret(input, kind);
+      });
+      logFormulaEditorDebug(`${kind}.input.fallback-insert`, {
+        key,
+        start,
+        end,
+        len: next.length,
+      });
+    },
+    [logFormulaEditorDebug, updateFormulaGhostCaret]
+  );
 
   const openSurfaceFormulaEditor = useCallback(() => {
     if (surfaceViewerKind === "graph") {
+      const sourceExpr = getEditableGraphCustomExpr(graphSurfaceId, graphExpr)?.trim() ?? "";
+      const sourceLabel = SURFACES_EQ_META_BY_ID.get(graphSurfaceId)?.label ?? "Selected graph";
+      setSurfaceFormulaEditorSourceHint(sourceExpr ? { kind: "graph", label: sourceLabel, expr: sourceExpr } : null);
       if (graphSurfaceId !== "graph_custom") {
         if (!canEditGraphAsCustom) return;
         handleEditGraphAsCustom();
       }
+      setSurfaceFormulaEditorCollapsed(false);
       setSurfaceFormulaEditorOpen(true);
       return;
     }
     if (surfaceViewerKind === "implicit") {
+      const sourceExpr = getEditableImplicitCustomExpr(implicitSurfaceId, implicitExpr)?.trim() ?? "";
+      const sourceLabel = SURFACES_EQ_META_BY_ID.get(implicitSurfaceId)?.label ?? "Selected implicit surface";
+      setSurfaceFormulaEditorSourceHint(
+        sourceExpr ? { kind: "implicit", label: sourceLabel, expr: sourceExpr } : null
+      );
       if (implicitSurfaceId !== "implicit_custom") {
         if (!canEditImplicitAsCustom) return;
         handleEditImplicitAsCustom();
       }
+      setSurfaceFormulaEditorCollapsed(false);
       setSurfaceFormulaEditorOpen(true);
       return;
     }
     if (surfaceViewerKind === "param") {
-      if (paramSurfaceId !== "custom") {
-        if (!canEditParamAsCustom) return;
-        handleEditParamAsCustom();
+      setSurfaceFormulaEditorSourceHint(null);
+      if (isSplinePatchSurfaceId(paramSurfaceId)) {
+        setSurfaceFormulaEditorCollapsed(false);
+        setSurfaceFormulaEditorOpen(true);
+        return;
       }
+      if (isConstructedParamSurfaceId(paramSurfaceId)) {
+        if (constructedParamSubtypeFor(paramSurfaceId) === "rotational") {
+          setSurfaceFormulaEditorCollapsed(false);
+          setSurfaceFormulaEditorOpen(true);
+          return;
+        }
+      }
+      setSurfaceFormulaEditorCollapsed(false);
       setSurfaceFormulaEditorOpen(true);
       return;
     }
     if (surfaceViewerKind === "weierstrass") {
+      setSurfaceFormulaEditorSourceHint(null);
+      setSurfaceFormulaEditorCollapsed(false);
       setSurfaceFormulaEditorOpen(true);
     }
   }, [
     canEditGraphAsCustom,
     canEditImplicitAsCustom,
-    canEditParamAsCustom,
+    graphExpr,
     graphSurfaceId,
     handleEditGraphAsCustom,
     handleEditImplicitAsCustom,
-    handleEditParamAsCustom,
+    implicitExpr,
     implicitSurfaceId,
     paramSurfaceId,
     surfaceViewerKind,
   ]);
+
+  useEffect(
+    () => () => {
+      if (graphEditorCommitTimerRef.current != null) window.clearTimeout(graphEditorCommitTimerRef.current);
+      if (implicitEditorCommitTimerRef.current != null) window.clearTimeout(implicitEditorCommitTimerRef.current);
+    },
+    []
+  );
+
+  useEffect(() => {
+    const wasOpen = surfaceFormulaEditorWasOpenRef.current;
+    const previousTarget = surfaceFormulaEditorLastTargetRef.current;
+    if (
+      wasOpen &&
+      surfaceFormulaEditorOpen &&
+      previousTarget &&
+      surfaceFormulaEditorTargetKey &&
+      previousTarget !== surfaceFormulaEditorTargetKey
+    ) {
+      setSurfaceFormulaEditorOpen(false);
+    }
+    surfaceFormulaEditorWasOpenRef.current = surfaceFormulaEditorOpen;
+    surfaceFormulaEditorLastTargetRef.current = surfaceFormulaEditorTargetKey;
+  }, [surfaceFormulaEditorOpen, surfaceFormulaEditorTargetKey]);
 
   useEffect(() => {
     if (mode !== "surfaces" || datasetKind !== "surface") setSurfaceFormulaEditorOpen(false);
@@ -11295,6 +11610,237 @@ case "mobius":
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [surfaceFormulaEditorOpen]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen) return;
+    if (surfaceViewerKind === "graph" && graphSurfaceId !== "graph_custom") {
+      handleEditGraphAsCustom();
+      return;
+    }
+    if (surfaceViewerKind === "implicit" && implicitSurfaceId !== "implicit_custom") {
+      handleEditImplicitAsCustom();
+    }
+  }, [
+    graphSurfaceId,
+    handleEditGraphAsCustom,
+    handleEditImplicitAsCustom,
+    implicitSurfaceId,
+    surfaceFormulaEditorOpen,
+    surfaceViewerKind,
+  ]);
+
+  const focusSurfaceFormulaPrimaryInput = useCallback(
+    (reason: string) => {
+      if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) return false;
+      if (surfaceViewerKind !== "graph" && surfaceViewerKind !== "implicit") return false;
+      const input = surfaceFormulaPrimaryInputRef.current;
+      if (!input) return false;
+      if (document.activeElement === input) return true;
+      try {
+        if (!document.hasFocus()) window.focus();
+      } catch {
+        // Ignore focus delegation failures in restricted environments.
+      }
+      try {
+        input.focus({ preventScroll: true });
+      } catch {
+        input.focus();
+      }
+      logFormulaEditorDebug(`${surfaceViewerKind}.input.focus`, { reason, len: input.value.length });
+      return document.activeElement === input;
+    },
+    [
+      logFormulaEditorDebug,
+      surfaceFormulaEditorCollapsed,
+      surfaceFormulaEditorOpen,
+      surfaceViewerKind,
+    ]
+  );
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) return;
+    if (surfaceViewerKind !== "graph" && surfaceViewerKind !== "implicit") return;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | null = null;
+    const maxAttempts = 60;
+
+    const focusInput = () => {
+      if (cancelled) return;
+      const focused = focusSurfaceFormulaPrimaryInput(attempts === 0 ? "editor-open" : "editor-open-retry");
+      if (focused || attempts >= maxAttempts) return;
+      attempts += 1;
+      timer = window.setTimeout(focusInput, 50);
+    };
+
+    const handleWindowFocus = () => {
+      attempts = 0;
+      focusSurfaceFormulaPrimaryInput("window-focus");
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(focusInput, 50);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      attempts = 0;
+      focusSurfaceFormulaPrimaryInput("visibility-visible");
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(focusInput, 50);
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    focusInput();
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    focusSurfaceFormulaPrimaryInput,
+    graphSurfaceId,
+    implicitSurfaceId,
+    surfaceFormulaEditorCollapsed,
+    surfaceFormulaEditorOpen,
+    surfaceViewerKind,
+  ]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) return;
+
+    const onKeyDownCapture = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTextTarget =
+        !!target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
+      if (!isTextTarget) return;
+      logFormulaEditorDebug("formula.capture.keydown", {
+        key: event.key,
+        code: event.code,
+        repeat: event.repeat,
+        composing: event.isComposing,
+        defaultPrevented: event.defaultPrevented,
+        targetTag: target?.tagName ?? null,
+      });
+    };
+    const onBeforeInputCapture = (event: InputEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTextTarget =
+        !!target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
+      if (!isTextTarget) return;
+      logFormulaEditorDebug("formula.capture.beforeinput", {
+        inputType: event.inputType ?? null,
+        data: event.data ?? null,
+        composing: event.isComposing,
+        defaultPrevented: event.defaultPrevented,
+        targetTag: target?.tagName ?? null,
+      });
+    };
+    const onInputCapture = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      const input = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement ? target : null;
+      if (!input) return;
+      logFormulaEditorDebug("formula.capture.input", {
+        len: input.value.length,
+        targetTag: target?.tagName ?? null,
+      });
+    };
+
+    window.addEventListener("keydown", onKeyDownCapture, true);
+    window.addEventListener("beforeinput", onBeforeInputCapture as EventListener, true);
+    window.addEventListener("input", onInputCapture, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDownCapture, true);
+      window.removeEventListener("beforeinput", onBeforeInputCapture as EventListener, true);
+      window.removeEventListener("input", onInputCapture, true);
+    };
+  }, [logFormulaEditorDebug, surfaceFormulaEditorCollapsed, surfaceFormulaEditorOpen]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) return;
+    if (surfaceViewerKind !== "graph" && surfaceViewerKind !== "implicit") return;
+
+    const onGlobalKeydownCapture = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return;
+      const key = event.key;
+      const insertText = key === "Enter" ? "\n" : key.length === 1 ? key : null;
+      if (!insertText) return;
+
+      const input = surfaceFormulaPrimaryInputRef.current;
+      const panel = surfaceFormulaEditorPanelRef.current;
+      if (!input || !panel || !input.isConnected) return;
+
+      const target = event.target as HTMLElement | null;
+      const targetIsEditable =
+        !!target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT" || target.isContentEditable);
+      if (targetIsEditable && target !== input) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      const activeInPanel = !!(active && panel.contains(active));
+      const targetInPanel = !!(target && panel.contains(target));
+      if (!activeInPanel && !targetInPanel && target !== input) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? start;
+      const next = input.value.slice(0, start) + insertText + input.value.slice(end);
+      const nextPos = start + insertText.length;
+
+      if (surfaceViewerKind === "graph") setGraphExprDraft(next);
+      else setImplicitExprDraft(next);
+
+      requestAnimationFrame(() => {
+        if (!input.isConnected) return;
+        try {
+          input.focus({ preventScroll: true });
+        } catch {
+          input.focus();
+        }
+        input.setSelectionRange(nextPos, nextPos);
+      });
+
+      logFormulaEditorDebug("formula.capture.global-fallback", {
+        key,
+        start,
+        end,
+        len: next.length,
+      });
+    };
+
+    window.addEventListener("keydown", onGlobalKeydownCapture, true);
+    return () => window.removeEventListener("keydown", onGlobalKeydownCapture, true);
+  }, [logFormulaEditorDebug, surfaceFormulaEditorCollapsed, surfaceFormulaEditorOpen, surfaceViewerKind]);
+
+  useEffect(() => {
+    setGraphExprDraft(graphExpr);
+  }, [graphExpr, graphSurfaceId, surfaceFormulaEditorOpen]);
+
+  useEffect(() => {
+    setImplicitExprDraft(implicitExpr);
+  }, [implicitExpr, implicitSurfaceId, surfaceFormulaEditorOpen]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) {
+      setFormulaGhostCaret(null);
+    }
+  }, [surfaceFormulaEditorCollapsed, surfaceFormulaEditorOpen]);
+
+  useEffect(() => {
+    if (!surfaceFormulaEditorOpen || surfaceFormulaEditorCollapsed) return;
+    let raf1: number | null = null;
+    let raf2: number | null = null;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        setWindowReframeToken((v) => v + 1);
+        window.dispatchEvent(new Event("resize"));
+      });
+    });
+    return () => {
+      if (raf1 != null) cancelAnimationFrame(raf1);
+      if (raf2 != null) cancelAnimationFrame(raf2);
+    };
+  }, [surfaceFormulaEditorCollapsed, surfaceFormulaEditorOpen]);
 
   const handlePickEqSurface = (id: SurfaceId) => {
     setDatasetKind("surface");
@@ -15223,13 +15769,6 @@ case "mobius":
       vertexIndex?: number;
     }) => {
       if (!selectRegionEnabled) return;
-      console.log("[App] surface selection pick", {
-        point: payload.point,
-        normal: payload.normal,
-        uv: payload.uv,
-        selectionRadius,
-        selectionUseUV,
-      });
       setSelectionMaskOverride(null);
       if (payload.sampleIndex != null && payload.meshKey && payload.vertexIndex != null) {
         setSelectionSeed({
@@ -15528,7 +16067,6 @@ case "mobius":
   }, []);
 
   const handleGaussSelection = useCallback((selection: GaussCapSelection) => {
-    console.log("[App] gauss cap selection", selection);
     setSelectionMaskOverride(null);
     setSelection(selection);
   }, []);
@@ -15559,10 +16097,6 @@ case "mobius":
     }
     if (!surfaceSampleSet || !selection) {
       setSelectionMask(null);
-      console.log("[App] selection cleared", {
-        samples: surfaceSampleSet?.samples.length ?? 0,
-        selection: selection ? selection.kind : "none",
-      });
       return;
     }
     let mask: SelectionMask;
@@ -15602,12 +16136,6 @@ case "mobius":
     } else {
       mask = computeSelectionMask(surfaceSampleSet.samples, selection);
     }
-    console.log("[App] computed selection mask", {
-      count: mask.count,
-      totalSamples: surfaceSampleSet.samples.length,
-      selection: selection.kind,
-      radius: selection.kind === "surfaceDisk" ? selection.radius : undefined,
-    });
     setSelectionMask(mask);
   }, [surfaceSampleSet, selection, selectionMode, selectionSeed, geodesicAdjacency, selectionStatsToken, selectionMaskOverride]);
 
@@ -20333,24 +20861,153 @@ case "mobius":
       surfaceViewerKind === "param" ||
       surfaceViewerKind === "weierstrass") &&
     !cleanScreenshotSurfaceActive;
+  const surfaceFormulaEditorParamSourceKind =
+    surfaceViewerKind === "param" ? paramSurfaceSourceKindFor(paramSurfaceId) : null;
+  const surfaceFormulaEditorConstructedSubtype =
+    surfaceViewerKind === "param" && isConstructedParamSurfaceId(paramSurfaceId)
+      ? constructedParamSubtypeFor(paramSurfaceId)
+      : null;
+  const surfaceFormulaEditorShowsParametricFields =
+    surfaceViewerKind === "param" && surfaceFormulaEditorParamSourceKind === "formula";
+  const surfaceFormulaEditorShowsRotationalFields =
+    surfaceViewerKind === "param" && surfaceFormulaEditorConstructedSubtype === "rotational";
+  const surfaceFormulaEditorShowsSplineFields =
+    surfaceViewerKind === "param" && isSplinePatchSurfaceId(paramSurfaceId);
   const canOpenSurfaceFormulaEditor =
     surfaceViewerKind === "graph"
       ? graphSurfaceId === "graph_custom" || canEditGraphAsCustom
       : surfaceViewerKind === "implicit"
         ? implicitSurfaceId === "implicit_custom" || canEditImplicitAsCustom
         : surfaceViewerKind === "param"
-          ? paramSurfaceId === "custom" || canEditParamAsCustom
+          ? surfaceFormulaEditorShowsSplineFields ||
+            surfaceFormulaEditorShowsRotationalFields ||
+            paramSurfaceId === "custom" ||
+            canEditParamAsCustom
           : surfaceViewerKind === "weierstrass";
-  const surfaceFormulaEditorTitle =
+  const surfaceFormulaEditorTitle = "Surface editor";
+  const surfaceFormulaEditorTypeLabel =
     surfaceViewerKind === "graph"
-      ? "Explicit editor"
+      ? "Explicit"
       : surfaceViewerKind === "implicit"
-        ? "Implicit editor"
-        : surfaceViewerKind === "param"
-          ? "Parametric editor"
-          : surfaceViewerKind === "weierstrass"
-            ? "Weierstrass editor"
-            : "Surface editor";
+        ? "Implicit"
+        : surfaceViewerKind === "weierstrass"
+          ? "Weierstrass"
+          : surfaceViewerKind === "param"
+            ? surfaceFormulaEditorShowsSplineFields
+              ? paramSurfaceId === "nurbsSurface"
+                ? "NURBS / Splines"
+                : "Splines"
+              : surfaceFormulaEditorShowsRotationalFields
+                ? "Rotational"
+                : "Parametric"
+            : "Surface";
+  const surfaceFormulaEditorValidation = useMemo(() => {
+    const sanitizeExpression = (raw: string): string => {
+      let src = raw.trim();
+      if (!src) return "";
+      const eqIdx = src.indexOf("=");
+      if (eqIdx >= 0) src = src.slice(eqIdx + 1).trim();
+      const funcNames = ["sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "abs", "log", "exp", "min", "max"];
+      const funcRegex = new RegExp(`\\b(${funcNames.join("|")})\\b`, "gi");
+      src = src.replace(funcRegex, (m) => m.toLowerCase());
+      const funcNoParen = new RegExp(
+        `\\b(${funcNames.join("|")})\\s+(-?\\s*[A-Za-z_][A-Za-z0-9_]*|-?\\s*\\d*\\.?\\d+)`,
+        "g"
+      );
+      src = src.replace(funcNoParen, (_m, fn, arg) => `${fn}(${String(arg).replace(/\\s+/g, "")})`);
+      return src;
+    };
+
+    const validateExpression = (raw: string, vars: string[]): string | null => {
+      const src = sanitizeExpression(raw);
+      if (!src) return "Expression required.";
+      const { error } = compileExpression(src, vars);
+      return error ? `${error.message} (col ${error.col})` : null;
+    };
+
+    if (surfaceViewerKind === "graph") {
+      const err = validateExpression(graphExpr, ["x", "y"]);
+      return { ok: !err, detail: err ?? "Valid expression" };
+    }
+    if (surfaceViewerKind === "implicit") {
+      const err = validateExpression(implicitExpr, ["x", "y", "z"]);
+      return { ok: !err, detail: err ?? "Valid expression" };
+    }
+    if (surfaceViewerKind === "param") {
+      if (surfaceFormulaEditorShowsSplineFields) {
+        if (paramSurfaceId === "bezierSurface") {
+          const ok = bezierControlGridText.trim().length > 0;
+          return { ok, detail: ok ? "Control points ready" : "Control points are required." };
+        }
+        if (paramSurfaceId === "bSplineSurface") {
+          const ok =
+            bSplineControlGridText.trim().length > 0 &&
+            bSplineKnotUText.trim().length > 0 &&
+            bSplineKnotVText.trim().length > 0;
+          return { ok, detail: ok ? "Spline data ready" : "Control points and knots are required." };
+        }
+        const ok =
+          nurbsControlGridText.trim().length > 0 &&
+          nurbsKnotUText.trim().length > 0 &&
+          nurbsKnotVText.trim().length > 0 &&
+          nurbsWeightsText.trim().length > 0;
+        return { ok, detail: ok ? "NURBS data ready" : "Control points, knots, and weights are required." };
+      }
+      if (surfaceFormulaEditorShowsRotationalFields) {
+        if (rotationalProfileMode !== "formula") {
+          const ok = rotationalProfilePointsText.trim().length > 0;
+          return { ok, detail: ok ? "Profile points ready" : "Provide profile points." };
+        }
+        const rErr = validateExpression(rotationalProfileRExpr, ["v"]);
+        if (rErr) return { ok: false, detail: `r(v): ${rErr}` };
+        const zErr = validateExpression(rotationalProfileZExpr, ["v"]);
+        if (zErr) return { ok: false, detail: `z(v): ${zErr}` };
+        return { ok: true, detail: "Valid rotational profile" };
+      }
+      const xErr = validateExpression(paramXExpr, ["u", "v"]);
+      if (xErr) return { ok: false, detail: `x(u,v): ${xErr}` };
+      const yErr = validateExpression(paramYExpr, ["u", "v"]);
+      if (yErr) return { ok: false, detail: `y(u,v): ${yErr}` };
+      const zErr = validateExpression(paramZExpr, ["u", "v"]);
+      if (zErr) return { ok: false, detail: `z(u,v): ${zErr}` };
+      return { ok: true, detail: "Valid expression" };
+    }
+    if (surfaceViewerKind === "weierstrass") {
+      if (weierstrassError) return { ok: false, detail: weierstrassError };
+      const gErr = validateExpression(weierstrassGExpr, ["z"]);
+      if (gErr) return { ok: false, detail: `g(z): ${gErr}` };
+      const phiErr = validateExpression(weierstrassPhiExpr, ["z"]);
+      if (phiErr) return { ok: false, detail: `phi(z): ${phiErr}` };
+      return { ok: true, detail: "Valid expression" };
+    }
+    return { ok: true, detail: "Ready" };
+  }, [
+    bSplineControlGridText,
+    bSplineKnotUText,
+    bSplineKnotVText,
+    bezierControlGridText,
+    graphExpr,
+    implicitExpr,
+    implicitExpr,
+    nurbsControlGridText,
+    nurbsKnotUText,
+    nurbsKnotVText,
+    nurbsWeightsText,
+    paramSurfaceId,
+    paramXExpr,
+    paramYExpr,
+    paramZExpr,
+    rotationalProfileMode,
+    rotationalProfilePointsText,
+    rotationalProfileRExpr,
+    rotationalProfileZExpr,
+    surfaceFormulaEditorShowsRotationalFields,
+    surfaceFormulaEditorShowsSplineFields,
+    surfaceViewerKind,
+    weierstrassError,
+    weierstrassGExpr,
+    weierstrassPhiExpr,
+  ]);
   const compareLayoutEnabled =
     compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfaceViewportDebug =
@@ -22441,7 +23098,7 @@ case "mobius":
                                   : "Choose an editable preset first."
                               }
                             >
-                              {surfaceFormulaEditorOpen ? "Editor: on" : "Open editor"}
+                              {surfaceFormulaEditorOpen ? "Surface editor: on" : "Surface editor"}
                             </button>
                           )}
                           <button
@@ -22780,6 +23437,8 @@ case "mobius":
                         geodesicDiskShowBoundary={geodesicDiskShowBoundary}
                         zoomToRegion={zoomToRegion}
                         zoomToRegionToken={zoomNowToken}
+                        suspendPointerInteractions={surfaceFormulaEditorOpen}
+                        suspendRendering={surfaceFormulaEditorOpen}
                       />
                         )}
                         {showRotationalSplineOverlay && (
@@ -22861,150 +23520,619 @@ case "mobius":
                         )}
                         {showSurfaceFormulaEditorLauncher && surfaceFormulaEditorOpen && (
                           <div
+                            ref={surfaceFormulaEditorPanelRef}
                             style={{
                               position: "absolute",
-                              top: 12,
-                              right: 12,
-                              zIndex: 8,
-                              width: "min(560px, calc(100% - 24px))",
-                              maxHeight: "calc(100% - 24px)",
-                              overflowY: "auto",
-                              borderRadius: 12,
-                              border: "1px solid #c8d5e6",
-                              background: "rgba(255,255,255,0.98)",
-                              boxShadow: "0 18px 38px rgba(15,23,42,0.22)",
-                              padding: 12,
+                              top: 0,
+                              right: 0,
+                              bottom: 0,
+                              zIndex: 2500,
+                              isolation: "isolate",
+                              width: surfaceFormulaEditorCollapsed ? 56 : "min(420px, calc(100% - 12px))",
+                              borderLeft: "1px solid #d3dce8",
+                              background: "rgba(255,255,255,0.97)",
+                              boxShadow: "-8px 0 22px rgba(15,23,42,0.14)",
+                              padding: 10,
+                              boxSizing: "border-box",
                               display: "grid",
-                              gap: 10,
+                              gridTemplateRows: "auto auto minmax(0,1fr) auto",
+                              gap: 8,
+                              pointerEvents: "auto",
                             }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700 }}>{surfaceFormulaEditorTitle}</div>
-                              <button type="button" onClick={() => setSurfaceFormulaEditorOpen(false)} style={{ padding: "4px 10px" }}>
-                                Close
-                              </button>
-                            </div>
-                            <div style={{ fontSize: 11, color: "#475467" }}>
-                              Editing here updates the active surface immediately.
-                            </div>
-
-                            {surfaceViewerKind === "graph" && (
-                              <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                                z = f(x, y)
-                                <textarea
-                                  value={graphExpr}
-                                  onChange={(e) => setGraphExpr(e.target.value)}
-                                  rows={5}
-                                  spellCheck={false}
-                                  style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border: "1px solid #cbd5e1",
-                                    padding: "8px 10px",
-                                    fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
-                                    fontSize: 13,
-                                    resize: "vertical",
-                                  }}
-                                />
-                              </label>
-                            )}
-
-                            {surfaceViewerKind === "implicit" && (
-                              <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                                f(x, y, z) = 0
-                                <textarea
-                                  value={implicitExpr}
-                                  onChange={(e) => setImplicitExpr(e.target.value)}
-                                  rows={5}
-                                  spellCheck={false}
-                                  style={{
-                                    width: "100%",
-                                    boxSizing: "border-box",
-                                    borderRadius: 8,
-                                    border: "1px solid #cbd5e1",
-                                    padding: "8px 10px",
-                                    fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
-                                    fontSize: 13,
-                                    resize: "vertical",
-                                  }}
-                                />
-                              </label>
-                            )}
-
-                            {surfaceViewerKind === "param" && (
-                              <div style={{ display: "grid", gap: 8 }}>
-                                {(
-                                  [
-                                    ["x(u,v)", paramXExpr, setParamXExpr],
-                                    ["y(u,v)", paramYExpr, setParamYExpr],
-                                    ["z(u,v)", paramZExpr, setParamZExpr],
-                                  ] as const
-                                ).map(([label, value, setter]) => (
-                                  <label key={`surface-formula-${label}`} style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                                    {label}
-                                    <textarea
-                                      value={value}
-                                      onChange={(e) => setter(e.target.value)}
-                                      rows={3}
-                                      spellCheck={false}
-                                      style={{
-                                        width: "100%",
-                                        boxSizing: "border-box",
-                                        borderRadius: 8,
-                                        border: "1px solid #cbd5e1",
-                                        padding: "8px 10px",
-                                        fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
-                                        fontSize: 13,
-                                        resize: "vertical",
-                                      }}
-                                    />
-                                  </label>
-                                ))}
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 6, alignItems: "start" }}>
+                              {!surfaceFormulaEditorCollapsed && (
+                                <div style={{ display: "grid", gap: 2 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 800 }}>{surfaceFormulaEditorTitle}</div>
+                                  <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+                                    Type: {surfaceFormulaEditorTypeLabel}
+                                  </div>
+                                </div>
+                              )}
+                              <div style={{ display: "inline-flex", gap: 6, marginLeft: "auto" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setSurfaceFormulaEditorCollapsed((v) => !v)}
+                                  style={{ borderRadius: 8, border: "1px solid #d1d9e5", padding: "3px 8px", fontSize: 11 }}
+                                >
+                                  {surfaceFormulaEditorCollapsed ? "Open" : "Collapse"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSurfaceFormulaEditorOpen(false)}
+                                  style={{ borderRadius: 8, border: "1px solid #e2e8f0", padding: "3px 8px", fontSize: 11, color: "#64748b" }}
+                                >
+                                  Close
+                                </button>
                               </div>
-                            )}
+                            </div>
 
-                            {surfaceViewerKind === "weierstrass" && (
-                              <div style={{ display: "grid", gap: 8 }}>
-                                <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                                  g(z)
-                                  <textarea
-                                    value={weierstrassGExpr}
-                                    onChange={(e) => setWeierstrassGExpr(e.target.value)}
-                                    rows={3}
-                                    spellCheck={false}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #cbd5e1",
-                                      padding: "8px 10px",
-                                      fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
-                                      fontSize: 13,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </label>
-                                <label style={{ display: "grid", gap: 6, fontSize: 12, fontWeight: 600 }}>
-                                  phi(z)
-                                  <textarea
-                                    value={weierstrassPhiExpr}
-                                    onChange={(e) => setWeierstrassPhiExpr(e.target.value)}
-                                    rows={3}
-                                    spellCheck={false}
-                                    style={{
-                                      width: "100%",
-                                      boxSizing: "border-box",
-                                      borderRadius: 8,
-                                      border: "1px solid #cbd5e1",
-                                      padding: "8px 10px",
-                                      fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace",
-                                      fontSize: 13,
-                                      resize: "vertical",
-                                    }}
-                                  />
-                                </label>
-                              </div>
+                            {!surfaceFormulaEditorCollapsed && (
+                              <>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    color: surfaceFormulaEditorValidation.ok ? "#166534" : "#b42318",
+                                    background: surfaceFormulaEditorValidation.ok ? "#ecfdf3" : "#fef2f2",
+                                    border: "1px solid " + (surfaceFormulaEditorValidation.ok ? "#c7e9d3" : "#f6c7cc"),
+                                    borderRadius: 8,
+                                    padding: "6px 8px",
+                                  }}
+                                >
+                                  {surfaceFormulaEditorValidation.ok ? "Valid expression" : "Needs attention"} · manual apply
+                                </div>
+                                <div style={{ fontSize: 10, color: "#64748b", marginTop: -2 }}>
+                                  {surfaceFormulaEditorValidation.detail}
+                                </div>
+                                <div style={{ overflowY: "auto", display: "grid", gap: 10, paddingRight: 2 }}>
+                                  {surfaceViewerKind === "graph" && (
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700 }}>Expression: z = ...</div>
+                                      {surfaceFormulaEditorSourceHint?.kind === "graph" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setGraphExprDraft(surfaceFormulaEditorSourceHint.expr);
+                                            flushGraphExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
+                                          }}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #bfdbfe",
+                                            background: "#eff6ff",
+                                            color: "#1d4ed8",
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            padding: "4px 8px",
+                                            textAlign: "left",
+                                          }}
+                                        >
+                                          {`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
+                                        </button>
+                                      )}
+                                      <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                                        {["x^2-y^2", "sin(x)*cos(y)", "x*y"].map((chip) => (
+                                          <button
+                                            key={chip}
+                                            type="button"
+                                            onClick={() => {
+                                              setGraphExprDraft(chip);
+                                              flushGraphExprFromEditor(chip, true);
+                                            }}
+                                            style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 10, padding: "2px 7px" }}
+                                          >
+                                            {chip}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                        <button
+                                          type="button"
+                                          onClick={applyGraphEditorDraft}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #0a66c2",
+                                            background: "#e6f0ff",
+                                            color: "#0a66c2",
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            padding: "4px 8px",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Apply
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setGraphExprDraft(graphExpr);
+                                          }}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #d1d5db",
+                                            background: "#fff",
+                                            color: "#334155",
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            padding: "4px 8px",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Revert
+                                        </button>
+                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter to apply</span>
+                                      </div>
+                                      <div style={{ position: "relative" }}>
+                                        <textarea
+                                          ref={(el) => {
+                                            surfaceFormulaPrimaryInputRef.current = el;
+                                          }}
+                                          tabIndex={0}
+                                          wrap="off"
+                                          value={graphExprDraft}
+                                          onFocus={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "graph");
+                                          }}
+                                          onBlur={() => {
+                                            clearFormulaGhostCaret("graph");
+                                          }}
+                                          onMouseUp={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "graph");
+                                          }}
+                                          onKeyUp={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "graph");
+                                          }}
+                                          onSelect={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "graph");
+                                          }}
+                                          onScroll={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "graph");
+                                          }}
+                                          onChange={(e) => {
+                                            const input = e.currentTarget;
+                                            handleGraphExprDraftChange(input.value);
+                                            requestAnimationFrame(() => updateFormulaGhostCaret(input, "graph"));
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                              e.preventDefault();
+                                              applyGraphEditorDraft();
+                                              return;
+                                            }
+                                            applyTextareaKeyFallback(e, setGraphExprDraft, "graph");
+                                          }}
+                                          rows={6}
+                                          spellCheck={false}
+                                          style={{ position: "relative", zIndex: 4, pointerEvents: "auto", borderRadius: 9, border: "2px solid #93c5fd", padding: "8px 10px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 14, fontWeight: 600, resize: "vertical", cursor: "text", caretColor: "#0f172a" }}
+                                        />
+                                        {formulaGhostCaret?.kind === "graph" && (
+                                          <div
+                                            aria-hidden
+                                            style={{
+                                              position: "absolute",
+                                              left: formulaGhostCaret.left,
+                                              top: formulaGhostCaret.top,
+                                              width: 2,
+                                              height: formulaGhostCaret.height,
+                                              background: "#0f172a",
+                                              borderRadius: 1,
+                                              pointerEvents: "none",
+                                              opacity: 0.95,
+                                              zIndex: 6,
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {surfaceViewerKind === "implicit" && (
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700 }}>Expression: F(x,y,z) = 0</div>
+                                      {surfaceFormulaEditorSourceHint?.kind === "implicit" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setImplicitExprDraft(surfaceFormulaEditorSourceHint.expr);
+                                            flushImplicitExprFromEditor(surfaceFormulaEditorSourceHint.expr, true);
+                                          }}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #bfdbfe",
+                                            background: "#eff6ff",
+                                            color: "#1d4ed8",
+                                            fontSize: 10,
+                                            fontWeight: 700,
+                                            padding: "4px 8px",
+                                            textAlign: "left",
+                                          }}
+                                        >
+                                          {`Use ${surfaceFormulaEditorSourceHint.label}: ${surfaceFormulaEditorSourceHint.expr}`}
+                                        </button>
+                                      )}
+                                      <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                                        {["x^2+y^2+z^2-1", "x^2+y^2-z^2-1", "sin(x)*cos(y)+sin(z)"].map((chip) => (
+                                          <button
+                                            key={chip}
+                                            type="button"
+                                            onClick={() => {
+                                              setImplicitExprDraft(chip);
+                                              flushImplicitExprFromEditor(chip, true);
+                                            }}
+                                            style={{ borderRadius: 999, border: "1px solid #d1d5db", background: "#fff", fontSize: 10, padding: "2px 7px" }}
+                                          >
+                                            {chip}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      <div style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                        <button
+                                          type="button"
+                                          onClick={applyImplicitEditorDraft}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #0a66c2",
+                                            background: "#e6f0ff",
+                                            color: "#0a66c2",
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            padding: "4px 8px",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Apply
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setImplicitExprDraft(implicitExpr);
+                                          }}
+                                          style={{
+                                            borderRadius: 8,
+                                            border: "1px solid #d1d5db",
+                                            background: "#fff",
+                                            color: "#334155",
+                                            fontSize: 11,
+                                            fontWeight: 600,
+                                            padding: "4px 8px",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Revert
+                                        </button>
+                                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>Ctrl+Enter to apply</span>
+                                      </div>
+                                      <div style={{ position: "relative" }}>
+                                        <textarea
+                                          ref={(el) => {
+                                            surfaceFormulaPrimaryInputRef.current = el;
+                                          }}
+                                          tabIndex={0}
+                                          wrap="off"
+                                          value={implicitExprDraft}
+                                          onFocus={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                          }}
+                                          onBlur={() => {
+                                            clearFormulaGhostCaret("implicit");
+                                          }}
+                                          onMouseUp={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                          }}
+                                          onKeyUp={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                          }}
+                                          onSelect={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                          }}
+                                          onScroll={(e) => {
+                                            updateFormulaGhostCaret(e.currentTarget, "implicit");
+                                          }}
+                                          onChange={(e) => {
+                                            const input = e.currentTarget;
+                                            handleImplicitExprDraftChange(input.value);
+                                            requestAnimationFrame(() => updateFormulaGhostCaret(input, "implicit"));
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                              e.preventDefault();
+                                              applyImplicitEditorDraft();
+                                              return;
+                                            }
+                                            applyTextareaKeyFallback(e, setImplicitExprDraft, "implicit");
+                                          }}
+                                          rows={6}
+                                          spellCheck={false}
+                                          style={{ position: "relative", zIndex: 4, pointerEvents: "auto", borderRadius: 9, border: "2px solid #93c5fd", padding: "8px 10px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 14, fontWeight: 600, resize: "vertical", cursor: "text", caretColor: "#0f172a" }}
+                                        />
+                                        {formulaGhostCaret?.kind === "implicit" && (
+                                          <div
+                                            aria-hidden
+                                            style={{
+                                              position: "absolute",
+                                              left: formulaGhostCaret.left,
+                                              top: formulaGhostCaret.top,
+                                              width: 2,
+                                              height: formulaGhostCaret.height,
+                                              background: "#0f172a",
+                                              borderRadius: 1,
+                                              pointerEvents: "none",
+                                              opacity: 0.95,
+                                              zIndex: 6,
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {surfaceFormulaEditorShowsParametricFields && (
+                                    <div style={{ display: "grid", gap: 7 }}>
+                                      {([["x", "x(u,v)", paramXExpr], ["y", "y(u,v)", paramYExpr], ["z", "z(u,v)", paramZExpr]] as const).map(([axis, label, value]) => (
+                                        <label key={label} style={{ display: "grid", gap: 4, fontSize: 11, fontWeight: 700 }}>
+                                          {label}
+                                          <textarea value={value} onChange={(e) => setParamExprFromEditor(axis, e.target.value)} rows={3} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 12, resize: "vertical" }} />
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {surfaceFormulaEditorShowsRotationalFields && (
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700 }}>Rotational: profile + axis</div>
+                                      <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                        Mode
+                                        <select
+                                          value={rotationalProfileMode}
+                                          onChange={(e) => setRotationalProfileMode(e.target.value as RotationalProfileMode)}
+                                          style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "5px 7px", fontSize: 11 }}
+                                        >
+                                          <option value="formula">Formula</option>
+                                          <option value="points">Points</option>
+                                          <option value="spline">Spline points</option>
+                                        </select>
+                                      </label>
+                                      {rotationalProfileMode === "formula" ? (
+                                        <>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            r(v)
+                                            <textarea value={rotationalProfileRExpr} onChange={(e) => setRotationalProfileRExpr(e.target.value)} rows={2} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 12, resize: "vertical" }} />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            z(v)
+                                            <textarea value={rotationalProfileZExpr} onChange={(e) => setRotationalProfileZExpr(e.target.value)} rows={2} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 12, resize: "vertical" }} />
+                                          </label>
+                                        </>
+                                      ) : (
+                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                          Profile points (v,r,z)
+                                          <textarea value={rotationalProfilePointsText} onChange={(e) => setRotationalProfilePointsText(e.target.value)} rows={4} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 11, resize: "vertical" }} />
+                                        </label>
+                                      )}
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                                        {(["x", "y", "z"] as const).map((axis) => (
+                                          <label key={`rot-origin-${axis}`} style={{ display: "grid", gap: 3, fontSize: 10, fontWeight: 700 }}>
+                                            origin {axis}
+                                            <input
+                                              type="number"
+                                              value={rotationalAxisOrigin[axis]}
+                                              onChange={(e) => {
+                                                const v = Number(e.target.value);
+                                                if (!Number.isFinite(v)) return;
+                                                setRotationalAxisOrigin((prev) => ({ ...prev, [axis]: v }));
+                                              }}
+                                              style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                            />
+                                          </label>
+                                        ))}
+                                      </div>
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                                        {(["x", "y", "z"] as const).map((axis) => (
+                                          <label key={`rot-dir-${axis}`} style={{ display: "grid", gap: 3, fontSize: 10, fontWeight: 700 }}>
+                                            dir {axis}
+                                            <input
+                                              type="number"
+                                              value={rotationalAxisDirection[axis]}
+                                              onChange={(e) => {
+                                                const v = Number(e.target.value);
+                                                if (!Number.isFinite(v)) return;
+                                                setRotationalAxisDirection((prev) => ({ ...prev, [axis]: v }));
+                                              }}
+                                              style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                            />
+                                          </label>
+                                        ))}
+                                      </div>
+                                      <button type="button" onClick={() => { setParamSurfaceOverlayOpen(true); setParamSurfaceOverlayTab("rotational"); }} style={{ borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 11, fontWeight: 700, padding: "5px 8px", textAlign: "left" }}>
+                                        Open rotational tools (profile, axis, range)
+                                      </button>
+                                    </div>
+                                  )}
+                                  {surfaceFormulaEditorShowsSplineFields && (
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700 }}>NURBS / Splines</div>
+                                      <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                        Control points
+                                        <textarea
+                                          value={
+                                            paramSurfaceId === "bezierSurface"
+                                              ? bezierControlGridText
+                                              : paramSurfaceId === "bSplineSurface"
+                                                ? bSplineControlGridText
+                                                : nurbsControlGridText
+                                          }
+                                          onChange={(e) => {
+                                            const next = e.target.value;
+                                            if (paramSurfaceId === "bezierSurface") setBezierControlGridText(next);
+                                            else if (paramSurfaceId === "bSplineSurface") setBSplineControlGridText(next);
+                                            else setNurbsControlGridText(next);
+                                          }}
+                                          rows={5}
+                                          spellCheck={false}
+                                          style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 11, resize: "vertical" }}
+                                        />
+                                      </label>
+                                      {(paramSurfaceId === "bSplineSurface" || paramSurfaceId === "nurbsSurface") && (
+                                        <>
+                                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              Degree U
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                max={7}
+                                                value={paramSurfaceId === "bSplineSurface" ? bSplineDegreeU : nurbsDegreeU}
+                                                onChange={(e) => {
+                                                  const v = Math.max(1, Math.min(7, Math.round(Number(e.target.value))));
+                                                  if (!Number.isFinite(v)) return;
+                                                  if (paramSurfaceId === "bSplineSurface") setBSplineDegreeU(v);
+                                                  else setNurbsDegreeU(v);
+                                                }}
+                                                style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                              />
+                                            </label>
+                                            <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                              Degree V
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                max={7}
+                                                value={paramSurfaceId === "bSplineSurface" ? bSplineDegreeV : nurbsDegreeV}
+                                                onChange={(e) => {
+                                                  const v = Math.max(1, Math.min(7, Math.round(Number(e.target.value))));
+                                                  if (!Number.isFinite(v)) return;
+                                                  if (paramSurfaceId === "bSplineSurface") setBSplineDegreeV(v);
+                                                  else setNurbsDegreeV(v);
+                                                }}
+                                                style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                              />
+                                            </label>
+                                          </div>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            Knots U
+                                            <textarea value={paramSurfaceId === "bSplineSurface" ? bSplineKnotUText : nurbsKnotUText} onChange={(e) => (paramSurfaceId === "bSplineSurface" ? setBSplineKnotUText(e.target.value) : setNurbsKnotUText(e.target.value))} rows={2} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "6px 8px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 11, resize: "vertical" }} />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            Knots V
+                                            <textarea value={paramSurfaceId === "bSplineSurface" ? bSplineKnotVText : nurbsKnotVText} onChange={(e) => (paramSurfaceId === "bSplineSurface" ? setBSplineKnotVText(e.target.value) : setNurbsKnotVText(e.target.value))} rows={2} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "6px 8px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 11, resize: "vertical" }} />
+                                          </label>
+                                        </>
+                                      )}
+                                      {paramSurfaceId === "nurbsSurface" && (
+                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                          Weights
+                                          <textarea value={nurbsWeightsText} onChange={(e) => setNurbsWeightsText(e.target.value)} rows={3} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "6px 8px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 11, resize: "vertical" }} />
+                                        </label>
+                                      )}
+                                      <button type="button" onClick={() => { setParamSurfaceOverlayOpen(true); setParamSurfaceOverlayTab("spline"); }} style={{ borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 11, fontWeight: 700, padding: "5px 8px", textAlign: "left" }}>
+                                        Open spline tools (control points, degree, knots, weights)
+                                      </button>
+                                    </div>
+                                  )}
+                                  {surfaceViewerKind === "weierstrass" && (
+                                    <div style={{ display: "grid", gap: 7 }}>
+                                      <label style={{ display: "grid", gap: 4, fontSize: 11, fontWeight: 700 }}>g(z)
+                                        <textarea value={weierstrassGExpr} onChange={(e) => setWeierstrassGExpr(e.target.value)} rows={3} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 12, resize: "vertical" }} />
+                                      </label>
+                                      <label style={{ display: "grid", gap: 4, fontSize: 11, fontWeight: 700 }}>phi(z)
+                                        <textarea value={weierstrassPhiExpr} onChange={(e) => setWeierstrassPhiExpr(e.target.value)} rows={3} spellCheck={false} style={{ borderRadius: 8, border: "1px solid #cbd5e1", padding: "7px 9px", fontFamily: "Consolas, 'SFMono-Regular', Menlo, monospace", fontSize: 12, resize: "vertical" }} />
+                                      </label>
+                                    </div>
+                                  )}
+                                </div>
+                                <div style={{ display: "grid", gap: 6 }}>
+                                  <button type="button" onClick={() => setSurfaceFormulaEditorAdvancedOpen((v) => !v)} style={{ borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 11, fontWeight: 700, padding: "5px 8px", textAlign: "left" }}>
+                                    {surfaceFormulaEditorAdvancedOpen ? "Advanced: hide" : "Advanced: domain · mesh density · clipping"}
+                                  </button>
+                                  {surfaceFormulaEditorAdvancedOpen && (
+                                    <div style={{ display: "grid", gap: 7, borderRadius: 8, border: "1px solid #dbe4ef", background: "#f8fafc", padding: 8 }}>
+                                      {(surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            X span
+                                            <input
+                                              type="number"
+                                              min={0.1}
+                                              step={0.1}
+                                              value={surfaceViewerKind === "graph" ? activeGraphDomain.xSpan : activeImplicitDomain.xSpan}
+                                              onChange={(e) => {
+                                                const v = Number(e.target.value);
+                                                if (!Number.isFinite(v)) return;
+                                                if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, xSpan: v });
+                                                else handleChangeImplicitDomain({ ...activeImplicitDomain, xSpan: v });
+                                              }}
+                                              style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                            />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            Y span
+                                            <input
+                                              type="number"
+                                              min={0.1}
+                                              step={0.1}
+                                              value={surfaceViewerKind === "graph" ? activeGraphDomain.ySpan : activeImplicitDomain.ySpan}
+                                              onChange={(e) => {
+                                                const v = Number(e.target.value);
+                                                if (!Number.isFinite(v)) return;
+                                                if (surfaceViewerKind === "graph") handleChangeGraphDomain({ ...activeGraphDomain, ySpan: v });
+                                                else handleChangeImplicitDomain({ ...activeImplicitDomain, ySpan: v });
+                                              }}
+                                              style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                            />
+                                          </label>
+                                        </div>
+                                      )}
+                                      {(surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") && (
+                                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            U min
+                                            <input type="number" step={0.1} value={activeParamLikeDomain.uMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            U max
+                                            <input type="number" step={0.1} value={activeParamLikeDomain.uMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, uMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            V min
+                                            <input type="number" step={0.1} value={activeParamLikeDomain.vMin} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMin: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                          </label>
+                                          <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                            V max
+                                            <input type="number" step={0.1} value={activeParamLikeDomain.vMax} onChange={(e) => { const v = Number(e.target.value); if (!Number.isFinite(v)) return; handleChangeParamDomain({ ...activeParamLikeDomain, vMax: v }); }} style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }} />
+                                          </label>
+                                        </div>
+                                      )}
+                                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                          Mesh density
+                                          <input
+                                            type="number"
+                                            min={20}
+                                            max={480}
+                                            value={surfaceViewerKind === "graph" ? graphResolution : surfaceViewerKind === "implicit" ? implicitResolution : surfaceViewerKind === "param" ? paramResolution : weierstrassResolution}
+                                            onChange={(e) => {
+                                              const v = Math.max(20, Math.min(480, Math.round(Number(e.target.value))));
+                                              if (!Number.isFinite(v)) return;
+                                              if (surfaceViewerKind === "graph") setGraphResolution(v);
+                                              else if (surfaceViewerKind === "implicit") setImplicitResolution(v);
+                                              else if (surfaceViewerKind === "param") setParamResolution(v);
+                                              else setWeierstrassResolution(v);
+                                            }}
+                                            style={{ borderRadius: 7, border: "1px solid #cbd5e1", padding: "4px 6px", fontSize: 11 }}
+                                          />
+                                        </label>
+                                        <label style={{ display: "grid", gap: 3, fontSize: 11, fontWeight: 700 }}>
+                                          Clipping
+                                          <button
+                                            type="button"
+                                            onClick={() => setShowBoundingBox((v) => !v)}
+                                            style={{ borderRadius: 7, border: "1px solid " + (showBoundingBox ? "#0a66c2" : "#cbd5e1"), background: showBoundingBox ? "#e6f0ff" : "#fff", color: showBoundingBox ? "#0a66c2" : "#334155", fontSize: 11, fontWeight: 700, padding: "5px 8px" }}
+                                          >
+                                            {showBoundingBox ? "Bounds on" : "Bounds off"}
+                                          </button>
+                                        </label>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </>
                             )}
                           </div>
                         )}

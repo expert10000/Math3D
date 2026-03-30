@@ -1267,6 +1267,8 @@ type Props = {
 
   showContours?: boolean;
   contourCount?: number;
+  suspendPointerInteractions?: boolean;
+  suspendRendering?: boolean;
 };
 
 type PrincipalField = {
@@ -1439,6 +1441,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
 
     showContours = false,
     contourCount = 12,
+    suspendPointerInteractions = false,
+    suspendRendering = false,
   } = props;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
@@ -1494,6 +1498,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const onDragEndRef = useRef(onDragEnd);
   const onShiftWheelScaleRef = useRef(onShiftWheelScale);
   const onGizmoTransformRef = useRef(onGizmoTransform);
+  const suspendRenderingRef = useRef(suspendRendering);
   const onGeodesicPathPickRef = useRef(onGeodesicPathPick);
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
@@ -1571,6 +1576,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
+  const transformControlsHelperRef = useRef<THREE.Object3D | null>(null);
   const zoomDebounceRef = useRef<number | null>(null);
   const zoomAnimRef = useRef<number | null>(null);
   const zoomNowRef = useRef(0);
@@ -1750,6 +1756,53 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onGizmoTransformRef.current = onGizmoTransform;
   }, [onGizmoTransform]);
+  useEffect(() => {
+    suspendRenderingRef.current = suspendRendering;
+  }, [suspendRendering]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    const canvas = renderer.domElement;
+    if (!canvas) return;
+
+    const releaseAllPointerCapture = () => {
+      const dragState = dragStateRef.current;
+      if (dragState && typeof canvas.releasePointerCapture === "function") {
+        try {
+          canvas.releasePointerCapture(dragState.pointerId);
+        } catch {
+          // Ignore capture release errors for stale pointer ids.
+        }
+      }
+      dragStateRef.current = null;
+      if (
+        typeof canvas.hasPointerCapture === "function" &&
+        typeof canvas.releasePointerCapture === "function"
+      ) {
+        for (let pointerId = 0; pointerId <= 32; pointerId += 1) {
+          try {
+            if (canvas.hasPointerCapture(pointerId)) {
+              canvas.releasePointerCapture(pointerId);
+            }
+          } catch {
+            // Ignore unsupported/stale pointer ids.
+          }
+        }
+      }
+      const controls = controlsRef.current;
+      if (controls) controls.enabled = true;
+    };
+
+    if (suspendPointerInteractions) {
+      releaseAllPointerCapture();
+      canvas.style.pointerEvents = "none";
+      return () => {
+        canvas.style.pointerEvents = "";
+      };
+    }
+    canvas.style.pointerEvents = "";
+  }, [suspendPointerInteractions, sceneEpoch]);
 
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
@@ -1785,10 +1838,6 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     prevPrincipalRef.current = null;
     if (principalGroupRef.current) clearGroup(principalGroupRef.current);
   }, [surfaceId, graphExpr, implicitExpr, graphDomain?.xSpan, graphDomain?.ySpan]);
-
-useEffect(() => {
-  console.log("[SurfaceViewer] props", { surfaceId, colorMode, colorPalette, wireframe });
-}, [surfaceId, colorMode, colorPalette, wireframe]);
 
   const applyCameraView = (view: GizmoView) => {
     const cam = cameraRef.current;
@@ -2930,7 +2979,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   geom.attributes.color && (geom.attributes.color.needsUpdate = true);
 
-  console.log("[SurfaceViewer] recolor OK", { surfaceId, colorMode, colorPalette });
 }, [
   surfaceId,
   graphExpr,
@@ -3014,11 +3062,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     transformControls.setScaleSnap(
       gizmoScaleSnap != null && Number.isFinite(gizmoScaleSnap) && gizmoScaleSnap > 0 ? gizmoScaleSnap : null
     );
-    scene.add(transformControls);
+    const transformControlsHelper =
+      typeof (transformControls as any).getHelper === "function"
+        ? ((transformControls as any).getHelper() as THREE.Object3D)
+        : (transformControls as unknown as THREE.Object3D);
+    transformControlsHelper.visible = false;
+    scene.add(transformControlsHelper);
 
     cameraRef.current = camera;
     controlsRef.current = controls;
     transformControlsRef.current = transformControls;
+    transformControlsHelperRef.current = transformControlsHelper;
     zoomRestoreRef.current = null;
     zoomedToRegionRef.current = false;
     zoomTogglePrevRef.current = zoomToRegion;
@@ -4042,14 +4096,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           return;
         }
 
-        console.log("[SurfaceViewer] pointer down", {
-          selectRegionEnabled: selectRegionEnabledRef.current,
-          probeEnabled,
-          geodesicPathEnabled: geodesicPathEnabledRef.current,
-          geodesicHeatEnabled: geodesicHeatEnabledRef.current,
-          geodesicDiskPickEnabled: geodesicDiskPickEnabledRef.current,
-        });
-
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -4274,11 +4320,6 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const selectionCb = onSelectionPickRef.current;
       if (selectRegionEnabledRef.current && selectionCb) {
         const nearest = findNearestSample(point);
-        console.log("[SurfaceViewer] before selection callback", {
-          point: { x: point.x, y: point.y, z: point.z },
-          normal: normalWorld.toArray(),
-          uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
-        });
         selectionCb({
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
@@ -4419,6 +4460,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const animate = () => {
       frameId = requestAnimationFrame(animate);
+      if (suspendRenderingRef.current) return;
 
       controls.update();
       renderer.render(scene, camera);
@@ -4447,7 +4489,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       transformControls.removeEventListener("dragging-changed", handleGizmoDraggingChanged);
       transformControls.removeEventListener("objectChange", handleGizmoObjectChange);
       transformControls.detach();
-      scene.remove(transformControls);
+      if (transformControlsHelperRef.current) {
+        scene.remove(transformControlsHelperRef.current);
+        transformControlsHelperRef.current = null;
+      }
       transformControls.dispose();
       if (transformControlsRef.current === transformControls) transformControlsRef.current = null;
       controls.dispose();
@@ -4730,10 +4775,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
   useEffect(() => {
     const tc = transformControlsRef.current;
+    const helper = transformControlsHelperRef.current;
     tc?.detach();
     if (!tc) return;
     tc.enabled = false;
     tc.visible = false;
+    if (helper) helper.visible = false;
     if (!gizmoEnabled || surfaceId !== "surface_mesh" || !gizmoMeshKey) return;
     const root = surfaceObjRef.current;
     if (!root) return;
@@ -4750,6 +4797,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     tc.attach(target);
     tc.enabled = true;
     tc.visible = true;
+    if (helper) helper.visible = true;
   }, [gizmoEnabled, gizmoMeshKey, surfaceId, sceneEpoch, surfaceMeshOverride, surfaceMeshOverrides]);
 
   useEffect(() => {
@@ -5059,10 +5107,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     const tc = transformControlsRef.current;
+    const helper = transformControlsHelperRef.current;
     tc?.detach();
     if (tc) {
       tc.enabled = false;
       tc.visible = false;
+      if (helper) helper.visible = false;
       if (gizmoEnabled && surfaceId === "surface_mesh" && gizmoMeshKey) {
         let target: THREE.Object3D | null = null;
         activeSurfaceObj.traverse((obj) => {
@@ -5076,6 +5126,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           tc.attach(target);
           tc.enabled = true;
           tc.visible = true;
+          if (helper) helper.visible = true;
         }
       }
     }
@@ -8837,7 +8888,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
   });
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        pointerEvents: suspendPointerInteractions ? "none" : "auto",
+      }}
+    >
       <div
         ref={mountRef}
         data-testid="surface-viewer-canvas-host"
@@ -8845,6 +8903,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           width: "100%",
           height: "100%",
           display: "flex",
+          pointerEvents: suspendPointerInteractions ? "none" : "auto",
         }}
       />
 
