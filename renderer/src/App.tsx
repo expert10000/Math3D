@@ -1055,6 +1055,21 @@ const cloneSurfaceMeshData = (mesh: SurfaceMeshData, labelOverride?: string): Su
     : null,
 });
 
+const toDetachedMeshData = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => {
+  const detached = cloneSurfaceMeshData(mesh, labelOverride);
+  if (mesh.source.kind === "detachedMesh") {
+    return detached;
+  }
+  return {
+    ...detached,
+    source: {
+      kind: "detachedMesh",
+      fromKind: mesh.source.kind,
+      fromLabel: formatSurfaceMeshSource(mesh.source),
+    },
+  };
+};
+
 const serializeSurfaceMeshData = (mesh: SurfaceMeshData): WorkbookEmbeddedMesh => ({
   label: mesh.label,
   positions: Array.from(mesh.positions),
@@ -6990,18 +7005,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const handleDatasetToGeometryScene = useCallback(() => {
     setGeometryBakeError(null);
     if (datasetKind === "volume") {
-      setGeometryBakeError("Dataset -> Scene works with surface mesh datasets only.");
+      setGeometryBakeError("SurfaceMesh -> Mesh works with surface mesh datasets only.");
       return;
     }
     if (!surfaceMeshData?.positions?.length) {
-      setGeometryBakeError("Surface mesh dataset not ready.");
+      setGeometryBakeError("SurfaceMesh dataset not ready.");
       return;
     }
     const id = makeId();
     const obj: GeometryDatasetMeshObject = {
       id,
-      name: `${surfaceMeshData.label ?? "Surface mesh"} (scene)`,
-      mesh: cloneSurfaceMeshData(surfaceMeshData),
+      name: `${surfaceMeshData.label ?? "Surface mesh"} (mesh object)`,
+      mesh: toDetachedMeshData(surfaceMeshData),
       transform: {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
@@ -19667,12 +19682,17 @@ case "mobius":
     }
     for (const obj of geometryDatasetMeshObjects) {
       const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
+      const isDetachedMeshObject = obj.mesh.source.kind === "detachedMesh";
       const meshSceneRole: UnifiedSceneRole =
-        obj.mesh.source.kind === "import" ? "referenceObject" : "derivedResult";
+        obj.mesh.source.kind === "import"
+          ? "referenceObject"
+          : isDetachedMeshObject
+            ? "primaryObject"
+            : "derivedResult";
       addRaw({
         id: `scene:${obj.id}`,
         name: obj.name,
-        type: "scene/dataset-mesh",
+        type: isDetachedMeshObject ? "scene/mesh-object" : "scene/dataset-mesh",
         sourceDefinition: `${formatSurfaceMeshSource(obj.mesh.source)} (${meshStats})`,
         displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
         parentId: null,
@@ -20484,6 +20504,7 @@ case "mobius":
   const unifiedCanBake =
     (unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId) ||
     (unifiedSelectedNode?.category === "surfaceDefinition" && datasetKind === "surface");
+  const unifiedCanConvertToMeshObject = datasetKind === "surface" && !!surfaceMeshData?.positions?.length;
   const unifiedCanSurfaceOps = datasetKind === "surface";
   const unifiedMeshReady = !!surfaceMeshData?.positions?.length;
   const unifiedCanPointCloud = unifiedMeshReady;
@@ -20590,6 +20611,11 @@ case "mobius":
         if (datasetKind === "surface") {
           handleConvertToMesh();
         }
+        return;
+      }
+      if (actionId === "convertMesh") {
+        if (!unifiedCanConvertToMeshObject) return;
+        handleDatasetToGeometryScene();
         return;
       }
       if (actionId === "wireframe") {
@@ -20704,6 +20730,8 @@ case "mobius":
       bakeGeometryObjectToDatasetById,
       datasetKind,
       handleConvertToMesh,
+      unifiedCanConvertToMeshObject,
+      handleDatasetToGeometryScene,
       unifiedCanSurfaceOps,
       unifiedCanPointCloud,
       surfaceMeshData,
@@ -20722,9 +20750,15 @@ case "mobius":
     () => [
       {
         id: "bake",
-        label: "Bake to SurfaceMesh",
+        label: "Promote to SurfaceMesh",
         disabled: !unifiedCanBake,
         onRun: () => runUnifiedPipelineAction("bake"),
+      },
+      {
+        id: "convertMesh",
+        label: "Convert to Mesh",
+        disabled: !unifiedCanConvertToMeshObject,
+        onRun: () => runUnifiedPipelineAction("convertMesh"),
       },
       {
         id: "wireframe",
@@ -20777,6 +20811,7 @@ case "mobius":
     ],
     [
       unifiedCanBake,
+      unifiedCanConvertToMeshObject,
       unifiedCanSurfaceOps,
       unifiedCanPointCloud,
       unifiedCanNormals,
@@ -22639,6 +22674,8 @@ case "mobius":
                     objectSamplingLabel={unifiedObjectSamplingLabel}
                     canBakeToSurfaceMesh={unifiedCanBake}
                     onBakeToSurfaceMesh={() => runUnifiedPipelineAction("bake")}
+                    canConvertToMeshObject={unifiedCanConvertToMeshObject}
+                    onConvertToMeshObject={handleDatasetToGeometryScene}
                     canSendToCompare={unifiedCanSendToCompare}
                     onSendToCompare={handleSendUnifiedObjectToCompare}
                     canExportSelectedObject={unifiedCanExportSelectedObject}
@@ -24376,12 +24413,12 @@ case "mobius":
                                                   : 1,
                                             }}
                                           >
-                                            Bake to SurfaceMesh viewer
+                                            Promote to SurfaceMesh
                                           </button>
                                           <button
                                             type="button"
                                             onClick={handleDatasetToGeometryScene}
-                                            disabled={datasetKind === "volume" || !surfaceMeshData?.positions?.length}
+                                            disabled={!surfaceMeshData?.positions?.length}
                                             style={{
                                               borderRadius: 8,
                                               border: "1px solid #94a3b8",
@@ -24391,24 +24428,24 @@ case "mobius":
                                               fontWeight: 700,
                                               padding: "4px 9px",
                                               cursor:
-                                                datasetKind === "volume" || !surfaceMeshData?.positions?.length
+                                                !surfaceMeshData?.positions?.length
                                                   ? "not-allowed"
                                                   : "pointer",
                                               opacity:
-                                                datasetKind === "volume" || !surfaceMeshData?.positions?.length
+                                                !surfaceMeshData?.positions?.length
                                                   ? 0.55
                                                   : 1,
                                             }}
                                           >
-                                            Open in Geometry module
+                                            Convert to Mesh object
                                           </button>
                                           {surfaceViewerKind === "implicit" && !activeCgalMesh?.positions?.length ? (
                                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                                              Run gcalc (CGAL) first, then bake.
+                                              Run gcalc (CGAL) first, then promote.
                                             </span>
                                           ) : (
                                             <span style={{ fontSize: 10, color: "#64748b" }}>
-                                              Bake stays in Surfaces. Geometry opens independent mesh scene.
+                                              Promotion stays in Surfaces. Conversion creates a detached mesh object in Geometry.
                                             </span>
                                           )}
                                         </div>
@@ -25897,11 +25934,11 @@ case "mobius":
                           onClick={handleDatasetToGeometryScene}
                           disabled={datasetKind === "volume" || !surfaceMeshData?.positions?.length}
                         >
-                          Dataset → Scene
+                          SurfaceMesh → Mesh
                         </button>
                       </div>
                       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
-                        Compose scene meshes as one dataset, analyze, then spawn dataset mesh back into Geometry Viewer.
+                        Compose scene meshes as one dataset, analyze them as SurfaceMesh, then detach into generic Mesh objects.
                       </div>
                       {geometryBakeError && (
                         <div style={{ fontSize: 11, color: "#b42318", marginTop: 4 }}>{geometryBakeError}</div>
@@ -30444,7 +30481,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
         label: "Generate",
         actionIds: ["wireframe", "pointCloud", "chartGrid", "normals", "curvature", "geodesic", "slice"],
       },
-      { key: "convert", label: "Convert", actionIds: ["bake"] },
+      { key: "convert", label: "Convert", actionIds: ["bake", "convertMesh"] },
       { key: "output", label: "Output", actionIds: ["export"] },
     ];
     const used = new Set<string>();
@@ -30985,6 +31022,8 @@ type SurfacesObjectPanelProps = {
   objectSamplingLabel: string;
   canBakeToSurfaceMesh: boolean;
   onBakeToSurfaceMesh: () => void;
+  canConvertToMeshObject: boolean;
+  onConvertToMeshObject: () => void;
   canSendToCompare: boolean;
   onSendToCompare: () => void;
   canExportSelectedObject: boolean;
@@ -31040,6 +31079,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   objectSamplingLabel,
   canBakeToSurfaceMesh,
   onBakeToSurfaceMesh,
+  canConvertToMeshObject,
+  onConvertToMeshObject,
   canSendToCompare,
   onSendToCompare,
   canExportSelectedObject,
@@ -31065,6 +31106,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         return `procedural preset (${proceduralLabel})`;
       }
       if (selectedSceneObject && "mesh" in selectedSceneObject) {
+        if (selectedSceneObject.mesh.source.kind === "detachedMesh") {
+          return `mesh object (${formatSurfaceMeshSource(selectedSceneObject.mesh.source)})`;
+        }
         return `dataset mesh object (${formatSurfaceMeshSource(selectedSceneObject.mesh.source)})`;
       }
       return "scene object";
@@ -31126,6 +31170,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
     if (id.includes("volume-isosurface")) return "isosurface extraction";
     if (id.includes("volume-streamlines")) return "flow-line integration";
     if (id.startsWith("derived:manual:")) return "manual pipeline action";
+    if (type.includes("scene/mesh-object")) return "mesh detachment";
     if (type.includes("dataset/surface-mesh")) return "surface meshing";
     if (type.includes("dataset/volume-grid")) return "volume sampling";
     if (selectedNode.category === "sceneObject") return "scene object tool";
@@ -31134,7 +31179,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   const technicalPipelineStage = useMemo(() => {
     if (!selectedNode) return "n/a";
     if (selectedNode.category === "surfaceDefinition") return "definition";
-    if (selectedNode.category === "sceneObject") return "scene composition";
+    if (selectedNode.category === "sceneObject") {
+      if (selectedNode.type.includes("mesh-object")) return "mesh object";
+      return "scene composition";
+    }
     if (selectedNode.category === "dataset") {
       if (selectedNode.type.includes("surface-mesh")) return "evaluated mesh";
       if (selectedNode.type.includes("volume")) return "evaluated volume";
@@ -31407,7 +31455,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Pipeline</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           <button type="button" onClick={onBakeToSurfaceMesh} disabled={!canBakeToSurfaceMesh}>
-            Bake to SurfaceMesh
+            Promote to SurfaceMesh
+          </button>
+          <button type="button" onClick={onConvertToMeshObject} disabled={!canConvertToMeshObject}>
+            Convert to Mesh
           </button>
           <button type="button" onClick={onExportSelectedObject} disabled={!canExportSelectedObject}>
             Export selected (.glb)
@@ -32025,7 +32076,7 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
 type SurfacesLeftPanelProps = {
   showInternalTabs?: boolean;
   hideViewControls?: boolean;
-  initialLeftTab?: "controls" | "analysis" | "theory";
+  initialLeftTab?: "controls" | "scene" | "object" | "view" | "analysis" | "theory";
   viewerKind: SurfaceViewerKind;
   surfaceId: SurfaceId;
   paramId: ParamSurfaceId;
@@ -32558,6 +32609,8 @@ type SurfacesLeftPanelProps = {
   onRefreshSelectionStats: () => void;
 
 };
+
+type SurfacesLeftTab = "controls" | "scene" | "object" | "view" | "analysis" | "theory";
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showInternalTabs = true,
@@ -33147,7 +33200,11 @@ onChangeImplicitExpr,
   const isGraphAny = viewerKind === "graph" && isGraphSurface(surfaceId);
   const isImplicitAny = viewerKind === "implicit" && isImplicitSurface(surfaceId);
   const implicitExprTrimmed = (implicitExpr ?? "").trim();
-  const [leftTab, setLeftTab] = useState<"controls" | "analysis" | "theory">(initialLeftTab ?? "controls");
+  const normalizeLeftTab = useCallback((value: SurfacesLeftTab | undefined): SurfacesLeftTab => {
+    if (!value) return "scene";
+    return value === "controls" ? "scene" : value;
+  }, []);
+  const [leftTab, setLeftTab] = useState<SurfacesLeftTab>(() => normalizeLeftTab(initialLeftTab));
   const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
@@ -33179,8 +33236,10 @@ onChangeImplicitExpr,
   const lastVolumePresetIdRef = useRef<VolumePresetId>(DEFAULT_VOLUME_PRESET_ID);
   useEffect(() => {
     if (!initialLeftTab) return;
-    setLeftTab(initialLeftTab);
-  }, [initialLeftTab]);
+    setLeftTab(normalizeLeftTab(initialLeftTab));
+  }, [initialLeftTab, normalizeLeftTab]);
+  const showSceneObjectControls = leftTab === "scene" || leftTab === "object" || leftTab === "controls";
+  const showViewControls = leftTab === "view" || leftTab === "controls";
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -33202,25 +33261,17 @@ onChangeImplicitExpr,
   };
   const formatVolumeParam = (value: number, step: number) => value.toFixed(volumeParamDecimals(step));
   const volumeCustomExamples = [
-    { label: "Sphere", expr: "x^2 + y^2 + z^2 - 1" },
-    { label: "Ellipsoid", expr: "x^2/1.6^2 + y^2/1.0^2 + z^2/0.7^2 - 1" },
-    { label: "Torus", expr: "(x^2 + y^2 - 1.0)^2 + z^2 - 0.35^2" },
-    { label: "Gyroid", expr: "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)" },
-    { label: "Cos surface", expr: "cos(x) + cos(y) + cos(z) - 0.5" },
-    { label: "Schwarz D", expr: "cos(x)*cos(y)*cos(z) - cos(x) - cos(y) - cos(z) + 0.3" },
-    { label: "Neovius", expr: "3*(cos(x) + cos(y) + cos(z)) + 4*cos(x)*cos(y)*cos(z)" },
-    {
-      label: "Metaballs",
-      expr:
-        "exp(-4*((x+0.6)^2+y^2+z^2)) + exp(-4*((x-0.6)^2+y^2+z^2)) + exp(-4*(x^2+(y-0.6)^2+z^2)) - 0.7",
-    },
-    { label: "Rounded box", expr: "abs(x)^4 + abs(y)^4 + abs(z)^4 - 1" },
-    { label: "Capped cylinder", expr: "max(x^2 + y^2 - 1.0^2, abs(z) - 1.1)" },
-    { label: "Shell", expr: "abs(sqrt(x^2+y^2+z^2) - 1.0) - 0.12" },
-    { label: "Octahedron-like", expr: "abs(x) + abs(y) + abs(z) - 1" },
-    { label: "Shell", expr: "(sqrt(x^2+y^2+z^2)-1.0)^2 - 0.02" },
-    { label: "Double cone", expr: "x^2 + y^2 - z^2" },
-    { label: "Saddle (implicit)", expr: "z - x^2 + y^2" },
+    { id: "sphere", label: "Sphere", expr: "x^2 + y^2 + z^2 - 1" },
+    { id: "ellipsoid", label: "Ellipsoid", expr: "x^2/1.6^2 + y^2/1.0^2 + z^2/0.7^2 - 1" },
+    { id: "torus", label: "Torus", expr: "(x^2 + y^2 - 1.0)^2 + z^2 - 0.35^2" },
+    { id: "gyroid", label: "Gyroid", expr: "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x)" },
+    { id: "cos-surface", label: "Cos surface", expr: "cos(x) + cos(y) + cos(z) - 0.5" },
+    { id: "metaballs", label: "Metaballs", expr: "exp(-4*((x+0.6)^2+y^2+z^2)) + exp(-4*((x-0.6)^2+y^2+z^2)) + exp(-4*(x^2+(y-0.6)^2+z^2)) - 0.7" },
+    { id: "rounded-box", label: "Rounded box", expr: "abs(x)^4 + abs(y)^4 + abs(z)^4 - 1" },
+    { id: "octahedron-like", label: "Octahedron-like", expr: "abs(x) + abs(y) + abs(z) - 1" },
+    { id: "shell", label: "Shell", expr: "(sqrt(x^2+y^2+z^2)-1.0)^2 - 0.02" },
+    { id: "double-cone", label: "Double cone", expr: "x^2 + y^2 - z^2" },
+    { id: "saddle-implicit", label: "Saddle (implicit)", expr: "z - x^2 + y^2" },
   ];
 
   const handleZPlaneClick = useCallback(
@@ -33529,15 +33580,23 @@ onChangeImplicitExpr,
 
       {showInternalTabs && (
         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {(["controls", "theory"] as const).map((t) => (
+          {(
+            [
+              { id: "scene", label: "Scene" },
+              { id: "object", label: "Object" },
+              { id: "view", label: "View" },
+              { id: "analysis", label: "Analysis" },
+              { id: "theory", label: "Theory" },
+            ] as const
+          ).map((tab) => (
             <button
-              key={t}
+              key={tab.id}
               type="button"
-              onClick={() => setLeftTab(t)}
-              style={pill(leftTab === t)}
-              aria-pressed={leftTab === t}
+              onClick={() => setLeftTab(tab.id)}
+              style={pill(leftTab === tab.id)}
+              aria-pressed={leftTab === tab.id}
             >
-              {t === "controls" ? "Controls" : "Theory"}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -33549,7 +33608,7 @@ onChangeImplicitExpr,
         Mode: <strong>{modeLabel}</strong>
       </p>
 
-      {leftTab === "controls" && (
+      {showSceneObjectControls && (
       <>
       {datasetKind === "volume" && (
         <div style={{ ...cardStyle, marginTop: 10 }}>
@@ -33799,28 +33858,25 @@ onChangeImplicitExpr,
                   style={{ width: "100%", fontFamily: "monospace" }}
                 />
               </label>
-              <div style={{ marginTop: 8, fontSize: 11 }}>
-                <div style={{ marginBottom: 6, opacity: 0.8 }}>Examples</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, marginTop: 8 }}>
+                <span>Embedded examples</span>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const selected = volumeCustomExamples.find((ex) => ex.id === e.target.value);
+                    if (selected) onChangeVolumeCustomExpr(selected.expr);
+                    e.currentTarget.value = "";
+                  }}
+                  style={{ fontSize: 11, padding: "2px 4px", maxWidth: 320 }}
+                >
+                  <option value="">Pick an example...</option>
                   {volumeCustomExamples.map((ex) => (
-                    <button
-                      key={ex.label}
-                      type="button"
-                      onClick={() => onChangeVolumeCustomExpr(ex.expr)}
-                      style={{
-                        padding: "4px 8px",
-                        borderRadius: 999,
-                        border: "1px solid #ddd",
-                        background: "#fff",
-                        cursor: "pointer",
-                        fontSize: 11,
-                      }}
-                    >
+                    <option key={ex.id} value={ex.id}>
                       {ex.label}
-                    </button>
+                    </option>
                   ))}
-                </div>
-              </div>
+                </select>
+              </label>
               <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
                 Use x,y,z and functions like sin, cos, exp, log, sqrt, abs, min, max. Use sin(x) or sin x. You can type
                 F=... and it will be accepted.
@@ -35105,18 +35161,18 @@ onChangeImplicitExpr,
               disabled={!surfaceMeshExportable}
               style={{ padding: "4px 10px" }}
             >
-              Convert to Mesh…
+              Promote to SurfaceMesh…
             </button>
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
               {surfaceMeshExportable
                 ? viewerKind === "complex"
-                  ? "Switch to the SurfaceMesh viewer using the current complex map mesh."
-                  : "Bake the current surface into a mesh dataset."
+                  ? "Promote the current complex-map surface into the SurfaceMesh viewer."
+                  : "Promote the current surface into a SurfaceMesh dataset."
                 : viewerKind === "implicit"
-                  ? "Run CGAL mesh first to convert an implicit surface (or use the implicit baker below)."
+                  ? "Run CGAL mesh first to promote an implicit surface (or use the implicit baker below)."
                   : viewerKind === "complex"
                     ? "Build the complex map surface first."
-                    : "Mesh conversion will enable once the surface is ready."}
+                    : "SurfaceMesh promotion will enable once the surface is ready."}
             </div>
             {surfaceMeshImportError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
@@ -36746,7 +36802,7 @@ onChangeImplicitExpr,
       </div>
       </div>
       )}
-      {leftTab === "controls" && (
+      {showViewControls && (
       <>
       {!hideViewControls && (
       <>
@@ -39282,7 +39338,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             Export
           </button>
           <button type="button" onClick={onBake} disabled={!canBake} style={{ padding: "4px 8px" }}>
-            Bake to SurfaceMesh
+            Promote to SurfaceMesh
           </button>
           <button type="button" onClick={onCompare} disabled={!canCompare} style={{ padding: "4px 8px" }}>
             Compare

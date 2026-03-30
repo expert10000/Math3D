@@ -13,6 +13,7 @@ export type SurfaceMeshSource =
   | { kind: "bakedFromExplicit" }
   | { kind: "bakedFromParam" }
   | { kind: "bakedFromWeierstrass" }
+  | { kind: "detachedMesh"; fromKind?: string; fromLabel?: string }
   | {
       kind: "geometryObject";
       objectId?: string;
@@ -57,6 +58,8 @@ export const formatSurfaceMeshSource = (source: SurfaceMeshSource | string): str
       return "baked from param";
     case "bakedFromWeierstrass":
       return "baked from weierstrass";
+    case "detachedMesh":
+      return source.fromLabel ? `mesh (detached from ${source.fromLabel})` : "mesh (detached)";
     case "geometryObject": {
       if (source.objectName) return `geometry object: ${source.objectName}`;
       if (source.objects?.length) return `geometry objects (${source.objects.length})`;
