@@ -741,12 +741,13 @@ type SurfaceWorkflowStepId =
   | "analyze"
   | "promote"
   | "save";
+type SurfaceWorkflowStepState = "done" | "active" | "available" | "disabled";
 const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }> = [
   { id: "equation", label: "Equation" },
   { id: "parse", label: "Parse" },
   { id: "domain", label: "Domain" },
   { id: "preview", label: "Preview" },
-  { id: "generate", label: "Generate Mesh" },
+  { id: "generate", label: "Mesh" },
   { id: "analyze", label: "Analyze" },
   { id: "promote", label: "Promote" },
   { id: "save", label: "Save" },
@@ -20902,20 +20903,6 @@ case "mobius":
   const showSurfaceWorkflowStrip =
     mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip;
-  const surfaceWorkflowCurrentStepId: SurfaceWorkflowStepId = (() => {
-    if (rightPanelTab === "workbook") return "save";
-    if (surfacesLeftTab === "analysis" || surfacesLeftTab === "inspect" || inspectEnabled || probeEnabled) {
-      return "analyze";
-    }
-    if (unifiedCanConvertToMeshObject) return "promote";
-    if (surfaceMeshExportable) return "generate";
-    if (surfaceFormulaEditorOpen) return "equation";
-    return "preview";
-  })();
-  const surfaceWorkflowCurrentIndex = Math.max(
-    0,
-    SURFACE_WORKFLOW_STEPS.findIndex((step) => step.id === surfaceWorkflowCurrentStepId)
-  );
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
     datasetKind === "surface" &&
@@ -21071,6 +21058,151 @@ case "mobius":
     weierstrassGExpr,
     weierstrassPhiExpr,
   ]);
+  const focusElementByIdWithRetry = useCallback((id: string) => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    let tries = 0;
+    const maxTries = 24;
+    const run = () => {
+      const element = document.getElementById(id) as HTMLElement | null;
+      if (element) {
+        element.scrollIntoView({ block: "center", behavior: "smooth" });
+        try {
+          element.focus({ preventScroll: true });
+        } catch {
+          element.focus();
+        }
+        return;
+      }
+      if (tries >= maxTries) return;
+      tries += 1;
+      window.setTimeout(run, 50);
+    };
+    run();
+  }, []);
+  const hasSurfaceMesh = !!surfaceMeshData?.positions?.length;
+  const parseReady = surfaceFormulaEditorValidation.ok;
+  const parseDone = parseReady || hasSurfaceMesh || surfaceViewerKind === "mesh";
+  const canGenerateMesh =
+    surfaceViewerKind === "implicit"
+      ? (cgalHealthState?.ok ?? true) && !!activeImplicitExpr && !cgalBusy
+      : surfaceMeshExportable;
+  const canPromoteActions = hasSurfaceMesh || surfaceMeshExportable || unifiedCanConvertToMeshObject;
+  const surfaceWorkflowActiveStepId: SurfaceWorkflowStepId = (() => {
+    if (rightPanelTab === "workbook") return "save";
+    if (surfacesLeftTab === "analysis" || inspectEnabled || probeEnabled) return "analyze";
+    if (surfacesLeftTab === "inspect" || rightPanelTab === "inspector") return "domain";
+    if (surfaceFormulaEditorOpen) return parseReady ? "equation" : "parse";
+    if (!hasSurfaceMesh && canGenerateMesh) return "generate";
+    if (hasSurfaceMesh && canPromoteActions) return "promote";
+    return "preview";
+  })();
+  const surfaceWorkflowStepStateById: Record<SurfaceWorkflowStepId, SurfaceWorkflowStepState> = {
+    equation: canOpenSurfaceFormulaEditor || parseDone ? "done" : "disabled",
+    parse: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
+    domain: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
+    preview: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
+    generate: hasSurfaceMesh ? "done" : parseDone ? (canGenerateMesh ? "available" : "disabled") : "disabled",
+    analyze: parseDone || hasSurfaceMesh ? "available" : "disabled",
+    promote: canPromoteActions ? "available" : "disabled",
+    save: workbookDirty || rightPanelTab === "workbook" ? "available" : "disabled",
+  };
+  surfaceWorkflowStepStateById[surfaceWorkflowActiveStepId] = "active";
+  const handleSurfaceWorkflowStepClick = useCallback(
+    (stepId: SurfaceWorkflowStepId) => {
+      if (surfaceWorkflowStepStateById[stepId] === "disabled") return;
+      const focusInspector = () => {
+        if (!showRightPanel) setShowRightPanel(true);
+        setRightPanelTab("inspector");
+      };
+      const openFormulaEditorAndFocusInput = (reason: string) => {
+        if (!showSurfaceFormulaEditorLauncher || !canOpenSurfaceFormulaEditor) return;
+        openSurfaceFormulaEditor();
+        if (typeof window === "undefined") return;
+        let tries = 0;
+        const maxTries = 24;
+        const run = () => {
+          const focused = focusSurfaceFormulaPrimaryInput(reason);
+          if (focused || tries >= maxTries) return;
+          tries += 1;
+          window.setTimeout(run, 50);
+        };
+        window.setTimeout(run, 0);
+      };
+      switch (stepId) {
+        case "equation":
+          setSurfacesLeftTab("scene");
+          openFormulaEditorAndFocusInput("workflow-equation");
+          break;
+        case "parse":
+          setSurfacesLeftTab("scene");
+          if (showSurfaceFormulaEditorLauncher && canOpenSurfaceFormulaEditor) {
+            openSurfaceFormulaEditor();
+            focusElementByIdWithRetry("surface-formula-parse-status");
+          }
+          break;
+        case "domain":
+          focusInspector();
+          setSurfacesLeftTab("inspect");
+          focusElementByIdWithRetry("surfaces-inspector-domain-card");
+          break;
+        case "preview":
+          setSurfacesLeftTab("scene");
+          focusElementByIdWithRetry("surfaces-main-viewport");
+          break;
+        case "generate":
+          focusInspector();
+          setSurfacesLeftTab("object");
+          if (surfaceViewerKind === "implicit") {
+            void handleRunCgalMesh();
+          } else {
+            handleConvertToMesh();
+          }
+          break;
+        case "analyze":
+          focusInspector();
+          setSurfacesLeftTab("analysis");
+          setShowInViewportOverlayControls(true);
+          applySurfaceViewportPreset("analysis");
+          if (!inspectEnabled) setInspectEnabled(true);
+          break;
+        case "promote":
+          focusInspector();
+          setSurfacesLeftTab("object");
+          break;
+        case "save":
+          if (!showRightPanel) setShowRightPanel(true);
+          setRightPanelTab("workbook");
+          break;
+      }
+    },
+    [
+      activeImplicitExpr,
+      applySurfaceViewportPreset,
+      canOpenSurfaceFormulaEditor,
+      canPromoteActions,
+      cgalBusy,
+      cgalHealthState,
+      canGenerateMesh,
+      focusElementByIdWithRetry,
+      focusSurfaceFormulaPrimaryInput,
+      handleConvertToMesh,
+      handleRunCgalMesh,
+      hasSurfaceMesh,
+      inspectEnabled,
+      openSurfaceFormulaEditor,
+      setInspectEnabled,
+      setShowInViewportOverlayControls,
+      setRightPanelTab,
+      setShowRightPanel,
+      setSurfacesLeftTab,
+      showRightPanel,
+      showSurfaceFormulaEditorLauncher,
+      surfaceViewerKind,
+      surfaceMeshExportable,
+      surfaceWorkflowStepStateById,
+      unifiedCanConvertToMeshObject,
+    ]
+  );
   const compareLayoutEnabled =
     compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfaceViewportDebug =
@@ -22527,26 +22659,53 @@ case "mobius":
             }}
           >
             {SURFACE_WORKFLOW_STEPS.map((step, index) => {
-              const isCurrent = index === surfaceWorkflowCurrentIndex;
-              const isDone = index < surfaceWorkflowCurrentIndex;
-              const isLocked = index > surfaceWorkflowCurrentIndex + 1;
+              const stepState = surfaceWorkflowStepStateById[step.id];
+              const isDisabled = stepState === "disabled";
+              const borderColor =
+                stepState === "active"
+                  ? "#0a66c2"
+                  : stepState === "done"
+                    ? "#c7d2e3"
+                    : stepState === "available"
+                      ? "#d1d5db"
+                      : "#e2e8f0";
+              const backgroundColor =
+                stepState === "active"
+                  ? "#ffffff"
+                  : stepState === "done"
+                    ? "#edf3ff"
+                    : stepState === "available"
+                      ? "#ffffff"
+                      : "#f8fafc";
+              const textColor =
+                stepState === "active"
+                  ? "#0a66c2"
+                  : stepState === "disabled"
+                    ? "#94a3b8"
+                    : "#334155";
               return (
                 <React.Fragment key={`surface-workflow-${step.id}`}>
                   {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => handleSurfaceWorkflowStepClick(step.id)}
+                    disabled={isDisabled}
+                    aria-current={stepState === "active" ? "step" : undefined}
                     style={{
                       borderRadius: 999,
-                      border: "1px solid " + (isCurrent ? "#0a66c2" : isDone ? "#c7d2e3" : isLocked ? "#e2e8f0" : "#d1d5db"),
-                      background: isCurrent ? "#fff" : isDone ? "#edf3ff" : isLocked ? "#f8fafc" : "#fff",
-                      color: isCurrent ? "#0a66c2" : isLocked ? "#94a3b8" : "#334155",
-                      fontWeight: isCurrent ? 700 : isDone ? 650 : 600,
+                      border: "1px solid " + borderColor,
+                      background: backgroundColor,
+                      color: textColor,
+                      fontWeight: stepState === "active" ? 700 : stepState === "done" ? 650 : 600,
                       fontSize: 11,
                       padding: "3px 10px",
                       whiteSpace: "nowrap",
+                      opacity: isDisabled ? 0.86 : 1,
+                      cursor: isDisabled ? "not-allowed" : "pointer",
                     }}
                   >
                     {step.label}
-                  </span>
+                  </button>
                 </React.Fragment>
               );
             })}
@@ -23025,6 +23184,8 @@ case "mobius":
             <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
               <div
                 data-testid="main-viewer"
+                id="surfaces-main-viewport"
+                tabIndex={-1}
                 ref={surfaceSceneCaptureRef}
                 style={{
                   flex: 1,
@@ -23787,6 +23948,8 @@ case "mobius":
                             {!surfaceFormulaEditorCollapsed && (
                               <>
                                 <div
+                                  id="surface-formula-parse-status"
+                                  tabIndex={-1}
                                   style={{
                                     display: "flex",
                                     alignItems: "center",
@@ -38670,7 +38833,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       </div>
 
       {(showDomainPicker || isImplicitViewer) && (
-        <div style={inspectorSectionCard}>
+        <div id="surfaces-inspector-domain-card" tabIndex={-1} style={inspectorSectionCard}>
           <div style={inspectorSectionTitle}>Domain</div>
           <div style={{ fontSize: 11, marginBottom: 6 }}>
             <strong>Resolution:</strong> {Math.round(activeResolution)}
