@@ -732,11 +732,24 @@ const isDisplayMode = (value: string | null | undefined): value is DisplayMode =
   value === "workspace" || value === "present" || value === "inspect";
 const isViewportPreset = (value: string | null | undefined): value is ViewportPreset =>
   value === "minimal" || value === "study" || value === "analysis" || value === "debug";
-const SURFACE_VIEWPORT_PRESET_OPTIONS: Array<{ id: ViewportPreset; label: string; hint: string }> = [
-  { id: "minimal", label: "Minimal", hint: "Surface-first framing" },
-  { id: "study", label: "Study", hint: "Single-grid learning view" },
-  { id: "analysis", label: "Analysis", hint: "Roles and technical overlays" },
-  { id: "debug", label: "Debug", hint: "All helpers visible" },
+type SurfaceWorkflowStepId =
+  | "equation"
+  | "parse"
+  | "domain"
+  | "preview"
+  | "generate"
+  | "analyze"
+  | "promote"
+  | "save";
+const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }> = [
+  { id: "equation", label: "Equation" },
+  { id: "parse", label: "Parse" },
+  { id: "domain", label: "Domain" },
+  { id: "preview", label: "Preview" },
+  { id: "generate", label: "Generate Mesh" },
+  { id: "analyze", label: "Analyze" },
+  { id: "promote", label: "Promote" },
+  { id: "save", label: "Save" },
 ];
 type WorkbookBundleAssetMode = "embedded" | "linked";
 type WorkbookReplayPayload = {
@@ -20886,8 +20899,23 @@ case "mobius":
     : "default";
   const cleanScreenshotSceneContainerBackground =
     cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
-  const showSurfaceViewportPresetStrip =
+  const showSurfaceWorkflowStrip =
     mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
+  const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip;
+  const surfaceWorkflowCurrentStepId: SurfaceWorkflowStepId = (() => {
+    if (rightPanelTab === "workbook") return "save";
+    if (surfacesLeftTab === "analysis" || surfacesLeftTab === "inspect" || inspectEnabled || probeEnabled) {
+      return "analyze";
+    }
+    if (unifiedCanConvertToMeshObject) return "promote";
+    if (surfaceMeshExportable) return "generate";
+    if (surfaceFormulaEditorOpen) return "equation";
+    return "preview";
+  })();
+  const surfaceWorkflowCurrentIndex = Math.max(
+    0,
+    SURFACE_WORKFLOW_STEPS.findIndex((step) => step.id === surfaceWorkflowCurrentStepId)
+  );
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
     datasetKind === "surface" &&
@@ -22482,6 +22510,50 @@ case "mobius":
         </div>
       </header>
 
+      {showSurfaceWorkflowStrip && (
+        <div style={{ padding: "0 0 10px" }}>
+          <div
+            style={{
+              width: "100%",
+              border: "1px solid #dbe4f0",
+              borderRadius: 10,
+              padding: "6px 10px",
+              background: "linear-gradient(180deg, #ffffff, #f8fbff)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              flexWrap: "wrap",
+            }}
+          >
+            {SURFACE_WORKFLOW_STEPS.map((step, index) => {
+              const isCurrent = index === surfaceWorkflowCurrentIndex;
+              const isDone = index < surfaceWorkflowCurrentIndex;
+              const isLocked = index > surfaceWorkflowCurrentIndex + 1;
+              return (
+                <React.Fragment key={`surface-workflow-${step.id}`}>
+                  {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
+                  <span
+                    style={{
+                      borderRadius: 999,
+                      border: "1px solid " + (isCurrent ? "#0a66c2" : isDone ? "#c7d2e3" : isLocked ? "#e2e8f0" : "#d1d5db"),
+                      background: isCurrent ? "#fff" : isDone ? "#edf3ff" : isLocked ? "#f8fafc" : "#fff",
+                      color: isCurrent ? "#0a66c2" : isLocked ? "#94a3b8" : "#334155",
+                      fontWeight: isCurrent ? 700 : isDone ? 650 : 600,
+                      fontSize: 11,
+                      padding: "3px 10px",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {step.label}
+                  </span>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           ...styles.wrap,
@@ -23107,7 +23179,7 @@ case "mobius":
                       minHeight: 0,
                     }}
                   >
-                    {showSurfaceViewportPresetStrip && (
+                    {showSurfaceLocalToolStrip && (
                       <div
                         style={{
                           display: "flex",
@@ -23122,35 +23194,6 @@ case "mobius":
                         }}
                       >
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", letterSpacing: 0.25 }}>
-                            Viewport
-                          </span>
-                          {SURFACE_VIEWPORT_PRESET_OPTIONS.map((entry) => {
-                            const active = surfaceViewportPreset === entry.id;
-                            return (
-                              <button
-                                key={`surface-viewport-preset-${entry.id}`}
-                                type="button"
-                                onClick={() => applySurfaceViewportPreset(entry.id)}
-                                title={entry.hint}
-                                aria-pressed={active}
-                                style={{
-                                  borderRadius: 999,
-                                  border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
-                                  background: active ? "#e6f0ff" : "#fff",
-                                  color: active ? "#0a66c2" : "#334155",
-                                  fontWeight: active ? 700 : 600,
-                                  fontSize: 11,
-                                  padding: "4px 10px",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {entry.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           {showSurfaceFormulaEditorLauncher && (
                             <button
                               type="button"
@@ -23196,28 +23239,6 @@ case "mobius":
                           )}
                           <button
                             type="button"
-                            onClick={handleConvertToMesh}
-                            disabled={!surfaceMeshExportable}
-                            style={{
-                              borderRadius: 999,
-                              border: "1px solid " + (surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
-                              background: surfaceMeshExportable ? "#e6f0ff" : "#fff",
-                              color: surfaceMeshExportable ? "#0a66c2" : "#94a3b8",
-                              fontWeight: 700,
-                              fontSize: 11,
-                              padding: "4px 10px",
-                              cursor: surfaceMeshExportable ? "pointer" : "not-allowed",
-                            }}
-                            title={
-                              surfaceMeshExportable
-                                ? "Promote current surface definition to SurfaceMesh dataset."
-                                : "Surface must be bake-ready to promote."
-                            }
-                          >
-                            Promote to SurfaceMesh
-                          </button>
-                          <button
-                            type="button"
                             onClick={handleDatasetToGeometryScene}
                             disabled={!unifiedCanConvertToMeshObject}
                             style={{
@@ -23240,6 +23261,28 @@ case "mobius":
                           </button>
                           <button
                             type="button"
+                            onClick={handleConvertToMesh}
+                            disabled={!surfaceMeshExportable}
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid " + (surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
+                              background: surfaceMeshExportable ? "#e6f0ff" : "#fff",
+                              color: surfaceMeshExportable ? "#0a66c2" : "#94a3b8",
+                              fontWeight: 700,
+                              fontSize: 11,
+                              padding: "4px 10px",
+                              cursor: surfaceMeshExportable ? "pointer" : "not-allowed",
+                            }}
+                            title={
+                              surfaceMeshExportable
+                                ? "Promote current surface definition to SurfaceMesh dataset."
+                                : "Surface must be bake-ready to promote."
+                            }
+                          >
+                            Promote to SurfaceMesh
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setShowInViewportOverlayControls((v) => !v)}
                             style={{
                               borderRadius: 999,
@@ -23255,9 +23298,47 @@ case "mobius":
                           >
                             {showInViewportOverlayControls ? "Overlay controls: on" : "Overlay controls: off"}
                           </button>
-                          <span style={{ fontSize: 10, color: "#64748b", fontWeight: 600 }}>
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              border: "1px solid #d1d5db",
+                              background: "#fff",
+                              color: "#64748b",
+                              fontWeight: 600,
+                              fontSize: 11,
+                              padding: "4px 10px",
+                            }}
+                          >
                             {showChartGrid ? "Grid: chart" : showPlanes ? "Grid: planes" : "Grid: none"}
                           </span>
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          {(["inspector", "workbook"] as const).map((tab) => {
+                            const active = rightPanelTab === tab;
+                            return (
+                              <button
+                                key={`surface-local-tab-${tab}`}
+                                type="button"
+                                onClick={() => {
+                                  if (!showRightPanel) setShowRightPanel(true);
+                                  setRightPanelTab(tab);
+                                }}
+                                aria-pressed={active}
+                                style={{
+                                  borderRadius: 999,
+                                  border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                                  background: active ? "#e6f0ff" : "#fff",
+                                  color: active ? "#0a66c2" : "#334155",
+                                  fontWeight: active ? 700 : 600,
+                                  fontSize: 11,
+                                  padding: "4px 10px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {tab === "inspector" ? "Inspector" : "Workbook"}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -23273,7 +23354,7 @@ case "mobius":
                         height: "100%",
                         minHeight: 0,
                         flex: 1,
-                        padding: showSurfaceViewportPresetStrip ? 8 : 0,
+                        padding: showSurfaceLocalToolStrip ? 8 : 0,
                         boxSizing: "border-box",
                       }}
                     >
