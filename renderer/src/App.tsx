@@ -737,18 +737,20 @@ type SurfaceWorkflowStepId =
   | "parse"
   | "domain"
   | "preview"
-  | "generate"
   | "analyze"
+  | "mesh"
   | "promote"
   | "save";
 type SurfaceWorkflowStepState = "done" | "active" | "available" | "disabled";
+type WorkflowActionOverlayKind = "mesh" | "promote" | "save";
+type WorkflowActionOverlayStatus = "running" | "success" | "error" | "info";
 const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }> = [
   { id: "equation", label: "Equation" },
   { id: "parse", label: "Parse" },
   { id: "domain", label: "Domain" },
   { id: "preview", label: "Preview" },
-  { id: "generate", label: "Mesh" },
   { id: "analyze", label: "Analyze" },
+  { id: "mesh", label: "Mesh" },
   { id: "promote", label: "Promote" },
   { id: "save", label: "Save" },
 ];
@@ -4773,6 +4775,14 @@ const App: React.FC = () => {
     () => geometryObjects.find((o) => o.id === geometrySelectedObjectId) ?? null,
     [geometryObjects, geometrySelectedObjectId]
   );
+  const geometrySelectedSceneObject = useMemo<GeometryObject | GeometryDatasetMeshObject | null>(() => {
+    if (!geometrySelectedObjectId) return null;
+    return (
+      geometryObjects.find((obj) => obj.id === geometrySelectedObjectId) ??
+      geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ??
+      null
+    );
+  }, [geometryDatasetMeshObjects, geometryObjects, geometrySelectedObjectId]);
   const [geometryCameraTourStatus, setGeometryCameraTourStatus] = useState<GeometryCameraTourStatus>("idle");
   const [geometryCameraTourPlayed, setGeometryCameraTourPlayed] = useState(false);
   const [geometryCameraTourMode, setGeometryCameraTourMode] = useState<CameraTourMode>("balanced");
@@ -8383,6 +8393,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [paramSurfaceOverlayTab, setParamSurfaceOverlayTab] = useState<ParamSurfaceOverlayTab>("rotational");
   const [surfaceFormulaEditorOpen, setSurfaceFormulaEditorOpen] = useState(false);
   const [surfaceFormulaEditorCollapsed, setSurfaceFormulaEditorCollapsed] = useState(false);
+  const [surfaceWorkflowFlashStepId, setSurfaceWorkflowFlashStepId] = useState<SurfaceWorkflowStepId | null>(null);
+  const [workflowActionOverlay, setWorkflowActionOverlay] = useState<{
+    kind: WorkflowActionOverlayKind;
+    startedAt: number;
+  } | null>(null);
+  const surfaceWorkflowFlashTimerRef = useRef<number | null>(null);
   const [surfaceFormulaEditorAdvancedOpen, setSurfaceFormulaEditorAdvancedOpen] = useState(false);
   const [surfaceFormulaEditorSourceHint, setSurfaceFormulaEditorSourceHint] = useState<{
     kind: "graph" | "implicit";
@@ -8403,6 +8419,14 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     top: number;
     height: number;
   } | null>(null);
+  useEffect(() => {
+    return () => {
+      if (surfaceWorkflowFlashTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(surfaceWorkflowFlashTimerRef.current);
+        surfaceWorkflowFlashTimerRef.current = null;
+      }
+    };
+  }, []);
   const formulaEditorDebugEnabled = true;
   const logFormulaEditorDebug = useCallback(
     (event: string, payload?: Record<string, unknown>) => {
@@ -21089,10 +21113,11 @@ case "mobius":
   const canPromoteActions = hasSurfaceMesh || surfaceMeshExportable || unifiedCanConvertToMeshObject;
   const surfaceWorkflowActiveStepId: SurfaceWorkflowStepId = (() => {
     if (rightPanelTab === "workbook") return "save";
-    if (surfacesLeftTab === "analysis" || inspectEnabled || probeEnabled) return "analyze";
-    if (surfacesLeftTab === "inspect" || rightPanelTab === "inspector") return "domain";
     if (surfaceFormulaEditorOpen) return parseReady ? "equation" : "parse";
-    if (!hasSurfaceMesh && canGenerateMesh) return "generate";
+    if (surfacesLeftTab === "inspect") return "domain";
+    if (surfacesLeftTab === "analysis" || inspectEnabled || probeEnabled) return "analyze";
+    if (!hasSurfaceMesh && (vtkPreviewBusy || cgalBusy || implicitBakeBusy)) return "mesh";
+    if (!hasSurfaceMesh && canGenerateMesh) return "preview";
     if (hasSurfaceMesh && canPromoteActions) return "promote";
     return "preview";
   })();
@@ -21100,9 +21125,9 @@ case "mobius":
     equation: canOpenSurfaceFormulaEditor || parseDone ? "done" : "disabled",
     parse: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
     domain: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
-    preview: parseDone ? "done" : canOpenSurfaceFormulaEditor ? "available" : "disabled",
-    generate: hasSurfaceMesh ? "done" : parseDone ? (canGenerateMesh ? "available" : "disabled") : "disabled",
-    analyze: parseDone || hasSurfaceMesh ? "available" : "disabled",
+    preview: parseDone ? (hasSurfaceMesh ? "done" : "available") : canOpenSurfaceFormulaEditor ? "available" : "disabled",
+    analyze: parseDone || hasSurfaceMesh ? (surfacesLeftTab === "analysis" || inspectEnabled ? "done" : "available") : "disabled",
+    mesh: hasSurfaceMesh ? "done" : parseDone ? (canGenerateMesh ? "available" : "disabled") : "disabled",
     promote: canPromoteActions ? "available" : "disabled",
     save: workbookDirty || rightPanelTab === "workbook" ? "available" : "disabled",
   };
@@ -21110,6 +21135,21 @@ case "mobius":
   const handleSurfaceWorkflowStepClick = useCallback(
     (stepId: SurfaceWorkflowStepId) => {
       if (surfaceWorkflowStepStateById[stepId] === "disabled") return;
+      if (stepId === "mesh" || stepId === "promote" || stepId === "save") {
+        setWorkflowActionOverlay({ kind: stepId, startedAt: Date.now() });
+      } else {
+        setWorkflowActionOverlay(null);
+      }
+      setSurfaceWorkflowFlashStepId(stepId);
+      if (typeof window !== "undefined") {
+        if (surfaceWorkflowFlashTimerRef.current != null) {
+          window.clearTimeout(surfaceWorkflowFlashTimerRef.current);
+        }
+        surfaceWorkflowFlashTimerRef.current = window.setTimeout(() => {
+          setSurfaceWorkflowFlashStepId((current) => (current === stepId ? null : current));
+          surfaceWorkflowFlashTimerRef.current = null;
+        }, 1300);
+      }
       const focusInspector = () => {
         if (!showRightPanel) setShowRightPanel(true);
         setRightPanelTab("inspector");
@@ -21130,10 +21170,12 @@ case "mobius":
       };
       switch (stepId) {
         case "equation":
+          enterSurfacesWorkMode();
           setSurfacesLeftTab("scene");
           openFormulaEditorAndFocusInput("workflow-equation");
           break;
         case "parse":
+          enterSurfacesWorkMode();
           setSurfacesLeftTab("scene");
           if (showSurfaceFormulaEditorLauncher && canOpenSurfaceFormulaEditor) {
             openSurfaceFormulaEditor();
@@ -21147,9 +21189,12 @@ case "mobius":
           break;
         case "preview":
           setSurfacesLeftTab("scene");
+          if (surfaceViewerKind === "implicit" && !vtkPreviewBusy) {
+            void handleVtkPreviewImplicit();
+          }
           focusElementByIdWithRetry("surfaces-main-viewport");
           break;
-        case "generate":
+        case "mesh":
           focusInspector();
           setSurfacesLeftTab("object");
           if (surfaceViewerKind === "implicit") {
@@ -21168,10 +21213,19 @@ case "mobius":
         case "promote":
           focusInspector();
           setSurfacesLeftTab("object");
+          if (unifiedCanBake) {
+            runUnifiedPipelineAction("bake");
+          } else if (unifiedCanConvertToMeshObject) {
+            runUnifiedPipelineAction("convertMesh");
+          }
           break;
         case "save":
-          if (!showRightPanel) setShowRightPanel(true);
-          setRightPanelTab("workbook");
+          if (workbookDirty) {
+            handleSaveWorkbook();
+          } else {
+            if (!showRightPanel) setShowRightPanel(true);
+            setRightPanelTab("workbook");
+          }
           break;
       }
     },
@@ -21183,11 +21237,14 @@ case "mobius":
       cgalBusy,
       cgalHealthState,
       canGenerateMesh,
+      enterSurfacesWorkMode,
       focusElementByIdWithRetry,
       focusSurfaceFormulaPrimaryInput,
       handleConvertToMesh,
       handleRunCgalMesh,
+      handleVtkPreviewImplicit,
       hasSurfaceMesh,
+      handleSaveWorkbook,
       inspectEnabled,
       openSurfaceFormulaEditor,
       setInspectEnabled,
@@ -21200,9 +21257,215 @@ case "mobius":
       surfaceViewerKind,
       surfaceMeshExportable,
       surfaceWorkflowStepStateById,
+      workbookDirty,
+      runUnifiedPipelineAction,
+      unifiedCanBake,
       unifiedCanConvertToMeshObject,
+      vtkPreviewBusy,
     ]
   );
+  const workflowActionOverlayModel = useMemo(() => {
+    if (!workflowActionOverlay) return null;
+    const startedAt = workflowActionOverlay.startedAt;
+    const meshBehavior = [
+      "Flow: Equation -> Parse -> Domain -> Preview -> Analyze -> Mesh -> Promote -> Save.",
+      "Mesh step runs real mesh work.",
+      "Implicit viewer: runs CGAL mesh generation.",
+      "Other surface viewers: converts current surface into SurfaceMesh.",
+    ];
+    const promoteBehavior = [
+      "Flow: Equation -> Parse -> Domain -> Preview -> Analyze -> Mesh -> Promote -> Save.",
+      "Promote step now always tries a real action.",
+      "First: bake/promotion to SurfaceMesh.",
+      "Fallback: if bake is unavailable but mesh exists, converts to detached Mesh object (Geometry).",
+      "Geometry gallery cards (for example Box) are presets, not the promoted result object.",
+      "Overlay reports promoted target object name/id when available.",
+    ];
+    const saveBehavior = [
+      "Flow: Equation -> Parse -> Domain -> Preview -> Analyze -> Mesh -> Promote -> Save.",
+      "If workspace is dirty: saves and downloads a .math3d bundle.",
+      "If already saved: opens Workbook tab/info view.",
+    ];
+    if (workflowActionOverlay.kind === "mesh") {
+      if (surfaceViewerKind === "implicit") {
+        if (cgalBusy) {
+          return {
+            title: "Mesh action",
+            status: "running" as const,
+            summary: "Running CGAL meshing for the implicit surface.",
+            details: ["Sampling domain and extracting isosurface.", "This may take longer for dense domains."],
+            behavior: meshBehavior,
+          };
+        }
+        if (cgalError) {
+          return {
+            title: "Mesh action",
+            status: "error" as const,
+            summary: "CGAL meshing failed.",
+            details: [cgalError],
+            behavior: meshBehavior,
+          };
+        }
+        if (cgalMeshInfo) {
+          return {
+            title: "Mesh action",
+            status: "success" as const,
+            summary: "Implicit mesh generated.",
+            details: [
+              `${cgalMeshInfo.vertexCount.toLocaleString()} vertices`,
+              `${cgalMeshInfo.triCount.toLocaleString()} triangles`,
+            ],
+            behavior: meshBehavior,
+          };
+        }
+        return {
+          title: "Mesh action",
+          status: "info" as const,
+          summary: "Preparing implicit meshing.",
+          details: ["If nothing starts, check worker status and expression validity."],
+          behavior: meshBehavior,
+        };
+      }
+      if (surfaceMeshImportError) {
+        return {
+          title: "Mesh action",
+          status: "error" as const,
+          summary: "Surface-to-mesh conversion failed.",
+          details: [surfaceMeshImportError],
+          behavior: meshBehavior,
+        };
+      }
+      if (hasSurfaceMesh && surfaceMeshData?.positions?.length) {
+        const verts = Math.floor(surfaceMeshData.positions.length / 3);
+        const tris = surfaceMeshData.indices ? Math.floor(surfaceMeshData.indices.length / 3) : 0;
+        return {
+          title: "Mesh action",
+          status: "success" as const,
+          summary: "Surface converted to SurfaceMesh.",
+          details: [`${verts.toLocaleString()} vertices`, `${tris.toLocaleString()} triangles`],
+          behavior: meshBehavior,
+        };
+      }
+      return {
+        title: "Mesh action",
+        status: "running" as const,
+        summary: "Building mesh from the current surface definition.",
+        details: ["Switching viewer to mesh when complete."],
+        behavior: meshBehavior,
+      };
+    }
+    if (workflowActionOverlay.kind === "promote") {
+      if (geometryBakeError) {
+        return {
+          title: "Promote action",
+          status: "error" as const,
+          summary: "Promotion failed.",
+          details: [geometryBakeError],
+          behavior: promoteBehavior,
+        };
+      }
+      if (surfaceMeshImportError) {
+        return {
+          title: "Promote action",
+          status: "error" as const,
+          summary: "Promotion failed.",
+          details: [surfaceMeshImportError],
+          behavior: promoteBehavior,
+        };
+      }
+      if (mode === "geometry") {
+        const promoteTargetName = geometrySelectedSceneObject?.name?.trim() || "unnamed";
+        const promoteTargetId = geometrySelectedObjectId;
+        return {
+          title: "Promote action",
+          status: "success" as const,
+          summary: "Converted to detached Mesh object.",
+          details: [
+            "Opened in Geometry mode for object-level editing.",
+            promoteTargetId
+              ? `Promoted object: ${promoteTargetName} (id: ${promoteTargetId})`
+              : "Promoted object id not available yet.",
+            "If Box card is visible, that is the object catalog, not the promoted mesh result.",
+          ],
+          behavior: promoteBehavior,
+        };
+      }
+      if (hasSurfaceMesh) {
+        const source =
+          surfaceMeshData?.source.kind === "geometryObject"
+            ? {
+                objectName: surfaceMeshData.source.objectName,
+                objectId: surfaceMeshData.source.objectId,
+              }
+            : null;
+        return {
+          title: "Promote action",
+          status: "success" as const,
+          summary: "Promoted to SurfaceMesh dataset.",
+          details: [
+            "Mesh dataset is now active in Surfaces.",
+            source?.objectId
+              ? `Source object: ${source.objectName ?? "unnamed"} (id: ${source.objectId})`
+              : source?.objectName
+                ? `Source object: ${source.objectName}`
+                : "Source object id/name not available for this promotion path.",
+          ],
+          behavior: promoteBehavior,
+        };
+      }
+      return {
+        title: "Promote action",
+        status: "running" as const,
+        summary: "Running promote pipeline.",
+        details: ["Baking selected object or surface definition."],
+        behavior: promoteBehavior,
+      };
+    }
+    if (workbookManualSaveAt && workbookManualSaveAt >= startedAt - 250) {
+      return {
+        title: "Save action",
+        status: "success" as const,
+        summary: "Workspace bundle saved.",
+        details: [
+          workbookManualSaveName || "math3d-book.math3d",
+          `saved at ${new Date(workbookManualSaveAt).toLocaleTimeString()}`,
+        ],
+        behavior: saveBehavior,
+      };
+    }
+    if (workbookDirty) {
+      return {
+        title: "Save action",
+        status: "running" as const,
+        summary: "Saving workspace bundle.",
+        details: ["Preparing .math3d export download."],
+        behavior: saveBehavior,
+      };
+    }
+    return {
+      title: "Save action",
+      status: "info" as const,
+      summary: "Workspace already saved.",
+      details: ["No unsaved changes detected."],
+      behavior: saveBehavior,
+    };
+  }, [
+    workflowActionOverlay,
+    surfaceViewerKind,
+    cgalBusy,
+    cgalError,
+    cgalMeshInfo,
+    surfaceMeshImportError,
+    hasSurfaceMesh,
+    surfaceMeshData,
+    geometryBakeError,
+    mode,
+    geometrySelectedObjectId,
+    geometrySelectedSceneObject,
+    workbookManualSaveAt,
+    workbookManualSaveName,
+    workbookDirty,
+  ]);
   const compareLayoutEnabled =
     compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfaceViewportDebug =
@@ -23907,8 +24170,14 @@ case "mobius":
                               zIndex: 2500,
                               isolation: "isolate",
                               width: surfaceFormulaEditorCollapsed ? 56 : "min(420px, calc(100% - 12px))",
-                              borderLeft: "1px solid #d3dce8",
-                              background: "rgba(255,255,255,0.97)",
+                              borderLeft:
+                                surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse"
+                                  ? "2px solid #60a5fa"
+                                  : "1px solid #d3dce8",
+                              background:
+                                surfaceWorkflowFlashStepId === "equation" || surfaceWorkflowFlashStepId === "parse"
+                                  ? "linear-gradient(180deg, rgba(236,246,255,0.98) 0%, rgba(248,252,255,0.96) 100%)"
+                                  : "rgba(255,255,255,0.97)",
                               boxShadow: "-8px 0 22px rgba(15,23,42,0.14)",
                               padding: 10,
                               boxSizing: "border-box",
@@ -23956,8 +24225,8 @@ case "mobius":
                                     gap: 7,
                                     fontSize: 10.5,
                                     color: "#475569",
-                                    background: "#f8fafc",
-                                    border: "1px solid #dbe4ef",
+                                    background: surfaceWorkflowFlashStepId === "parse" ? "#eef6ff" : "#f8fafc",
+                                    border: "1px solid " + (surfaceWorkflowFlashStepId === "parse" ? "#93c5fd" : "#dbe4ef"),
                                     borderRadius: 8,
                                     padding: "5px 8px",
                                   }}
@@ -25016,6 +25285,8 @@ case "mobius":
                       onBake={() => runUnifiedPipelineAction("bake")}
                       canCompare={unifiedCanSendToCompare}
                       onCompare={handleSendUnifiedObjectToCompare}
+                      surfaceWorkflowActiveStepId={surfaceWorkflowActiveStepId}
+                      surfaceWorkflowStepStateById={surfaceWorkflowStepStateById}
                       onPickEqSurface={handlePickEqSurface}
                       onPickParamSurface={handlePickParamSurface}
                       implicitExpr={implicitExpr}
@@ -27798,6 +28069,17 @@ case "mobius":
           </>
         )}
       </div>
+      {workflowActionOverlayModel && !cleanScreenshotSurfaceActive && (
+        <WorkflowActionOverlayDialog
+          open={!!workflowActionOverlayModel}
+          title={workflowActionOverlayModel.title}
+          status={workflowActionOverlayModel.status}
+          summary={workflowActionOverlayModel.summary}
+          details={workflowActionOverlayModel.details}
+          behavior={workflowActionOverlayModel.behavior}
+          onClose={() => setWorkflowActionOverlay(null)}
+        />
+      )}
       {showSurfaceViewportDebug && mode === "surfaces" && (
         <div
           style={{
@@ -30674,6 +30956,157 @@ const ParamSurfaceOverlayDialog: React.FC<ParamSurfaceOverlayDialogProps> = ({
               )}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type WorkflowActionOverlayDialogProps = {
+  open: boolean;
+  title: string;
+  status: WorkflowActionOverlayStatus;
+  summary: string;
+  details: string[];
+  behavior?: string[];
+  onClose: () => void;
+};
+
+const WorkflowActionOverlayDialog: React.FC<WorkflowActionOverlayDialogProps> = ({
+  open,
+  title,
+  status,
+  summary,
+  details,
+  behavior = [],
+  onClose,
+}) => {
+  if (!open) return null;
+  const statusTone =
+    status === "success"
+      ? { border: "#86efac", background: "#f0fdf4", color: "#166534", label: "Done" }
+      : status === "error"
+        ? { border: "#fca5a5", background: "#fef2f2", color: "#b42318", label: "Error" }
+        : status === "running"
+          ? { border: "#93c5fd", background: "#eff6ff", color: "#1d4ed8", label: "Running" }
+          : { border: "#cbd5e1", background: "#f8fafc", color: "#475569", label: "Info" };
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 2600,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(15, 23, 42, 0.28)",
+        padding: 12,
+        boxSizing: "border-box",
+      }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Workflow action overlay"
+        style={{
+          width: "min(80%, 1120px)",
+          height: "80%",
+          maxWidth: "calc(100% - 24px)",
+          maxHeight: "calc(100% - 24px)",
+          borderRadius: 12,
+          border: "1px solid #dbe4f0",
+          background: "rgba(255, 255, 255, 0.98)",
+          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.28)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            padding: "10px 12px",
+            borderBottom: "1px solid #e2e8f0",
+            background: "#f8fbff",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700 }}>Workflow action overlay</div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 12,
+              border: "1px solid #d1d5db",
+              background: "#f8fafc",
+              fontWeight: 700,
+            }}
+          >
+            Close
+          </button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "12px 14px", display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 5 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Operation</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{title}</div>
+            <div style={{ fontSize: 12, color: "#475569" }}>Shows current workflow execution state and result.</div>
+          </div>
+
+          <div style={{ borderTop: "1px solid #e2e8f0" }} />
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Status</div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                width: "fit-content",
+                borderRadius: 999,
+                border: `1px solid ${statusTone.border}`,
+                background: statusTone.background,
+                color: statusTone.color,
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "4px 10px",
+              }}
+            >
+              {statusTone.label}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{summary}</div>
+          </div>
+
+          <div style={{ borderTop: "1px solid #e2e8f0" }} />
+
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Result details</div>
+            {details.length ? details.map((line, idx) => (
+              <div key={`workflow-action-detail-${idx}`} style={{ fontSize: 12, color: "#334155", display: "flex", gap: 8 }}>
+                <span style={{ color: "#94a3b8" }}>•</span>
+                <span>{line}</span>
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, color: "#64748b" }}>No extra details.</div>
+            )}
+          </div>
+
+          <div style={{ borderTop: "1px solid #e2e8f0" }} />
+
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Current behavior</div>
+            {behavior.length ? behavior.map((line, idx) => (
+              <div key={`workflow-action-behavior-${idx}`} style={{ fontSize: 12, color: "#334155", display: "flex", gap: 8 }}>
+                <span style={{ color: "#94a3b8" }}>•</span>
+                <span>{line}</span>
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, color: "#64748b" }}>Behavior notes unavailable.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -38439,6 +38872,8 @@ type SurfacesRightPanelProps = {
   onBake: () => void;
   canCompare: boolean;
   onCompare: () => void;
+  surfaceWorkflowActiveStepId: SurfaceWorkflowStepId;
+  surfaceWorkflowStepStateById: Record<SurfaceWorkflowStepId, SurfaceWorkflowStepState>;
 
   onPickEqSurface: (id: SurfaceId) => void;
   onPickParamSurface: (id: ParamSurfaceId) => void;
@@ -38560,6 +38995,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onBake,
   canCompare,
   onCompare,
+  surfaceWorkflowActiveStepId,
+  surfaceWorkflowStepStateById,
   onPickEqSurface,
   onPickParamSurface,
   implicitExpr,
@@ -38703,6 +39140,101 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     marginBottom: 7,
     color: "#0f172a",
   };
+  const workflowStatePriority: Record<SurfaceWorkflowStepState, number> = {
+    disabled: 0,
+    done: 1,
+    available: 2,
+    active: 3,
+  };
+  const workflowStateText: Record<SurfaceWorkflowStepState, string> = {
+    active: "active",
+    done: "done",
+    available: "ready",
+    disabled: "blocked",
+  };
+  const workflowToneByState: Record<
+    SurfaceWorkflowStepState,
+    {
+      cardBackground: string;
+      cardBorder: string;
+      cardShadow?: string;
+      badgeBackground: string;
+      badgeBorder: string;
+      badgeText: string;
+    }
+  > = {
+    active: {
+      cardBackground: "linear-gradient(180deg, #f6fbff, #eef6ff)",
+      cardBorder: "#8fb4e8",
+      cardShadow: "inset 0 0 0 1px #cddff8",
+      badgeBackground: "#dbeafe",
+      badgeBorder: "#93c5fd",
+      badgeText: "#1d4ed8",
+    },
+    available: {
+      cardBackground: "#f8fbff",
+      cardBorder: "#cfe0f4",
+      badgeBackground: "#eef4ff",
+      badgeBorder: "#c2d4ef",
+      badgeText: "#1e3a5f",
+    },
+    done: {
+      cardBackground: "#f5f9ff",
+      cardBorder: "#dbe7f7",
+      badgeBackground: "#eaf2ff",
+      badgeBorder: "#c9d9f2",
+      badgeText: "#334155",
+    },
+    disabled: {
+      cardBackground: "#f8fafc",
+      cardBorder: "#dbe4ee",
+      badgeBackground: "#f1f5f9",
+      badgeBorder: "#d5dee8",
+      badgeText: "#64748b",
+    },
+  };
+  const resolveWorkflowState = (...stepIds: SurfaceWorkflowStepId[]): SurfaceWorkflowStepState => {
+    if (stepIds.includes(surfaceWorkflowActiveStepId)) return "active";
+    let state: SurfaceWorkflowStepState = "disabled";
+    for (const stepId of stepIds) {
+      const nextState = surfaceWorkflowStepStateById[stepId] ?? "disabled";
+      if (workflowStatePriority[nextState] > workflowStatePriority[state]) state = nextState;
+    }
+    return state;
+  };
+  const workflowCardStyle = (...stepIds: SurfaceWorkflowStepId[]): React.CSSProperties => {
+    const state = resolveWorkflowState(...stepIds);
+    const tone = workflowToneByState[state];
+    return {
+      ...inspectorSectionCard,
+      background: tone.cardBackground,
+      border: `1px solid ${tone.cardBorder}`,
+      boxShadow: tone.cardShadow,
+    };
+  };
+  const renderWorkflowStatus = (label: string, ...stepIds: SurfaceWorkflowStepId[]) => {
+    const state = resolveWorkflowState(...stepIds);
+    const tone = workflowToneByState[state];
+    return (
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 10,
+          fontWeight: 700,
+          borderRadius: 999,
+          border: `1px solid ${tone.badgeBorder}`,
+          background: tone.badgeBackground,
+          color: tone.badgeText,
+          padding: "2px 8px",
+          letterSpacing: 0.1,
+        }}
+      >
+        {label}: {workflowStateText[state]}
+      </span>
+    );
+  };
   const viewSourceKind = isMeshViewer
     ? "Mesh object"
     : isGraphViewer
@@ -38720,8 +39252,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         ? paramResolution
         : implicitResolution;
   const pointPickSection = (
-    <div style={inspectorSectionCard}>
+    <div style={workflowCardStyle("domain")}>
       <div style={inspectorSectionTitle}>Point pick</div>
+      <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
 
       {!showDomainPicker ? (
         <div style={{ fontSize: 11, opacity: 0.75 }}>
@@ -38802,8 +39335,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
       </div>
 
-      <div style={inspectorSectionCard}>
+      <div style={workflowCardStyle("equation", "parse")}>
         <div style={inspectorSectionTitle}>Definition</div>
+        <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Equation", "equation", "parse")}</div>
         <div style={{ fontSize: 12, opacity: 0.82 }}>{activeMeta.formula}</div>
         {!isImplicitViewer && (
           <div style={{ fontSize: 11, opacity: 0.78, marginTop: 6 }}>
@@ -38833,8 +39367,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       </div>
 
       {(showDomainPicker || isImplicitViewer) && (
-        <div id="surfaces-inspector-domain-card" tabIndex={-1} style={inspectorSectionCard}>
+        <div id="surfaces-inspector-domain-card" tabIndex={-1} style={workflowCardStyle("domain")}>
           <div style={inspectorSectionTitle}>Domain</div>
+          <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
           <div style={{ fontSize: 11, marginBottom: 6 }}>
             <strong>Resolution:</strong> {Math.round(activeResolution)}
           </div>
@@ -38894,8 +39429,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       )}
 
       {(showDomainPicker || isImplicitViewer) && (
-        <div style={inspectorSectionCard}>
+        <div style={workflowCardStyle("domain")}>
           <div style={inspectorSectionTitle}>Domain bounds</div>
+          <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
           {isGraphViewer && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -39211,8 +39747,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       </div>
 
-      <div style={inspectorSectionCard}>
+      <div style={workflowCardStyle("analyze")}>
         <div style={inspectorSectionTitle}>Analysis</div>
+        <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Analyze", "analyze")}</div>
         <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="checkbox" checked={showGaussMap} onChange={onToggleGaussMap} />
@@ -39258,11 +39795,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div
           data-testid="worker-status"
           style={{
-            ...inspectorSectionCard,
+            ...workflowCardStyle("analyze"),
             fontSize: 11,
           }}
         >
           <div style={inspectorSectionTitle}>Analysis</div>
+          <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Analyze", "analyze")}</div>
           <div style={{ color: workerReady ? "#1f894f" : "#b42318" }}>
             worker: {workerStatusLabel}
           </div>
@@ -39285,8 +39823,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       )}
 
       {isImplicitViewer && (
-        <div style={inspectorSectionCard}>
+        <div style={workflowCardStyle("preview", "mesh")}>
           <div style={inspectorSectionTitle}>Analysis tools</div>
+          <div style={{ marginTop: -2, marginBottom: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {renderWorkflowStatus("Preview", "preview")}
+            {renderWorkflowStatus("Mesh", "mesh")}
+          </div>
           <div style={{ marginTop: 2, display: "grid", gap: 6 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 600 }}>Preview (VTK)</div>
@@ -39308,7 +39850,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                     cursor: vtkPreviewDisabled ? "not-allowed" : "pointer",
                   }}
                 >
-                  {vtkPreviewBusy ? "preview..." : "preview (VTK)"}
+                  {vtkPreviewBusy ? "running preview..." : "run preview (VTK)"}
                 </button>
                 <span style={{ fontSize: 11, color: "#556" }}>res {vtkPreviewResolution}^3</span>
                 <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
@@ -39416,7 +39958,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                         : cgalHealthState?.error ?? "CGAL not available"
                   }
                 >
-                  {cgalBusy ? "meshing..." : "gcalc (CGAL)"}
+                  {cgalBusy ? "meshing..." : "run mesh (CGAL)"}
                 </button>
                 <button
                   type="button"
@@ -39432,7 +39974,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   }}
                   title={cgalStopDisabled ? "CGAL worker not running" : "Stop CGAL worker"}
                 >
-                  stop
+                  stop worker
                 </button>
               </div>
               <div style={{ fontSize: 11, color: cgalTooHeavy ? "#b42318" : "#556" }}>
@@ -39616,8 +40158,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       {pointPickSection}
 
-      <div style={inspectorSectionCard}>
+      <div style={workflowCardStyle("promote")}>
         <div style={inspectorSectionTitle}>Actions</div>
+        <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Promote", "promote")}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
           <button type="button" onClick={onDuplicate} disabled={!canDuplicate} style={{ padding: "4px 8px" }}>
             Duplicate
@@ -39626,14 +40169,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             Export
           </button>
           <button type="button" onClick={onBake} disabled={!canBake} style={{ padding: "4px 8px" }}>
-            Promote to SurfaceMesh
+            Bake to SurfaceMesh
           </button>
           <button type="button" onClick={onCompare} disabled={!canCompare} style={{ padding: "4px 8px" }}>
             Compare
           </button>
         </div>
         <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8 }}>
-          Scene/object actions are available when a scene object is selected.
+          Bake promotes the current surface to a SurfaceMesh dataset. Duplicate/Export/Compare operate on the selected scene object.
         </div>
         <details>
           <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Quick pick</summary>
