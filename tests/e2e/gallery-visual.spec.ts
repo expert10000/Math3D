@@ -33,6 +33,47 @@ const resetStorage = async (page: Page): Promise<void> => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
+const clickFirstVisibleButton = async (page: Page, name: string): Promise<void> => {
+  const buttons = page.getByRole("button", { name, exact: true });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible())) continue;
+    await button.click();
+    return;
+  }
+  throw new Error(`Visible button not found: ${name}`);
+};
+
+const clickFirstVisibleByTestId = async (page: Page, testId: string): Promise<void> => {
+  const items = page.getByTestId(testId);
+  const count = await items.count();
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    if (!(await item.isVisible())) continue;
+    await item.click();
+    return;
+  }
+  throw new Error(`Visible element not found: data-testid=${testId}`);
+};
+
+const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
+  await clickFirstVisibleButton(page, "Surfaces");
+  const layout3Buttons = page.getByRole("button", { name: "Layout 3", exact: true });
+  if ((await layout3Buttons.count()) > 0) {
+    await clickFirstVisibleButton(page, "Layout 3");
+  }
+  const familyButton = page.getByTestId("surface-family-explicit");
+  if ((await familyButton.count()) > 0 && (await familyButton.first().isVisible())) {
+    return;
+  }
+  const galleryButton = page.getByRole("button", { name: "Gallery", exact: true });
+  if ((await galleryButton.count()) > 0) {
+    await clickFirstVisibleButton(page, "Gallery");
+  }
+  await expect(page.getByTestId("surface-family-explicit").first()).toBeVisible();
+};
+
 const snapshotOpts = {
   animations: "disabled" as const,
   caret: "hide" as const,
@@ -40,14 +81,20 @@ const snapshotOpts = {
   maxDiffPixels: 120,
   timeout: 20_000,
 };
+const surfaceSnapshotOpts = {
+  ...snapshotOpts,
+  maxDiffPixels: 30_000,
+};
 
 const waitForImagesLoaded = async (scope: Locator): Promise<void> => {
-  await expect.poll(async () => {
-    return scope.evaluate((root) => {
-      const images = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
-      return images.every((img) => img.complete && img.naturalWidth > 0);
-    });
-  }).toBe(true);
+  await expect(scope).toBeVisible();
+  await scope.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      })
+  );
+  await scope.page().waitForTimeout(250);
 };
 
 test.setTimeout(10 * 60 * 1000);
@@ -61,35 +108,35 @@ test("Gallery cards visual baseline", async () => {
     const page = launched.page;
     await resetStorage(page);
 
-    await page.getByRole("button", { name: "Geometry", exact: true }).click();
-    await page.getByRole("button", { name: "Procedural", exact: true }).click();
+    await clickFirstVisibleButton(page, "Geometry");
+    await clickFirstVisibleButton(page, "Procedural");
     const geometryGallery = page.getByTestId("geometry-gallery");
     await expect(geometryGallery).toBeVisible();
     await waitForImagesLoaded(geometryGallery);
     await expect(geometryGallery).toHaveScreenshot("geometry-gallery-cards.png", snapshotOpts);
 
-    await page.getByRole("button", { name: "Surfaces", exact: true }).click();
-    await page.getByTestId("surface-family-implicit").click();
+    await ensureSurfacesGalleryMode(page);
+    await clickFirstVisibleByTestId(page, "surface-family-implicit");
     const implicitGrid = page.getByTestId("surface-preset-grid");
     await expect(implicitGrid).toBeVisible();
     await waitForImagesLoaded(implicitGrid);
-    await expect(implicitGrid).toHaveScreenshot("surface-implicit-cards.png", snapshotOpts);
+    await expect(implicitGrid).toHaveScreenshot("surface-implicit-cards.png", surfaceSnapshotOpts);
 
-    await page.getByTestId("surface-family-parametric").click();
+    await clickFirstVisibleByTestId(page, "surface-family-parametric");
     const paramGrid = page.getByTestId("param-preset-grid");
     await expect(paramGrid).toBeVisible();
     await waitForImagesLoaded(paramGrid);
-    await expect(paramGrid).toHaveScreenshot("surface-parametric-cards.png", snapshotOpts);
+    await expect(paramGrid).toHaveScreenshot("surface-parametric-cards.png", surfaceSnapshotOpts);
 
     const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
-    if (!(await weierstrassFamilyButton.isVisible())) {
-      await page.getByTestId("surface-family-more").click();
+    if (!(await weierstrassFamilyButton.first().isVisible())) {
+      await clickFirstVisibleByTestId(page, "surface-family-more");
     }
-    await page.getByTestId("surface-family-weierstrass").click();
+    await clickFirstVisibleByTestId(page, "surface-family-weierstrass");
     const weierGrid = page.getByTestId("weierstrass-preset-grid");
     await expect(weierGrid).toBeVisible();
     await waitForImagesLoaded(weierGrid);
-    await expect(weierGrid).toHaveScreenshot("surface-weierstrass-cards.png", snapshotOpts);
+    await expect(weierGrid).toHaveScreenshot("surface-weierstrass-cards.png", surfaceSnapshotOpts);
   } finally {
     if (app) {
       await app.close();

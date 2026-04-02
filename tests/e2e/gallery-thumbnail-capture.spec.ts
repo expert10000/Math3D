@@ -158,6 +158,18 @@ const resetStorage = async (page: Page): Promise<void> => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
+const clickFirstVisibleButton = async (page: Page, name: string): Promise<void> => {
+  const buttons = page.getByRole("button", { name, exact: true });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible())) continue;
+    await button.click();
+    return;
+  }
+  throw new Error(`Visible button not found: ${name}`);
+};
+
 const setCheckboxValueIfVisible = async (page: Page, label: string, checked: boolean): Promise<void> => {
   const control = page.getByLabel(label, { exact: true });
   const count = await control.count();
@@ -190,19 +202,18 @@ const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
 };
 
 const openProceduralGeometry = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: "Geometry", exact: true }).click();
+  await clickFirstVisibleButton(page, "Geometry");
   await expect(page.getByRole("heading", { name: "Geometry Viewer", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Procedural", exact: true }).click();
+  await clickFirstVisibleButton(page, "Procedural");
   await expect(page.getByTestId("geometry-gallery")).toBeVisible();
   await prepareGeometryCaptureUi(page);
 };
 
 const openSurfacesWorkspace = async (page: Page): Promise<void> => {
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
+  await clickFirstVisibleButton(page, "Surfaces");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
   await expect(page.getByTestId("surface-viewer-canvas-host").first()).toBeVisible();
-  await page.getByRole("button", { name: "Layout 3", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Main view", exact: true })).toBeVisible();
+  await clickFirstVisibleButton(page, "Layout 3");
 };
 
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {

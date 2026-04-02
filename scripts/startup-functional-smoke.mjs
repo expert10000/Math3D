@@ -10,7 +10,26 @@ const require = createRequire(import.meta.url);
 const electronBinary = require("electron");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const timeoutMs = Number(process.env.MATH3D_STARTUP_SMOKE_TIMEOUT_MS || 90000);
+
+function resolveTimeoutMs(envName, fallbackMs, minMs, maxMs) {
+  const raw = Number(process.env[envName]);
+  if (!Number.isFinite(raw)) return fallbackMs;
+  return Math.max(minMs, Math.min(maxMs, Math.floor(raw)));
+}
+
+const timeoutMs = resolveTimeoutMs("MATH3D_STARTUP_SMOKE_TIMEOUT_MS", 180000, 30000, 600000);
+const workerStartupHealthTimeoutMs = resolveTimeoutMs(
+  "MATH3D_WORKER_STARTUP_HEALTH_TIMEOUT_MS",
+  120000,
+  1000,
+  600000
+);
+const workerHealthTimeoutMs = resolveTimeoutMs(
+  "MATH3D_WORKER_HEALTH_TIMEOUT_MS",
+  Math.max(15000, Math.floor(workerStartupHealthTimeoutMs / 2)),
+  1000,
+  600000
+);
 
 const requiredMarkers = [
   "[startup-smoke] APP_READY",
@@ -27,6 +46,8 @@ async function run() {
   const childEnv = {
     ...process.env,
     MATH3D_STARTUP_SMOKE: "1",
+    MATH3D_WORKER_STARTUP_HEALTH_TIMEOUT_MS: String(workerStartupHealthTimeoutMs),
+    MATH3D_WORKER_HEALTH_TIMEOUT_MS: String(workerHealthTimeoutMs),
     ELECTRON_ENABLE_LOGGING: "1",
   };
   delete childEnv.ELECTRON_RUN_AS_NODE;

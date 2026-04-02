@@ -61,10 +61,22 @@ export async function readWorkerStatusText(page: Page): Promise<string> {
   });
 }
 
+async function clickFirstVisibleButton(page: Page, name: string): Promise<void> {
+  const buttons = page.getByRole("button", { name, exact: true });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible())) continue;
+    await button.click();
+    return;
+  }
+  throw new Error(`Visible button not found: ${name}`);
+}
+
 export async function openSurfaceGenerator(page: Page): Promise<void> {
   await resetSurfaceAppState(page);
-  await page.getByRole("button", { name: "Surfaces", exact: true }).click();
-  await page.getByRole("button", { name: "Inspector", exact: true }).click();
+  await clickFirstVisibleButton(page, "Surfaces");
+  await clickFirstVisibleButton(page, "Inspector");
   await expect(page.getByTestId("surface-input").first()).toBeVisible();
   await expect(page.getByTestId("generate-button").first()).toBeVisible();
   await expect(page.getByTestId("worker-status").first()).toBeVisible();
