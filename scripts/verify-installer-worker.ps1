@@ -53,8 +53,10 @@ function Invoke-WorkerProtocolSmoke {
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
-  $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs/Math3D"
+  $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
 }
+$customInstallRootRequested = $PSBoundParameters.ContainsKey("InstallRoot") -and
+  (-not [string]::IsNullOrWhiteSpace($PSBoundParameters["InstallRoot"]))
 
 $unpackedWorker = Join-Path $repo "release/win-unpacked/resources/python-worker/worker.exe"
 if (-not (Test-Path $unpackedWorker)) {
@@ -74,7 +76,12 @@ if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
 
 if (-not $SkipInstall) {
   Write-Host "[verify] installing from $InstallerPath"
-  $installerArgs = @("/S", "/D=$InstallRoot")
+  $installerArgs = @("/S")
+  if ($customInstallRootRequested) {
+    $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot).Replace("/", "\")
+    # /D must be the final NSIS argument.
+    $installerArgs += "/D=$InstallRoot"
+  }
   $proc = Start-Process -FilePath $InstallerPath -ArgumentList $installerArgs -Wait -PassThru
   if ($proc.ExitCode -ne 0) {
     throw "Installer failed (exit code $($proc.ExitCode)): $InstallerPath"

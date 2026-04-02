@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
-  $InstallRoot = Join-Path $env:LOCALAPPDATA "Programs/Math3D"
+  $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
 }
 
 if (-not $SkipBuild) {
