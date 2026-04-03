@@ -32,10 +32,18 @@ type CaptureViewPolicy = {
   direction: { x: number; y: number; z: number };
 };
 
-const resolveOutputRoot = (): string => {
+const resolveOutputRoot = (): { path: string; ephemeral: boolean } => {
   const raw = process.env.MATH3D_THUMBNAIL_OUT_DIR?.trim();
-  if (!raw) return path.join(repoRoot, "gallery-images", "captured");
-  return path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw);
+  if (!raw) {
+    return {
+      path: mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-captured-")),
+      ephemeral: true,
+    };
+  }
+  return {
+    path: path.isAbsolute(raw) ? raw : path.resolve(repoRoot, raw),
+    ephemeral: false,
+  };
 };
 
 const toPosixRelative = (absolutePath: string): string =>
@@ -133,6 +141,18 @@ const resolveObjectCapturePolicy = (id: string): CaptureViewPolicy => {
   return CANONICAL_CAPTURE_POLICY;
 };
 
+const applyCssViewport = async (page: Page, target: { width: number; height: number }): Promise<void> => {
+  await page.setViewportSize(target);
+  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+  const adjusted = {
+    width: Math.round(target.width * dpr),
+    height: Math.round(target.height * dpr),
+  };
+  if (adjusted.width !== target.width || adjusted.height !== target.height) {
+    await page.setViewportSize(adjusted);
+  }
+};
+
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -149,7 +169,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   });
 
   const page = await app.firstWindow();
-  await page.setViewportSize(E2E_VIEWPORT);
+  await applyCssViewport(page, E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
@@ -210,11 +230,14 @@ const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   }
 };
 
+const getSurfacesLayout3ModeToggle = (page: Page) => page.getByTestId("surfaces-layout3-mode-toggle").first();
+
+const readToggleLabel = async (toggle: ReturnType<typeof getSurfacesLayout3ModeToggle>): Promise<string> =>
+  (await toggle.innerText()).replace(/\s+/g, " ").trim().toLowerCase();
+
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
-  const galleryButton = page.getByRole("button", { name: "Gallery", exact: true });
-  if ((await galleryButton.count()) > 0 && (await galleryButton.first().isVisible())) {
-    await clickFirstVisible(galleryButton, 'button "Gallery"');
-  }
+  await setSurfacesLayout(page, "Layout 3");
+  await setSurfacesLayout3PanelMode(page, "browse");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
 };
 
@@ -226,17 +249,16 @@ const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 2
 };
 
 const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"): Promise<void> => {
-  const toWork = page.getByRole("button", { name: "Show Scene/Object tabs", exact: true });
-  const toBrowse = page.getByRole("button", { name: "Gallery", exact: true });
-  if (mode === "work") {
-    if ((await toWork.count()) > 0 && (await toWork.first().isVisible())) {
-      await clickFirstVisible(toWork, 'button "Show Scene/Object tabs"');
-      await settleRenderer(page);
-    }
+  const toggle = getSurfacesLayout3ModeToggle(page);
+  if ((await toggle.count()) === 0 || !(await toggle.isVisible())) return;
+  const label = await readToggleLabel(toggle);
+  if (mode === "work" && label.includes("show scene/object tabs")) {
+    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    await settleRenderer(page);
     return;
   }
-  if ((await toBrowse.count()) > 0 && (await toBrowse.first().isVisible())) {
-    await clickFirstVisible(toBrowse, 'button "Gallery"');
+  if (mode === "browse" && label === "gallery") {
+    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
     await settleRenderer(page);
   }
 };
@@ -472,7 +494,8 @@ const captureSurfaceCards = async (
 test.setTimeout(captureTestTimeoutMs);
 
 test("Capture gallery thumbnails for objects and surfaces", async () => {
-  const outputRoot = resolveOutputRoot();
+  const output = resolveOutputRoot();
+  const outputRoot = output.path;
   mkdirSync(outputRoot, { recursive: true });
   const profileDir = mkdtempSync(path.join(os.tmpdir(), "math3d-e2e-thumbs-"));
 
@@ -550,6 +573,9 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
   } finally {
     if (app) {
       await app.close();
+    }
+    if (output.ephemeral) {
+      rmSync(outputRoot, { recursive: true, force: true });
     }
     rmSync(profileDir, { recursive: true, force: true });
   }

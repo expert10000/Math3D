@@ -22614,6 +22614,7 @@ case "mobius":
                 {surfacesLayoutVariant === "layout3" && (
                   <button
                     type="button"
+                    data-testid="surfaces-layout3-mode-toggle"
                     onClick={() => {
                       if (surfacesPanelState === "browse") enterSurfacesWorkMode();
                       else returnToSurfacesBrowse();

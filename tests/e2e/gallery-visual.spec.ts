@@ -8,6 +8,18 @@ import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions"
 const repoRoot = path.resolve(__dirname, "..", "..");
 const E2E_VIEWPORT = { width: 1024, height: 720 };
 
+const applyCssViewport = async (page: Page, target: { width: number; height: number }): Promise<void> => {
+  await page.setViewportSize(target);
+  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
+  const adjusted = {
+    width: Math.round(target.width * dpr),
+    height: Math.round(target.height * dpr),
+  };
+  if (adjusted.width !== target.width || adjusted.height !== target.height) {
+    await page.setViewportSize(adjusted);
+  }
+};
+
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
     ...process.env,
@@ -23,7 +35,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
     env,
   });
   const page = await app.firstWindow();
-  await page.setViewportSize(E2E_VIEWPORT);
+  await applyCssViewport(page, E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
@@ -41,20 +53,31 @@ const clickFirstVisibleByTestId = async (page: Page, testId: string): Promise<vo
   await clickFirstVisible(items, `data-testid=${testId}`);
 };
 
+const getSurfacesLayout3ModeToggle = (page: Page) => page.getByTestId("surfaces-layout3-mode-toggle").first();
+
+const readToggleLabel = async (toggle: ReturnType<typeof getSurfacesLayout3ModeToggle>): Promise<string> =>
+  (await toggle.innerText()).replace(/\s+/g, " ").trim().toLowerCase();
+
+const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"): Promise<void> => {
+  const toggle = getSurfacesLayout3ModeToggle(page);
+  if ((await toggle.count()) === 0 || !(await toggle.isVisible())) return;
+  const label = await readToggleLabel(toggle);
+  if (mode === "work" && label.includes("show scene/object tabs")) {
+    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+    return;
+  }
+  if (mode === "browse" && label === "gallery") {
+    await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
+  }
+};
+
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
   await clickFirstVisibleButton(page, "Surfaces");
   const layout3Buttons = page.getByRole("button", { name: "Layout 3", exact: true });
   if ((await layout3Buttons.count()) > 0) {
     await clickFirstVisibleButton(page, "Layout 3");
   }
-  const familyButton = page.getByTestId("surface-family-explicit");
-  if ((await familyButton.count()) > 0 && (await familyButton.first().isVisible())) {
-    return;
-  }
-  const galleryButton = page.getByRole("button", { name: "Gallery", exact: true });
-  if ((await galleryButton.count()) > 0) {
-    await clickFirstVisibleButton(page, "Gallery");
-  }
+  await setSurfacesLayout3PanelMode(page, "browse");
   await expect(page.getByTestId("surface-family-explicit").first()).toBeVisible();
 };
 
