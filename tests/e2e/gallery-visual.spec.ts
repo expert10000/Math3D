@@ -6,7 +6,7 @@ import path from "node:path";
 import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
-const E2E_VIEWPORT = { width: 1280, height: 900 };
+const E2E_VIEWPORT = { width: 1024, height: 720 };
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
@@ -18,7 +18,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   delete env.ELECTRON_RUN_AS_NODE;
 
   const app = await electron.launch({
-    args: ["."],
+    args: [".", "--force-device-scale-factor=1"],
     cwd: repoRoot,
     env,
   });

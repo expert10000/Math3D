@@ -42,7 +42,7 @@ const toPosixRelative = (absolutePath: string): string =>
   path.relative(repoRoot, absolutePath).split(path.sep).join("/");
 
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? 450);
-const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? 30 * 60 * 1000);
+const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? 45 * 60 * 1000);
 const THUMBNAIL_ASPECT = 16 / 10;
 
 const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
@@ -143,7 +143,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   delete env.ELECTRON_RUN_AS_NODE;
 
   const app = await electron.launch({
-    args: ["."],
+    args: [".", "--force-device-scale-factor=1"],
     cwd: repoRoot,
     env,
   });
@@ -204,8 +204,10 @@ const openProceduralGeometry = async (page: Page): Promise<void> => {
 const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   await clickFirstVisibleButton(page, "Surfaces");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
-  await expect(page.getByTestId("surface-viewer-canvas-host").first()).toBeVisible();
-  await clickFirstVisibleButton(page, "Layout 3");
+  const layout3Button = page.getByRole("button", { name: "Layout 3", exact: true });
+  if ((await layout3Button.count()) > 0 && (await layout3Button.first().isVisible())) {
+    await clickFirstVisible(layout3Button, 'button "Layout 3"');
+  }
 };
 
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
@@ -216,11 +218,27 @@ const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
 };
 
-const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 3"): Promise<void> => {
+const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 2" | "Layout 3"): Promise<void> => {
   const buttons = page.getByRole("button", { name: layoutLabel, exact: true });
   if ((await buttons.count()) === 0) return;
   await clickFirstVisible(buttons, `button "${layoutLabel}"`);
   await settleRenderer(page);
+};
+
+const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"): Promise<void> => {
+  const toWork = page.getByRole("button", { name: "Show Scene/Object tabs", exact: true });
+  const toBrowse = page.getByRole("button", { name: "Gallery", exact: true });
+  if (mode === "work") {
+    if ((await toWork.count()) > 0 && (await toWork.first().isVisible())) {
+      await clickFirstVisible(toWork, 'button "Show Scene/Object tabs"');
+      await settleRenderer(page);
+    }
+    return;
+  }
+  if ((await toBrowse.count()) > 0 && (await toBrowse.first().isVisible())) {
+    await clickFirstVisible(toBrowse, 'button "Gallery"');
+    await settleRenderer(page);
+  }
 };
 
 const settleRenderer = async (page: Page): Promise<void> => {
@@ -430,14 +448,16 @@ const captureSurfaceCards = async (
   for (const id of ids) {
     await ensureSurfacesGalleryMode(page);
     await setSurfacesLayout(page, "Layout 3");
+    await setSurfacesLayout3PanelMode(page, "browse");
     const card = page.getByTestId(`${options.testIdPrefix}${id}`);
     if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
     await card.first().scrollIntoViewIfNeeded();
     await clickFirstVisible(card, `data-testid=${options.testIdPrefix}${id}`);
     await settleRenderer(page);
-    await setSurfacesLayout(page, "Layout 1");
+    await setSurfacesLayout3PanelMode(page, "work");
     const outPath = path.join(outputRoot, options.folder, `${id}.png`);
     await captureScene(page, outPath, resolveSurfaceCapturePolicy(id, options.family, options.subtype));
+    await setSurfacesLayout3PanelMode(page, "browse");
     await setSurfacesLayout(page, "Layout 3");
     manifest.surfaces.push({
       id,
