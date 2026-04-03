@@ -6,6 +6,7 @@ import path from "node:path";
 import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+const E2E_VIEWPORT = { width: 1280, height: 900 };
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
   const env: Record<string, string | undefined> = {
@@ -22,6 +23,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
     env,
   });
   const page = await app.firstWindow();
+  await page.setViewportSize(E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };

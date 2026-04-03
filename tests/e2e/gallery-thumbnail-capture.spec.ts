@@ -6,6 +6,7 @@ import path from "node:path";
 import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
+const E2E_VIEWPORT = { width: 1280, height: 900 };
 
 type ObjectCaptureEntry = {
   id: string;
@@ -41,6 +42,7 @@ const toPosixRelative = (absolutePath: string): string =>
   path.relative(repoRoot, absolutePath).split(path.sep).join("/");
 
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? 450);
+const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? 30 * 60 * 1000);
 const THUMBNAIL_ASPECT = 16 / 10;
 
 const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
@@ -147,6 +149,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   });
 
   const page = await app.firstWindow();
+  await page.setViewportSize(E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
@@ -446,7 +449,7 @@ const captureSurfaceCards = async (
   await ensureSurfacesGalleryMode(page);
 };
 
-test.setTimeout(20 * 60 * 1000);
+test.setTimeout(captureTestTimeoutMs);
 
 test("Capture gallery thumbnails for objects and surfaces", async () => {
   const outputRoot = resolveOutputRoot();
