@@ -3,6 +3,7 @@ import { _electron as electron, type ElectronApplication } from "playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 
@@ -33,28 +34,9 @@ const resetStorage = async (page: Page): Promise<void> => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
-const clickFirstVisibleButton = async (page: Page, name: string): Promise<void> => {
-  const buttons = page.getByRole("button", { name, exact: true });
-  const count = await buttons.count();
-  for (let i = 0; i < count; i++) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible())) continue;
-    await button.click();
-    return;
-  }
-  throw new Error(`Visible button not found: ${name}`);
-};
-
 const clickFirstVisibleByTestId = async (page: Page, testId: string): Promise<void> => {
   const items = page.getByTestId(testId);
-  const count = await items.count();
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    if (!(await item.isVisible())) continue;
-    await item.click();
-    return;
-  }
-  throw new Error(`Visible element not found: data-testid=${testId}`);
+  await clickFirstVisible(items, `data-testid=${testId}`);
 };
 
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {

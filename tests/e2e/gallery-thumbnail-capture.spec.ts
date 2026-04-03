@@ -3,6 +3,7 @@ import { _electron as electron, type ElectronApplication } from "playwright";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 
@@ -158,18 +159,6 @@ const resetStorage = async (page: Page): Promise<void> => {
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
 };
 
-const clickFirstVisibleButton = async (page: Page, name: string): Promise<void> => {
-  const buttons = page.getByRole("button", { name, exact: true });
-  const count = await buttons.count();
-  for (let i = 0; i < count; i++) {
-    const button = buttons.nth(i);
-    if (!(await button.isVisible())) continue;
-    await button.click();
-    return;
-  }
-  throw new Error(`Visible button not found: ${name}`);
-};
-
 const setCheckboxValueIfVisible = async (page: Page, label: string, checked: boolean): Promise<void> => {
   const control = page.getByLabel(label, { exact: true });
   const count = await control.count();
@@ -188,7 +177,7 @@ const setCheckboxValueIfVisible = async (page: Page, label: string, checked: boo
 const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
   const transformTab = page.getByRole("button", { name: "Transform", exact: true });
   if ((await transformTab.count()) > 0 && (await transformTab.first().isVisible())) {
-    await transformTab.first().click();
+    await clickFirstVisible(transformTab, 'button "Transform"');
     await settleRenderer(page);
   }
   await setCheckboxValueIfVisible(page, "Enable transform gizmo", false);
@@ -196,7 +185,7 @@ const prepareGeometryCaptureUi = async (page: Page): Promise<void> => {
   await setCheckboxValueIfVisible(page, "Show 3D gizmo", false);
   const sceneTab = page.getByRole("button", { name: "Scene", exact: true });
   if ((await sceneTab.count()) > 0 && (await sceneTab.first().isVisible())) {
-    await sceneTab.first().click();
+    await clickFirstVisible(sceneTab, 'button "Scene"');
     await settleRenderer(page);
   }
 };
@@ -219,24 +208,24 @@ const openSurfacesWorkspace = async (page: Page): Promise<void> => {
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
   const galleryButton = page.getByRole("button", { name: "Gallery", exact: true });
   if ((await galleryButton.count()) > 0 && (await galleryButton.first().isVisible())) {
-    await galleryButton.first().click();
+    await clickFirstVisible(galleryButton, 'button "Gallery"');
   }
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
 };
 
 const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 3"): Promise<void> => {
-  const button = page.getByRole("button", { name: layoutLabel, exact: true });
-  if ((await button.count()) === 0 || !(await button.first().isVisible())) return;
-  await button.first().click();
+  const buttons = page.getByRole("button", { name: layoutLabel, exact: true });
+  if ((await buttons.count()) === 0) return;
+  await clickFirstVisible(buttons, `button "${layoutLabel}"`);
   await settleRenderer(page);
 };
 
 const settleRenderer = async (page: Page): Promise<void> => {
-  await page.waitForTimeout(captureDelayMs);
+  if (captureDelayMs > 0) await page.waitForTimeout(captureDelayMs);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        setTimeout(() => resolve(), 0);
       })
   );
 };
@@ -246,7 +235,7 @@ const prepareSurfaceCaptureUi = async (page: Page): Promise<void> => {
   if ((await surfaceParamOverlay.count()) > 0 && (await surfaceParamOverlay.first().isVisible())) {
     const closeButton = surfaceParamOverlay.first().getByRole("button", { name: "Close", exact: true });
     if (await closeButton.isVisible()) {
-      await closeButton.click();
+      await clickFirstVisible(closeButton, 'button "Close"');
     }
   }
 
@@ -277,7 +266,7 @@ const resetCameraIfAvailable = async (page: Page): Promise<void> => {
     for (let i = 0; i < count; i++) {
       const button = locator.nth(i);
       if (!(await button.isVisible())) continue;
-      await button.click();
+      await clickFirstVisible(locator, 'button "Reset camera"');
       await settleRenderer(page);
       return;
     }
@@ -411,7 +400,7 @@ const captureObjectGallery = async (
     if (await quickAdd.isDisabled()) continue;
 
     await clearGeometryObjects(page);
-    await quickAdd.click();
+    await clickFirstVisible(quickAdd, `data-testid=geometry-gallery-quick-add-${id}`);
     await expect.poll(async () => page.getByTestId("geometry-object-row").count()).toBeGreaterThan(0);
     await settleRenderer(page);
 
@@ -441,7 +430,7 @@ const captureSurfaceCards = async (
     const card = page.getByTestId(`${options.testIdPrefix}${id}`);
     if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
     await card.first().scrollIntoViewIfNeeded();
-    await card.first().click();
+    await clickFirstVisible(card, `data-testid=${options.testIdPrefix}${id}`);
     await settleRenderer(page);
     await setSurfacesLayout(page, "Layout 1");
     const outPath = path.join(outputRoot, options.folder, `${id}.png`);
