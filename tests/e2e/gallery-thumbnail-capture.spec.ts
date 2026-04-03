@@ -49,8 +49,11 @@ const resolveOutputRoot = (): { path: string; ephemeral: boolean } => {
 const toPosixRelative = (absolutePath: string): string =>
   path.relative(repoRoot, absolutePath).split(path.sep).join("/");
 
-const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? 450);
-const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? 45 * 60 * 1000);
+const captureMode = (process.env.MATH3D_THUMBNAIL_CAPTURE_MODE ?? "smoke").trim().toLowerCase();
+const fullCaptureMode = captureMode === "full";
+const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? (fullCaptureMode ? 450 : 160));
+const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? (fullCaptureMode ? 45 * 60 * 1000 : 15 * 60 * 1000));
+const captureLimitPerGroup = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP ?? (fullCaptureMode ? 0 : 2));
 const THUMBNAIL_ASPECT = 16 / 10;
 
 const CANONICAL_CAPTURE_POLICY: CaptureViewPolicy = {
@@ -141,16 +144,16 @@ const resolveObjectCapturePolicy = (id: string): CaptureViewPolicy => {
   return CANONICAL_CAPTURE_POLICY;
 };
 
-const applyCssViewport = async (page: Page, target: { width: number; height: number }): Promise<void> => {
-  await page.setViewportSize(target);
-  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
-  const adjusted = {
-    width: Math.round(target.width * dpr),
-    height: Math.round(target.height * dpr),
-  };
-  if (adjusted.width !== target.width || adjusted.height !== target.height) {
-    await page.setViewportSize(adjusted);
-  }
+const normalizeWindowScale = async (app: ElectronApplication): Promise<void> => {
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) win.webContents.setZoomFactor(1);
+  });
+};
+
+const applyCaptureLimit = (ids: string[]): string[] => {
+  if (!Number.isFinite(captureLimitPerGroup) || captureLimitPerGroup <= 0) return ids;
+  return ids.slice(0, captureLimitPerGroup);
 };
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
@@ -169,7 +172,8 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   });
 
   const page = await app.firstWindow();
-  await applyCssViewport(page, E2E_VIEWPORT);
+  await normalizeWindowScale(app);
+  await page.setViewportSize(E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
@@ -435,7 +439,7 @@ const captureObjectGallery = async (
   outputRoot: string,
   manifest: CaptureManifest
 ): Promise<void> => {
-  const ids = await getIdsByTestIdPrefix(page, "geometry-gallery-card-");
+  const ids = applyCaptureLimit(await getIdsByTestIdPrefix(page, "geometry-gallery-card-"));
   for (const id of ids) {
     const card = page.getByTestId(`geometry-gallery-card-${id}`);
     const quickAdd = page.getByTestId(`geometry-gallery-quick-add-${id}`);
@@ -466,7 +470,7 @@ const captureSurfaceCards = async (
 ): Promise<void> => {
   await ensureSurfacesGalleryMode(page);
   await expect.poll(async () => page.locator(`[data-testid^='${options.testIdPrefix}']`).count()).toBeGreaterThan(0);
-  const ids = await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true });
+  const ids = applyCaptureLimit(await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true }));
   for (const id of ids) {
     await ensureSurfacesGalleryMode(page);
     await setSurfacesLayout(page, "Layout 3");

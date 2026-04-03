@@ -8,16 +8,11 @@ import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions"
 const repoRoot = path.resolve(__dirname, "..", "..");
 const E2E_VIEWPORT = { width: 1024, height: 720 };
 
-const applyCssViewport = async (page: Page, target: { width: number; height: number }): Promise<void> => {
-  await page.setViewportSize(target);
-  const dpr = await page.evaluate(() => window.devicePixelRatio || 1);
-  const adjusted = {
-    width: Math.round(target.width * dpr),
-    height: Math.round(target.height * dpr),
-  };
-  if (adjusted.width !== target.width || adjusted.height !== target.height) {
-    await page.setViewportSize(adjusted);
-  }
+const normalizeWindowScale = async (app: ElectronApplication): Promise<void> => {
+  await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) win.webContents.setZoomFactor(1);
+  });
 };
 
 const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication; page: Page }> => {
@@ -35,7 +30,8 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
     env,
   });
   const page = await app.firstWindow();
-  await applyCssViewport(page, E2E_VIEWPORT);
+  await normalizeWindowScale(app);
+  await page.setViewportSize(E2E_VIEWPORT);
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("heading", { name: /^math3d$/i, level: 1 })).toBeVisible();
   return { app, page };
