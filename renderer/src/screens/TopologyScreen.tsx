@@ -137,7 +137,19 @@ const isTorusSquareStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
   const aCount = labels.filter((label) => label === "a").length;
   const bCount = labels.filter((label) => label === "b").length;
-  return aCount >= 2 && bCount >= 2;
+  if (aCount < 2 || bCount < 2) return false;
+  let checkedPairs = 0;
+  for (const edge of candidate.edges) {
+    const peers = candidate.edgePairings[edge.id] ?? [];
+    for (const peer of peers) {
+      if (edge.id > peer) continue;
+      const a = candidate.edgeOrientations[edge.id] ?? 1;
+      const b = candidate.edgeOrientations[peer] ?? 1;
+      checkedPairs += 1;
+      if (a === b) return false;
+    }
+  }
+  return checkedPairs >= 2;
 };
 
 const isMobiusRectangleStoryDiagram = (candidate: FundamentalDiagram): boolean => {
@@ -176,12 +188,54 @@ const isProjectivePlaneStoryDiagram = (candidate: FundamentalDiagram): boolean =
   return checkedPairs >= 2;
 };
 
+const isKleinBottleStoryDiagram = (candidate: FundamentalDiagram): boolean => {
+  const face = candidate.faces[0];
+  if (!face || candidate.edges.length < 4) return false;
+  const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
+  const aCount = labels.filter((label) => label === "a").length;
+  const bCount = labels.filter((label) => label === "b").length;
+  if (aCount < 2 || bCount < 2) return false;
+  let hasMatchPair = false;
+  let hasReversePair = false;
+  let checkedPairs = 0;
+  for (const edge of candidate.edges) {
+    const peers = candidate.edgePairings[edge.id] ?? [];
+    for (const peer of peers) {
+      if (edge.id > peer) continue;
+      const a = candidate.edgeOrientations[edge.id] ?? 1;
+      const b = candidate.edgeOrientations[peer] ?? 1;
+      checkedPairs += 1;
+      if (a === b) hasMatchPair = true;
+      else hasReversePair = true;
+    }
+  }
+  return checkedPairs >= 2 && hasMatchPair && hasReversePair;
+};
+
+const isDunceCapStoryDiagram = (candidate: FundamentalDiagram): boolean => {
+  const face = candidate.faces[0];
+  if (!face || candidate.edges.length < 3) return false;
+  const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
+  const allA = labels.every((label) => label === "a");
+  if (!allA) return false;
+  const fullyPaired = candidate.edges.every((edge) => (candidate.edgePairings[edge.id]?.length ?? 0) >= 2);
+  if (!fullyPaired) return false;
+  const word = (candidate.faceBoundaryWords[face.id] ?? "").toLowerCase().replace(/\s+/g, "");
+  return word.includes("aaa");
+};
+
 const buildNarrativeAnimationPlan = (
   sourceDiagram: FundamentalDiagram,
   result: QuotientBuildResult
 ): TopologyAnimationPlan => {
   const fallback = createDefaultAnimationPlan(result.orientationRelations);
-  if (!isTorusSquareStoryDiagram(sourceDiagram) && !isMobiusRectangleStoryDiagram(sourceDiagram)) return fallback;
+  if (
+    !isTorusSquareStoryDiagram(sourceDiagram) &&
+    !isMobiusRectangleStoryDiagram(sourceDiagram) &&
+    !isKleinBottleStoryDiagram(sourceDiagram)
+  ) {
+    return fallback;
+  }
   const edgeLabels = result.subdividedDiagram.edgeLabels;
   const buckets: Record<"a" | "b" | "other", string[]> = {
     a: [],
@@ -218,6 +272,17 @@ const buildNarrativeAnimationPlan = (
       groups,
     };
   }
+  if (isKleinBottleStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.a, ...buckets.b, ...buckets.other];
+    const groups: Record<string, string> = {};
+    for (const opId of buckets.a) groups[opId] = "glue-a-cylinder";
+    for (const opId of buckets.b) groups[opId] = "glue-b-reversed";
+    for (const opId of buckets.other) groups[opId] = "aux-identifications";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
   const order = [...buckets.a, ...buckets.b, ...buckets.other];
   const groups: Record<string, string> = {};
   for (const opId of buckets.a) groups[opId] = "glue-a-sides";
@@ -246,6 +311,24 @@ const MOBIUS_STORY_STAGES = [
   { id: "glue", label: "S4: glue ends", detail: "Attach the reversed edges." },
   { id: "mobius", label: "S5: Möbius band", detail: "Single-sided band with one boundary component." },
   { id: "overlays", label: "S6: overlays", detail: "Highlight boundary loop, core circle, orientation flip." },
+] as const;
+
+const DUNCE_STORY_STAGES = [
+  { id: "triangle", label: "S0: triangle", detail: "Start with a single triangle; all boundary edges are class a." },
+  { id: "mark-a", label: "S1: mark a-edges", detail: "Track the three a-edges that will be identified." },
+  { id: "glue-first", label: "S2: first gluing", detail: "Begin identifying one a-edge pair." },
+  { id: "glue-all", label: "S3: all a identified", detail: "All three boundary edges collapse into one class." },
+  { id: "singular", label: "S4: singular quotient", detail: "A singular 2-complex appears (not a manifold surface)." },
+  { id: "realization", label: "S5: immersed model", detail: "Render an explanatory immersed model of the dunce cap complex." },
+] as const;
+
+const KLEIN_STORY_STAGES = [
+  { id: "square", label: "S0: square", detail: "Start with square and two edge classes a,b." },
+  { id: "a-glue", label: "S1: glue a sides", detail: "First opposite pair glues to form a cylinder." },
+  { id: "cylinder", label: "S2: cylinder", detail: "Intermediate cylinder from a-identification." },
+  { id: "b-glue", label: "S3: glue b rims (reversed)", detail: "Boundary circles are identified with reversal." },
+  { id: "klein", label: "S4: klein bottle", detail: "Closed non-orientable Klein bottle quotient." },
+  { id: "immersed", label: "S5: immersed model", detail: "Immersed Klein bottle in R^3 (self-intersection in model)." },
 ] as const;
 
 export const TopologyScreen: React.FC = () => {
@@ -323,6 +406,8 @@ export const TopologyScreen: React.FC = () => {
   const torusStoryEnabled = useMemo(() => isTorusSquareStoryDiagram(diagram), [diagram]);
   const mobiusStoryEnabled = useMemo(() => isMobiusRectangleStoryDiagram(diagram), [diagram]);
   const projectiveStoryEnabled = useMemo(() => isProjectivePlaneStoryDiagram(diagram), [diagram]);
+  const kleinStoryEnabled = useMemo(() => isKleinBottleStoryDiagram(diagram), [diagram]);
+  const dunceStoryEnabled = useMemo(() => isDunceCapStoryDiagram(diagram), [diagram]);
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -375,6 +460,28 @@ export const TopologyScreen: React.FC = () => {
       setShowSeams(true);
       setShowOneSkeleton(true);
       setStoryRenderMode("real3d");
+      return;
+    }
+    if (isKleinBottleStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(false);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("explain2d");
+      return;
+    }
+    if (isDunceCapStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(false);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("explain2d");
     }
   };
 
@@ -1071,11 +1178,14 @@ export const TopologyScreen: React.FC = () => {
     const cutOpenTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-cut-open"));
     const smoothMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth"));
     const cutOpenMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-cut-open"));
+    const kleinImmersedRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed"));
     const projectiveImmersedRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/projective-immersed"));
     const torusRealizationAvailable = !!smoothTorusRealization || !!cutOpenTorusRealization;
     const mobiusRealizationAvailable = !!smoothMobiusRealization || !!cutOpenMobiusRealization;
+    const kleinRealizationAvailable = !!kleinImmersedRealization;
     const projectiveRealizationAvailable = !!projectiveImmersedRealization;
-    const canonicalRealizationAvailable = torusRealizationAvailable || mobiusRealizationAvailable || projectiveRealizationAvailable;
+    const canonicalRealizationAvailable =
+      torusRealizationAvailable || mobiusRealizationAvailable || kleinRealizationAvailable || projectiveRealizationAvailable;
     const cutOpenRealizationAvailable =
       (!!cutOpenMobiusRealization && mobiusRealizationAvailable) || (!!cutOpenTorusRealization && torusRealizationAvailable);
     const realization =
@@ -1088,7 +1198,9 @@ export const TopologyScreen: React.FC = () => {
             ? showCutOpenModel
               ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
               : smoothTorusRealization ?? selectedRealization
-            : projectiveImmersedRealization ?? selectedRealization
+            : kleinRealizationAvailable
+              ? kleinImmersedRealization ?? selectedRealization
+              : projectiveImmersedRealization ?? selectedRealization
         : selectedRealization;
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
@@ -1112,6 +1224,7 @@ export const TopologyScreen: React.FC = () => {
               if (edgeId === "mobius_orient_normal_end") return [edgeId, "#dc2626"] as const;
               if (edgeId === "mobius_cut") return [edgeId, "#0f766e"] as const;
               if (edgeId === "rp2_self_intersection") return [edgeId, "#ea580c"] as const;
+              if (edgeId === "klein_self_intersection") return [edgeId, "#ea580c"] as const;
               const label = quotientEdgeLabelById.get(edgeId);
               const color = edgeColorForLabel(label, "");
               return color ? ([edgeId, color] as const) : null;
@@ -1321,6 +1434,22 @@ export const TopologyScreen: React.FC = () => {
               <div>This is not a torus.</div>
             </>
           )}
+          {kleinRealizationAvailable && (
+            <>
+              <div>Immersed realization of Klein bottle in R^3.</div>
+              <div>Topological type: closed, non-orientable surface (no boundary).</div>
+              <div>Embedding in R^3 requires self-intersection in the displayed model.</div>
+              <div>This is not a torus.</div>
+            </>
+          )}
+          {dunceStoryEnabled && (
+            <>
+              <div>Dunce cap quotient: contractible 2-complex (attachment word a a a).</div>
+              <div>Not a 2-manifold surface: singular identifications are intrinsic to the topology.</div>
+              <div>Orientability is not applicable in the manifold-surface sense.</div>
+              <div>This is not a torus.</div>
+            </>
+          )}
           <div>
             Edge classes keep consistent colors: a in red, b in blue.
           </div>
@@ -1389,7 +1518,15 @@ export const TopologyScreen: React.FC = () => {
     const targetsB = partialTargetFor(opsB);
     const currentStep = baseIndex < timelineSteps.length ? timelineSteps[baseIndex] : null;
     const activePairEdges = new Set(currentStep?.operations.flatMap((entry) => [entry.relation.edgeA, entry.relation.edgeB]) ?? []);
-    const activeStoryStages = torusStoryEnabled ? TORUS_STORY_STAGES : mobiusStoryEnabled ? MOBIUS_STORY_STAGES : null;
+    const activeStoryStages = torusStoryEnabled
+      ? TORUS_STORY_STAGES
+      : mobiusStoryEnabled
+        ? MOBIUS_STORY_STAGES
+        : kleinStoryEnabled
+          ? KLEIN_STORY_STAGES
+          : dunceStoryEnabled
+            ? DUNCE_STORY_STAGES
+            : null;
     const storyProgress = timelineMax <= 0 ? 0 : Math.max(0, Math.min(1, timelinePosition / Math.max(1, timelineMax)));
     const storyFloat = storyProgress * ((activeStoryStages?.length ?? 2) - 1);
     const storyStageIndex = activeStoryStages
@@ -1475,11 +1612,18 @@ export const TopologyScreen: React.FC = () => {
     const tMobiusTwist = easeInOutSine(remap01(storyFloat, 1.6, 4.2));
     const tMobiusGlue = easeInOutSine(remap01(storyFloat, 3.4, 5.5));
     const tMobiusOverlay = smoothStep01(remap01(storyFloat, 5.0, 6.0));
+    const tKleinCylinder = easeOutQuint(remap01(storyFloat, 0.0, 2.0));
+    const tKleinClosure = easeInOutSine(remap01(storyFloat, 1.8, 4.7));
+    const tKleinFinal = smoothStep01(remap01(storyFloat, 4.5, 5.0));
+    const tDunceGather = easeInOutSine(remap01(storyFloat, 0.5, 3.7));
+    const tDunceSingular = easeInOutSine(remap01(storyFloat, 3.1, 5.0));
     const storyRealization =
       mobiusStoryEnabled
         ? result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth")) ?? realization
         : torusStoryEnabled
           ? result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth")) ?? realization
+          : kleinStoryEnabled
+            ? result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed")) ?? realization
           : realization;
     const storyQuotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
     const storyEdgeColorOverrides = {
@@ -1489,6 +1633,7 @@ export const TopologyScreen: React.FC = () => {
               .map((edgeId) => {
                 if (edgeId === "cut_u") return [edgeId, EDGE_CLASS_COLOR_A] as const;
                 if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
+                if (edgeId === "klein_self_intersection") return [edgeId, "#ea580c"] as const;
                 const label = storyQuotientEdgeLabelById.get(edgeId);
                 const color = edgeColorForLabel(label, "");
                 return color ? ([edgeId, color] as const) : null;
@@ -1616,6 +1761,44 @@ export const TopologyScreen: React.FC = () => {
             <div>Topological type: closed, non-orientable surface (no boundary).</div>
             <div>RP^2 cannot be embedded in R^3 without self-intersection.</div>
             <div>Self-intersection belongs to the immersion in space, not to the abstract quotient.</div>
+            <div>This is not a torus.</div>
+          </div>
+        )}
+        {!activeStoryStages && kleinStoryEnabled && (
+          <div
+            style={{
+              border: "1px solid #fdba74",
+              background: "#fff7ed",
+              color: "#9a3412",
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 11,
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <div>Immersed realization of Klein bottle in R^3.</div>
+            <div>Closed non-orientable surface with no boundary.</div>
+            <div>Embedding in R^3 requires self-intersection in the displayed model.</div>
+            <div>This is not a torus.</div>
+          </div>
+        )}
+        {!activeStoryStages && dunceStoryEnabled && (
+          <div
+            style={{
+              border: "1px solid #fdba74",
+              background: "#fff7ed",
+              color: "#9a3412",
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 11,
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <div>Dunce cap quotient: contractible 2-complex (a a a).</div>
+            <div>Not a manifold surface: singular edge/vertex identifications are part of the quotient.</div>
+            <div>Orientability in the surface sense is not applicable.</div>
             <div>This is not a torus.</div>
           </div>
         )}
@@ -1966,6 +2149,146 @@ export const TopologyScreen: React.FC = () => {
               );
             })()}
           </svg>
+        ) : kleinStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const xL = 160;
+              const xR = 360;
+              const yT = 104;
+              const yB = 256;
+              const topCy = lerp(86, 168, tKleinCylinder);
+              const bottomCy = lerp(274, 204, tKleinCylinder);
+              const rimRx = lerp(98, 92, tKleinCylinder);
+              const rimRy = lerp(1, 28, tKleinCylinder);
+              const sideLeft = lerp(xL, 176, tKleinCylinder);
+              const sideRight = lerp(xR, 344, tKleinCylinder);
+              const leftPath = `M ${sideLeft} ${topCy + rimRy * 0.1} Q ${sideLeft - 28} ${(topCy + bottomCy) * 0.5} ${sideLeft} ${bottomCy - rimRy * 0.1}`;
+              const rightPath = `M ${sideRight} ${topCy + rimRy * 0.1} Q ${sideRight + 28} ${(topCy + bottomCy) * 0.5} ${sideRight} ${bottomCy - rimRy * 0.1}`;
+
+              const cx = 260;
+              const cy = 186;
+              const loopRx = lerp(122, 92, tKleinClosure);
+              const loopRy = lerp(72, 56, tKleinClosure);
+              const kink = 46 * tKleinClosure;
+              const leftLoop = sampledLoop((t) => ({ x: cx - kink + loopRx * 0.55 * Math.cos(Math.PI * 2 * t), y: cy + loopRy * Math.sin(Math.PI * 2 * t) }), 120);
+              const rightLoop = sampledLoop((t) => ({ x: cx + kink + loopRx * 0.55 * Math.cos(Math.PI * 2 * t), y: cy + loopRy * Math.sin(Math.PI * 2 * t) }), 120);
+              const neckPath = `M ${cx - kink + 20} ${cy - 10} C ${cx - 6} ${cy - 58}, ${cx + 6} ${cy + 58}, ${cx + kink - 20} ${cy + 10}`;
+              const selfPath = sampledLoop((t) => ({ x: cx + 22 * Math.cos(Math.PI * 2 * t), y: cy + 10 * Math.sin(Math.PI * 2 * t) }), 80);
+
+              return (
+                <>
+                  <rect
+                    x={xL}
+                    y={yT}
+                    width={xR - xL}
+                    height={yB - yT}
+                    fill="#f8fbff"
+                    stroke="#cbd5e1"
+                    strokeWidth={1.2}
+                    opacity={clamp01(1 - tKleinClosure)}
+                  />
+                  <line x1={xL} y1={yT} x2={xR} y2={yT} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} opacity={clamp01(1 - 0.4 * tKleinClosure)} />
+                  <line x1={xL} y1={yB} x2={xR} y2={yB} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} opacity={clamp01(1 - 0.4 * tKleinClosure)} />
+                  <line x1={xL} y1={yT} x2={xL} y2={yB} stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.5} opacity={clamp01(1 - 0.5 * tKleinClosure)} />
+                  <line x1={xR} y1={yT} x2={xR} y2={yB} stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.5} opacity={clamp01(1 - 0.5 * tKleinClosure)} />
+
+                  <ellipse cx={cx} cy={topCy} rx={rimRx} ry={rimRy} fill="#e0f2fe" opacity={0.34 + 0.46 * tKleinCylinder} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.6} />
+                  <ellipse cx={cx} cy={bottomCy} rx={rimRx} ry={rimRy} fill="#e0f2fe" opacity={0.24 + 0.32 * tKleinCylinder} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.6} />
+                  <path d={leftPath} fill="none" stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.5} opacity={clamp01(1 - 0.7 * tKleinClosure)} />
+                  <path d={rightPath} fill="none" stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.5} opacity={clamp01(1 - 0.7 * tKleinClosure)} />
+
+                  <polyline points={leftLoop} fill="none" stroke="#0284c7" strokeWidth={2.8} opacity={clamp01(0.2 + 0.8 * tKleinClosure)} />
+                  <polyline points={rightLoop} fill="none" stroke="#0284c7" strokeWidth={2.8} opacity={clamp01(0.2 + 0.8 * tKleinClosure)} />
+                  <path d={neckPath} fill="none" stroke={EDGE_CLASS_COLOR_B} strokeWidth={3.1} opacity={clamp01(0.08 + 0.92 * tKleinClosure)} />
+                  <polyline points={selfPath} fill="none" stroke="#ea580c" strokeWidth={2.2} opacity={clamp01(0.12 + 0.88 * tKleinFinal)} strokeDasharray="6 3" />
+
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Square -> Cylinder -> Klein bottle"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.42 + 0.58 * tKleinClosure) }}>
+                    second gluing is reversed; immersed model self-intersects in R^3
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : dunceStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const source = diagram.vertices.slice(0, 3).map((vertex) => diagPoint(vertex.x, vertex.y));
+              const base =
+                source.length === 3
+                  ? source
+                  : [
+                      { x: 170, y: 98 },
+                      { x: 350, y: 98 },
+                      { x: 260, y: 284 },
+                    ];
+              const center = { x: 260, y: 188 };
+              const vertices = base.map((point) => ({
+                x: lerp(point.x, center.x, tDunceGather),
+                y: lerp(point.y, center.y, tDunceGather),
+              }));
+              const trianglePath = pointsToPath([...vertices, vertices[0]]);
+              const aOpacity = clamp01(0.35 + 0.65 * (1 - 0.45 * tDunceGather));
+              const singularOpacity = clamp01(0.1 + 0.9 * tDunceSingular);
+              const loopA = sampledLoop((t) => ({ x: center.x + 46 * Math.cos(Math.PI * 2 * t), y: center.y + 24 * Math.sin(Math.PI * 2 * t) }), 120);
+              const loopB = sampledLoop((t) => ({ x: center.x + 34 * Math.cos(Math.PI * 2 * t), y: center.y + 38 * Math.sin(Math.PI * 2 * t) }), 120);
+              const loopC = sampledLoop((t) => ({ x: center.x + 20 * Math.cos(Math.PI * 2 * t), y: center.y + 18 * Math.sin(Math.PI * 2 * t) }), 120);
+
+              return (
+                <>
+                  <path d={trianglePath} fill="#fef2f2" stroke="#fecaca" strokeWidth={1.1} opacity={clamp01(0.45 + 0.35 * (1 - tDunceGather))} />
+                  {vertices.map((point, index) => (
+                    <g key={`dunce-v-${index}`}>
+                      <circle cx={point.x} cy={point.y} r={6} fill="#0f172a" />
+                      <text x={point.x + 8} y={point.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
+                        {`v${index}`}
+                      </text>
+                    </g>
+                  ))}
+
+                  {vertices.map((point, index) => {
+                    const next = vertices[(index + 1) % vertices.length] ?? point;
+                    const mid = { x: (point.x + next.x) * 0.5, y: (point.y + next.y) * 0.5 };
+                    return (
+                      <g key={`dunce-edge-${index}`}>
+                        <line
+                          x1={point.x}
+                          y1={point.y}
+                          x2={next.x}
+                          y2={next.y}
+                          stroke={EDGE_CLASS_COLOR_A}
+                          strokeWidth={2.8 + 1.1 * (1 - tDunceGather)}
+                          strokeDasharray={tDunceGather > 0.25 ? "7 3" : undefined}
+                          opacity={aOpacity}
+                        />
+                        <text x={mid.x + 5} y={mid.y - 6} style={{ fontSize: 11, fill: EDGE_CLASS_COLOR_A, fontWeight: 700 }}>
+                          a
+                        </text>
+                      </g>
+                    );
+                  })}
+
+                  <polyline points={loopA} fill="none" stroke={EDGE_CLASS_COLOR_A} strokeWidth={3.2} opacity={singularOpacity} strokeDasharray="7 4" />
+                  <polyline points={loopB} fill="none" stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.4} opacity={clamp01(0.08 + 0.92 * tDunceSingular)} />
+                  <polyline points={loopC} fill="none" stroke="#fb7185" strokeWidth={2} opacity={clamp01(0.06 + 0.94 * tDunceSingular)} />
+                  <circle cx={center.x} cy={center.y} r={8.8} fill="none" stroke="#b45309" strokeWidth={2.2} opacity={singularOpacity} />
+                  <circle cx={center.x} cy={center.y} r={4.2} fill="#b45309" opacity={singularOpacity} />
+                  <text x={center.x + 12} y={center.y - 9} style={{ fontSize: 10, fill: "#92400e", fontWeight: 700, opacity: singularOpacity }}>
+                    singular class
+                  </text>
+
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Triangle -> a~a~a -> Dunce cap complex"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.4 + 0.6 * tDunceGather) }}>
+                    contractible but non-manifold 2-complex; this is not a torus
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
         ) : (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {diagram.edges.map((edge) => {
@@ -2153,10 +2476,20 @@ export const TopologyScreen: React.FC = () => {
   };
 
   const derivedTopologyHints = useMemo(() => {
+    if (dunceStoryEnabled) {
+      return {
+        boundaryComponents: 0,
+        orientable: null as boolean | null,
+        orientableText: "N/A (non-manifold 2-complex)",
+        connectedComponents: 1,
+        eulerCharacteristic: 1,
+      };
+    }
     if (torusStoryEnabled) {
       return {
         boundaryComponents: 0,
         orientable: true,
+        orientableText: null as string | null,
         connectedComponents: 1,
         eulerCharacteristic: 0,
       };
@@ -2165,6 +2498,7 @@ export const TopologyScreen: React.FC = () => {
       return {
         boundaryComponents: 1,
         orientable: false,
+        orientableText: null as string | null,
         connectedComponents: 1,
         eulerCharacteristic: 0,
       };
@@ -2173,17 +2507,28 @@ export const TopologyScreen: React.FC = () => {
       return {
         boundaryComponents: 0,
         orientable: false,
+        orientableText: null as string | null,
         connectedComponents: 1,
         eulerCharacteristic: 1,
+      };
+    }
+    if (kleinStoryEnabled) {
+      return {
+        boundaryComponents: 0,
+        orientable: false,
+        orientableText: null as string | null,
+        connectedComponents: 1,
+        eulerCharacteristic: 0,
       };
     }
     return {
       boundaryComponents: null as number | null,
       orientable: null as boolean | null,
+      orientableText: null as string | null,
       connectedComponents: null as number | null,
       eulerCharacteristic: null as number | null,
     };
-  }, [mobiusStoryEnabled, projectiveStoryEnabled, torusStoryEnabled]);
+  }, [dunceStoryEnabled, kleinStoryEnabled, mobiusStoryEnabled, projectiveStoryEnabled, torusStoryEnabled]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
 
@@ -2515,8 +2860,12 @@ export const TopologyScreen: React.FC = () => {
                 {derivedTopologyHints.boundaryComponents !== null && (
                   <div>Boundary components: {derivedTopologyHints.boundaryComponents}</div>
                 )}
-                {derivedTopologyHints.orientable !== null && (
-                  <div>Orientable: {derivedTopologyHints.orientable ? "Yes" : "No"}</div>
+                {derivedTopologyHints.orientableText !== null ? (
+                  <div>Orientable: {derivedTopologyHints.orientableText}</div>
+                ) : (
+                  derivedTopologyHints.orientable !== null && (
+                    <div>Orientable: {derivedTopologyHints.orientable ? "Yes" : "No"}</div>
+                  )
                 )}
                 <div>Non-manifold edges: {buildResult.quotient.invariants.nonManifoldEdgeCount}</div>
               </>
@@ -2559,7 +2908,7 @@ export const TopologyScreen: React.FC = () => {
                       }}
                     >
                       <div style={{ fontWeight: 700 }}>
-                        [{info.stage}] {info.code}
+                        {info.code}
                       </div>
                       <div>{info.message}</div>
                     </div>

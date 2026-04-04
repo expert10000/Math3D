@@ -100,6 +100,7 @@ const TORUS_MINOR_RADIUS = 0.62;
 const MOBIUS_RADIUS = 1.78;
 const MOBIUS_HALF_WIDTH = 0.44;
 const PROJECTIVE_SCALE = 3.15;
+const KLEIN_SCALE = 0.72;
 
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -173,6 +174,14 @@ const isProjectivePlaneLikeQuotient = (quotient: QuotientComplex, relations?: Or
   return hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "match", relationMap);
 };
 
+const isKleinBottleLikeQuotient = (quotient: QuotientComplex, relations?: OrientationRelation[]): boolean => {
+  const relationMap = buildOrientationRelationMap(relations);
+  return (
+    (hasClassRelation(quotient, "a", "reverse", relationMap) && hasClassRelation(quotient, "b", "match", relationMap)) ||
+    (hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "reverse", relationMap))
+  );
+};
+
 const mobiusPoint = (u: number, v: number, radius = MOBIUS_RADIUS): Vec3 => {
   const cu = Math.cos(u);
   const su = Math.sin(u);
@@ -237,6 +246,54 @@ const pickProjectiveCycleEdgeIds = (quotient: QuotientComplex): { aEdge: string;
   const fallback = labeled.find((entry) => entry.id !== aEdge)?.id ?? aEdge;
   const bEdge = labeled.find((entry) => entry.label === "b")?.id ?? fallback;
   return { aEdge, bEdge };
+};
+
+const pickKleinCycleEdgeIds = (quotient: QuotientComplex): { aEdge: string; bEdge: string } => {
+  const labeled = quotient.edges.map((edge) => ({
+    id: edge.id,
+    label: edgePrimaryLabel(edge.label),
+  }));
+  const aEdge = labeled.find((entry) => entry.label === "a")?.id ?? labeled[0]?.id ?? "qE0";
+  const fallback = labeled.find((entry) => entry.id !== aEdge)?.id ?? aEdge;
+  const bEdge = labeled.find((entry) => entry.label === "b")?.id ?? fallback;
+  return { aEdge, bEdge };
+};
+
+const kleinPoint = (u: number, v: number, scaleFactor = KLEIN_SCALE): Vec3 => {
+  const r = 2.28;
+  const cu = Math.cos(u);
+  const su = Math.sin(u);
+  const hu = u * 0.5;
+  const inner = r + Math.cos(hu) * Math.sin(v) - Math.sin(hu) * Math.sin(2 * v);
+  const x = inner * cu;
+  const y = inner * su;
+  const z = Math.sin(hu) * Math.sin(v) + Math.cos(hu) * Math.sin(2 * v);
+  return [x * scaleFactor, y * scaleFactor, z * scaleFactor * 1.25];
+};
+
+const buildKleinFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 96;
+  const vSegments = 42;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let iv = 0; iv <= vSegments; iv += 1) {
+      const v = (Math.PI * 2 * iv) / vSegments;
+      vertices.push(kleinPoint(u, v));
+    }
+  }
+  const row = vSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iv = 0; iv < vSegments; iv += 1) {
+      const a = iu * row + iv;
+      const b = (iu + 1) * row + iv;
+      const c = (iu + 1) * row + iv + 1;
+      const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
 };
 
 const buildProjectiveFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
@@ -496,6 +553,76 @@ const buildProjectiveImmersedRealization = (
   };
 };
 
+const buildKleinImmersedRealization = (
+  quotient: QuotientComplex,
+  relations?: OrientationRelation[]
+): Realization3D | null => {
+  if (!isKleinBottleLikeQuotient(quotient, relations)) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const { aEdge, bEdge } = pickKleinCycleEdgeIds(quotient);
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    if (edge.id === aEdge) {
+      edgeCurves[edge.id] = sampleCurve((t) => kleinPoint(t * Math.PI * 2, 0), 190, true);
+      continue;
+    }
+    if (edge.id === bEdge) {
+      edgeCurves[edge.id] = sampleCurve((t) => kleinPoint(0, t * Math.PI * 2), 170, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => kleinPoint(t * Math.PI * 2, (phase * Math.PI) / Math.max(2, quotient.edges.length)), 140, true);
+  }
+  edgeCurves.klein_self_intersection = sampleCurve(
+    (t) => [0.78 * Math.cos(Math.PI * 2 * t), 0.44 * Math.sin(Math.PI * 2 * t), 0],
+    140,
+    true
+  );
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = kleinPoint(0, 0);
+      return;
+    }
+    const theta = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = kleinPoint(theta, Math.PI * 0.35);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/klein-immersed`,
+    name: "Immersed Klein bottle realization in R^3",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildKleinFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#e0f2fe",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
 const buildMobiusBoundaryCurve = (): Vec3[] => {
   const points: Vec3[] = [];
   const samples = 200;
@@ -728,12 +855,14 @@ export const buildRealizationChoices = (
   quotient: QuotientComplex,
   relations?: OrientationRelation[]
 ): Realization3D[] => {
+  const kleinImmersed = buildKleinImmersedRealization(quotient, relations);
   const projectiveImmersed = buildProjectiveImmersedRealization(quotient, relations);
   const mobiusSmooth = buildMobiusRealizationBase(quotient, "smooth");
   const mobiusCutOpen = buildMobiusRealizationBase(quotient, "cut-open");
   const smooth = buildTorusRealizationBase(quotient, "smooth", relations);
   const cutOpen = buildTorusRealizationBase(quotient, "cut-open", relations);
   return [
+    ...(kleinImmersed ? [kleinImmersed] : []),
     ...(projectiveImmersed ? [projectiveImmersed] : []),
     ...(mobiusSmooth ? [mobiusSmooth] : []),
     ...(mobiusCutOpen ? [mobiusCutOpen] : []),

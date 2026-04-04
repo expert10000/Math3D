@@ -159,6 +159,30 @@ const PRESETS: TopologyPreset[] = [
       }),
   },
   {
+    id: "klein_bottle_square",
+    label: "Klein bottle square",
+    summary: "Square model with one opposite pair reversed and the other matched.",
+    buildDiagram: () =>
+      makeSingleFaceDiagram({
+        id: "preset/klein-bottle-square",
+        name: "Klein bottle square",
+        description: "Classical square model for the Klein bottle quotient.",
+        vertices: [
+          { id: "v0", x: -1.1, y: 0.85 },
+          { id: "v1", x: 1.1, y: 0.85 },
+          { id: "v2", x: 1.1, y: -0.85 },
+          { id: "v3", x: -1.1, y: -0.85 },
+        ],
+        boundary: [
+          { edgeId: "e0", from: "v0", to: "v1", label: "a", orientation: 1, pairings: ["e2"] },
+          { edgeId: "e1", from: "v1", to: "v2", label: "b", orientation: 1, pairings: ["e3"] },
+          { edgeId: "e2", from: "v3", to: "v2", label: "a", orientation: -1, pairings: ["e0"] },
+          { edgeId: "e3", from: "v3", to: "v0", label: "b", orientation: 1, pairings: ["e1"] },
+        ],
+        boundaryWord: "a b a^-1 b",
+      }),
+  },
+  {
     id: "cone",
     label: "Cone",
     summary: "Disk-like triangle boundary collapsed to one class.",
@@ -255,4 +279,3 @@ const PRESETS: TopologyPreset[] = [
 export const TOPOLOGY_PRESETS = PRESETS;
 export const TOPOLOGY_PRESET_BY_ID = new Map(TOPOLOGY_PRESETS.map((preset) => [preset.id, preset]));
 export const DEFAULT_TOPOLOGY_PRESET_ID = TOPOLOGY_PRESETS[0]?.id ?? "dunce_cap";
-

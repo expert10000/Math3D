@@ -65,6 +65,19 @@ describe("buildQuotientPipeline", () => {
     expect(result.quotient.invariants?.eulerCharacteristic).toBe(1);
   });
 
+  it("adds immersed Klein bottle realization for klein-bottle preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("klein_bottle_square");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    const realizationIds = result.realizations.map((entry) => entry.id);
+    const kleinRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed"));
+    expect(kleinRealization).toBeTruthy();
+    expect(kleinRealization?.name.toLowerCase()).toContain("klein");
+    expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(false);
+  });
+
   it("treats unpaired source edges as boundary info, not warnings", () => {
     const preset = TOPOLOGY_PRESET_BY_ID.get("mobius_from_rectangle");
     expect(preset).toBeTruthy();
