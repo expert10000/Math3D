@@ -189,6 +189,22 @@ declare global {
     | { ok: true; folder: string; paths: string[] }
     | { ok: false; error: string };
 
+  type TopologyDocumentSaveRequest = {
+    suggestedName?: string;
+    defaultPath?: string;
+    content: string;
+  };
+
+  type TopologyDocumentSaveResponse =
+    | { ok: true; canceled: false; path: string }
+    | { ok: false; canceled: true }
+    | { ok: false; canceled: false; error: string };
+
+  type TopologyDocumentOpenResponse =
+    | { ok: true; canceled: false; path: string; content: string }
+    | { ok: false; canceled: true }
+    | { ok: false; canceled: false; error: string };
+
   type AppWindowStatePacket = {
     reason?: string;
     maximized: boolean;
@@ -260,6 +276,10 @@ declare global {
     appCapture?: {
       captureScreenshot: (req: AppCaptureScreenshotRequest) => Promise<AppCaptureScreenshotResponse>;
       listScreenshots: (req?: AppCaptureListRequest) => Promise<AppCaptureListResponse>;
+    };
+    topologyDocuments?: {
+      save: (req: TopologyDocumentSaveRequest) => Promise<TopologyDocumentSaveResponse>;
+      open: () => Promise<TopologyDocumentOpenResponse>;
     };
     appWindow?: {
       onStateChange: (handler: (packet: AppWindowStatePacket) => void) => () => void;

@@ -3,4 +3,6 @@ export * from "./presets";
 export * from "./realization";
 export * from "./quotientBuilder";
 export * from "./documentFormat";
+export * from "./editorTools";
+export * from "./animationPlan";
 export * from "./TopologyRealization3DView";

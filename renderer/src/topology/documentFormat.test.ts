@@ -14,6 +14,10 @@ describe("topology document format", () => {
       buildResult: built,
       activeView: "quotient",
       activeRealizationId: built.realizations[0]?.id ?? null,
+      animationPlan: {
+        order: ["op-0"],
+        groups: { "op-0": "g1" },
+      },
     });
 
     expect(doc.format).toBe("math3d-topology");
@@ -21,6 +25,7 @@ describe("topology document format", () => {
     expect(doc.extension).toBe(".math3d-topology");
     expect(doc.payload.cache?.activeView).toBe("quotient");
     expect(doc.payload.cache?.realizationChoiceIds).toEqual(built.realizations.map((entry) => entry.id));
+    expect(doc.payload.cache?.animationPlan?.groups["op-0"]).toBe("g1");
   });
 
   it("detects valid and invalid documents", () => {

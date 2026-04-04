@@ -195,6 +195,22 @@ export type AppCaptureListResponse =
   | { ok: true; folder: string; paths: string[] }
   | { ok: false; error: string };
 
+export type TopologyDocumentSaveRequest = {
+  suggestedName?: string;
+  defaultPath?: string;
+  content: string;
+};
+
+export type TopologyDocumentSaveResponse =
+  | { ok: true; canceled: false; path: string }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+
+export type TopologyDocumentOpenResponse =
+  | { ok: true; canceled: false; path: string; content: string }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+
 export type AppWindowStatePacket = {
   reason?: string;
   maximized: boolean;
@@ -306,6 +322,13 @@ contextBridge.exposeInMainWorld("appCapture", {
     ipcRenderer.invoke("app:capture-screenshot", req),
   listScreenshots: (req?: AppCaptureListRequest): Promise<AppCaptureListResponse> =>
     ipcRenderer.invoke("app:capture-list", req ?? {}),
+});
+
+contextBridge.exposeInMainWorld("topologyDocuments", {
+  save: (req: TopologyDocumentSaveRequest): Promise<TopologyDocumentSaveResponse> =>
+    ipcRenderer.invoke("topology:document:save", req),
+  open: (): Promise<TopologyDocumentOpenResponse> =>
+    ipcRenderer.invoke("topology:document:open"),
 });
 
 contextBridge.exposeInMainWorld("appWindow", {

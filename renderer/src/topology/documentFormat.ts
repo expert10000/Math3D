@@ -1,4 +1,5 @@
 import type { FundamentalDiagram, QuotientBuildResult } from "./types";
+import type { TopologyAnimationPlan } from "./animationPlan";
 
 export type TopologyDocumentView = "diagram" | "quotient" | "realization" | "animation";
 
@@ -7,6 +8,7 @@ export type TopologyDocumentCache = {
   activeView: TopologyDocumentView;
   activeRealizationId: string | null;
   realizationChoiceIds: string[];
+  animationPlan?: TopologyAnimationPlan;
 };
 
 export type TopologyDocument = {
@@ -39,6 +41,7 @@ export const createTopologyDocument = (
     buildResult: QuotientBuildResult;
     activeView: TopologyDocumentView;
     activeRealizationId: string | null;
+    animationPlan?: TopologyAnimationPlan;
   }
 ): TopologyDocument => ({
   format: "math3d-topology",
@@ -53,6 +56,7 @@ export const createTopologyDocument = (
           activeView: cache.activeView,
           activeRealizationId: cache.activeRealizationId,
           realizationChoiceIds: cache.buildResult.realizations.map((entry) => entry.id),
+          animationPlan: cache.animationPlan,
         }
       : undefined,
   },

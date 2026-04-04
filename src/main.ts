@@ -60,6 +60,20 @@ type AppCaptureListResponse =
   | { ok: true; folder: string; paths: string[] }
   | { ok: false; error: string };
 
+type TopologyDocSaveRequest = {
+  suggestedName?: string;
+  defaultPath?: string;
+  content: string;
+};
+type TopologyDocSaveResponse =
+  | { ok: true; canceled: false; path: string }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+type TopologyDocOpenResponse =
+  | { ok: true; canceled: false; path: string; content: string }
+  | { ok: false; canceled: true }
+  | { ok: false; canceled: false; error: string };
+
 const toCaptureRect = (value: CaptureRect | null | undefined): CaptureRect | null => {
   if (!value) return null;
   const x = Math.max(0, Math.floor(Number(value.x)));
@@ -448,6 +462,60 @@ app.whenReady().then(async () => {
       return { ok: true, folder: outputFolder, paths };
     } catch (error: any) {
       return { ok: false, error: String(error?.message ?? error) };
+    }
+  });
+
+  ipcMain.handle(
+    "topology:document:save",
+    async (evt, req: TopologyDocSaveRequest): Promise<TopologyDocSaveResponse> => {
+      try {
+        const win = BrowserWindow.fromWebContents(evt.sender);
+        if (!win || win.isDestroyed()) {
+          return { ok: false, canceled: false, error: "Window not available." };
+        }
+        const defaultName = String(req?.suggestedName ?? "").trim() || "topology.math3d-topology";
+        const dialogResult = await dialog.showSaveDialog(win, {
+          title: "Save Topology Document",
+          defaultPath: String(req?.defaultPath ?? "").trim() || defaultName,
+          filters: [
+            { name: "Math3D Topology", extensions: ["math3d-topology"] },
+            { name: "JSON", extensions: ["json"] },
+          ],
+          properties: ["createDirectory", "showOverwriteConfirmation"],
+        });
+        if (dialogResult.canceled || !dialogResult.filePath) {
+          return { ok: false, canceled: true };
+        }
+        await fs.promises.writeFile(dialogResult.filePath, String(req?.content ?? ""), "utf8");
+        return { ok: true, canceled: false, path: dialogResult.filePath };
+      } catch (error: any) {
+        return { ok: false, canceled: false, error: String(error?.message ?? error) };
+      }
+    }
+  );
+
+  ipcMain.handle("topology:document:open", async (evt): Promise<TopologyDocOpenResponse> => {
+    try {
+      const win = BrowserWindow.fromWebContents(evt.sender);
+      if (!win || win.isDestroyed()) {
+        return { ok: false, canceled: false, error: "Window not available." };
+      }
+      const dialogResult = await dialog.showOpenDialog(win, {
+        title: "Open Topology Document",
+        filters: [
+          { name: "Math3D Topology", extensions: ["math3d-topology", "json"] },
+          { name: "All files", extensions: ["*"] },
+        ],
+        properties: ["openFile"],
+      });
+      const filePath = dialogResult.filePaths[0];
+      if (dialogResult.canceled || !filePath) {
+        return { ok: false, canceled: true };
+      }
+      const content = await fs.promises.readFile(filePath, "utf8");
+      return { ok: true, canceled: false, path: filePath, content };
+    } catch (error: any) {
+      return { ok: false, canceled: false, error: String(error?.message ?? error) };
     }
   });
 
