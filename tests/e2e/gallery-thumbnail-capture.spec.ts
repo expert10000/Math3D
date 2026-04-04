@@ -51,6 +51,7 @@ const toPosixRelative = (absolutePath: string): string =>
 
 const captureMode = (process.env.MATH3D_THUMBNAIL_CAPTURE_MODE ?? "smoke").trim().toLowerCase();
 const fullCaptureMode = captureMode === "full";
+const runThumbnailCapture = (process.env.MATH3D_RUN_THUMBNAIL_CAPTURE_E2E ?? "").trim() === "1";
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? (fullCaptureMode ? 450 : 160));
 const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? (fullCaptureMode ? 45 * 60 * 1000 : 15 * 60 * 1000));
 const captureLimitPerGroup = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP ?? (fullCaptureMode ? 0 : 2));
@@ -496,6 +497,7 @@ const captureSurfaceCards = async (
 };
 
 test.setTimeout(captureTestTimeoutMs);
+test.skip(!runThumbnailCapture, "Set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1 to run thumbnail capture.");
 
 test("Capture gallery thumbnails for objects and surfaces", async () => {
   const output = resolveOutputRoot();
