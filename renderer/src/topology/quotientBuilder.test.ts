@@ -15,5 +15,17 @@ describe("buildQuotientPipeline", () => {
     expect(result.quotient.invariants?.eulerCharacteristic).toBe(1);
     expect(result.quotient.attachmentMap[result.quotient.faces[0].attachmentId]?.boundaryWord).toContain("a");
   });
-});
 
+  it("triangulates non-triangular faces before quotienting", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("torus_square");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    expect(result.normalizedDiagram.faces).toHaveLength(1);
+    expect(result.subdivision.applied).toBe(true);
+    expect(result.subdivision.triangulatedFaceIds).toContain("f0");
+    expect(result.subdivision.createdEdgeIds.length).toBeGreaterThan(0);
+    expect(result.subdividedDiagram.faces.length).toBeGreaterThan(1);
+  });
+});

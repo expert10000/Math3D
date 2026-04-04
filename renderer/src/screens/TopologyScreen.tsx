@@ -4,6 +4,7 @@ import {
   DEFAULT_TOPOLOGY_PRESET_ID,
   TOPOLOGY_PRESET_BY_ID,
   TOPOLOGY_PRESETS,
+  TopologyRealization3DView,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
   type FundamentalDiagram,
@@ -73,6 +74,7 @@ export const TopologyScreen: React.FC = () => {
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
   const [animationStep, setAnimationStep] = useState(0);
   const [activeRealizationId, setActiveRealizationId] = useState<string | null>(null);
+  const [realizationRenderMode, setRealizationRenderMode] = useState<"scene3d" | "projected2d">("scene3d");
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -222,7 +224,8 @@ export const TopologyScreen: React.FC = () => {
   };
 
   const renderQuotientView = () => {
-    const quotient = ensureBuilt().quotient;
+    const result = ensureBuilt();
+    const quotient = result.quotient;
     const positions: Record<string, { x: number; y: number }> = {};
     const count = quotient.vertices.length;
     quotient.vertices.forEach((vertex, index) => {
@@ -308,6 +311,50 @@ export const TopologyScreen: React.FC = () => {
             </div>
           </div>
         </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "8px 10px", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>CW Inspector: incidence</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Vertex {"->"} incident edges</div>
+            <div style={{ fontSize: 10, display: "grid", gap: 3, maxHeight: 140, overflowY: "auto" }}>
+              {quotient.vertices.map((vertex) => (
+                <div key={`inc-v-${vertex.id}`}>
+                  <strong>{vertex.id}</strong>: {(quotient.incidences.vertexToEdges[vertex.id] ?? []).join(", ") || "(none)"}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4 }}>Edge {"->"} attached faces</div>
+            <div style={{ fontSize: 10, display: "grid", gap: 3, maxHeight: 140, overflowY: "auto" }}>
+              {quotient.edges.map((edge) => (
+                <div key={`inc-e-${edge.id}`}>
+                  <strong>{edge.id}</strong>: {(quotient.incidences.edgeToFaces[edge.id] ?? []).join(", ") || "(none)"}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "8px 10px", display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>CW Inspector: boundary & orientation</div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Cell boundary data</div>
+            <div style={{ fontSize: 10, display: "grid", gap: 3, maxHeight: 120, overflowY: "auto" }}>
+              {quotient.cellBoundaries.map((boundary) => (
+                <div key={`boundary-${boundary.faceId}`}>
+                  <strong>{boundary.faceId}</strong>:{" "}
+                  {boundary.edgeWalk.map((entry) => `${entry.edgeId}${entry.direction < 0 ? "^-1" : ""}`).join(" ")}
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4 }}>Orientation matches/reversals</div>
+            <div style={{ fontSize: 10, display: "grid", gap: 3, maxHeight: 120, overflowY: "auto" }}>
+              {result.orientationRelations.length === 0 && <div>(none)</div>}
+              {result.orientationRelations.map((relation, index) => (
+                <div key={`orientation-${relation.edgeA}-${relation.edgeB}-${index}`}>
+                  {relation.edgeA} ~ {relation.edgeB}: <strong>{relation.relation}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   };
@@ -319,59 +366,96 @@ export const TopologyScreen: React.FC = () => {
       result.realizations[0];
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
-
     return (
       <div style={{ display: "grid", gap: 8 }}>
-        <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
-          {realization.faceRealizationMesh.flatMap((mesh) =>
-            mesh.triangles.map((triangle, index) => {
-              const a = isoProject(mesh.vertices[triangle[0]]);
-              const b = isoProject(mesh.vertices[triangle[1]]);
-              const c = isoProject(mesh.vertices[triangle[2]]);
-              const points = `${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`;
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>Render mode</span>
+          <button
+            type="button"
+            onClick={() => setRealizationRenderMode("scene3d")}
+            style={{
+              borderRadius: 999,
+              border: "1px solid " + (realizationRenderMode === "scene3d" ? "#0a66c2" : "#d1d5db"),
+              background: realizationRenderMode === "scene3d" ? "#e6f0ff" : "#fff",
+              fontSize: 11,
+              fontWeight: realizationRenderMode === "scene3d" ? 700 : 600,
+              padding: "4px 10px",
+            }}
+          >
+            3D scene
+          </button>
+          <button
+            type="button"
+            onClick={() => setRealizationRenderMode("projected2d")}
+            style={{
+              borderRadius: 999,
+              border: "1px solid " + (realizationRenderMode === "projected2d" ? "#0a66c2" : "#d1d5db"),
+              background: realizationRenderMode === "projected2d" ? "#e6f0ff" : "#fff",
+              fontSize: 11,
+              fontWeight: realizationRenderMode === "projected2d" ? 700 : 600,
+              padding: "4px 10px",
+            }}
+          >
+            projected 2D
+          </button>
+        </div>
+
+        {realizationRenderMode === "scene3d" ? (
+          <TopologyRealization3DView realization={realization} height={390} />
+        ) : (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {realization.faceRealizationMesh.flatMap((mesh) =>
+              mesh.triangles.map((triangle, index) => {
+                const a = isoProject(mesh.vertices[triangle[0]]);
+                const b = isoProject(mesh.vertices[triangle[1]]);
+                const c = isoProject(mesh.vertices[triangle[2]]);
+                const points = `${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`;
+                return (
+                  <polygon
+                    key={`face-tri-${mesh.faceId}-${index}`}
+                    points={points}
+                    fill={realization.style.faceFill}
+                    opacity={0.55}
+                    stroke="#93c5fd"
+                    strokeWidth={0.6}
+                  />
+                );
+              })
+            )}
+
+            {Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
+              if (points.length < 2) return null;
+              const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
+              const seam = seamEdgeIds.has(edgeId);
               return (
-                <polygon
-                  key={`face-tri-${mesh.faceId}-${index}`}
-                  points={points}
-                  fill={realization.style.faceFill}
-                  opacity={0.55}
-                  stroke="#93c5fd"
-                  strokeWidth={0.6}
+                <polyline
+                  key={`real-edge-${edgeId}`}
+                  points={polyline}
+                  fill="none"
+                  stroke={seam ? realization.style.seamStroke : realization.style.edgeStroke}
+                  strokeWidth={seam ? 2.8 : 1.9}
+                  strokeDasharray={seam ? "6 3" : undefined}
                 />
               );
-            })
-          )}
+            })}
 
-          {Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
-            if (points.length < 2) return null;
-            const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
-            const seam = seamEdgeIds.has(edgeId);
-            return (
-              <polyline
-                key={`real-edge-${edgeId}`}
-                points={polyline}
-                fill="none"
-                stroke={seam ? realization.style.seamStroke : realization.style.edgeStroke}
-                strokeWidth={seam ? 2.8 : 1.9}
-                strokeDasharray={seam ? "6 3" : undefined}
-              />
-            );
-          })}
-
-          {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
-            const pos = isoProject(point);
-            const singularity = realization.singularityMarkers.find((entry) => entry.vertexId === vertexId);
-            return (
-              <g key={`real-vertex-${vertexId}`}>
-                <circle cx={pos.x} cy={pos.y} r={4.8} fill="#0f172a" />
-                {singularity && <circle cx={pos.x} cy={pos.y} r={8.2} fill="none" stroke={realization.style.singularityColor} strokeWidth={1.8} />}
-                <text x={pos.x + 7} y={pos.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
-                  {vertexId}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+            {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
+              const pos = isoProject(point);
+              const singularity = realization.singularityMarkers.find((entry) => entry.vertexId === vertexId);
+              return (
+                <g key={`real-vertex-${vertexId}`}>
+                  <circle cx={pos.x} cy={pos.y} r={4.8} fill="#0f172a" />
+                  {singularity && (
+                    <circle cx={pos.x} cy={pos.y} r={8.2} fill="none" stroke={realization.style.singularityColor} strokeWidth={1.8} />
+                  )}
+                  <text x={pos.x + 7} y={pos.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
+                    {vertexId}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
 
         <div style={{ fontSize: 11, color: "#475569", display: "grid", gap: 3 }}>
           <div>
@@ -379,6 +463,9 @@ export const TopologyScreen: React.FC = () => {
           </div>
           <div>
             Seams: {realization.seams.length} | singular markers: {realization.singularityMarkers.length}
+          </div>
+          <div>
+            The 3D scene supports self-intersections/non-manifold adjacency and explicit seam overlays.
           </div>
         </div>
       </div>
@@ -718,6 +805,14 @@ export const TopologyScreen: React.FC = () => {
             </div>
             <div>
               vertices {diagram.vertices.length}, edges {diagram.edges.length}, faces {diagram.faces.length}
+            </div>
+            <div>
+              <strong>Subdivision stage</strong>
+            </div>
+            <div>
+              {buildResult.subdivision.applied
+                ? `triangulated faces ${buildResult.subdivision.triangulatedFaceIds.length}, created edges ${buildResult.subdivision.createdEdgeIds.length}`
+                : "no triangulation needed"}
             </div>
             <div>
               <strong>Quotient Complex</strong>

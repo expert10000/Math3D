@@ -11,6 +11,7 @@ import type {
   QuotientInvariantsSummary,
   QuotientPipelineStage,
   QuotientWarning,
+  SubdivisionSummary,
 } from "./types";
 
 class DisjointSet {
@@ -116,6 +117,158 @@ export const normalizeFundamentalDiagram = (input: FundamentalDiagram): Fundamen
   return diagram;
 };
 
+const buildFaceBoundaryVertices = (
+  diagram: FundamentalDiagram,
+  face: FundamentalDiagram["faces"][number],
+  warnings: QuotientWarning[]
+): string[] => {
+  const edgeById = new Map(diagram.edges.map((edge) => [edge.id, edge]));
+  const vertices: string[] = [];
+  let previousEnd: string | null = null;
+  for (let index = 0; index < face.boundary.length; index += 1) {
+    const halfEdge = face.boundary[index];
+    const edge = edgeById.get(halfEdge.edgeId);
+    if (!edge) {
+      warnings.push({
+        code: "subdivide/missing-edge",
+        level: "error",
+        message: `Face '${face.id}' references unknown edge '${halfEdge.edgeId}'.`,
+        faceId: face.id,
+        edgeId: halfEdge.edgeId,
+      });
+      continue;
+    }
+    const start = halfEdge.direction > 0 ? edge.from : edge.to;
+    const end = halfEdge.direction > 0 ? edge.to : edge.from;
+    if (index === 0) {
+      vertices.push(start);
+    } else if (previousEnd && previousEnd !== start) {
+      warnings.push({
+        code: "subdivide/non-contiguous-boundary",
+        level: "warning",
+        message: `Boundary walk of face '${face.id}' is not contiguous near edge '${halfEdge.edgeId}'.`,
+        faceId: face.id,
+        edgeId: halfEdge.edgeId,
+      });
+    }
+    vertices.push(end);
+    previousEnd = end;
+  }
+
+  if (vertices.length >= 2 && vertices[0] === vertices[vertices.length - 1]) {
+    vertices.pop();
+  }
+  return vertices;
+};
+
+const buildFaceWord = (
+  face: FundamentalDiagram["faces"][number],
+  diagram: FundamentalDiagram
+): string =>
+  face.boundary
+    .map((entry) => `${diagram.edgeLabels[entry.edgeId] || entry.edgeId}${entry.direction < 0 ? "^-1" : ""}`)
+    .join(" ");
+
+const triangulateDiagramFaces = (
+  diagram: FundamentalDiagram,
+  warnings: QuotientWarning[]
+): { diagram: FundamentalDiagram; summary: SubdivisionSummary } => {
+  const next = cloneFundamentalDiagram(diagram);
+  const faceMap: Record<string, string[]> = {};
+  const createdEdgeIds: string[] = [];
+  const triangulatedFaceIds: string[] = [];
+  const edgeById = new Map(next.edges.map((edge) => [edge.id, edge]));
+  let edgeCounter = 0;
+
+  const findHalfEdgeForSegment = (from: string, to: string): FundamentalDiagramBoundaryHalfEdge | null => {
+    for (const edge of next.edges) {
+      if (edge.from === from && edge.to === to) return { edgeId: edge.id, direction: 1 };
+      if (edge.from === to && edge.to === from) return { edgeId: edge.id, direction: -1 };
+    }
+    return null;
+  };
+
+  const ensureSegment = (from: string, to: string): FundamentalDiagramBoundaryHalfEdge => {
+    const existing = findHalfEdgeForSegment(from, to);
+    if (existing) return existing;
+
+    let edgeId = `sd_e${edgeCounter}`;
+    while (edgeById.has(edgeId)) {
+      edgeCounter += 1;
+      edgeId = `sd_e${edgeCounter}`;
+    }
+    edgeCounter += 1;
+    const edge = { id: edgeId, from, to };
+    next.edges.push(edge);
+    edgeById.set(edgeId, edge);
+    next.edgeOrientations[edgeId] = 1;
+    next.edgeLabels[edgeId] = "";
+    next.edgePairings[edgeId] = [];
+    createdEdgeIds.push(edgeId);
+    return { edgeId, direction: 1 };
+  };
+
+  const newFaces: FundamentalDiagram["faces"] = [];
+  const originalFaces = [...next.faces];
+  for (const face of originalFaces) {
+    if (face.boundary.length <= 3) {
+      newFaces.push(face);
+      faceMap[face.id] = [face.id];
+      if (!(face.id in next.faceBoundaryWords)) {
+        next.faceBoundaryWords[face.id] = buildFaceWord(face, next);
+      }
+      continue;
+    }
+
+    const boundaryVertices = buildFaceBoundaryVertices(next, face, warnings);
+    if (boundaryVertices.length < 3) {
+      warnings.push({
+        code: "subdivide/invalid-face-boundary",
+        level: "error",
+        message: `Face '${face.id}' could not be triangulated because the boundary is invalid.`,
+        faceId: face.id,
+      });
+      newFaces.push(face);
+      faceMap[face.id] = [face.id];
+      continue;
+    }
+
+    triangulatedFaceIds.push(face.id);
+    const triFaceIds: string[] = [];
+    for (let index = 1; index < boundaryVertices.length - 1; index += 1) {
+      const a = boundaryVertices[0];
+      const b = boundaryVertices[index];
+      const c = boundaryVertices[index + 1];
+      const triFaceId = `${face.id}_tri${index - 1}`;
+      const triFace = {
+        id: triFaceId,
+        boundary: [ensureSegment(a, b), ensureSegment(b, c), ensureSegment(c, a)],
+      };
+      triFaceIds.push(triFaceId);
+      newFaces.push(triFace);
+      next.faceBoundaryWords[triFaceId] = buildFaceWord(triFace, next);
+    }
+    faceMap[face.id] = triFaceIds;
+    warnings.push({
+      code: "subdivide/triangulated-face",
+      level: "info",
+      message: `Face '${face.id}' triangulated into ${triFaceIds.length} faces.`,
+      faceId: face.id,
+    });
+  }
+  next.faces = newFaces;
+
+  const summary: SubdivisionSummary = {
+    applied: triangulatedFaceIds.length > 0,
+    originalFaceCount: diagram.faces.length,
+    subdividedFaceCount: next.faces.length,
+    createdEdgeIds,
+    triangulatedFaceIds,
+    faceMap,
+  };
+  return { diagram: next, summary };
+};
+
 const stageStatus = (warnings: QuotientWarning[], prefix: string): "done" | "warning" =>
   warnings.some((warning) => warning.code.startsWith(prefix)) ? "warning" : "done";
 
@@ -207,6 +360,7 @@ const buildEquivalence = (diagram: FundamentalDiagram, warnings: QuotientWarning
   }
 
   for (const edge of diagram.edges) {
+    if (edge.id.startsWith("sd_e")) continue;
     const label = diagram.edgeLabels[edge.id]?.trim() ?? "";
     const peers = diagram.edgePairings[edge.id] ?? [];
     const labelGroupSize = label ? labelGroups[label]?.length ?? 0 : 0;
@@ -286,7 +440,6 @@ const buildQuotientComplex = (
   warnings: QuotientWarning[]
 ): QuotientComplex => {
   const edgeById = new Map(diagram.edges.map((edge) => [edge.id, edge]));
-  const labelByEdgeClass: Record<string, string[]> = {};
   const quotientVertices = vertexClasses.map((entry) => ({
     id: entry.id,
     sourceVertexIds: [...entry.sourceIds],
@@ -305,7 +458,6 @@ const buildQuotientComplex = (
         .map((sourceId) => diagram.edgeLabels[sourceId])
         .filter((label): label is string => !!label)
     );
-    labelByEdgeClass[entry.id] = labelCandidates;
     return {
       id: entry.id,
       sourceEdgeIds: [...entry.sourceIds],
@@ -434,19 +586,8 @@ const buildQuotientComplex = (
 export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildResult => {
   const warnings: QuotientWarning[] = [];
   const normalizedDiagram = normalizeFundamentalDiagram(input);
-
-  const subdivideWarningsBefore = warnings.length;
-  for (const face of normalizedDiagram.faces) {
-    if (face.boundary.length > 3) {
-      warnings.push({
-        code: "subdivide/non-triangular-face",
-        level: "info",
-        message: `Face '${face.id}' has ${face.boundary.length} boundary edges; no triangulation was applied yet.`,
-        faceId: face.id,
-      });
-    }
-  }
-  if (warnings.length === subdivideWarningsBefore && normalizedDiagram.faces.length > 0) {
+  const { diagram: subdividedDiagram, summary: subdivision } = triangulateDiagramFaces(normalizedDiagram, warnings);
+  if (!subdivision.applied) {
     warnings.push({
       code: "subdivide/not-needed",
       level: "info",
@@ -454,20 +595,20 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     });
   }
 
-  const { vertexDsu, edgeDsu, orientationRelations } = buildEquivalence(normalizedDiagram, warnings);
+  const { vertexDsu, edgeDsu, orientationRelations } = buildEquivalence(subdividedDiagram, warnings);
   const { classes: vertexClasses, classBySource: vertexClassBySource } = buildClasses(
-    normalizedDiagram.vertices.map((vertex) => vertex.id),
+    subdividedDiagram.vertices.map((vertex) => vertex.id),
     vertexDsu,
     "qV"
   );
   const { classes: edgeClasses, classBySource: edgeClassBySource } = buildClasses(
-    normalizedDiagram.edges.map((edge) => edge.id),
+    subdividedDiagram.edges.map((edge) => edge.id),
     edgeDsu,
     "qE"
   );
 
   const quotient = buildQuotientComplex(
-    normalizedDiagram,
+    subdividedDiagram,
     vertexClasses,
     edgeClasses,
     vertexClassBySource,
@@ -487,7 +628,9 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
       id: "subdivide",
       label: "Subdivision / Triangulation",
       status: stageStatus(warnings, "subdivide/"),
-      note: "Subdivision is optional and currently advisory.",
+      note: subdivision.applied
+        ? `Triangulated ${subdivision.triangulatedFaceIds.length} face(s), added ${subdivision.createdEdgeIds.length} diagonal edge(s).`
+        : "No face required triangulation.",
     },
     {
       id: "equivalence",
@@ -517,6 +660,8 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
 
   return {
     normalizedDiagram,
+    subdividedDiagram,
+    subdivision,
     vertexClasses,
     edgeClasses,
     orientationRelations,

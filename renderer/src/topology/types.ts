@@ -179,8 +179,19 @@ export type QuotientPipelineStage = {
   note: string;
 };
 
+export type SubdivisionSummary = {
+  applied: boolean;
+  originalFaceCount: number;
+  subdividedFaceCount: number;
+  createdEdgeIds: string[];
+  triangulatedFaceIds: string[];
+  faceMap: Record<string, string[]>;
+};
+
 export type QuotientBuildResult = {
   normalizedDiagram: FundamentalDiagram;
+  subdividedDiagram: FundamentalDiagram;
+  subdivision: SubdivisionSummary;
   vertexClasses: EquivalenceClass[];
   edgeClasses: EquivalenceClass[];
   orientationRelations: OrientationRelation[];
@@ -191,4 +202,3 @@ export type QuotientBuildResult = {
   warnings: QuotientWarning[];
   pipeline: QuotientPipelineStage[];
 };
-
