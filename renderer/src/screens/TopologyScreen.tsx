@@ -24,13 +24,14 @@ import {
   type FundamentalDiagram,
   type FundamentalDiagramEdge,
   type QuotientBuildResult,
+  type QuotientWarning,
   type TopologyAnimationPlan,
   type TopologyDocumentView,
   type Vec3,
   isTopologyDocument,
 } from "../topology";
 
-type TopologyView = TopologyDocumentView;
+type TopologyView = TopologyDocumentView | "compare";
 type TopologyBuildMode = "preset" | "editor";
 type DiagramToolMode = "select" | "addVertex" | "addEdge";
 
@@ -129,9 +130,172 @@ const edgeColorForLabel = (rawLabel: string | undefined | null, fallback = EDGE_
   return fallback;
 };
 
+const CONSTRUCTION_PROGRESS_STEPS = [
+  "Diagram",
+  "Mark pairings",
+  "Glue",
+  "Quotient skeleton",
+  "Realization",
+  "Inspect invariants",
+] as const;
+
+type StoryExplanation = {
+  changed: string;
+  why: string;
+  effect: string;
+};
+
+const STORY_EXPLANATIONS: Record<string, StoryExplanation> = {
+  "torus/square": {
+    changed: "Start from one square face with classes a and b.",
+    why: "This is the fundamental polygon encoding future identifications.",
+    effect: "No quotient yet, only boundary data.",
+  },
+  "torus/first-glue": {
+    changed: "Opposite a edges are paired and begin collapsing together.",
+    why: "First gluing reduces one boundary direction.",
+    effect: "Topology moves toward a cylinder.",
+  },
+  "torus/cylinder": {
+    changed: "The first quotient has a cylindrical intermediate.",
+    why: "One pair is now identified point-by-point.",
+    effect: "Two boundary circles remain open.",
+  },
+  "torus/second-glue": {
+    changed: "The two b boundary circles are identified.",
+    why: "Second gluing closes the remaining boundary.",
+    effect: "Produces a closed orientable surface.",
+  },
+  "torus/torus": {
+    changed: "All edge classes are glued consistently.",
+    why: "Both generators are now identified.",
+    effect: "Topological torus with chi = 0.",
+  },
+  "mobius/rectangle": {
+    changed: "Begin with a rectangle and one candidate pair.",
+    why: "A single pair with reversal is enough for the construction.",
+    effect: "Still a surface with boundary before gluing.",
+  },
+  "mobius/pair": {
+    changed: "Mark the two a edges that will be identified.",
+    why: "We isolate exactly which edges carry the twist relation.",
+    effect: "Boundary decomposition is explicit.",
+  },
+  "mobius/bend": {
+    changed: "The strip is bent to bring paired edges closer.",
+    why: "Geometric preparation for a twisted gluing.",
+    effect: "No topology change yet, only embedding deformation.",
+  },
+  "mobius/twist": {
+    changed: "One end is rotated by half a turn.",
+    why: "Reversed orientation must match endpoints consistently.",
+    effect: "Sets up non-orientable identification.",
+  },
+  "mobius/glue": {
+    changed: "The two marked edges are glued point-by-point.",
+    why: "Apply the quotient relation on the boundary pair.",
+    effect: "Creates one-sided Möbius topology.",
+  },
+  "mobius/mobius": {
+    changed: "The quotient is now a Möbius band.",
+    why: "Only one reversed pair was identified.",
+    effect: "One boundary component, non-orientable.",
+  },
+  "cylinder/mark-pair": {
+    changed: "Choose the two boundary edges to identify.",
+    why: "These two edges define the quotient relation.",
+    effect: "Boundary still has four edges before gluing.",
+  },
+  "cylinder/glue": {
+    changed: "The chosen side pair is merged point-by-point.",
+    why: "This applies the edge equivalence relation.",
+    effect: "Boundary count drops to two circular components.",
+  },
+  "cylinder/cylinder": {
+    changed: "The quotient shape is a cylinder.",
+    why: "One opposite pair was identified, the other retained.",
+    effect: "Orientable surface with two boundary components.",
+  },
+};
+
+const WARNING_EXPLANATIONS: Record<
+  string,
+  { meaning: string; geometry: string; inspect: string; fix: string }
+> = {
+  "subdivide/missing-edge": {
+    meaning: "A face boundary references an edge id that does not exist in the diagram.",
+    geometry: "The boundary walk is incomplete, so triangulation cannot follow the face contour.",
+    inspect: "Check the listed face and edge ids in the edge table and face boundary word.",
+    fix: "Repair or remove the bad boundary reference, then rebuild.",
+  },
+  "subdivide/non-contiguous-boundary": {
+    meaning: "Consecutive boundary entries do not connect head-to-tail.",
+    geometry: "The polygon chain breaks, so the face is not a valid cycle.",
+    inspect: "Inspect the offending face order and each edge orientation.",
+    fix: "Reorder boundary edges or flip orientation so endpoints match.",
+  },
+  "subdivide/invalid-face-boundary": {
+    meaning: "A face boundary has insufficient valid entries to triangulate.",
+    geometry: "No consistent polygon can be formed from the current face data.",
+    inspect: "Inspect face boundary size and missing edges.",
+    fix: "Provide a closed boundary with at least three valid boundary half-edges.",
+  },
+  "subdivide/triangulated-face": {
+    meaning: "A non-triangular face was subdivided into triangles.",
+    geometry: "This is expected preprocessing so quotient/realization can run robustly.",
+    inspect: "Look at generated subdivision edges and new face ids.",
+    fix: "No fix required unless you want to edit the original face structure.",
+  },
+  "equivalence/missing-edge-reference": {
+    meaning: "A pairing references an edge not present after subdivision.",
+    geometry: "The intended identification cannot be applied.",
+    inspect: "Inspect pairing text for typos or stale edge ids.",
+    fix: "Correct pairings to existing edge ids and rebuild.",
+  },
+  "equivalence/non-reciprocal-pairing": {
+    meaning: "Edge A lists B as pair, but B does not list A.",
+    geometry: "Identification relation is asymmetric and ambiguous.",
+    inspect: "Check both edges in the pairing editor.",
+    fix: "Make pairings reciprocal or remove the invalid pair.",
+  },
+  "equivalence/label-derived-identification": {
+    meaning: "Edges with matching labels were paired by label heuristic.",
+    geometry: "The build inferred identifications beyond explicit pairings.",
+    inspect: "Inspect edge labels and inferred classes.",
+    fix: "Use explicit pairings if you want exact control.",
+  },
+  "equivalence/boundary-edge-retained": {
+    meaning: "An unpaired edge stayed as boundary in the quotient.",
+    geometry: "This contributes a boundary component, not an error.",
+    inspect: "Inspect unpaired edges and boundary-component count.",
+    fix: "Pair it only if you intend a closed quotient.",
+  },
+  "quotient/missing-edge-class": {
+    meaning: "A quotient edge could not be attached to a valid equivalence class.",
+    geometry: "Part of the cell complex is disconnected from class data.",
+    inspect: "Inspect edge class generation and source edge coverage.",
+    fix: "Repair earlier equivalence warnings, then rebuild.",
+  },
+  "subdivide/not-needed": {
+    meaning: "No subdivision was needed for this diagram.",
+    geometry: "The current faces were already suitable for build steps.",
+    inspect: "This is informational only.",
+    fix: "No action needed.",
+  },
+};
+
+const warningExplanationFor = (warning: QuotientWarning) =>
+  WARNING_EXPLANATIONS[warning.code] ?? {
+    meaning: "No custom explanation available for this warning code.",
+    geometry: warning.message,
+    inspect: "Inspect the referenced edge/face/vertex ids if present.",
+    fix: "Review pairings and face boundaries, then rebuild.",
+  };
+
 const isTorusSquareStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   const face = candidate.faces[0];
   if (!face || candidate.edges.length < 4) return false;
+  if (candidate.id.startsWith("preset/") && candidate.id !== "preset/torus-square") return false;
   const word = (candidate.faceBoundaryWords[face.id] ?? "").toLowerCase().replace(/\s+/g, "");
   if (word.includes("aba^-1b^-1")) return true;
   const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
@@ -224,6 +388,11 @@ const isDunceCapStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   return word.includes("aaa");
 };
 
+const isCylinderStoryDiagram = (candidate: FundamentalDiagram): boolean => candidate.id === "preset/cylinder";
+const isConeStoryDiagram = (candidate: FundamentalDiagram): boolean => candidate.id === "preset/cone";
+const isSuspensionStoryDiagram = (candidate: FundamentalDiagram): boolean => candidate.id === "preset/suspension";
+const isSphereBoundaryStoryDiagram = (candidate: FundamentalDiagram): boolean => candidate.id === "preset/sphere-boundary-contraction";
+
 const buildNarrativeAnimationPlan = (
   sourceDiagram: FundamentalDiagram,
   result: QuotientBuildResult
@@ -232,7 +401,11 @@ const buildNarrativeAnimationPlan = (
   if (
     !isTorusSquareStoryDiagram(sourceDiagram) &&
     !isMobiusRectangleStoryDiagram(sourceDiagram) &&
-    !isKleinBottleStoryDiagram(sourceDiagram)
+    !isKleinBottleStoryDiagram(sourceDiagram) &&
+    !isCylinderStoryDiagram(sourceDiagram) &&
+    !isConeStoryDiagram(sourceDiagram) &&
+    !isSuspensionStoryDiagram(sourceDiagram) &&
+    !isSphereBoundaryStoryDiagram(sourceDiagram)
   ) {
     return fallback;
   }
@@ -278,6 +451,46 @@ const buildNarrativeAnimationPlan = (
     for (const opId of buckets.a) groups[opId] = "glue-a-cylinder";
     for (const opId of buckets.b) groups[opId] = "glue-b-reversed";
     for (const opId of buckets.other) groups[opId] = "aux-identifications";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
+  if (isCylinderStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.a, ...buckets.other, ...buckets.b];
+    const groups: Record<string, string> = {};
+    for (const opId of buckets.a) groups[opId] = "glue-side-pair";
+    for (const opId of buckets.other) groups[opId] = "boundary-retained";
+    for (const opId of buckets.b) groups[opId] = "aux-identifications";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
+  if (isConeStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.other, ...buckets.a, ...buckets.b];
+    const groups: Record<string, string> = {};
+    for (const opId of order) groups[opId] = "collapse-boundary-class";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
+  if (isSuspensionStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.a, ...buckets.b, ...buckets.other];
+    const groups: Record<string, string> = {};
+    for (const opId of buckets.a) groups[opId] = "first-pair";
+    for (const opId of buckets.b) groups[opId] = "second-pair";
+    for (const opId of buckets.other) groups[opId] = "aux-identifications";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
+  if (isSphereBoundaryStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.other, ...buckets.a, ...buckets.b];
+    const groups: Record<string, string> = {};
+    for (const opId of order) groups[opId] = "contract-boundary";
     return {
       order: order.length > 0 ? order : fallback.order,
       groups,
@@ -331,6 +544,38 @@ const KLEIN_STORY_STAGES = [
   { id: "immersed", label: "S5: immersed model", detail: "Immersed Klein bottle in R^3 (self-intersection in model)." },
 ] as const;
 
+const CYLINDER_STORY_STAGES = [
+  { id: "rectangle", label: "S0: rectangle", detail: "Start with rectangle and one identified side pair." },
+  { id: "mark-pair", label: "S1: mark side pair", detail: "Track the two a-edges to be glued." },
+  { id: "glue", label: "S2: glue a sides", detail: "Identify side pair to form cylinder." },
+  { id: "cylinder", label: "S3: cylinder", detail: "Surface with two boundary circles." },
+  { id: "overlays", label: "S4: overlays", detail: "Highlight side class and boundary circles." },
+] as const;
+
+const CONE_STORY_STAGES = [
+  { id: "triangle", label: "S0: triangle", detail: "Start with triangle and boundary class c." },
+  { id: "identify", label: "S1: identify c edges", detail: "Boundary edges are identified into one class." },
+  { id: "apex", label: "S2: apex collapse", detail: "Identifications gather to a cone apex class." },
+  { id: "cone", label: "S3: cone", detail: "Cone-like quotient with boundary loop." },
+  { id: "overlays", label: "S4: overlays", detail: "Show boundary and singular/apex markers." },
+] as const;
+
+const SUSPENSION_STORY_STAGES = [
+  { id: "quad", label: "S0: quadrilateral", detail: "Start with suspension placeholder quadrilateral." },
+  { id: "first", label: "S1: first pair", detail: "Apply first opposite-edge identification." },
+  { id: "second", label: "S2: second pair", detail: "Apply second opposite-edge identification." },
+  { id: "quotient", label: "S3: quotient", detail: "Inspect resulting quotient structure." },
+  { id: "model", label: "S4: model", detail: "Use as exploratory placeholder realization." },
+] as const;
+
+const SPHERE_STORY_STAGES = [
+  { id: "disk", label: "S0: disk-triangle", detail: "Start with disk-like triangle boundary model." },
+  { id: "mark", label: "S1: mark boundary class", detail: "Boundary edges all lie in class s." },
+  { id: "contract", label: "S2: contract boundary", detail: "Boundary contracts toward one point class." },
+  { id: "sphere", label: "S3: sphere target", detail: "Intended sphere-style boundary contraction story." },
+  { id: "overlays", label: "S4: overlays", detail: "Inspect collapsed boundary and quotient markers." },
+] as const;
+
 export const TopologyScreen: React.FC = () => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
     const next = initialDiagram();
@@ -362,6 +607,23 @@ export const TopologyScreen: React.FC = () => {
   const [showBoundaryLoop, setShowBoundaryLoop] = useState(true);
   const [showCoreCircle, setShowCoreCircle] = useState(false);
   const [showOrientationFlip, setShowOrientationFlip] = useState(false);
+  const [showSelfIntersectionCurves, setShowSelfIntersectionCurves] = useState(true);
+  const [showBoundaryComponents, setShowBoundaryComponents] = useState(true);
+  const [showFundamentalLoops, setShowFundamentalLoops] = useState(false);
+  const [showVertexClassChips, setShowVertexClassChips] = useState(true);
+  const [showIdentifiedEdgeArrows, setShowIdentifiedEdgeArrows] = useState(true);
+  const [linkedViewEnabled, setLinkedViewEnabled] = useState(true);
+  const [linkedHoveredRealizationEdgeId, setLinkedHoveredRealizationEdgeId] = useState<string | null>(null);
+  const [linkedSelectedRealizationEdgeId, setLinkedSelectedRealizationEdgeId] = useState<string | null>(null);
+  const [compareLeftPresetId, setCompareLeftPresetId] = useState(
+    TOPOLOGY_PRESET_BY_ID.has("cylinder") ? "cylinder" : TOPOLOGY_PRESETS[0]?.id ?? DEFAULT_TOPOLOGY_PRESET_ID
+  );
+  const [compareRightPresetId, setCompareRightPresetId] = useState(
+    TOPOLOGY_PRESET_BY_ID.has("mobius_from_rectangle")
+      ? "mobius_from_rectangle"
+      : TOPOLOGY_PRESETS[1]?.id ?? TOPOLOGY_PRESETS[0]?.id ?? DEFAULT_TOPOLOGY_PRESET_ID
+  );
+  const [expandedWarningId, setExpandedWarningId] = useState<string | null>(null);
   const [storyRenderMode, setStoryRenderMode] = useState<"explain2d" | "real3d">("explain2d");
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
@@ -408,6 +670,26 @@ export const TopologyScreen: React.FC = () => {
   const projectiveStoryEnabled = useMemo(() => isProjectivePlaneStoryDiagram(diagram), [diagram]);
   const kleinStoryEnabled = useMemo(() => isKleinBottleStoryDiagram(diagram), [diagram]);
   const dunceStoryEnabled = useMemo(() => isDunceCapStoryDiagram(diagram), [diagram]);
+  const cylinderStoryEnabled = useMemo(() => isCylinderStoryDiagram(diagram), [diagram]);
+  const coneStoryEnabled = useMemo(() => isConeStoryDiagram(diagram), [diagram]);
+  const suspensionStoryEnabled = useMemo(() => isSuspensionStoryDiagram(diagram), [diagram]);
+  const sphereStoryEnabled = useMemo(() => isSphereBoundaryStoryDiagram(diagram), [diagram]);
+  const classChipData = useMemo(() => {
+    const formatSourceIds = (ids: string[]) => `[${ids.join("=")}]`;
+    return {
+      vertices: buildResult.vertexClasses.map((entry) => formatSourceIds(entry.sourceIds)),
+      edges: buildResult.edgeClasses.map((entry) => formatSourceIds(entry.sourceIds)),
+      faces: buildResult.quotient.faces.length,
+    };
+  }, [buildResult]);
+  const compareLeftResult = useMemo(() => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get(compareLeftPresetId) ?? TOPOLOGY_PRESETS[0];
+    return preset ? buildQuotientPipeline(preset.buildDiagram()) : null;
+  }, [compareLeftPresetId]);
+  const compareRightResult = useMemo(() => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get(compareRightPresetId) ?? TOPOLOGY_PRESETS[1] ?? TOPOLOGY_PRESETS[0];
+    return preset ? buildQuotientPipeline(preset.buildDiagram()) : null;
+  }, [compareRightPresetId]);
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -474,6 +756,17 @@ export const TopologyScreen: React.FC = () => {
       return;
     }
     if (isDunceCapStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(false);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("explain2d");
+      return;
+    }
+    if (isCylinderStoryDiagram(next) || isConeStoryDiagram(next) || isSuspensionStoryDiagram(next) || isSphereBoundaryStoryDiagram(next)) {
       setShowSmoothRealization(true);
       setShowCutOpenModel(false);
       setShowBoundaryLoop(false);
@@ -753,9 +1046,10 @@ export const TopologyScreen: React.FC = () => {
 
   const saveTopologyDocument = async (saveAs = false) => {
     const built = ensureBuilt();
+    const activeViewForDocument: TopologyDocumentView = activeView === "compare" ? "realization" : activeView;
     const doc = createTopologyDocument(diagram, {
       buildResult: built,
-      activeView,
+      activeView: activeViewForDocument,
       activeRealizationId,
       animationPlan: normalizedAnimationPlan,
     });
@@ -1169,6 +1463,87 @@ export const TopologyScreen: React.FC = () => {
     );
   };
 
+  const renderLinkedDiagramPane = (
+    highlightedDiagramEdges: Set<string>,
+    selectedDiagramEdgeId: string | null,
+    onHoverEdge: (edgeId: string | null) => void,
+    onSelectEdge: (edgeId: string) => void
+  ) => {
+    const face = diagram.faces[0];
+    const polygonPoints =
+      face?.boundary
+        .map((entry) => {
+          const edge = edgeById.get(entry.edgeId);
+          if (!edge) return null;
+          const vertexId = entry.direction > 0 ? edge.from : edge.to;
+          const vertex = diagram.vertices.find((candidate) => candidate.id === vertexId);
+          if (!vertex) return null;
+          const point = diagPoint(vertex.x, vertex.y);
+          return `${point.x},${point.y}`;
+        })
+        .filter((item): item is string => !!item) ?? [];
+
+    return (
+      <svg
+        width="100%"
+        viewBox="0 0 520 360"
+        style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}
+        onMouseLeave={() => onHoverEdge(null)}
+      >
+        <defs>
+          <marker id="linkedEdgeArrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <polygon points="0 0, 8 3.5, 0 7" fill="#1e293b" />
+          </marker>
+        </defs>
+        {polygonPoints.length >= 3 && (
+          <polygon points={polygonPoints.join(" ")} fill="#f8fbff" stroke="#d1d9e5" strokeWidth={1.2} />
+        )}
+        {diagram.edges.map((edge) => {
+          const from = diagram.vertices.find((vertex) => vertex.id === edge.from);
+          const to = diagram.vertices.find((vertex) => vertex.id === edge.to);
+          if (!from || !to) return null;
+          const orientation = diagram.edgeOrientations[edge.id] ?? 1;
+          const pointFrom = diagPoint(from.x, from.y);
+          const pointTo = diagPoint(to.x, to.y);
+          const arrowStart = orientation > 0 ? pointFrom : pointTo;
+          const arrowEnd = orientation > 0 ? pointTo : pointFrom;
+          const mid = { x: (pointFrom.x + pointTo.x) / 2, y: (pointFrom.y + pointTo.y) / 2 };
+          const highlighted = highlightedDiagramEdges.has(edge.id);
+          const classColor = edgeColorForLabel(diagram.edgeLabels[edge.id], EDGE_CLASS_COLOR_NEUTRAL);
+          return (
+            <g key={`linked-diagram-edge-${edge.id}`} onMouseEnter={() => onHoverEdge(edge.id)} style={{ cursor: "pointer" }}>
+              <line
+                x1={arrowStart.x}
+                y1={arrowStart.y}
+                x2={arrowEnd.x}
+                y2={arrowEnd.y}
+                stroke={highlighted ? "#0a66c2" : classColor}
+                strokeWidth={selectedDiagramEdgeId === edge.id ? 3.3 : highlighted ? 3 : 2}
+                markerEnd={showIdentifiedEdgeArrows ? "url(#linkedEdgeArrow)" : undefined}
+                onClick={() => onSelectEdge(edge.id)}
+              />
+              <text
+                x={mid.x}
+                y={mid.y - 7}
+                textAnchor="middle"
+                style={{
+                  fontSize: 11,
+                  fontWeight: highlighted ? 700 : 600,
+                  fill: highlighted ? "#0a66c2" : classColor,
+                }}
+              >
+                {diagram.edgeLabels[edge.id] || edge.id}
+              </text>
+              <text x={mid.x} y={mid.y + 8} textAnchor="middle" style={{ fontSize: 9, fill: "#64748b" }}>
+                {edge.id}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  };
+
   const renderRealizationView = () => {
     const result = ensureBuilt();
     const selectedRealization =
@@ -1178,40 +1553,257 @@ export const TopologyScreen: React.FC = () => {
     const cutOpenTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-cut-open"));
     const smoothMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth"));
     const cutOpenMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-cut-open"));
+    const cylinderSmoothRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/cylinder-smooth"));
+    const coneSmoothRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/cone-smooth"));
+    const sphereSmoothRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/sphere-smooth"));
+    const suspensionBiconeRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/suspension-bicone"));
     const kleinImmersedRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed"));
     const projectiveImmersedRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/projective-immersed"));
     const torusRealizationAvailable = !!smoothTorusRealization || !!cutOpenTorusRealization;
     const mobiusRealizationAvailable = !!smoothMobiusRealization || !!cutOpenMobiusRealization;
+    const cylinderRealizationAvailable = !!cylinderSmoothRealization;
+    const coneRealizationAvailable = !!coneSmoothRealization;
+    const sphereRealizationAvailable = !!sphereSmoothRealization;
+    const suspensionRealizationAvailable = !!suspensionBiconeRealization;
     const kleinRealizationAvailable = !!kleinImmersedRealization;
     const projectiveRealizationAvailable = !!projectiveImmersedRealization;
     const canonicalRealizationAvailable =
-      torusRealizationAvailable || mobiusRealizationAvailable || kleinRealizationAvailable || projectiveRealizationAvailable;
+      torusRealizationAvailable ||
+      mobiusRealizationAvailable ||
+      cylinderRealizationAvailable ||
+      coneRealizationAvailable ||
+      sphereRealizationAvailable ||
+      suspensionRealizationAvailable ||
+      kleinRealizationAvailable ||
+      projectiveRealizationAvailable;
     const cutOpenRealizationAvailable =
       (!!cutOpenMobiusRealization && mobiusRealizationAvailable) || (!!cutOpenTorusRealization && torusRealizationAvailable);
     const realization =
       canonicalRealizationAvailable && showSmoothRealization
-        ? mobiusRealizationAvailable
+        ? mobiusStoryEnabled && mobiusRealizationAvailable
           ? showCutOpenModel
             ? cutOpenMobiusRealization ?? smoothMobiusRealization ?? selectedRealization
             : smoothMobiusRealization ?? selectedRealization
-          : torusRealizationAvailable
+          : torusStoryEnabled && torusRealizationAvailable
             ? showCutOpenModel
               ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
               : smoothTorusRealization ?? selectedRealization
-            : kleinRealizationAvailable
+            : kleinStoryEnabled && kleinRealizationAvailable
               ? kleinImmersedRealization ?? selectedRealization
-              : projectiveImmersedRealization ?? selectedRealization
+              : projectiveStoryEnabled && projectiveRealizationAvailable
+                ? projectiveImmersedRealization ?? selectedRealization
+                : cylinderStoryEnabled && cylinderRealizationAvailable
+                  ? cylinderSmoothRealization ?? selectedRealization
+                  : coneStoryEnabled && coneRealizationAvailable
+                    ? coneSmoothRealization ?? selectedRealization
+                    : sphereStoryEnabled && sphereRealizationAvailable
+                      ? sphereSmoothRealization ?? selectedRealization
+                      : suspensionStoryEnabled && suspensionRealizationAvailable
+                        ? suspensionBiconeRealization ?? selectedRealization
+                        : mobiusRealizationAvailable
+                          ? smoothMobiusRealization ?? selectedRealization
+                          : torusRealizationAvailable
+                            ? smoothTorusRealization ?? selectedRealization
+                            : kleinRealizationAvailable
+                              ? kleinImmersedRealization ?? selectedRealization
+                              : projectiveRealizationAvailable
+                                ? projectiveImmersedRealization ?? selectedRealization
+                                : cylinderRealizationAvailable
+                                  ? cylinderSmoothRealization ?? selectedRealization
+                                  : coneRealizationAvailable
+                                    ? coneSmoothRealization ?? selectedRealization
+                                    : sphereRealizationAvailable
+                                      ? sphereSmoothRealization ?? selectedRealization
+                                      : suspensionBiconeRealization ?? selectedRealization
         : selectedRealization;
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
+    const seamByEdgeId = new Map(realization.seams.map((entry) => [entry.edgeId, entry]));
     const quotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
+    const quotientEdgeById = new Map(result.quotient.edges.map((edge) => [edge.id, edge]));
+    const diagramEdgeIdSet = new Set(diagram.edges.map((edge) => edge.id));
+    const diagramEdgesByToken = new Map<string, string[]>();
+    for (const edge of diagram.edges) {
+      const token = primaryEdgeLabelToken(diagram.edgeLabels[edge.id]);
+      if (!token) continue;
+      const bucket = diagramEdgesByToken.get(token);
+      if (bucket) bucket.push(edge.id);
+      else diagramEdgesByToken.set(token, [edge.id]);
+    }
+    const unpairedDiagramEdges = diagram.edges
+      .filter((edge) => (diagram.edgePairings[edge.id]?.length ?? 0) === 0)
+      .map((edge) => edge.id);
+    const pairedDiagramEdges = diagram.edges
+      .filter((edge) => (diagram.edgePairings[edge.id]?.length ?? 0) > 0)
+      .map((edge) => edge.id);
+    const curvePointDistance = (a: Vec3, b: Vec3): number => {
+      const dx = a[0] - b[0];
+      const dy = a[1] - b[1];
+      const dz = a[2] - b[2];
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    };
+    const sampleCurvePoints = (curve: Vec3[], count = 12): Vec3[] => {
+      if (curve.length <= count) return curve;
+      return Array.from({ length: count }, (_, index) => {
+        const t = index / Math.max(1, count - 1);
+        const pos = Math.round(t * (curve.length - 1));
+        return curve[Math.max(0, Math.min(curve.length - 1, pos))];
+      });
+    };
+    const directedCurveDistance = (source: Vec3[], target: Vec3[]): number => {
+      if (source.length === 0 || target.length === 0) return Number.POSITIVE_INFINITY;
+      let total = 0;
+      for (const point of source) {
+        let best = Number.POSITIVE_INFINITY;
+        for (const other of target) {
+          const distance = curvePointDistance(point, other);
+          if (distance < best) best = distance;
+        }
+        total += best;
+      }
+      return total / source.length;
+    };
+    const curveDistanceScore = (a: Vec3[], b: Vec3[]): number => {
+      const sampledA = sampleCurvePoints(a, 12);
+      const sampledB = sampleCurvePoints(b, 14);
+      return 0.5 * (directedCurveDistance(sampledA, sampledB) + directedCurveDistance(sampledB, sampledA));
+    };
+    const quotientCurveIds = result.quotient.edges
+      .map((edge) => edge.id)
+      .filter((edgeId) => (realization.edgeCurves[edgeId]?.length ?? 0) > 1);
+    const addSemanticOverlaySources = (edgeId: string, sourceSet: Set<string>) => {
+      if (
+        edgeId === "mobius_boundary" ||
+        edgeId === "cylinder_boundary_top" ||
+        edgeId === "cylinder_boundary_bottom" ||
+        edgeId === "cone_boundary"
+      ) {
+        for (const sourceId of unpairedDiagramEdges) sourceSet.add(sourceId);
+      }
+      if (
+        edgeId === "cut_u" ||
+        edgeId === "mobius_cut" ||
+        edgeId === "mobius_orient_track" ||
+        edgeId === "mobius_orient_normal_start" ||
+        edgeId === "mobius_orient_normal_end"
+      ) {
+        for (const sourceId of diagramEdgesByToken.get("a") ?? []) sourceSet.add(sourceId);
+      }
+      if (edgeId === "cut_v") {
+        for (const sourceId of diagramEdgesByToken.get("b") ?? []) sourceSet.add(sourceId);
+      }
+      if (edgeId.endsWith("_core") || edgeId.endsWith("_equator")) {
+        for (const sourceId of pairedDiagramEdges) sourceSet.add(sourceId);
+      }
+      if (edgeId.endsWith("self_intersection")) {
+        for (const sourceId of pairedDiagramEdges) sourceSet.add(sourceId);
+      }
+    };
+    const realizationEdgeToSourceEdges = new Map<string, string[]>();
+    for (const edgeId of Object.keys(realization.edgeCurves)) {
+      const sourceSet = new Set<string>();
+      if (edgeById.has(edgeId)) sourceSet.add(edgeId);
+      const quotientEdge = quotientEdgeById.get(edgeId);
+      if (quotientEdge) {
+        for (const sourceId of quotientEdge.sourceEdgeIds) {
+          if (diagramEdgeIdSet.has(sourceId)) sourceSet.add(sourceId);
+        }
+      }
+      const seam = seamByEdgeId.get(edgeId);
+      if (seam) {
+        for (const sourceId of seam.sourceEdgeIds) {
+          if (diagramEdgeIdSet.has(sourceId)) sourceSet.add(sourceId);
+        }
+      }
+      addSemanticOverlaySources(edgeId, sourceSet);
+
+      const curve = realization.edgeCurves[edgeId];
+      const needsGeometryFallback = sourceSet.size === 0 || !quotientEdge;
+      if (needsGeometryFallback && curve && curve.length > 1 && quotientCurveIds.length > 0) {
+        const ranked = quotientCurveIds
+          .filter((candidateId) => candidateId !== edgeId)
+          .map((candidateId) => ({
+            candidateId,
+            score: curveDistanceScore(curve, realization.edgeCurves[candidateId] ?? []),
+          }))
+          .sort((a, b) => a.score - b.score);
+        const best = ranked[0];
+        if (best && Number.isFinite(best.score)) {
+          const picked = ranked.filter((entry, index) => index < 2 && entry.score <= best.score * 1.3 + 0.03);
+          for (const pick of picked) {
+            const candidate = quotientEdgeById.get(pick.candidateId);
+            for (const sourceId of candidate?.sourceEdgeIds ?? []) {
+              if (diagramEdgeIdSet.has(sourceId)) sourceSet.add(sourceId);
+            }
+          }
+        }
+      }
+
+      if (sourceSet.size === 0) {
+        const token = primaryEdgeLabelToken(quotientEdgeLabelById.get(edgeId) ?? edgeId);
+        for (const sourceId of diagramEdgesByToken.get(token) ?? []) sourceSet.add(sourceId);
+      }
+      realizationEdgeToSourceEdges.set(
+        edgeId,
+        [...sourceSet].filter((sourceId) => diagramEdgeIdSet.has(sourceId))
+      );
+    }
+    const realizationEdgesBySource = new Map<string, Set<string>>();
+    for (const [realEdgeId, sourceEdgeIds] of realizationEdgeToSourceEdges) {
+      for (const sourceEdgeId of sourceEdgeIds) {
+        const bucket = realizationEdgesBySource.get(sourceEdgeId);
+        if (bucket) bucket.add(realEdgeId);
+        else realizationEdgesBySource.set(sourceEdgeId, new Set([realEdgeId]));
+      }
+    }
+    const diagramEdgesForRealizationEdge = (edgeId: string): string[] => {
+      const out = new Set<string>();
+      for (const sourceEdgeId of realizationEdgeToSourceEdges.get(edgeId) ?? []) {
+        for (const peerId of edgePeerSet(diagram, sourceEdgeId)) out.add(peerId);
+      }
+      if (out.size === 0 && edgeById.has(edgeId)) {
+        for (const peerId of edgePeerSet(diagram, edgeId)) out.add(peerId);
+      }
+      return [...out];
+    };
+    const realizationEdgesForDiagramEdge = (edgeId: string): string[] => {
+      const out = new Set<string>();
+      for (const sourceEdgeId of edgePeerSet(diagram, edgeId)) {
+        for (const mappedEdgeId of realizationEdgesBySource.get(sourceEdgeId) ?? []) out.add(mappedEdgeId);
+      }
+      if (realization.edgeCurves[edgeId]) out.add(edgeId);
+      return [...out];
+    };
+    const highlightedDiagramEdges = new Set<string>();
+    if (hoverEdgeId) {
+      for (const edgeId of edgePeerSet(diagram, hoverEdgeId)) highlightedDiagramEdges.add(edgeId);
+    }
+    if (linkedHoveredRealizationEdgeId) {
+      for (const edgeId of diagramEdgesForRealizationEdge(linkedHoveredRealizationEdgeId)) highlightedDiagramEdges.add(edgeId);
+    }
+    if (linkedSelectedRealizationEdgeId) {
+      for (const edgeId of diagramEdgesForRealizationEdge(linkedSelectedRealizationEdgeId)) highlightedDiagramEdges.add(edgeId);
+    }
+    const highlightedRealizationEdgeIds = new Set<string>();
+    if (hoverEdgeId) {
+      for (const sourceEdge of edgePeerSet(diagram, hoverEdgeId)) {
+        for (const realizedEdge of realizationEdgesForDiagramEdge(sourceEdge)) highlightedRealizationEdgeIds.add(realizedEdge);
+      }
+    }
+    if (linkedHoveredRealizationEdgeId) highlightedRealizationEdgeIds.add(linkedHoveredRealizationEdgeId);
+    if (linkedSelectedRealizationEdgeId) highlightedRealizationEdgeIds.add(linkedSelectedRealizationEdgeId);
     const hiddenEdgeIds = [
       ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
       ...(showCoreCircle ? [] : ["mobius_core"]),
       ...(showOrientationFlip ? [] : ["mobius_orient_track", "mobius_orient_normal_start", "mobius_orient_normal_end"]),
       ...(showCutOpenModel ? [] : ["mobius_cut"]),
+      ...(showSelfIntersectionCurves ? [] : ["rp2_self_intersection", "klein_self_intersection"]),
+      ...(showBoundaryComponents
+        ? []
+        : ["cylinder_boundary_top", "cylinder_boundary_bottom", "cone_boundary", "sphere_equator", "suspension_equator"]),
+      ...(showFundamentalLoops ? [] : ["cut_u", "cut_v"]),
     ];
-    const edgeColorOverrides = showEdgeClasses
+    const edgeColorOverrides: Record<string, string> = showEdgeClasses
       ? Object.fromEntries(
           Object.keys(realization.edgeCurves)
             .map((edgeId) => {
@@ -1225,6 +1817,11 @@ export const TopologyScreen: React.FC = () => {
               if (edgeId === "mobius_cut") return [edgeId, "#0f766e"] as const;
               if (edgeId === "rp2_self_intersection") return [edgeId, "#ea580c"] as const;
               if (edgeId === "klein_self_intersection") return [edgeId, "#ea580c"] as const;
+              if (edgeId === "cylinder_boundary_top") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "cylinder_boundary_bottom") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "cone_boundary") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "sphere_equator") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "suspension_equator") return [edgeId, "#0ea5e9"] as const;
               const label = quotientEdgeLabelById.get(edgeId);
               const color = edgeColorForLabel(label, "");
               return color ? ([edgeId, color] as const) : null;
@@ -1232,6 +1829,108 @@ export const TopologyScreen: React.FC = () => {
             .filter((entry): entry is readonly [string, string] => !!entry)
         )
       : {};
+    for (const edgeId of highlightedRealizationEdgeIds) {
+      edgeColorOverrides[edgeId] = "#0a66c2";
+    }
+    const modelIsImmersed = !!realization.edgeCurves.rp2_self_intersection || !!realization.edgeCurves.klein_self_intersection;
+
+    const renderProjectedView = () => (
+      <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+        {realization.faceRealizationMesh.flatMap((mesh) =>
+          mesh.triangles.map((triangle, index) => {
+            const a = isoProject(mesh.vertices[triangle[0]]);
+            const b = isoProject(mesh.vertices[triangle[1]]);
+            const c = isoProject(mesh.vertices[triangle[2]]);
+            const points = `${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`;
+            return (
+              <polygon
+                key={`face-tri-${mesh.faceId}-${index}`}
+                points={points}
+                fill={realization.style.faceFill}
+                opacity={0.55}
+                stroke="#93c5fd"
+                strokeWidth={0.6}
+              />
+            );
+          })
+        )}
+        {showOneSkeleton &&
+          Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
+            if (points.length < 2) return null;
+            if (hiddenEdgeIds.includes(edgeId)) return null;
+            const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
+            const seam = seamEdgeIds.has(edgeId);
+            const drawAsSeam = seam && showSeams;
+            const highlighted = highlightedRealizationEdgeIds.has(edgeId);
+            return (
+              <polyline
+                key={`real-edge-${edgeId}`}
+                points={polyline}
+                fill="none"
+                stroke={edgeColorOverrides[edgeId] ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)}
+                strokeWidth={drawAsSeam ? (highlighted ? 3.8 : 2.8) : highlighted ? 2.8 : 1.9}
+                strokeDasharray={drawAsSeam ? "6 3" : undefined}
+                onMouseEnter={() => setLinkedHoveredRealizationEdgeId(edgeId)}
+                onMouseLeave={() => setLinkedHoveredRealizationEdgeId(null)}
+                onClick={() => {
+                  setLinkedSelectedRealizationEdgeId(edgeId);
+                  const mapped = diagramEdgesForRealizationEdge(edgeId);
+                  if (mapped[0]) setSelectedEdgeId(mapped[0]);
+                }}
+                style={{ cursor: "pointer" }}
+              />
+            );
+          })}
+        {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
+          const pos = isoProject(point);
+          const singularity = realization.singularityMarkers.find((entry) => entry.vertexId === vertexId);
+          return (
+            <g key={`real-vertex-${vertexId}`}>
+              <circle cx={pos.x} cy={pos.y} r={4.8} fill="#0f172a" />
+              {showCornerIdentifications && singularity && (
+                <circle cx={pos.x} cy={pos.y} r={8.2} fill="none" stroke={realization.style.singularityColor} strokeWidth={1.8} />
+              )}
+              <text x={pos.x + 7} y={pos.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
+                {vertexId}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+
+    const renderRealizationDisplay = () =>
+      realizationRenderMode === "scene3d" ? (
+        <TopologyRealization3DView
+          realization={realization}
+          height={390}
+          showSeams={showSeams}
+          showSkeleton={showOneSkeleton}
+          showSingularityMarkers={showCornerIdentifications}
+          edgeColorOverrides={edgeColorOverrides}
+          hiddenEdgeIds={hiddenEdgeIds}
+          highlightedEdgeIds={Array.from(highlightedRealizationEdgeIds)}
+          onEdgeHover={setLinkedHoveredRealizationEdgeId}
+          onEdgeSelect={(edgeId) => {
+            setLinkedSelectedRealizationEdgeId(edgeId);
+            const mapped = diagramEdgesForRealizationEdge(edgeId);
+            if (mapped[0]) setSelectedEdgeId(mapped[0]);
+          }}
+          orientationFlipOverlay={
+            mobiusRealizationAvailable && showOrientationFlip
+              ? {
+                  trackEdgeId: "mobius_orient_track",
+                  startNormalEdgeId: "mobius_orient_normal_start",
+                  endNormalEdgeId: "mobius_orient_normal_end",
+                  speed: 0.1,
+                  color: "#9333ea",
+                }
+              : null
+          }
+        />
+      ) : (
+        renderProjectedView()
+      );
     return (
       <div style={{ display: "grid", gap: 8 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -1264,11 +1963,23 @@ export const TopologyScreen: React.FC = () => {
           >
             projected 2D
           </button>
+          <label style={{ marginLeft: 8, display: "flex", gap: 4, alignItems: "center", fontSize: 11 }}>
+            <input type="checkbox" checked={linkedViewEnabled} onChange={(event) => setLinkedViewEnabled(event.target.checked)} />
+            Linked 2D + 3D
+          </label>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
           <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input type="checkbox" checked={showEdgeClasses} onChange={(event) => setShowEdgeClasses(event.target.checked)} />
             Show edge classes
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showIdentifiedEdgeArrows}
+              onChange={(event) => setShowIdentifiedEdgeArrows(event.target.checked)}
+            />
+            Show identified edge arrows
           </label>
           <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input
@@ -1280,11 +1991,35 @@ export const TopologyScreen: React.FC = () => {
           </label>
           <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input type="checkbox" checked={showSeams} onChange={(event) => setShowSeams(event.target.checked)} />
-            Show seams
+            Show seam curves
           </label>
           <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input type="checkbox" checked={showOneSkeleton} onChange={(event) => setShowOneSkeleton(event.target.checked)} />
-            Show 1-skeleton
+            Show quotient skeleton
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showBoundaryComponents}
+              onChange={(event) => setShowBoundaryComponents(event.target.checked)}
+            />
+            Show boundary components
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showSelfIntersectionCurves}
+              onChange={(event) => setShowSelfIntersectionCurves(event.target.checked)}
+            />
+            Show self-intersection curves
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showFundamentalLoops}
+              onChange={(event) => setShowFundamentalLoops(event.target.checked)}
+            />
+            Show fundamental loops
           </label>
           <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input
@@ -1303,6 +2038,14 @@ export const TopologyScreen: React.FC = () => {
               onChange={(event) => setShowCutOpenModel(event.target.checked)}
             />
             Show cut-open model
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showVertexClassChips}
+              onChange={(event) => setShowVertexClassChips(event.target.checked)}
+            />
+            Show vertex classes
           </label>
           {mobiusRealizationAvailable && (
             <>
@@ -1334,83 +2077,64 @@ export const TopologyScreen: React.FC = () => {
           )}
         </div>
 
-        {realizationRenderMode === "scene3d" ? (
-          <TopologyRealization3DView
-            realization={realization}
-            height={390}
-            showSeams={showSeams}
-            showSkeleton={showOneSkeleton}
-            showSingularityMarkers={showCornerIdentifications}
-            edgeColorOverrides={edgeColorOverrides}
-            hiddenEdgeIds={hiddenEdgeIds}
-            orientationFlipOverlay={
-              mobiusRealizationAvailable && showOrientationFlip
-                ? {
-                    trackEdgeId: "mobius_orient_track",
-                    startNormalEdgeId: "mobius_orient_normal_start",
-                    endNormalEdgeId: "mobius_orient_normal_end",
-                    speed: 0.1,
-                    color: "#9333ea",
-                  }
-                : null
-            }
-          />
-        ) : (
-          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
-            {realization.faceRealizationMesh.flatMap((mesh) =>
-              mesh.triangles.map((triangle, index) => {
-                const a = isoProject(mesh.vertices[triangle[0]]);
-                const b = isoProject(mesh.vertices[triangle[1]]);
-                const c = isoProject(mesh.vertices[triangle[2]]);
-                const points = `${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`;
-                return (
-                  <polygon
-                    key={`face-tri-${mesh.faceId}-${index}`}
-                    points={points}
-                    fill={realization.style.faceFill}
-                    opacity={0.55}
-                    stroke="#93c5fd"
-                    strokeWidth={0.6}
-                  />
-                );
-              })
-            )}
+        <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "6px 8px", display: "grid", gap: 5 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10 }}>
+            <span style={{ border: "1px solid #1d4ed8", borderRadius: 999, padding: "3px 8px", background: "#eff6ff", color: "#1e3a8a", fontWeight: 700 }}>
+              Topological quotient
+            </span>
+            <span style={{ border: "1px solid #0f766e", borderRadius: 999, padding: "3px 8px", background: "#f0fdfa", color: "#134e4a", fontWeight: 700 }}>
+              Geometric realization in R^3
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: "#475569" }}>
+            Quotient object is the actual construction; rendered shape is one geometric model.
+            {modelIsImmersed ? " This model is immersed and can self-intersect." : ""}
+          </div>
+        </div>
 
-            {showOneSkeleton &&
-              Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
-                if (points.length < 2) return null;
-                if (hiddenEdgeIds.includes(edgeId)) return null;
-                const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
-                const seam = seamEdgeIds.has(edgeId);
-                const drawAsSeam = seam && showSeams;
-                return (
-                  <polyline
-                    key={`real-edge-${edgeId}`}
-                    points={polyline}
-                    fill="none"
-                    stroke={edgeColorOverrides[edgeId] ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)}
-                    strokeWidth={drawAsSeam ? 2.8 : 1.9}
-                    strokeDasharray={drawAsSeam ? "6 3" : undefined}
-                  />
-                );
+        {showVertexClassChips && (
+          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "6px 8px", display: "grid", gap: 5 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Classes (live)</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 10 }}>
+              {classChipData.vertices.slice(0, 6).map((chip, index) => (
+                <span key={`chip-v-${index}`} style={{ border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 999, padding: "2px 7px" }}>
+                  {chip}
+                </span>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 10 }}>
+              {classChipData.edges.slice(0, 6).map((chip, index) => (
+                <span key={`chip-e-${index}`} style={{ border: "1px solid #fecaca", background: "#fff1f2", borderRadius: 999, padding: "2px 7px" }}>
+                  {chip}
+                </span>
+              ))}
+              <span style={{ border: "1px solid #d1d5db", background: "#f8fafc", borderRadius: 999, padding: "2px 7px" }}>
+                Faces: {classChipData.faces}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {linkedViewEnabled ? (
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 0.42fr) minmax(0, 1fr)", gap: 10, alignItems: "start" }}>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>2D diagram (linked)</div>
+              {renderLinkedDiagramPane(highlightedDiagramEdges, selectedEdgeId, setHoverEdgeId, (edgeId) => {
+                setSelectedEdgeId(edgeId);
+                const mapped = realizationEdgesForDiagramEdge(edgeId);
+                setLinkedSelectedRealizationEdgeId(mapped[0] ?? null);
               })}
-
-            {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
-              const pos = isoProject(point);
-              const singularity = realization.singularityMarkers.find((entry) => entry.vertexId === vertexId);
-              return (
-                <g key={`real-vertex-${vertexId}`}>
-                  <circle cx={pos.x} cy={pos.y} r={4.8} fill="#0f172a" />
-                  {showCornerIdentifications && singularity && (
-                    <circle cx={pos.x} cy={pos.y} r={8.2} fill="none" stroke={realization.style.singularityColor} strokeWidth={1.8} />
-                  )}
-                  <text x={pos.x + 7} y={pos.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
-                    {vertexId}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
+              <div style={{ fontSize: 10, color: "#475569" }}>
+                Hover or click an edge here to highlight corresponding seams/loops in the realization.
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Realization (linked)</div>
+              {renderRealizationDisplay()}
+            </div>
+          </div>
+        ) : (
+          renderRealizationDisplay()
         )}
 
         <div style={{ fontSize: 11, color: "#475569", display: "grid", gap: 3 }}>
@@ -1449,6 +2173,18 @@ export const TopologyScreen: React.FC = () => {
               <div>Orientability is not applicable in the manifold-surface sense.</div>
               <div>This is not a torus.</div>
             </>
+          )}
+          {cylinderStoryEnabled && (
+            <div>Cylinder story: one glued side class and two retained boundary circles.</div>
+          )}
+          {coneStoryEnabled && (
+            <div>Cone story: boundary identifications gather toward an apex class with one boundary loop.</div>
+          )}
+          {suspensionStoryEnabled && (
+            <div>Suspension preset is a placeholder quotient model for exploratory identification workflows.</div>
+          )}
+          {sphereStoryEnabled && (
+            <div>Sphere boundary-contraction story: boundary class is contracted toward one point class.</div>
           )}
           <div>
             Edge classes keep consistent colors: a in red, b in blue.
@@ -1518,21 +2254,47 @@ export const TopologyScreen: React.FC = () => {
     const targetsB = partialTargetFor(opsB);
     const currentStep = baseIndex < timelineSteps.length ? timelineSteps[baseIndex] : null;
     const activePairEdges = new Set(currentStep?.operations.flatMap((entry) => [entry.relation.edgeA, entry.relation.edgeB]) ?? []);
-    const activeStoryStages = torusStoryEnabled
-      ? TORUS_STORY_STAGES
-      : mobiusStoryEnabled
-        ? MOBIUS_STORY_STAGES
-        : kleinStoryEnabled
-          ? KLEIN_STORY_STAGES
-          : dunceStoryEnabled
-            ? DUNCE_STORY_STAGES
-            : null;
+    const activeStoryStages = (() => {
+      if (torusStoryEnabled) return TORUS_STORY_STAGES;
+      if (mobiusStoryEnabled) return MOBIUS_STORY_STAGES;
+      if (kleinStoryEnabled) return KLEIN_STORY_STAGES;
+      if (dunceStoryEnabled) return DUNCE_STORY_STAGES;
+      if (cylinderStoryEnabled) return CYLINDER_STORY_STAGES;
+      if (coneStoryEnabled) return CONE_STORY_STAGES;
+      if (suspensionStoryEnabled) return SUSPENSION_STORY_STAGES;
+      if (sphereStoryEnabled) return SPHERE_STORY_STAGES;
+      return null;
+    })();
     const storyProgress = timelineMax <= 0 ? 0 : Math.max(0, Math.min(1, timelinePosition / Math.max(1, timelineMax)));
     const storyFloat = storyProgress * ((activeStoryStages?.length ?? 2) - 1);
     const storyStageIndex = activeStoryStages
       ? Math.max(0, Math.min(activeStoryStages.length - 1, Math.floor(storyFloat + 1e-6)))
       : 0;
     const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
+    const activeStoryKey = torusStoryEnabled
+      ? "torus"
+      : mobiusStoryEnabled
+        ? "mobius"
+        : kleinStoryEnabled
+          ? "klein"
+          : dunceStoryEnabled
+            ? "dunce"
+            : cylinderStoryEnabled
+              ? "cylinder"
+              : coneStoryEnabled
+                ? "cone"
+                : suspensionStoryEnabled
+                  ? "suspension"
+                  : sphereStoryEnabled
+                    ? "sphere"
+                    : "generic";
+    const stageExplanation: StoryExplanation | null = storyStage
+      ? STORY_EXPLANATIONS[`${activeStoryKey}/${storyStage.id}`] ?? {
+          changed: storyStage.detail,
+          why: "This applies the next quotient operation in the construction pipeline.",
+          effect: "The quotient classes and resulting topology become more explicit.",
+        }
+      : null;
 
     const blended = (vertexId: string) => {
       const start = projectedStart[vertexId] ?? { x: 260, y: 180 };
@@ -1617,6 +2379,10 @@ export const TopologyScreen: React.FC = () => {
     const tKleinFinal = smoothStep01(remap01(storyFloat, 4.5, 5.0));
     const tDunceGather = easeInOutSine(remap01(storyFloat, 0.5, 3.7));
     const tDunceSingular = easeInOutSine(remap01(storyFloat, 3.1, 5.0));
+    const tCylinderGlue = easeInOutSine(remap01(storyFloat, 0.8, 3.4));
+    const tConeCollapse = easeInOutSine(remap01(storyFloat, 0.7, 3.6));
+    const tSuspensionMerge = easeInOutSine(remap01(storyFloat, 0.9, 3.7));
+    const tSphereContract = easeInOutSine(remap01(storyFloat, 0.8, 3.6));
     const storyRealization =
       mobiusStoryEnabled
         ? result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth")) ?? realization
@@ -1624,6 +2390,14 @@ export const TopologyScreen: React.FC = () => {
           ? result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth")) ?? realization
           : kleinStoryEnabled
             ? result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed")) ?? realization
+            : cylinderStoryEnabled
+              ? result.realizations.find((entry) => entry.id.endsWith("/realization/cylinder-smooth")) ?? realization
+              : coneStoryEnabled
+                ? result.realizations.find((entry) => entry.id.endsWith("/realization/cone-smooth")) ?? realization
+                : sphereStoryEnabled
+                  ? result.realizations.find((entry) => entry.id.endsWith("/realization/sphere-smooth")) ?? realization
+                  : suspensionStoryEnabled
+                    ? result.realizations.find((entry) => entry.id.endsWith("/realization/suspension-bicone")) ?? realization
           : realization;
     const storyQuotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
     const storyEdgeColorOverrides = {
@@ -1634,6 +2408,11 @@ export const TopologyScreen: React.FC = () => {
                 if (edgeId === "cut_u") return [edgeId, EDGE_CLASS_COLOR_A] as const;
                 if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
                 if (edgeId === "klein_self_intersection") return [edgeId, "#ea580c"] as const;
+                if (edgeId === "cylinder_boundary_top") return [edgeId, "#0ea5e9"] as const;
+                if (edgeId === "cylinder_boundary_bottom") return [edgeId, "#0ea5e9"] as const;
+                if (edgeId === "cone_boundary") return [edgeId, "#0ea5e9"] as const;
+                if (edgeId === "sphere_equator") return [edgeId, "#0ea5e9"] as const;
+                if (edgeId === "suspension_equator") return [edgeId, "#0ea5e9"] as const;
                 const label = storyQuotientEdgeLabelById.get(edgeId);
                 const color = edgeColorForLabel(label, "");
                 return color ? ([edgeId, color] as const) : null;
@@ -1733,17 +2512,40 @@ export const TopologyScreen: React.FC = () => {
             </div>
           )}
         </div>
-        <div style={{ fontSize: 12, color: "#334155" }}>
-          {activeStoryStages && storyStage
-            ? `${storyStage.label} - ${storyStage.detail}`
-            : currentStep
+        {activeStoryStages && storyStage && stageExplanation ? (
+          <div
+            style={{
+              border: "1px solid #bfdbfe",
+              background: "#eff6ff",
+              borderRadius: 8,
+              padding: "7px 9px",
+              display: "grid",
+              gap: 4,
+              color: "#1e3a8a",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800 }}>{storyStage.label}</div>
+            <div style={{ fontSize: 11 }}>
+              <strong>What changed:</strong> {stageExplanation.changed}
+            </div>
+            <div style={{ fontSize: 11 }}>
+              <strong>Why:</strong> {stageExplanation.why}
+            </div>
+            <div style={{ fontSize: 11 }}>
+              <strong>Topological effect:</strong> {stageExplanation.effect}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#334155" }}>
+            {currentStep
               ? `Step ${baseIndex + 1} [${currentStep.groupId}]: ${currentStep.operations
                   .map((entry) => `${entry.relation.edgeA} ~ ${entry.relation.edgeB} (${entry.relation.relation})`)
                   .join("; ")}`
               : baseIndex <= 0
                 ? "Start with flat fundamental diagram."
                 : "All grouped operations complete; settle on quotient placement."}
-        </div>
+          </div>
+        )}
         {!activeStoryStages && projectiveStoryEnabled && (
           <div
             style={{
@@ -1828,6 +2630,27 @@ export const TopologyScreen: React.FC = () => {
             </div>
           </div>
         )}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+          <span style={{ border: "1px solid #1d4ed8", borderRadius: 999, padding: "2px 7px", background: "#eff6ff", color: "#1e3a8a", fontWeight: 700 }}>
+            Quotient
+          </span>
+          <span style={{ border: "1px solid #0f766e", borderRadius: 999, padding: "2px 7px", background: "#f0fdfa", color: "#134e4a", fontWeight: 700 }}>
+            Realization in R^3
+          </span>
+          {classChipData.vertices.slice(0, 3).map((chip, index) => (
+            <span key={`anim-chip-v-${index}`} style={{ border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 7px", background: "#fff" }}>
+              {chip}
+            </span>
+          ))}
+          {classChipData.edges.slice(0, 2).map((chip, index) => (
+            <span key={`anim-chip-e-${index}`} style={{ border: "1px solid #fecaca", borderRadius: 999, padding: "2px 7px", background: "#fff" }}>
+              {chip}
+            </span>
+          ))}
+          <span style={{ border: "1px solid #d1d5db", borderRadius: 999, padding: "2px 7px", background: "#fff" }}>
+            Faces: {classChipData.faces}
+          </span>
+        </div>
 
         {activeStoryStages && storyRenderMode === "real3d" ? (
           <TopologyRealization3DView
@@ -2289,6 +3112,132 @@ export const TopologyScreen: React.FC = () => {
               );
             })()}
           </svg>
+        ) : cylinderStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const xL = 160;
+              const xR = 360;
+              const yT = 106;
+              const yB = 254;
+              const cx = 260;
+              const topCy = lerp(88, 120, tCylinderGlue);
+              const bottomCy = lerp(272, 240, tCylinderGlue);
+              const rimRx = lerp(100, 84, tCylinderGlue);
+              const rimRy = lerp(1, 24, tCylinderGlue);
+              return (
+                <>
+                  <rect x={xL} y={yT} width={xR - xL} height={yB - yT} fill="#f8fbff" stroke="#cbd5e1" strokeWidth={1.2} opacity={clamp01(1 - tCylinderGlue)} />
+                  <line x1={xL} y1={yT} x2={xR} y2={yT} stroke="#0ea5e9" strokeWidth={2.6} />
+                  <line x1={xL} y1={yB} x2={xR} y2={yB} stroke="#0ea5e9" strokeWidth={2.6} />
+                  <line x1={xL} y1={yT} x2={xL} y2={yB} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.9} />
+                  <line x1={xR} y1={yT} x2={xR} y2={yB} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.9} />
+
+                  <ellipse cx={cx} cy={topCy} rx={rimRx} ry={rimRy} fill="#dbeafe" opacity={0.4 + 0.35 * tCylinderGlue} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <ellipse cx={cx} cy={bottomCy} rx={rimRx} ry={rimRy} fill="#dbeafe" opacity={0.22 + 0.28 * tCylinderGlue} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <line x1={cx - rimRx} y1={topCy} x2={cx - rimRx} y2={bottomCy} stroke="#0284c7" strokeWidth={2.4} opacity={0.35 + 0.65 * tCylinderGlue} />
+                  <line x1={cx + rimRx} y1={topCy} x2={cx + rimRx} y2={bottomCy} stroke="#0284c7" strokeWidth={2.4} opacity={0.35 + 0.65 * tCylinderGlue} />
+
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Rectangle -> glue one pair -> Cylinder"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.45 + 0.55 * tCylinderGlue) }}>
+                    orientable surface with two boundary circles
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : coneStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const p0 = { x: lerp(164, 260, tConeCollapse), y: lerp(98, 118, tConeCollapse) };
+              const p1 = { x: lerp(356, 260, tConeCollapse), y: lerp(98, 118, tConeCollapse) };
+              const p2 = { x: lerp(260, 264, tConeCollapse), y: lerp(286, 252, tConeCollapse) };
+              const baseLoop = sampledLoop((t) => ({ x: 260 + 84 * Math.cos(Math.PI * 2 * t), y: 252 + 24 * Math.sin(Math.PI * 2 * t) }), 120);
+              return (
+                <>
+                  <polygon points={`${p0.x},${p0.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`} fill="#fef2f2" stroke="#fecaca" strokeWidth={1.2} opacity={0.45 + 0.3 * (1 - tConeCollapse)} />
+                  <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <line x1={p2.x} y1={p2.y} x2={p0.x} y2={p0.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <polyline points={baseLoop} fill="none" stroke="#0ea5e9" strokeWidth={3} opacity={clamp01(0.1 + 0.9 * tConeCollapse)} />
+                  <line x1={260} y1={120} x2={176} y2={252} stroke="#0284c7" strokeWidth={2.3} opacity={clamp01(0.1 + 0.9 * tConeCollapse)} />
+                  <line x1={260} y1={120} x2={344} y2={252} stroke="#0284c7" strokeWidth={2.3} opacity={clamp01(0.1 + 0.9 * tConeCollapse)} />
+                  <circle cx={260} cy={120} r={6} fill="#0f172a" />
+                  <text x={272} y={111} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>apex</text>
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Triangle -> boundary class collapse -> Cone"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.45 + 0.55 * tConeCollapse) }}>
+                    one boundary component; cone-style quotient story
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : suspensionStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const top = { x: 260, y: 84 };
+              const right = { x: lerp(360, 320, tSuspensionMerge), y: 180 };
+              const bottom = { x: 260, y: 276 };
+              const left = { x: lerp(160, 200, tSuspensionMerge), y: 180 };
+              const center = { x: 260, y: 180 };
+              const loopA = sampledLoop((t) => ({ x: center.x + 86 * Math.cos(Math.PI * 2 * t), y: center.y + 34 * Math.sin(Math.PI * 2 * t) }), 120);
+              const loopB = sampledLoop((t) => ({ x: center.x + 34 * Math.cos(Math.PI * 2 * t), y: center.y + 86 * Math.sin(Math.PI * 2 * t) }), 120);
+              return (
+                <>
+                  <polygon points={`${top.x},${top.y} ${right.x},${right.y} ${bottom.x},${bottom.y} ${left.x},${left.y}`} fill="#eef2ff" stroke="#cbd5e1" strokeWidth={1.2} />
+                  <line x1={top.x} y1={top.y} x2={right.x} y2={right.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.7} />
+                  <line x1={bottom.x} y1={bottom.y} x2={left.x} y2={left.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.7} />
+                  <line x1={right.x} y1={right.y} x2={bottom.x} y2={bottom.y} stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.7} />
+                  <line x1={left.x} y1={left.y} x2={top.x} y2={top.y} stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.7} />
+                  <polyline points={loopA} fill="none" stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} opacity={clamp01(0.12 + 0.88 * tSuspensionMerge)} />
+                  <polyline points={loopB} fill="none" stroke={EDGE_CLASS_COLOR_B} strokeWidth={2.8} opacity={clamp01(0.12 + 0.88 * tSuspensionMerge)} />
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Suspension placeholder quotient flow"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.42 + 0.58 * tSuspensionMerge) }}>
+                    experimental preset for inspecting pair identifications
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : sphereStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const p0 = { x: 166, y: 102 };
+              const p1 = { x: 354, y: 102 };
+              const p2 = { x: 264, y: 286 };
+              const boundary = `${p0.x},${p0.y} ${p1.x},${p1.y} ${p2.x},${p2.y}`;
+              const center = { x: 260, y: 186 };
+              const sphereR = lerp(22, 86, tSphereContract);
+              const contractP0 = { x: lerp(p0.x, center.x, tSphereContract), y: lerp(p0.y, center.y, tSphereContract) };
+              const contractP1 = { x: lerp(p1.x, center.x, tSphereContract), y: lerp(p1.y, center.y, tSphereContract) };
+              const contractP2 = { x: lerp(p2.x, center.x, tSphereContract), y: lerp(p2.y, center.y, tSphereContract) };
+              return (
+                <>
+                  <polygon points={boundary} fill="#fefce8" stroke="#fde68a" strokeWidth={1.2} opacity={clamp01(1 - 0.6 * tSphereContract)} />
+                  <line x1={contractP0.x} y1={contractP0.y} x2={contractP1.x} y2={contractP1.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <line x1={contractP1.x} y1={contractP1.y} x2={contractP2.x} y2={contractP2.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <line x1={contractP2.x} y1={contractP2.y} x2={contractP0.x} y2={contractP0.y} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8} />
+                  <circle cx={center.x} cy={center.y} r={sphereR} fill="#dbeafe" opacity={0.25 + 0.45 * tSphereContract} stroke="#3b82f6" strokeWidth={2.4} />
+                  <ellipse cx={center.x} cy={center.y} rx={sphereR} ry={sphereR * 0.48} fill="none" stroke="#60a5fa" strokeWidth={1.4} opacity={0.7 * tSphereContract} />
+                  <circle cx={center.x} cy={center.y} r={5.2} fill="#0f172a" opacity={clamp01(0.2 + 0.8 * tSphereContract)} />
+                  <text x={272} y={177} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700, opacity: clamp01(0.2 + 0.8 * tSphereContract) }}>
+                    boundary class point
+                  </text>
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Disk boundary contraction -> Sphere target"}
+                  </text>
+                  <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.45 + 0.55 * tSphereContract) }}>
+                    boundary class contracts to a single point class
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
         ) : (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {diagram.edges.map((edge) => {
@@ -2468,10 +3417,69 @@ export const TopologyScreen: React.FC = () => {
     );
   };
 
+  const renderCompareView = () => {
+    const pickRealization = (result: QuotientBuildResult) =>
+      result.realizations.find((entry) => entry.id.includes("smooth") || entry.id.includes("immersed")) ?? result.realizations[0];
+    if (!compareLeftResult || !compareRightResult) {
+      return <div style={{ fontSize: 12 }}>Compare presets are not available.</div>;
+    }
+    const leftRealization = pickRealization(compareLeftResult);
+    const rightRealization = pickRealization(compareRightResult);
+    if (!leftRealization || !rightRealization) {
+      return <div style={{ fontSize: 12 }}>Compare realizations are missing.</div>;
+    }
+    return (
+      <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+          <strong>Compare constructions</strong>
+          <span style={{ color: "#475569" }}>Side-by-side quotient models with synchronized overlay settings.</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {([
+            [compareLeftPresetId, setCompareLeftPresetId, compareLeftResult, leftRealization, "A"],
+            [compareRightPresetId, setCompareRightPresetId, compareRightResult, rightRealization, "B"],
+          ] as const).map(([presetIdValue, setPreset, result, realization, side]) => (
+            <div key={`compare-${side}`} style={{ border: "1px solid #dbe4f0", borderRadius: 9, background: "#fff", padding: "8px 9px", display: "grid", gap: 7 }}>
+              <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                <span>Preset {side}</span>
+                <select value={presetIdValue} onChange={(event) => setPreset(event.target.value)} style={{ fontSize: 11 }}>
+                  {TOPOLOGY_PRESETS.map((preset) => (
+                    <option key={`compare-preset-${side}-${preset.id}`} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+                <span style={{ border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 7px", background: "#eff6ff" }}>
+                  chi = {result.quotient.invariants?.eulerCharacteristic ?? "?"}
+                </span>
+                <span style={{ border: "1px solid #d1fae5", borderRadius: 999, padding: "2px 7px", background: "#ecfdf5" }}>
+                  comp = {result.quotient.invariants?.connectedComponents ?? "?"}
+                </span>
+                <span style={{ border: "1px solid #fee2e2", borderRadius: 999, padding: "2px 7px", background: "#fff1f2" }}>
+                  nm edges = {result.quotient.invariants?.nonManifoldEdgeCount ?? "?"}
+                </span>
+              </div>
+              <TopologyRealization3DView
+                realization={realization}
+                height={300}
+                showSeams={showSeams}
+                showSkeleton={showOneSkeleton}
+                showSingularityMarkers={showCornerIdentifications}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderCenterView = () => {
     if (activeView === "diagram") return renderDiagramView();
     if (activeView === "quotient") return renderQuotientView();
     if (activeView === "realization") return renderRealizationView();
+    if (activeView === "compare") return renderCompareView();
     return renderAnimationView();
   };
 
@@ -2521,6 +3529,33 @@ export const TopologyScreen: React.FC = () => {
         eulerCharacteristic: 0,
       };
     }
+    if (cylinderStoryEnabled) {
+      return {
+        boundaryComponents: 2,
+        orientable: true,
+        orientableText: null as string | null,
+        connectedComponents: 1,
+        eulerCharacteristic: 0,
+      };
+    }
+    if (coneStoryEnabled) {
+      return {
+        boundaryComponents: 1,
+        orientable: true,
+        orientableText: null as string | null,
+        connectedComponents: 1,
+        eulerCharacteristic: 1,
+      };
+    }
+    if (sphereStoryEnabled) {
+      return {
+        boundaryComponents: 0,
+        orientable: true,
+        orientableText: null as string | null,
+        connectedComponents: 1,
+        eulerCharacteristic: 2,
+      };
+    }
     return {
       boundaryComponents: null as number | null,
       orientable: null as boolean | null,
@@ -2528,9 +3563,33 @@ export const TopologyScreen: React.FC = () => {
       connectedComponents: null as number | null,
       eulerCharacteristic: null as number | null,
     };
-  }, [dunceStoryEnabled, kleinStoryEnabled, mobiusStoryEnabled, projectiveStoryEnabled, torusStoryEnabled]);
+  }, [
+    coneStoryEnabled,
+    cylinderStoryEnabled,
+    dunceStoryEnabled,
+    kleinStoryEnabled,
+    mobiusStoryEnabled,
+    projectiveStoryEnabled,
+    sphereStoryEnabled,
+    torusStoryEnabled,
+  ]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
+  const constructionProgressIndex = expandedWarningId
+    ? 5
+    : activeView === "diagram"
+      ? 0
+      : activeView === "animation"
+        ? timelinePosition < 0.9
+          ? 1
+          : timelinePosition < Math.max(1, timelineMax - 0.3)
+            ? 2
+            : 4
+        : activeView === "quotient"
+          ? 3
+          : activeView === "realization" || activeView === "compare"
+            ? 4
+            : 5;
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
@@ -2744,46 +3803,89 @@ export const TopologyScreen: React.FC = () => {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {([
-            ["diagram", "Diagram View"],
-            ["quotient", "Quotient Structure View"],
-            ["realization", "Realization View"],
-            ["animation", "Animation View"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={`topology-view-${id}`}
-              type="button"
-              onClick={() => {
-                if (id !== "diagram") ensureBuilt();
-                setActiveView(id);
-              }}
-              style={{
-                borderRadius: 999,
-                border: "1px solid " + (activeView === id ? "#0a66c2" : "#d1d5db"),
-                background: activeView === id ? "#e6f0ff" : "#fff",
-                fontWeight: activeView === id ? 700 : 600,
-                fontSize: 11,
-                padding: "5px 10px",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          <label style={{ marginLeft: "auto", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
-            Realization
-            <select
-              value={activeRealizationId ?? buildResult.realizations[0]?.id ?? ""}
-              onChange={(event) => setActiveRealizationId(event.target.value)}
-              style={{ fontSize: 11 }}
-            >
-              {buildResult.realizations.map((realization) => (
-                <option key={`realization-option-${realization.id}`} value={realization.id}>
-                  {realization.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div style={{ display: "grid", gap: 7, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {CONSTRUCTION_PROGRESS_STEPS.map((step, index) => {
+              const active = index === constructionProgressIndex;
+              const done = index < constructionProgressIndex;
+              return (
+                <button
+                  key={`construction-step-${step}`}
+                  type="button"
+                  onClick={() => {
+                    if (index <= 0) {
+                      setActiveView("diagram");
+                      return;
+                    }
+                    if (index <= 2) {
+                      ensureBuilt();
+                      setActiveView("animation");
+                      return;
+                    }
+                    if (index === 3) {
+                      ensureBuilt();
+                      setActiveView("quotient");
+                      return;
+                    }
+                    ensureBuilt();
+                    setActiveView("realization");
+                  }}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
+                    background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
+                    fontSize: 10,
+                    fontWeight: active ? 700 : 600,
+                    padding: "4px 9px",
+                  }}
+                >
+                  {index + 1}. {step}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {([
+              ["diagram", "Diagram View"],
+              ["quotient", "Quotient Structure View"],
+              ["realization", "Realization View"],
+              ["animation", "Animation View"],
+              ["compare", "Compare View"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={`topology-view-${id}`}
+                type="button"
+                onClick={() => {
+                  if (id !== "diagram") ensureBuilt();
+                  setActiveView(id);
+                }}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid " + (activeView === id ? "#0a66c2" : "#d1d5db"),
+                  background: activeView === id ? "#e6f0ff" : "#fff",
+                  fontWeight: activeView === id ? 700 : 600,
+                  fontSize: 11,
+                  padding: "5px 10px",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <label style={{ marginLeft: "auto", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+              Realization
+              <select
+                value={activeRealizationId ?? buildResult.realizations[0]?.id ?? ""}
+                onChange={(event) => setActiveRealizationId(event.target.value)}
+                style={{ fontSize: 11 }}
+              >
+                {buildResult.realizations.map((realization) => (
+                  <option key={`realization-option-${realization.id}`} value={realization.id}>
+                    {realization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
         <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#f8fbff", padding: 10, overflow: "auto" }}>
           {renderCenterView()}
@@ -2792,39 +3894,33 @@ export const TopologyScreen: React.FC = () => {
 
       <div style={{ ...styles.panelLeft, width: 330, display: "grid", gap: 10 }}>
         <section>
-          <h2 style={styles.h2}>Topology Objects</h2>
+          <h2 style={styles.h2}>A. Structure</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             <div>
-              <strong>Fundamental Diagram</strong>
+              Diagram: V {diagram.vertices.length}, E {diagram.edges.length}, F {diagram.faces.length}
             </div>
             <div>
-              vertices {diagram.vertices.length}, edges {diagram.edges.length}, faces {diagram.faces.length}
-            </div>
-            <div>
-              <strong>Subdivision stage</strong>
+              Quotient: V {buildResult.quotient.vertices.length}, E {buildResult.quotient.edges.length}, F {buildResult.quotient.faces.length}
             </div>
             <div>
               {buildResult.subdivision.applied
-                ? `triangulated faces ${buildResult.subdivision.triangulatedFaceIds.length}, created edges ${buildResult.subdivision.createdEdgeIds.length}`
-                : "no triangulation needed"}
+                ? `Subdivision applied: faces ${buildResult.subdivision.triangulatedFaceIds.length}, edges ${buildResult.subdivision.createdEdgeIds.length}`
+                : "Subdivision: not needed"}
             </div>
-            <div>
-              <strong>Quotient Complex</strong>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+              {classChipData.vertices.slice(0, 3).map((chip, index) => (
+                <span key={`right-v-${index}`} style={{ border: "1px solid #bfdbfe", borderRadius: 999, padding: "2px 7px", background: "#eff6ff" }}>
+                  {chip}
+                </span>
+              ))}
+              {classChipData.edges.slice(0, 2).map((chip, index) => (
+                <span key={`right-e-${index}`} style={{ border: "1px solid #fecaca", borderRadius: 999, padding: "2px 7px", background: "#fff1f2" }}>
+                  {chip}
+                </span>
+              ))}
             </div>
-            <div>
-              vertices {buildResult.quotient.vertices.length}, edges {buildResult.quotient.edges.length}, faces{" "}
-              {buildResult.quotient.faces.length}
-            </div>
-            <div>
-              <strong>Realizations</strong>
-            </div>
-            <div>{buildResult.realizations.length} realization choice(s) loaded</div>
           </div>
-        </section>
-
-        <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
-          <h2 style={styles.h2}>Pipeline</h2>
-          <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
             {buildResult.pipeline.map((stage) => (
               <div
                 key={`stage-${stage.id}`}
@@ -2845,7 +3941,33 @@ export const TopologyScreen: React.FC = () => {
         </section>
 
         <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
-          <h2 style={styles.h2}>Warnings & Invariants</h2>
+          <h2 style={styles.h2}>B. Realization</h2>
+          <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div>
+              Active model:{" "}
+              <strong>{buildResult.realizations.find((entry) => entry.id === activeRealizationId)?.name ?? buildResult.realizations[0]?.name ?? "(none)"}</strong>
+            </div>
+            <div>Realization choices: {buildResult.realizations.length}</div>
+            <div>
+              Seams: {(buildResult.realizations.find((entry) => entry.id === activeRealizationId) ?? buildResult.realizations[0])?.seams.length ?? 0}
+            </div>
+            <div>
+              Singular markers:{" "}
+              {(buildResult.realizations.find((entry) => entry.id === activeRealizationId) ?? buildResult.realizations[0])?.singularityMarkers.length ?? 0}
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
+              <span style={{ border: "1px solid #1d4ed8", borderRadius: 999, padding: "2px 7px", background: "#eff6ff", color: "#1e3a8a", fontWeight: 700 }}>
+                Topological quotient
+              </span>
+              <span style={{ border: "1px solid #0f766e", borderRadius: 999, padding: "2px 7px", background: "#f0fdfa", color: "#134e4a", fontWeight: 700 }}>
+                Geometric realization
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
+          <h2 style={styles.h2}>C. Diagnostics</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             {buildResult.quotient.invariants && (
               <>
@@ -2874,29 +3996,56 @@ export const TopologyScreen: React.FC = () => {
             {warningDiagnostics.length === 0 ? (
               <div style={{ color: "#166534" }}>No warnings.</div>
             ) : (
-              <div style={{ display: "grid", gap: 5, maxHeight: 220, overflowY: "auto" }}>
-                {warningDiagnostics.map((warning, index) => (
-                  <div
-                    key={`warning-${warning.code}-${index}`}
-                    style={{
-                      border: "1px solid " + (warning.level === "error" ? "#fecaca" : warning.level === "warning" ? "#fde68a" : "#dbe4f0"),
-                      borderRadius: 7,
-                      background: warning.level === "error" ? "#fff1f2" : warning.level === "warning" ? "#fffbeb" : "#f8fafc",
-                      padding: "5px 6px",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 700 }}>
-                      {warning.level.toUpperCase()} - {warning.code}
-                    </div>
-                    <div style={{ fontSize: 10 }}>{warning.message}</div>
-                  </div>
-                ))}
+              <div style={{ display: "grid", gap: 5, maxHeight: 260, overflowY: "auto" }}>
+                {warningDiagnostics.map((warning, index) => {
+                  const warningId = `warning-${warning.code}-${index}`;
+                  const expanded = expandedWarningId === warningId;
+                  const explanation = warningExplanationFor(warning);
+                  return (
+                    <button
+                      key={warningId}
+                      type="button"
+                      onClick={() => setExpandedWarningId(expanded ? null : warningId)}
+                      style={{
+                        textAlign: "left",
+                        border: "1px solid " + (warning.level === "error" ? "#fecaca" : warning.level === "warning" ? "#fde68a" : "#dbe4f0"),
+                        borderRadius: 7,
+                        background: warning.level === "error" ? "#fff1f2" : warning.level === "warning" ? "#fffbeb" : "#f8fafc",
+                        padding: "6px 7px",
+                        cursor: "pointer",
+                        display: "grid",
+                        gap: 3,
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 700 }}>
+                        {warning.level.toUpperCase()} - {warning.code}
+                      </div>
+                      <div style={{ fontSize: 10 }}>{warning.message}</div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>{expanded ? "Hide explanation" : "Click for explanation"}</div>
+                      {expanded && (
+                        <div style={{ marginTop: 2, paddingTop: 4, borderTop: "1px solid #dbe4f0", display: "grid", gap: 3, fontSize: 10 }}>
+                          <div><strong>Meaning:</strong> {explanation.meaning}</div>
+                          <div><strong>Geometry:</strong> {explanation.geometry}</div>
+                          <div><strong>Inspect:</strong> {explanation.inspect}</div>
+                          <div><strong>Fix:</strong> {explanation.fix}</div>
+                          {(warning.edgeId || warning.faceId || warning.vertexId) && (
+                            <div>
+                              <strong>Where:</strong> {warning.edgeId ? `edge ${warning.edgeId} ` : ""}
+                              {warning.faceId ? `face ${warning.faceId} ` : ""}
+                              {warning.vertexId ? `vertex ${warning.vertexId}` : ""}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
             {infoDiagnostics.length > 0 && (
               <>
                 <div style={{ marginTop: 4, fontWeight: 700 }}>Info ({infoDiagnostics.length})</div>
-                <div style={{ display: "grid", gap: 5, maxHeight: 160, overflowY: "auto" }}>
+                <div style={{ display: "grid", gap: 5, maxHeight: 120, overflowY: "auto" }}>
                   {infoDiagnostics.map((info, index) => (
                     <div
                       key={`info-${info.code}-${index}`}
@@ -2905,11 +4054,10 @@ export const TopologyScreen: React.FC = () => {
                         borderRadius: 7,
                         background: "#f8fafc",
                         padding: "5px 6px",
+                        fontSize: 10,
                       }}
                     >
-                      <div style={{ fontWeight: 700 }}>
-                        {info.code}
-                      </div>
+                      <div style={{ fontWeight: 700 }}>{info.code}</div>
                       <div>{info.message}</div>
                     </div>
                   ))}

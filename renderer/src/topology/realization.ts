@@ -101,6 +101,13 @@ const MOBIUS_RADIUS = 1.78;
 const MOBIUS_HALF_WIDTH = 0.44;
 const PROJECTIVE_SCALE = 3.15;
 const KLEIN_SCALE = 0.72;
+const CYLINDER_RADIUS = 1.34;
+const CYLINDER_HALF_HEIGHT = 0.9;
+const CONE_RADIUS = 1.48;
+const CONE_HEIGHT = 1.95;
+const SPHERE_RADIUS = 1.32;
+const SUSPENSION_RADIUS = 1.28;
+const SUSPENSION_HALF_HEIGHT = 1.34;
 
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -181,6 +188,9 @@ const isKleinBottleLikeQuotient = (quotient: QuotientComplex, relations?: Orient
     (hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "reverse", relationMap))
   );
 };
+
+const isPresetQuotient = (quotient: QuotientComplex, presetId: string): boolean =>
+  quotient.id.startsWith(`${presetId}/quotient`) || quotient.id.includes(`${presetId}/quotient`);
 
 const mobiusPoint = (u: number, v: number, radius = MOBIUS_RADIUS): Vec3 => {
   const cu = Math.cos(u);
@@ -290,6 +300,129 @@ const buildKleinFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"
       const b = (iu + 1) * row + iv;
       const c = (iu + 1) * row + iv + 1;
       const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const cylinderPoint = (u: number, v: number): Vec3 => [
+  CYLINDER_RADIUS * Math.cos(u),
+  CYLINDER_RADIUS * Math.sin(u),
+  CYLINDER_HALF_HEIGHT * v,
+];
+
+const conePoint = (u: number, s: number): Vec3 => {
+  const r = CONE_RADIUS * (1 - s);
+  const z = -CONE_HEIGHT * 0.5 + CONE_HEIGHT * s;
+  return [r * Math.cos(u), r * Math.sin(u), z];
+};
+
+const sphereSurfacePoint = (u: number, v: number): Vec3 => [
+  SPHERE_RADIUS * Math.sin(u) * Math.cos(v),
+  SPHERE_RADIUS * Math.sin(u) * Math.sin(v),
+  SPHERE_RADIUS * Math.cos(u),
+];
+
+const suspensionPoint = (u: number, w: number): Vec3 => {
+  const r = SUSPENSION_RADIUS * (1 - Math.abs(w));
+  return [r * Math.cos(u), r * Math.sin(u), SUSPENSION_HALF_HEIGHT * w];
+};
+
+const buildCylinderFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 76;
+  const vSegments = 24;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let iv = 0; iv <= vSegments; iv += 1) {
+      const v = -1 + (2 * iv) / vSegments;
+      vertices.push(cylinderPoint(u, v));
+    }
+  }
+  const row = vSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iv = 0; iv < vSegments; iv += 1) {
+      const a = iu * row + iv;
+      const b = (iu + 1) * row + iv;
+      const c = (iu + 1) * row + iv + 1;
+      const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const buildConeFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 88;
+  const sSegments = 26;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let is = 0; is <= sSegments; is += 1) {
+      const s = is / sSegments;
+      vertices.push(conePoint(u, s));
+    }
+  }
+  const row = sSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let is = 0; is < sSegments; is += 1) {
+      const a = iu * row + is;
+      const b = (iu + 1) * row + is;
+      const c = (iu + 1) * row + is + 1;
+      const d = iu * row + is + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const buildSphereFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 64;
+  const vSegments = 92;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * iu) / uSegments;
+    for (let iv = 0; iv <= vSegments; iv += 1) {
+      const v = (Math.PI * 2 * iv) / vSegments;
+      vertices.push(sphereSurfacePoint(u, v));
+    }
+  }
+  const row = vSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iv = 0; iv < vSegments; iv += 1) {
+      const a = iu * row + iv;
+      const b = (iu + 1) * row + iv;
+      const c = (iu + 1) * row + iv + 1;
+      const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const buildSuspensionFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 76;
+  const wSegments = 32;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let iw = 0; iw <= wSegments; iw += 1) {
+      const w = -1 + (2 * iw) / wSegments;
+      vertices.push(suspensionPoint(u, w));
+    }
+  }
+  const row = wSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iw = 0; iw < wSegments; iw += 1) {
+      const a = iu * row + iw;
+      const b = (iu + 1) * row + iw;
+      const c = (iu + 1) * row + iw + 1;
+      const d = iu * row + iw + 1;
       triangles.push([a, b, c], [a, c, d]);
     }
   }
@@ -623,6 +756,253 @@ const buildKleinImmersedRealization = (
   };
 };
 
+const buildCylinderPresetRealization = (quotient: QuotientComplex): Realization3D | null => {
+  if (!isPresetQuotient(quotient, "preset/cylinder")) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    const token = edgePrimaryLabel(edge.label);
+    if (token === "a") {
+      edgeCurves[edge.id] = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, 0), 170, true);
+      continue;
+    }
+    if (token === "u") {
+      edgeCurves[edge.id] = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, 1), 150, true);
+      continue;
+    }
+    if (token === "v") {
+      edgeCurves[edge.id] = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, -1), 150, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, 0.7 * Math.sin((phase + 1) * Math.PI * 0.33)), 130, true);
+  }
+  edgeCurves.cylinder_boundary_top = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, 1), 150, true);
+  edgeCurves.cylinder_boundary_bottom = sampleCurve((t) => cylinderPoint(t * Math.PI * 2, -1), 150, true);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    const t = index / Math.max(1, quotient.vertices.length);
+    const v = index % 2 === 0 ? 1 : -1;
+    vertexPositions[vertex.id] = cylinderPoint(t * Math.PI * 2, v);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/cylinder-smooth`,
+    name: "Smooth cylinder realization",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildCylinderFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#dbeafe",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
+const buildConePresetRealization = (quotient: QuotientComplex): Realization3D | null => {
+  if (!isPresetQuotient(quotient, "preset/cone")) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    const token = edgePrimaryLabel(edge.label);
+    if (token === "c") {
+      edgeCurves[edge.id] = sampleCurve((t) => conePoint(t * Math.PI * 2, 0), 170, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => conePoint(t * Math.PI * 2, 0.1 + 0.85 * Math.abs(Math.sin((phase + 1) * Math.PI * 0.35))), 130, true);
+  }
+  edgeCurves.cone_boundary = sampleCurve((t) => conePoint(t * Math.PI * 2, 0), 170, true);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = conePoint(0, 1);
+      return;
+    }
+    const t = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = conePoint(t, 0.1);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/cone-smooth`,
+    name: "Smooth cone realization",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildConeFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#fee2e2",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
+const buildSpherePresetRealization = (quotient: QuotientComplex): Realization3D | null => {
+  if (!isPresetQuotient(quotient, "preset/sphere-boundary-contraction")) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    const token = edgePrimaryLabel(edge.label);
+    if (token === "s") {
+      edgeCurves[edge.id] = sampleCurve((t) => sphereSurfacePoint(Math.PI * 0.5, t * Math.PI * 2), 170, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => sphereSurfacePoint(Math.PI * (0.25 + 0.5 * Math.abs(Math.sin((phase + 1) * 1.1))), t * Math.PI * 2), 130, true);
+  }
+  edgeCurves.sphere_equator = sampleCurve((t) => sphereSurfacePoint(Math.PI * 0.5, t * Math.PI * 2), 170, true);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    const u = ((index % 3) + 1) * (Math.PI / 4);
+    const v = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = sphereSurfacePoint(u, v);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/sphere-smooth`,
+    name: "Smooth sphere realization",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildSphereFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#dbeafe",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
+const buildSuspensionPresetRealization = (quotient: QuotientComplex): Realization3D | null => {
+  if (!isPresetQuotient(quotient, "preset/suspension")) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    const token = edgePrimaryLabel(edge.label);
+    if (token === "a") {
+      edgeCurves[edge.id] = sampleCurve((t) => suspensionPoint(t * Math.PI * 2, 0.24), 170, true);
+      continue;
+    }
+    if (token === "b") {
+      edgeCurves[edge.id] = sampleCurve((t) => suspensionPoint(t * Math.PI * 2, -0.24), 170, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => suspensionPoint(t * Math.PI * 2, Math.sin((phase + 1) * 0.7) * 0.7), 140, true);
+  }
+  edgeCurves.suspension_equator = sampleCurve((t) => suspensionPoint(t * Math.PI * 2, 0), 170, true);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = [0, 0, SUSPENSION_HALF_HEIGHT];
+      return;
+    }
+    if (index === 1) {
+      vertexPositions[vertex.id] = [0, 0, -SUSPENSION_HALF_HEIGHT];
+      return;
+    }
+    const t = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = suspensionPoint(t, 0);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/suspension-bicone`,
+    name: "Suspension-style bicone realization",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildSuspensionFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#ede9fe",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
 const buildMobiusBoundaryCurve = (): Vec3[] => {
   const points: Vec3[] = [];
   const samples = 200;
@@ -855,6 +1235,10 @@ export const buildRealizationChoices = (
   quotient: QuotientComplex,
   relations?: OrientationRelation[]
 ): Realization3D[] => {
+  const cylinderPreset = buildCylinderPresetRealization(quotient);
+  const conePreset = buildConePresetRealization(quotient);
+  const spherePreset = buildSpherePresetRealization(quotient);
+  const suspensionPreset = buildSuspensionPresetRealization(quotient);
   const kleinImmersed = buildKleinImmersedRealization(quotient, relations);
   const projectiveImmersed = buildProjectiveImmersedRealization(quotient, relations);
   const mobiusSmooth = buildMobiusRealizationBase(quotient, "smooth");
@@ -862,6 +1246,10 @@ export const buildRealizationChoices = (
   const smooth = buildTorusRealizationBase(quotient, "smooth", relations);
   const cutOpen = buildTorusRealizationBase(quotient, "cut-open", relations);
   return [
+    ...(cylinderPreset ? [cylinderPreset] : []),
+    ...(conePreset ? [conePreset] : []),
+    ...(spherePreset ? [spherePreset] : []),
+    ...(suspensionPreset ? [suspensionPreset] : []),
     ...(kleinImmersed ? [kleinImmersed] : []),
     ...(projectiveImmersed ? [projectiveImmersed] : []),
     ...(mobiusSmooth ? [mobiusSmooth] : []),

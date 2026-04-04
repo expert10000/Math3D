@@ -78,6 +78,34 @@ describe("buildQuotientPipeline", () => {
     expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(false);
   });
 
+  it("adds smooth cylinder realization for cylinder preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("cylinder");
+    expect(preset).toBeTruthy();
+    const result = buildQuotientPipeline(preset!.buildDiagram());
+    expect(result.realizations.some((entry) => entry.id.endsWith("/realization/cylinder-smooth"))).toBe(true);
+  });
+
+  it("adds smooth cone realization for cone preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("cone");
+    expect(preset).toBeTruthy();
+    const result = buildQuotientPipeline(preset!.buildDiagram());
+    expect(result.realizations.some((entry) => entry.id.endsWith("/realization/cone-smooth"))).toBe(true);
+  });
+
+  it("adds smooth sphere realization for sphere-boundary preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("sphere_boundary_contraction");
+    expect(preset).toBeTruthy();
+    const result = buildQuotientPipeline(preset!.buildDiagram());
+    expect(result.realizations.some((entry) => entry.id.endsWith("/realization/sphere-smooth"))).toBe(true);
+  });
+
+  it("adds suspension bicone realization for suspension preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("suspension");
+    expect(preset).toBeTruthy();
+    const result = buildQuotientPipeline(preset!.buildDiagram());
+    expect(result.realizations.some((entry) => entry.id.endsWith("/realization/suspension-bicone"))).toBe(true);
+  });
+
   it("treats unpaired source edges as boundary info, not warnings", () => {
     const preset = TOPOLOGY_PRESET_BY_ID.get("mobius_from_rectangle");
     expect(preset).toBeTruthy();

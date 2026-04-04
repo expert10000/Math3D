@@ -21,6 +21,9 @@ type TopologyRealization3DViewProps = {
   edgeColorOverrides?: Record<string, string>;
   hiddenEdgeIds?: string[];
   orientationFlipOverlay?: OrientationFlipOverlay | null;
+  highlightedEdgeIds?: string[];
+  onEdgeHover?: (edgeId: string | null) => void;
+  onEdgeSelect?: (edgeId: string) => void;
 };
 
 const toVec3 = (point: Vec3): THREE.Vector3 => new THREE.Vector3(point[0], point[1], point[2]);
@@ -134,9 +137,13 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   edgeColorOverrides = {},
   hiddenEdgeIds = [],
   orientationFlipOverlay = null,
+  highlightedEdgeIds = [],
+  onEdgeHover,
+  onEdgeSelect,
 }) => {
   const seamSet = useMemo(() => new Set(realization.seams.map((seam) => seam.edgeId)), [realization.seams]);
   const hiddenSet = useMemo(() => new Set(hiddenEdgeIds), [hiddenEdgeIds]);
+  const highlightedSet = useMemo(() => new Set(highlightedEdgeIds), [highlightedEdgeIds]);
   const singularitySet = useMemo(
     () =>
       new Map(realization.singularityMarkers.map((marker) => [marker.vertexId, marker])),
@@ -154,7 +161,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
         background: "#f8fbff",
       }}
     >
-      <Canvas camera={{ position: [3.6, 3.2, 3.8], fov: 48 }}>
+      <Canvas camera={{ position: [3.6, 3.2, 3.8], fov: 48 }} onPointerMissed={() => onEdgeHover?.(null)}>
         <color attach="background" args={["#f8fbff"]} />
         <ambientLight intensity={0.85} />
         <directionalLight position={[4, 6, 5]} intensity={1.1} />
@@ -178,17 +185,34 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
                 const isSeam = seamSet.has(edgeId);
                 const customColor = edgeColorOverrides[edgeId];
                 const drawAsSeam = isSeam && showSeams;
+                const isHighlighted = highlightedSet.has(edgeId);
                 return (
                   <Line
                     key={`edge-${edgeId}`}
                     points={points}
-                    color={customColor ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)}
-                    lineWidth={drawAsSeam ? 2.4 : 1.5}
+                    color={
+                      isHighlighted
+                        ? "#0a66c2"
+                        : customColor ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)
+                    }
+                    lineWidth={drawAsSeam ? (isHighlighted ? 3.8 : 2.4) : isHighlighted ? 2.8 : 1.5}
                     dashed={drawAsSeam}
                     dashSize={drawAsSeam ? 0.18 : undefined}
                     gapSize={drawAsSeam ? 0.11 : undefined}
                     depthTest={false}
                     renderOrder={drawAsSeam ? 9 : 8}
+                    onPointerOver={(event) => {
+                      event.stopPropagation();
+                      onEdgeHover?.(edgeId);
+                    }}
+                    onPointerOut={(event) => {
+                      event.stopPropagation();
+                      onEdgeHover?.(null);
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEdgeSelect?.(edgeId);
+                    }}
                   />
                 );
               })}
