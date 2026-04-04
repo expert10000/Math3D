@@ -28,4 +28,15 @@ describe("buildQuotientPipeline", () => {
     expect(result.subdivision.createdEdgeIds.length).toBeGreaterThan(0);
     expect(result.subdividedDiagram.faces.length).toBeGreaterThan(1);
   });
+
+  it("adds smooth and cut-open torus realizations for torus-square quotient", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("torus_square");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    const realizationIds = result.realizations.map((entry) => entry.id);
+    expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(true);
+    expect(realizationIds.some((id) => id.endsWith("/realization/torus-cut-open"))).toBe(true);
+  });
 });

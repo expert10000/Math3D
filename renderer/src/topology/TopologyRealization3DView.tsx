@@ -7,6 +7,10 @@ import type { Realization3D } from "./types";
 type TopologyRealization3DViewProps = {
   realization: Realization3D;
   height?: number;
+  showSeams?: boolean;
+  showSkeleton?: boolean;
+  showSingularityMarkers?: boolean;
+  edgeColorOverrides?: Record<string, string>;
 };
 
 const FacePatch: React.FC<{
@@ -41,6 +45,10 @@ const FacePatch: React.FC<{
 export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps> = ({
   realization,
   height = 380,
+  showSeams = true,
+  showSkeleton = true,
+  showSingularityMarkers = true,
+  edgeColorOverrides = {},
 }) => {
   const seamSet = useMemo(() => new Set(realization.seams.map((seam) => seam.edgeId)), [realization.seams]);
   const singularitySet = useMemo(
@@ -77,23 +85,26 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
               />
             ))}
 
-            {Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
-              if (points.length < 2) return null;
-              const isSeam = seamSet.has(edgeId);
-              return (
-                <Line
-                  key={`edge-${edgeId}`}
-                  points={points}
-                  color={isSeam ? realization.style.seamStroke : realization.style.edgeStroke}
-                  lineWidth={isSeam ? 2.4 : 1.5}
-                  dashed={isSeam}
-                  dashSize={isSeam ? 0.18 : undefined}
-                  gapSize={isSeam ? 0.11 : undefined}
-                  depthTest={false}
-                  renderOrder={isSeam ? 9 : 8}
-                />
-              );
-            })}
+            {showSkeleton &&
+              Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
+                if (points.length < 2) return null;
+                const isSeam = seamSet.has(edgeId);
+                const customColor = edgeColorOverrides[edgeId];
+                const drawAsSeam = isSeam && showSeams;
+                return (
+                  <Line
+                    key={`edge-${edgeId}`}
+                    points={points}
+                    color={customColor ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)}
+                    lineWidth={drawAsSeam ? 2.4 : 1.5}
+                    dashed={drawAsSeam}
+                    dashSize={drawAsSeam ? 0.18 : undefined}
+                    gapSize={drawAsSeam ? 0.11 : undefined}
+                    depthTest={false}
+                    renderOrder={drawAsSeam ? 9 : 8}
+                  />
+                );
+              })}
 
             {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
               const marker = singularitySet.get(vertexId);
@@ -103,7 +114,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
                     <sphereGeometry args={[0.038, 12, 12]} />
                     <meshStandardMaterial color="#0f172a" />
                   </mesh>
-                  {marker && (
+                  {showSingularityMarkers && marker && (
                     <mesh>
                       <sphereGeometry args={[0.064, 16, 16]} />
                       <meshBasicMaterial color={realization.style.singularityColor} wireframe />
@@ -123,4 +134,3 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
 };
 
 export default TopologyRealization3DView;
-

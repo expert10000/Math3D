@@ -109,6 +109,87 @@ class SmallDsu {
 }
 
 const DIAGRAM_HISTORY_LIMIT = 120;
+const EDGE_CLASS_COLOR_A = "#dc2626";
+const EDGE_CLASS_COLOR_B = "#2563eb";
+const EDGE_CLASS_COLOR_NEUTRAL = "#334155";
+
+const primaryEdgeLabelToken = (rawLabel: string | undefined | null): string => {
+  if (!rawLabel) return "";
+  const head = rawLabel
+    .trim()
+    .toLowerCase()
+    .split(/[\/\s]+/)[0] ?? "";
+  return head.replace(/[^a-z0-9]/g, "");
+};
+
+const edgeColorForLabel = (rawLabel: string | undefined | null, fallback = EDGE_CLASS_COLOR_NEUTRAL): string => {
+  const token = primaryEdgeLabelToken(rawLabel);
+  if (token === "a") return EDGE_CLASS_COLOR_A;
+  if (token === "b") return EDGE_CLASS_COLOR_B;
+  return fallback;
+};
+
+const isTorusSquareStoryDiagram = (candidate: FundamentalDiagram): boolean => {
+  const face = candidate.faces[0];
+  if (!face || candidate.edges.length < 4) return false;
+  const word = (candidate.faceBoundaryWords[face.id] ?? "").toLowerCase().replace(/\s+/g, "");
+  if (word.includes("aba^-1b^-1")) return true;
+  const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
+  const aCount = labels.filter((label) => label === "a").length;
+  const bCount = labels.filter((label) => label === "b").length;
+  return aCount >= 2 && bCount >= 2;
+};
+
+const buildNarrativeAnimationPlan = (
+  sourceDiagram: FundamentalDiagram,
+  result: QuotientBuildResult
+): TopologyAnimationPlan => {
+  const fallback = createDefaultAnimationPlan(result.orientationRelations);
+  if (!isTorusSquareStoryDiagram(sourceDiagram)) return fallback;
+  const edgeLabels = result.subdividedDiagram.edgeLabels;
+  const buckets: Record<"a" | "b" | "other", string[]> = {
+    a: [],
+    b: [],
+    other: [],
+  };
+  for (const opId of fallback.order) {
+    const opIndex = Number(opId.replace("op-", ""));
+    const relation = result.orientationRelations[opIndex];
+    if (!relation) {
+      buckets.other.push(opId);
+      continue;
+    }
+    const tokenA = primaryEdgeLabelToken(edgeLabels[relation.edgeA]);
+    const tokenB = primaryEdgeLabelToken(edgeLabels[relation.edgeB]);
+    if (tokenA === "a" && tokenB === "a") {
+      buckets.a.push(opId);
+      continue;
+    }
+    if (tokenA === "b" && tokenB === "b") {
+      buckets.b.push(opId);
+      continue;
+    }
+    buckets.other.push(opId);
+  }
+  const order = [...buckets.a, ...buckets.b, ...buckets.other];
+  const groups: Record<string, string> = {};
+  for (const opId of buckets.a) groups[opId] = "glue-a-sides";
+  for (const opId of buckets.b) groups[opId] = "glue-b-sides";
+  for (const opId of buckets.other) groups[opId] = "aux-identifications";
+  return {
+    order: order.length > 0 ? order : fallback.order,
+    groups,
+  };
+};
+
+const TORUS_STORY_STAGES = [
+  { id: "square", label: "Step 0: square", detail: "Original square with edge classes." },
+  { id: "first-glue", label: "Step 1: glue a sides", detail: "Start gluing opposite a edges." },
+  { id: "cylinder", label: "Step 2: cylinder", detail: "First quotient gives a cylinder." },
+  { id: "second-glue", label: "Step 3: glue b circles", detail: "Identify the two cylinder rims (b)." },
+  { id: "torus", label: "Step 4: torus", detail: "Topological torus appears." },
+  { id: "smooth", label: "Step 5: smooth realization", detail: "Embedded torus in R^3 with overlays." },
+] as const;
 
 export const TopologyScreen: React.FC = () => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
@@ -132,6 +213,12 @@ export const TopologyScreen: React.FC = () => {
   const [appendCreatedEdgesToBoundary, setAppendCreatedEdgesToBoundary] = useState(true);
   const [activeRealizationId, setActiveRealizationId] = useState<string | null>(null);
   const [realizationRenderMode, setRealizationRenderMode] = useState<"scene3d" | "projected2d">("scene3d");
+  const [showEdgeClasses, setShowEdgeClasses] = useState(true);
+  const [showCornerIdentifications, setShowCornerIdentifications] = useState(true);
+  const [showSeams, setShowSeams] = useState(true);
+  const [showOneSkeleton, setShowOneSkeleton] = useState(true);
+  const [showSmoothRealization, setShowSmoothRealization] = useState(true);
+  const [showCutOpenModel, setShowCutOpenModel] = useState(false);
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
@@ -172,6 +259,7 @@ export const TopologyScreen: React.FC = () => {
     }
     return out;
   }, [timelineSteps]);
+  const torusStoryEnabled = useMemo(() => isTorusSquareStoryDiagram(diagram), [diagram]);
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -208,7 +296,7 @@ export const TopologyScreen: React.FC = () => {
     setActiveView("diagram");
     setTimelinePosition(0);
     setTimelinePlaying(false);
-    setAnimationPlan(createDefaultAnimationPlan(nextResult.orientationRelations));
+    setAnimationPlan(buildNarrativeAnimationPlan(nextDiagram, nextResult));
     setSelectedVertexId(null);
     setSelectedEdgeId(null);
     setPendingEdgeStartId(null);
@@ -223,7 +311,11 @@ export const TopologyScreen: React.FC = () => {
     const nextResult = buildQuotientPipeline(diagram);
     setBuildResult(nextResult);
     setBuiltSignature(diagramSignature);
-    setAnimationPlan((prev) => normalizeAnimationPlan(nextResult.orientationRelations, prev));
+    setAnimationPlan((prev) =>
+      prev
+        ? normalizeAnimationPlan(nextResult.orientationRelations, prev)
+        : buildNarrativeAnimationPlan(diagram, nextResult)
+    );
     if (!nextResult.realizations.some((entry) => entry.id === activeRealizationId)) {
       setActiveRealizationId(nextResult.realizations[0]?.id ?? null);
     }
@@ -415,7 +507,7 @@ export const TopologyScreen: React.FC = () => {
         setBuiltSignature(JSON.stringify(loadedDiagram));
         setActiveView("diagram");
         setActiveRealizationId(built.realizations[0]?.id ?? null);
-        setAnimationPlan(createDefaultAnimationPlan(built.orientationRelations));
+        setAnimationPlan(buildNarrativeAnimationPlan(loadedDiagram, built));
       }
       setTimelinePosition(0);
       setTimelinePlaying(false);
@@ -439,7 +531,7 @@ export const TopologyScreen: React.FC = () => {
       setBuildMode("editor");
       setActiveView("diagram");
       setActiveRealizationId(built.realizations[0]?.id ?? null);
-      setAnimationPlan(createDefaultAnimationPlan(built.orientationRelations));
+      setAnimationPlan(buildNarrativeAnimationPlan(loadedDiagram, built));
       setTimelinePosition(0);
       setTimelinePlaying(false);
       setCurrentDocumentPath(sourcePath);
@@ -647,6 +739,7 @@ export const TopologyScreen: React.FC = () => {
             const arrowEnd = orientation > 0 ? pointTo : pointFrom;
             const mid = { x: (pointFrom.x + pointTo.x) / 2, y: (pointFrom.y + pointTo.y) / 2 };
             const highlighted = highlightEdges.has(edge.id);
+            const classColor = edgeColorForLabel(diagram.edgeLabels[edge.id], EDGE_CLASS_COLOR_NEUTRAL);
             return (
               <g key={`diagram-edge-${edge.id}`} onMouseEnter={() => setHoverEdgeId(edge.id)} style={{ cursor: "pointer" }}>
                 <line
@@ -654,7 +747,7 @@ export const TopologyScreen: React.FC = () => {
                   y1={arrowStart.y}
                   x2={arrowEnd.x}
                   y2={arrowEnd.y}
-                  stroke={highlighted ? "#0a66c2" : "#334155"}
+                  stroke={highlighted ? "#0a66c2" : classColor}
                   strokeWidth={selectedEdgeId === edge.id ? 3.4 : highlighted ? 3 : 2}
                   markerEnd="url(#edgeArrow)"
                   onClick={(event) => {
@@ -669,7 +762,7 @@ export const TopologyScreen: React.FC = () => {
                   style={{
                     fontSize: 11,
                     fontWeight: highlighted ? 700 : 600,
-                    fill: highlighted ? "#0a66c2" : "#1f2937",
+                    fill: highlighted ? "#0a66c2" : classColor,
                   }}
                 >
                   {diagram.edgeLabels[edge.id] || edge.id}
@@ -751,13 +844,14 @@ export const TopologyScreen: React.FC = () => {
             const from = positions[edge.endpointVertexIds[0]];
             const to = positions[edge.endpointVertexIds[1]];
             if (!from || !to) return null;
+            const classColor = edgeColorForLabel(edge.label, "#0f172a");
             if (edge.endpointVertexIds[0] === edge.endpointVertexIds[1]) {
               const radius = 22 + index * 7;
               const path = `M ${from.x} ${from.y - radius} C ${from.x + radius} ${from.y - radius - 24} ${from.x - radius} ${from.y - radius - 24} ${from.x} ${from.y - radius}`;
               return (
                 <g key={`q-edge-loop-${edge.id}`}>
-                  <path d={path} fill="none" stroke="#0f172a" strokeWidth={2} />
-                  <text x={from.x + radius + 4} y={from.y - radius - 10} style={{ fontSize: 10, fill: "#0f172a" }}>
+                  <path d={path} fill="none" stroke={classColor} strokeWidth={2.3} />
+                  <text x={from.x + radius + 4} y={from.y - radius - 10} style={{ fontSize: 10, fill: classColor }}>
                     {edge.label}
                   </text>
                 </g>
@@ -766,8 +860,8 @@ export const TopologyScreen: React.FC = () => {
             const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
             return (
               <g key={`q-edge-${edge.id}`}>
-                <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="#0f172a" strokeWidth={2.2} />
-                <text x={mid.x + 6} y={mid.y - 6} style={{ fontSize: 10, fill: "#0f172a" }}>
+                <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={classColor} strokeWidth={2.4} />
+                <text x={mid.x + 6} y={mid.y - 6} style={{ fontSize: 10, fill: classColor }}>
                   {edge.label}
                 </text>
               </g>
@@ -868,11 +962,34 @@ export const TopologyScreen: React.FC = () => {
 
   const renderRealizationView = () => {
     const result = ensureBuilt();
-    const realization =
+    const selectedRealization =
       result.realizations.find((entry) => entry.id === activeRealizationId) ??
       result.realizations[0];
+    const smoothTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth"));
+    const cutOpenTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-cut-open"));
+    const torusRealizationAvailable = !!smoothTorusRealization || !!cutOpenTorusRealization;
+    const realization =
+      torusRealizationAvailable && showSmoothRealization
+        ? showCutOpenModel
+          ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
+          : smoothTorusRealization ?? selectedRealization
+        : selectedRealization;
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
+    const quotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
+    const edgeColorOverrides = showEdgeClasses
+      ? Object.fromEntries(
+          Object.keys(realization.edgeCurves)
+            .map((edgeId) => {
+              if (edgeId === "cut_u") return [edgeId, EDGE_CLASS_COLOR_A] as const;
+              if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
+              const label = quotientEdgeLabelById.get(edgeId);
+              const color = edgeColorForLabel(label, "");
+              return color ? ([edgeId, color] as const) : null;
+            })
+            .filter((entry): entry is readonly [string, string] => !!entry)
+        )
+      : {};
     return (
       <div style={{ display: "grid", gap: 8 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -906,9 +1023,56 @@ export const TopologyScreen: React.FC = () => {
             projected 2D
           </button>
         </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 11 }}>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={showEdgeClasses} onChange={(event) => setShowEdgeClasses(event.target.checked)} />
+            Show edge classes
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showCornerIdentifications}
+              onChange={(event) => setShowCornerIdentifications(event.target.checked)}
+            />
+            Show corner identifications
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={showSeams} onChange={(event) => setShowSeams(event.target.checked)} />
+            Show seams
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input type="checkbox" checked={showOneSkeleton} onChange={(event) => setShowOneSkeleton(event.target.checked)} />
+            Show 1-skeleton
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showSmoothRealization}
+              disabled={!torusRealizationAvailable}
+              onChange={(event) => setShowSmoothRealization(event.target.checked)}
+            />
+            Show smooth realization
+          </label>
+          <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showCutOpenModel}
+              disabled={!torusRealizationAvailable || !showSmoothRealization}
+              onChange={(event) => setShowCutOpenModel(event.target.checked)}
+            />
+            Show cut-open model
+          </label>
+        </div>
 
         {realizationRenderMode === "scene3d" ? (
-          <TopologyRealization3DView realization={realization} height={390} />
+          <TopologyRealization3DView
+            realization={realization}
+            height={390}
+            showSeams={showSeams}
+            showSkeleton={showOneSkeleton}
+            showSingularityMarkers={showCornerIdentifications}
+            edgeColorOverrides={edgeColorOverrides}
+          />
         ) : (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {realization.faceRealizationMesh.flatMap((mesh) =>
@@ -930,21 +1094,23 @@ export const TopologyScreen: React.FC = () => {
               })
             )}
 
-            {Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
-              if (points.length < 2) return null;
-              const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
-              const seam = seamEdgeIds.has(edgeId);
-              return (
-                <polyline
-                  key={`real-edge-${edgeId}`}
-                  points={polyline}
-                  fill="none"
-                  stroke={seam ? realization.style.seamStroke : realization.style.edgeStroke}
-                  strokeWidth={seam ? 2.8 : 1.9}
-                  strokeDasharray={seam ? "6 3" : undefined}
-                />
-              );
-            })}
+            {showOneSkeleton &&
+              Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
+                if (points.length < 2) return null;
+                const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
+                const seam = seamEdgeIds.has(edgeId);
+                const drawAsSeam = seam && showSeams;
+                return (
+                  <polyline
+                    key={`real-edge-${edgeId}`}
+                    points={polyline}
+                    fill="none"
+                    stroke={edgeColorOverrides[edgeId] ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke)}
+                    strokeWidth={drawAsSeam ? 2.8 : 1.9}
+                    strokeDasharray={drawAsSeam ? "6 3" : undefined}
+                  />
+                );
+              })}
 
             {Object.entries(realization.vertexPositions).map(([vertexId, point]) => {
               const pos = isoProject(point);
@@ -952,7 +1118,7 @@ export const TopologyScreen: React.FC = () => {
               return (
                 <g key={`real-vertex-${vertexId}`}>
                   <circle cx={pos.x} cy={pos.y} r={4.8} fill="#0f172a" />
-                  {singularity && (
+                  {showCornerIdentifications && singularity && (
                     <circle cx={pos.x} cy={pos.y} r={8.2} fill="none" stroke={realization.style.singularityColor} strokeWidth={1.8} />
                   )}
                   <text x={pos.x + 7} y={pos.y - 8} style={{ fontSize: 10, fill: "#0f172a", fontWeight: 700 }}>
@@ -972,7 +1138,7 @@ export const TopologyScreen: React.FC = () => {
             Seams: {realization.seams.length} | singular markers: {realization.singularityMarkers.length}
           </div>
           <div>
-            The 3D scene supports self-intersections/non-manifold adjacency and explicit seam overlays.
+            Edge classes keep consistent colors: a in red, b in blue.
           </div>
         </div>
       </div>
@@ -1039,6 +1205,10 @@ export const TopologyScreen: React.FC = () => {
     const targetsB = partialTargetFor(opsB);
     const currentStep = baseIndex < timelineSteps.length ? timelineSteps[baseIndex] : null;
     const activePairEdges = new Set(currentStep?.operations.flatMap((entry) => [entry.relation.edgeA, entry.relation.edgeB]) ?? []);
+    const storyProgress = timelineMax <= 0 ? 0 : Math.max(0, Math.min(1, timelinePosition / Math.max(1, timelineMax)));
+    const storyFloat = storyProgress * (TORUS_STORY_STAGES.length - 1);
+    const storyStageIndex = Math.max(0, Math.min(TORUS_STORY_STAGES.length - 1, Math.floor(storyFloat + 1e-6)));
+    const storyStage = TORUS_STORY_STAGES[storyStageIndex] ?? TORUS_STORY_STAGES[0];
 
     const blended = (vertexId: string) => {
       const start = projectedStart[vertexId] ?? { x: 260, y: 180 };
@@ -1053,6 +1223,51 @@ export const TopologyScreen: React.FC = () => {
         y: start.y * 0.35 + target.y * 0.65,
       };
     };
+
+    const projectStoryTorus = (u: number, v: number): { x: number; y: number } => {
+      const R = 1.86;
+      const r = 0.64;
+      const x = (R + r * Math.cos(v)) * Math.cos(u);
+      const y = (R + r * Math.cos(v)) * Math.sin(u);
+      const z = r * Math.sin(v);
+      return {
+        x: 260 + x * 56 + z * 24,
+        y: 184 - y * 43 + z * 11,
+      };
+    };
+
+    const sampledLoop = (builder: (t: number) => { x: number; y: number }, steps: number): string =>
+      Array.from({ length: steps + 1 }, (_, index) => {
+        const t = index / steps;
+        const p = builder(t);
+        return `${p.x},${p.y}`;
+      }).join(" ");
+
+    const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+    const lerp = (a: number, b: number, t: number): number => a * (1 - t) + b * t;
+    const remap01 = (value: number, start: number, end: number): number =>
+      clamp01((value - start) / Math.max(1e-6, end - start));
+    const smoothStep01 = (value: number): number => {
+      const t = clamp01(value);
+      return t * t * (3 - 2 * t);
+    };
+    const easeOutQuint = (value: number): number => {
+      const t = clamp01(value);
+      return 1 - Math.pow(1 - t, 5);
+    };
+    const easeInOutSine = (value: number): number => {
+      const t = clamp01(value);
+      return 0.5 - 0.5 * Math.cos(Math.PI * t);
+    };
+    const bell = (x: number, center: number, halfWidth: number): number => {
+      const n = clamp01(1 - Math.abs(x - center) / Math.max(1e-6, halfWidth));
+      return n * n;
+    };
+
+    const tSquareToCylinder = easeOutQuint(remap01(storyFloat, -0.02, 1.18));
+    const tCylinderToTorus = easeInOutSine(remap01(storyFloat, 1.7, 4.62));
+    const tFinalize = smoothStep01(remap01(storyFloat, 4.48, 5.0));
+    const tBGlue = bell(storyFloat, 3.35, 1.0) * easeInOutSine(remap01(storyFloat, 2.2, 4.7));
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
@@ -1108,54 +1323,248 @@ export const TopologyScreen: React.FC = () => {
           </strong>
         </div>
         <div style={{ fontSize: 12, color: "#334155" }}>
-          {currentStep
-            ? `Step ${baseIndex + 1} [${currentStep.groupId}]: ${currentStep.operations
-                .map((entry) => `${entry.relation.edgeA} ~ ${entry.relation.edgeB} (${entry.relation.relation})`)
-                .join("; ")}`
-            : baseIndex <= 0
-              ? "Start with flat fundamental diagram."
-              : "All grouped operations complete; settle on quotient placement."}
+          {torusStoryEnabled
+            ? `${storyStage.label} - ${storyStage.detail}`
+            : currentStep
+              ? `Step ${baseIndex + 1} [${currentStep.groupId}]: ${currentStep.operations
+                  .map((entry) => `${entry.relation.edgeA} ~ ${entry.relation.edgeB} (${entry.relation.relation})`)
+                  .join("; ")}`
+              : baseIndex <= 0
+                ? "Start with flat fundamental diagram."
+                : "All grouped operations complete; settle on quotient placement."}
         </div>
+        {torusStoryEnabled && (
+          <div style={{ display: "grid", gap: 5 }}>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>Current stage: {storyStage.label}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {TORUS_STORY_STAGES.map((stage, index) => {
+                const active = index === storyStageIndex;
+                const done = index < storyStageIndex;
+                return (
+                  <div
+                    key={`story-stage-${stage.id}`}
+                    style={{
+                      border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
+                      background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
+                      borderRadius: 999,
+                      padding: "3px 9px",
+                      fontSize: 10,
+                      fontWeight: active ? 700 : 600,
+                    }}
+                  >
+                    {stage.label.replace("Step ", "S")}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-        <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
-          {diagram.edges.map((edge) => {
-            const from = blended(edge.from);
-            const to = blended(edge.to);
-            const activePair = activePairEdges.has(edge.id);
-            const completed = timelineOperations.some(
-              (operation, index) => index < opsA && (operation.relation.edgeA === edge.id || operation.relation.edgeB === edge.id)
-            );
-            const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-            return (
-              <g key={`anim-edge-${edge.id}`}>
-                <line
-                  x1={from.x}
-                  y1={from.y}
-                  x2={to.x}
-                  y2={to.y}
-                  stroke={activePair ? "#b91c1c" : completed ? "#0a66c2" : "#64748b"}
-                  strokeWidth={activePair ? 3.2 : completed ? 2.5 : 1.6}
-                  strokeDasharray={activePair ? "6 3" : undefined}
-                />
-                <text x={mid.x + 5} y={mid.y - 5} style={{ fontSize: 10, fill: activePair ? "#b91c1c" : completed ? "#0a66c2" : "#64748b" }}>
-                  {diagram.edgeLabels[edge.id] || edge.id}
-                </text>
-              </g>
-            );
-          })}
+        {torusStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const squareOpacity = 1 - tSquareToCylinder;
+              const cylOpacity = 1 - 0.28 * tCylinderToTorus;
+              const torusOpacity = tCylinderToTorus;
+              const bendProfile = Math.sin(Math.PI * clamp01(tSquareToCylinder)) * (1 - 0.45 * tCylinderToTorus);
+              const bendOut = 34 * bendProfile;
+              const bendLift = 10 * bendProfile;
+              const xLeft = lerp(160, 172, tSquareToCylinder);
+              const xRight = lerp(360, 348, tSquareToCylinder);
+              const topCylinderY = 110 - 0.6 * bendLift;
+              const bottomCylinderY = 252 + 0.6 * bendLift;
+              const topCy = lerp(86, lerp(topCylinderY, 184, tCylinderToTorus), tSquareToCylinder);
+              const bottomCy = lerp(274, lerp(bottomCylinderY, 184, tCylinderToTorus), tSquareToCylinder);
+              const cylRx = 88 - 3 * bendProfile;
+              const cylRy = 26 + 6 * bendProfile;
+              const rimRx = lerp(100, lerp(cylRx, 142, tCylinderToTorus), tSquareToCylinder);
+              const rimRy = lerp(0.01, lerp(cylRy, 84, tCylinderToTorus), tSquareToCylinder);
+              const sideTop = topCy + rimRy * 0.08 - bendLift * 0.22;
+              const sideBottom = bottomCy - rimRy * 0.08 + bendLift * 0.22;
+              const sideMidY = (sideTop + sideBottom) / 2;
+              const sideLeftX = lerp(xLeft, 198, tCylinderToTorus);
+              const sideRightX = lerp(xRight, 322, tCylinderToTorus);
+              const leftSidePath = `M ${sideLeftX} ${sideTop} Q ${sideLeftX - bendOut} ${sideMidY} ${sideLeftX} ${sideBottom}`;
+              const rightSidePath = `M ${sideRightX} ${sideTop} Q ${sideRightX + bendOut} ${sideMidY} ${sideRightX} ${sideBottom}`;
+              const innerRx = lerp(88, 62, tCylinderToTorus);
+              const innerRy = lerp(28, 36, tCylinderToTorus);
+              const outerStroke = lerp(2.2, 1.7, tCylinderToTorus);
+              const bStroke = lerp(2.8, 3.4 + 1.4 * tBGlue, tSquareToCylinder);
+              const aStroke = lerp(2.8, 3.2, tSquareToCylinder);
+              const topRimDash = tBGlue > 0.2 ? "8 4" : undefined;
+              const bottomRimDash = tBGlue > 0.2 ? "8 4" : undefined;
+              const aLoopOpacity = clamp01(0.12 + 0.88 * torusOpacity);
+              const bLoopOpacity = clamp01(0.1 + 0.9 * smoothStep01((storyFloat - 2.4) / 1.8));
+              const finalDash = tFinalize >= 0.96 ? undefined : "7 4";
+              const corner = projectStoryTorus(0, 0);
 
-          {diagram.vertices.map((vertex) => {
-            const point = blended(vertex.id);
-            return (
-              <g key={`anim-vertex-${vertex.id}`}>
-                <circle cx={point.x} cy={point.y} r={4.8} fill="#0f172a" />
-                <text x={point.x + 7} y={point.y - 7} style={{ fontSize: 10, fill: "#0f172a" }}>
-                  {diagram.vertexLabels[vertex.id] || vertex.id}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+              return (
+                <>
+                  <rect
+                    x={xLeft}
+                    y={Math.min(topCy, bottomCy)}
+                    width={Math.max(1, xRight - xLeft)}
+                    height={Math.max(1, Math.abs(bottomCy - topCy))}
+                    fill="#f8fbff"
+                    opacity={0.24 * squareOpacity + 0.12 * cylOpacity}
+                    stroke="#cbd5e1"
+                    strokeWidth={1.2}
+                    rx={8 * tSquareToCylinder}
+                    ry={8 * tSquareToCylinder}
+                  />
+
+                  <ellipse
+                    cx={260}
+                    cy={topCy}
+                    rx={rimRx}
+                    ry={rimRy}
+                    fill="#eef2ff"
+                    opacity={0.2 + 0.55 * cylOpacity}
+                    stroke={EDGE_CLASS_COLOR_B}
+                    strokeWidth={bStroke}
+                    strokeDasharray={topRimDash}
+                  />
+                  <ellipse
+                    cx={260}
+                    cy={bottomCy}
+                    rx={rimRx}
+                    ry={rimRy}
+                    fill="#eef2ff"
+                    opacity={clamp01(0.14 + 0.52 * cylOpacity - 0.45 * tCylinderToTorus)}
+                    stroke={EDGE_CLASS_COLOR_B}
+                    strokeWidth={bStroke}
+                    strokeDasharray={bottomRimDash}
+                  />
+
+                  <path
+                    d={leftSidePath}
+                    fill="none"
+                    stroke={EDGE_CLASS_COLOR_A}
+                    strokeWidth={aStroke}
+                    opacity={clamp01(1 - 0.92 * tCylinderToTorus)}
+                  />
+                  <path
+                    d={rightSidePath}
+                    fill="none"
+                    stroke={EDGE_CLASS_COLOR_A}
+                    strokeWidth={aStroke}
+                    opacity={clamp01(1 - 0.92 * tCylinderToTorus)}
+                  />
+
+                  <ellipse cx={260} cy={184} rx={142} ry={84} fill="#dbeafe" opacity={0.62 * torusOpacity} />
+                  <ellipse cx={260} cy={184} rx={innerRx} ry={innerRy} fill="#fff" opacity={0.94 * torusOpacity} />
+                  <ellipse
+                    cx={260}
+                    cy={184}
+                    rx={142}
+                    ry={84}
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth={outerStroke}
+                    opacity={0.76 * torusOpacity}
+                  />
+                  <ellipse
+                    cx={260}
+                    cy={184}
+                    rx={innerRx}
+                    ry={innerRy}
+                    fill="none"
+                    stroke="#60a5fa"
+                    strokeWidth={1.4}
+                    opacity={0.8 * torusOpacity}
+                  />
+
+                  <polyline
+                    points={sampledLoop((t) => projectStoryTorus(Math.PI * 2 * t, 0), 140)}
+                    fill="none"
+                    stroke={EDGE_CLASS_COLOR_A}
+                    strokeWidth={3.2}
+                    strokeDasharray={finalDash}
+                    opacity={aLoopOpacity}
+                  />
+                  <polyline
+                    points={sampledLoop((t) => projectStoryTorus(0, Math.PI * 2 * t), 140)}
+                    fill="none"
+                    stroke={EDGE_CLASS_COLOR_B}
+                    strokeWidth={3.2}
+                    strokeDasharray={finalDash}
+                    opacity={bLoopOpacity}
+                  />
+
+                  <g opacity={tFinalize}>
+                    <circle cx={corner.x} cy={corner.y} r={6.5} fill="none" stroke="#b45309" strokeWidth={2} />
+                    <circle cx={corner.x} cy={corner.y} r={3.6} fill="#b45309" />
+                    <text x={corner.x + 10} y={corner.y - 8} style={{ fontSize: 10, fill: "#92400e", fontWeight: 700 }}>
+                      corner class
+                    </text>
+                  </g>
+
+                  <text x={260} y={56} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Square -> Cylinder -> Torus transition"}
+                  </text>
+                  <text
+                    x={260}
+                    y={74}
+                    textAnchor="middle"
+                    style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.4 + 0.6 * tCylinderToTorus) }}
+                  >
+                    a-gluing forms cylinder, then b-gluing closes to torus
+                  </text>
+                  <text
+                    x={260}
+                    y={90}
+                    textAnchor="middle"
+                    style={{ fontSize: 9, fill: "#64748b", opacity: clamp01(0.35 + 0.65 * tSquareToCylinder) }}
+                  >
+                    timing: fast fold, slower closure, physical bend easing
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {diagram.edges.map((edge) => {
+              const from = blended(edge.from);
+              const to = blended(edge.to);
+              const activePair = activePairEdges.has(edge.id);
+              const completed = timelineOperations.some(
+                (operation, index) => index < opsA && (operation.relation.edgeA === edge.id || operation.relation.edgeB === edge.id)
+              );
+              const baseColor = edgeColorForLabel(diagram.edgeLabels[edge.id], "#64748b");
+              const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+              return (
+                <g key={`anim-edge-${edge.id}`}>
+                  <line
+                    x1={from.x}
+                    y1={from.y}
+                    x2={to.x}
+                    y2={to.y}
+                    stroke={activePair ? "#b91c1c" : baseColor}
+                    strokeWidth={activePair ? 3.2 : completed ? 2.5 : 1.8}
+                    strokeDasharray={activePair ? "6 3" : undefined}
+                    opacity={completed || activePair ? 1 : 0.8}
+                  />
+                  <text x={mid.x + 5} y={mid.y - 5} style={{ fontSize: 10, fill: activePair ? "#b91c1c" : baseColor }}>
+                    {diagram.edgeLabels[edge.id] || edge.id}
+                  </text>
+                </g>
+              );
+            })}
+
+            {diagram.vertices.map((vertex) => {
+              const point = blended(vertex.id);
+              return (
+                <g key={`anim-vertex-${vertex.id}`}>
+                  <circle cx={point.x} cy={point.y} r={4.8} fill="#0f172a" />
+                  <text x={point.x + 7} y={point.y - 7} style={{ fontSize: 10, fill: "#0f172a" }}>
+                    {diagram.vertexLabels[vertex.id] || vertex.id}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 8 }}>
           <div

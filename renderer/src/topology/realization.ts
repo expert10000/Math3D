@@ -95,6 +95,161 @@ const buildFaceMesh = (
   return result;
 };
 
+const TORUS_MAJOR_RADIUS = 1.78;
+const TORUS_MINOR_RADIUS = 0.62;
+
+const isTorusLikeQuotient = (quotient: QuotientComplex): boolean => {
+  if (quotient.edges.length < 2) return false;
+  const hasA = quotient.edges.some(
+    (edge) => edge.sourceEdgeIds.length >= 2 && edgePrimaryLabel(edge.label) === "a"
+  );
+  const hasB = quotient.edges.some(
+    (edge) => edge.sourceEdgeIds.length >= 2 && edgePrimaryLabel(edge.label) === "b"
+  );
+  return hasA && hasB;
+};
+
+const edgePrimaryLabel = (label: string): string => {
+  const head = label
+    .trim()
+    .toLowerCase()
+    .split(/[\/\s]+/)[0] ?? "";
+  return head.replace(/[^a-z0-9]/g, "");
+};
+
+const pickTorusCycleEdgeIds = (quotient: QuotientComplex): { major: string; minor: string } => {
+  const labeled = quotient.edges.map((edge) => ({
+    id: edge.id,
+    label: edgePrimaryLabel(edge.label),
+  }));
+  const major = labeled.find((entry) => entry.label === "a")?.id ?? labeled[0]?.id ?? "qE0";
+  const minorFallback = labeled.find((entry) => entry.id !== major)?.id ?? major;
+  const minor = labeled.find((entry) => entry.label === "b")?.id ?? minorFallback;
+  return { major, minor };
+};
+
+const torusPoint = (u: number, v: number, major = TORUS_MAJOR_RADIUS, minor = TORUS_MINOR_RADIUS): Vec3 => {
+  const cosU = Math.cos(u);
+  const sinU = Math.sin(u);
+  const cosV = Math.cos(v);
+  const sinV = Math.sin(v);
+  return [(major + minor * cosV) * cosU, (major + minor * cosV) * sinU, minor * sinV];
+};
+
+const sampleCurve = (builder: (t: number) => Vec3, segments: number, closed = true): Vec3[] => {
+  const count = Math.max(8, segments);
+  const pts: Vec3[] = [];
+  for (let i = 0; i <= count; i += 1) {
+    const t = i / count;
+    pts.push(builder(t));
+  }
+  return closed ? pts : pts.slice(0, Math.max(2, pts.length - 1));
+};
+
+const buildTorusFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 56;
+  const vSegments = 32;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let iv = 0; iv <= vSegments; iv += 1) {
+      const v = (Math.PI * 2 * iv) / vSegments;
+      vertices.push(torusPoint(u, v));
+    }
+  }
+  const row = vSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iv = 0; iv < vSegments; iv += 1) {
+      const a = iu * row + iv;
+      const b = (iu + 1) * row + iv;
+      const c = (iu + 1) * row + iv + 1;
+      const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const buildTorusRealizationBase = (
+  quotient: QuotientComplex,
+  kind: "smooth" | "cut-open"
+): Realization3D | null => {
+  if (!isTorusLikeQuotient(quotient)) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const { major, minor } = pickTorusCycleEdgeIds(quotient);
+  const edgeCurves: Record<string, Vec3[]> = {};
+  const phaseOffset = new Map<string, number>();
+  let offsetCounter = 0;
+  for (const edge of quotient.edges) {
+    const phi = (Math.PI * 2 * offsetCounter) / Math.max(3, quotient.edges.length + 1);
+    phaseOffset.set(edge.id, phi);
+    offsetCounter += 1;
+  }
+
+  for (const edge of quotient.edges) {
+    if (edge.id === major) {
+      edgeCurves[edge.id] = sampleCurve((t) => torusPoint(t * Math.PI * 2, 0), 180, true);
+      continue;
+    }
+    if (edge.id === minor) {
+      edgeCurves[edge.id] = sampleCurve((t) => torusPoint(0, t * Math.PI * 2), 160, true);
+      continue;
+    }
+    const shift = phaseOffset.get(edge.id) ?? 0;
+    edgeCurves[edge.id] = sampleCurve((t) => torusPoint(t * Math.PI * 2, shift), 120, true);
+  }
+
+  if (kind === "cut-open") {
+    edgeCurves.cut_u = sampleCurve((t) => torusPoint(t * Math.PI * 2, 0), 150, false);
+    edgeCurves.cut_v = sampleCurve((t) => torusPoint(0, t * Math.PI * 2), 130, false);
+  }
+
+  const cornerPoint = torusPoint(0, 0);
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = cornerPoint;
+      return;
+    }
+    const theta = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = torusPoint(theta, 0.26 * Math.sin(theta));
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/torus-${kind}`,
+    name: kind === "smooth" ? "Smooth torus realization" : "Cut-open torus model",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildTorusFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: kind === "smooth" ? "#dbeafe" : "#ede9fe",
+      edgeStroke: "#0f172a",
+      seamStroke: kind === "smooth" ? "#be123c" : "#92400e",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
 export const buildDefaultRealization = (quotient: QuotientComplex): Realization3D => {
   const layout = vertexLayout(quotient.vertices.length);
   const vertexPositions: Record<string, Vec3> = {};
@@ -209,7 +364,13 @@ export const buildFlatSchematicRealization = (quotient: QuotientComplex): Realiz
   };
 };
 
-export const buildRealizationChoices = (quotient: QuotientComplex): Realization3D[] => [
-  buildDefaultRealization(quotient),
-  buildFlatSchematicRealization(quotient),
-];
+export const buildRealizationChoices = (quotient: QuotientComplex): Realization3D[] => {
+  const smooth = buildTorusRealizationBase(quotient, "smooth");
+  const cutOpen = buildTorusRealizationBase(quotient, "cut-open");
+  return [
+    ...(smooth ? [smooth] : []),
+    ...(cutOpen ? [cutOpen] : []),
+    buildDefaultRealization(quotient),
+    buildFlatSchematicRealization(quotient),
+  ];
+};
