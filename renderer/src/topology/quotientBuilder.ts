@@ -615,7 +615,7 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     edgeClassBySource,
     warnings
   );
-  const realizations = buildRealizationChoices(quotient);
+  const realizations = buildRealizationChoices(quotient, orientationRelations);
 
   const pipeline: QuotientPipelineStage[] = [
     {

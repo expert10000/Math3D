@@ -51,6 +51,20 @@ describe("buildQuotientPipeline", () => {
     expect(realizationIds.some((id) => id.endsWith("/realization/mobius-cut-open"))).toBe(true);
   });
 
+  it("adds immersed projective-plane realization for projective plane preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("projective_plane");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    const realizationIds = result.realizations.map((entry) => entry.id);
+    const projectiveRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/projective-immersed"));
+    expect(projectiveRealization).toBeTruthy();
+    expect(projectiveRealization?.name).toContain("RP^2");
+    expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(false);
+    expect(result.quotient.invariants?.eulerCharacteristic).toBe(1);
+  });
+
   it("treats unpaired source edges as boundary info, not warnings", () => {
     const preset = TOPOLOGY_PRESET_BY_ID.get("mobius_from_rectangle");
     expect(preset).toBeTruthy();

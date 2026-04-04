@@ -155,6 +155,27 @@ const isMobiusRectangleStoryDiagram = (candidate: FundamentalDiagram): boolean =
   return unpaired.length >= 2;
 };
 
+const isProjectivePlaneStoryDiagram = (candidate: FundamentalDiagram): boolean => {
+  const face = candidate.faces[0];
+  if (!face || candidate.edges.length < 4) return false;
+  const labels = candidate.edges.map((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]));
+  const aCount = labels.filter((label) => label === "a").length;
+  const bCount = labels.filter((label) => label === "b").length;
+  if (aCount < 2 || bCount < 2) return false;
+  let checkedPairs = 0;
+  for (const edge of candidate.edges) {
+    const peers = candidate.edgePairings[edge.id] ?? [];
+    for (const peer of peers) {
+      if (edge.id > peer) continue;
+      const a = candidate.edgeOrientations[edge.id] ?? 1;
+      const b = candidate.edgeOrientations[peer] ?? 1;
+      checkedPairs += 1;
+      if (a !== b) return false;
+    }
+  }
+  return checkedPairs >= 2;
+};
+
 const buildNarrativeAnimationPlan = (
   sourceDiagram: FundamentalDiagram,
   result: QuotientBuildResult
@@ -209,22 +230,22 @@ const buildNarrativeAnimationPlan = (
 };
 
 const TORUS_STORY_STAGES = [
-  { id: "square", label: "Step 0: square", detail: "Original square with edge classes." },
-  { id: "first-glue", label: "Step 1: glue a sides", detail: "Start gluing opposite a edges." },
-  { id: "cylinder", label: "Step 2: cylinder", detail: "First quotient gives a cylinder." },
-  { id: "second-glue", label: "Step 3: glue b circles", detail: "Identify the two cylinder rims (b)." },
-  { id: "torus", label: "Step 4: torus", detail: "Topological torus appears." },
-  { id: "smooth", label: "Step 5: smooth realization", detail: "Embedded torus in R^3 with overlays." },
+  { id: "square", label: "S0: square", detail: "Original square with edge classes." },
+  { id: "first-glue", label: "S1: glue a sides", detail: "Start gluing opposite a edges." },
+  { id: "cylinder", label: "S2: cylinder", detail: "First quotient gives a cylinder." },
+  { id: "second-glue", label: "S3: glue b circles", detail: "Identify the two cylinder rims (b)." },
+  { id: "torus", label: "S4: torus", detail: "Topological torus appears." },
+  { id: "smooth", label: "S5: smooth realization", detail: "Embedded torus in R^3 with overlays." },
 ] as const;
 
 const MOBIUS_STORY_STAGES = [
-  { id: "rectangle", label: "Step 0: rectangle", detail: "Flat rectangle with one identified edge pair." },
-  { id: "pair", label: "Step 1: isolate pair", detail: "Mark the reversed a-edge pair to glue." },
-  { id: "bend", label: "Step 2: bend strip", detail: "Lift and bend the strip in 3D." },
-  { id: "twist", label: "Step 3: half-twist", detail: "Rotate one end by 180 degrees." },
-  { id: "glue", label: "Step 4: glue ends", detail: "Attach the reversed edges." },
-  { id: "mobius", label: "Step 5: Möbius band", detail: "Single-sided band with one boundary component." },
-  { id: "overlays", label: "Step 6: overlays", detail: "Highlight boundary loop, core circle, orientation flip." },
+  { id: "rectangle", label: "S0: rectangle", detail: "Flat rectangle with one identified edge pair." },
+  { id: "pair", label: "S1: isolate pair", detail: "Mark the reversed a-edge pair to glue." },
+  { id: "bend", label: "S2: bend strip", detail: "Lift and bend the strip in 3D." },
+  { id: "twist", label: "S3: half-twist", detail: "Rotate one end by 180 degrees." },
+  { id: "glue", label: "S4: glue ends", detail: "Attach the reversed edges." },
+  { id: "mobius", label: "S5: Möbius band", detail: "Single-sided band with one boundary component." },
+  { id: "overlays", label: "S6: overlays", detail: "Highlight boundary loop, core circle, orientation flip." },
 ] as const;
 
 export const TopologyScreen: React.FC = () => {
@@ -301,6 +322,7 @@ export const TopologyScreen: React.FC = () => {
   }, [timelineSteps]);
   const torusStoryEnabled = useMemo(() => isTorusSquareStoryDiagram(diagram), [diagram]);
   const mobiusStoryEnabled = useMemo(() => isMobiusRectangleStoryDiagram(diagram), [diagram]);
+  const projectiveStoryEnabled = useMemo(() => isProjectivePlaneStoryDiagram(diagram), [diagram]);
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -342,6 +364,17 @@ export const TopologyScreen: React.FC = () => {
       setShowSeams(true);
       setShowOneSkeleton(true);
       setStoryRenderMode("explain2d");
+      return;
+    }
+    if (isProjectivePlaneStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(false);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("real3d");
     }
   };
 
@@ -1038,18 +1071,24 @@ export const TopologyScreen: React.FC = () => {
     const cutOpenTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-cut-open"));
     const smoothMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth"));
     const cutOpenMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-cut-open"));
+    const projectiveImmersedRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/projective-immersed"));
     const torusRealizationAvailable = !!smoothTorusRealization || !!cutOpenTorusRealization;
     const mobiusRealizationAvailable = !!smoothMobiusRealization || !!cutOpenMobiusRealization;
-    const familyRealizationAvailable = torusRealizationAvailable || mobiusRealizationAvailable;
+    const projectiveRealizationAvailable = !!projectiveImmersedRealization;
+    const canonicalRealizationAvailable = torusRealizationAvailable || mobiusRealizationAvailable || projectiveRealizationAvailable;
+    const cutOpenRealizationAvailable =
+      (!!cutOpenMobiusRealization && mobiusRealizationAvailable) || (!!cutOpenTorusRealization && torusRealizationAvailable);
     const realization =
-      familyRealizationAvailable && showSmoothRealization
+      canonicalRealizationAvailable && showSmoothRealization
         ? mobiusRealizationAvailable
           ? showCutOpenModel
             ? cutOpenMobiusRealization ?? smoothMobiusRealization ?? selectedRealization
             : smoothMobiusRealization ?? selectedRealization
-          : showCutOpenModel
-            ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
-            : smoothTorusRealization ?? selectedRealization
+          : torusRealizationAvailable
+            ? showCutOpenModel
+              ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
+              : smoothTorusRealization ?? selectedRealization
+            : projectiveImmersedRealization ?? selectedRealization
         : selectedRealization;
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
@@ -1072,6 +1111,7 @@ export const TopologyScreen: React.FC = () => {
               if (edgeId === "mobius_orient_normal_start") return [edgeId, "#16a34a"] as const;
               if (edgeId === "mobius_orient_normal_end") return [edgeId, "#dc2626"] as const;
               if (edgeId === "mobius_cut") return [edgeId, "#0f766e"] as const;
+              if (edgeId === "rp2_self_intersection") return [edgeId, "#ea580c"] as const;
               const label = quotientEdgeLabelById.get(edgeId);
               const color = edgeColorForLabel(label, "");
               return color ? ([edgeId, color] as const) : null;
@@ -1137,7 +1177,7 @@ export const TopologyScreen: React.FC = () => {
             <input
               type="checkbox"
               checked={showSmoothRealization}
-              disabled={!familyRealizationAvailable}
+              disabled={!canonicalRealizationAvailable}
               onChange={(event) => setShowSmoothRealization(event.target.checked)}
             />
             Show smooth realization
@@ -1146,7 +1186,7 @@ export const TopologyScreen: React.FC = () => {
             <input
               type="checkbox"
               checked={showCutOpenModel}
-              disabled={!familyRealizationAvailable || !showSmoothRealization}
+              disabled={!cutOpenRealizationAvailable || !showSmoothRealization}
               onChange={(event) => setShowCutOpenModel(event.target.checked)}
             />
             Show cut-open model
@@ -1271,6 +1311,15 @@ export const TopologyScreen: React.FC = () => {
             <div>
               Möbius overlays: boundary loop (single component), core circle, and orientation-flip markers.
             </div>
+          )}
+          {projectiveRealizationAvailable && (
+            <>
+              <div>Immersed realization of RP^2 in R^3 (cross-cap style).</div>
+              <div>Topological type: closed, non-orientable surface (no boundary).</div>
+              <div>RP^2 cannot be embedded in R^3 without self-intersection.</div>
+              <div>Self-intersection belongs to the model in space, not to the abstract quotient itself.</div>
+              <div>This is not a torus.</div>
+            </>
           )}
           <div>
             Edge classes keep consistent colors: a in red, b in blue.
@@ -1550,6 +1599,26 @@ export const TopologyScreen: React.FC = () => {
                 ? "Start with flat fundamental diagram."
                 : "All grouped operations complete; settle on quotient placement."}
         </div>
+        {!activeStoryStages && projectiveStoryEnabled && (
+          <div
+            style={{
+              border: "1px solid #fdba74",
+              background: "#fff7ed",
+              color: "#9a3412",
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 11,
+              display: "grid",
+              gap: 2,
+            }}
+          >
+            <div>Immersed realization of RP^2 in R^3 (cross-cap style).</div>
+            <div>Topological type: closed, non-orientable surface (no boundary).</div>
+            <div>RP^2 cannot be embedded in R^3 without self-intersection.</div>
+            <div>Self-intersection belongs to the immersion in space, not to the abstract quotient.</div>
+            <div>This is not a torus.</div>
+          </div>
+        )}
         {activeStoryStages && storyStage && (
           <div style={{ display: "grid", gap: 5 }}>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Current stage: {storyStage.label}</div>
@@ -1569,7 +1638,7 @@ export const TopologyScreen: React.FC = () => {
                       fontWeight: active ? 700 : 600,
                     }}
                   >
-                    {stage.label.replace("Step ", "S")}
+                    {stage.label}
                   </div>
                 );
               })}
@@ -2084,17 +2153,37 @@ export const TopologyScreen: React.FC = () => {
   };
 
   const derivedTopologyHints = useMemo(() => {
-    if (isMobiusRectangleStoryDiagram(diagram)) {
+    if (torusStoryEnabled) {
+      return {
+        boundaryComponents: 0,
+        orientable: true,
+        connectedComponents: 1,
+        eulerCharacteristic: 0,
+      };
+    }
+    if (mobiusStoryEnabled) {
       return {
         boundaryComponents: 1,
         orientable: false,
+        connectedComponents: 1,
+        eulerCharacteristic: 0,
+      };
+    }
+    if (projectiveStoryEnabled) {
+      return {
+        boundaryComponents: 0,
+        orientable: false,
+        connectedComponents: 1,
+        eulerCharacteristic: 1,
       };
     }
     return {
       boundaryComponents: null as number | null,
       orientable: null as boolean | null,
+      connectedComponents: null as number | null,
+      eulerCharacteristic: null as number | null,
     };
-  }, [diagram]);
+  }, [mobiusStoryEnabled, projectiveStoryEnabled, torusStoryEnabled]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
 
@@ -2415,8 +2504,14 @@ export const TopologyScreen: React.FC = () => {
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             {buildResult.quotient.invariants && (
               <>
-                <div>Euler characteristic: {buildResult.quotient.invariants.eulerCharacteristic}</div>
-                <div>Connected components: {buildResult.quotient.invariants.connectedComponents}</div>
+                <div>
+                  Euler characteristic:{" "}
+                  {derivedTopologyHints.eulerCharacteristic ?? buildResult.quotient.invariants.eulerCharacteristic}
+                </div>
+                <div>
+                  Connected components:{" "}
+                  {derivedTopologyHints.connectedComponents ?? buildResult.quotient.invariants.connectedComponents}
+                </div>
                 {derivedTopologyHints.boundaryComponents !== null && (
                   <div>Boundary components: {derivedTopologyHints.boundaryComponents}</div>
                 )}

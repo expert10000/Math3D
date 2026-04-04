@@ -1,4 +1,4 @@
-import type { QuotientComplex, Realization3D, Vec3 } from "./types";
+import type { OrientationRelation, QuotientComplex, Realization3D, Vec3 } from "./types";
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -99,6 +99,7 @@ const TORUS_MAJOR_RADIUS = 1.78;
 const TORUS_MINOR_RADIUS = 0.62;
 const MOBIUS_RADIUS = 1.78;
 const MOBIUS_HALF_WIDTH = 0.44;
+const PROJECTIVE_SCALE = 3.15;
 
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -106,15 +107,43 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[0] * b[1] - a[1] * b[0],
 ];
 
-const isTorusLikeQuotient = (quotient: QuotientComplex): boolean => {
+const buildOrientationRelationMap = (relations: OrientationRelation[] | undefined): Map<string, "match" | "reverse"> => {
+  const out = new Map<string, "match" | "reverse">();
+  if (!relations) return out;
+  for (const relation of relations) {
+    const key = relation.edgeA < relation.edgeB ? `${relation.edgeA}::${relation.edgeB}` : `${relation.edgeB}::${relation.edgeA}`;
+    out.set(key, relation.relation);
+  }
+  return out;
+};
+
+const hasClassRelation = (
+  quotient: QuotientComplex,
+  labelToken: string,
+  expected: "match" | "reverse",
+  relationMap: Map<string, "match" | "reverse">
+): boolean =>
+  quotient.edges.some((edge) => {
+    if (edge.sourceEdgeIds.length < 2) return false;
+    if (edgePrimaryLabel(edge.label) !== labelToken) return false;
+    for (let i = 0; i < edge.sourceEdgeIds.length; i += 1) {
+      for (let j = i + 1; j < edge.sourceEdgeIds.length; j += 1) {
+        const a = edge.sourceEdgeIds[i] ?? "";
+        const b = edge.sourceEdgeIds[j] ?? "";
+        const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+        if (relationMap.get(key) === expected) return true;
+      }
+    }
+    return false;
+  });
+
+const isTorusLikeQuotient = (quotient: QuotientComplex, relations?: OrientationRelation[]): boolean => {
   if (quotient.edges.length < 2) return false;
-  const hasA = quotient.edges.some(
-    (edge) => edge.sourceEdgeIds.length >= 2 && edgePrimaryLabel(edge.label) === "a"
+  const relationMap = buildOrientationRelationMap(relations);
+  return (
+    hasClassRelation(quotient, "a", "reverse", relationMap) &&
+    hasClassRelation(quotient, "b", "reverse", relationMap)
   );
-  const hasB = quotient.edges.some(
-    (edge) => edge.sourceEdgeIds.length >= 2 && edgePrimaryLabel(edge.label) === "b"
-  );
-  return hasA && hasB;
 };
 
 const edgePrimaryLabel = (label: string): string => {
@@ -137,6 +166,11 @@ const isMobiusLikeQuotient = (quotient: QuotientComplex): boolean => {
       !edgePrimaryLabel(edge.label).startsWith("qe")
   );
   return identifiedA && boundaryLike.length >= 2;
+};
+
+const isProjectivePlaneLikeQuotient = (quotient: QuotientComplex, relations?: OrientationRelation[]): boolean => {
+  const relationMap = buildOrientationRelationMap(relations);
+  return hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "match", relationMap);
 };
 
 const mobiusPoint = (u: number, v: number, radius = MOBIUS_RADIUS): Vec3 => {
@@ -184,6 +218,50 @@ const sampleCurve = (builder: (t: number) => Vec3, segments: number, closed = tr
     pts.push(builder(t));
   }
   return closed ? pts : pts.slice(0, Math.max(2, pts.length - 1));
+};
+
+const spherePoint = (u: number, v: number): Vec3 => [Math.sin(u) * Math.cos(v), Math.sin(u) * Math.sin(v), Math.cos(u)];
+
+const projectivePoint = (u: number, v: number, scaleFactor = PROJECTIVE_SCALE): Vec3 => {
+  // Roman-surface style immersion RP^2 -> R^3 via quadratic map on S^2 / {x ~ -x}.
+  const [sx, sy, sz] = spherePoint(u, v);
+  return [scaleFactor * sx * sy, scaleFactor * sy * sz, scaleFactor * sz * sx];
+};
+
+const pickProjectiveCycleEdgeIds = (quotient: QuotientComplex): { aEdge: string; bEdge: string } => {
+  const labeled = quotient.edges.map((edge) => ({
+    id: edge.id,
+    label: edgePrimaryLabel(edge.label),
+  }));
+  const aEdge = labeled.find((entry) => entry.label === "a")?.id ?? labeled[0]?.id ?? "qE0";
+  const fallback = labeled.find((entry) => entry.id !== aEdge)?.id ?? aEdge;
+  const bEdge = labeled.find((entry) => entry.label === "b")?.id ?? fallback;
+  return { aEdge, bEdge };
+};
+
+const buildProjectiveFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 64;
+  const vSegments = 88;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * iu) / uSegments;
+    for (let iv = 0; iv <= vSegments; iv += 1) {
+      const v = (Math.PI * 2 * iv) / vSegments;
+      vertices.push(projectivePoint(u, v));
+    }
+  }
+  const row = vSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let iv = 0; iv < vSegments; iv += 1) {
+      const a = iu * row + iv;
+      const b = (iu + 1) * row + iv;
+      const c = (iu + 1) * row + iv + 1;
+      const d = iu * row + iv + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
 };
 
 const buildTorusFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
@@ -272,9 +350,10 @@ const buildMobiusFaceMesh = (
 
 const buildTorusRealizationBase = (
   quotient: QuotientComplex,
-  kind: "smooth" | "cut-open"
+  kind: "smooth" | "cut-open",
+  relations?: OrientationRelation[]
 ): Realization3D | null => {
-  if (!isTorusLikeQuotient(quotient)) return null;
+  if (!isTorusLikeQuotient(quotient, relations)) return null;
   const faceId = quotient.faces[0]?.id ?? "qF0";
   const { major, minor } = pickTorusCycleEdgeIds(quotient);
   const edgeCurves: Record<string, Vec3[]> = {};
@@ -344,6 +423,74 @@ const buildTorusRealizationBase = (
       faceFill: kind === "smooth" ? "#dbeafe" : "#ede9fe",
       edgeStroke: "#0f172a",
       seamStroke: kind === "smooth" ? "#be123c" : "#92400e",
+      singularityColor: "#b45309",
+    },
+  };
+};
+
+const buildProjectiveImmersedRealization = (
+  quotient: QuotientComplex,
+  relations?: OrientationRelation[]
+): Realization3D | null => {
+  if (!isProjectivePlaneLikeQuotient(quotient, relations)) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const { aEdge, bEdge } = pickProjectiveCycleEdgeIds(quotient);
+  const edgeCurves: Record<string, Vec3[]> = {};
+  for (const edge of quotient.edges) {
+    if (edge.id === aEdge) {
+      edgeCurves[edge.id] = sampleCurve((t) => projectivePoint(Math.PI * 0.5, t * Math.PI * 2), 180, true);
+      continue;
+    }
+    if (edge.id === bEdge) {
+      edgeCurves[edge.id] = sampleCurve((t) => projectivePoint(t * Math.PI, 0), 180, true);
+      continue;
+    }
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => projectivePoint(t * Math.PI, phase * 0.8), 140, true);
+  }
+
+  // Trace one self-intersection locus in the immersed model for pedagogy.
+  edgeCurves.rp2_self_intersection = sampleCurve((t) => [0, 0, PROJECTIVE_SCALE * (2 * t - 1)], 120, false);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = projectivePoint(Math.PI * 0.5, 0);
+      return;
+    }
+    const theta = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = projectivePoint(Math.PI * 0.52, theta);
+  });
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/projective-immersed`,
+    name: "Immersed realization of RP^2 in R^3 (cross-cap style)",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildProjectiveFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#ffedd5",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
       singularityColor: "#b45309",
     },
   };
@@ -577,12 +724,17 @@ export const buildFlatSchematicRealization = (quotient: QuotientComplex): Realiz
   };
 };
 
-export const buildRealizationChoices = (quotient: QuotientComplex): Realization3D[] => {
+export const buildRealizationChoices = (
+  quotient: QuotientComplex,
+  relations?: OrientationRelation[]
+): Realization3D[] => {
+  const projectiveImmersed = buildProjectiveImmersedRealization(quotient, relations);
   const mobiusSmooth = buildMobiusRealizationBase(quotient, "smooth");
   const mobiusCutOpen = buildMobiusRealizationBase(quotient, "cut-open");
-  const smooth = buildTorusRealizationBase(quotient, "smooth");
-  const cutOpen = buildTorusRealizationBase(quotient, "cut-open");
+  const smooth = buildTorusRealizationBase(quotient, "smooth", relations);
+  const cutOpen = buildTorusRealizationBase(quotient, "cut-open", relations);
   return [
+    ...(projectiveImmersed ? [projectiveImmersed] : []),
     ...(mobiusSmooth ? [mobiusSmooth] : []),
     ...(mobiusCutOpen ? [mobiusCutOpen] : []),
     ...(smooth ? [smooth] : []),
