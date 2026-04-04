@@ -1,20 +1,25 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { uiStyles as styles } from "../uiStyles";
 import {
   DEFAULT_TOPOLOGY_PRESET_ID,
   TOPOLOGY_PRESET_BY_ID,
+  TOPOLOGY_DOCUMENT_EXTENSION,
   TOPOLOGY_PRESETS,
   TopologyRealization3DView,
   buildQuotientPipeline,
   cloneFundamentalDiagram,
+  createTopologyDocument,
   type FundamentalDiagram,
   type FundamentalDiagramEdge,
   type QuotientBuildResult,
+  type TopologyDocumentView,
   type Vec3,
+  isTopologyDocument,
 } from "../topology";
 
-type TopologyView = "diagram" | "quotient" | "realization" | "animation";
+type TopologyView = TopologyDocumentView;
 type TopologyBuildMode = "preset" | "editor";
+type DiagramToolMode = "select" | "addVertex" | "addEdge";
 
 const initialDiagram = () => {
   const preset = TOPOLOGY_PRESET_BY_ID.get(DEFAULT_TOPOLOGY_PRESET_ID) ?? TOPOLOGY_PRESETS[0];
@@ -64,26 +69,88 @@ const edgePeerSet = (diagram: FundamentalDiagram, edgeId: string | null): Set<st
 const edgeByIdMap = (diagram: FundamentalDiagram): Map<string, FundamentalDiagramEdge> =>
   new Map(diagram.edges.map((edge) => [edge.id, edge]));
 
+const nextId = (prefix: string, existingIds: string[]): string => {
+  let n = 0;
+  const idSet = new Set(existingIds);
+  while (idSet.has(`${prefix}${n}`)) n += 1;
+  return `${prefix}${n}`;
+};
+
+const regenerateBoundaryWords = (diagram: FundamentalDiagram) => {
+  for (const face of diagram.faces) {
+    diagram.faceBoundaryWords[face.id] = face.boundary
+      .map((entry) => `${diagram.edgeLabels[entry.edgeId] || entry.edgeId}${entry.direction < 0 ? "^-1" : ""}`)
+      .join(" ");
+  }
+};
+
+class SmallDsu {
+  private readonly parent = new Map<string, string>();
+
+  add(id: string): void {
+    if (!this.parent.has(id)) this.parent.set(id, id);
+  }
+
+  find(id: string): string {
+    const parent = this.parent.get(id);
+    if (!parent) {
+      this.add(id);
+      return id;
+    }
+    if (parent === id) return id;
+    const root = this.find(parent);
+    this.parent.set(id, root);
+    return root;
+  }
+
+  union(a: string, b: string): void {
+    const rootA = this.find(a);
+    const rootB = this.find(b);
+    if (rootA !== rootB) this.parent.set(rootB, rootA);
+  }
+}
+
 export const TopologyScreen: React.FC = () => {
   const [buildMode, setBuildMode] = useState<TopologyBuildMode>("preset");
+  const [toolMode, setToolMode] = useState<DiagramToolMode>("select");
   const [presetId, setPresetId] = useState(DEFAULT_TOPOLOGY_PRESET_ID);
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => initialDiagram());
   const [buildResult, setBuildResult] = useState<QuotientBuildResult>(() => buildQuotientPipeline(initialDiagram()));
   const [builtSignature, setBuiltSignature] = useState(() => JSON.stringify(initialDiagram()));
   const [activeView, setActiveView] = useState<TopologyView>("diagram");
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
-  const [animationStep, setAnimationStep] = useState(0);
+  const [selectedVertexId, setSelectedVertexId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [pendingEdgeStartId, setPendingEdgeStartId] = useState<string | null>(null);
+  const [appendCreatedEdgesToBoundary, setAppendCreatedEdgesToBoundary] = useState(true);
   const [activeRealizationId, setActiveRealizationId] = useState<string | null>(null);
   const [realizationRenderMode, setRealizationRenderMode] = useState<"scene3d" | "projected2d">("scene3d");
+  const [timelinePosition, setTimelinePosition] = useState(0);
+  const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [docStatus, setDocStatus] = useState<string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const draggingVertexIdRef = useRef<string | null>(null);
 
   const diagramSignature = useMemo(() => JSON.stringify(diagram), [diagram]);
   const buildStale = diagramSignature !== builtSignature;
   const edgeById = useMemo(() => edgeByIdMap(diagram), [diagram]);
   const highlightEdges = useMemo(() => edgePeerSet(diagram, hoverEdgeId), [diagram, hoverEdgeId]);
+  const timelineOperations = useMemo(
+    () =>
+      buildResult.orientationRelations.map((relation, index) => ({
+        id: `op-${index}`,
+        label: `${relation.edgeA} ~ ${relation.edgeB} (${relation.relation})`,
+        relation,
+      })),
+    [buildResult.orientationRelations]
+  );
+  const timelineMax = timelineOperations.length + 1;
 
   const setDiagramAndDraft = (next: FundamentalDiagram) => {
+    regenerateBoundaryWords(next);
     setDiagram(next);
     setJsonDraft(JSON.stringify(next, null, 2));
   };
@@ -100,7 +167,13 @@ export const TopologyScreen: React.FC = () => {
     setBuiltSignature(JSON.stringify(nextDiagram));
     setActiveRealizationId(nextResult.realizations[0]?.id ?? null);
     setActiveView("diagram");
-    setAnimationStep(0);
+    setTimelinePosition(0);
+    setTimelinePlaying(false);
+    setSelectedVertexId(null);
+    setSelectedEdgeId(null);
+    setPendingEdgeStartId(null);
+    setDocStatus(`Loaded preset '${preset.label}'.`);
+    setDocError(null);
     setJsonError(null);
   };
 
@@ -120,6 +193,250 @@ export const TopologyScreen: React.FC = () => {
     setActiveView("quotient");
   };
 
+  const toDiagramCoords = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const normX = (clientX - rect.left) / rect.width;
+    const normY = (clientY - rect.top) / rect.height;
+    const viewX = 520 * normX;
+    const viewY = 360 * normY;
+    return {
+      x: (viewX - 250) / 155,
+      y: (180 - viewY) / 145,
+    };
+  };
+
+  const handleVertexDown = (event: React.PointerEvent<SVGCircleElement>, vertexId: string) => {
+    if (toolMode !== "select") return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingVertexIdRef.current = vertexId;
+    setSelectedVertexId(vertexId);
+    setSelectedEdgeId(null);
+  };
+
+  const handleSvgPointerMove: React.PointerEventHandler<SVGSVGElement> = (event) => {
+    const draggingId = draggingVertexIdRef.current;
+    if (!draggingId) return;
+    const p = toDiagramCoords(event.clientX, event.clientY);
+    if (!p) return;
+    setDiagramAndDraft(
+      cloneAndPatch(diagram, (next) => {
+        const vertex = next.vertices.find((entry) => entry.id === draggingId);
+        if (!vertex) return;
+        vertex.x = Math.max(-2.6, Math.min(2.6, p.x));
+        vertex.y = Math.max(-2.0, Math.min(2.0, p.y));
+      })
+    );
+  };
+
+  const stopDragging = () => {
+    draggingVertexIdRef.current = null;
+  };
+
+  const createEdge = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    setDiagramAndDraft(
+      cloneAndPatch(diagram, (next) => {
+        const edgeId = nextId("e", next.edges.map((edge) => edge.id));
+        next.edges.push({ id: edgeId, from: fromId, to: toId });
+        next.edgeLabels[edgeId] = "";
+        next.edgeOrientations[edgeId] = 1;
+        next.edgePairings[edgeId] = [];
+        if (appendCreatedEdgesToBoundary && next.faces[0]) {
+          next.faces[0].boundary.push({ edgeId, direction: 1 });
+        }
+      })
+    );
+  };
+
+  const handleDiagramBackgroundClick: React.MouseEventHandler<SVGSVGElement> = (event) => {
+    if (toolMode !== "addVertex") return;
+    const p = toDiagramCoords(event.clientX, event.clientY);
+    if (!p) return;
+    setDiagramAndDraft(
+      cloneAndPatch(diagram, (next) => {
+        const vertexId = nextId("v", next.vertices.map((vertex) => vertex.id));
+        next.vertices.push({ id: vertexId, x: p.x, y: p.y });
+        next.vertexLabels[vertexId] = vertexId;
+      })
+    );
+  };
+
+  const handleVertexClick = (vertexId: string) => {
+    if (toolMode === "addEdge") {
+      if (!pendingEdgeStartId) {
+        setPendingEdgeStartId(vertexId);
+        return;
+      }
+      createEdge(pendingEdgeStartId, vertexId);
+      setPendingEdgeStartId(null);
+      return;
+    }
+    setSelectedVertexId(vertexId);
+    setSelectedEdgeId(null);
+  };
+
+  const handleEdgeClick = (edgeId: string) => {
+    setSelectedEdgeId(edgeId);
+    setSelectedVertexId(null);
+  };
+
+  const handleRemoveSelectedVertex = () => {
+    if (!selectedVertexId) return;
+    setDiagramAndDraft(
+      cloneAndPatch(diagram, (next) => {
+        const removedEdgeIds = new Set(
+          next.edges.filter((edge) => edge.from === selectedVertexId || edge.to === selectedVertexId).map((edge) => edge.id)
+        );
+        next.vertices = next.vertices.filter((vertex) => vertex.id !== selectedVertexId);
+        next.edges = next.edges.filter((edge) => !removedEdgeIds.has(edge.id));
+        delete next.vertexLabels[selectedVertexId];
+        for (const edgeId of removedEdgeIds) {
+          delete next.edgeLabels[edgeId];
+          delete next.edgeOrientations[edgeId];
+          delete next.edgePairings[edgeId];
+        }
+        for (const edgeId of Object.keys(next.edgePairings)) {
+          next.edgePairings[edgeId] = (next.edgePairings[edgeId] ?? []).filter((peer) => !removedEdgeIds.has(peer));
+        }
+        for (const face of next.faces) {
+          face.boundary = face.boundary.filter((entry) => !removedEdgeIds.has(entry.edgeId));
+        }
+      })
+    );
+    setSelectedVertexId(null);
+    setSelectedEdgeId(null);
+  };
+
+  const handleRemoveSelectedEdge = () => {
+    if (!selectedEdgeId) return;
+    setDiagramAndDraft(
+      cloneAndPatch(diagram, (next) => {
+        next.edges = next.edges.filter((edge) => edge.id !== selectedEdgeId);
+        delete next.edgeLabels[selectedEdgeId];
+        delete next.edgeOrientations[selectedEdgeId];
+        delete next.edgePairings[selectedEdgeId];
+        for (const edgeId of Object.keys(next.edgePairings)) {
+          next.edgePairings[edgeId] = (next.edgePairings[edgeId] ?? []).filter((peer) => peer !== selectedEdgeId);
+        }
+        for (const face of next.faces) {
+          face.boundary = face.boundary.filter((entry) => entry.edgeId !== selectedEdgeId);
+        }
+      })
+    );
+    setSelectedEdgeId(null);
+  };
+
+  useEffect(() => {
+    if (!timelinePlaying) return;
+    const handle = window.setInterval(() => {
+      setTimelinePosition((prev) => {
+        const next = Math.min(timelineMax, prev + 1);
+        if (next >= timelineMax) {
+          setTimelinePlaying(false);
+        }
+        return next;
+      });
+    }, 900);
+    return () => window.clearInterval(handle);
+  }, [timelineMax, timelinePlaying]);
+
+  const saveTopologyDocument = () => {
+    const built = ensureBuilt();
+    const doc = createTopologyDocument(diagram, {
+      buildResult: built,
+      activeView,
+      activeRealizationId,
+    });
+    const text = JSON.stringify(doc, null, 2);
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const cleanName = (diagram.name || "topology")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "topology";
+    anchor.href = url;
+    anchor.download = `${cleanName}${TOPOLOGY_DOCUMENT_EXTENSION}`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setDocStatus(`Saved ${anchor.download}`);
+    setDocError(null);
+  };
+
+  const loadTopologyDocument = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = `${TOPOLOGY_DOCUMENT_EXTENSION},.json,application/json`;
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onerror = () => {
+        setDocError("Failed to read the selected file.");
+        setDocStatus(null);
+      };
+      reader.onload = () => {
+        try {
+          const text = String(reader.result ?? "");
+          const raw = JSON.parse(text);
+          if (isTopologyDocument(raw)) {
+            const loadedDiagram = raw.payload.diagram;
+            setDiagramAndDraft(loadedDiagram);
+            setBuildMode("editor");
+            if (raw.payload.cache?.buildResult) {
+              setBuildResult(raw.payload.cache.buildResult);
+              setBuiltSignature(JSON.stringify(loadedDiagram));
+              setActiveView(raw.payload.cache.activeView ?? "diagram");
+              setActiveRealizationId(raw.payload.cache.activeRealizationId ?? raw.payload.cache.buildResult.realizations[0]?.id ?? null);
+            } else {
+              const built = buildQuotientPipeline(loadedDiagram);
+              setBuildResult(built);
+              setBuiltSignature(JSON.stringify(loadedDiagram));
+              setActiveView("diagram");
+              setActiveRealizationId(built.realizations[0]?.id ?? null);
+            }
+            setTimelinePosition(0);
+            setTimelinePlaying(false);
+            setSelectedEdgeId(null);
+            setSelectedVertexId(null);
+            setPendingEdgeStartId(null);
+            setPresetId(DEFAULT_TOPOLOGY_PRESET_ID);
+            setDocStatus(`Loaded ${file.name}`);
+            setDocError(null);
+            return;
+          }
+          if (raw?.edges && raw?.vertices && raw?.faces) {
+            const loadedDiagram = raw as FundamentalDiagram;
+            setDiagramAndDraft(loadedDiagram);
+            const built = buildQuotientPipeline(loadedDiagram);
+            setBuildResult(built);
+            setBuiltSignature(JSON.stringify(loadedDiagram));
+            setBuildMode("editor");
+            setActiveView("diagram");
+            setActiveRealizationId(built.realizations[0]?.id ?? null);
+            setTimelinePosition(0);
+            setTimelinePlaying(false);
+            setDocStatus(`Loaded diagram ${file.name}`);
+            setDocError(null);
+            return;
+          }
+          setDocError("Unsupported topology document format.");
+          setDocStatus(null);
+        } catch (error) {
+          setDocError(`Failed to parse file: ${String((error as Error).message ?? error)}`);
+          setDocStatus(null);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   const renderDiagramView = () => {
     const face = diagram.faces[0];
     const polygonPoints =
@@ -137,11 +454,59 @@ export const TopologyScreen: React.FC = () => {
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>Geometry tools</span>
+          {([
+            ["select", "Select/Drag"],
+            ["addVertex", "Add Vertex"],
+            ["addEdge", "Add Edge"],
+          ] as const).map(([id, label]) => (
+            <button
+              key={`diagram-tool-${id}`}
+              type="button"
+              onClick={() => {
+                setToolMode(id);
+                setPendingEdgeStartId(null);
+              }}
+              style={{
+                borderRadius: 999,
+                border: "1px solid " + (toolMode === id ? "#0a66c2" : "#d1d5db"),
+                background: toolMode === id ? "#e6f0ff" : "#fff",
+                fontSize: 11,
+                fontWeight: toolMode === id ? 700 : 600,
+                padding: "4px 10px",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <label style={{ fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="checkbox"
+              checked={appendCreatedEdgesToBoundary}
+              onChange={(event) => setAppendCreatedEdgesToBoundary(event.target.checked)}
+            />
+            append new edges to face boundary
+          </label>
+          <button type="button" onClick={handleRemoveSelectedVertex} disabled={!selectedVertexId}>
+            Remove Vertex
+          </button>
+          <button type="button" onClick={handleRemoveSelectedEdge} disabled={!selectedEdgeId}>
+            Remove Edge
+          </button>
+        </div>
+
         <svg
+          ref={svgRef}
           width="100%"
           viewBox="0 0 520 360"
           style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}
           onMouseLeave={() => setHoverEdgeId(null)}
+          onPointerUp={stopDragging}
+          onPointerLeave={stopDragging}
+          onPointerCancel={stopDragging}
+          onPointerMove={handleSvgPointerMove}
+          onClick={handleDiagramBackgroundClick}
         >
           <defs>
             <marker id="edgeArrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
@@ -171,8 +536,12 @@ export const TopologyScreen: React.FC = () => {
                   x2={arrowEnd.x}
                   y2={arrowEnd.y}
                   stroke={highlighted ? "#0a66c2" : "#334155"}
-                  strokeWidth={highlighted ? 3 : 2}
+                  strokeWidth={selectedEdgeId === edge.id ? 3.4 : highlighted ? 3 : 2}
                   markerEnd="url(#edgeArrow)"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleEdgeClick(edge.id);
+                  }}
                 />
                 <text
                   x={mid.x}
@@ -198,7 +567,21 @@ export const TopologyScreen: React.FC = () => {
             const label = diagram.vertexLabels[vertex.id] || vertex.id;
             return (
               <g key={`diagram-vertex-${vertex.id}`}>
-                <circle cx={point.x} cy={point.y} r={5} fill="#0f172a" />
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r={selectedVertexId === vertex.id ? 7 : 5}
+                  fill={selectedVertexId === vertex.id ? "#0a66c2" : "#0f172a"}
+                  style={{ cursor: toolMode === "addEdge" || toolMode === "select" ? "pointer" : "crosshair" }}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    handleVertexDown(event, vertex.id);
+                  }}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleVertexClick(vertex.id);
+                  }}
+                />
                 <text x={point.x + 8} y={point.y - 8} style={{ fontSize: 11, fill: "#0f172a", fontWeight: 600 }}>
                   {label}
                 </text>
@@ -216,6 +599,11 @@ export const TopologyScreen: React.FC = () => {
             <div>
               Selected edge: <strong>{hoverEdgeId}</strong> - peers:{" "}
               {Array.from(highlightEdges).sort((a, b) => a.localeCompare(b)).join(", ")}
+            </div>
+          )}
+          {toolMode === "addEdge" && (
+            <div>
+              Add-edge mode: {pendingEdgeStartId ? `choose end vertex (start ${pendingEdgeStartId})` : "choose start vertex"}
             </div>
           )}
         </div>
@@ -478,53 +866,142 @@ export const TopologyScreen: React.FC = () => {
       result.realizations.find((entry) => entry.id === activeRealizationId) ??
       result.realizations[0];
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
-    const stepLabels = [
-      "Start with flat fundamental diagram",
-      "Fold first identification class",
-      "Fold second identification class",
-      "Apply final identification",
-      "Arrive at quotient placement",
-    ] as const;
-    const t = animationStep / 4;
-    const orderedEdgeClasses = [...result.edgeClasses].sort((left, right) => right.sourceIds.length - left.sourceIds.length);
-    const foldedSourceEdges = new Set<string>(orderedEdgeClasses.slice(0, Math.max(0, animationStep)).flatMap((entry) => entry.sourceIds));
-
+    const edgeById = new Map(result.subdividedDiagram.edges.map((edge) => [edge.id, edge]));
+    const sourceVertices = diagram.vertices.map((vertex) => vertex.id);
     const projectedStart: Record<string, { x: number; y: number }> = {};
-    const projectedTarget: Record<string, { x: number; y: number }> = {};
-    for (const vertex of diagram.vertices) projectedStart[vertex.id] = diagPoint(vertex.x, vertex.y);
-    for (const vertexId of Object.keys(result.vertexClassBySource)) {
-      const classId = result.vertexClassBySource[vertexId];
-      const pos = realization.vertexPositions[classId] ?? [0, 0, 0];
-      projectedTarget[vertexId] = isoProject(pos);
+    const projectedFinal: Record<string, { x: number; y: number }> = {};
+    for (const vertex of diagram.vertices) {
+      projectedStart[vertex.id] = diagPoint(vertex.x, vertex.y);
+      const qVertexId = result.vertexClassBySource[vertex.id];
+      const qPos = qVertexId ? realization.vertexPositions[qVertexId] : null;
+      projectedFinal[vertex.id] = qPos ? isoProject(qPos) : diagPoint(vertex.x, vertex.y);
     }
+
+    const partialTargetFor = (opCount: number): Record<string, { x: number; y: number }> => {
+      const dsu = new SmallDsu();
+      for (const vertexId of sourceVertices) dsu.add(vertexId);
+      for (let index = 0; index < Math.min(opCount, timelineOperations.length); index += 1) {
+        const op = timelineOperations[index];
+        const edgeA = edgeById.get(op.relation.edgeA);
+        const edgeB = edgeById.get(op.relation.edgeB);
+        if (!edgeA || !edgeB) continue;
+        if (op.relation.relation === "match") {
+          dsu.union(edgeA.from, edgeB.from);
+          dsu.union(edgeA.to, edgeB.to);
+        } else {
+          dsu.union(edgeA.from, edgeB.to);
+          dsu.union(edgeA.to, edgeB.from);
+        }
+      }
+      const groups = new Map<string, string[]>();
+      for (const vertexId of sourceVertices) {
+        const root = dsu.find(vertexId);
+        const group = groups.get(root);
+        if (group) group.push(vertexId);
+        else groups.set(root, [vertexId]);
+      }
+      const out: Record<string, { x: number; y: number }> = {};
+      for (const members of groups.values()) {
+        const centroid = members.reduce(
+          (acc, id) => ({ x: acc.x + (projectedFinal[id]?.x ?? 0), y: acc.y + (projectedFinal[id]?.y ?? 0) }),
+          { x: 0, y: 0 }
+        );
+        const c = { x: centroid.x / members.length, y: centroid.y / members.length };
+        for (const id of members) out[id] = c;
+      }
+      return out;
+    };
+
+    const baseIndex = Math.floor(Math.max(0, Math.min(timelineMax, timelinePosition)));
+    const localT = Math.max(0, Math.min(1, timelinePosition - baseIndex));
+    const targetsA = partialTargetFor(Math.min(timelineOperations.length, baseIndex));
+    const targetsB = partialTargetFor(Math.min(timelineOperations.length, baseIndex + 1));
+    const currentOp = baseIndex < timelineOperations.length ? timelineOperations[baseIndex] : null;
+    const activePairEdges = new Set(
+      currentOp ? [currentOp.relation.edgeA, currentOp.relation.edgeB] : []
+    );
 
     const blended = (vertexId: string) => {
       const start = projectedStart[vertexId] ?? { x: 260, y: 180 };
-      const target = projectedTarget[vertexId] ?? start;
-      return { x: start.x * (1 - t) + target.x * t, y: start.y * (1 - t) + target.y * t };
+      const targetA = targetsA[vertexId] ?? start;
+      const targetB = targetsB[vertexId] ?? targetA;
+      const target = {
+        x: targetA.x * (1 - localT) + targetB.x * localT,
+        y: targetA.y * (1 - localT) + targetB.y * localT,
+      };
+      return {
+        x: start.x * 0.35 + target.x * 0.65,
+        y: start.y * 0.35 + target.y * 0.65,
+      };
     };
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setTimelinePlaying((v) => !v)}
+            disabled={timelineOperations.length === 0}
+          >
+            {timelinePlaying ? "Pause" : "Play"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTimelinePlaying(false);
+              setTimelinePosition((v) => Math.max(0, Math.floor(v) - 1));
+            }}
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTimelinePlaying(false);
+              setTimelinePosition((v) => Math.min(timelineMax, Math.floor(v) + 1));
+            }}
+          >
+            Next
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTimelinePlaying(false);
+              setTimelinePosition(0);
+            }}
+          >
+            Reset
+          </button>
           <input
             type="range"
             min={0}
-            max={4}
-            step={1}
-            value={animationStep}
-            onChange={(event) => setAnimationStep(Number(event.target.value))}
+            max={timelineMax}
+            step={0.01}
+            value={timelinePosition}
+            onChange={(event) => {
+              setTimelinePlaying(false);
+              setTimelinePosition(Number(event.target.value));
+            }}
             style={{ flex: 1 }}
           />
-          <strong style={{ fontSize: 12 }}>Step {animationStep}/4</strong>
+          <strong style={{ fontSize: 12 }}>
+            Step {Math.min(timelineMax, Math.floor(timelinePosition))}/{timelineMax}
+          </strong>
         </div>
-        <div style={{ fontSize: 12, color: "#334155" }}>{stepLabels[animationStep]}</div>
+        <div style={{ fontSize: 12, color: "#334155" }}>
+          {currentOp
+            ? `Operation ${baseIndex + 1}: identify ${currentOp.relation.edgeA} with ${currentOp.relation.edgeB} (${currentOp.relation.relation})`
+            : baseIndex <= 0
+              ? "Start with flat fundamental diagram."
+              : "All pair operations complete; settle on quotient placement."}
+        </div>
 
         <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
           {diagram.edges.map((edge) => {
             const from = blended(edge.from);
             const to = blended(edge.to);
-            const folded = foldedSourceEdges.has(edge.id);
+            const activePair = activePairEdges.has(edge.id);
+            const completed = timelineOperations.some((operation, index) => index < baseIndex && (operation.relation.edgeA === edge.id || operation.relation.edgeB === edge.id));
             const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
             return (
               <g key={`anim-edge-${edge.id}`}>
@@ -533,10 +1010,11 @@ export const TopologyScreen: React.FC = () => {
                   y1={from.y}
                   x2={to.x}
                   y2={to.y}
-                  stroke={folded ? "#0a66c2" : "#64748b"}
-                  strokeWidth={folded ? 2.8 : 1.6}
+                  stroke={activePair ? "#b91c1c" : completed ? "#0a66c2" : "#64748b"}
+                  strokeWidth={activePair ? 3.2 : completed ? 2.5 : 1.6}
+                  strokeDasharray={activePair ? "6 3" : undefined}
                 />
-                <text x={mid.x + 5} y={mid.y - 5} style={{ fontSize: 10, fill: folded ? "#0a66c2" : "#64748b" }}>
+                <text x={mid.x + 5} y={mid.y - 5} style={{ fontSize: 10, fill: activePair ? "#b91c1c" : completed ? "#0a66c2" : "#64748b" }}>
                   {diagram.edgeLabels[edge.id] || edge.id}
                 </text>
               </g>
@@ -555,6 +1033,34 @@ export const TopologyScreen: React.FC = () => {
             );
           })}
         </svg>
+
+        <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "8px 10px", display: "grid", gap: 4, maxHeight: 170, overflowY: "auto" }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Timeline operations</div>
+          <div style={{ fontSize: 10, color: "#475569" }}>Per-pair identification sequence with scrub/play/pause.</div>
+          {timelineOperations.map((operation, index) => {
+            const active = index === baseIndex;
+            const done = index < baseIndex;
+            return (
+              <div
+                key={`timeline-op-${operation.id}`}
+                style={{
+                  border: "1px solid " + (active ? "#fda4af" : done ? "#bfdbfe" : "#e2e8f0"),
+                  borderRadius: 6,
+                  background: active ? "#fff1f2" : done ? "#eff6ff" : "#f8fafc",
+                  padding: "4px 6px",
+                  fontSize: 10,
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  setTimelinePlaying(false);
+                  setTimelinePosition(index);
+                }}
+              >
+                {index + 1}. {operation.label}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -690,7 +1196,7 @@ export const TopologyScreen: React.FC = () => {
                       onClick={() => {
                         try {
                           const parsed = JSON.parse(jsonDraft) as FundamentalDiagram;
-                          setDiagram(parsed);
+                          setDiagramAndDraft(parsed);
                           setJsonError(null);
                         } catch (error) {
                           setJsonError(String((error as Error).message ?? error));
@@ -746,6 +1252,23 @@ export const TopologyScreen: React.FC = () => {
           <div style={{ marginTop: 6, fontSize: 11, color: buildStale ? "#b45309" : "#475569" }}>
             {buildStale ? "Diagram changed. Rebuild to refresh quotient + realization." : "Quotient is up to date."}
           </div>
+        </section>
+
+        <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8, display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Topology document</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <button type="button" onClick={saveTopologyDocument}>
+              Save .math3d-topology
+            </button>
+            <button type="button" onClick={loadTopologyDocument}>
+              Load .math3d-topology
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: "#475569" }}>
+            Stores diagram + quotient cache + realization choices.
+          </div>
+          {docStatus && <div style={{ fontSize: 10, color: "#166534" }}>{docStatus}</div>}
+          {docError && <div style={{ fontSize: 10, color: "#b42318" }}>{docError}</div>}
         </section>
       </div>
 
