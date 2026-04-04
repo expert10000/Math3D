@@ -5,6 +5,7 @@ import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
+import TopologyScreen from "./screens/TopologyScreen";
 
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
 import {
@@ -272,7 +273,7 @@ import {
 } from "@math3d/workbook";
 /* ---------------- App modes ---------------- */
 
-type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "geometry";
+type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
 type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
 type GeometryDemoFamily = "stereometry" | "planimetry";
 type PlanimetryPresetId = "task" | "euler" | "tangent";
@@ -328,7 +329,7 @@ const GEOMETRY_CAMERA_TOUR_MODE_OPTIONS: Array<{
   { value: "long", label: "Long Classic", hint: "Extended cinematic pass with balanced movement." },
   { value: "quick", label: "Quick Preview", hint: "Short pass for fast checks while editing." },
 ];
-const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "geometry"];
+const MODE_LIST: Mode[] = ["mobius", "chebyshev", "transform", "maps", "surfaces", "curves", "topology", "geometry"];
 const isModeValue = (value: string): value is Mode =>
   MODE_LIST.includes(value as Mode);
 type ComplexMapLine = { axis: "u" | "v"; value: number } | null;
@@ -10077,6 +10078,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const wRef = useRef<PlanePlotHandle | null>(null);
   const surfaceSceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const curvesSceneCaptureRef = useRef<HTMLDivElement | null>(null);
+  const topologySceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const geometrySceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const [wPlaneDomainColor, setWPlaneDomainColor] = useState(true);
   const [wPlaneShowRings, setWPlaneShowRings] = useState(false);
@@ -10200,6 +10202,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       ? surfaceSceneCaptureRef.current
       : mode === "curves"
         ? curvesSceneCaptureRef.current
+      : mode === "topology"
+        ? topologySceneCaptureRef.current
       : mode === "geometry"
         ? geometrySceneCaptureRef.current
         : null;
@@ -10267,8 +10271,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
   const handleCleanScreenshot = useCallback(async () => {
     if (screenshotBusy) return;
-    if (!(mode === "surfaces" || mode === "curves" || mode === "geometry")) {
-      setScreenshotStatus("Clean screenshot is available in Surfaces, Curves, and Geometry views.");
+    if (!(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")) {
+      setScreenshotStatus("Clean screenshot is available in Surfaces, Curves, Topology, and Geometry views.");
       return;
     }
     const waitFrames = (count: number) =>
@@ -10308,7 +10312,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   // root style
   const rootStyle: React.CSSProperties =
-    mode === "surfaces" || mode === "curves" || mode === "geometry"
+    mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry"
       ? {
           ...styles.appRoot,
           maxWidth: "none",
@@ -20875,6 +20879,7 @@ case "mobius":
       return "Surface viewer";
     }
     if (mode === "curves") return "Curve core presets";
+    if (mode === "topology") return "Topology quotient module";
     if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
     if (mode === "mobius") return "Mobius viewer";
     if (mode === "chebyshev") return "Chebyshev viewer";
@@ -21538,7 +21543,7 @@ case "mobius":
     workbookDirty,
   ]);
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "geometry";
+    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -21584,6 +21589,12 @@ case "mobius":
       label: "Curves",
       active: mode === "curves",
       onSelect: () => setMode("curves"),
+    },
+    {
+      id: "topology",
+      label: "Topology",
+      active: mode === "topology",
+      onSelect: () => setMode("topology"),
     },
     {
       id: "geometry",
@@ -22467,7 +22478,7 @@ case "mobius":
                       <button
                         type="button"
                         onClick={() => void handleCleanScreenshot()}
-                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
                         title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
                       >
                         Clean shot
@@ -22475,7 +22486,7 @@ case "mobius":
                       <button
                         type="button"
                         onClick={() => void handleScreenshot("scene")}
-                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "geometry")}
+                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
                       >
                         Scene shot
                       </button>
@@ -22865,6 +22876,22 @@ case "mobius":
                 </button>
               )}
             </div>
+          ) : mode === "topology" ? (
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#1f2937" }}>
+                Topology workspace
+              </div>
+              <div style={{ fontSize: 11, color: "#475569" }}>
+                Fundamental Diagram {"->"} Quotient Complex {"->"} Realization.
+              </div>
+              <button
+                type="button"
+                onClick={() => setMode("topology")}
+                style={{ padding: "4px 10px", borderRadius: 999, border: "1px solid #0a66c2", background: "#e6f0ff", fontWeight: 700 }}
+              >
+                Topology module active
+              </button>
+            </div>
           ) : mode === "geometry" ? (
             <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -22980,7 +23007,7 @@ case "mobius":
       <div
         style={{
           ...styles.wrap,
-          ...(mode === "surfaces" || mode === "curves" || mode === "geometry"
+          ...(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry"
             ? {
               maxWidth: "100%",
               width: "100%",
@@ -25842,6 +25869,12 @@ case "mobius":
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        ) : mode === "topology" ? (
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+            <div data-testid="main-viewer" ref={topologySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
+              <TopologyScreen />
             </div>
           </div>
         ) : mode === "geometry" ? (
