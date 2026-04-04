@@ -149,3 +149,67 @@ export const buildDefaultRealization = (quotient: QuotientComplex): Realization3
     },
   };
 };
+
+export const buildFlatSchematicRealization = (quotient: QuotientComplex): Realization3D => {
+  const vertexPositions: Record<string, Vec3> = {};
+  const count = quotient.vertices.length;
+  quotient.vertices.forEach((vertex, index) => {
+    if (count <= 1) {
+      vertexPositions[vertex.id] = [0, 0, 0];
+      return;
+    }
+    const angle = (Math.PI * 2 * index) / count;
+    vertexPositions[vertex.id] = [1.7 * Math.cos(angle), 1.25 * Math.sin(angle), 0];
+  });
+
+  const edgeCurves: Record<string, Vec3[]> = {};
+  let loopIndex = 0;
+  for (const edge of quotient.edges) {
+    const from = vertexPositions[edge.endpointVertexIds[0]] ?? [0, 0, 0];
+    const to = vertexPositions[edge.endpointVertexIds[1]] ?? [0, 0, 0];
+    if (edge.endpointVertexIds[0] === edge.endpointVertexIds[1]) {
+      edgeCurves[edge.id] = makeLoopCurve(from, loopIndex);
+      loopIndex += 1;
+      continue;
+    }
+    edgeCurves[edge.id] = [from, to];
+  }
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/flat`,
+    name: "Flat schematic realization",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildFaceMesh(quotient, edgeCurves),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#ede9fe",
+      edgeStroke: "#312e81",
+      seamStroke: "#be123c",
+      singularityColor: "#a16207",
+    },
+  };
+};
+
+export const buildRealizationChoices = (quotient: QuotientComplex): Realization3D[] => [
+  buildDefaultRealization(quotient),
+  buildFlatSchematicRealization(quotient),
+];

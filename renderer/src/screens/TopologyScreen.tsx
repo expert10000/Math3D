@@ -72,6 +72,7 @@ export const TopologyScreen: React.FC = () => {
   const [activeView, setActiveView] = useState<TopologyView>("diagram");
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
   const [animationStep, setAnimationStep] = useState(0);
+  const [activeRealizationId, setActiveRealizationId] = useState<string | null>(null);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -95,6 +96,7 @@ export const TopologyScreen: React.FC = () => {
     setDiagramAndDraft(nextDiagram);
     setBuildResult(nextResult);
     setBuiltSignature(JSON.stringify(nextDiagram));
+    setActiveRealizationId(nextResult.realizations[0]?.id ?? null);
     setActiveView("diagram");
     setAnimationStep(0);
     setJsonError(null);
@@ -105,6 +107,9 @@ export const TopologyScreen: React.FC = () => {
     const nextResult = buildQuotientPipeline(diagram);
     setBuildResult(nextResult);
     setBuiltSignature(diagramSignature);
+    if (!nextResult.realizations.some((entry) => entry.id === activeRealizationId)) {
+      setActiveRealizationId(nextResult.realizations[0]?.id ?? null);
+    }
     return nextResult;
   };
 
@@ -309,7 +314,10 @@ export const TopologyScreen: React.FC = () => {
 
   const renderRealizationView = () => {
     const result = ensureBuilt();
-    const realization = result.realizations[0];
+    const realization =
+      result.realizations.find((entry) => entry.id === activeRealizationId) ??
+      result.realizations[0];
+    if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
 
     return (
@@ -379,7 +387,10 @@ export const TopologyScreen: React.FC = () => {
 
   const renderAnimationView = () => {
     const result = ensureBuilt();
-    const realization = result.realizations[0];
+    const realization =
+      result.realizations.find((entry) => entry.id === activeRealizationId) ??
+      result.realizations[0];
+    if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const stepLabels = [
       "Start with flat fundamental diagram",
       "Fold first identification class",
@@ -652,7 +663,7 @@ export const TopologyScreen: React.FC = () => {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0,1fr)" }}>
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
           {([
             ["diagram", "Diagram View"],
             ["quotient", "Quotient Structure View"],
@@ -678,6 +689,20 @@ export const TopologyScreen: React.FC = () => {
               {label}
             </button>
           ))}
+          <label style={{ marginLeft: "auto", fontSize: 11, display: "flex", alignItems: "center", gap: 6 }}>
+            Realization
+            <select
+              value={activeRealizationId ?? buildResult.realizations[0]?.id ?? ""}
+              onChange={(event) => setActiveRealizationId(event.target.value)}
+              style={{ fontSize: 11 }}
+            >
+              {buildResult.realizations.map((realization) => (
+                <option key={`realization-option-${realization.id}`} value={realization.id}>
+                  {realization.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#f8fbff", padding: 10, overflow: "auto" }}>
           {renderCenterView()}

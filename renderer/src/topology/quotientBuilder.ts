@@ -1,4 +1,4 @@
-import { buildDefaultRealization } from "./realization";
+import { buildRealizationChoices } from "./realization";
 import type {
   EquivalenceClass,
   FundamentalDiagram,
@@ -474,7 +474,7 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     edgeClassBySource,
     warnings
   );
-  const realization = buildDefaultRealization(quotient);
+  const realizations = buildRealizationChoices(quotient);
 
   const pipeline: QuotientPipelineStage[] = [
     {
@@ -505,7 +505,7 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
       id: "realization",
       label: "Geometric Realization",
       status: "done",
-      note: "Default immersed realization generated in R^3.",
+      note: `${realizations.length} realization choice(s) generated in R^3.`,
     },
     {
       id: "render",
@@ -523,9 +523,8 @@ export const buildQuotientPipeline = (input: FundamentalDiagram): QuotientBuildR
     vertexClassBySource,
     edgeClassBySource,
     quotient,
-    realizations: [realization],
+    realizations,
     warnings,
     pipeline,
   };
 };
-
