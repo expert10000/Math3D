@@ -53,10 +53,27 @@ function Invoke-WorkerProtocolSmoke {
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
-  $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
+  # In CI we prefer a deterministic temp install root to avoid stale upgrade state.
+  if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+    $InstallRoot = Join-Path $env:RUNNER_TEMP "Math3D-smoke-install"
+  } else {
+    $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
+  }
 }
-$customInstallRootRequested = $PSBoundParameters.ContainsKey("InstallRoot") -and
-  (-not [string]::IsNullOrWhiteSpace($PSBoundParameters["InstallRoot"]))
+$InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot).Replace("/", "\")
+
+function Test-SafeInstallRoot {
+  param([Parameter(Mandatory = $true)][string]$PathValue)
+  $resolved = [System.IO.Path]::GetFullPath($PathValue).TrimEnd("\")
+  $root = [System.IO.Path]::GetPathRoot($resolved).TrimEnd("\")
+  if ([string]::IsNullOrWhiteSpace($resolved) -or $resolved -eq $root) {
+    return $false
+  }
+  if ($resolved -notmatch "(?i)math3d") {
+    return $false
+  }
+  return $true
+}
 
 $unpackedWorker = Join-Path $repo "release/win-unpacked/resources/python-worker/worker.exe"
 if (-not (Test-Path $unpackedWorker)) {
@@ -76,14 +93,34 @@ if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
 
 if (-not $SkipInstall) {
   Write-Host "[verify] installing from $InstallerPath"
-  $installerArgs = @("/S")
-  if ($customInstallRootRequested) {
-    $InstallRoot = [System.IO.Path]::GetFullPath($InstallRoot).Replace("/", "\")
-    # /D must be the final NSIS argument.
-    $installerArgs += "/D=$InstallRoot"
+  $installerArgs = @("/S", "/CURRENTUSER")
+  # /D must be the final NSIS argument.
+  $installerArgs += "/D=$InstallRoot"
+
+  if (Test-Path $InstallRoot) {
+    if (-not (Test-SafeInstallRoot -PathValue $InstallRoot)) {
+      throw "Refusing to remove unsafe install root path: $InstallRoot"
+    }
+    Write-Host "[verify] removing existing install root $InstallRoot"
+    Remove-Item -LiteralPath $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue
   }
-  $proc = Start-Process -FilePath $InstallerPath -ArgumentList $installerArgs -Wait -PassThru
-  if ($proc.ExitCode -ne 0) {
+
+  $attempts = @("initial", "retry")
+  $installed = $false
+  foreach ($attempt in $attempts) {
+    if ($attempt -eq "retry") {
+      Write-Warning "[verify] installer attempt failed; retrying once..."
+      Start-Sleep -Seconds 2
+    }
+    $proc = Start-Process -FilePath $InstallerPath -ArgumentList $installerArgs -Wait -PassThru
+    if ($proc.ExitCode -eq 0) {
+      $installed = $true
+      break
+    }
+    Write-Warning "[verify] installer exited with code $($proc.ExitCode) on $attempt attempt"
+  }
+
+  if (-not $installed) {
     throw "Installer failed (exit code $($proc.ExitCode)): $InstallerPath"
   }
 }

@@ -11,7 +11,11 @@ $ErrorActionPreference = "Stop"
 
 $repo = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
-  $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
+  if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
+    $InstallRoot = Join-Path $env:RUNNER_TEMP "Math3D-smoke-install"
+  } else {
+    $InstallRoot = Join-Path (Join-Path $env:LOCALAPPDATA "Programs") "Math3D"
+  }
 }
 
 if (-not $SkipBuild) {
