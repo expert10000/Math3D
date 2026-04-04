@@ -270,7 +270,7 @@ const triangulateDiagramFaces = (
 };
 
 const stageStatus = (warnings: QuotientWarning[], prefix: string): "done" | "warning" =>
-  warnings.some((warning) => warning.code.startsWith(prefix)) ? "warning" : "done";
+  warnings.some((warning) => warning.code.startsWith(prefix) && warning.level !== "info") ? "warning" : "done";
 
 const buildLabelGroups = (diagram: FundamentalDiagram): Record<string, string[]> => {
   const groups: Record<string, string[]> = {};
@@ -366,9 +366,9 @@ const buildEquivalence = (diagram: FundamentalDiagram, warnings: QuotientWarning
     const labelGroupSize = label ? labelGroups[label]?.length ?? 0 : 0;
     if (!peers.length && labelGroupSize <= 1) {
       warnings.push({
-        code: "equivalence/unpaired-edge",
-        level: "warning",
-        message: `Edge '${edge.id}' is currently not identified with another edge.`,
+        code: "equivalence/boundary-edge-retained",
+        level: "info",
+        message: `Boundary edge retained: '${edge.id}' contributes to the open boundary.`,
         edgeId: edge.id,
       });
     }

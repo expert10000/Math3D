@@ -39,4 +39,27 @@ describe("buildQuotientPipeline", () => {
     expect(realizationIds.some((id) => id.endsWith("/realization/torus-smooth"))).toBe(true);
     expect(realizationIds.some((id) => id.endsWith("/realization/torus-cut-open"))).toBe(true);
   });
+
+  it("adds smooth and cut-open Mobius realizations for mobius rectangle preset", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("mobius_from_rectangle");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    const realizationIds = result.realizations.map((entry) => entry.id);
+    expect(realizationIds.some((id) => id.endsWith("/realization/mobius-smooth"))).toBe(true);
+    expect(realizationIds.some((id) => id.endsWith("/realization/mobius-cut-open"))).toBe(true);
+  });
+
+  it("treats unpaired source edges as boundary info, not warnings", () => {
+    const preset = TOPOLOGY_PRESET_BY_ID.get("mobius_from_rectangle");
+    expect(preset).toBeTruthy();
+    const diagram = preset!.buildDiagram();
+    const result = buildQuotientPipeline(diagram);
+
+    const boundaryInfos = result.warnings.filter((w) => w.code === "equivalence/boundary-edge-retained");
+    expect(boundaryInfos.length).toBeGreaterThan(0);
+    expect(boundaryInfos.every((w) => w.level === "info")).toBe(true);
+    expect(result.warnings.some((w) => w.code === "equivalence/unpaired-edge")).toBe(false);
+  });
 });

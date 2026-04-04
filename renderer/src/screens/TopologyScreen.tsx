@@ -140,12 +140,27 @@ const isTorusSquareStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   return aCount >= 2 && bCount >= 2;
 };
 
+const isMobiusRectangleStoryDiagram = (candidate: FundamentalDiagram): boolean => {
+  const face = candidate.faces[0];
+  if (!face || candidate.edges.length < 4) return false;
+  const pairedEdges = candidate.edges.filter((edge) => (candidate.edgePairings[edge.id]?.length ?? 0) > 0);
+  if (pairedEdges.length < 2) return false;
+  const pairLabel = primaryEdgeLabelToken(candidate.edgeLabels[pairedEdges[0]?.id ?? ""]);
+  const samePairLabel = pairLabel.length > 0 && pairedEdges.every((edge) => primaryEdgeLabelToken(candidate.edgeLabels[edge.id]) === pairLabel);
+  if (!samePairLabel) return false;
+  const relationKinds = new Set<number>(pairedEdges.map((edge) => candidate.edgeOrientations[edge.id] ?? 1));
+  const hasReversedGluing = relationKinds.size > 1;
+  if (!hasReversedGluing) return false;
+  const unpaired = candidate.edges.filter((edge) => (candidate.edgePairings[edge.id]?.length ?? 0) === 0);
+  return unpaired.length >= 2;
+};
+
 const buildNarrativeAnimationPlan = (
   sourceDiagram: FundamentalDiagram,
   result: QuotientBuildResult
 ): TopologyAnimationPlan => {
   const fallback = createDefaultAnimationPlan(result.orientationRelations);
-  if (!isTorusSquareStoryDiagram(sourceDiagram)) return fallback;
+  if (!isTorusSquareStoryDiagram(sourceDiagram) && !isMobiusRectangleStoryDiagram(sourceDiagram)) return fallback;
   const edgeLabels = result.subdividedDiagram.edgeLabels;
   const buckets: Record<"a" | "b" | "other", string[]> = {
     a: [],
@@ -171,6 +186,17 @@ const buildNarrativeAnimationPlan = (
     }
     buckets.other.push(opId);
   }
+  if (isMobiusRectangleStoryDiagram(sourceDiagram)) {
+    const order = [...buckets.a, ...buckets.other, ...buckets.b];
+    const groups: Record<string, string> = {};
+    for (const opId of buckets.a) groups[opId] = "glue-a-twist";
+    for (const opId of buckets.other) groups[opId] = "boundary-preserved";
+    for (const opId of buckets.b) groups[opId] = "aux-identifications";
+    return {
+      order: order.length > 0 ? order : fallback.order,
+      groups,
+    };
+  }
   const order = [...buckets.a, ...buckets.b, ...buckets.other];
   const groups: Record<string, string> = {};
   for (const opId of buckets.a) groups[opId] = "glue-a-sides";
@@ -189,6 +215,16 @@ const TORUS_STORY_STAGES = [
   { id: "second-glue", label: "Step 3: glue b circles", detail: "Identify the two cylinder rims (b)." },
   { id: "torus", label: "Step 4: torus", detail: "Topological torus appears." },
   { id: "smooth", label: "Step 5: smooth realization", detail: "Embedded torus in R^3 with overlays." },
+] as const;
+
+const MOBIUS_STORY_STAGES = [
+  { id: "rectangle", label: "Step 0: rectangle", detail: "Flat rectangle with one identified edge pair." },
+  { id: "pair", label: "Step 1: isolate pair", detail: "Mark the reversed a-edge pair to glue." },
+  { id: "bend", label: "Step 2: bend strip", detail: "Lift and bend the strip in 3D." },
+  { id: "twist", label: "Step 3: half-twist", detail: "Rotate one end by 180 degrees." },
+  { id: "glue", label: "Step 4: glue ends", detail: "Attach the reversed edges." },
+  { id: "mobius", label: "Step 5: Möbius band", detail: "Single-sided band with one boundary component." },
+  { id: "overlays", label: "Step 6: overlays", detail: "Highlight boundary loop, core circle, orientation flip." },
 ] as const;
 
 export const TopologyScreen: React.FC = () => {
@@ -219,6 +255,10 @@ export const TopologyScreen: React.FC = () => {
   const [showOneSkeleton, setShowOneSkeleton] = useState(true);
   const [showSmoothRealization, setShowSmoothRealization] = useState(true);
   const [showCutOpenModel, setShowCutOpenModel] = useState(false);
+  const [showBoundaryLoop, setShowBoundaryLoop] = useState(true);
+  const [showCoreCircle, setShowCoreCircle] = useState(false);
+  const [showOrientationFlip, setShowOrientationFlip] = useState(false);
+  const [storyRenderMode, setStoryRenderMode] = useState<"explain2d" | "real3d">("explain2d");
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
@@ -260,6 +300,7 @@ export const TopologyScreen: React.FC = () => {
     return out;
   }, [timelineSteps]);
   const torusStoryEnabled = useMemo(() => isTorusSquareStoryDiagram(diagram), [diagram]);
+  const mobiusStoryEnabled = useMemo(() => isMobiusRectangleStoryDiagram(diagram), [diagram]);
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -280,6 +321,30 @@ export const TopologyScreen: React.FC = () => {
     }
   };
 
+  const applyDiagramNarrativeDefaults = (next: FundamentalDiagram) => {
+    if (isMobiusRectangleStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(true);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("real3d");
+      return;
+    }
+    if (isTorusSquareStoryDiagram(next)) {
+      setShowSmoothRealization(true);
+      setShowCutOpenModel(false);
+      setShowBoundaryLoop(false);
+      setShowCoreCircle(false);
+      setShowOrientationFlip(false);
+      setShowSeams(true);
+      setShowOneSkeleton(true);
+      setStoryRenderMode("explain2d");
+    }
+  };
+
   const applyPreset = (nextPresetId: string) => {
     const preset = TOPOLOGY_PRESET_BY_ID.get(nextPresetId);
     if (!preset) return;
@@ -297,6 +362,7 @@ export const TopologyScreen: React.FC = () => {
     setTimelinePosition(0);
     setTimelinePlaying(false);
     setAnimationPlan(buildNarrativeAnimationPlan(nextDiagram, nextResult));
+    applyDiagramNarrativeDefaults(nextDiagram);
     setSelectedVertexId(null);
     setSelectedEdgeId(null);
     setPendingEdgeStartId(null);
@@ -501,6 +567,7 @@ export const TopologyScreen: React.FC = () => {
         setActiveView(raw.payload.cache.activeView ?? "diagram");
         setActiveRealizationId(raw.payload.cache.activeRealizationId ?? raw.payload.cache.buildResult.realizations[0]?.id ?? null);
         setAnimationPlan(normalizeAnimationPlan(raw.payload.cache.buildResult.orientationRelations, raw.payload.cache.animationPlan));
+        applyDiagramNarrativeDefaults(loadedDiagram);
       } else {
         const built = buildQuotientPipeline(loadedDiagram);
         setBuildResult(built);
@@ -508,6 +575,7 @@ export const TopologyScreen: React.FC = () => {
         setActiveView("diagram");
         setActiveRealizationId(built.realizations[0]?.id ?? null);
         setAnimationPlan(buildNarrativeAnimationPlan(loadedDiagram, built));
+        applyDiagramNarrativeDefaults(loadedDiagram);
       }
       setTimelinePosition(0);
       setTimelinePlaying(false);
@@ -532,6 +600,7 @@ export const TopologyScreen: React.FC = () => {
       setActiveView("diagram");
       setActiveRealizationId(built.realizations[0]?.id ?? null);
       setAnimationPlan(buildNarrativeAnimationPlan(loadedDiagram, built));
+      applyDiagramNarrativeDefaults(loadedDiagram);
       setTimelinePosition(0);
       setTimelinePlaying(false);
       setCurrentDocumentPath(sourcePath);
@@ -967,22 +1036,42 @@ export const TopologyScreen: React.FC = () => {
       result.realizations[0];
     const smoothTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth"));
     const cutOpenTorusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/torus-cut-open"));
+    const smoothMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth"));
+    const cutOpenMobiusRealization = result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-cut-open"));
     const torusRealizationAvailable = !!smoothTorusRealization || !!cutOpenTorusRealization;
+    const mobiusRealizationAvailable = !!smoothMobiusRealization || !!cutOpenMobiusRealization;
+    const familyRealizationAvailable = torusRealizationAvailable || mobiusRealizationAvailable;
     const realization =
-      torusRealizationAvailable && showSmoothRealization
-        ? showCutOpenModel
-          ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
-          : smoothTorusRealization ?? selectedRealization
+      familyRealizationAvailable && showSmoothRealization
+        ? mobiusRealizationAvailable
+          ? showCutOpenModel
+            ? cutOpenMobiusRealization ?? smoothMobiusRealization ?? selectedRealization
+            : smoothMobiusRealization ?? selectedRealization
+          : showCutOpenModel
+            ? cutOpenTorusRealization ?? smoothTorusRealization ?? selectedRealization
+            : smoothTorusRealization ?? selectedRealization
         : selectedRealization;
     if (!realization) return <div style={{ fontSize: 12 }}>No realization available.</div>;
     const seamEdgeIds = new Set(realization.seams.map((entry) => entry.edgeId));
     const quotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
+    const hiddenEdgeIds = [
+      ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
+      ...(showCoreCircle ? [] : ["mobius_core"]),
+      ...(showOrientationFlip ? [] : ["mobius_orient_track", "mobius_orient_normal_start", "mobius_orient_normal_end"]),
+      ...(showCutOpenModel ? [] : ["mobius_cut"]),
+    ];
     const edgeColorOverrides = showEdgeClasses
       ? Object.fromEntries(
           Object.keys(realization.edgeCurves)
             .map((edgeId) => {
               if (edgeId === "cut_u") return [edgeId, EDGE_CLASS_COLOR_A] as const;
               if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
+              if (edgeId === "mobius_boundary") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "mobius_core") return [edgeId, "#f97316"] as const;
+              if (edgeId === "mobius_orient_track") return [edgeId, "#9333ea"] as const;
+              if (edgeId === "mobius_orient_normal_start") return [edgeId, "#16a34a"] as const;
+              if (edgeId === "mobius_orient_normal_end") return [edgeId, "#dc2626"] as const;
+              if (edgeId === "mobius_cut") return [edgeId, "#0f766e"] as const;
               const label = quotientEdgeLabelById.get(edgeId);
               const color = edgeColorForLabel(label, "");
               return color ? ([edgeId, color] as const) : null;
@@ -1048,7 +1137,7 @@ export const TopologyScreen: React.FC = () => {
             <input
               type="checkbox"
               checked={showSmoothRealization}
-              disabled={!torusRealizationAvailable}
+              disabled={!familyRealizationAvailable}
               onChange={(event) => setShowSmoothRealization(event.target.checked)}
             />
             Show smooth realization
@@ -1057,11 +1146,39 @@ export const TopologyScreen: React.FC = () => {
             <input
               type="checkbox"
               checked={showCutOpenModel}
-              disabled={!torusRealizationAvailable || !showSmoothRealization}
+              disabled={!familyRealizationAvailable || !showSmoothRealization}
               onChange={(event) => setShowCutOpenModel(event.target.checked)}
             />
             Show cut-open model
           </label>
+          {mobiusRealizationAvailable && (
+            <>
+              <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showBoundaryLoop}
+                  onChange={(event) => setShowBoundaryLoop(event.target.checked)}
+                />
+                Show boundary loop
+              </label>
+              <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showCoreCircle}
+                  onChange={(event) => setShowCoreCircle(event.target.checked)}
+                />
+                Show core circle
+              </label>
+              <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showOrientationFlip}
+                  onChange={(event) => setShowOrientationFlip(event.target.checked)}
+                />
+                Show orientation flip
+              </label>
+            </>
+          )}
         </div>
 
         {realizationRenderMode === "scene3d" ? (
@@ -1072,6 +1189,18 @@ export const TopologyScreen: React.FC = () => {
             showSkeleton={showOneSkeleton}
             showSingularityMarkers={showCornerIdentifications}
             edgeColorOverrides={edgeColorOverrides}
+            hiddenEdgeIds={hiddenEdgeIds}
+            orientationFlipOverlay={
+              mobiusRealizationAvailable && showOrientationFlip
+                ? {
+                    trackEdgeId: "mobius_orient_track",
+                    startNormalEdgeId: "mobius_orient_normal_start",
+                    endNormalEdgeId: "mobius_orient_normal_end",
+                    speed: 0.1,
+                    color: "#9333ea",
+                  }
+                : null
+            }
           />
         ) : (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
@@ -1097,6 +1226,7 @@ export const TopologyScreen: React.FC = () => {
             {showOneSkeleton &&
               Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
                 if (points.length < 2) return null;
+                if (hiddenEdgeIds.includes(edgeId)) return null;
                 const polyline = points.map((point) => isoProject(point)).map((point) => `${point.x},${point.y}`).join(" ");
                 const seam = seamEdgeIds.has(edgeId);
                 const drawAsSeam = seam && showSeams;
@@ -1137,6 +1267,11 @@ export const TopologyScreen: React.FC = () => {
           <div>
             Seams: {realization.seams.length} | singular markers: {realization.singularityMarkers.length}
           </div>
+          {mobiusRealizationAvailable && (
+            <div>
+              Möbius overlays: boundary loop (single component), core circle, and orientation-flip markers.
+            </div>
+          )}
           <div>
             Edge classes keep consistent colors: a in red, b in blue.
           </div>
@@ -1205,10 +1340,13 @@ export const TopologyScreen: React.FC = () => {
     const targetsB = partialTargetFor(opsB);
     const currentStep = baseIndex < timelineSteps.length ? timelineSteps[baseIndex] : null;
     const activePairEdges = new Set(currentStep?.operations.flatMap((entry) => [entry.relation.edgeA, entry.relation.edgeB]) ?? []);
+    const activeStoryStages = torusStoryEnabled ? TORUS_STORY_STAGES : mobiusStoryEnabled ? MOBIUS_STORY_STAGES : null;
     const storyProgress = timelineMax <= 0 ? 0 : Math.max(0, Math.min(1, timelinePosition / Math.max(1, timelineMax)));
-    const storyFloat = storyProgress * (TORUS_STORY_STAGES.length - 1);
-    const storyStageIndex = Math.max(0, Math.min(TORUS_STORY_STAGES.length - 1, Math.floor(storyFloat + 1e-6)));
-    const storyStage = TORUS_STORY_STAGES[storyStageIndex] ?? TORUS_STORY_STAGES[0];
+    const storyFloat = storyProgress * ((activeStoryStages?.length ?? 2) - 1);
+    const storyStageIndex = activeStoryStages
+      ? Math.max(0, Math.min(activeStoryStages.length - 1, Math.floor(storyFloat + 1e-6)))
+      : 0;
+    const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
 
     const blended = (vertexId: string) => {
       const start = projectedStart[vertexId] ?? { x: 260, y: 180 };
@@ -1236,12 +1374,28 @@ export const TopologyScreen: React.FC = () => {
       };
     };
 
+    const projectStoryMobius = (u: number, v: number): { x: number; y: number } => {
+      const R = 1.72;
+      const x = (R + v * Math.cos(u * 0.5)) * Math.cos(u);
+      const y = (R + v * Math.cos(u * 0.5)) * Math.sin(u);
+      const z = v * Math.sin(u * 0.5);
+      return {
+        x: 260 + x * 58 + z * 24,
+        y: 184 - y * 41 + z * 13,
+      };
+    };
+
     const sampledLoop = (builder: (t: number) => { x: number; y: number }, steps: number): string =>
       Array.from({ length: steps + 1 }, (_, index) => {
         const t = index / steps;
         const p = builder(t);
         return `${p.x},${p.y}`;
       }).join(" ");
+
+    const pointsToPath = (points: Array<{ x: number; y: number }>): string =>
+      points
+        .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+        .join(" ");
 
     const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
     const lerp = (a: number, b: number, t: number): number => a * (1 - t) + b * t;
@@ -1268,6 +1422,35 @@ export const TopologyScreen: React.FC = () => {
     const tCylinderToTorus = easeInOutSine(remap01(storyFloat, 1.7, 4.62));
     const tFinalize = smoothStep01(remap01(storyFloat, 4.48, 5.0));
     const tBGlue = bell(storyFloat, 3.35, 1.0) * easeInOutSine(remap01(storyFloat, 2.2, 4.7));
+    const tMobiusBend = easeOutQuint(remap01(storyFloat, 0.1, 2.25));
+    const tMobiusTwist = easeInOutSine(remap01(storyFloat, 1.6, 4.2));
+    const tMobiusGlue = easeInOutSine(remap01(storyFloat, 3.4, 5.5));
+    const tMobiusOverlay = smoothStep01(remap01(storyFloat, 5.0, 6.0));
+    const storyRealization =
+      mobiusStoryEnabled
+        ? result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth")) ?? realization
+        : torusStoryEnabled
+          ? result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth")) ?? realization
+          : realization;
+    const storyQuotientEdgeLabelById = new Map(result.quotient.edges.map((edge) => [edge.id, edge.label]));
+    const storyEdgeColorOverrides = {
+      ...(showEdgeClasses
+        ? Object.fromEntries(
+            Object.keys(storyRealization.edgeCurves)
+              .map((edgeId) => {
+                if (edgeId === "cut_u") return [edgeId, EDGE_CLASS_COLOR_A] as const;
+                if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
+                const label = storyQuotientEdgeLabelById.get(edgeId);
+                const color = edgeColorForLabel(label, "");
+                return color ? ([edgeId, color] as const) : null;
+              })
+              .filter((entry): entry is readonly [string, string] => !!entry)
+          )
+        : {}),
+      ...(showBoundaryLoop ? { mobius_boundary: "#0ea5e9" } : {}),
+      ...(showCoreCircle ? { mobius_core: "#f97316" } : {}),
+      ...(showOrientationFlip ? { mobius_orient_track: "#9333ea" } : {}),
+    };
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
@@ -1319,11 +1502,45 @@ export const TopologyScreen: React.FC = () => {
             style={{ flex: 1 }}
           />
           <strong style={{ fontSize: 12 }}>
-            Step {Math.min(timelineMax, Math.floor(timelinePosition))}/{timelineMax}
+            {activeStoryStages && storyStage
+              ? `Stage ${storyStageIndex + 1}/${activeStoryStages.length}`
+              : `Step ${Math.min(timelineMax, Math.floor(timelinePosition))}/${timelineMax}`}
           </strong>
+          {activeStoryStages && (
+            <div style={{ display: "inline-flex", gap: 5, marginLeft: 6 }}>
+              <button
+                type="button"
+                onClick={() => setStoryRenderMode("explain2d")}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid " + (storyRenderMode === "explain2d" ? "#0a66c2" : "#d1d5db"),
+                  background: storyRenderMode === "explain2d" ? "#e6f0ff" : "#fff",
+                  fontSize: 10,
+                  fontWeight: storyRenderMode === "explain2d" ? 700 : 600,
+                  padding: "4px 8px",
+                }}
+              >
+                Explanatory
+              </button>
+              <button
+                type="button"
+                onClick={() => setStoryRenderMode("real3d")}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid " + (storyRenderMode === "real3d" ? "#0a66c2" : "#d1d5db"),
+                  background: storyRenderMode === "real3d" ? "#e6f0ff" : "#fff",
+                  fontSize: 10,
+                  fontWeight: storyRenderMode === "real3d" ? 700 : 600,
+                  padding: "4px 8px",
+                }}
+              >
+                Real 3D
+              </button>
+            </div>
+          )}
         </div>
         <div style={{ fontSize: 12, color: "#334155" }}>
-          {torusStoryEnabled
+          {activeStoryStages && storyStage
             ? `${storyStage.label} - ${storyStage.detail}`
             : currentStep
               ? `Step ${baseIndex + 1} [${currentStep.groupId}]: ${currentStep.operations
@@ -1333,11 +1550,11 @@ export const TopologyScreen: React.FC = () => {
                 ? "Start with flat fundamental diagram."
                 : "All grouped operations complete; settle on quotient placement."}
         </div>
-        {torusStoryEnabled && (
+        {activeStoryStages && storyStage && (
           <div style={{ display: "grid", gap: 5 }}>
             <div style={{ fontSize: 11, fontWeight: 700 }}>Current stage: {storyStage.label}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {TORUS_STORY_STAGES.map((stage, index) => {
+              {activeStoryStages.map((stage, index) => {
                 const active = index === storyStageIndex;
                 const done = index < storyStageIndex;
                 return (
@@ -1360,7 +1577,32 @@ export const TopologyScreen: React.FC = () => {
           </div>
         )}
 
-        {torusStoryEnabled ? (
+        {activeStoryStages && storyRenderMode === "real3d" ? (
+          <TopologyRealization3DView
+            realization={storyRealization}
+            height={390}
+            showSeams={showSeams}
+            showSkeleton={showOneSkeleton}
+            showSingularityMarkers={showCornerIdentifications}
+            edgeColorOverrides={storyEdgeColorOverrides}
+            hiddenEdgeIds={[
+              ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
+              ...(showCoreCircle ? [] : ["mobius_core"]),
+              ...(showOrientationFlip ? [] : ["mobius_orient_track", "mobius_orient_normal_start", "mobius_orient_normal_end"]),
+            ]}
+            orientationFlipOverlay={
+              mobiusStoryEnabled && showOrientationFlip
+                ? {
+                    trackEdgeId: "mobius_orient_track",
+                    startNormalEdgeId: "mobius_orient_normal_start",
+                    endNormalEdgeId: "mobius_orient_normal_end",
+                    speed: 0.12,
+                    color: "#9333ea",
+                  }
+                : null
+            }
+          />
+        ) : torusStoryEnabled ? (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {(() => {
               const squareOpacity = 1 - tSquareToCylinder;
@@ -1517,6 +1759,139 @@ export const TopologyScreen: React.FC = () => {
                     style={{ fontSize: 9, fill: "#64748b", opacity: clamp01(0.35 + 0.65 * tSquareToCylinder) }}
                   >
                     timing: fast fold, slower closure, physical bend easing
+                  </text>
+                </>
+              );
+            })()}
+          </svg>
+        ) : mobiusStoryEnabled ? (
+          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+            {(() => {
+              const xL = 156;
+              const xR = 364;
+              const yT = 104;
+              const yB = 258;
+              const bendAmp = 26 * tMobiusBend;
+              const stripHalfWidth = lerp(42, 34, tMobiusTwist);
+              const stripSteps = 84;
+              const topPoints: Array<{ x: number; y: number }> = [];
+              const bottomPoints: Array<{ x: number; y: number }> = [];
+              const centerPoints: Array<{ x: number; y: number }> = [];
+
+              for (let i = 0; i <= stripSteps; i += 1) {
+                const s = i / stripSteps;
+                const xFlat = lerp(xL, xR, s);
+                const yFlat = lerp(yT + stripHalfWidth, yB - stripHalfWidth, 0.5) + bendAmp * Math.sin(Math.PI * s);
+                const theta = Math.PI * tMobiusTwist * s;
+                const nx = -Math.sin(theta);
+                const ny = Math.cos(theta);
+                const topFlat = { x: xFlat + nx * stripHalfWidth, y: yFlat + ny * stripHalfWidth };
+                const bottomFlat = { x: xFlat - nx * stripHalfWidth, y: yFlat - ny * stripHalfWidth };
+                const u = s * Math.PI * 2;
+                const topMobius = projectStoryMobius(u, 0.44);
+                const bottomMobius = projectStoryMobius(u, -0.44);
+                const centerMobius = projectStoryMobius(u, 0);
+                topPoints.push({
+                  x: lerp(topFlat.x, topMobius.x, tMobiusGlue),
+                  y: lerp(topFlat.y, topMobius.y, tMobiusGlue),
+                });
+                bottomPoints.push({
+                  x: lerp(bottomFlat.x, bottomMobius.x, tMobiusGlue),
+                  y: lerp(bottomFlat.y, bottomMobius.y, tMobiusGlue),
+                });
+                centerPoints.push({
+                  x: lerp((topFlat.x + bottomFlat.x) * 0.5, centerMobius.x, tMobiusGlue),
+                  y: lerp((topFlat.y + bottomFlat.y) * 0.5, centerMobius.y, tMobiusGlue),
+                });
+              }
+
+              const boundaryLoop = [...topPoints, ...[...bottomPoints].reverse(), topPoints[0]];
+              const boundaryPath = pointsToPath(boundaryLoop);
+              const corePath = pointsToPath(centerPoints);
+              const leftJoin = {
+                a: topPoints[0],
+                b: bottomPoints[0],
+              };
+              const rightJoin = {
+                a: topPoints[topPoints.length - 1],
+                b: bottomPoints[bottomPoints.length - 1],
+              };
+              const orientStart = projectStoryMobius(0, 0);
+              const orientEnd = projectStoryMobius(Math.PI * 2, 0);
+              const orientStartTip = projectStoryMobius(0, 0.24);
+              const orientEndTip = projectStoryMobius(Math.PI * 2, -0.24);
+              const boundaryOpacity = clamp01(0.35 + 0.65 * tMobiusGlue);
+              const coreOpacity = clamp01(0.15 + 0.85 * tMobiusOverlay);
+              const orientOpacity = clamp01(0.05 + 0.95 * tMobiusOverlay);
+
+              return (
+                <>
+                  <rect
+                    x={xL}
+                    y={yT}
+                    width={xR - xL}
+                    height={yB - yT}
+                    fill="#f8fbff"
+                    stroke="#cbd5e1"
+                    strokeWidth={1.2}
+                    opacity={clamp01(1 - tMobiusGlue)}
+                  />
+                  <line x1={xL} y1={yT} x2={xR} y2={yT} stroke="#0ea5e9" strokeWidth={2.4} opacity={clamp01(0.4 + 0.6 * (1 - tMobiusGlue))} />
+                  <line x1={xL} y1={yB} x2={xR} y2={yB} stroke="#0ea5e9" strokeWidth={2.4} opacity={clamp01(0.4 + 0.6 * (1 - tMobiusGlue))} />
+                  <line x1={xL} y1={yT} x2={xL} y2={yB} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8 + 1.1 * tMobiusTwist} />
+                  <line x1={xR} y1={yT} x2={xR} y2={yB} stroke={EDGE_CLASS_COLOR_A} strokeWidth={2.8 + 1.1 * tMobiusTwist} />
+
+                  <path d={boundaryPath} fill="#dcfce7" opacity={0.52 + 0.34 * tMobiusGlue} stroke="#86efac" strokeWidth={1.1} />
+                  <line
+                    x1={leftJoin.a.x}
+                    y1={leftJoin.a.y}
+                    x2={leftJoin.b.x}
+                    y2={leftJoin.b.y}
+                    stroke={EDGE_CLASS_COLOR_A}
+                    strokeWidth={2.4}
+                    opacity={clamp01(1 - tMobiusGlue)}
+                  />
+                  <line
+                    x1={rightJoin.a.x}
+                    y1={rightJoin.a.y}
+                    x2={rightJoin.b.x}
+                    y2={rightJoin.b.y}
+                    stroke={EDGE_CLASS_COLOR_A}
+                    strokeWidth={2.4}
+                    opacity={clamp01(1 - tMobiusGlue)}
+                  />
+
+                  <path d={boundaryPath} fill="none" stroke="#0ea5e9" strokeWidth={3} opacity={boundaryOpacity} />
+                  <path d={corePath} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={coreOpacity} strokeDasharray={tMobiusOverlay > 0.96 ? undefined : "6 3"} />
+                  <line
+                    x1={orientStart.x}
+                    y1={orientStart.y}
+                    x2={orientStartTip.x}
+                    y2={orientStartTip.y}
+                    stroke="#16a34a"
+                    strokeWidth={2.1}
+                    opacity={orientOpacity}
+                  />
+                  <line
+                    x1={orientEnd.x}
+                    y1={orientEnd.y}
+                    x2={orientEndTip.x}
+                    y2={orientEndTip.y}
+                    stroke="#dc2626"
+                    strokeWidth={2.1}
+                    opacity={orientOpacity}
+                  />
+
+                  <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
+                    {"Rectangle -> half-twist -> Möbius band"}
+                  </text>
+                  <text
+                    x={260}
+                    y={72}
+                    textAnchor="middle"
+                    style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.45 + 0.55 * tMobiusGlue) }}
+                  >
+                    one reversed gluing pair, one boundary loop, one core circle
                   </text>
                 </>
               );
@@ -1707,6 +2082,21 @@ export const TopologyScreen: React.FC = () => {
     if (activeView === "realization") return renderRealizationView();
     return renderAnimationView();
   };
+
+  const derivedTopologyHints = useMemo(() => {
+    if (isMobiusRectangleStoryDiagram(diagram)) {
+      return {
+        boundaryComponents: 1,
+        orientable: false,
+      };
+    }
+    return {
+      boundaryComponents: null as number | null,
+      orientable: null as boolean | null,
+    };
+  }, [diagram]);
+  const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
+  const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
@@ -2027,15 +2417,21 @@ export const TopologyScreen: React.FC = () => {
               <>
                 <div>Euler characteristic: {buildResult.quotient.invariants.eulerCharacteristic}</div>
                 <div>Connected components: {buildResult.quotient.invariants.connectedComponents}</div>
+                {derivedTopologyHints.boundaryComponents !== null && (
+                  <div>Boundary components: {derivedTopologyHints.boundaryComponents}</div>
+                )}
+                {derivedTopologyHints.orientable !== null && (
+                  <div>Orientable: {derivedTopologyHints.orientable ? "Yes" : "No"}</div>
+                )}
                 <div>Non-manifold edges: {buildResult.quotient.invariants.nonManifoldEdgeCount}</div>
               </>
             )}
-            <div style={{ marginTop: 4, fontWeight: 700 }}>Warnings ({buildResult.warnings.length})</div>
-            {buildResult.warnings.length === 0 ? (
+            <div style={{ marginTop: 4, fontWeight: 700 }}>Warnings ({warningDiagnostics.length})</div>
+            {warningDiagnostics.length === 0 ? (
               <div style={{ color: "#166534" }}>No warnings.</div>
             ) : (
               <div style={{ display: "grid", gap: 5, maxHeight: 220, overflowY: "auto" }}>
-                {buildResult.warnings.map((warning, index) => (
+                {warningDiagnostics.map((warning, index) => (
                   <div
                     key={`warning-${warning.code}-${index}`}
                     style={{
@@ -2052,6 +2448,29 @@ export const TopologyScreen: React.FC = () => {
                   </div>
                 ))}
               </div>
+            )}
+            {infoDiagnostics.length > 0 && (
+              <>
+                <div style={{ marginTop: 4, fontWeight: 700 }}>Info ({infoDiagnostics.length})</div>
+                <div style={{ display: "grid", gap: 5, maxHeight: 160, overflowY: "auto" }}>
+                  {infoDiagnostics.map((info, index) => (
+                    <div
+                      key={`info-${info.code}-${index}`}
+                      style={{
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 7,
+                        background: "#f8fafc",
+                        padding: "5px 6px",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        [{info.stage}] {info.code}
+                      </div>
+                      <div>{info.message}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </section>

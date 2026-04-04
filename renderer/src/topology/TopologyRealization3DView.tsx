@@ -1,8 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { Bounds, Line, OrbitControls } from "@react-three/drei";
-import type { Realization3D } from "./types";
+import type { Realization3D, Vec3 } from "./types";
+
+type OrientationFlipOverlay = {
+  trackEdgeId: string;
+  startNormalEdgeId?: string;
+  endNormalEdgeId?: string;
+  speed?: number;
+  color?: string;
+};
 
 type TopologyRealization3DViewProps = {
   realization: Realization3D;
@@ -11,6 +19,81 @@ type TopologyRealization3DViewProps = {
   showSkeleton?: boolean;
   showSingularityMarkers?: boolean;
   edgeColorOverrides?: Record<string, string>;
+  hiddenEdgeIds?: string[];
+  orientationFlipOverlay?: OrientationFlipOverlay | null;
+};
+
+const toVec3 = (point: Vec3): THREE.Vector3 => new THREE.Vector3(point[0], point[1], point[2]);
+
+const polylineSample = (points: THREE.Vector3[], t: number): { point: THREE.Vector3; tangent: THREE.Vector3 } => {
+  if (points.length === 0) return { point: new THREE.Vector3(), tangent: new THREE.Vector3(1, 0, 0) };
+  if (points.length === 1) return { point: points[0].clone(), tangent: new THREE.Vector3(1, 0, 0) };
+  const clampedT = Math.max(0, Math.min(1, t));
+  const lengths: number[] = [0];
+  for (let i = 1; i < points.length; i += 1) {
+    lengths.push(lengths[i - 1] + points[i].distanceTo(points[i - 1]));
+  }
+  const total = lengths[lengths.length - 1] || 1;
+  const target = clampedT * total;
+  let seg = 1;
+  while (seg < lengths.length && lengths[seg] < target) seg += 1;
+  const i1 = Math.max(1, Math.min(lengths.length - 1, seg));
+  const i0 = i1 - 1;
+  const l0 = lengths[i0];
+  const l1 = lengths[i1];
+  const localT = l1 - l0 <= 1e-9 ? 0 : (target - l0) / (l1 - l0);
+  const point = points[i0].clone().lerp(points[i1], localT);
+  const tangent = points[i1].clone().sub(points[i0]).normalize();
+  return { point, tangent: tangent.lengthSq() > 1e-9 ? tangent : new THREE.Vector3(1, 0, 0) };
+};
+
+const OrientationFlipTraveler: React.FC<{
+  track: Vec3[];
+  startNormal?: Vec3[];
+  endNormal?: Vec3[];
+  speed?: number;
+  color?: string;
+}> = ({ track, startNormal, endNormal, speed = 0.12, color = "#9333ea" }) => {
+  const markerRef = useRef<THREE.Mesh>(null);
+  const arrowRef = useRef<THREE.ArrowHelper>(null);
+  const trackVec = useMemo(() => track.map((point) => toVec3(point)), [track]);
+  const startDir = useMemo(() => {
+    if (!startNormal || startNormal.length < 2) return null;
+    return toVec3(startNormal[1]).sub(toVec3(startNormal[0])).normalize();
+  }, [startNormal]);
+  const endDir = useMemo(() => {
+    if (!endNormal || endNormal.length < 2) return null;
+    return toVec3(endNormal[1]).sub(toVec3(endNormal[0])).normalize();
+  }, [endNormal]);
+  const arrowObj = useMemo(
+    () => new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0), 0.46, color, 0.12, 0.08),
+    [color]
+  );
+
+  useFrame(({ clock }) => {
+    if (!markerRef.current || !arrowRef.current || trackVec.length < 2) return;
+    const t = ((clock.getElapsedTime() * speed) % 1 + 1) % 1;
+    const sample = polylineSample(trackVec, t);
+    let direction = sample.tangent.clone();
+    if (startDir && endDir) {
+      direction = startDir.clone().lerp(endDir, t).normalize();
+      if (direction.lengthSq() <= 1e-9) direction = sample.tangent.clone();
+    }
+    markerRef.current.position.copy(sample.point);
+    arrowRef.current.position.copy(sample.point);
+    arrowRef.current.setDirection(direction);
+    arrowRef.current.setLength(0.46, 0.12, 0.08);
+  });
+
+  return (
+    <group>
+      <mesh ref={markerRef}>
+        <sphereGeometry args={[0.048, 16, 16]} />
+        <meshStandardMaterial color={color} />
+      </mesh>
+      <primitive object={arrowObj} ref={arrowRef} />
+    </group>
+  );
 };
 
 const FacePatch: React.FC<{
@@ -49,8 +132,11 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   showSkeleton = true,
   showSingularityMarkers = true,
   edgeColorOverrides = {},
+  hiddenEdgeIds = [],
+  orientationFlipOverlay = null,
 }) => {
   const seamSet = useMemo(() => new Set(realization.seams.map((seam) => seam.edgeId)), [realization.seams]);
+  const hiddenSet = useMemo(() => new Set(hiddenEdgeIds), [hiddenEdgeIds]);
   const singularitySet = useMemo(
     () =>
       new Map(realization.singularityMarkers.map((marker) => [marker.vertexId, marker])),
@@ -88,6 +174,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
             {showSkeleton &&
               Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
                 if (points.length < 2) return null;
+                if (hiddenSet.has(edgeId)) return null;
                 const isSeam = seamSet.has(edgeId);
                 const customColor = edgeColorOverrides[edgeId];
                 const drawAsSeam = isSeam && showSeams;
@@ -123,6 +210,26 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
                 </group>
               );
             })}
+
+            {orientationFlipOverlay &&
+              realization.edgeCurves[orientationFlipOverlay.trackEdgeId] &&
+              !hiddenSet.has(orientationFlipOverlay.trackEdgeId) && (
+                <OrientationFlipTraveler
+                  track={realization.edgeCurves[orientationFlipOverlay.trackEdgeId]}
+                  startNormal={
+                    orientationFlipOverlay.startNormalEdgeId
+                      ? realization.edgeCurves[orientationFlipOverlay.startNormalEdgeId]
+                      : undefined
+                  }
+                  endNormal={
+                    orientationFlipOverlay.endNormalEdgeId
+                      ? realization.edgeCurves[orientationFlipOverlay.endNormalEdgeId]
+                      : undefined
+                  }
+                  speed={orientationFlipOverlay.speed}
+                  color={orientationFlipOverlay.color}
+                />
+              )}
           </group>
         </Bounds>
 
