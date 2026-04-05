@@ -1,0 +1,61 @@
+{
+  "generatedAt": "2026-04-05T09:31:06.111Z",
+  "outputRoot": "gallery-images/captured-review",
+  "objects": [
+    {
+      "id": "box",
+      "file": "gallery-images/captured-review/objects/box.png"
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "graph_saddle",
+      "family": "explicit",
+      "file": "gallery-images/captured-review/surfaces/explicit/graph_saddle.png"
+    },
+    {
+      "id": "sphere",
+      "family": "implicit",
+      "file": "gallery-images/captured-review/surfaces/implicit/sphere.png"
+    },
+    {
+      "id": "catenoid",
+      "family": "parametric",
+      "file": "gallery-images/captured-review/surfaces/parametric/catenoid.png"
+    },
+    {
+      "id": "bezierSurface",
+      "family": "spline",
+      "file": "gallery-images/captured-review/surfaces/spline/bezierSurface.png"
+    },
+    {
+      "id": "rotationalDevelopable",
+      "family": "constructed",
+      "subtype": "rotational",
+      "file": "gallery-images/captured-review/surfaces/constructed/rotational/rotationalDevelopable.png"
+    },
+    {
+      "id": "sweepLinearExtrusion",
+      "family": "constructed",
+      "subtype": "sweep",
+      "file": "gallery-images/captured-review/surfaces/constructed/sweep/sweepLinearExtrusion.png"
+    },
+    {
+      "id": "tubeConstant",
+      "family": "constructed",
+      "subtype": "tube",
+      "file": "gallery-images/captured-review/surfaces/constructed/tube/tubeConstant.png"
+    },
+    {
+      "id": "plane",
+      "family": "constructed",
+      "subtype": "ruled",
+      "file": "gallery-images/captured-review/surfaces/constructed/ruled/plane.png"
+    },
+    {
+      "id": "enneper",
+      "family": "weierstrass",
+      "file": "gallery-images/captured-review/surfaces/weierstrass/enneper.png"
+    }
+  ]
+}
