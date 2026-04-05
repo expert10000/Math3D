@@ -8390,7 +8390,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
   const [rotationalAxisOrigin, setRotationalAxisOrigin] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_ORIGIN);
   const [rotationalAxisDirection, setRotationalAxisDirection] = useState<Vec3>(DEFAULT_ROTATIONAL_AXIS_DIRECTION);
-  const [paramSurfaceOverlayOpen, setParamSurfaceOverlayOpen] = useState(true);
+  const [paramSurfaceOverlayOpen, setParamSurfaceOverlayOpen] = useState(false);
   const [paramSurfaceOverlayTab, setParamSurfaceOverlayTab] = useState<ParamSurfaceOverlayTab>("rotational");
   const [surfaceFormulaEditorOpen, setSurfaceFormulaEditorOpen] = useState(false);
   const [surfaceFormulaEditorCollapsed, setSurfaceFormulaEditorCollapsed] = useState(false);
@@ -9945,10 +9945,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     if (!showParamSurfaceOverlayLauncher) {
       setParamSurfaceOverlayOpen(false);
-      return;
     }
-    setParamSurfaceOverlayOpen(true);
-  }, [primaryParamId, showParamSurfaceOverlayLauncher]);
+  }, [showParamSurfaceOverlayLauncher]);
 
   useEffect(() => {
     setParamSurfaceOverlayTab((prev) => {
