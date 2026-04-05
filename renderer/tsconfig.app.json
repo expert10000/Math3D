@@ -14,7 +14,6 @@
     "verbatimModuleSyntax": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
       "@math3d/core": ["../packages/core/src/index.ts"],
       "@math3d/core/*": ["../packages/core/src/*"],

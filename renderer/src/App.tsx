@@ -49,6 +49,7 @@ import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfa
 import type { ColorPalette } from "./components/colorPalette";
 import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
+  type ReferencePlaneLabelSkin,
   type ReferencePlaneGridSettings,
 } from "./components/layeredReferenceGrid";
 
@@ -23783,6 +23784,12 @@ case "mobius":
                   onTogglePlaneLabels={() =>
                     setPlaneGridSettings((prev) => ({ ...prev, showLabels: !prev.showLabels }))
                   }
+                  onTogglePlaneAxisLabels={() =>
+                    setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: !prev.showAxisLabels }))
+                  }
+                  onChangePlaneLabelSkin={(skin) =>
+                    setPlaneGridSettings((prev) => ({ ...prev, labelSkin: skin }))
+                  }
                   onTogglePlaneXY={() =>
                     setPlaneGridSettings((prev) => ({ ...prev, showXY: !prev.showXY }))
                   }
@@ -33176,6 +33183,8 @@ type SurfacesViewPanelProps = {
   onTogglePlaneGrid: () => void;
   onTogglePlaneMinorGrid: () => void;
   onTogglePlaneLabels: () => void;
+  onTogglePlaneAxisLabels: () => void;
+  onChangePlaneLabelSkin: (skin: ReferencePlaneLabelSkin) => void;
   onTogglePlaneXY: () => void;
   onTogglePlaneXZ: () => void;
   onTogglePlaneYZ: () => void;
@@ -33223,6 +33232,8 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onTogglePlaneGrid,
   onTogglePlaneMinorGrid,
   onTogglePlaneLabels,
+  onTogglePlaneAxisLabels,
+  onChangePlaneLabelSkin,
   onTogglePlaneXY,
   onTogglePlaneXZ,
   onTogglePlaneYZ,
@@ -33397,6 +33408,39 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
             <input type="checkbox" checked={planeGridSettings.showLabels} onChange={onTogglePlaneLabels} />
             Show labels
           </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={planeGridSettings.showAxisLabels}
+              onChange={onTogglePlaneAxisLabels}
+              disabled={!planeGridSettings.showLabels}
+            />
+            Show X/Y/Z labels
+          </label>
+          <div style={{ display: "grid", gap: 4, fontSize: 11, paddingLeft: 20, opacity: planeGridSettings.showLabels ? 1 : 0.6 }}>
+            <div style={{ fontWeight: 600 }}>Label style</div>
+            <div style={pillRow}>
+              {(
+                [
+                  ["slate", "Slate"],
+                  ["glass", "Glass"],
+                  ["neon", "Neon"],
+                  ["paper", "Paper"],
+                ] as const
+              ).map(([skin, label]) => (
+                <button
+                  key={skin}
+                  type="button"
+                  onClick={() => onChangePlaneLabelSkin(skin)}
+                  style={pill(planeGridSettings.labelSkin === skin)}
+                  aria-pressed={planeGridSettings.labelSkin === skin}
+                  disabled={!planeGridSettings.showLabels}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
             <input type="checkbox" checked={planeGridSettings.showXY} onChange={onTogglePlaneXY} />
             Show XY

@@ -11,11 +11,13 @@ export type LayeredReferenceGridOptions = {
   minorDivisions?: number;
   labelEveryMajor?: number;
   labelScale?: number;
+  labelSkin?: ReferencePlaneLabelSkin;
   lineLift?: number;
   originDotRadius?: number;
   showGrid?: boolean;
   showMinorGrid?: boolean;
   showLabels?: boolean;
+  showAxisLabels?: boolean;
   showXY?: boolean;
   showXZ?: boolean;
   showYZ?: boolean;
@@ -24,10 +26,14 @@ export type LayeredReferenceGridOptions = {
   planeOpacity?: number;
 };
 
+export type ReferencePlaneLabelSkin = "slate" | "glass" | "neon" | "paper";
+
 export type ReferencePlaneGridSettings = {
   showGrid: boolean;
   showMinorGrid: boolean;
   showLabels: boolean;
+  showAxisLabels: boolean;
+  labelSkin: ReferencePlaneLabelSkin;
   showXY: boolean;
   showXZ: boolean;
   showYZ: boolean;
@@ -40,6 +46,8 @@ export const DEFAULT_REFERENCE_PLANE_GRID_SETTINGS: ReferencePlaneGridSettings =
   showGrid: true,
   showMinorGrid: true,
   showLabels: true,
+  showAxisLabels: true,
+  labelSkin: "slate",
   showXY: true,
   showXZ: true,
   showYZ: true,
@@ -111,6 +119,8 @@ const formatTickValue = (value: number) => {
   return String(Number(value.toFixed(2)));
 };
 
+const toCssHex = (value: number) => `#${value.toString(16).padStart(6, "0")}`;
+
 const pushSegment = (
   positions: number[],
   colors: number[],
@@ -122,7 +132,13 @@ const pushSegment = (
   colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
 };
 
-const createLabelSprite = (text: string, color: string, worldScale: number) => {
+const createLabelSprite = (
+  text: string,
+  color: string,
+  worldScale: number,
+  skin: ReferencePlaneLabelSkin,
+  kind: "tick" | "axis" | "origin" = "tick"
+) => {
   const width = 128;
   const height = 72;
   const canvas = document.createElement("canvas");
@@ -132,15 +148,47 @@ const createLabelSprite = (text: string, color: string, worldScale: number) => {
   if (!ctx) return null;
 
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "rgba(16,24,40,0.55)";
+  let background = "rgba(16,24,40,0.55)";
+  let border = "rgba(203,213,225,0.45)";
+  let textColor = color;
+  let fontFamily = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  let fontWeight = kind === "axis" ? "700" : "600";
+  let textShadowBlur = 0;
+  let textShadowColor = "transparent";
+
+  if (skin === "glass") {
+    background = "rgba(248,250,252,0.34)";
+    border = "rgba(148,163,184,0.62)";
+    textColor = kind === "axis" ? color : "#0f172a";
+    fontFamily = "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+  } else if (skin === "neon") {
+    background = "rgba(2,6,23,0.78)";
+    border = "rgba(51,65,85,0.8)";
+    textColor = color;
+    fontWeight = "700";
+    textShadowBlur = kind === "axis" ? 9 : 7;
+    textShadowColor = color;
+  } else if (skin === "paper") {
+    background = "rgba(255,252,242,0.9)";
+    border = "rgba(180,145,105,0.55)";
+    textColor = kind === "axis" ? color : "#3f3a34";
+    fontFamily = "Georgia, Times New Roman, serif";
+  }
+
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(203,213,225,0.45)";
+  ctx.strokeStyle = border;
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, width - 2, height - 2);
-  ctx.fillStyle = color;
-  ctx.font = "600 32px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+  ctx.fillStyle = textColor;
+  const fontSize = kind === "axis" ? 36 : kind === "origin" ? 30 : 32;
+  ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  if (textShadowBlur > 0) {
+    ctx.shadowBlur = textShadowBlur;
+    ctx.shadowColor = textShadowColor;
+  }
   ctx.fillText(text, width / 2, height / 2);
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -158,7 +206,9 @@ const createLabelSprite = (text: string, color: string, worldScale: number) => {
   });
   const sprite = new THREE.Sprite(material);
   sprite.renderOrder = 300;
-  sprite.scale.set(worldScale * 1.4, worldScale * 0.78, 1);
+  const scaleX = kind === "axis" ? 1.55 : kind === "origin" ? 1.3 : 1.4;
+  const scaleY = kind === "axis" ? 0.86 : kind === "origin" ? 0.72 : 0.78;
+  sprite.scale.set(worldScale * scaleX, worldScale * scaleY, 1);
   return sprite;
 };
 
@@ -212,6 +262,8 @@ export const createLayeredReferenceGrid = (
   const showGrid = options.showGrid ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showGrid;
   const showMinorGrid = options.showMinorGrid ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showMinorGrid;
   const showLabels = options.showLabels ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showLabels;
+  const showAxisLabels = options.showAxisLabels ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showAxisLabels;
+  const labelSkin = options.labelSkin ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.labelSkin;
   const showXY = options.showXY ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXY;
   const showXZ = options.showXZ ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showXZ;
   const showYZ = options.showYZ ?? DEFAULT_REFERENCE_PLANE_GRID_SETTINGS.showYZ;
@@ -329,13 +381,13 @@ export const createLayeredReferenceGrid = (
         const text = formatTickValue(tickValue);
         const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
 
-        const uLabel = createLabelSprite(text, spec.labelColor, labelSize);
+        const uLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
         if (uLabel) {
           uLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
           planeGroup.add(uLabel);
         }
 
-        const vLabel = createLabelSprite(text, spec.labelColor, labelSize);
+        const vLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
         if (vLabel) {
           vLabel.position.set(lineLift * 13, tickValue, lineLift * 2.4);
           planeGroup.add(vLabel);
@@ -359,8 +411,34 @@ export const createLayeredReferenceGrid = (
   originDot.renderOrder = 210;
   group.add(originDot);
 
+  if (showLabels && showAxisLabels) {
+    const axisLabelSize = Math.max(0.16, Math.min(0.72, majorStep * 0.3 * labelScale));
+    const axisOffset = Math.max(majorStep * 0.55, halfSize * 0.08);
+    const xLabel = createLabelSprite("X", toCssHex(AXIS_COLORS.x), axisLabelSize, labelSkin, "axis");
+    const yLabel = createLabelSprite("Y", toCssHex(AXIS_COLORS.y), axisLabelSize, labelSkin, "axis");
+    const zLabel = createLabelSprite("Z", toCssHex(AXIS_COLORS.z), axisLabelSize, labelSkin, "axis");
+    if (xLabel) {
+      xLabel.position.set(halfSize + axisOffset, 0, 0);
+      group.add(xLabel);
+    }
+    if (yLabel) {
+      yLabel.position.set(0, halfSize + axisOffset, 0);
+      group.add(yLabel);
+    }
+    if (zLabel) {
+      zLabel.position.set(0, 0, halfSize + axisOffset);
+      group.add(zLabel);
+    }
+  }
+
   if (showLabels) {
-    const zeroLabel = createLabelSprite("0", "#e2e8f0", Math.max(0.16, Math.min(0.56, halfSize * 0.1 * labelScale)));
+    const zeroLabel = createLabelSprite(
+      "0",
+      "#e2e8f0",
+      Math.max(0.16, Math.min(0.56, halfSize * 0.1 * labelScale)),
+      labelSkin,
+      "origin"
+    );
     if (zeroLabel) {
       zeroLabel.position.set(lineLift * 20, lineLift * 20, lineLift * 24);
       group.add(zeroLabel);
