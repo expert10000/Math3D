@@ -4736,6 +4736,8 @@ const App: React.FC = () => {
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
+  const [geometryMeshInfoAccentObjectId, setGeometryMeshInfoAccentObjectId] = useState<string | null>(null);
+  const geometryMeshInfoAccentTimerRef = useRef<number | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
   const [geometryGallerySelectedCardId, setGeometryGallerySelectedCardId] = useState(
     GEOMETRY_GALLERY_DEFAULT_CARD_ID
@@ -4784,6 +4786,39 @@ const App: React.FC = () => {
       null
     );
   }, [geometryDatasetMeshObjects, geometryObjects, geometrySelectedObjectId]);
+  const geometrySelectedDatasetMeshObject = useMemo(
+    () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
+    [geometryDatasetMeshObjects, geometrySelectedObjectId]
+  );
+  const accentGeometryMeshInfo = useCallback((objectId: string) => {
+    setGeometryMeshInfoAccentObjectId(objectId);
+    if (typeof window === "undefined") return;
+    if (geometryMeshInfoAccentTimerRef.current != null) {
+      window.clearTimeout(geometryMeshInfoAccentTimerRef.current);
+    }
+    geometryMeshInfoAccentTimerRef.current = window.setTimeout(() => {
+      setGeometryMeshInfoAccentObjectId((current) => (current === objectId ? null : current));
+      geometryMeshInfoAccentTimerRef.current = null;
+    }, 2400);
+  }, []);
+  const focusGeometryObjectMeshInfo = useCallback(
+    (objectId: string) => {
+      setGeometrySelectedObjectId(objectId);
+      setGeometryProceduralPanelTab("object");
+      setGeometryMode("procedural");
+      setMode("geometry");
+      accentGeometryMeshInfo(objectId);
+    },
+    [accentGeometryMeshInfo]
+  );
+  useEffect(
+    () => () => {
+      if (typeof window !== "undefined" && geometryMeshInfoAccentTimerRef.current != null) {
+        window.clearTimeout(geometryMeshInfoAccentTimerRef.current);
+      }
+    },
+    []
+  );
   const [geometryCameraTourStatus, setGeometryCameraTourStatus] = useState<GeometryCameraTourStatus>("idle");
   const [geometryCameraTourPlayed, setGeometryCameraTourPlayed] = useState(false);
   const [geometryCameraTourMode, setGeometryCameraTourMode] = useState<CameraTourMode>("balanced");
@@ -5518,6 +5553,21 @@ const App: React.FC = () => {
 
     return { meshes, vertCount, triCount };
   }, [geometryObjects, geometryDatasetMeshObjects]);
+  const geometrySelectedSceneMeshInfo = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
+    if (!mesh) return null;
+    const vertCount = Math.floor(mesh.positions.length / 3);
+    const triCount =
+      mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
+    const hasNormals = !!mesh.normals && mesh.normals.length >= mesh.positions.length;
+    return {
+      vertCount,
+      triCount,
+      hasNormals,
+      sourceLabel: formatSurfaceMeshSource(mesh.source),
+    };
+  }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
 
   const pushGeometryCameraTourCommand = useCallback((command: Omit<CameraTourCommand, "token">) => {
     geometryCameraTourTokenRef.current += 1;
@@ -7051,10 +7101,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       material: { color: 0x8aa4ff, opacity: 1 },
     };
     setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
-    setGeometrySelectedObjectId(id);
-    setGeometryMode("procedural");
-    setMode("geometry");
-  }, [datasetKind, surfaceMeshData]);
+    focusGeometryObjectMeshInfo(id);
+  }, [datasetKind, focusGeometryObjectMeshInfo, surfaceMeshData]);
 
   useEffect(() => {
     const finitePoint = (p: { x: number; y: number; z: number } | null | undefined) =>
@@ -10151,6 +10199,20 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const returnToSurfacesBrowse = useCallback(() => {
     setSurfacesPanelState("browse");
   }, []);
+  const openSelectedGeometryMeshAnalysis = useCallback(
+    (enableGaussMap: boolean) => {
+      if (!geometrySelectedObjectId) return;
+      const baked = bakeGeometryObjectToDatasetById(geometrySelectedObjectId);
+      if (!baked) return;
+      setSurfacesPanelState("work");
+      setSurfacesLeftTab("analysis");
+      setInspectEnabled(true);
+      setSurfaceViewportPreset("analysis");
+      setColorMode("gaussian");
+      setShowGaussMap(enableGaussMap);
+    },
+    [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]
+  );
   const enterSurfacePreviewFocus = useCallback(() => {
     if (surfacePreviewFocusMode) return;
     surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
@@ -21007,8 +21069,15 @@ case "mobius":
   const cleanScreenshotSceneContainerBackground =
     cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
   const isSurfacePreviewMode = mode === "surfaces" && surfacePreviewFocusMode;
+  const surfacesBrowseModeActive =
+    (surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4") &&
+    surfacesPanelState === "browse";
   const showSurfaceWorkflowStrip =
-    mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
+    mode === "surfaces" &&
+    datasetKind === "surface" &&
+    !isPresentDisplayMode &&
+    !cleanScreenshotSurfaceActive &&
+    !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
   const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
@@ -26948,6 +27017,48 @@ case "mobius":
                           <div style={{ fontSize: 11, opacity: 0.7 }}>
                             Type: {GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.label ?? geometrySelectedObject.type}
                           </div>
+                          {geometrySelectedSceneMeshInfo && (
+                            <div
+                              style={{
+                                border:
+                                  "1px solid " +
+                                  (geometryMeshInfoAccentObjectId === geometrySelectedObject.id ? "#0a66c2" : "#dbe4f0"),
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background:
+                                  geometryMeshInfoAccentObjectId === geometrySelectedObject.id ? "#eaf3ff" : "#f8fbff",
+                                boxShadow:
+                                  geometryMeshInfoAccentObjectId === geometrySelectedObject.id
+                                    ? "0 0 0 2px rgba(10,102,194,0.16)"
+                                    : "none",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700 }}>Mesh info</div>
+                                {geometryMeshInfoAccentObjectId === geometrySelectedObject.id && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: "#0a66c2" }}>Focused</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 11 }}>
+                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts ·{" "}
+                                {geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>Source: {geometrySelectedSceneMeshInfo.sourceLabel}</div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Normals: {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                  Analyze (Gaussian)
+                                </button>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                  Analyze + Gauss map
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {geometrySelectedObject.type === "torus" && (
                             <div
                               style={{
@@ -27584,6 +27695,200 @@ case "mobius":
                           />
                         </div>
                         {geometryProceduralPick?.meshKey === geometrySelectedObject.id && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              fontSize: 11,
+                              opacity: 0.75,
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            Pick p={fmt3(geometryProceduralPick.point)} n={fmt3(geometryProceduralPick.normal)}
+                          </div>
+                        )}
+                      </>
+                      ) : geometrySelectedDatasetMeshObject ? (
+                      <>
+                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
+                        <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                          <label style={{ fontSize: 11, fontWeight: 600 }}>
+                            Name
+                            <input
+                              type="text"
+                              value={geometrySelectedDatasetMeshObject.name}
+                              onChange={(e) =>
+                                handleRenameGeometryObject(geometrySelectedDatasetMeshObject.id, e.target.value)
+                              }
+                              style={{ width: "100%", marginTop: 4 }}
+                            />
+                          </label>
+                          <div style={{ fontSize: 11, opacity: 0.7 }}>Type: Dataset mesh object</div>
+                          {geometrySelectedSceneMeshInfo && (
+                            <div
+                              style={{
+                                border:
+                                  "1px solid " +
+                                  (geometryMeshInfoAccentObjectId === geometrySelectedDatasetMeshObject.id
+                                    ? "#0a66c2"
+                                    : "#dbe4f0"),
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background:
+                                  geometryMeshInfoAccentObjectId === geometrySelectedDatasetMeshObject.id
+                                    ? "#eaf3ff"
+                                    : "#f8fbff",
+                                boxShadow:
+                                  geometryMeshInfoAccentObjectId === geometrySelectedDatasetMeshObject.id
+                                    ? "0 0 0 2px rgba(10,102,194,0.16)"
+                                    : "none",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700 }}>Mesh info</div>
+                                {geometryMeshInfoAccentObjectId === geometrySelectedDatasetMeshObject.id && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: "#0a66c2" }}>Focused</span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 11 }}>
+                                {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts ·{" "}
+                                {geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>Source: {geometrySelectedSceneMeshInfo.sourceLabel}</div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Normals: {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                  Analyze (Gaussian)
+                                </button>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                  Analyze + Gauss map
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Transform</div>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "60px 1fr 1fr 1fr",
+                            gap: "6px 8px",
+                            alignItems: "center",
+                            marginTop: 6,
+                          }}
+                        >
+                          <div />
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
+                          <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
+
+                          <div style={{ fontSize: 11 }}>Pos</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`dataset-pos-${axis}`}
+                              type="number"
+                              step={0.1}
+                              value={geometrySelectedDatasetMeshObject.transform.position[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
+                                  position: axisPatch(axis, v),
+                                });
+                              }}
+                            />
+                          ))}
+
+                          <div style={{ fontSize: 11 }}>Rot (deg)</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`dataset-rot-${axis}`}
+                              type="number"
+                              step={1}
+                              value={geometrySelectedDatasetMeshObject.transform.rotation[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
+                                  rotation: axisPatch(axis, v),
+                                });
+                              }}
+                            />
+                          ))}
+
+                          <div style={{ fontSize: 11 }}>Scale</div>
+                          {(["x", "y", "z"] as const).map((axis) => (
+                            <input
+                              key={`dataset-scale-${axis}`}
+                              type="number"
+                              step={0.1}
+                              value={geometrySelectedDatasetMeshObject.transform.scale[axis]}
+                              onChange={(e) => {
+                                const v = Number(e.target.value);
+                                if (!Number.isFinite(v)) return;
+                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
+                                  scale: axisPatch(axis, v),
+                                });
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
+                                position: { x: 0, y: 0, z: 0 },
+                                rotation: { x: 0, y: 0, z: 0 },
+                                scale: { x: 1, y: 1, z: 1 },
+                              })
+                            }
+                          >
+                            Reset transform
+                          </button>
+                        </div>
+
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Material</div>
+                        <div
+                          style={{
+                            marginTop: 6,
+                            display: "grid",
+                            gridTemplateColumns: "80px 1fr",
+                            gap: "6px 8px",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: 11 }}>Color</div>
+                          <input
+                            type="color"
+                            value={toHexColorString(geometrySelectedDatasetMeshObject.material.color, 0x8aa4ff)}
+                            onChange={(e) =>
+                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
+                                color: fromHexColorString(e.target.value, 0x8aa4ff),
+                              })
+                            }
+                          />
+                          <div style={{ fontSize: 11 }}>Opacity</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedDatasetMeshObject.material.opacity ?? 1)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
+                                opacity: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                        </div>
+                        {geometryProceduralPick?.meshKey === geometrySelectedDatasetMeshObject.id && (
                           <div
                             style={{
                               marginTop: 8,
