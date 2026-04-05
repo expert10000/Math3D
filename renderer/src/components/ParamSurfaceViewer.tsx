@@ -431,6 +431,7 @@ type Props = {
   zoomToRegion?: boolean;
   zoomToRegionToken?: number;
   windowReframeToken?: number;
+  reframePaddingFactor?: number;
   onViewportDebug?: (snapshot: ViewportDebugSnapshot) => void;
   showPrincipalDirections?: boolean;
   showPrincipalNormalPlanes?: boolean;
@@ -1508,6 +1509,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     zoomToRegion = false,
     zoomToRegionToken = 0,
     windowReframeToken = 0,
+    reframePaddingFactor = 1.08,
     onViewportDebug,
     showPrincipalDirections = false,
   showPrincipalNormalPlanes = false,
@@ -3716,7 +3718,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       const fovY = THREE.MathUtils.degToRad(camera.fov);
       const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * camera.aspect);
       const minFov = Math.max(1e-3, Math.min(fovY, fovX));
-      const requiredDist = (radius * 1.08) / Math.sin(minFov * 0.5);
+      const fitPadding = Math.max(0.88, Math.min(1.35, reframePaddingFactor));
+      const requiredDist = (radius * fitPadding) / Math.sin(minFov * 0.5);
       if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
 
       const currentDist = camera.position.distanceTo(center);
@@ -3990,6 +3993,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     colorMode,
     showBoundingBox,
     renderQuality,
+    reframePaddingFactor,
     resetToken,
     surfaceParamResolution,
     weierstrassGExpr,

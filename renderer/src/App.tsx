@@ -10088,6 +10088,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showThemeTools, setShowThemeTools] = useState(true);
   const [showScreenshotTools, setShowScreenshotTools] = useState(true);
   const [showScreenshotGallery, setShowScreenshotGallery] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement | null>(null);
   const [recentScreenshotPaths, setRecentScreenshotPaths] = useState<string[]>([]);
   const [screenshotGalleryFolder, setScreenshotGalleryFolder] = useState<string | null>(null);
   const [showStatusBar, setShowStatusBar] = useState(true);
@@ -10112,6 +10114,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
   const [surfacesLayout4ShowExtendedFamilies, setSurfacesLayout4ShowExtendedFamilies] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
+  const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
+  const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
@@ -10123,6 +10127,22 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const returnToSurfacesBrowse = useCallback(() => {
     setSurfacesPanelState("browse");
   }, []);
+  const enterSurfacePreviewFocus = useCallback(() => {
+    if (surfacePreviewFocusMode) return;
+    surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
+    setSurfacePreviewFocusMode(true);
+    if (showRightPanel) setShowRightPanel(false);
+    setWindowReframeToken((t) => t + 1);
+  }, [showRightPanel, surfacePreviewFocusMode]);
+  const exitSurfacePreviewFocus = useCallback(
+    (restoreRightPanel = true) => {
+      if (!surfacePreviewFocusMode) return;
+      setSurfacePreviewFocusMode(false);
+      if (restoreRightPanel) setShowRightPanel(surfacePreviewFocusPrevRightPanelRef.current);
+      setWindowReframeToken((t) => t + 1);
+    },
+    [surfacePreviewFocusMode]
+  );
 
   useEffect(() => {
     if (mode === "surfaces" && prevModeRef.current !== "surfaces") {
@@ -10130,6 +10150,18 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     }
     prevModeRef.current = mode;
   }, [mode]);
+  useEffect(() => {
+    if (mode === "surfaces") return;
+    if (!surfacePreviewFocusMode) return;
+    setSurfacePreviewFocusMode(false);
+    setShowRightPanel(surfacePreviewFocusPrevRightPanelRef.current);
+    setWindowReframeToken((t) => t + 1);
+  }, [mode, surfacePreviewFocusMode]);
+  useEffect(() => {
+    if (!(mode === "surfaces" && surfacePreviewFocusMode)) return;
+    if (!viewMenuOpen) return;
+    setViewMenuOpen(false);
+  }, [mode, surfacePreviewFocusMode, viewMenuOpen]);
   useEffect(() => {
     if (mode !== "surfaces") return;
     if (surfacesLayoutVariant !== "layout2") return;
@@ -10157,6 +10189,25 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       if (rightPanelTab !== "inspector") setRightPanelTab("inspector");
     }
   }, [displayMode, mode, rightPanelTab, showRightPanel, showViewportDebug, surfacesLeftTab]);
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const root = viewMenuRef.current;
+      if (!root) return;
+      if (event.target instanceof Node && !root.contains(event.target)) {
+        setViewMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setViewMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [viewMenuOpen]);
 
   const startDragLeft = (e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -20928,9 +20979,11 @@ case "mobius":
     : "default";
   const cleanScreenshotSceneContainerBackground =
     cleanScreenshotSurfaceActive && cleanScreenshotBackground === "transparent" ? "transparent" : "#f8f9fb";
+  const isSurfacePreviewMode = mode === "surfaces" && surfacePreviewFocusMode;
   const showSurfaceWorkflowStrip =
     mode === "surfaces" && datasetKind === "surface" && !isPresentDisplayMode && !cleanScreenshotSurfaceActive;
-  const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip;
+  const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
+  const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
     datasetKind === "surface" &&
@@ -21139,6 +21192,9 @@ case "mobius":
   const handleSurfaceWorkflowStepClick = useCallback(
     (stepId: SurfaceWorkflowStepId) => {
       if (surfaceWorkflowStepStateById[stepId] === "disabled") return;
+      if (stepId !== "preview" && surfacePreviewFocusMode) {
+        exitSurfacePreviewFocus(true);
+      }
       if (stepId === "mesh" || stepId === "promote" || stepId === "save") {
         setWorkflowActionOverlay({ kind: stepId, startedAt: Date.now() });
       } else {
@@ -21192,6 +21248,7 @@ case "mobius":
           focusElementByIdWithRetry("surfaces-inspector-domain-card");
           break;
         case "preview":
+          enterSurfacePreviewFocus();
           setSurfacesLeftTab("scene");
           if (surfaceViewerKind === "implicit" && !vtkPreviewBusy) {
             void handleVtkPreviewImplicit();
@@ -21242,6 +21299,8 @@ case "mobius":
       cgalHealthState,
       canGenerateMesh,
       enterSurfacesWorkMode,
+      enterSurfacePreviewFocus,
+      exitSurfacePreviewFocus,
       focusElementByIdWithRetry,
       focusSurfaceFormulaPrimaryInput,
       handleConvertToMesh,
@@ -21258,6 +21317,7 @@ case "mobius":
       setSurfacesLeftTab,
       showRightPanel,
       showSurfaceFormulaEditorLauncher,
+      surfacePreviewFocusMode,
       surfaceViewerKind,
       surfaceMeshExportable,
       surfaceWorkflowStepStateById,
@@ -21475,6 +21535,7 @@ case "mobius":
   const showSurfaceViewportDebug =
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfacesRightPanel =
+    !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
     !cleanScreenshotSurfaceActive;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
@@ -22342,8 +22403,14 @@ case "mobius":
           </div>
         </div>
       )}
-      <header style={styles.header}>
-        <div style={{ display: "grid", gap: 12, marginBottom: 10 }}>
+      <header
+        style={
+          isSurfacePreviewMode
+            ? { ...styles.header, padding: "4px 8px", margin: "4px 8px 0" }
+            : styles.header
+        }
+      >
+        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 12, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
           <div
             style={{
               display: "flex",
@@ -22360,7 +22427,7 @@ case "mobius":
               </div>
             </div>
           </div>
-          <div style={topNavBandStyle}>
+          {!isSurfacePreviewMode && <div style={topNavBandStyle}>
             <div style={topNavGroupStyle}>
               <div style={topNavGroupLabelStyle}>Section</div>
               <div style={topNavSegmentStyle}>
@@ -22408,34 +22475,34 @@ case "mobius":
             </div>
             <div style={topNavGroupStyle}>
               <div style={topNavGroupLabelStyle}>View</div>
-              <details style={{ position: "relative" }}>
-                <summary
-                  style={{
-                    ...topNavButtonStyle(false),
-                    listStyle: "none",
-                    userSelect: "none",
-                  }}
+              <div ref={viewMenuRef} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setViewMenuOpen((v) => !v)}
+                  aria-expanded={viewMenuOpen}
+                  style={topNavButtonStyle(viewMenuOpen)}
                 >
                   <span style={{ fontSize: 10, opacity: 0.78, marginRight: 5 }}>V</span>
                   View
-                </summary>
-                <div
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "calc(100% + 6px)",
-                    zIndex: 40,
-                    width: 420,
-                    maxWidth: "min(92vw, 420px)",
-                    border: "1px solid #dbe4f0",
-                    borderRadius: 10,
-                    background: "#fff",
-                    boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
-                    padding: 10,
-                    display: "grid",
-                    gap: 10,
-                  }}
-                >
+                </button>
+                {viewMenuOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "calc(100% + 6px)",
+                      zIndex: 40,
+                      width: 420,
+                      maxWidth: "min(92vw, 420px)",
+                      border: "1px solid #dbe4f0",
+                      borderRadius: 10,
+                      background: "#fff",
+                      boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
+                      padding: 10,
+                      display: "grid",
+                      gap: 10,
+                    }}
+                  >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                     <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
                     <button
@@ -22581,13 +22648,14 @@ case "mobius":
                       )}
                     </div>
                   )}
-                </div>
-              </details>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          </div>}
         </div>
 
-        <div style={styles.controls}>
+        {!isSurfacePreviewMode && <div style={styles.controls}>
           {mode === "maps" ? (
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
           ) : mode === "surfaces" ? (
@@ -22850,7 +22918,7 @@ case "mobius":
                       : surfaceViewerKind === "implicit"
                         ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
                         : surfaceViewerKind === "param"
-                          ? (paramSurfaceId === "custom" ? "Already custom" : "Edit custom σ(u,v)")
+                          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
                           : null
                   }
                   quickEditCustomEnabled={
@@ -23077,22 +23145,22 @@ case "mobius":
               />
             </div>
           )}
-        </div>
+        </div>}
       </header>
 
       {showSurfaceWorkflowStrip && (
-        <div style={{ padding: "0 0 10px" }}>
+        <div style={{ padding: isSurfacePreviewMode ? "0 0 6px" : "0 0 10px" }}>
           <div
             style={{
               width: "100%",
               border: "1px solid #dbe4f0",
               borderRadius: 10,
-              padding: "6px 10px",
+              padding: isSurfacePreviewMode ? "4px 8px" : "6px 10px",
               background: "linear-gradient(180deg, #ffffff, #f8fbff)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              gap: 6,
+              gap: isSurfacePreviewMode ? 4 : 6,
               flexWrap: "wrap",
             }}
           >
@@ -23147,6 +23215,34 @@ case "mobius":
                 </React.Fragment>
               );
             })}
+            {mode === "surfaces" && (
+              <>
+                <span style={{ color: "#94a3b8", fontSize: 11 }}>|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (surfacePreviewFocusMode) exitSurfacePreviewFocus(true);
+                    else {
+                      setSurfacesLeftTab("scene");
+                      enterSurfacePreviewFocus();
+                    }
+                  }}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid " + (surfacePreviewFocusMode ? "#0a66c2" : "#d1d5db"),
+                    background: surfacePreviewFocusMode ? "#e6f0ff" : "#ffffff",
+                    color: surfacePreviewFocusMode ? "#0a66c2" : "#334155",
+                    fontWeight: surfacePreviewFocusMode ? 700 : 600,
+                    fontSize: 11,
+                    padding: "3px 10px",
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                  }}
+                >
+                  {surfacePreviewFocusMode ? "Show panels" : "Focus preview"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -23154,6 +23250,12 @@ case "mobius":
       <div
         style={{
           ...styles.wrap,
+          ...(isSurfacePreviewMode
+            ? {
+                padding: "4px 8px 10px",
+                gap: 8,
+              }
+            : null),
           ...(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry"
             ? {
               maxWidth: "100%",
@@ -23169,7 +23271,7 @@ case "mobius":
               style={{
                 ...styles.panelLeft,
                 width: surfaceLeftPanelWidth,
-                display: cleanScreenshotSurfaceActive ? "none" : "flex",
+                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode ? "none" : "flex",
                 flexDirection: "column",
                 minHeight: 0,
                 overflowY: "auto",
@@ -23262,7 +23364,7 @@ case "mobius":
                       : surfaceViewerKind === "implicit"
                         ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
                         : surfaceViewerKind === "param"
-                          ? (paramSurfaceId === "custom" ? "Already custom" : "Edit custom σ(u,v)")
+                          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
                           : null
                   }
                   quickEditCustomEnabled={
@@ -23521,7 +23623,7 @@ case "mobius":
                       : surfaceViewerKind === "implicit"
                         ? "Edit as Custom f(x,y,z)"
                         : surfaceViewerKind === "param"
-                          ? "Edit as Custom σ(u,v)"
+                          ? "Start as Custom σ(u,v)"
                           : null
                   }
                   canEditCustom={
@@ -23617,7 +23719,13 @@ case "mobius":
               )}
             </div>
 
-            <div onMouseDown={startDragLeft} style={{ ...splitterStyle, display: cleanScreenshotSurfaceActive ? "none" : undefined }} />
+            <div
+              onMouseDown={startDragLeft}
+              style={{
+                ...splitterStyle,
+                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode ? "none" : undefined,
+              }}
+            />
 
             {/* MIDDLE */}
             <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
@@ -24056,6 +24164,7 @@ case "mobius":
                             showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
+                            reframePaddingFactor={surfacePreviewReframePaddingFactor}
                             onViewportDebug={handlePrimaryViewportDebug}
                             onProbe={handleProbe}
                             onParamCurvature={handleParamCurvature}
@@ -24164,6 +24273,7 @@ case "mobius":
                             showBoundingBox={cleanScreenshotSurfaceActive ? false : primaryOverlay.showBoundingBox}
                             resetToken={cameraResetToken}
                             windowReframeToken={windowReframeToken}
+                            reframePaddingFactor={surfacePreviewReframePaddingFactor}
                             onViewportDebug={handlePrimaryViewportDebug}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
@@ -25250,6 +25360,7 @@ case "mobius":
                               showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               windowReframeToken={windowReframeToken}
+                              reframePaddingFactor={surfacePreviewReframePaddingFactor}
                               onViewportDebug={handleSecondaryViewportDebug}
                               onSetCustomX={setParamXExpr}
                               onSetCustomY={setParamYExpr}
@@ -25290,6 +25401,7 @@ case "mobius":
                               showBoundingBox={secondaryOverlay.showBoundingBox}
                               resetToken={cameraResetToken}
                               windowReframeToken={windowReframeToken}
+                              reframePaddingFactor={surfacePreviewReframePaddingFactor}
                               onViewportDebug={handleSecondaryViewportDebug}
                               overlayPolylineGroups={compareOverlayPolylineGroups}
                               graphProbeXY={null}
@@ -29628,6 +29740,25 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                     </button>
                   ))}
                 </div>
+              )}
+              {quickEditCustomLabel && (
+                <button
+                  type="button"
+                  onClick={onQuickEditCustom}
+                  disabled={!quickEditCustomEnabled}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    borderRadius: 999,
+                    border: "1px solid " + (quickEditCustomEnabled ? "#cbd5e1" : "#e2e8f0"),
+                    background: "#fff",
+                    color: quickEditCustomEnabled ? "#1f2937" : "#94a3b8",
+                    fontWeight: 550,
+                    cursor: quickEditCustomEnabled ? "pointer" : "not-allowed",
+                  }}
+                >
+                  {quickEditCustomLabel}
+                </button>
               )}
               <button
                 type="button"
@@ -38693,7 +38824,7 @@ onChangeImplicitExpr,
             disabled={!canEditParamAsCustom}
             style={{ padding: "4px 10px" }}
           >
-            Edit as Custom σ(u,v)
+            Start as Custom σ(u,v)
           </button>
           <div style={styles.hint}>
             Copies the active parametric preset into editable <code>x(u,v)</code>, <code>y(u,v)</code>, <code>z(u,v)</code>.
