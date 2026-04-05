@@ -9030,6 +9030,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [contourCount, setContourCount] = useState(12);
   const [implicitOverlay, setImplicitOverlay] = useState<"none" | "normals" | "curvature">("none");
   const surfaceViewportPresetAppliedRef = useRef(false);
+  const meshViewerStartupReframeArmedRef = useRef(false);
 
   const applySurfaceViewportPreset = useCallback(
     (preset: ViewportPreset) => {
@@ -9179,6 +9180,28 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (surfaceViewportPreset === "analysis") setShowChartGrid(false);
     else setShowPlanes(false);
   }, [datasetKind, mode, showChartGrid, showPlanes, surfaceViewportPreset]);
+
+  useEffect(() => {
+    const shouldAutoReframeMesh =
+      mode === "surfaces" &&
+      datasetKind === "surface" &&
+      (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
+      !!surfaceMeshData?.positions?.length;
+    if (!shouldAutoReframeMesh) {
+      meshViewerStartupReframeArmedRef.current = false;
+      return;
+    }
+    if (meshViewerStartupReframeArmedRef.current) return;
+    meshViewerStartupReframeArmedRef.current = true;
+    if (typeof window === "undefined") {
+      setWindowReframeToken((t) => t + 1);
+      return;
+    }
+    const raf = window.requestAnimationFrame(() => {
+      setWindowReframeToken((t) => t + 1);
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [datasetKind, mode, surfaceMeshData?.positions?.length, surfaceViewerKind]);
 
   const [graphDomains, setGraphDomains] = useState<Record<string, GraphDomain>>(() => {
     const raw = safeParseRecord<GraphDomain>(localStorage.getItem("mathapp.domainState.graph.v1"));
@@ -10116,6 +10139,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
+  const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "inspect" | "view" | "analysis">("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
@@ -10130,15 +10154,17 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const enterSurfacePreviewFocus = useCallback(() => {
     if (surfacePreviewFocusMode) return;
     surfacePreviewFocusPrevRightPanelRef.current = showRightPanel;
+    surfacePreviewFocusPrevLeftTabRef.current = surfacesLeftTab;
     setSurfacePreviewFocusMode(true);
     if (showRightPanel) setShowRightPanel(false);
     setWindowReframeToken((t) => t + 1);
-  }, [showRightPanel, surfacePreviewFocusMode]);
+  }, [showRightPanel, surfacePreviewFocusMode, surfacesLeftTab]);
   const exitSurfacePreviewFocus = useCallback(
     (restoreRightPanel = true) => {
       if (!surfacePreviewFocusMode) return;
       setSurfacePreviewFocusMode(false);
       if (restoreRightPanel) setShowRightPanel(surfacePreviewFocusPrevRightPanelRef.current);
+      setSurfacesLeftTab(surfacePreviewFocusPrevLeftTabRef.current);
       setWindowReframeToken((t) => t + 1);
     },
     [surfacePreviewFocusMode]
@@ -10155,6 +10181,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (!surfacePreviewFocusMode) return;
     setSurfacePreviewFocusMode(false);
     setShowRightPanel(surfacePreviewFocusPrevRightPanelRef.current);
+    setSurfacesLeftTab(surfacePreviewFocusPrevLeftTabRef.current);
     setWindowReframeToken((t) => t + 1);
   }, [mode, surfacePreviewFocusMode]);
   useEffect(() => {
@@ -21172,7 +21199,9 @@ case "mobius":
     if (rightPanelTab === "workbook") return "save";
     if (surfaceFormulaEditorOpen) return parseReady ? "equation" : "parse";
     if (surfacesLeftTab === "inspect") return "domain";
-    if (surfacesLeftTab === "analysis" || inspectEnabled || probeEnabled) return "analyze";
+    if (surfacesLeftTab === "analysis") return "analyze";
+    if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") return "mesh";
+    if (inspectEnabled || probeEnabled) return "analyze";
     if (!hasSurfaceMesh && (vtkPreviewBusy || cgalBusy || implicitBakeBusy)) return "mesh";
     if (!hasSurfaceMesh && canGenerateMesh) return "preview";
     if (hasSurfaceMesh && canPromoteActions) return "promote";
