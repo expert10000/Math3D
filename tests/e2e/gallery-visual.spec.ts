@@ -89,15 +89,100 @@ const surfaceSnapshotOpts = {
   maxDiffPixels: 30_000,
 };
 
+const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
+  await page.evaluate(() => {
+    const styleId = "math3d-e2e-gallery-visual-stabilize";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      [data-testid="app-status-bar"] { display: none !important; }
+      [data-testid="geometry-gallery"],
+      [data-testid="surface-preset-grid"],
+      [data-testid="param-preset-grid"],
+      [data-testid="weierstrass-preset-grid"] {
+        scrollbar-width: none !important;
+      }
+      [data-testid="geometry-gallery"]::-webkit-scrollbar,
+      [data-testid="surface-preset-grid"]::-webkit-scrollbar,
+      [data-testid="param-preset-grid"]::-webkit-scrollbar,
+      [data-testid="weierstrass-preset-grid"]::-webkit-scrollbar {
+        width: 0 !important;
+        height: 0 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  });
+};
+
 const waitForImagesLoaded = async (scope: Locator): Promise<void> => {
   await expect(scope).toBeVisible();
+  await scope.evaluate((root) => {
+    const images = Array.from(root.querySelectorAll("img"));
+    for (const img of images) {
+      img.loading = "eager";
+      img.decoding = "sync";
+    }
+  });
+  await expect
+    .poll(
+      async () =>
+        scope.evaluate((root) => {
+          const rootRect = root.getBoundingClientRect();
+          const images = Array.from(root.querySelectorAll("img")).filter((img) => {
+            const rect = img.getBoundingClientRect();
+            return (
+              rect.width > 0 &&
+              rect.height > 0 &&
+              rect.bottom > rootRect.top &&
+              rect.top < rootRect.bottom &&
+              rect.right > rootRect.left &&
+              rect.left < rootRect.right
+            );
+          });
+          if (!images.length) return 0;
+          const pending = images.filter((img) => !img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0);
+          return pending.length;
+        }),
+      { timeout: 10_000, intervals: [150, 250, 500] }
+    )
+    .toBe(0)
+    .catch(() => undefined);
   await scope.evaluate(
-    () =>
+    (root) =>
       new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        const rootRect = root.getBoundingClientRect();
+        const images = Array.from(root.querySelectorAll("img")).filter((img) => {
+          const rect = img.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.bottom > rootRect.top &&
+            rect.top < rootRect.bottom &&
+            rect.right > rootRect.left &&
+            rect.left < rootRect.right
+          );
+        });
+        const settle = () => requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        if (!images.length) {
+          settle();
+          return;
+        }
+        Promise.all(
+          images.map((img) => {
+            try {
+              if (typeof img.decode === "function") {
+                return img.decode().catch(() => undefined);
+              }
+            } catch {
+              return Promise.resolve();
+            }
+            return Promise.resolve();
+          })
+        ).finally(settle);
       })
   );
-  await scope.page().waitForTimeout(250);
+  await scope.page().waitForTimeout(350);
 };
 
 test.setTimeout(10 * 60 * 1000);
@@ -110,6 +195,7 @@ test("Gallery cards visual baseline", async () => {
     app = launched.app;
     const page = launched.page;
     await resetStorage(page);
+    await stabilizeGalleryVisuals(page);
 
     await clickFirstVisibleButton(page, "Geometry");
     await clickFirstVisibleButton(page, "Procedural");
