@@ -10111,7 +10111,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [rightWidth, setRightWidth] = useState(320);
   const minRight = 240;
   const maxRight = 640;
-  const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3">("layout1");
+  const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
+  const [surfacesLayout4ShowExtendedFamilies, setSurfacesLayout4ShowExtendedFamilies] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
     "scene" | "object" | "inspect" | "view" | "analysis"
@@ -21679,6 +21680,28 @@ case "mobius":
                 : "Preset";
   const surfacesWorkBreadcrumb =
     `Surfaces / ${headerSurfacesFamilyLabel} / ${surfacesWorkSubtypeLabel} / ${surfacesWorkPresetLabel}`;
+  const surfacesLayoutUsesLeftBrowseWork =
+    surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
+  const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
+  const layout4ParamSourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+  const layout4IsSurface = datasetKind === "surface";
+  const layout4IsParamFormula = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "formula";
+  const layout4IsParamSpline = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "spline";
+  const layout4IsParamConstructed = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "constructed";
+  const layout4ShowExtendedFamilyButtons =
+    surfacesLayout4ShowExtendedFamilies ||
+    (layout4IsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
+  const layout4FamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
+    padding: "4px 10px",
+    borderRadius: 999,
+    border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
+    background: active ? (variant === "family" ? "#dbeafe" : "#f1f5f9") : "#fff",
+    color: active ? "#0f2a4a" : "#1f2937",
+    fontWeight: active ? 700 : 550,
+    fontSize: 11,
+    whiteSpace: "nowrap",
+    boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
+  });
   const topNavGroupLabelStyle: React.CSSProperties = {
     fontSize: 10,
     fontWeight: 700,
@@ -22622,6 +22645,22 @@ case "mobius":
                 >
                   Layout 3
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSurfacesLayoutVariant("layout4");
+                    setSurfacesPanelState("browse");
+                  }}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: "1px solid " + (surfacesLayoutVariant === "layout4" ? "#0a66c2" : "#d1d5db"),
+                    background: surfacesLayoutVariant === "layout4" ? "#e6f0ff" : "#fff",
+                    fontWeight: surfacesLayoutVariant === "layout4" ? 700 : 550,
+                  }}
+                >
+                  Layout 4
+                </button>
                 {surfacesLayoutVariant === "layout3" && (
                   <button
                     type="button"
@@ -22642,6 +22681,116 @@ case "mobius":
                   </button>
                 )}
               </div>
+              {surfacesLayoutVariant === "layout4" && (
+                <div style={{ ...styles.group, ...styles.groupWide, gridColumn: "span 12", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Families</span>
+                  <button
+                    type="button"
+                    data-testid="surface-family-explicit"
+                    onClick={() => {
+                      setSurfacesPanelState("browse");
+                      setDatasetKind("surface");
+                      handleChangeViewerKind("graph");
+                    }}
+                    style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "graph")}
+                  >
+                    Explicit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="surface-family-implicit"
+                    onClick={() => {
+                      setSurfacesPanelState("browse");
+                      setDatasetKind("surface");
+                      handleChangeViewerKind("implicit");
+                    }}
+                    style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "implicit")}
+                  >
+                    Implicit
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="surface-family-parametric"
+                    onClick={() => {
+                      setSurfacesPanelState("browse");
+                      if (paramSurfaceSourceKindFor(paramSurfaceId) !== "formula") handlePickParamSurface("torus");
+                      else {
+                        setDatasetKind("surface");
+                        handleChangeViewerKind("param");
+                      }
+                    }}
+                    style={layout4FamilyButtonStyle(layout4IsParamFormula)}
+                  >
+                    Parametric
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="surface-family-spline"
+                    onClick={() => {
+                      setSurfacesPanelState("browse");
+                      if (!isSplineParamSurfaceId(paramSurfaceId)) handlePickParamSurface("bezierSurface");
+                      else {
+                        setDatasetKind("surface");
+                        handleChangeViewerKind("param");
+                      }
+                    }}
+                    style={layout4FamilyButtonStyle(layout4IsParamSpline)}
+                  >
+                    Spline
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="surface-family-constructed"
+                    onClick={() => {
+                      setSurfacesPanelState("browse");
+                      if (!isConstructedParamSurfaceId(paramSurfaceId)) handlePickParamSurface("rotationalGraph");
+                      else {
+                        setDatasetKind("surface");
+                        handleChangeViewerKind("param");
+                      }
+                    }}
+                    style={layout4FamilyButtonStyle(layout4IsParamConstructed)}
+                  >
+                    Constructed
+                  </button>
+                  {layout4ShowExtendedFamilyButtons && (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="surface-family-mesh"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("mesh");
+                        }}
+                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "mesh")}
+                      >
+                        Mesh
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-weierstrass"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("weierstrass");
+                        }}
+                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "weierstrass")}
+                      >
+                        Weierstrass
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="surface-family-more"
+                    onClick={() => setSurfacesLayout4ShowExtendedFamilies((v) => !v)}
+                    style={layout4FamilyButtonStyle(layout4ShowExtendedFamilyButtons, "aux")}
+                  >
+                    {layout4ShowExtendedFamilyButtons ? "Less" : "More"}
+                  </button>
+                </div>
+              )}
               {surfacesLayoutVariant === "layout2" && (
                 <div style={{ gridColumn: "span 12" }}>
                   <SurfacesControls
@@ -23028,7 +23177,7 @@ case "mobius":
                 overflowY: "auto",
               }}
             >
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && (
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && (
                 <div
                   style={{
                     border: "1px solid #dbe4f0",
@@ -23053,10 +23202,11 @@ case "mobius":
                   </button>
                 </div>
               )}
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && (
+              {surfacesLayoutUsesLeftBrowseWork && (
                 <SurfacesControls
                   panelMode={surfacesPanelState}
-                  browsePresetLayout={surfacesLayoutVariant === "layout3" ? "cards" : "chips"}
+                  browsePresetLayout={surfacesBrowseUsesCardPresets ? "cards" : "chips"}
+                  showBrowseContextBar={surfacesLayoutVariant !== "layout4"}
                   onEnterWorkMode={enterSurfacesWorkMode}
                   viewerKind={surfaceViewerKind}
                   onChangeViewerKind={handleChangeViewerKind}
@@ -23137,7 +23287,7 @@ case "mobius":
                   }
                 />
               )}
-              <div style={{ display: (surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
+              <div style={{ display: surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
                 {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
                   <button
                     key={tab}
@@ -23158,7 +23308,7 @@ case "mobius":
                   </button>
                 ))}
               </div>
-              {(surfacesLayoutVariant === "layout2" || ((surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
+              {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
@@ -23175,7 +23325,7 @@ case "mobius":
                   />
                 </div>
               )}
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
                   <SurfacesObjectPanel
                     selectedNode={unifiedSelectedNode}
@@ -23338,7 +23488,7 @@ case "mobius":
                   )}
                 </>
               )}
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
                 <SurfacesInspectPanel
                   viewerKind={surfaceViewerKind}
                   inspectEnabled={inspectEnabled}
@@ -23365,7 +23515,7 @@ case "mobius":
                   onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
                 />
               )}
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <SurfacesViewPanel
                   editCustomLabel={
                     surfaceViewerKind === "graph"
@@ -23461,7 +23611,7 @@ case "mobius":
                   }
                 />
               )}
-              {(surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3") && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
                   {renderSurfacesInspectorPanel("analysis")}
@@ -28900,6 +29050,7 @@ const SURFACE_GALLERY_CARDS: SurfaceGalleryCard[] = [
 type SurfacesControlsProps = {
   panelMode: "browse" | "work";
   browsePresetLayout?: "chips" | "cards";
+  showBrowseContextBar?: boolean;
   onEnterWorkMode: () => void;
   viewerKind: SurfaceViewerKind;
   onChangeViewerKind: (k: SurfaceViewerKind) => void;
@@ -28947,6 +29098,7 @@ type SurfacesControlsProps = {
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   panelMode,
   browsePresetLayout = "chips",
+  showBrowseContextBar = true,
   onEnterWorkMode,
   viewerKind,
   onChangeViewerKind,
@@ -29192,7 +29344,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
   return (
     <div style={{ display: "grid", gap: compactForPresent ? 8 : 10 }}>
-      {panelMode === "browse" && (
+      {panelMode === "browse" && showBrowseContextBar && (
       <div style={stickyTopStyle}>
         <div style={contextBarStyle}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0, flexWrap: "wrap" }} aria-label={workflowPath}>
