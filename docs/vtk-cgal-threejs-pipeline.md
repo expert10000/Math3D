@@ -10,6 +10,80 @@ This document defines how Math3D uses `CGAL`, `VTK`, and `three.js`, and the run
 | VTK | Fast preview, mesh transforms, and volume operations | `renderer/src/services/vtkMeshClient.ts:55`, `renderer/src/services/vtkVolumeClient.ts:100`, `src/main/ipc/vtkMeshIpc.ts:45`, `src/main/python/pythonWorker.ts:547` |
 | three.js | Scene construction, rendering, picking, and gizmo interaction | `renderer/src/components/SurfaceViewer.tsx:3`, `renderer/src/components/SurfaceViewer.tsx:3013`, `renderer/src/components/SurfaceViewer.tsx:4473` |
 
+## Core Design Move: One Mesh Contract
+
+The most important design decision in this pipeline is that every surface generator, regardless of mathematics, must produce the same renderable structure.
+
+Common contract (conceptually):
+
+- `positions`: vertex positions (`x, y, z`)
+- `indices`: triangle topology
+- `normals`: per-vertex or per-face normals (required for stable lighting and analysis tools)
+- `bounds`: axis-aligned bounds (`min/max`) for camera framing, culling, and diagnostics
+- `metadata`: source and processing info (generator, parameters, quality settings, tokens, provenance)
+- `uvs` (optional): texture coordinates when available
+
+Why this matters:
+
+- Mathematical variety (graph, parametric, implicit, Weierstrass, volume-derived surfaces) stays inside generator logic.
+- Architectural consistency starts at the contract boundary, where downstream systems treat all meshes uniformly.
+- `VTK`, `CGAL`, and in-app generators can evolve independently as long as they keep emitting this shape.
+- `three.js` and interaction code do not care how a mesh was created; they consume one stable format.
+
+In short, this is the boundary where mathematical diversity becomes engineering uniformity.
+
+## How This Is Implemented In Math3D
+
+In Math3D, this common contract is not only a concept, it is a concrete type: `SurfaceMeshData`.
+
+- Contract type:
+  - `renderer/src/mesh/surfaceMesh.ts:100`
+- Core fields:
+  - `positions: Float32Array`
+  - `indices: Uint32Array | null`
+  - `normals?: Float32Array | null`
+  - `uvs?: Float32Array | null`
+  - `source: SurfaceMeshSource`
+  - defined in `renderer/src/mesh/surfaceMesh.ts:102`
+- Derived metadata carried with the same mesh object:
+  - `adjacency?: number[][] | null`
+  - `meanEdgeLength?: number | null`
+  - `validation?: MeshValidation | null`
+  - defined in `renderer/src/mesh/surfaceMesh.ts:107`
+
+Every generator is normalized into this shape:
+
+1. Graph, parametric, and Weierstrass bakers return mesh payloads in the same structure.
+   - `renderer/src/math/bakeSurface.ts:500`
+   - `renderer/src/math/bakeSurface.ts:523`
+   - `renderer/src/math/bakeSurface.ts:577`
+2. CGAL output is wrapped into `SurfaceMeshData` before mesh-mode rendering.
+   - `renderer/src/App.tsx:15458`
+   - `renderer/src/App.tsx:15468`
+3. VTK outputs are converted into the same contract through `applyVtkResultToSurfaceMesh`.
+   - `renderer/src/App.tsx:15056`
+4. Imported mesh files (STL/OBJ/PLY/GLTF/GLB) are converted through `buildSurfaceMeshFromGeometry`.
+   - `renderer/src/mesh/surfaceMesh.ts:261`
+   - `renderer/src/mesh/surfaceMesh.ts:342`
+
+After normalization, all mesh origins go through the same quality/analysis pass:
+
+- `applySurfaceMeshOps` enforces consistency by running:
+  - `computeVertexNormals`
+  - `computeAdjacency`
+  - `computeMeanEdgeLength`
+  - `validateMesh`
+- entry point:
+  - `renderer/src/App.tsx:1043`
+
+Important note on bounds in the current implementation:
+
+- `bounds` are not persisted in `SurfaceMeshData` today.
+- Bounds are computed on `THREE.BufferGeometry` in the rendering path (`computeBoundingBox` / `computeBoundingSphere`) when needed.
+  - `renderer/src/components/SurfaceViewer.tsx:4968`
+
+This is the exact point where mathematical variety (graph/parametric/implicit/Weierstrass/imported/VTK/CGAL) becomes architectural consistency in Math3D.
+
 ## Runtime Pipeline
 
 ### Electron desktop path
