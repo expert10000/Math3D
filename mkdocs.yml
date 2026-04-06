@@ -11,6 +11,7 @@ nav:
   - API Reference: api-reference.md
   - Architecture:
       - Layered Workspace: architecture-layered-workspace.md
+      - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
   - Guides:
       - Playwright E2E Tests: playwright-e2e-tests.md
       - Release Smoke Tests: release-smoke-tests.md
