@@ -1153,6 +1153,41 @@ type GeometryDatasetMeshObject = {
   material: GeometryObject["material"];
 };
 
+const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
+const DEFAULT_GEOMETRY_MATERIAL_OPACITY = 1;
+
+const isDefaultVec3 = (value: Vec3, expected: Vec3) =>
+  Math.abs(value.x - expected.x) < 1e-9 &&
+  Math.abs(value.y - expected.y) < 1e-9 &&
+  Math.abs(value.z - expected.z) < 1e-9;
+
+const isDefaultGeometryParamSet = (
+  params: Record<string, number | boolean | string>,
+  expected: Record<string, number | boolean | string>
+) => {
+  const expectedEntries = Object.entries(expected);
+  if (Object.keys(params).length !== expectedEntries.length) return false;
+  for (const [key, expectedValue] of expectedEntries) {
+    if (params[key] !== expectedValue) return false;
+  }
+  return true;
+};
+
+const isSeedGeometryBoxObject = (obj: GeometryObject) => {
+  if (obj.type !== "box") return false;
+  if (obj.name !== GEOMETRY_OBJECT_REGISTRY.box.label) return false;
+  if (!obj.visible) return false;
+  if (!isDefaultGeometryParamSet(obj.params, GEOMETRY_OBJECT_REGISTRY.box.defaultParams)) return false;
+  if (!isDefaultVec3(obj.transform.position, { x: 0, y: 0, z: 0 })) return false;
+  if (!isDefaultVec3(obj.transform.rotation, { x: 0, y: 0, z: 0 })) return false;
+  if (!isDefaultVec3(obj.transform.scale, { x: 1, y: 1, z: 1 })) return false;
+  const color = obj.material.color ?? DEFAULT_GEOMETRY_MATERIAL_COLOR;
+  const opacity = obj.material.opacity ?? DEFAULT_GEOMETRY_MATERIAL_OPACITY;
+  if (color !== DEFAULT_GEOMETRY_MATERIAL_COLOR) return false;
+  if (Math.abs(opacity - DEFAULT_GEOMETRY_MATERIAL_OPACITY) > 1e-9) return false;
+  return true;
+};
+
 type ProblemSceneCloneDetail = {
   scene?: GeometryScene | null;
   labels?: OverlayLabelSet[] | null;
@@ -5022,6 +5057,7 @@ const App: React.FC = () => {
 
   const handleRemoveGeometryObject = useCallback((id: string) => {
     if (geometryLockedObjectIds.has(id)) return;
+    setGeometrySelectedObjectId((current) => (current === id ? null : current));
     setGeometryObjects((prev) => prev.filter((o) => o.id !== id));
     setGeometryDatasetMeshObjects((prev) => prev.filter((o) => o.id !== id));
   }, [geometryLockedObjectIds]);
@@ -7101,6 +7137,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       visible: true,
       material: { color: 0x8aa4ff, opacity: 1 },
     };
+    setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
     setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
     focusGeometryObjectMeshInfo(id);
   }, [datasetKind, focusGeometryObjectMeshInfo, surfaceMeshData]);
@@ -9389,6 +9426,44 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const surfaceMeshSourceLabel = useMemo(
+    () => (surfaceMeshData?.source ? formatSurfaceMeshSource(surfaceMeshData.source) : null),
+    [surfaceMeshData]
+  );
+  const [meshCenterOverlayVisible, setMeshCenterOverlayVisible] = useState(false);
+  const [meshSaveOverlayOpen, setMeshSaveOverlayOpen] = useState(false);
+  const showMeshSaveOverlayLauncher =
+    mode === "surfaces" &&
+    datasetKind === "surface" &&
+    (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
+    !!surfaceMeshStats;
+  useEffect(() => {
+    const isMeshViewActive =
+      mode === "surfaces" &&
+      datasetKind === "surface" &&
+      (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
+      !!surfaceMeshStats;
+    if (!isMeshViewActive) {
+      setMeshCenterOverlayVisible(false);
+      return;
+    }
+    setMeshCenterOverlayVisible(true);
+    if (typeof window === "undefined") return;
+    const timer = window.setTimeout(() => setMeshCenterOverlayVisible(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [
+    mode,
+    datasetKind,
+    surfaceViewerKind,
+    surfaceMeshLabel,
+    surfaceMeshStats?.vertCount,
+    surfaceMeshStats?.triCount,
+  ]);
+  useEffect(() => {
+    if (!showMeshSaveOverlayLauncher) {
+      setMeshSaveOverlayOpen(false);
+    }
+  }, [showMeshSaveOverlayLauncher]);
   const currentDatasetRef = useMemo(() => {
     if (datasetKind === "volume") {
       const label = volumeDatasetOverride?.label;
@@ -22525,6 +22600,67 @@ case "mobius":
                 {headerContextLabel}
               </div>
             </div>
+            {!isSurfacePreviewMode && mode === "surfaces" && (
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={topNavGroupLabelStyle}>Surfaces layout</div>
+                <div style={topNavSegmentStyle}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSurfacesLayoutVariant("layout1");
+                      setSurfacesPanelState("browse");
+                    }}
+                    style={topNavButtonStyle(surfacesLayoutVariant === "layout1")}
+                  >
+                    Layout 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSurfacesLayoutVariant("layout2");
+                      setSurfacesPanelState("work");
+                      setSurfacesLeftTab("scene");
+                    }}
+                    style={topNavButtonStyle(surfacesLayoutVariant === "layout2")}
+                  >
+                    Layout 2
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSurfacesLayoutVariant("layout3");
+                      setSurfacesPanelState("browse");
+                    }}
+                    style={topNavButtonStyle(surfacesLayoutVariant === "layout3")}
+                  >
+                    Layout 3
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSurfacesLayoutVariant("layout4");
+                      setSurfacesPanelState("browse");
+                    }}
+                    style={topNavButtonStyle(surfacesLayoutVariant === "layout4")}
+                  >
+                    Layout 4
+                  </button>
+                  {surfacesLayoutVariant === "layout3" && (
+                    <button
+                      type="button"
+                      data-testid="surfaces-layout3-mode-toggle"
+                      onClick={() => {
+                        if (surfacesPanelState === "browse") enterSurfacesWorkMode();
+                        else returnToSurfacesBrowse();
+                      }}
+                      style={topNavButtonStyle(false)}
+                    >
+                      {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           {!isSurfacePreviewMode && <div style={topNavBandStyle}>
             <div style={topNavGroupStyle}>
@@ -22759,93 +22895,6 @@ case "mobius":
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
           ) : mode === "surfaces" ? (
             <>
-              <div style={{ ...styles.group, ...styles.groupWide, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Surfaces layout</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSurfacesLayoutVariant("layout1");
-                    setSurfacesPanelState("browse");
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (surfacesLayoutVariant === "layout1" ? "#0a66c2" : "#d1d5db"),
-                    background: surfacesLayoutVariant === "layout1" ? "#e6f0ff" : "#fff",
-                    fontWeight: surfacesLayoutVariant === "layout1" ? 700 : 550,
-                  }}
-                >
-                  Layout 1
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSurfacesLayoutVariant("layout2");
-                    setSurfacesPanelState("work");
-                    setSurfacesLeftTab("scene");
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (surfacesLayoutVariant === "layout2" ? "#0a66c2" : "#d1d5db"),
-                    background: surfacesLayoutVariant === "layout2" ? "#e6f0ff" : "#fff",
-                    fontWeight: surfacesLayoutVariant === "layout2" ? 700 : 550,
-                  }}
-                >
-                  Layout 2
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSurfacesLayoutVariant("layout3");
-                    setSurfacesPanelState("browse");
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (surfacesLayoutVariant === "layout3" ? "#0a66c2" : "#d1d5db"),
-                    background: surfacesLayoutVariant === "layout3" ? "#e6f0ff" : "#fff",
-                    fontWeight: surfacesLayoutVariant === "layout3" ? 700 : 550,
-                  }}
-                >
-                  Layout 3
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSurfacesLayoutVariant("layout4");
-                    setSurfacesPanelState("browse");
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (surfacesLayoutVariant === "layout4" ? "#0a66c2" : "#d1d5db"),
-                    background: surfacesLayoutVariant === "layout4" ? "#e6f0ff" : "#fff",
-                    fontWeight: surfacesLayoutVariant === "layout4" ? 700 : 550,
-                  }}
-                >
-                  Layout 4
-                </button>
-                {surfacesLayoutVariant === "layout3" && (
-                  <button
-                    type="button"
-                    data-testid="surfaces-layout3-mode-toggle"
-                    onClick={() => {
-                      if (surfacesPanelState === "browse") enterSurfacesWorkMode();
-                      else returnToSurfacesBrowse();
-                    }}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "1px solid #0a66c2",
-                      background: "#e6f0ff",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
-                  </button>
-                )}
-              </div>
               {surfacesLayoutVariant === "layout4" && (
                 <div style={{ ...styles.group, ...styles.groupWide, gridColumn: "span 12", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Families</span>
@@ -22922,18 +22971,6 @@ case "mobius":
                     <>
                       <button
                         type="button"
-                        data-testid="surface-family-mesh"
-                        onClick={() => {
-                          setSurfacesPanelState("browse");
-                          setDatasetKind("surface");
-                          handleChangeViewerKind("mesh");
-                        }}
-                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "mesh")}
-                      >
-                        Mesh
-                      </button>
-                      <button
-                        type="button"
                         data-testid="surface-family-weierstrass"
                         onClick={() => {
                           setSurfacesPanelState("browse");
@@ -22943,6 +22980,18 @@ case "mobius":
                         style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "weierstrass")}
                       >
                         Weierstrass
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-mesh"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("mesh");
+                        }}
+                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "mesh")}
+                      >
+                        Mesh
                       </button>
                     </>
                   )}
@@ -24472,6 +24521,143 @@ case "mobius":
                         zoomToRegionToken={zoomNowToken}
                         suspendPointerInteractions={surfaceFormulaEditorOpen}
                       />
+                        )}
+                        {!cleanScreenshotSurfaceActive &&
+                          datasetKind === "surface" &&
+                          (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
+                          meshCenterOverlayVisible &&
+                          surfaceMeshStats && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                left: "50%",
+                                top: "50%",
+                                transform: "translate(-50%, -50%)",
+                                zIndex: 6,
+                                pointerEvents: "none",
+                                borderRadius: 14,
+                                border: "1px solid rgba(10, 102, 194, 0.32)",
+                                background: "rgba(248, 251, 255, 0.88)",
+                                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)",
+                                backdropFilter: "blur(5px)",
+                                padding: "10px 14px",
+                                minWidth: 260,
+                                textAlign: "center",
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#0a66c2", textTransform: "uppercase" }}>
+                                Mesh view
+                              </div>
+                              <div style={{ marginTop: 2, fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{surfaceMeshLabel}</div>
+                              <div style={{ marginTop: 2, fontSize: 11, color: "#334155" }}>
+                                {surfaceMeshStats.vertCount.toLocaleString()} vertices · {surfaceMeshStats.triCount.toLocaleString()} triangles
+                              </div>
+                              {surfaceMeshSourceLabel && (
+                                <div style={{ marginTop: 2, fontSize: 10, color: "#64748b" }}>Source: {surfaceMeshSourceLabel}</div>
+                              )}
+                              <div style={{ marginTop: 6, fontSize: 10, color: "#475569" }}>
+                                Sections: Scene / Object / View / Analysis / Theory
+                              </div>
+                            </div>
+                          )}
+                        {!cleanScreenshotSurfaceActive && showMeshSaveOverlayLauncher && !meshSaveOverlayOpen && (
+                          <button
+                            type="button"
+                            onClick={() => setMeshSaveOverlayOpen(true)}
+                            style={{
+                              position: "absolute",
+                              top: 12,
+                              right: 12,
+                              zIndex: 7,
+                              borderRadius: 999,
+                              border: "1px solid #0a66c2",
+                              background: "rgba(230, 240, 255, 0.95)",
+                              color: "#0a66c2",
+                              fontWeight: 700,
+                              fontSize: 12,
+                              padding: "6px 12px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Save options
+                          </button>
+                        )}
+                        {!cleanScreenshotSurfaceActive && showMeshSaveOverlayLauncher && meshSaveOverlayOpen && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: 12,
+                              right: 12,
+                              zIndex: 7,
+                              width: 330,
+                              maxWidth: "calc(100% - 24px)",
+                              borderRadius: 12,
+                              border: "1px solid #cfe1f7",
+                              background: "rgba(250, 252, 255, 0.97)",
+                              boxShadow: "0 12px 26px rgba(15, 23, 42, 0.2)",
+                              backdropFilter: "blur(4px)",
+                              padding: "10px 12px",
+                              display: "grid",
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>Save options</div>
+                              <button
+                                type="button"
+                                onClick={() => setMeshSaveOverlayOpen(false)}
+                                style={{
+                                  borderRadius: 999,
+                                  border: "1px solid #d1d5db",
+                                  background: "#fff",
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  padding: "3px 8px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Close
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              <button type="button" onClick={handleSaveWorkbook} style={{ fontSize: 11 }}>
+                                {workbookDirty ? "Save workbook" : "Save workbook (no changes)"}
+                              </button>
+                              <button type="button" onClick={handleSaveWorkbookAs} style={{ fontSize: 11 }}>
+                                Save workbook as...
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginTop: 2 }}>Mesh export</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              <button
+                                type="button"
+                                onClick={handleExportSurfaceMeshGlb}
+                                disabled={surfaceMeshExportBusy || !surfaceMeshStats}
+                                style={{ fontSize: 11 }}
+                              >
+                                {surfaceMeshExportBusy ? "Exporting..." : "Export GLB"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleExportSurfaceMeshObj}
+                                disabled={surfaceMeshExportBusy || !surfaceMeshStats}
+                                style={{ fontSize: 11 }}
+                              >
+                                {surfaceMeshExportBusy ? "Exporting..." : "Export OBJ"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleExportSurfaceMeshPly}
+                                disabled={surfaceMeshExportBusy || !surfaceMeshStats}
+                                style={{ fontSize: 11 }}
+                              >
+                                {surfaceMeshExportBusy ? "Exporting..." : "Export PLY"}
+                              </button>
+                            </div>
+                            {surfaceMeshExportError && (
+                              <div style={{ fontSize: 11, color: "#b42318" }}>{surfaceMeshExportError}</div>
+                            )}
+                          </div>
                         )}
                         {showRotationalSplineOverlay && (
                           <RotationalSplineOverlay
@@ -29884,17 +30070,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <>
                 <button
                   type="button"
-                  data-testid="surface-family-mesh"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("mesh");
-                  }}
-                  style={toolbarChipStyle(isSurface && isMesh, "family")}
-                >
-                  Mesh
-                </button>
-                <button
-                  type="button"
                   data-testid="surface-family-weierstrass"
                   onClick={() => {
                     onChangeDatasetKind("surface");
@@ -29903,6 +30078,17 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                   style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
                 >
                   Weierstrass
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-mesh"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("mesh");
+                  }}
+                  style={toolbarChipStyle(isSurface && isMesh, "family")}
+                >
+                  Mesh
                 </button>
               </>
             )}
@@ -30033,7 +30219,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         </div>
       )}
 
-      {panelMode === "browse" && datasetKind !== "volume" && (
+      {panelMode === "browse" && datasetKind !== "volume" && viewerKind !== "mesh" && viewerKind !== "complex" && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Preset gallery</div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
@@ -30282,6 +30468,24 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                 )}
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {panelMode === "browse" && datasetKind !== "volume" && (viewerKind === "mesh" || viewerKind === "complex") && (
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Mesh workspace</div>
+          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+            Preset gallery is hidden in mesh view. Use Scene/Object tabs and the main-view Save options overlay.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={onEnterWorkMode}
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              Show Scene/Object tabs
+            </button>
           </div>
         </div>
       )}
@@ -34654,6 +34858,25 @@ onChangeImplicitExpr,
   }, [initialLeftTab, normalizeLeftTab]);
   const showSceneObjectControls = leftTab === "scene" || leftTab === "object" || leftTab === "controls";
   const showViewControls = leftTab === "view" || leftTab === "controls";
+  const surfaceSectionTabs: Array<{ id: Exclude<SurfacesLeftTab, "controls">; label: string }> = [
+    { id: "scene", label: "Scene" },
+    { id: "object", label: "Object" },
+    { id: "view", label: "View" },
+    { id: "analysis", label: "Analysis" },
+    { id: "theory", label: "Theory" },
+  ];
+  const surfaceSectionTabButton = (active: boolean): React.CSSProperties => ({
+    padding: "6px 12px",
+    borderRadius: 999,
+    border: "1px solid " + (active ? "#0a66c2" : "#cfd8e3"),
+    background: active ? "#e6f0ff" : "#fff",
+    color: active ? "#0a66c2" : "#334155",
+    fontWeight: active ? 700 : 600,
+    fontSize: 11,
+    cursor: "pointer",
+    boxShadow: active ? "0 2px 10px rgba(10,102,194,0.18)" : "none",
+    whiteSpace: "nowrap",
+  });
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -34993,26 +35216,36 @@ onChangeImplicitExpr,
       </p>
 
       {showInternalTabs && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-          {(
-            [
-              { id: "scene", label: "Scene" },
-              { id: "object", label: "Object" },
-              { id: "view", label: "View" },
-              { id: "analysis", label: "Analysis" },
-              { id: "theory", label: "Theory" },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setLeftTab(tab.id)}
-              style={pill(leftTab === tab.id)}
-              aria-pressed={leftTab === tab.id}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 3,
+            marginBottom: 10,
+            padding: 8,
+            borderRadius: 10,
+            border: "1px solid #dbe4f0",
+            background: "rgba(248, 251, 255, 0.96)",
+            boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#475569", marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Sections
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {surfaceSectionTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setLeftTab(tab.id)}
+                style={surfaceSectionTabButton(leftTab === tab.id)}
+                aria-pressed={leftTab === tab.id}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

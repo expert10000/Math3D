@@ -1449,6 +1449,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
   const planeGridShowLabels = planeGridSettings.showLabels;
+  const planeGridShowAxisLabels = planeGridSettings.showAxisLabels;
+  const planeGridLabelSkin = planeGridSettings.labelSkin;
   const planeGridShowXY = planeGridSettings.showXY;
   const planeGridShowXZ = planeGridSettings.showXZ;
   const planeGridShowYZ = planeGridSettings.showYZ;
@@ -3921,6 +3923,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         showGrid: planeGridShowGrid,
         showMinorGrid: planeGridShowMinor,
         showLabels: planeGridShowLabels,
+        showAxisLabels: planeGridShowAxisLabels,
+        labelSkin: planeGridLabelSkin,
         showXY: planeGridShowXY,
         showXZ: planeGridShowXZ,
         showYZ: planeGridShowYZ,
@@ -4644,6 +4648,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     planeGridShowGrid,
     planeGridShowMinor,
     planeGridShowLabels,
+    planeGridShowAxisLabels,
+    planeGridLabelSkin,
     planeGridShowXY,
     planeGridShowXZ,
     planeGridShowYZ,

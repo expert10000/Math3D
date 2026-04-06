@@ -139,8 +139,9 @@ const createLabelSprite = (
   skin: ReferencePlaneLabelSkin,
   kind: "tick" | "axis" | "origin" = "tick"
 ) => {
-  const width = 128;
-  const height = 72;
+  const textureScale = 2;
+  const width = 128 * textureScale;
+  const height = 72 * textureScale;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -181,7 +182,7 @@ const createLabelSprite = (
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, width - 2, height - 2);
   ctx.fillStyle = textColor;
-  const fontSize = kind === "axis" ? 36 : kind === "origin" ? 30 : 32;
+  const fontSize = (kind === "axis" ? 36 : kind === "origin" ? 30 : 32) * textureScale;
   ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -193,13 +194,14 @@ const createLabelSprite = (
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
-  texture.generateMipmaps = false;
-  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
 
   const material = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
+    alphaTest: 0.015,
     depthWrite: false,
     depthTest: false,
     toneMapped: false,
@@ -374,28 +376,21 @@ export const createLayeredReferenceGrid = (
       if (axisV) planeGroup.add(axisV);
     }
 
-    if (showGrid && showLabels) {
-      for (let k = -majorCount; k <= majorCount; k++) {
-        if (k === 0 || k % labelEveryMajor !== 0) continue;
-        const tickValue = k * majorStep;
-        const text = formatTickValue(tickValue);
-        const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
-
-        const uLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
-        if (uLabel) {
-          uLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
-          planeGroup.add(uLabel);
-        }
-
-        const vLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
-        if (vLabel) {
-          vLabel.position.set(lineLift * 13, tickValue, lineLift * 2.4);
-          planeGroup.add(vLabel);
-        }
-      }
-    }
-
     group.add(planeGroup);
+  }
+
+  if (showGrid && showLabels && showXY) {
+    const labelColor = PLANE_SPECS[0].labelColor;
+    for (let k = -majorCount; k <= majorCount; k++) {
+      if (k === 0 || k % labelEveryMajor !== 0) continue;
+      const tickValue = k * majorStep;
+      const text = formatTickValue(tickValue);
+      const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
+      const tickLabel = createLabelSprite(text, labelColor, labelSize, labelSkin, "tick");
+      if (!tickLabel) continue;
+      tickLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
+      group.add(tickLabel);
+    }
   }
 
   const originDot = new THREE.Mesh(

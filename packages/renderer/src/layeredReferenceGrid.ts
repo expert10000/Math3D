@@ -374,28 +374,21 @@ export const createLayeredReferenceGrid = (
       if (axisV) planeGroup.add(axisV);
     }
 
-    if (showGrid && showLabels) {
-      for (let k = -majorCount; k <= majorCount; k++) {
-        if (k === 0 || k % labelEveryMajor !== 0) continue;
-        const tickValue = k * majorStep;
-        const text = formatTickValue(tickValue);
-        const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
-
-        const uLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
-        if (uLabel) {
-          uLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
-          planeGroup.add(uLabel);
-        }
-
-        const vLabel = createLabelSprite(text, spec.labelColor, labelSize, labelSkin, "tick");
-        if (vLabel) {
-          vLabel.position.set(lineLift * 13, tickValue, lineLift * 2.4);
-          planeGroup.add(vLabel);
-        }
-      }
-    }
-
     group.add(planeGroup);
+  }
+
+  if (showGrid && showLabels && showXY) {
+    const labelColor = PLANE_SPECS[0].labelColor;
+    for (let k = -majorCount; k <= majorCount; k++) {
+      if (k === 0 || k % labelEveryMajor !== 0) continue;
+      const tickValue = k * majorStep;
+      const text = formatTickValue(tickValue);
+      const labelSize = Math.max(0.12, Math.min(0.52, majorStep * 0.23 * labelScale));
+      const tickLabel = createLabelSprite(text, labelColor, labelSize, labelSkin, "tick");
+      if (!tickLabel) continue;
+      tickLabel.position.set(tickValue, -lineLift * 14, lineLift * 2.4);
+      group.add(tickLabel);
+    }
   }
 
   const originDot = new THREE.Mesh(
