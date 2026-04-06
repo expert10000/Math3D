@@ -10,6 +10,18 @@ This document defines how Math3D uses `CGAL`, `VTK`, and `three.js`, and the run
 | VTK | Fast preview, mesh transforms, and volume operations | `renderer/src/services/vtkMeshClient.ts:55`, `renderer/src/services/vtkVolumeClient.ts:100`, `src/main/ipc/vtkMeshIpc.ts:45`, `src/main/python/pythonWorker.ts:547` |
 | three.js | Scene construction, rendering, picking, and gizmo interaction | `renderer/src/components/SurfaceViewer.tsx:3`, `renderer/src/components/SurfaceViewer.tsx:3013`, `renderer/src/components/SurfaceViewer.tsx:4473` |
 
+## General Context: What three.js Is Used For
+
+In this architecture, `three.js` is the realtime scene and interaction layer. It consumes typed mesh buffers and user interactions, while heavy geometry generation stays in CGAL/VTK or math bakers.
+
+| Area | three.js responsibility in Math3D | Out of scope for three.js |
+|---|---|---|
+| Scene and camera | Create scene graph, camera, lights, controls, and frame loop | Worker orchestration and IPC |
+| Rendering | Draw meshes/overlays from normalized typed arrays (`SurfaceMeshData`) | High-precision remeshing and volumetric algorithms |
+| Interaction | Picking, probes, gizmos, slicing planes, and visual feedback | CGAL-quality implicit meshing and VTK transforms |
+| Data contract boundary | Consume one mesh contract regardless of source | Defining source-specific math semantics |
+| Analysis visuals | Show normals, curvature colors, contours, and helpers | Owning backend numerical solvers |
+
 ## Input Families: Different Engineering Cases
 
 The pipeline starts by classifying the input surface family. Explicit, implicit, and parametric surfaces are not just different formulas; they are different engineering cases.
@@ -133,6 +145,16 @@ When running in browser mode, the same renderer APIs are bridged to HTTP endpoin
   - `renderer/src/services/webWorkerProxyBridge.ts:85` (`/cgal/mesh`)
   - `renderer/src/services/webWorkerProxyBridge.ts:132` (`/vtk/clean`)
   - `renderer/src/services/webWorkerProxyBridge.ts:153` (`/vtk/preview`)
+
+## Installation and Runtime Scenarios
+
+Math3D supports desktop and browser runtimes with shared React/TypeScript renderer logic.
+
+| Scenario | Stack | Typical commands | Best use case |
+|---|---|---|---|
+| Desktop app | Electron shell + React + TypeScript renderer | `npm run build:core` then `npm run build` | Full desktop workflow and packaged installer distribution |
+| Browser app (local) | React + TypeScript web runtime (Vite) + local worker proxy | `npm run dev:web` (dev) or `npm run build:web` and `npm run preview:web` (prod preview) | Browser-first usage and faster UI iteration |
+| Browser app (Docker, self-contained) | Containerized web runtime + Python worker dependencies | `docker compose -f docker-compose.web.yml up --build` | Reproducible environment without local Python/worker setup |
 
 ## Use Pipelines
 
