@@ -10,6 +10,18 @@ This document defines how Math3D uses `CGAL`, `VTK`, and `three.js`, and the run
 | VTK | Fast preview, mesh transforms, and volume operations | `renderer/src/services/vtkMeshClient.ts:55`, `renderer/src/services/vtkVolumeClient.ts:100`, `src/main/ipc/vtkMeshIpc.ts:45`, `src/main/python/pythonWorker.ts:547` |
 | three.js | Scene construction, rendering, picking, and gizmo interaction | `renderer/src/components/SurfaceViewer.tsx:3`, `renderer/src/components/SurfaceViewer.tsx:3013`, `renderer/src/components/SurfaceViewer.tsx:4473` |
 
+## Input Families: Different Engineering Cases
+
+The pipeline starts by classifying the input surface family. Explicit, implicit, and parametric surfaces are not just different formulas; they are different engineering cases.
+
+| Family | User input model | Validation focus | Sampling strategy | Rendering and analysis impact |
+|---|---|---|---|---|
+| Explicit (graph) | `z = f(x, y)` on an `(x, y)` domain | Parse correctness, finite outputs, and graph assumptions | Regular 2D grid in `(x, y)` | Predictable connectivity and efficient derivatives, but limited for overhang-heavy shapes |
+| Implicit | `f(x, y, z) = 0` in 3D bounds | Scalar-field validity, domain bounds, and resolution suitability | Volumetric 3D sampling followed by iso-surface extraction | Captures closed/multi-sheet topology, but compute and memory costs are higher |
+| Parametric | `(x(u,v), y(u,v), z(u,v))` on a `(u, v)` domain | Domain limits, seam handling, and singular/degenerate regions | 2D parameter-space sampling, then mapped to 3D | Supports folds/overhangs directly, but seams and parameter distortion need explicit handling |
+
+Input diversity shapes nearly every later decision in validation, sampling, and rendering. Before geometry exists, the architecture is already being shaped by the kind of mathematical object the user entered.
+
 ## Core Design Move: One Mesh Contract
 
 The most important design decision in this pipeline is that every surface generator, regardless of mathematics, must produce the same renderable structure.
