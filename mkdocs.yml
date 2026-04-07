@@ -9,6 +9,7 @@ theme:
 nav:
   - Home: index.md
   - API Reference: api-reference.md
+  - Algorithms: algorithms.md
   - Architecture:
       - Layered Workspace: architecture-layered-workspace.md
       - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
