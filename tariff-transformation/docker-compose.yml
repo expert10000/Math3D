@@ -1,0 +1,116 @@
+services:
+  db:
+    image: postgres:16
+    container_name: tariff_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tariff_net
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: tariff_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tariff_net
+
+  minio:
+    image: minio/minio:latest
+    container_name: tariff_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - tariff_net
+
+  api:
+    build:
+      context: ./api
+    container_name: tariff_api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+      - ./data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - tariff_net
+
+  etl:
+    build:
+      context: ./etl
+    container_name: tariff_etl
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATA_INCOMING_DIR: /data/incoming
+      DATA_PROCESSED_DIR: /data/processed
+      DATA_REJECTED_DIR: /data/rejected
+      DATA_GENERATED_DIR: /data/generated
+    volumes:
+      - ./etl:/app
+      - ./data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - tariff_net
+    command: ["python", "app/ingest.py"]
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: tariff_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - tariff_net
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  tariff_net:
+    driver: bridge
