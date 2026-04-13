@@ -103,6 +103,37 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
       [data-testid="weierstrass-preset-grid"] {
         scrollbar-width: none !important;
       }
+      [data-testid="surface-preset-grid"],
+      [data-testid="param-preset-grid"],
+      [data-testid="weierstrass-preset-grid"] {
+        font-family: "Segoe UI", Tahoma, Arial, sans-serif !important;
+      }
+      [data-testid="surface-preset-grid"] .gallery-scan-card-title,
+      [data-testid="param-preset-grid"] .gallery-scan-card-title,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-title {
+        line-height: 16px !important;
+      }
+      [data-testid="surface-preset-grid"] .gallery-scan-card-summary,
+      [data-testid="param-preset-grid"] .gallery-scan-card-summary,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-summary {
+        line-height: 13px !important;
+      }
+      [data-testid="surface-preset-grid"] .gallery-scan-card-formula,
+      [data-testid="param-preset-grid"] .gallery-scan-card-formula,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-formula {
+        line-height: 12px !important;
+      }
+      [data-testid="surface-preset-grid"] .gallery-scan-card-chip,
+      [data-testid="surface-preset-grid"] .gallery-scan-card-cta,
+      [data-testid="surface-preset-grid"] .gallery-scan-card-info-pill,
+      [data-testid="param-preset-grid"] .gallery-scan-card-chip,
+      [data-testid="param-preset-grid"] .gallery-scan-card-cta,
+      [data-testid="param-preset-grid"] .gallery-scan-card-info-pill,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-chip,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-cta,
+      [data-testid="weierstrass-preset-grid"] .gallery-scan-card-info-pill {
+        line-height: 11px !important;
+      }
       [data-testid="geometry-gallery"]::-webkit-scrollbar,
       [data-testid="surface-preset-grid"]::-webkit-scrollbar,
       [data-testid="param-preset-grid"]::-webkit-scrollbar,
