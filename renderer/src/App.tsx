@@ -4191,7 +4191,7 @@ const WORKBOOK_PARAM_CATALOG: WorkbookParamDef[] = [
   { id: "implicitDomainSize", label: "Implicit domain size", kind: "number", min: 0.5, max: 6, step: 0.1, defaultValue: 2.2 },
   { id: "wireframe", label: "Wireframe", kind: "toggle", defaultValue: false },
   { id: "contours", label: "Contours", kind: "toggle", defaultValue: false },
-  { id: "chartGrid", label: "Chart grid", kind: "toggle", defaultValue: false },
+  { id: "chartGrid", label: "Surface chart grid", kind: "toggle", defaultValue: false },
   { id: "probe", label: "Probe", kind: "toggle", defaultValue: false },
   {
     id: "colorMode",
@@ -8587,6 +8587,28 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const chartGridCountU = chartGridDensity;
   const chartGridCountV = chartGridDensity;
   const [showPlanes, setShowPlanes] = useState(false);
+  const setSurfaceChartGridVisible = useCallback((visible: boolean) => {
+    setShowChartGrid(visible);
+    if (visible) setShowPlanes(false);
+  }, []);
+  const setCoordinatePlanesVisible = useCallback((visible: boolean) => {
+    setShowPlanes(visible);
+    if (visible) setShowChartGrid(false);
+  }, []);
+  const toggleSurfaceChartGrid = useCallback(() => {
+    setShowChartGrid((prev) => {
+      const next = !prev;
+      if (next) setShowPlanes(false);
+      return next;
+    });
+  }, []);
+  const toggleCoordinatePlanes = useCallback(() => {
+    setShowPlanes((prev) => {
+      const next = !prev;
+      if (next) setShowChartGrid(false);
+      return next;
+    });
+  }, []);
   const [showPrincipalProjections, setShowPrincipalProjections] = useState(false);
   const [principalProjectionXY, setPrincipalProjectionXY] = useState(true);
   const [principalProjectionXZ, setPrincipalProjectionXZ] = useState(true);
@@ -9258,14 +9280,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       applySurfaceViewportPreset("analysis");
     }
   }, [applySurfaceViewportPreset, datasetKind, displayMode, mode]);
-
-  useEffect(() => {
-    if (mode !== "surfaces" || datasetKind !== "surface") return;
-    if (surfaceViewportPreset === "debug") return;
-    if (!showChartGrid || !showPlanes) return;
-    if (surfaceViewportPreset === "analysis") setShowChartGrid(false);
-    else setShowPlanes(false);
-  }, [datasetKind, mode, showChartGrid, showPlanes, surfaceViewportPreset]);
 
   useEffect(() => {
     const shouldAutoReframeMesh =
@@ -17395,16 +17409,15 @@ case "mobius":
         showProbeNormal: true,
         showProbeTangentPlane: true,
         showProbeTangents: true,
+        showChartGrid: true,
+        showPlanes: false,
       };
-      let summary = "Chart grid + probe enabled.";
+      let summary = "Surface chart grid + probe enabled.";
       if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
-        patch.showChartGrid = true;
-        summary = "Chart grid (iso-u/iso-v) + probe enabled.";
+        summary = "Surface chart grid (iso-u/iso-v) + probe enabled.";
       } else if (surfaceViewerKind === "graph") {
-        patch.showChartGrid = true;
-        summary = "Chart grid (iso-x/iso-y) + probe enabled.";
+        summary = "Surface chart grid (iso-x/iso-y) + probe enabled.";
       } else {
-        patch.showChartGrid = true;
         if (surfaceViewerKind === "implicit") {
           patch.showContours = true;
           summary = "Local chart patch + contours + probe enabled.";
@@ -19744,11 +19757,11 @@ case "mobius":
           return;
         case "insert:add-clipping-plane":
           setMode("surfaces");
-          setShowPlanes(true);
+          setCoordinatePlanesVisible(true);
           return;
         case "insert:add-chart-grid":
           setMode("surfaces");
-          setShowChartGrid(true);
+          setSurfaceChartGridVisible(true);
           return;
         case "insert:add-point-curve-vector":
           setMode("surfaces");
@@ -19854,8 +19867,8 @@ case "mobius":
       setMode,
       setRightWidth,
       setScreenshotStatus,
-      setShowChartGrid,
-      setShowPlanes,
+      setSurfaceChartGridVisible,
+      setCoordinatePlanesVisible,
       setSurfaceViewerKind,
       setVolumeContourEnabled,
       setVolumeViewMode,
@@ -20128,7 +20141,7 @@ case "mobius":
       });
       addRaw({
         id: "derived:auto:chart-grid",
-        name: "Chart grid",
+        name: "Surface chart grid",
         type: "derived/chart-grid",
         sourceDefinition: `Chart density ${chartGridDensity}`,
         displayState: showChartGrid ? "visible" : "hidden",
@@ -20621,10 +20634,10 @@ case "mobius":
           setShowWireframe((v) => !v);
           return;
         case "derived:auto:chart-grid":
-          setShowChartGrid((v) => !v);
+          toggleSurfaceChartGrid();
           return;
         case "derived:auto:coordinate-planes":
-          setShowPlanes((v) => !v);
+          toggleCoordinatePlanes();
           return;
         case "derived:auto:bounding-box":
           setShowBoundingBox((v) => !v);
@@ -20700,6 +20713,8 @@ case "mobius":
       geodesicPathEnabled,
       geodesicHeatEnabled,
       geodesicDiskEnabled,
+      toggleSurfaceChartGrid,
+      toggleCoordinatePlanes,
     ]
   );
   const handleDeleteUnifiedNode = useCallback(
@@ -20901,10 +20916,10 @@ case "mobius":
       }
       if (actionId === "chartGrid") {
         if (!unifiedCanSurfaceOps) return;
-        setShowChartGrid(true);
+        setSurfaceChartGridVisible(true);
         addUnifiedDerivedNode({
           parentId,
-          name: "Chart grid",
+          name: "Surface chart grid",
           type: "derived/chart-grid",
           sourceDefinition: "Computed chart grid overlay.",
           displayState: "visible",
@@ -20965,7 +20980,7 @@ case "mobius":
           return;
         }
         if (!unifiedCanSurfaceOps) return;
-        setShowPlanes(true);
+        setCoordinatePlanesVisible(true);
         addUnifiedDerivedNode({
           parentId,
           name: "Surface section",
@@ -20995,6 +21010,8 @@ case "mobius":
       unifiedCanNormals,
       unifiedMeshReady,
       handleRecomputeSurfaceMeshNormals,
+      setSurfaceChartGridVisible,
+      setCoordinatePlanesVisible,
       surfaceViewerKind,
       unifiedCanExport,
       setVolumeViewMode,
@@ -21031,7 +21048,7 @@ case "mobius":
       },
       {
         id: "chartGrid",
-        label: "Compute chart grid",
+        label: "Compute surface chart grid",
         disabled: !unifiedCanSurfaceOps,
         onRun: () => runUnifiedPipelineAction("chartGrid"),
       },
@@ -22303,7 +22320,7 @@ case "mobius":
                 showWireframe={showWireframe}
                 onToggleWireframe={() => setShowWireframe((w) => !w)}
                 showChartGrid={showChartGrid}
-                onToggleChartGrid={() => setShowChartGrid((v) => !v)}
+                onToggleChartGrid={toggleSurfaceChartGrid}
                 chartGridDensity={chartGridDensity}
                 onChangeChartGridDensity={setChartGridDensity}
                 chartMode={chartMode}
@@ -22312,7 +22329,7 @@ case "mobius":
                 onToggleChartCoordinateReadout={() => setChartCoordinateReadoutEnabled((v) => !v)}
                 chartCoordinateReadout={chartCoordinateReadout}
                 showPlanes={showPlanes}
-                onTogglePlanes={() => setShowPlanes((p) => !p)}
+                onTogglePlanes={toggleCoordinatePlanes}
                 lightPreset={lightPreset}
                 onChangeLightPreset={setLightPreset}
                 materialRoughness={materialRoughness}
@@ -23813,8 +23830,10 @@ case "mobius":
                   onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
                   showViewGizmo={showSurfaceViewGizmo}
                   onToggleViewGizmo={() => setShowSurfaceViewGizmo((v) => !v)}
+                  showChartGrid={showChartGrid}
+                  onToggleChartGrid={toggleSurfaceChartGrid}
                   showPlanes={showPlanes}
-                  onTogglePlanes={() => setShowPlanes((p) => !p)}
+                  onTogglePlanes={toggleCoordinatePlanes}
                   showPrincipalProjections={showPrincipalProjections}
                   onTogglePrincipalProjections={() => setShowPrincipalProjections((v) => !v)}
                   principalProjectionXY={principalProjectionXY}
@@ -24171,7 +24190,7 @@ case "mobius":
                               padding: "4px 10px",
                             }}
                           >
-                            {showChartGrid ? "Grid: chart" : showPlanes ? "Grid: planes" : "Grid: none"}
+                            {showChartGrid ? "Grid: surface chart" : showPlanes ? "Grid: planes" : "Grid: none"}
                           </span>
                         </div>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -25841,7 +25860,7 @@ case "mobius":
                       showWireframe={showWireframe}
                       onToggleWireframe={() => setShowWireframe((v) => !v)}
                       showPlanes={showPlanes}
-                      onTogglePlanes={() => setShowPlanes((v) => !v)}
+                      onTogglePlanes={toggleCoordinatePlanes}
                       showGaussMap={showGaussMap}
                       onToggleGaussMap={() => setShowGaussMap((v) => !v)}
                       showContours={showContours}
@@ -32024,7 +32043,28 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     derivedResult: "#7c3aed",
     referenceObject: "#6b7280",
   };
-  const renderRoleGlyph = (role: UnifiedSceneRole, color: string, fallback: string) => {
+  const renderRoleGlyph = (node: UnifiedObjectNode, role: UnifiedSceneRole, color: string, fallback: string) => {
+    const nodeId = node.id.toLowerCase();
+    if (nodeId.includes("chart-grid")) {
+      return (
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          <path
+            d="M3.5 6.2h13M3.5 10h13M3.5 13.8h13M6.2 3.5v13M10 3.5v13M13.8 3.5v13"
+            fill="none"
+            stroke={color}
+            strokeWidth="1.2"
+          />
+        </svg>
+      );
+    }
+    if (nodeId.includes("coordinate-planes")) {
+      return (
+        <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
+          <path d="M10 10L4 13.5M10 10L15.5 13.2M10 10V4.5" fill="none" stroke={color} strokeWidth="1.5" />
+          <circle cx="10" cy="10" r="1.2" fill={color} />
+        </svg>
+      );
+    }
     if (role === "primaryObject") {
       return (
         <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true">
@@ -32167,7 +32207,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 fontSize: 10,
               }}
             >
-              {renderRoleGlyph(role, roleBadgeColor[role], roleIcon)}
+              {renderRoleGlyph(node, role, roleBadgeColor[role], roleIcon)}
             </span>
             <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span
@@ -32737,7 +32777,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
     const id = selectedNode.id.toLowerCase();
     const type = selectedNode.type.toLowerCase();
     if (id.includes("wireframe")) return "wireframe overlay";
-    if (id.includes("chart-grid")) return "chart grid overlay";
+    if (id.includes("chart-grid")) return "surface chart grid overlay";
     if (id.includes("coordinate-planes")) return "coordinate planes overlay";
     if (id.includes("bounding-box")) return "bounding-box overlay";
     if (id.includes("curvature-field")) return "curvature shading";
@@ -33373,6 +33413,8 @@ type SurfacesViewPanelProps = {
   onToggleBoundingBox: () => void;
   showViewGizmo: boolean;
   onToggleViewGizmo: () => void;
+  showChartGrid: boolean;
+  onToggleChartGrid: () => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
   showPrincipalProjections: boolean;
@@ -33422,6 +33464,8 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onToggleBoundingBox,
   showViewGizmo,
   onToggleViewGizmo,
+  showChartGrid,
+  onToggleChartGrid,
   showPlanes,
   onTogglePlanes,
   showPrincipalProjections,
@@ -33570,9 +33614,16 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
         Show 3D gizmo
       </label>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
+        <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} />
+        Surface chart grid
+      </label>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
         <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
         Coordinate planes
       </label>
+      <div style={{ fontSize: 10, color: "#64748b", marginTop: 2, paddingLeft: 20 }}>
+        Surface chart grid and coordinate planes are exclusive.
+      </div>
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
         <input type="checkbox" checked={showPrincipalProjections} onChange={onTogglePrincipalProjections} />
         Principal-plane projections

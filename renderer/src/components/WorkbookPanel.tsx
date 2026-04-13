@@ -318,7 +318,7 @@ const DIFF_FIELDS: Array<{ key: keyof WorkbookViewSnapshot; label: string }> = [
   { key: "colorPalette", label: "Palette" },
   { key: "showWireframe", label: "Wireframe" },
   { key: "showContours", label: "Contours" },
-  { key: "showChartGrid", label: "Chart grid" },
+  { key: "showChartGrid", label: "Surface chart grid" },
   { key: "probeEnabled", label: "Probe" },
   { key: "showPrincipalDirections", label: "Principal dirs" },
   { key: "showPrincipalGlyphs", label: "Principal glyphs" },
