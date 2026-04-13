@@ -54,11 +54,38 @@ jobs:
           cache: pip
           cache-dependency-path: python/worker/requirements.freeze.txt
 
-      - name: Install npm dependencies (root)
-        run: npm ci
+      - name: Install npm dependencies (root + renderer, retry)
+        shell: pwsh
+        run: |
+          function Invoke-NpmWithRetry {
+            param(
+              [Parameter(Mandatory = $true)][string]$Label,
+              [Parameter(Mandatory = $true)][scriptblock]$Command,
+              [Parameter(Mandatory = $true)][string]$CleanupPath,
+              [int]$MaxAttempts = 3
+            )
 
-      - name: Install npm dependencies (renderer)
-        run: npm --prefix renderer install
+            for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+              Write-Host "[$Label] attempt $attempt/$MaxAttempts"
+              & $Command
+              if ($LASTEXITCODE -eq 0) {
+                return
+              }
+
+              if ($attempt -eq $MaxAttempts) {
+                throw "[$Label] failed after $MaxAttempts attempts (exit $LASTEXITCODE)."
+              }
+
+              Write-Warning "[$Label] failed with exit $LASTEXITCODE. Cleaning up and retrying..."
+              if (Test-Path $CleanupPath) {
+                Remove-Item -Recurse -Force $CleanupPath -ErrorAction SilentlyContinue
+              }
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+
+          Invoke-NpmWithRetry -Label "root npm ci" -Command { npm ci } -CleanupPath "node_modules"
+          Invoke-NpmWithRetry -Label "renderer npm install" -Command { npm --prefix renderer install } -CleanupPath "renderer/node_modules"
 
       - name: Run renderer unit tests
         run: npm --prefix renderer run test
