@@ -64,6 +64,20 @@ Environment variable notes:
   - desktop local `auto` -> Python-script backend
   - browser local proxy `auto` -> prefer local `worker.exe`, fallback to Python-script backend
 
+Python dev environment prep (Windows + Conda):
+```powershell
+conda create -n math3d-cgal python=3.11 -y
+conda activate math3d-cgal
+python -m pip install --upgrade pip
+python -m pip install numpy scipy sympy vtk pyinstaller
+python -m pip install pygalmesh
+$env:MATH3D_PYTHON = (Get-Command python).Source
+```
+
+Notes:
+- `pyinstaller` is needed when building `worker.exe` (`npm run build:python-worker`).
+- `pygalmesh` is optional for many flows; if unavailable, `mesh.generate` may be unavailable while preview/VTK workflows still work.
+
 ### Desktop app (Electron)
 
 ```bash
