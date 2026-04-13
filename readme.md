@@ -51,6 +51,19 @@ Worker setup details:
   - Python backend: install Python deps and use `MATH3D_WORKER_MODE=python` (or `auto`)
 - Browser + Docker (`docker compose -f docker-compose.web.yml up --build`): container already provides Python backend; host machine does not need local worker/Python.
 
+How `worker.exe` is created:
+- Build command: `npm run build:python-worker` (runs `python python/worker/freeze.py` via PyInstaller).
+- Output: `build/python-worker-dist/worker.exe`.
+- Optional smoke verification: `npm run build:python-worker:smoke`.
+- Installer packaging (`npm run dist`) already builds and embeds this artifact into `resources/python-worker/worker.exe`.
+
+Environment variable notes:
+- `MATH3D_PYTHON` affects runtime only for the Python-script backend.
+- `MATH3D_PYTHON` does not control `npm run build:python-worker`; that build uses `python` from the active shell/PATH.
+- Resolution defaults differ by runtime:
+  - desktop local `auto` -> Python-script backend
+  - browser local proxy `auto` -> prefer local `worker.exe`, fallback to Python-script backend
+
 ### Desktop app (Electron)
 
 ```bash
