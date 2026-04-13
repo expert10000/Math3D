@@ -15,19 +15,23 @@ npm install
 
 ## Run modes (quick guide)
 
-| Mode | Where it runs | Worker install needed on host? | When to use |
+| Mode | Where it runs | Worker/Python setup needed on host? | When to use |
 | --- | --- | --- | --- |
-| Desktop (Electron) | Local desktop app | No separate worker install for packaged app | Best for full desktop usage; packaged installers are Windows (`.exe`) via NSIS |
-| Browser (local) | Your local browser + local Node proxy | Yes, for full CGAL/VTK features | Fast local web development and testing |
-| Browser + Docker | Browser UI, backend in container | No | Self-contained web runtime without local Python/worker setup |
+| Desktop (installer, Windows) | Installed desktop app | No. Worker is embedded in installer build (`resources/python-worker/worker.exe`) | End-user desktop usage without local Python setup |
+| Desktop (local source run) | Electron launched from repo | Yes by default for CGAL/VTK: Python + worker deps. Optional: use local `worker.exe` instead | Desktop development from source |
+| Browser (local) | Your local browser + local Node proxy | Yes for CGAL/VTK: provide one backend (`worker.exe` or Python + deps) | Fast local web development and testing |
+| Browser + Docker | Browser UI on host, backend in container | No on host. Backend is inside Docker image (Python venv + deps) | Self-contained, reproducible web runtime |
 
-Browser mode worker requirement:
+Worker setup details:
 
-- Browser mode uses `/api/worker` for CGAL/VTK operations.
-- For local (non-Docker) browser mode, install one backend option:
-  - bundled worker executable: `npm run build:python-worker` and `MATH3D_WORKER_MODE=exe`
-  - Python backend: install Python deps and use `MATH3D_WORKER_MODE=python` (or default `auto`)
-- Docker browser mode already includes backend dependencies in the container.
+- Desktop installer (`npm run dist` output): bundled `worker.exe` is included, so no separate Python/worker install on user machine.
+- Desktop local source run (`npm run build` / `npm run dev`):
+  - default (`MATH3D_WORKER_MODE=auto`): uses Python script backend in dev, so install Python deps (`numpy scipy sympy pygalmesh vtk`)
+  - optional exe path: `npm run build:python-worker` then set `MATH3D_WORKER_MODE=exe`
+- Browser local (`npm run dev:web` or `npm run preview:web`): `/api/worker` proxy needs one local backend:
+  - exe backend: `npm run build:python-worker` and set `MATH3D_WORKER_MODE=exe`
+  - Python backend: install Python deps and use `MATH3D_WORKER_MODE=python` (or `auto`)
+- Browser + Docker (`docker compose -f docker-compose.web.yml up --build`): container already provides Python backend; host machine does not need local worker/Python.
 
 ## Desktop app
 
