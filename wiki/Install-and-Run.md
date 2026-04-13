@@ -13,6 +13,13 @@ cd Math3D
 npm install
 ```
 
+These commands only clone the repo and install Node dependencies. They do not start the app.
+
+Quick start after install (pick one):
+- Desktop from source: `npm run build` (or `npm run dev`)
+- Browser local: `npm run dev:web`
+- Browser + Docker: `docker compose -f docker-compose.web.yml up --build`
+
 ## Run modes (quick guide)
 
 | Mode | Where it runs | Worker/Python setup needed on host? | When to use |
