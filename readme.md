@@ -25,6 +25,21 @@ npm install
 
 ## Run
 
+### Run modes (quick guide)
+
+| Mode | Where it runs | Worker install needed on host? | When to use |
+| --- | --- | --- | --- |
+| Desktop (Electron) | Local desktop app | No separate worker install for packaged app | Best for full desktop usage; packaged installers are Windows (`.exe`) via NSIS |
+| Browser (local) | Your local browser + local Node proxy | Yes, for full CGAL/VTK features | Fast local web development and testing |
+| Browser + Docker | Browser UI, backend in container | No | Self-contained web runtime without local Python/worker setup |
+
+Browser mode worker requirement:
+- Browser mode uses `/api/worker` for CGAL/VTK operations.
+- For local (non-Docker) browser mode, install one backend option:
+  - bundled worker executable: `npm run build:python-worker` and `MATH3D_WORKER_MODE=exe`
+  - Python backend: install Python deps and use `MATH3D_WORKER_MODE=python` (or default `auto`)
+- Docker browser mode already includes backend dependencies in the container.
+
 ### Desktop app (Electron)
 
 ```bash
@@ -37,6 +52,8 @@ For packaged installers:
 ```bash
 npm run dist
 ```
+
+Current packaged installer target is Windows (NSIS `.exe`).
 
 ### Browser app (web)
 

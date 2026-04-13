@@ -8,6 +8,7 @@ theme:
   name: mkdocs
 nav:
   - Home: index.md
+  - Install and Run Modes: install-and-run-modes.md
   - Repository Layout: repository-layout.md
   - API Reference: api-reference.md
   - Algorithms: algorithms.md

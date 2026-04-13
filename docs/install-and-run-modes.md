@@ -1,4 +1,4 @@
-# Install and Run
+# Install and Run Modes
 
 ## Requirements
 
@@ -22,6 +22,7 @@ npm install
 | Browser + Docker | Browser UI, backend in container | No | Self-contained web runtime without local Python/worker setup |
 
 Browser mode worker requirement:
+
 - Browser mode uses `/api/worker` for CGAL/VTK operations.
 - For local (non-Docker) browser mode, install one backend option:
   - bundled worker executable: `npm run build:python-worker` and `MATH3D_WORKER_MODE=exe`
@@ -43,6 +44,8 @@ npm run dist
 
 ## Browser app
 
+Development:
+
 ```bash
 npm run dev:web
 ```
@@ -61,3 +64,8 @@ Static files are written to `apps/web/dist/`.
 ```bash
 docker compose -f docker-compose.web.yml up --build
 ```
+
+Open:
+
+- App: `http://localhost:4173`
+- Worker diagnostics: `http://localhost:8787/api/worker/diagnostics`
