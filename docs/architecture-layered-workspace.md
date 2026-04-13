@@ -1,5 +1,10 @@
 # Layered Workspace Architecture
 
+Companion architecture docs:
+
+- Runtime process/IPC/worker view: `runtime-architecture.md`
+- CGAL/VTK/three.js compute pipeline: `vtk-cgal-threejs-pipeline.md`
+
 ## 1. Architecture: Split Into Clear Layers
 
 The long-term target is to make Math3D behave like one platform with multiple runtimes, not one Electron-only app.  

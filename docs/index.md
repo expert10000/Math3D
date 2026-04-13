@@ -5,6 +5,8 @@ This site combines:
 - Project guides and operational docs (MkDocs content).
 - Full API reference generated from TypeScript sources (TypeDoc output).
 - Architecture docs for cross-runtime workspace planning.
+- Runtime architecture overview: `runtime-architecture.md` (Electron main thread, React renderer, Python worker with CGAL/VTK).
+- Repository folder map: `repository-layout.md`.
 
 ## Build locally
 

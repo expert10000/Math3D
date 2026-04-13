@@ -8,9 +8,11 @@ theme:
   name: mkdocs
 nav:
   - Home: index.md
+  - Repository Layout: repository-layout.md
   - API Reference: api-reference.md
   - Algorithms: algorithms.md
   - Architecture:
+      - Runtime Architecture (Electron + React + Python): runtime-architecture.md
       - Layered Workspace: architecture-layered-workspace.md
       - VTK + CGAL + three.js Pipeline: vtk-cgal-threejs-pipeline.md
   - Guides:

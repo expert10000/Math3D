@@ -13,6 +13,7 @@ Documentation:
 - GitHub Pages: https://expert10000.github.io/Math3D/
 - GitHub Wiki: https://github.com/expert10000/Math3D/wiki
 - Developer notes and change log: [dev.md](dev.md)
+- Repository folder guide: [docs/repository-layout.md](docs/repository-layout.md)
 
 ## Install
 
