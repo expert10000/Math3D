@@ -146,6 +146,184 @@ When running in browser mode, the same renderer APIs are bridged to HTTP endpoin
   - `renderer/src/services/webWorkerProxyBridge.ts:132` (`/vtk/clean`)
   - `renderer/src/services/webWorkerProxyBridge.ts:153` (`/vtk/preview`)
 
+## Deep Rendering Pipeline (Renderer Internals)
+
+The previous sections explain backend and runtime routing. This section describes the in-renderer frame pipeline in detail.
+
+### 1. UI state -> viewer props -> renderer mode
+
+`App.tsx` selects and mounts either `SurfaceViewer` or `ParamSurfaceViewer`, passing expression/domain/material/overlay/selection props.
+
+- Surface viewer mount:
+  - `renderer/src/App.tsx:24412`
+  - `renderer/src/App.tsx:24419`
+- Param viewer mount:
+  - `renderer/src/App.tsx:24264`
+- Shared sample callback wiring:
+  - `renderer/src/App.tsx:24361`
+  - `renderer/src/App.tsx:24504`
+
+In geometry mode, `GeometryViewer` converts scene objects to `surface_mesh` overrides and reuses `SurfaceViewer`, so render/picking/gizmo behavior stays consistent.
+
+- `renderer/src/components/GeometryViewer.tsx:138`
+- `renderer/src/components/GeometryViewer.tsx:215`
+- `renderer/src/components/GeometryViewer.tsx:229`
+- `renderer/src/components/GeometryViewer.tsx:273`
+- `renderer/src/geometry/render.ts:145`
+
+### 2. Viewer bootstrap (WebGL context + scene graph)
+
+Each viewer’s main `useEffect` performs full renderer bootstrap:
+
+1. Create `WebGLRenderer`.
+2. Apply pixel-ratio policy from quality mode and heavy-surface heuristics.
+3. Create `Scene`, camera, orbit controls, and (where needed) transform controls.
+4. Configure lighting and static helper groups.
+
+Surface viewer anchors:
+
+- `renderer/src/components/SurfaceViewer.tsx:3013` (`new THREE.WebGLRenderer`)
+- `renderer/src/components/SurfaceViewer.tsx:3029` (`setPixelRatio`)
+- `renderer/src/components/SurfaceViewer.tsx:3031` (`setClearColor`)
+- `renderer/src/components/SurfaceViewer.tsx:3046` (`OrbitControls`)
+- `renderer/src/components/SurfaceViewer.tsx:3051` (`TransformControls`)
+
+Param viewer anchors:
+
+- `renderer/src/components/ParamSurfaceViewer.tsx:2479`
+- `renderer/src/components/ParamSurfaceViewer.tsx:2495`
+- `renderer/src/components/ParamSurfaceViewer.tsx:2497`
+- `renderer/src/components/ParamSurfaceViewer.tsx:2505`
+
+Volume viewer anchors:
+
+- `renderer/src/components/VolumeViewer.tsx:362`
+- `renderer/src/components/VolumeViewer.tsx:367`
+- `renderer/src/components/VolumeViewer.tsx:398`
+
+### 3. Geometry/material build and attach
+
+After bootstrap, viewers construct scene objects from source-specific data:
+
+- `SurfaceViewer` dispatches by `surfaceId`, including implicit/graph presets and mesh overrides.
+- `surface_mesh` path builds meshes from `SurfaceMeshOverride` typed arrays, preserves ids in `userData.__surfaceMeshOverrideId`, and applies per-object transform/style.
+- The built object (mesh or group) is attached and stored in `surfaceObjRef`.
+
+Anchors:
+
+- `renderer/src/components/SurfaceViewer.tsx:3299` (`makeSurfaceMeshOverrideMesh`)
+- `renderer/src/components/SurfaceViewer.tsx:3719` (`surfaceObjRef.current = surfaceObj`)
+
+### 4. Sampling bridge for analysis features
+
+Immediately after geometry creation/update, viewers build a `SurfaceSampleSet` from render geometry. This sample set is the common bridge to Gauss map, selection, geodesic picks, stats, and probe tools.
+
+- Surface viewer sampling:
+  - `renderer/src/components/SurfaceViewer.tsx:3752`
+  - `renderer/src/components/SurfaceViewer.tsx:3830`
+- Mesh incremental update sampling refresh:
+  - `renderer/src/components/SurfaceViewer.tsx:5063`
+  - `renderer/src/components/SurfaceViewer.tsx:5090`
+- Param viewer sampling:
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3192`
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3265`
+
+### 5. Interaction pipeline (pointer -> raycast -> domain callback)
+
+Interaction is resolved in the render layer:
+
+1. Pointer event normalizes screen coordinates.
+2. `Raycaster` intersects active mesh/group.
+3. Hit normal/UV/barycentric info is computed.
+4. Mode-specific callbacks emit semantic events (probe, select, inspect, geodesic, drag, gizmo transforms).
+
+Anchors:
+
+- Surface viewer raycast and pointer modes:
+  - `renderer/src/components/SurfaceViewer.tsx:4068`
+- Param viewer raycast and pointer modes:
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3450`
+- Surface gizmo event bridge:
+  - `renderer/src/components/SurfaceViewer.tsx:3196`
+  - `renderer/src/components/SurfaceViewer.tsx:3197`
+
+### 6. Frame loop and draw order
+
+Each viewer runs a continuous RAF loop:
+
+- Update controls (and per-frame dirty work such as param slice refresh).
+- Render `scene + camera`.
+- Optional skip path in surface viewer via `suspendRenderingRef`.
+
+Anchors:
+
+- Surface viewer:
+  - `renderer/src/components/SurfaceViewer.tsx:4469`
+  - `renderer/src/components/SurfaceViewer.tsx:4470`
+  - `renderer/src/components/SurfaceViewer.tsx:4473`
+- Param viewer:
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3691`
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3697`
+- Volume viewer:
+  - `renderer/src/components/VolumeViewer.tsx:459`
+  - `renderer/src/components/VolumeViewer.tsx:461`
+
+### 7. Incremental mesh updates vs full scene rebuild
+
+`SurfaceViewer` has a dedicated incremental update effect for `surface_mesh` overrides:
+
+- Rebuild object graph only if override identity/topology structure changed.
+- Otherwise patch buffer attributes in place (`position`/`index`/`normal`/`uv`), recompute bounds, and update material state.
+- Recompute sample sets and bounding helpers after patching.
+
+Anchors:
+
+- `renderer/src/components/SurfaceViewer.tsx:4841`
+- `renderer/src/components/SurfaceViewer.tsx:4907`
+- `renderer/src/components/SurfaceViewer.tsx:5063`
+
+### 8. Resize, reframe, and quality re-evaluation
+
+All viewers handle resize with `ResizeObserver` + window resize listeners, and re-apply:
+
+- renderer size
+- camera aspect/projection
+- pixel ratio policy
+- optional reframe-to-fit logic using current bounds/radius
+
+Anchors:
+
+- Surface viewer:
+  - `renderer/src/components/SurfaceViewer.tsx:4408`
+  - `renderer/src/components/SurfaceViewer.tsx:4461`
+- Param viewer:
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3709`
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3762`
+- Volume viewer:
+  - `renderer/src/components/VolumeViewer.tsx:453`
+
+### 9. Deterministic teardown and GPU cleanup
+
+On effect cleanup/unmount, viewers:
+
+- remove event listeners
+- detach/dispose controls
+- traverse and dispose mesh geometry/material resources
+- dispose renderer and remove canvas
+- clear refs and emit `onSampleSet(null)` where applicable
+
+Anchors:
+
+- Surface viewer:
+  - `renderer/src/components/SurfaceViewer.tsx:4498`
+  - `renderer/src/components/SurfaceViewer.tsx:4624`
+  - `renderer/src/components/SurfaceViewer.tsx:4630`
+- Param viewer:
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3852`
+  - `renderer/src/components/ParamSurfaceViewer.tsx:3859`
+- Volume viewer:
+  - `renderer/src/components/VolumeViewer.tsx:470`
+
 ## Installation and Runtime Scenarios
 
 Math3D supports desktop and browser runtimes with shared React/TypeScript renderer logic.
