@@ -324,6 +324,20 @@ Anchors:
 - Volume viewer:
   - `renderer/src/components/VolumeViewer.tsx:470`
 
+### Summary Table
+
+| Step | What happens | Key anchors |
+|---|---|---|
+| 1. UI -> props -> mode | `App.tsx` mounts `SurfaceViewer` or `ParamSurfaceViewer`; geometry mode reuses `SurfaceViewer` via overrides. | `renderer/src/App.tsx:24412`, `renderer/src/App.tsx:24264`, `renderer/src/components/GeometryViewer.tsx:215`, `renderer/src/geometry/render.ts:145` |
+| 2. Bootstrap | Viewer `useEffect` creates renderer, sets pixel ratio/clear color, then creates camera + controls (and gizmo where used). | `renderer/src/components/SurfaceViewer.tsx:3013`, `renderer/src/components/SurfaceViewer.tsx:3051`, `renderer/src/components/ParamSurfaceViewer.tsx:2479`, `renderer/src/components/VolumeViewer.tsx:398` |
+| 3. Build + attach objects | Surface-specific geometry/material path runs; resulting object is attached to scene and tracked via refs. | `renderer/src/components/SurfaceViewer.tsx:3299`, `renderer/src/components/SurfaceViewer.tsx:3719` |
+| 4. Sampling bridge | Geometry is sampled into `SurfaceSampleSet` to feed Gauss map, selection, geodesic tools, and stats. | `renderer/src/components/SurfaceViewer.tsx:3752`, `renderer/src/components/SurfaceViewer.tsx:5063`, `renderer/src/components/ParamSurfaceViewer.tsx:3192` |
+| 5. Interaction resolve | Pointer events -> raycast -> hit normal/UV/barycentric -> mode callback (probe/select/inspect/geodesic/drag). | `renderer/src/components/SurfaceViewer.tsx:4068`, `renderer/src/components/ParamSurfaceViewer.tsx:3450`, `renderer/src/components/SurfaceViewer.tsx:3196` |
+| 6. Frame loop | RAF loop updates controls and renders scene/camera each frame; surface viewer can skip render when suspended. | `renderer/src/components/SurfaceViewer.tsx:4469`, `renderer/src/components/SurfaceViewer.tsx:4473`, `renderer/src/components/ParamSurfaceViewer.tsx:3697`, `renderer/src/components/VolumeViewer.tsx:461` |
+| 7. Incremental update path | For `surface_mesh`, viewer patches attributes/material in place when possible instead of full rebuild. | `renderer/src/components/SurfaceViewer.tsx:4841`, `renderer/src/components/SurfaceViewer.tsx:4907`, `renderer/src/components/SurfaceViewer.tsx:5063` |
+| 8. Resize + reframe | `ResizeObserver` and window resize handlers re-apply size/aspect/pixel ratio and optional fit-to-bounds. | `renderer/src/components/SurfaceViewer.tsx:4461`, `renderer/src/components/ParamSurfaceViewer.tsx:3762`, `renderer/src/components/VolumeViewer.tsx:453` |
+| 9. Cleanup | On unmount: remove listeners, detach/dispose controls, dispose geometry/materials/renderer, clear refs/sample callbacks. | `renderer/src/components/SurfaceViewer.tsx:4624`, `renderer/src/components/ParamSurfaceViewer.tsx:3852`, `renderer/src/components/VolumeViewer.tsx:470` |
+
 ## Installation and Runtime Scenarios
 
 Math3D supports desktop and browser runtimes with shared React/TypeScript renderer logic.
