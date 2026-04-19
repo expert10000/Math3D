@@ -13080,6 +13080,8 @@ case "mobius":
       if (slot === "B") setCompareUseSnapshotB(true);
       if (snapshot.datasetKind === "volume") {
         setDatasetKind("volume");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
       } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
         setSurfaceViewerKind(snapshot.viewerKind);
         setDatasetKind("surface");
@@ -13213,6 +13215,8 @@ case "mobius":
       setVolumeIsoValue,
       setVolumeShowIsosurface,
       setVolumeShowStreamlines,
+      setSurfacesPanelState,
+      setSurfacesLeftTab,
       setCompareBlockId,
       setCompareUseSnapshotA,
       setCompareUseSnapshotB,
@@ -30496,6 +30500,24 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           <div style={bandTitleStyle}>Mesh workspace</div>
           <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
             Preset gallery is hidden in mesh view. Use Scene/Object tabs and the main-view Save options overlay.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={onEnterWorkMode}
+              style={{ padding: "4px 10px", fontSize: 11 }}
+            >
+              Show Scene/Object tabs
+            </button>
+          </div>
+        </div>
+      )}
+
+      {panelMode === "browse" && datasetKind === "volume" && (
+        <div style={bandStyle}>
+          <div style={bandTitleStyle}>Volume workspace</div>
+          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+            Volume presets and object controls live in Scene/Object tabs.
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
