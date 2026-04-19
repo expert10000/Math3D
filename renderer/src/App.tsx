@@ -6021,6 +6021,7 @@ const App: React.FC = () => {
         ? geometryDemoScene
         : geometryProblemScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
+  const [geometryShowPlanes, setGeometryShowPlanes] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const geometryStats = useMemo(() => {
@@ -23277,7 +23278,7 @@ case "mobius":
               </button>
             </div>
           ) : mode === "geometry" ? (
-            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 <input
                   type="checkbox"
@@ -23285,6 +23286,122 @@ case "mobius":
                   onChange={(e) => setGeometryWireframe(e.target.checked)}
                 />
                 Wireframe
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <input
+                  type="checkbox"
+                  checked={geometryShowPlanes}
+                  onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                />
+                Coordinates
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showXY}
+                  disabled={!geometryShowPlanes}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showXY: e.target.checked,
+                    }))
+                  }
+                />
+                XY
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showXZ}
+                  disabled={!geometryShowPlanes}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showXZ: e.target.checked,
+                    }))
+                  }
+                />
+                XZ
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showYZ}
+                  disabled={!geometryShowPlanes}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showYZ: e.target.checked,
+                    }))
+                  }
+                />
+                YZ
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  opacity: geometryShowPlanes ? 1 : 0.6,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showGrid}
+                  disabled={!geometryShowPlanes}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showGrid: e.target.checked,
+                    }))
+                  }
+                />
+                Major
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  opacity: geometryShowPlanes && planeGridSettings.showGrid ? 1 : 0.6,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showMinorGrid}
+                  disabled={!geometryShowPlanes || !planeGridSettings.showGrid}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showMinorGrid: e.target.checked,
+                    }))
+                  }
+                />
+                Minor
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 12,
+                  opacity: geometryShowPlanes ? 1 : 0.6,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={planeGridSettings.showAxisLabels}
+                  disabled={!geometryShowPlanes}
+                  onChange={(e) =>
+                    setPlaneGridSettings((prev) => ({
+                      ...prev,
+                      showAxisLabels: e.target.checked,
+                    }))
+                  }
+                />
+                Axes
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 Opacity
@@ -28649,6 +28766,119 @@ case "mobius":
                       />
                       Wireframe
                     </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryShowPlanes}
+                        onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                      />
+                      Coordinate planes
+                    </label>
+                    {geometryShowPlanes && (
+                      <div
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 8,
+                          padding: "6px 8px",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 600 }}>Visible coordinate planes</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 18 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showXY}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showXY: e.target.checked,
+                                }))
+                              }
+                            />
+                            XY
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showXZ}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showXZ: e.target.checked,
+                                }))
+                              }
+                            />
+                            XZ
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showYZ}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showYZ: e.target.checked,
+                                }))
+                              }
+                            />
+                            YZ
+                          </label>
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>Grid and axis emphasis</div>
+                        <div style={{ display: "grid", gap: 4, paddingLeft: 18 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showGrid}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showGrid: e.target.checked,
+                                }))
+                              }
+                            />
+                            Major grid
+                          </label>
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 11,
+                              opacity: planeGridSettings.showGrid ? 1 : 0.6,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showMinorGrid}
+                              disabled={!planeGridSettings.showGrid}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showMinorGrid: e.target.checked,
+                                }))
+                              }
+                            />
+                            Minor grid
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={planeGridSettings.showAxisLabels}
+                              onChange={(e) =>
+                                setPlaneGridSettings((prev) => ({
+                                  ...prev,
+                                  showAxisLabels: e.target.checked,
+                                }))
+                              }
+                            />
+                            Distinctive axes (X/Y/Z labels)
+                          </label>
+                        </div>
+                      </div>
+                    )}
                     <label style={{ fontSize: 11 }}>
                       Opacity
                       <input
@@ -28744,6 +28974,8 @@ case "mobius":
                       : null
                   }
                   wireframe={geometryWireframe}
+                  showPlanes={geometryShowPlanes}
+                  planeGridSettings={planeGridSettings}
                   materialOpacity={geometryOpacity}
                   resetToken={geometryResetToken}
                   cameraOverride={

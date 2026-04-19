@@ -15,6 +15,7 @@ import type { PolylineSet } from "../scene/renderPrimitives";
 import { polygonNormalFromVertices } from "../geometry/polyhedra";
 import { normalizeVec3, scaleVec3 } from "../geometry/vec";
 import type { SurfaceMeshData } from "../mesh/surfaceMesh";
+import type { ReferencePlaneGridSettings } from "./layeredReferenceGrid";
 
 export type GeometryViewerProps = {
   scene: GeometryScene;
@@ -35,6 +36,8 @@ export type GeometryViewerProps = {
   colorMode?: ColorMode;
   wireframe?: boolean;
   materialOpacity?: number;
+  showPlanes?: boolean;
+  planeGridSettings?: ReferencePlaneGridSettings;
   resetToken?: number;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
@@ -99,6 +102,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   colorMode = "solid",
   wireframe = false,
   materialOpacity = 0.85,
+  showPlanes = false,
+  planeGridSettings,
   resetToken,
   cameraOverride = null,
   cameraOverrideToken = 0,
@@ -247,6 +252,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       colorMode={colorMode}
       wireframe={wireframe}
       materialOpacity={materialOpacity}
+      showPlanes={showPlanes}
+      planeGridSettings={planeGridSettings}
       overlayPolylineGroups={overlayPolylineGroups}
       overlayPointSets={overlayPointSets}
       overlayMeshGroups={overlayMeshGroups}
