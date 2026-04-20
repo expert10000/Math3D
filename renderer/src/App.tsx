@@ -21949,55 +21949,71 @@ case "mobius":
     border: "1px solid #dbe4f0",
     borderRadius: 10,
     background: "#f8fbff",
-    padding: "6px 8px",
+    padding: "5px 8px",
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    columnGap: 16,
+    rowGap: 6,
     flexWrap: "wrap",
   };
   const topNavContextBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
     background: "#f8fbff",
-    padding: "6px 8px",
+    padding: "4px 7px",
     display: "flex",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     flexWrap: "wrap",
   };
   const topNavSegmentStyle: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
-    padding: 3,
+    gap: 3,
+    padding: 2,
     borderRadius: 999,
     border: "1px solid #d1d9e5",
     background: "#fff",
     flexWrap: "wrap",
   };
   const topNavButtonStyle = (active: boolean): React.CSSProperties => ({
-    padding: "5px 11px",
+    padding: "4px 9px",
     borderRadius: 999,
     border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
     background: active ? "#dbeafe" : "#fff",
     color: active ? "#0f2a4a" : "var(--text)",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: active ? 700 : 600,
     cursor: "pointer",
-    boxShadow: active ? "0 2px 8px rgba(10,102,194,0.18)" : "none",
+    boxShadow: active ? "0 2px 6px rgba(10,102,194,0.16)" : "none",
     whiteSpace: "nowrap",
   });
   const headerFamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
-    padding: "4px 10px",
+    padding: "3px 9px",
     borderRadius: 999,
     border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
     background: active ? (variant === "family" ? "#dbeafe" : "#f1f5f9") : "#fff",
     color: active ? "#0f2a4a" : "#1f2937",
     fontWeight: active ? 700 : 550,
-    fontSize: 11,
+    fontSize: 10,
     whiteSpace: "nowrap",
     boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
   });
+  const topNavBrandStyle: React.CSSProperties = {
+    ...styles.h1,
+    margin: 0,
+    fontWeight: 820,
+    letterSpacing: "0.06em",
+    paddingRight: 8,
+  };
+  const topNavContextLabelStyle: React.CSSProperties = {
+    fontSize: 10,
+    fontWeight: 550,
+    color: "#64748b",
+    letterSpacing: "0.01em",
+    padding: "0 2px",
+  };
 
   const formatViewportDebug = useCallback((label: string, snapshot: ViewportDebugSnapshot | null) => {
     if (!snapshot) return `${label}: (no data yet)`;
@@ -22603,7 +22619,7 @@ case "mobius":
             : styles.header
         }
       >
-        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 8, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
+        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 7, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
           {isSurfacePreviewMode ? (
             <div style={{ display: "grid", gap: 2 }}>
               <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
@@ -22614,8 +22630,8 @@ case "mobius":
           ) : (
             <>
               <div style={topNavBarStyle}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
-                  <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0, paddingRight: 16 }}>
+                  <h1 style={topNavBrandStyle}>MATH3D</h1>
                   <div style={topNavSegmentStyle}>
                     {sectionNavEntries.map((entry) => {
                       const active = entry.active;
@@ -22644,7 +22660,7 @@ case "mobius":
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "flex-end",
-                    gap: 8,
+                    gap: 6,
                     flexWrap: "wrap",
                     marginLeft: "auto",
                     minWidth: 0,
@@ -22667,7 +22683,10 @@ case "mobius":
                       );
                     })}
                   </div>
-                  <div ref={viewMenuRef} style={{ position: "relative" }}>
+                  <div
+                    ref={viewMenuRef}
+                    style={{ ...topNavSegmentStyle, position: "relative", flexWrap: "nowrap" }}
+                  >
                     <button
                       type="button"
                       onClick={() => setViewMenuOpen((v) => !v)}
@@ -22851,9 +22870,10 @@ case "mobius":
                           setSurfacesLayoutVariant("layout1");
                           setSurfacesPanelState("browse");
                         }}
+                        title="Layout 1"
                         style={topNavButtonStyle(surfacesLayoutVariant === "layout1")}
                       >
-                        Layout 1
+                        L1
                       </button>
                       <button
                         type="button"
@@ -22862,9 +22882,10 @@ case "mobius":
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
                         }}
+                        title="Layout 2"
                         style={topNavButtonStyle(surfacesLayoutVariant === "layout2")}
                       >
-                        Layout 2
+                        L2
                       </button>
                       <button
                         type="button"
@@ -22872,9 +22893,10 @@ case "mobius":
                           setSurfacesLayoutVariant("layout3");
                           setSurfacesPanelState("browse");
                         }}
+                        title="Layout 3"
                         style={topNavButtonStyle(surfacesLayoutVariant === "layout3")}
                       >
-                        Layout 3
+                        L3
                       </button>
                       <button
                         type="button"
@@ -22882,9 +22904,10 @@ case "mobius":
                           setSurfacesLayoutVariant("layout4");
                           setSurfacesPanelState("browse");
                         }}
+                        title="Layout 4"
                         style={topNavButtonStyle(surfacesLayoutVariant === "layout4")}
                       >
-                        Layout 4
+                        L4
                       </button>
                       {surfacesLayoutVariant === "layout3" && (
                         <button
@@ -22896,7 +22919,7 @@ case "mobius":
                           }}
                           style={topNavButtonStyle(false)}
                         >
-                          {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
+                          {surfacesPanelState === "browse" ? "Tabs" : "Gallery"}
                         </button>
                       )}
                     </div>
@@ -23012,7 +23035,7 @@ case "mobius":
                   </button>
                 </div>
               )}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.02em", padding: "0 2px" }}>
+              <div style={topNavContextLabelStyle}>
                 {headerContextLabel}
               </div>
             </>
