@@ -229,9 +229,9 @@ const openProceduralGeometry = async (page: Page): Promise<void> => {
 const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   await clickFirstVisibleButton(page, "Surfaces");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
-  const layout3Button = page.getByRole("button", { name: "Layout 3", exact: true });
+  const layout3Button = page.getByRole("button", { name: /^(Layout 3|L3)$/ });
   if ((await layout3Button.count()) > 0 && (await layout3Button.first().isVisible())) {
-    await clickFirstVisible(layout3Button, 'button "Layout 3"');
+    await clickFirstVisible(layout3Button, 'button "Layout 3/L3"');
   }
 };
 
@@ -241,15 +241,17 @@ const readToggleLabel = async (toggle: ReturnType<typeof getSurfacesLayout3ModeT
   (await toggle.innerText()).replace(/\s+/g, " ").trim().toLowerCase();
 
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
-  await setSurfacesLayout(page, "Layout 3");
+  await setSurfacesLayout(page, 3);
   await setSurfacesLayout3PanelMode(page, "browse");
   await expect(page.getByTestId("surface-family-explicit")).toBeVisible();
 };
 
-const setSurfacesLayout = async (page: Page, layoutLabel: "Layout 1" | "Layout 2" | "Layout 3"): Promise<void> => {
-  const buttons = page.getByRole("button", { name: layoutLabel, exact: true });
-  if ((await buttons.count()) === 0) return;
-  await clickFirstVisible(buttons, `button "${layoutLabel}"`);
+const setSurfacesLayout = async (page: Page, layout: 1 | 2 | 3): Promise<void> => {
+  const layoutLabel = `Layout ${layout}`;
+  const shortLabel = `L${layout}`;
+  const buttons = page.getByRole("button", { name: new RegExp(`^(${layoutLabel}|${shortLabel})$`) });
+  if ((await buttons.count()) === 0 || !(await buttons.first().isVisible())) return;
+  await clickFirstVisible(buttons, `button "${layoutLabel}/${shortLabel}"`);
   await settleRenderer(page);
 };
 
@@ -257,7 +259,7 @@ const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"):
   const toggle = getSurfacesLayout3ModeToggle(page);
   if ((await toggle.count()) === 0 || !(await toggle.isVisible())) return;
   const label = await readToggleLabel(toggle);
-  if (mode === "work" && label.includes("show scene/object tabs")) {
+  if (mode === "work" && (label.includes("show scene/object tabs") || label.includes("tabs"))) {
     await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
     await settleRenderer(page);
     return;
@@ -474,7 +476,7 @@ const captureSurfaceCards = async (
   const ids = applyCaptureLimit(await getIdsByTestIdPrefix(page, options.testIdPrefix, { visibleOnly: true }));
   for (const id of ids) {
     await ensureSurfacesGalleryMode(page);
-    await setSurfacesLayout(page, "Layout 3");
+    await setSurfacesLayout(page, 3);
     await setSurfacesLayout3PanelMode(page, "browse");
     const card = page.getByTestId(`${options.testIdPrefix}${id}`);
     if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
@@ -485,7 +487,7 @@ const captureSurfaceCards = async (
     const outPath = path.join(outputRoot, options.folder, `${id}.png`);
     await captureScene(page, outPath, resolveSurfaceCapturePolicy(id, options.family, options.subtype));
     await setSurfacesLayout3PanelMode(page, "browse");
-    await setSurfacesLayout(page, "Layout 3");
+    await setSurfacesLayout(page, 3);
     manifest.surfaces.push({
       id,
       family: options.family,

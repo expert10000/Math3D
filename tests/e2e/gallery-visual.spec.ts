@@ -58,7 +58,7 @@ const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"):
   const toggle = getSurfacesLayout3ModeToggle(page);
   if ((await toggle.count()) === 0 || !(await toggle.isVisible())) return;
   const label = await readToggleLabel(toggle);
-  if (mode === "work" && label.includes("show scene/object tabs")) {
+  if (mode === "work" && (label.includes("show scene/object tabs") || label.includes("tabs"))) {
     await clickFirstVisible(toggle, 'data-testid="surfaces-layout3-mode-toggle"');
     return;
   }
@@ -69,9 +69,9 @@ const setSurfacesLayout3PanelMode = async (page: Page, mode: "browse" | "work"):
 
 const ensureSurfacesGalleryMode = async (page: Page): Promise<void> => {
   await clickFirstVisibleButton(page, "Surfaces");
-  const layout3Buttons = page.getByRole("button", { name: "Layout 3", exact: true });
-  if ((await layout3Buttons.count()) > 0) {
-    await clickFirstVisibleButton(page, "Layout 3");
+  const layout3Buttons = page.getByRole("button", { name: /^(Layout 3|L3)$/ });
+  if ((await layout3Buttons.count()) > 0 && (await layout3Buttons.first().isVisible())) {
+    await clickFirstVisible(layout3Buttons, 'button "Layout 3/L3"');
   }
   await setSurfacesLayout3PanelMode(page, "browse");
   await expect(page.getByTestId("surface-family-explicit").first()).toBeVisible();
