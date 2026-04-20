@@ -10274,7 +10274,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const minRight = 240;
   const maxRight = 640;
   const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
-  const [surfacesLayout4ShowExtendedFamilies, setSurfacesLayout4ShowExtendedFamilies] = useState(false);
+  const [headerSurfaceFamilyMoreOpen, setHeaderSurfaceFamilyMoreOpen] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
@@ -21893,7 +21893,7 @@ case "mobius":
       : null;
   const headerContextLabel =
     mode === "surfaces"
-      ? `Surfaces -> ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` -> ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
+      ? `Surfaces / ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` / ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
       : `${activeSectionLabel} / ${activeDisplayLabel}`;
   const surfacesWorkSubtypeLabel =
     surfaceViewerKind === "graph"
@@ -21938,46 +21938,32 @@ case "mobius":
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
-  const layout4ParamSourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
-  const layout4IsSurface = datasetKind === "surface";
-  const layout4IsParamFormula = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "formula";
-  const layout4IsParamSpline = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "spline";
-  const layout4IsParamConstructed = layout4IsSurface && surfaceViewerKind === "param" && layout4ParamSourceKind === "constructed";
-  const layout4ShowExtendedFamilyButtons =
-    surfacesLayout4ShowExtendedFamilies ||
-    (layout4IsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
-  const layout4FamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
-    padding: "4px 10px",
-    borderRadius: 999,
-    border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
-    background: active ? (variant === "family" ? "#dbeafe" : "#f1f5f9") : "#fff",
-    color: active ? "#0f2a4a" : "#1f2937",
-    fontWeight: active ? 700 : 550,
-    fontSize: 11,
-    whiteSpace: "nowrap",
-    boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
-  });
-  const topNavGroupLabelStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
-    color: "#475569",
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-  };
-  const topNavBandStyle: React.CSSProperties = {
+  const headerParamSourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
+  const headerIsSurface = datasetKind === "surface";
+  const headerIsParamFormula = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "formula";
+  const headerIsParamSpline = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "spline";
+  const headerIsParamConstructed = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "constructed";
+  const headerShowExtendedFamilyButtons =
+    headerSurfaceFamilyMoreOpen || (headerIsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
+  const topNavBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
     background: "#f8fbff",
     padding: "6px 8px",
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     gap: 12,
     flexWrap: "wrap",
   };
-  const topNavGroupStyle: React.CSSProperties = {
-    display: "grid",
-    gap: 4,
-    minWidth: 140,
+  const topNavContextBarStyle: React.CSSProperties = {
+    border: "1px solid #dbe4f0",
+    borderRadius: 10,
+    background: "#f8fbff",
+    padding: "6px 8px",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
   };
   const topNavSegmentStyle: React.CSSProperties = {
     display: "inline-flex",
@@ -22000,6 +21986,17 @@ case "mobius":
     cursor: "pointer",
     boxShadow: active ? "0 2px 8px rgba(10,102,194,0.18)" : "none",
     whiteSpace: "nowrap",
+  });
+  const headerFamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
+    padding: "4px 10px",
+    borderRadius: 999,
+    border: "1px solid " + (active ? "#0754a3" : "#d1d5db"),
+    background: active ? (variant === "family" ? "#dbeafe" : "#f1f5f9") : "#fff",
+    color: active ? "#0f2a4a" : "#1f2937",
+    fontWeight: active ? 700 : 550,
+    fontSize: 11,
+    whiteSpace: "nowrap",
+    boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
   });
 
   const formatViewportDebug = useCallback((label: string, snapshot: ViewportDebugSnapshot | null) => {
@@ -22606,320 +22603,308 @@ case "mobius":
             : styles.header
         }
       >
-        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 12, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
+        <div style={{ display: "grid", gap: isSurfacePreviewMode ? 6 : 8, marginBottom: isSurfacePreviewMode ? 2 : 10 }}>
+          {isSurfacePreviewMode ? (
             <div style={{ display: "grid", gap: 2 }}>
               <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.04em" }}>
                 {headerContextLabel}
               </div>
             </div>
-            {!isSurfacePreviewMode && mode === "surfaces" && (
-              <div style={{ display: "grid", gap: 4 }}>
-                <div style={topNavGroupLabelStyle}>Surfaces layout</div>
-                <div style={topNavSegmentStyle}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurfacesLayoutVariant("layout1");
-                      setSurfacesPanelState("browse");
-                    }}
-                    style={topNavButtonStyle(surfacesLayoutVariant === "layout1")}
-                  >
-                    Layout 1
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurfacesLayoutVariant("layout2");
-                      setSurfacesPanelState("work");
-                      setSurfacesLeftTab("scene");
-                    }}
-                    style={topNavButtonStyle(surfacesLayoutVariant === "layout2")}
-                  >
-                    Layout 2
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurfacesLayoutVariant("layout3");
-                      setSurfacesPanelState("browse");
-                    }}
-                    style={topNavButtonStyle(surfacesLayoutVariant === "layout3")}
-                  >
-                    Layout 3
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSurfacesLayoutVariant("layout4");
-                      setSurfacesPanelState("browse");
-                    }}
-                    style={topNavButtonStyle(surfacesLayoutVariant === "layout4")}
-                  >
-                    Layout 4
-                  </button>
-                  {surfacesLayoutVariant === "layout3" && (
-                    <button
-                      type="button"
-                      data-testid="surfaces-layout3-mode-toggle"
-                      onClick={() => {
-                        if (surfacesPanelState === "browse") enterSurfacesWorkMode();
-                        else returnToSurfacesBrowse();
-                      }}
-                      style={topNavButtonStyle(false)}
-                    >
-                      {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          {!isSurfacePreviewMode && <div style={topNavBandStyle}>
-            <div style={topNavGroupStyle}>
-              <div style={topNavGroupLabelStyle}>Section</div>
-              <div style={topNavSegmentStyle}>
-                {sectionNavEntries.map((entry) => {
-                  const active = entry.active;
-                  const disabled = !!entry.disabled;
-                  return (
-                    <button
-                      key={`mode-${entry.id}`}
-                      type="button"
-                      onClick={entry.onSelect}
-                      disabled={disabled}
-                      aria-pressed={active}
-                      style={{
-                        ...topNavButtonStyle(active),
-                        opacity: disabled ? 0.5 : 1,
-                        cursor: disabled ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      {entry.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ ...topNavGroupStyle, marginLeft: "auto" }}>
-              <div style={topNavGroupLabelStyle}>Display mode</div>
-              <div style={topNavSegmentStyle}>
-                {displayModeEntries.map((entry) => {
-                  const active = displayMode === entry.id;
-                  return (
-                    <button
-                      key={`display-mode-${entry.id}`}
-                      type="button"
-                      onClick={() => setDisplayMode(entry.id)}
-                      aria-pressed={active}
-                      style={topNavButtonStyle(active)}
-                    >
-                      <span style={{ fontSize: 10, opacity: active ? 1 : 0.72, marginRight: 5 }}>{entry.icon}</span>
-                      {entry.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={topNavGroupStyle}>
-              <div style={topNavGroupLabelStyle}>View</div>
-              <div ref={viewMenuRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setViewMenuOpen((v) => !v)}
-                  aria-expanded={viewMenuOpen}
-                  style={topNavButtonStyle(viewMenuOpen)}
-                >
-                  <span style={{ fontSize: 10, opacity: 0.78, marginRight: 5 }}>V</span>
-                  View
-                </button>
-                {viewMenuOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: 0,
-                      top: "calc(100% + 6px)",
-                      zIndex: 40,
-                      width: 420,
-                      maxWidth: "min(92vw, 420px)",
-                      border: "1px solid #dbe4f0",
-                      borderRadius: 10,
-                      background: "#fff",
-                      boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
-                      padding: 10,
-                      display: "grid",
-                      gap: 10,
-                    }}
-                  >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
-                    <button
-                      type="button"
-                      onClick={() => setShowThemeTools((v) => !v)}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
-                      aria-pressed={showThemeTools}
-                    >
-                      {showThemeTools ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                  {showThemeTools && (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
-                        <option value="light">Light</option>
-                        <option value="dark">Dark</option>
-                        <option value="dot">Dot Accent</option>
-                      </select>
-                      <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
-                        {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
-                          <option key={id} value={id}>
-                            {preset.label}
-                          </option>
-                        ))}
-                      </select>
-                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={showViewportDebug}
-                          onChange={(e) => setShowViewportDebug(e.target.checked)}
-                        />
-                        Viewport debug
-                      </label>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
-                    <button
-                      type="button"
-                      onClick={() => setShowScreenshotTools((v) => !v)}
-                      style={{ padding: "3px 8px", fontSize: 11 }}
-                      aria-pressed={showScreenshotTools}
-                    >
-                      {showScreenshotTools ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                  {showScreenshotTools && (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                        Clean bg
-                        <select
-                          value={cleanScreenshotBackground}
-                          onChange={(e) =>
-                            setCleanScreenshotBackground(e.target.value === "transparent" ? "transparent" : "calm")
-                          }
+          ) : (
+            <>
+              <div style={topNavBarStyle}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+                  <h1 style={{ ...styles.h1, margin: 0 }}>MATH3D</h1>
+                  <div style={topNavSegmentStyle}>
+                    {sectionNavEntries.map((entry) => {
+                      const active = entry.active;
+                      const disabled = !!entry.disabled;
+                      return (
+                        <button
+                          key={`mode-${entry.id}`}
+                          type="button"
+                          onClick={entry.onSelect}
+                          disabled={disabled}
+                          aria-pressed={active}
+                          style={{
+                            ...topNavButtonStyle(active),
+                            opacity: disabled ? 0.5 : 1,
+                            cursor: disabled ? "not-allowed" : "pointer",
+                          }}
                         >
-                          <option value="calm">Calm</option>
-                          <option value="transparent">Transparent</option>
-                        </select>
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => void handleCleanScreenshot()}
-                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
-                        title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
+                          {entry.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginLeft: "auto",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={topNavSegmentStyle}>
+                    {displayModeEntries.map((entry) => {
+                      const active = displayMode === entry.id;
+                      return (
+                        <button
+                          key={`display-mode-${entry.id}`}
+                          type="button"
+                          onClick={() => setDisplayMode(entry.id)}
+                          aria-pressed={active}
+                          style={topNavButtonStyle(active)}
+                        >
+                          <span style={{ fontSize: 10, opacity: active ? 1 : 0.72, marginRight: 5 }}>{entry.icon}</span>
+                          {entry.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div ref={viewMenuRef} style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      onClick={() => setViewMenuOpen((v) => !v)}
+                      aria-expanded={viewMenuOpen}
+                      style={topNavButtonStyle(viewMenuOpen)}
+                    >
+                      <span style={{ fontSize: 10, opacity: 0.78, marginRight: 5 }}>V</span>
+                      View
+                    </button>
+                    {viewMenuOpen && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          right: 0,
+                          top: "calc(100% + 6px)",
+                          zIndex: 40,
+                          width: 420,
+                          maxWidth: "min(92vw, 420px)",
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 10,
+                          background: "#fff",
+                          boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
+                          padding: 10,
+                          display: "grid",
+                          gap: 10,
+                        }}
                       >
-                        Clean shot
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleScreenshot("scene")}
-                        disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
-                      >
-                        Scene shot
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleScreenshot("window")}
-                        disabled={screenshotBusy !== null}
-                      >
-                        Window shot
-                      </button>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshot gallery (optional)</div>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <button
-                        type="button"
-                        onClick={() => setShowScreenshotGallery((v) => !v)}
-                        style={{ padding: "3px 8px", fontSize: 11 }}
-                        aria-pressed={showScreenshotGallery}
-                      >
-                        {showScreenshotGallery ? "Hide" : "Show"}
-                      </button>
-                      {canLoadScreenshotFolder && showScreenshotGallery && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Theme</div>
                         <button
                           type="button"
-                          onClick={() => void loadScreenshotGallery()}
+                          onClick={() => setShowThemeTools((v) => !v)}
                           style={{ padding: "3px 8px", fontSize: 11 }}
+                          aria-pressed={showThemeTools}
                         >
-                          Refresh
+                          {showThemeTools ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      {showThemeTools && (
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <select value={uiTheme} onChange={(e) => setUiTheme(e.target.value as AppTheme)}>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                            <option value="dot">Dot Accent</option>
+                          </select>
+                          <select value={uiAccent} onChange={(e) => setUiAccent(e.target.value as AccentPresetId)}>
+                            {Object.entries(ACCENT_PRESETS).map(([id, preset]) => (
+                              <option key={id} value={id}>
+                                {preset.label}
+                              </option>
+                            ))}
+                          </select>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={showViewportDebug}
+                              onChange={(e) => setShowViewportDebug(e.target.checked)}
+                            />
+                            Viewport debug
+                          </label>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshots</div>
+                        <button
+                          type="button"
+                          onClick={() => setShowScreenshotTools((v) => !v)}
+                          style={{ padding: "3px 8px", fontSize: 11 }}
+                          aria-pressed={showScreenshotTools}
+                        >
+                          {showScreenshotTools ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                      {showScreenshotTools && (
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                            Clean bg
+                            <select
+                              value={cleanScreenshotBackground}
+                              onChange={(e) =>
+                                setCleanScreenshotBackground(e.target.value === "transparent" ? "transparent" : "calm")
+                              }
+                            >
+                              <option value="calm">Calm</option>
+                              <option value="transparent">Transparent</option>
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => void handleCleanScreenshot()}
+                            disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
+                            title="Hide sidebars/overlays, reframe, and capture a clean scene screenshot."
+                          >
+                            Clean shot
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleScreenshot("scene")}
+                            disabled={screenshotBusy !== null || !(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry")}
+                          >
+                            Scene shot
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleScreenshot("window")}
+                            disabled={screenshotBusy !== null}
+                          >
+                            Window shot
+                          </button>
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Screenshot gallery (optional)</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowScreenshotGallery((v) => !v)}
+                            style={{ padding: "3px 8px", fontSize: 11 }}
+                            aria-pressed={showScreenshotGallery}
+                          >
+                            {showScreenshotGallery ? "Hide" : "Show"}
+                          </button>
+                          {canLoadScreenshotFolder && showScreenshotGallery && (
+                            <button
+                              type="button"
+                              onClick={() => void loadScreenshotGallery()}
+                              style={{ padding: "3px 8px", fontSize: 11 }}
+                            >
+                              Refresh
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {showScreenshotGallery && (
+                        <div
+                          style={{
+                            border: "1px solid #dbe4f0",
+                            borderRadius: 8,
+                            padding: "6px 8px",
+                            background: "#f8fbff",
+                            display: "grid",
+                            gap: 6,
+                            maxHeight: 180,
+                            overflowY: "auto",
+                          }}
+                        >
+                          {screenshotGalleryFolder && (
+                            <div style={{ fontSize: 10, opacity: 0.76 }}>
+                              Folder: {screenshotGalleryFolder}
+                            </div>
+                          )}
+                          {recentScreenshotPaths.length === 0 ? (
+                            <div style={{ fontSize: 11, opacity: 0.75 }}>
+                              {canLoadScreenshotFolder
+                                ? "No screenshots found in the output folder yet."
+                                : "No screenshots captured in this browser session yet."}
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {recentScreenshotPaths.map((entry) => {
+                                const label = entry.split(/[/\\]/).pop() ?? entry;
+                                return (
+                                  <div key={entry} style={{ fontSize: 11, display: "grid", gap: 2 }}>
+                                    <strong>{label}</strong>
+                                    <span style={{ opacity: 0.78 }}>{entry}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      </div>
+                    )}
+                  </div>
+                  {mode === "surfaces" && (
+                    <div style={topNavSegmentStyle}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesLayoutVariant("layout1");
+                          setSurfacesPanelState("browse");
+                        }}
+                        style={topNavButtonStyle(surfacesLayoutVariant === "layout1")}
+                      >
+                        Layout 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesLayoutVariant("layout2");
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                        }}
+                        style={topNavButtonStyle(surfacesLayoutVariant === "layout2")}
+                      >
+                        Layout 2
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesLayoutVariant("layout3");
+                          setSurfacesPanelState("browse");
+                        }}
+                        style={topNavButtonStyle(surfacesLayoutVariant === "layout3")}
+                      >
+                        Layout 3
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesLayoutVariant("layout4");
+                          setSurfacesPanelState("browse");
+                        }}
+                        style={topNavButtonStyle(surfacesLayoutVariant === "layout4")}
+                      >
+                        Layout 4
+                      </button>
+                      {surfacesLayoutVariant === "layout3" && (
+                        <button
+                          type="button"
+                          data-testid="surfaces-layout3-mode-toggle"
+                          onClick={() => {
+                            if (surfacesPanelState === "browse") enterSurfacesWorkMode();
+                            else returnToSurfacesBrowse();
+                          }}
+                          style={topNavButtonStyle(false)}
+                        >
+                          {surfacesPanelState === "browse" ? "Show Scene/Object tabs" : "Gallery"}
                         </button>
                       )}
                     </div>
-                  </div>
-                  {showScreenshotGallery && (
-                    <div
-                      style={{
-                        border: "1px solid #dbe4f0",
-                        borderRadius: 8,
-                        padding: "6px 8px",
-                        background: "#f8fbff",
-                        display: "grid",
-                        gap: 6,
-                        maxHeight: 180,
-                        overflowY: "auto",
-                      }}
-                    >
-                      {screenshotGalleryFolder && (
-                        <div style={{ fontSize: 10, opacity: 0.76 }}>
-                          Folder: {screenshotGalleryFolder}
-                        </div>
-                      )}
-                      {recentScreenshotPaths.length === 0 ? (
-                        <div style={{ fontSize: 11, opacity: 0.75 }}>
-                          {canLoadScreenshotFolder
-                            ? "No screenshots found in the output folder yet."
-                            : "No screenshots captured in this browser session yet."}
-                        </div>
-                      ) : (
-                        <div style={{ display: "grid", gap: 4 }}>
-                          {recentScreenshotPaths.map((entry) => {
-                            const label = entry.split(/[/\\]/).pop() ?? entry;
-                            return (
-                              <div key={entry} style={{ fontSize: 11, display: "grid", gap: 2 }}>
-                                <strong>{label}</strong>
-                                <span style={{ opacity: 0.78 }}>{entry}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
                   )}
-                  </div>
-                )}
+                </div>
               </div>
-            </div>
-          </div>}
-        </div>
-
-        {!isSurfacePreviewMode && <div style={styles.controls}>
-          {mode === "maps" ? (
-            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
-          ) : mode === "surfaces" ? (
-            <>
-              {surfacesLayoutVariant === "layout4" && (
-                <div style={{ ...styles.group, ...styles.groupWide, gridColumn: "span 12", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#475569" }}>Families</span>
+              {mode === "surfaces" && datasetKind === "surface" && (
+                <div style={topNavContextBarStyle}>
                   <button
                     type="button"
                     data-testid="surface-family-explicit"
@@ -22928,7 +22913,7 @@ case "mobius":
                       setDatasetKind("surface");
                       handleChangeViewerKind("graph");
                     }}
-                    style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "graph")}
+                    style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "graph")}
                   >
                     Explicit
                   </button>
@@ -22940,7 +22925,7 @@ case "mobius":
                       setDatasetKind("surface");
                       handleChangeViewerKind("implicit");
                     }}
-                    style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "implicit")}
+                    style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "implicit")}
                   >
                     Implicit
                   </button>
@@ -22955,7 +22940,7 @@ case "mobius":
                         handleChangeViewerKind("param");
                       }
                     }}
-                    style={layout4FamilyButtonStyle(layout4IsParamFormula)}
+                    style={headerFamilyButtonStyle(headerIsParamFormula)}
                   >
                     Parametric
                   </button>
@@ -22970,7 +22955,7 @@ case "mobius":
                         handleChangeViewerKind("param");
                       }
                     }}
-                    style={layout4FamilyButtonStyle(layout4IsParamSpline)}
+                    style={headerFamilyButtonStyle(headerIsParamSpline)}
                   >
                     Spline
                   </button>
@@ -22985,11 +22970,11 @@ case "mobius":
                         handleChangeViewerKind("param");
                       }
                     }}
-                    style={layout4FamilyButtonStyle(layout4IsParamConstructed)}
+                    style={headerFamilyButtonStyle(headerIsParamConstructed)}
                   >
                     Constructed
                   </button>
-                  {layout4ShowExtendedFamilyButtons && (
+                  {headerShowExtendedFamilyButtons && (
                     <>
                       <button
                         type="button"
@@ -22999,7 +22984,7 @@ case "mobius":
                           setDatasetKind("surface");
                           handleChangeViewerKind("weierstrass");
                         }}
-                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "weierstrass")}
+                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "weierstrass")}
                       >
                         Weierstrass
                       </button>
@@ -23011,7 +22996,7 @@ case "mobius":
                           setDatasetKind("surface");
                           handleChangeViewerKind("mesh");
                         }}
-                        style={layout4FamilyButtonStyle(layout4IsSurface && surfaceViewerKind === "mesh")}
+                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "mesh")}
                       >
                         Mesh
                       </button>
@@ -23020,17 +23005,30 @@ case "mobius":
                   <button
                     type="button"
                     data-testid="surface-family-more"
-                    onClick={() => setSurfacesLayout4ShowExtendedFamilies((v) => !v)}
-                    style={layout4FamilyButtonStyle(layout4ShowExtendedFamilyButtons, "aux")}
+                    onClick={() => setHeaderSurfaceFamilyMoreOpen((v) => !v)}
+                    style={headerFamilyButtonStyle(headerShowExtendedFamilyButtons, "aux")}
                   >
-                    {layout4ShowExtendedFamilyButtons ? "Less" : "More"}
+                    {headerShowExtendedFamilyButtons ? "Less" : "More"}
                   </button>
                 </div>
               )}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#475569", letterSpacing: "0.02em", padding: "0 2px" }}>
+                {headerContextLabel}
+              </div>
+            </>
+          )}
+        </div>
+
+        {!isSurfacePreviewMode && <div style={styles.controls}>
+          {mode === "maps" ? (
+            <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
+          ) : mode === "surfaces" ? (
+            <>
               {surfacesLayoutVariant === "layout2" && (
                 <div style={{ gridColumn: "span 12" }}>
                   <SurfacesControls
                     panelMode="browse"
+                    showBrowseContextBar={false}
                     onEnterWorkMode={enterSurfacesWorkMode}
                     viewerKind={surfaceViewerKind}
                     onChangeViewerKind={handleChangeViewerKind}
@@ -23592,7 +23590,7 @@ case "mobius":
                 <SurfacesControls
                   panelMode={surfacesPanelState}
                   browsePresetLayout={surfacesBrowseUsesCardPresets ? "cards" : "chips"}
-                  showBrowseContextBar={surfacesLayoutVariant !== "layout4"}
+                  showBrowseContextBar={false}
                   onEnterWorkMode={enterSurfacesWorkMode}
                   viewerKind={surfaceViewerKind}
                   onChangeViewerKind={handleChangeViewerKind}
