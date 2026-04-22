@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Vec3 } from "./types";
 
-export type GeometryObjectType = "sphere" | "box" | "cylinder" | "cone" | "torus" | "polyhedron";
+export type GeometryObjectType = "sphere" | "box" | "polygon" | "cylinder" | "cone" | "torus" | "polyhedron";
 
 export type GeometryParamDef = {
   id: string;
@@ -329,6 +329,24 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
         Math.max(1, Math.round(Number(params.widthSegments ?? 1))),
         Math.max(1, Math.round(Number(params.heightSegments ?? 1))),
         Math.max(1, Math.round(Number(params.depthSegments ?? 1)))
+      ),
+  },
+  polygon: {
+    type: "polygon",
+    label: "Polygon",
+    defaultParams: { radius: 1.2, sides: 6, thetaStart: 0, thetaLength: Math.PI * 2 },
+    params: [
+      { id: "radius", label: "Radius", kind: "number", min: 0.1, max: 10, step: 0.1 },
+      { id: "sides", label: "Sides", kind: "number", min: 3, max: 24, step: 1 },
+      { id: "thetaStart", label: "Start angle", kind: "number", min: -Math.PI * 2, max: Math.PI * 2, step: 0.1 },
+      { id: "thetaLength", label: "Arc length", kind: "number", min: 0.1, max: Math.PI * 2, step: 0.1 },
+    ],
+    build: (params) =>
+      new THREE.CircleGeometry(
+        Number(params.radius ?? 1.2),
+        Math.max(3, Math.round(Number(params.sides ?? 6))),
+        Number(params.thetaStart ?? 0),
+        Math.max(0.1, Math.min(Math.PI * 2, Number(params.thetaLength ?? Math.PI * 2)))
       ),
   },
   cylinder: {

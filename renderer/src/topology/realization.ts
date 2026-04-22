@@ -178,7 +178,17 @@ const isMobiusLikeQuotient = (quotient: QuotientComplex): boolean => {
 
 const isProjectivePlaneLikeQuotient = (quotient: QuotientComplex, relations?: OrientationRelation[]): boolean => {
   const relationMap = buildOrientationRelationMap(relations);
-  return hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "match", relationMap);
+  if (hasClassRelation(quotient, "a", "match", relationMap) && hasClassRelation(quotient, "b", "match", relationMap)) {
+    return true;
+  }
+  const hasAaDigonModel = quotient.edges.some((edge) => {
+    if (edge.sourceEdgeIds.length !== 2) return false;
+    if (edgePrimaryLabel(edge.label) !== "a") return false;
+    const [sourceA, sourceB] = edge.sourceEdgeIds;
+    const key = sourceA < sourceB ? `${sourceA}::${sourceB}` : `${sourceB}::${sourceA}`;
+    return relationMap.get(key) === "match";
+  });
+  return hasAaDigonModel;
 };
 
 const isKleinBottleLikeQuotient = (quotient: QuotientComplex, relations?: OrientationRelation[]): boolean => {

@@ -34,6 +34,35 @@ import {
 type TopologyView = TopologyDocumentView | "compare";
 type TopologyBuildMode = "preset" | "editor";
 type DiagramToolMode = "select" | "addVertex" | "addEdge";
+type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" | "mobius";
+
+const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
+  { id: "euler", label: "Euler" },
+  { id: "constructingPolygon", label: "Constructing polygon" },
+  { id: "polyhedra", label: "Polyhedra" },
+  { id: "klein", label: "Klein" },
+  { id: "mobius", label: "Mobius" },
+];
+
+const POLYHEDRA_EULER_ROWS = [
+  { name: "Tetrahedron", v: 4, e: 6, f: 4 },
+  { name: "Cube", v: 8, e: 12, f: 6 },
+  { name: "Octahedron", v: 6, e: 12, f: 8 },
+  { name: "Dodecahedron", v: 20, e: 30, f: 12 },
+  { name: "Icosahedron", v: 12, e: 30, f: 20 },
+] as const;
+
+const REGULAR_POLYGON_TEMPLATE_OPTIONS = [
+  { sides: 3, label: "Triangle" },
+  { sides: 4, label: "Square" },
+  { sides: 5, label: "Pentagon" },
+  { sides: 6, label: "Hexagon" },
+  { sides: 7, label: "Heptagon" },
+  { sides: 8, label: "Octagon" },
+  { sides: 9, label: "Nonagon" },
+  { sides: 10, label: "Decagon" },
+  { sides: 12, label: "Dodecagon" },
+] as const;
 
 const initialDiagram = () => {
   const preset = TOPOLOGY_PRESET_BY_ID.get(DEFAULT_TOPOLOGY_PRESET_ID) ?? TOPOLOGY_PRESETS[0];
@@ -53,6 +82,69 @@ const initialDiagram = () => {
     } satisfies FundamentalDiagram;
   }
   return preset.buildDiagram();
+};
+
+const alphabetLabelForIndex = (index: number): string => {
+  const chars = "abcdefghijklmnopqrstuvwxyz";
+  if (index >= 0 && index < chars.length) return chars[index];
+  return `e${index + 1}`;
+};
+
+const buildRegularPolygonTemplate = (sides: number, label: string): FundamentalDiagram => {
+  const clamped = Math.max(3, Math.floor(sides));
+  const radius = 1.15;
+  const startAngle = Math.PI / 2;
+  const vertices = Array.from({ length: clamped }, (_, index) => {
+    const angle = startAngle + (index / clamped) * Math.PI * 2;
+    return {
+      id: `v${index}`,
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius,
+    };
+  });
+  const edges = Array.from({ length: clamped }, (_, index) => {
+    const next = (index + 1) % clamped;
+    return {
+      id: `e${index}`,
+      from: `v${index}`,
+      to: `v${next}`,
+    };
+  });
+  const faceId = "f0";
+  const edgeOrientations: FundamentalDiagram["edgeOrientations"] = {};
+  const edgeLabels: FundamentalDiagram["edgeLabels"] = {};
+  const edgePairings: FundamentalDiagram["edgePairings"] = {};
+  const vertexLabels: FundamentalDiagram["vertexLabels"] = {};
+  const tokens: string[] = [];
+  for (let i = 0; i < clamped; i += 1) {
+    const edgeId = `e${i}`;
+    const token = alphabetLabelForIndex(i);
+    edgeOrientations[edgeId] = 1;
+    edgeLabels[edgeId] = token;
+    edgePairings[edgeId] = [];
+    vertexLabels[`v${i}`] = `V${i}`;
+    tokens.push(token);
+  }
+  return {
+    id: `polygon/${clamped}-gon`,
+    name: `${label} (${clamped}-gon)`,
+    vertices,
+    edges,
+    faces: [
+      {
+        id: faceId,
+        boundary: edges.map((edge) => ({ edgeId: edge.id, direction: 1 })),
+      },
+    ],
+    edgeOrientations,
+    edgeLabels,
+    edgePairings,
+    vertexLabels,
+    faceBoundaryWords: { [faceId]: tokens.join(" ") },
+    metadata: {
+      description: `Regular ${clamped}-gon template for polygon-word construction.`,
+    },
+  };
 };
 
 const diagPoint = (x: number, y: number) => ({ x: 250 + x * 155, y: 180 - y * 145 });
@@ -584,6 +676,7 @@ export const TopologyScreen: React.FC = () => {
   });
   const [buildMode, setBuildMode] = useState<TopologyBuildMode>("preset");
   const [toolMode, setToolMode] = useState<DiagramToolMode>("select");
+  const [topicTab, setTopicTab] = useState<TopologyTopicTab>("euler");
   const [presetId, setPresetId] = useState(DEFAULT_TOPOLOGY_PRESET_ID);
   const [buildResult, setBuildResult] = useState<QuotientBuildResult>(() => buildQuotientPipeline(initialDiagram()));
   const [builtSignature, setBuiltSignature] = useState(() => JSON.stringify(initialDiagram()));
@@ -654,6 +747,10 @@ export const TopologyScreen: React.FC = () => {
   const timelineSteps = useMemo(
     () => buildPlannedSteps(buildResult.orientationRelations, normalizedAnimationPlan),
     [buildResult.orientationRelations, normalizedAnimationPlan]
+  );
+  const activePresetLabel = useMemo(
+    () => TOPOLOGY_PRESET_BY_ID.get(presetId)?.label ?? diagram.name ?? presetId,
+    [diagram.name, presetId]
   );
   const timelineMax = timelineSteps.length + 1;
   const timelineCompletedOperationCounts = useMemo(() => {
@@ -803,6 +900,32 @@ export const TopologyScreen: React.FC = () => {
     setDocStatus(`Loaded preset '${preset.label}'.`);
     setDocError(null);
     setJsonError(null);
+  };
+
+  const applyRegularPolygonTemplate = (sides: number, label: string) => {
+    const nextDiagram = buildRegularPolygonTemplate(sides, label);
+    regenerateBoundaryWordsInPlace(nextDiagram);
+    const nextResult = buildQuotientPipeline(nextDiagram);
+    setBuildMode("editor");
+    setPresetId(`polygon_${Math.max(3, Math.floor(sides))}`);
+    setDiagramAndDraft(nextDiagram, { markSaved: true });
+    resetHistory();
+    setBuildResult(nextResult);
+    setBuiltSignature(JSON.stringify(nextDiagram));
+    setActiveRealizationId(nextResult.realizations[0]?.id ?? null);
+    setActiveView("diagram");
+    setTimelinePosition(0);
+    setTimelinePlaying(false);
+    setAnimationPlan(buildNarrativeAnimationPlan(nextDiagram, nextResult));
+    applyDiagramNarrativeDefaults(nextDiagram);
+    setSelectedVertexId(null);
+    setSelectedEdgeId(null);
+    setPendingEdgeStartId(null);
+    setCurrentDocumentPath(null);
+    setDocStatus(`Loaded polygon template '${label}'.`);
+    setDocError(null);
+    setJsonError(null);
+    setTopicTab("constructingPolygon");
   };
 
   const ensureBuilt = () => {
@@ -3575,6 +3698,22 @@ export const TopologyScreen: React.FC = () => {
   ]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
+  const selectedPresetBoundaryWord = useMemo(() => {
+    const faceId = diagram.faces[0]?.id;
+    if (!faceId) return "(none)";
+    const direct = (diagram.faceBoundaryWords[faceId] ?? "").trim();
+    if (direct.length > 0) return direct;
+    const face = diagram.faces.find((entry) => entry.id === faceId);
+    if (!face) return "(none)";
+    return face.boundary
+      .map((entry) => {
+        const label = (diagram.edgeLabels[entry.edgeId] ?? entry.edgeId).trim() || entry.edgeId;
+        const edgeOrientation = diagram.edgeOrientations[entry.edgeId] ?? 1;
+        const direction = entry.direction ?? 1;
+        return edgeOrientation * direction >= 0 ? label : `${label}^-1`;
+      })
+      .join(" ");
+  }, [diagram]);
   const constructionProgressIndex = expandedWarningId
     ? 5
     : activeView === "diagram"
@@ -3594,6 +3733,144 @@ export const TopologyScreen: React.FC = () => {
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch", gap: 10 }}>
       <div style={{ ...styles.panelLeft, width: 340, display: "grid", gap: 10 }}>
+        <section
+          style={{
+            border: "1px solid #dbe4f0",
+            borderRadius: 10,
+            background: "#f8fbff",
+            padding: "8px 9px",
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Topology subtabs</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {TOPOLOGY_TOPIC_TABS.map((entry) => (
+              <button
+                key={`topology-topic-${entry.id}`}
+                type="button"
+                onClick={() => {
+                  setTopicTab(entry.id);
+                  if (entry.id === "constructingPolygon") {
+                    setBuildMode("editor");
+                    setActiveView("diagram");
+                    return;
+                  }
+                  if (entry.id === "polyhedra") {
+                    if (TOPOLOGY_PRESET_BY_ID.has("sphere_boundary_contraction")) {
+                      applyPreset("sphere_boundary_contraction");
+                      setActiveView("realization");
+                    }
+                    return;
+                  }
+                  if (entry.id === "klein") {
+                    if (TOPOLOGY_PRESET_BY_ID.has("klein_bottle_square")) {
+                      applyPreset("klein_bottle_square");
+                      setActiveView("animation");
+                    }
+                    return;
+                  }
+                  if (entry.id === "mobius") {
+                    if (TOPOLOGY_PRESET_BY_ID.has("mobius_from_rectangle")) {
+                      applyPreset("mobius_from_rectangle");
+                      setActiveView("animation");
+                    }
+                    return;
+                  }
+                  ensureBuilt();
+                  setActiveView("quotient");
+                }}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid " + (topicTab === entry.id ? "#0a66c2" : "#d1d5db"),
+                  background: topicTab === entry.id ? "#e6f0ff" : "#fff",
+                  fontWeight: topicTab === entry.id ? 700 : 600,
+                  fontSize: 11,
+                  padding: "4px 9px",
+                }}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+          {topicTab === "euler" && (
+            <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
+              <div>
+                chi = V - E + F = {buildResult.quotient.invariants?.eulerCharacteristic ?? "?"} for{" "}
+                <strong>{activePresetLabel}</strong>.
+              </div>
+              <div style={{ color: "#475569" }}>
+                Use this tab to inspect Euler characteristic for torus, Mobius, Klein and related quotients.
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={() => TOPOLOGY_PRESET_BY_ID.has("torus_square") && applyPreset("torus_square")}>
+                  Torus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => TOPOLOGY_PRESET_BY_ID.has("mobius_from_rectangle") && applyPreset("mobius_from_rectangle")}
+                >
+                  Mobius
+                </button>
+                <button
+                  type="button"
+                  onClick={() => TOPOLOGY_PRESET_BY_ID.has("klein_bottle_square") && applyPreset("klein_bottle_square")}
+                >
+                  Klein
+                </button>
+              </div>
+            </div>
+          )}
+          {topicTab === "constructingPolygon" && (
+            <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
+              <div>Editor mode is focused on constructing and editing the fundamental polygon boundary word.</div>
+              <div style={{ color: "#475569" }}>Use edge labels/orientation/pairings, then Build Quotient.</div>
+            </div>
+          )}
+          {topicTab === "polyhedra" && (
+            <div style={{ display: "grid", gap: 5 }}>
+              <div style={{ fontSize: 11 }}>Euler checks for classical polyhedra:</div>
+              <div style={{ maxHeight: 160, overflowY: "auto", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                  <thead>
+                    <tr style={{ background: "#f8fbff" }}>
+                      <th style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid #dbe4f0" }}>Polyhedron</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #dbe4f0" }}>V</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #dbe4f0" }}>E</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #dbe4f0" }}>F</th>
+                      <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #dbe4f0" }}>chi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {POLYHEDRA_EULER_ROWS.map((row) => (
+                      <tr key={`polyhedron-row-${row.name}`}>
+                        <td style={{ padding: "4px 6px", borderBottom: "1px solid #edf2f7" }}>{row.name}</td>
+                        <td style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #edf2f7" }}>{row.v}</td>
+                        <td style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #edf2f7" }}>{row.e}</td>
+                        <td style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #edf2f7" }}>{row.f}</td>
+                        <td style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #edf2f7" }}>
+                          {row.v - row.e + row.f}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {topicTab === "klein" && (
+            <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
+              <div>Klein workflow uses the square model boundary word: a b a^-1 b.</div>
+              <div style={{ color: "#475569" }}>Animation and realization views show the immersion and seam structure.</div>
+            </div>
+          )}
+          {topicTab === "mobius" && (
+            <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
+              <div>Mobius workflow uses the rectangle model boundary word: b a c a^-1.</div>
+              <div style={{ color: "#475569" }}>Inspect one boundary component, core circle and orientation flip markers.</div>
+            </div>
+          )}
+        </section>
         <section>
           <h2 style={styles.h2}>Topology Module</h2>
           <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
@@ -3608,28 +3885,105 @@ export const TopologyScreen: React.FC = () => {
             </button>
           </div>
           {buildMode === "preset" && (
-            <div style={{ display: "grid", gap: 6, maxHeight: 240, overflowY: "auto", paddingRight: 2 }}>
-              {TOPOLOGY_PRESETS.map((preset) => {
-                const selected = preset.id === presetId;
-                return (
-                  <button
-                    key={`topology-preset-${preset.id}`}
-                    type="button"
-                    onClick={() => applyPreset(preset.id)}
-                    style={{
-                      textAlign: "left",
-                      border: "1px solid " + (selected ? "#0a66c2" : "#dbe4f0"),
-                      borderRadius: 8,
-                      background: selected ? "#e6f0ff" : "#fff",
-                      padding: "7px 8px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 700 }}>{preset.label}</div>
-                    <div style={{ fontSize: 10, color: "#475569" }}>{preset.summary}</div>
-                  </button>
-                );
-              })}
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ display: "grid", gap: 6, maxHeight: 240, overflowY: "auto", paddingRight: 2 }}>
+                {TOPOLOGY_PRESETS.map((preset) => {
+                  const selected = preset.id === presetId;
+                  return (
+                    <button
+                      key={`topology-preset-${preset.id}`}
+                      type="button"
+                      onClick={() => applyPreset(preset.id)}
+                      style={{
+                        textAlign: "left",
+                        border: "1px solid " + (selected ? "#0a66c2" : "#dbe4f0"),
+                        borderRadius: 8,
+                        background: selected ? "#e6f0ff" : "#fff",
+                        padding: "7px 8px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700 }}>{preset.label}</div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>{preset.summary}</div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 8,
+                  background: "#f8fbff",
+                  padding: "8px 9px",
+                  display: "grid",
+                  gap: 4,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Selected polygon preset</div>
+                <div style={{ fontSize: 11 }}>
+                  <strong>{activePresetLabel}</strong>
+                </div>
+                <div style={{ fontSize: 10, color: "#475569", fontFamily: "ui-monospace, Consolas, monospace" }}>
+                  word: {selectedPresetBoundaryWord}
+                </div>
+                <div style={{ fontSize: 10, color: "#334155" }}>
+                  V={buildResult.quotient.vertices.length}, E={buildResult.quotient.edges.length}, F={buildResult.quotient.faces.length}
+                </div>
+                <div style={{ fontSize: 10, color: "#334155" }}>
+                  chi={derivedTopologyHints.eulerCharacteristic ?? buildResult.quotient.invariants?.eulerCharacteristic ?? "?"} ,
+                  orientable=
+                  {derivedTopologyHints.orientableText !== null
+                    ? derivedTopologyHints.orientableText
+                    : derivedTopologyHints.orientable !== null
+                      ? derivedTopologyHints.orientable
+                        ? "yes"
+                        : "no"
+                      : "n/a"}{" "}
+                  ,
+                  boundary={derivedTopologyHints.boundaryComponents ?? "n/a"}
+                </div>
+              </div>
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 8,
+                  background: "#fff",
+                  padding: "8px 9px",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Regular polygon list</div>
+                <div style={{ display: "grid", gap: 5, maxHeight: 180, overflowY: "auto", paddingRight: 2 }}>
+                  {REGULAR_POLYGON_TEMPLATE_OPTIONS.map((entry) => {
+                    const selected =
+                      diagram.id === `polygon/${entry.sides}-gon` ||
+                      (presetId === `polygon_${entry.sides}` && buildMode === "editor");
+                    return (
+                      <button
+                        key={`polygon-template-${entry.sides}`}
+                        type="button"
+                        onClick={() => applyRegularPolygonTemplate(entry.sides, entry.label)}
+                        style={{
+                          textAlign: "left",
+                          border: "1px solid " + (selected ? "#0a66c2" : "#dbe4f0"),
+                          borderRadius: 8,
+                          background: selected ? "#e6f0ff" : "#f8fbff",
+                          padding: "6px 8px",
+                          cursor: "pointer",
+                          display: "grid",
+                          gap: 1,
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>
+                          {entry.label} ({entry.sides}-gon)
+                        </span>
+                        <span style={{ fontSize: 10, color: "#475569" }}>Load editable boundary polygon template.</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
           {buildMode === "editor" && (

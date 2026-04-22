@@ -6,6 +6,19 @@ import { uiStyles as styles } from "./uiStyles";
 import MobiusScreen from "./screens/MobiusScreen";
 import { ChebyshevScreen } from "./screens/ChebyshevScreen";
 import TopologyScreen from "./screens/TopologyScreen";
+import {
+  TopologyRealization3DView,
+  buildDiagramFromPolygonWord,
+  buildNonOrientableGenusWord,
+  buildOrientableGenusWord,
+  buildQuotientPipeline,
+  classifyPolygonWord,
+  formatPolygonWord,
+  formatPolygonWordToken,
+  parsePolygonWord,
+  type FundamentalDiagram,
+  type PolygonWordEdge,
+} from "./topology";
 
 import { PlanePlot, type PlanePlotHandle } from "./components/PlanePlot";
 import {
@@ -278,7 +291,14 @@ type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves
 type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
 type GeometryDemoFamily = "stereometry" | "planimetry";
 type PlanimetryPresetId = "task" | "euler" | "tangent";
-type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object";
+type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object" | "euler";
+type GeometryEulerScope = "selected" | "scene";
+type GeometryEulerPolygonTemplateId =
+  | "torus_abab_inv"
+  | "projective_aa"
+  | "klein_abainvb"
+  | "mobius_baca_inv"
+  | "cylinder_uava_inv";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
@@ -1552,6 +1572,326 @@ const THICKNESS_PRESETS: Array<{ id: ThicknessPresetId; label: string; scale: nu
   { id: "medium", label: "Medium", scale: 1 },
   { id: "large", label: "Large", scale: 1.8 },
 ];
+
+const GEOMETRY_EULER_POLYGON_TEMPLATE_OPTIONS: Array<{
+  id: GeometryEulerPolygonTemplateId;
+  label: string;
+  word: string;
+}> = [
+  { id: "torus_abab_inv", label: "Torus", word: "a b a^-1 b^-1" },
+  { id: "projective_aa", label: "Projective (aa)", word: "a a" },
+  { id: "klein_abainvb", label: "Klein bottle", word: "a b a^-1 b" },
+  { id: "mobius_baca_inv", label: "Mobius band", word: "b a c a^-1" },
+  { id: "cylinder_uava_inv", label: "Cylinder", word: "u a v a^-1" },
+];
+
+const GEOMETRY_EULER_POLYGON_TEMPLATE_WORD = Object.fromEntries(
+  GEOMETRY_EULER_POLYGON_TEMPLATE_OPTIONS.map((entry) => [entry.id, entry.word] as const)
+) as Record<GeometryEulerPolygonTemplateId, string>;
+
+const GEOMETRY_EULER_POLYGON_MIN_EDGES = 2;
+const GEOMETRY_EULER_POLYGON_MAX_EDGES = 24;
+
+const GEOMETRY_STANDARD_SURFACE_EULER_ROWS: Array<{
+  id: string;
+  surface: string;
+  orientable: string;
+  boundaryComponents: string;
+  chi: string;
+  polygonWord: string;
+}> = [
+  { id: "sphere", surface: "Sphere S^2", orientable: "yes", boundaryComponents: "0", chi: "2", polygonWord: "none" },
+  { id: "torus", surface: "Torus T^2", orientable: "yes", boundaryComponents: "0", chi: "0", polygonWord: "a b a^-1 b^-1" },
+  {
+    id: "projective",
+    surface: "Projective plane RP^2",
+    orientable: "no",
+    boundaryComponents: "0",
+    chi: "1",
+    polygonWord: "a a (2-gon) / a b a b",
+  },
+  {
+    id: "klein",
+    surface: "Klein bottle K",
+    orientable: "no",
+    boundaryComponents: "0",
+    chi: "0",
+    polygonWord: "a b a^-1 b (equiv. forms exist)",
+  },
+  { id: "cylinder", surface: "Cylinder S^1 x I", orientable: "yes", boundaryComponents: "2", chi: "0", polygonWord: "u a v a^-1" },
+  { id: "mobius", surface: "Mobius band", orientable: "no", boundaryComponents: "1", chi: "0", polygonWord: "b a c a^-1" },
+];
+
+type TriangleMeshCellCounts = {
+  c0: number;
+  c1: number;
+  c2: number;
+  chi: number;
+  validFaces: number;
+  skippedFaces: number;
+};
+
+type FundamentalDiagramPreview = {
+  width: number;
+  height: number;
+  boundaryWord: string;
+  vertices: Array<{ id: string; x: number; y: number; label: string }>;
+  edges: Array<{
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    lx: number;
+    ly: number;
+    color: string;
+    label: string;
+    dashed: boolean;
+    opacity: number;
+    strokeWidth: number;
+  }>;
+  animatedEdges: Array<{
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    lx: number;
+    ly: number;
+    color: string;
+    label: string;
+    dashed: boolean;
+    opacity: number;
+    strokeWidth: number;
+  }>;
+};
+
+const boundaryLabelToken = (rawLabel: string | undefined): string => {
+  const token = (rawLabel ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\^-1$/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  return token;
+};
+
+const boundaryLabelColor = (token: string): string => {
+  if (token === "a") return "#dc2626";
+  if (token === "b") return "#2563eb";
+  if (token === "c") return "#0f766e";
+  if (token === "u") return "#7c3aed";
+  if (token === "v") return "#ea580c";
+  return "#334155";
+};
+
+const computeTriangleMeshCellCounts = (mesh: {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+}): TriangleMeshCellCounts => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (vertexCount <= 0) {
+    return { c0: 0, c1: 0, c2: 0, chi: 0, validFaces: 0, skippedFaces: 0 };
+  }
+  const indices = mesh.indices ?? null;
+  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  const edgeSet = new Set<string>();
+  let validFaces = 0;
+  let skippedFaces = 0;
+  const addEdge = (a: number, b: number) => {
+    const i0 = Math.min(a, b);
+    const i1 = Math.max(a, b);
+    edgeSet.add(`${i0}|${i1}`);
+  };
+  for (let t = 0; t < triCount; t += 1) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    const allFinite = Number.isInteger(ia) && Number.isInteger(ib) && Number.isInteger(ic);
+    const inRange =
+      ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
+    const distinct = ia !== ib && ib !== ic && ia !== ic;
+    if (!allFinite || !inRange || !distinct) {
+      skippedFaces += 1;
+      continue;
+    }
+    validFaces += 1;
+    addEdge(ia, ib);
+    addEdge(ib, ic);
+    addEdge(ic, ia);
+  }
+  const c0 = vertexCount;
+  const c1 = edgeSet.size;
+  const c2 = validFaces;
+  return {
+    c0,
+    c1,
+    c2,
+    chi: c0 - c1 + c2,
+    validFaces,
+    skippedFaces,
+  };
+};
+
+const buildFundamentalDiagramPreview = (
+  diagram: FundamentalDiagram,
+  opts: { gluePhase?: number } = {}
+): FundamentalDiagramPreview => {
+  const width = 280;
+  const height = 220;
+  const pad = 24;
+  const vertices = diagram.vertices;
+  const gluePhase = clampNumber(opts.gluePhase ?? 0, 0, 1);
+  const minX = vertices.reduce((acc, v) => Math.min(acc, v.x), Infinity);
+  const maxX = vertices.reduce((acc, v) => Math.max(acc, v.x), -Infinity);
+  const minY = vertices.reduce((acc, v) => Math.min(acc, v.y), Infinity);
+  const maxY = vertices.reduce((acc, v) => Math.max(acc, v.y), -Infinity);
+  const spanX = Math.max(1e-6, maxX - minX);
+  const spanY = Math.max(1e-6, maxY - minY);
+  const scale = Math.min((width - pad * 2) / spanX, (height - pad * 2) / spanY);
+  const toView = (x: number, y: number) => ({
+    x: pad + (x - minX) * scale,
+    y: height - (pad + (y - minY) * scale),
+  });
+  const verticesView = vertices.map((vertex) => {
+    const p = toView(vertex.x, vertex.y);
+    return {
+      id: vertex.id,
+      x: p.x,
+      y: p.y,
+      label: diagram.vertexLabels[vertex.id] ?? vertex.id,
+    };
+  });
+  const vertexById = new Map(verticesView.map((vertex) => [vertex.id, vertex]));
+  const rawEdges = diagram.edges.flatMap((edge) => {
+    const from = vertexById.get(edge.from);
+    const to = vertexById.get(edge.to);
+    if (!from || !to) return [];
+    const orientation = diagram.edgeOrientations[edge.id] ?? 1;
+    const start = orientation >= 0 ? from : to;
+    const end = orientation >= 0 ? to : from;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.hypot(dx, dy);
+    const nx = len > 1e-6 ? -dy / len : 0;
+    const ny = len > 1e-6 ? dx / len : 0;
+    const baseLabel = diagram.edgeLabels[edge.id]?.trim() || edge.id;
+    const token = boundaryLabelToken(baseLabel);
+    const label = orientation >= 0 ? baseLabel : `${baseLabel}^-1`;
+    return [
+      {
+        id: edge.id,
+        token,
+        dx,
+        dy,
+        len,
+        nx,
+        ny,
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+        lx: (start.x + end.x) * 0.5 + nx * 11,
+        ly: (start.y + end.y) * 0.5 + ny * 11,
+        color: boundaryLabelColor(token),
+        label,
+        dashed: orientation < 0,
+        opacity: 0.9,
+        strokeWidth: 2.4,
+      },
+    ];
+  });
+  const labelCenterMap = new Map<string, { x: number; y: number; count: number }>();
+  for (const edge of rawEdges) {
+    if (!edge.token) continue;
+    const prev = labelCenterMap.get(edge.token);
+    const midX = (edge.x1 + edge.x2) * 0.5;
+    const midY = (edge.y1 + edge.y2) * 0.5;
+    if (!prev) {
+      labelCenterMap.set(edge.token, { x: midX, y: midY, count: 1 });
+      continue;
+    }
+    prev.x += midX;
+    prev.y += midY;
+    prev.count += 1;
+  }
+  for (const [token, center] of labelCenterMap.entries()) {
+    if (center.count <= 0) continue;
+    labelCenterMap.set(token, { x: center.x / center.count, y: center.y / center.count, count: center.count });
+  }
+  const animatedEdges =
+    gluePhase <= 0
+      ? []
+      : rawEdges.map((edge) => {
+          const center = edge.token ? labelCenterMap.get(edge.token) : null;
+          if (!center || center.count <= 1) {
+            return {
+              id: edge.id,
+              x1: edge.x1,
+              y1: edge.y1,
+              x2: edge.x2,
+              y2: edge.y2,
+              lx: edge.lx,
+              ly: edge.ly,
+              color: edge.color,
+              label: edge.label,
+              dashed: edge.dashed,
+              opacity: 0.36,
+              strokeWidth: 1.8,
+            };
+          }
+          const midX = (edge.x1 + edge.x2) * 0.5;
+          const midY = (edge.y1 + edge.y2) * 0.5;
+          const targetMidX = midX + (center.x - midX) * gluePhase;
+          const targetMidY = midY + (center.y - midY) * gluePhase;
+          const dirX = edge.len > 1e-6 ? edge.dx / edge.len : 1;
+          const dirY = edge.len > 1e-6 ? edge.dy / edge.len : 0;
+          const edgeScale = 1 - 0.55 * gluePhase;
+          const halfLen = Math.max(5, edge.len * edgeScale * 0.5);
+          const x1 = targetMidX - dirX * halfLen;
+          const y1 = targetMidY - dirY * halfLen;
+          const x2 = targetMidX + dirX * halfLen;
+          const y2 = targetMidY + dirY * halfLen;
+          const nx = -dirY;
+          const ny = dirX;
+          return {
+            id: edge.id,
+            x1,
+            y1,
+            x2,
+            y2,
+            lx: targetMidX + nx * 9,
+            ly: targetMidY + ny * 9,
+            color: edge.color,
+            label: edge.label,
+            dashed: edge.dashed,
+            opacity: 0.94,
+            strokeWidth: 2.4,
+          };
+        });
+  const faceId = diagram.faces[0]?.id ?? "";
+  return {
+    width,
+    height,
+    boundaryWord: diagram.faceBoundaryWords[faceId] ?? "",
+    vertices: verticesView,
+    edges: rawEdges.map((edge) => ({
+      id: edge.id,
+      x1: edge.x1,
+      y1: edge.y1,
+      x2: edge.x2,
+      y2: edge.y2,
+      lx: edge.lx,
+      ly: edge.ly,
+      color: edge.color,
+      label: edge.label,
+      dashed: edge.dashed,
+      opacity: edge.opacity,
+      strokeWidth: edge.strokeWidth,
+    })),
+    animatedEdges,
+  };
+};
 
 const tokenizeScriptLine = (line: string): string[] =>
   (line.match(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\S+/g) ?? []).map((token) => {
@@ -4519,6 +4859,17 @@ const App: React.FC = () => {
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
     useState<GeometryProceduralPanelTab>("scene");
+  const [geometryEulerScope, setGeometryEulerScope] = useState<GeometryEulerScope>("selected");
+  const [geometryEulerPolygonTemplateId, setGeometryEulerPolygonTemplateId] =
+    useState<GeometryEulerPolygonTemplateId>("torus_abab_inv");
+  const [geometryEulerPolygonEdges, setGeometryEulerPolygonEdges] = useState<PolygonWordEdge[]>(() =>
+    parsePolygonWord(GEOMETRY_EULER_POLYGON_TEMPLATE_WORD.torus_abab_inv)
+  );
+  const [geometryEulerOrientableGenus, setGeometryEulerOrientableGenus] = useState(2);
+  const [geometryEulerNonOrientableGenus, setGeometryEulerNonOrientableGenus] = useState(2);
+  const [geometryEulerGlueAnimationEnabled, setGeometryEulerGlueAnimationEnabled] = useState(false);
+  const [geometryEulerGluePhaseManual, setGeometryEulerGluePhaseManual] = useState(0);
+  const [geometryEulerSelectedRealizationId, setGeometryEulerSelectedRealizationId] = useState<string | null>(null);
   const [geometryDemoGuideStatus, setGeometryDemoGuideStatus] = useState<string | null>(null);
   const [geometryDemoFamily, setGeometryDemoFamily] = useState<GeometryDemoFamily>("stereometry");
   const [geometryDemoShowPointLabels, setGeometryDemoShowPointLabels] = useState(true);
@@ -5605,6 +5956,139 @@ const App: React.FC = () => {
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometrySelectedSceneMesh = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
+  }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometryEulerSelectedMeshCounts = useMemo(
+    () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
+    [geometrySelectedSceneMesh]
+  );
+  const geometryEulerSceneMeshCounts = useMemo(() => {
+    if (!proceduralMeshSet.meshes.length) return null;
+    let c0 = 0;
+    let c1 = 0;
+    let c2 = 0;
+    let validFaces = 0;
+    let skippedFaces = 0;
+    for (const mesh of proceduralMeshSet.meshes) {
+      const counts = computeTriangleMeshCellCounts(mesh);
+      c0 += counts.c0;
+      c1 += counts.c1;
+      c2 += counts.c2;
+      validFaces += counts.validFaces;
+      skippedFaces += counts.skippedFaces;
+    }
+    return {
+      c0,
+      c1,
+      c2,
+      chi: c0 - c1 + c2,
+      validFaces,
+      skippedFaces,
+    };
+  }, [proceduralMeshSet.meshes]);
+  const geometryEulerActiveMeshCounts = useMemo(() => {
+    if (geometryEulerScope === "selected") {
+      return geometryEulerSelectedMeshCounts ?? geometryEulerSceneMeshCounts;
+    }
+    return geometryEulerSceneMeshCounts ?? geometryEulerSelectedMeshCounts;
+  }, [geometryEulerSceneMeshCounts, geometryEulerScope, geometryEulerSelectedMeshCounts]);
+  const geometryEulerActiveMeshLabel = useMemo(() => {
+    if (geometryEulerScope === "selected" && geometryEulerSelectedMeshCounts && geometrySelectedSceneObject) {
+      return `Selected object: ${geometrySelectedSceneObject.name}`;
+    }
+    if (geometryEulerSceneMeshCounts) {
+      return "Visible scene meshes (summed per mesh)";
+    }
+    if (geometrySelectedSceneObject) {
+      return `Selected object: ${geometrySelectedSceneObject.name}`;
+    }
+    return "No mesh selected";
+  }, [
+    geometryEulerSceneMeshCounts,
+    geometryEulerScope,
+    geometryEulerSelectedMeshCounts,
+    geometrySelectedSceneObject,
+  ]);
+  const geometryEulerPolygonWord = useMemo(
+    () => formatPolygonWord(geometryEulerPolygonEdges),
+    [geometryEulerPolygonEdges]
+  );
+  const geometryEulerPolygonClassification = useMemo(
+    () => classifyPolygonWord(geometryEulerPolygonEdges),
+    [geometryEulerPolygonEdges]
+  );
+  const geometryEulerGluingDiagram = useMemo<FundamentalDiagram>(
+    () =>
+      buildDiagramFromPolygonWord(geometryEulerPolygonEdges, {
+        id: "geometry/euler-polygon-word",
+        name: "Geometry polygon identification",
+        description: geometryEulerPolygonClassification.label,
+      }),
+    [geometryEulerPolygonClassification.label, geometryEulerPolygonEdges]
+  );
+  const geometryEulerGluePhase = useMemo(
+    () => clampNumber(geometryEulerGluePhaseManual, 0, 1),
+    [geometryEulerGluePhaseManual]
+  );
+  const geometryEulerGluingPreview = useMemo(
+    () =>
+      buildFundamentalDiagramPreview(geometryEulerGluingDiagram, {
+        gluePhase: geometryEulerGluePhase,
+      }),
+    [geometryEulerGluePhase, geometryEulerGluingDiagram]
+  );
+  const geometryEulerGluingResult = useMemo(
+    () => buildQuotientPipeline(geometryEulerGluingDiagram),
+    [geometryEulerGluingDiagram]
+  );
+  useEffect(() => {
+    if (!geometryEulerGluingResult.realizations.length) {
+      if (geometryEulerSelectedRealizationId !== null) setGeometryEulerSelectedRealizationId(null);
+      return;
+    }
+    const found = geometryEulerSelectedRealizationId
+      ? geometryEulerGluingResult.realizations.some((entry) => entry.id === geometryEulerSelectedRealizationId)
+      : false;
+    if (!found) {
+      setGeometryEulerSelectedRealizationId(geometryEulerGluingResult.realizations[0]?.id ?? null);
+    }
+  }, [geometryEulerGluingResult, geometryEulerSelectedRealizationId]);
+  useEffect(() => {
+    if (!geometryEulerGlueAnimationEnabled) return;
+    let raf = 0;
+    const startedAt = performance.now() - geometryEulerGluePhaseManual * 2400;
+    const animate = (timestamp: number) => {
+      const t = (timestamp - startedAt) / 2400;
+      const phase = 0.5 + 0.5 * Math.sin(t * Math.PI * 2);
+      setGeometryEulerGluePhaseManual(phase);
+      raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [geometryEulerGlueAnimationEnabled]);
+  const geometryEulerActiveRealization = useMemo(
+    () =>
+      geometryEulerGluingResult.realizations.find((entry) => entry.id === geometryEulerSelectedRealizationId) ??
+      geometryEulerGluingResult.realizations[0] ??
+      null,
+    [geometryEulerGluingResult.realizations, geometryEulerSelectedRealizationId]
+  );
+  const geometryEulerGluingOrientationSummary = useMemo(() => {
+    let match = 0;
+    let reverse = 0;
+    for (const relation of geometryEulerGluingResult.orientationRelations) {
+      if (relation.relation === "match") match += 1;
+      else reverse += 1;
+    }
+    return { match, reverse };
+  }, [geometryEulerGluingResult]);
+  const geometryEulerComparisonHighlightId = useMemo(() => {
+    return geometryEulerPolygonClassification.comparisonId;
+  }, [geometryEulerPolygonClassification]);
 
   const pushGeometryCameraTourCommand = useCallback((command: Omit<CameraTourCommand, "token">) => {
     geometryCameraTourTokenRef.current += 1;
@@ -28270,6 +28754,528 @@ case "mobius":
                           Select an object in the Scene tab to edit parameters and material.
                         </div>
                       ))}
+                    {geometryProceduralPanelTab === "euler" && (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic from mesh/cell counts</div>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => setGeometryEulerScope("selected")}
+                              style={pill(geometryEulerScope === "selected")}
+                              aria-pressed={geometryEulerScope === "selected"}
+                            >
+                              Selected mesh
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGeometryEulerScope("scene")}
+                              style={pill(geometryEulerScope === "scene")}
+                              aria-pressed={geometryEulerScope === "scene"}
+                            >
+                              Scene total
+                            </button>
+                          </div>
+                          {geometryEulerActiveMeshCounts ? (
+                            <>
+                              <div style={{ fontSize: 11, color: "#334155" }}>{geometryEulerActiveMeshLabel}</div>
+                              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#0f172a" }}>
+                                c0 = {geometryEulerActiveMeshCounts.c0.toLocaleString()} , c1 ={" "}
+                                {geometryEulerActiveMeshCounts.c1.toLocaleString()} , c2 ={" "}
+                                {geometryEulerActiveMeshCounts.c2.toLocaleString()}
+                              </div>
+                              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#0f172a" }}>
+                                V = {geometryEulerActiveMeshCounts.c0.toLocaleString()} , E ={" "}
+                                {geometryEulerActiveMeshCounts.c1.toLocaleString()} , F ={" "}
+                                {geometryEulerActiveMeshCounts.c2.toLocaleString()} , chi = V - E + F ={" "}
+                                {geometryEulerActiveMeshCounts.chi.toLocaleString()}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#475467" }}>
+                                chi(X) = sum_i (-1)^i c_i (finite-cell view)
+                              </div>
+                              <div style={{ fontSize: 10, color: "#475467" }}>
+                                Valid triangles: {geometryEulerActiveMeshCounts.validFaces.toLocaleString()}
+                                {geometryEulerActiveMeshCounts.skippedFaces > 0
+                                  ? `, skipped/degenerate: ${geometryEulerActiveMeshCounts.skippedFaces.toLocaleString()}`
+                                  : ""}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ fontSize: 11, color: "#475467" }}>
+                              No visible mesh data. Add/show a procedural or dataset mesh object first.
+                            </div>
+                          )}
+                        </div>
+
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Polygon identification visualizer</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {GEOMETRY_EULER_POLYGON_TEMPLATE_OPTIONS.map((entry) => (
+                              <button
+                                key={entry.id}
+                                type="button"
+                                onClick={() => {
+                                  setGeometryEulerPolygonTemplateId(entry.id);
+                                  setGeometryEulerPolygonEdges(parsePolygonWord(entry.word));
+                                  setGeometryEulerGlueAnimationEnabled(false);
+                                  setGeometryEulerGluePhaseManual(0);
+                                }}
+                                style={pill(geometryEulerPolygonTemplateId === entry.id)}
+                                aria-pressed={geometryEulerPolygonTemplateId === entry.id}
+                                title={entry.word}
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+                              Orientable genus g (4g-gon)
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={8}
+                                  step={1}
+                                  value={geometryEulerOrientableGenus}
+                                  onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    if (!Number.isFinite(next)) return;
+                                    setGeometryEulerOrientableGenus(clampNumber(next, 1, 8));
+                                  }}
+                                  style={{ width: 68 }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometryEulerPolygonTemplateId("torus_abab_inv");
+                                    setGeometryEulerPolygonEdges(buildOrientableGenusWord(geometryEulerOrientableGenus));
+                                    setGeometryEulerGlueAnimationEnabled(false);
+                                    setGeometryEulerGluePhaseManual(0);
+                                  }}
+                                >
+                                  Build
+                                </button>
+                              </div>
+                            </label>
+                            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+                              Nonorientable genus n (2n-gon)
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={8}
+                                  step={1}
+                                  value={geometryEulerNonOrientableGenus}
+                                  onChange={(event) => {
+                                    const next = Number(event.target.value);
+                                    if (!Number.isFinite(next)) return;
+                                    setGeometryEulerNonOrientableGenus(clampNumber(next, 1, 8));
+                                  }}
+                                  style={{ width: 68 }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setGeometryEulerPolygonTemplateId("projective_aa");
+                                    setGeometryEulerPolygonEdges(buildNonOrientableGenusWord(geometryEulerNonOrientableGenus));
+                                    setGeometryEulerGlueAnimationEnabled(false);
+                                    setGeometryEulerGluePhaseManual(0);
+                                  }}
+                                >
+                                  Build
+                                </button>
+                              </div>
+                            </label>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <label style={{ display: "grid", gap: 4, fontSize: 10 }}>
+                              Boundary word editor
+                              <input
+                                type="text"
+                                value={geometryEulerPolygonWord}
+                                onChange={(event) => {
+                                  const parsed = parsePolygonWord(event.target.value);
+                                  if (!parsed.length) return;
+                                  setGeometryEulerPolygonEdges(parsed);
+                                  setGeometryEulerGlueAnimationEnabled(false);
+                                }}
+                                spellCheck={false}
+                                style={{ fontFamily: "monospace", fontSize: 11 }}
+                                placeholder="a b a^-1 b^-1"
+                              />
+                            </label>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 10 }}>
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                Edges
+                                <input
+                                  type="number"
+                                  min={GEOMETRY_EULER_POLYGON_MIN_EDGES}
+                                  max={GEOMETRY_EULER_POLYGON_MAX_EDGES}
+                                  step={1}
+                                  value={geometryEulerPolygonEdges.length}
+                                  onChange={(event) => {
+                                    const target = clampNumber(
+                                      Number(event.target.value),
+                                      GEOMETRY_EULER_POLYGON_MIN_EDGES,
+                                      GEOMETRY_EULER_POLYGON_MAX_EDGES
+                                    );
+                                    setGeometryEulerPolygonEdges((prev) => {
+                                      const next = prev.slice(0, target).map((entry) => ({
+                                        label: entry.label || "a",
+                                        orientation: entry.orientation,
+                                      }));
+                                      while (next.length < target) {
+                                        next.push({ label: `e${next.length + 1}`, orientation: 1 });
+                                      }
+                                      return next;
+                                    });
+                                    setGeometryEulerGlueAnimationEnabled(false);
+                                  }}
+                                  style={{ width: 66 }}
+                                />
+                              </label>
+                              <span style={{ color: "#475467" }}>{geometryEulerPolygonClassification.label}</span>
+                            </div>
+                            <div style={{ overflowX: "auto" }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, minWidth: 320 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "3px 4px" }}>Edge</th>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "3px 4px" }}>Label</th>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "3px 4px" }}>Arrow</th>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "3px 4px" }}>Token</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {geometryEulerPolygonEdges.map((entry, index) => (
+                                    <tr key={`geometry-euler-editor-edge-${index}`}>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "3px 4px" }}>{`e${index}`}</td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "3px 4px" }}>
+                                        <input
+                                          type="text"
+                                          value={entry.label}
+                                          onChange={(event) =>
+                                            setGeometryEulerPolygonEdges((prev) =>
+                                              prev.map((row, rowIndex) =>
+                                                rowIndex === index
+                                                  ? {
+                                                      ...row,
+                                                      label:
+                                                        event.target.value
+                                                          .trim()
+                                                          .toLowerCase()
+                                                          .replace(/[^a-z0-9_]/g, "") || "a",
+                                                    }
+                                                  : row
+                                              )
+                                            )
+                                          }
+                                          spellCheck={false}
+                                          style={{ width: 80, fontFamily: "monospace", fontSize: 10 }}
+                                        />
+                                      </td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "3px 4px" }}>
+                                        <select
+                                          value={entry.orientation}
+                                          onChange={(event) =>
+                                            setGeometryEulerPolygonEdges((prev) =>
+                                              prev.map((row, rowIndex) =>
+                                                rowIndex === index
+                                                  ? { ...row, orientation: Number(event.target.value) < 0 ? -1 : 1 }
+                                                  : row
+                                              )
+                                            )
+                                          }
+                                          style={{ fontSize: 10 }}
+                                        >
+                                          <option value={1}>-&gt;</option>
+                                          <option value={-1}>&lt;-</option>
+                                        </select>
+                                      </td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "3px 4px", fontFamily: "monospace" }}>
+                                        {formatPolygonWordToken(entry)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: 8, background: "#fff" }}>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryEulerGlueAnimationEnabled((prev) => !prev)}
+                                style={pill(geometryEulerGlueAnimationEnabled)}
+                                aria-pressed={geometryEulerGlueAnimationEnabled}
+                              >
+                                {geometryEulerGlueAnimationEnabled ? "Pause gluing" : "Animate gluing"}
+                              </button>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={geometryEulerGluePhase}
+                                onChange={(event) => {
+                                  setGeometryEulerGlueAnimationEnabled(false);
+                                  setGeometryEulerGluePhaseManual(clampNumber(Number(event.target.value), 0, 1));
+                                }}
+                                style={{ width: 160 }}
+                                aria-label="Gluing progress"
+                              />
+                              <span style={{ fontSize: 10, fontFamily: "monospace" }}>{geometryEulerGluePhase.toFixed(2)}</span>
+                            </div>
+                            <svg
+                              viewBox={`0 0 ${geometryEulerGluingPreview.width} ${geometryEulerGluingPreview.height}`}
+                              style={{ width: "100%", height: 210, display: "block" }}
+                              role="img"
+                              aria-label="Fundamental polygon edge identifications"
+                            >
+                              <defs>
+                                <marker
+                                  id="geometry-euler-arrow"
+                                  viewBox="0 0 8 8"
+                                  refX="7"
+                                  refY="4"
+                                  markerWidth="7"
+                                  markerHeight="7"
+                                  orient="auto"
+                                >
+                                  <path d="M0,0 L8,4 L0,8 z" fill="#334155" />
+                                </marker>
+                              </defs>
+                              {geometryEulerGluingPreview.edges.map((edge) => (
+                                <g key={`geometry-euler-base-edge-${edge.id}`}>
+                                  <line
+                                    x1={edge.x1}
+                                    y1={edge.y1}
+                                    x2={edge.x2}
+                                    y2={edge.y2}
+                                    stroke={edge.color}
+                                    strokeWidth={edge.strokeWidth}
+                                    strokeOpacity={geometryEulerGluePhase > 0 ? 0.35 : edge.opacity}
+                                    strokeDasharray={edge.dashed ? "5 4" : undefined}
+                                    markerEnd="url(#geometry-euler-arrow)"
+                                  />
+                                  <text
+                                    x={edge.lx}
+                                    y={edge.ly}
+                                    textAnchor="middle"
+                                    fontSize={12}
+                                    fontWeight={700}
+                                    fill={edge.color}
+                                    fillOpacity={geometryEulerGluePhase > 0 ? 0.42 : 1}
+                                  >
+                                    {edge.label}
+                                  </text>
+                                </g>
+                              ))}
+                              {geometryEulerGluePhase > 0 &&
+                                geometryEulerGluingPreview.animatedEdges.map((edge) => (
+                                  <g key={`geometry-euler-anim-edge-${edge.id}`}>
+                                    <line
+                                      x1={edge.x1}
+                                      y1={edge.y1}
+                                      x2={edge.x2}
+                                      y2={edge.y2}
+                                      stroke={edge.color}
+                                      strokeWidth={edge.strokeWidth}
+                                      strokeOpacity={edge.opacity}
+                                      strokeDasharray={edge.dashed ? "5 4" : undefined}
+                                      markerEnd="url(#geometry-euler-arrow)"
+                                    />
+                                    <text
+                                      x={edge.lx}
+                                      y={edge.ly}
+                                      textAnchor="middle"
+                                      fontSize={11}
+                                      fontWeight={700}
+                                      fill={edge.color}
+                                      fillOpacity={edge.opacity}
+                                    >
+                                      {edge.label}
+                                    </text>
+                                  </g>
+                                ))}
+                              {geometryEulerGluingPreview.vertices.map((vertex) => (
+                                <g key={`geometry-euler-vertex-${vertex.id}`}>
+                                  <circle cx={vertex.x} cy={vertex.y} r={4} fill="#0f172a" />
+                                  <text x={vertex.x + 7} y={vertex.y - 6} fontSize={11} fill="#334155">
+                                    {vertex.label}
+                                  </text>
+                                </g>
+                              ))}
+                            </svg>
+                            <div style={{ fontFamily: "monospace", fontSize: 11, color: "#334155", marginTop: 4 }}>
+                              boundary word: {geometryEulerGluingPreview.boundaryWord || "(none)"}
+                            </div>
+                          </div>
+
+                          <div style={{ fontFamily: "monospace", fontSize: 11, color: "#0f172a" }}>
+                            c0 = {geometryEulerGluingResult.quotient.invariants?.vertexCount ?? 0}, c1 ={" "}
+                            {geometryEulerGluingResult.quotient.invariants?.edgeCount ?? 0}, c2 ={" "}
+                            {geometryEulerGluingResult.quotient.invariants?.faceCount ?? 0}, chi ={" "}
+                            {geometryEulerGluingResult.quotient.invariants?.eulerCharacteristic ?? 0}
+                            {" | "}
+                            orientation relations: match {geometryEulerGluingOrientationSummary.match}, reverse{" "}
+                            {geometryEulerGluingOrientationSummary.reverse}
+                            {" | "}
+                            components {geometryEulerGluingResult.quotient.invariants?.connectedComponents ?? 0}
+                          </div>
+
+                          {geometryEulerActiveRealization && (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <label style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                                Quotient surface preview
+                                <select
+                                  value={geometryEulerActiveRealization.id}
+                                  onChange={(event) => setGeometryEulerSelectedRealizationId(event.target.value)}
+                                  style={{ fontSize: 10, maxWidth: "100%" }}
+                                >
+                                  {geometryEulerGluingResult.realizations.map((entry) => (
+                                    <option key={`geometry-euler-realization-${entry.id}`} value={entry.id}>
+                                      {entry.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <TopologyRealization3DView
+                                realization={geometryEulerActiveRealization}
+                                height={220}
+                                showSeams={true}
+                                showSkeleton={true}
+                                showSingularityMarkers={true}
+                              />
+                            </div>
+                          )}
+
+                          <div style={{ overflowX: "auto" }}>
+                            <table
+                              style={{
+                                width: "100%",
+                                borderCollapse: "collapse",
+                                fontSize: 10,
+                                minWidth: 320,
+                              }}
+                            >
+                              <thead>
+                                <tr>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Edge
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Label
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Pairs with
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {geometryEulerGluingDiagram.edges.map((edge) => {
+                                  const label = geometryEulerGluingDiagram.edgeLabels[edge.id] ?? edge.id;
+                                  const peers = geometryEulerGluingDiagram.edgePairings[edge.id] ?? [];
+                                  return (
+                                    <tr key={`geometry-euler-pair-${edge.id}`}>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>{edge.id}</td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>
+                                        {label}
+                                        {(geometryEulerGluingDiagram.edgeOrientations[edge.id] ?? 1) < 0 ? "^-1" : ""}
+                                      </td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>
+                                        {peers.length ? peers.join(", ") : "boundary"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Standard-surface comparison</div>
+                          <div style={{ overflowX: "auto" }}>
+                            <table
+                              style={{
+                                width: "100%",
+                                borderCollapse: "collapse",
+                                fontSize: 10,
+                                minWidth: 420,
+                              }}
+                            >
+                              <thead>
+                                <tr>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Surface
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Orientable
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Boundary
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    chi
+                                  </th>
+                                  <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                    Polygon word
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {GEOMETRY_STANDARD_SURFACE_EULER_ROWS.map((row) => {
+                                  const highlighted = row.id === geometryEulerComparisonHighlightId;
+                                  return (
+                                    <tr key={`geometry-euler-standard-${row.id}`} style={{ background: highlighted ? "#eef4ff" : "transparent" }}>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>{row.surface}</td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>{row.orientable}</td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>{row.boundaryComponents}</td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px", fontFamily: "monospace" }}>
+                                        {row.chi}
+                                      </td>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px", fontFamily: "monospace" }}>
+                                        {row.polygonWord}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : geometryMode === "demo" ? (
                   <>

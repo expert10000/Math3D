@@ -420,6 +420,40 @@ export const GEOMETRY_GALLERY_CARDS: GeometryGalleryCard[] = [
       ),
     ],
   }),
+  supportedCard({
+    id: "polygon",
+    name: "Polygon",
+    description: "Regular planar polygon primitive with editable side count and radius.",
+    categoryId: "basic-solids",
+    badge: "Primitive",
+    tags: ["2D", "Planar", "Editable", "Has presets"],
+    demoReady: true,
+    supported: true,
+    visualStyle: "surface",
+    defaultRecipe: { type: "polygon", name: "Polygon" },
+    presets: [
+      preset(
+        "polygon",
+        "pentagon",
+        "Pentagon",
+        "Regular pentagon on the XY plane.",
+        ["2D", "Default"],
+        { type: "polygon", name: "Pentagon", params: { sides: 5, radius: 1.2, thetaStart: Math.PI * 0.5 } },
+        "surface",
+        "Primitive"
+      ),
+      preset(
+        "polygon",
+        "octagon",
+        "Octagon",
+        "Regular octagon with larger radius for edge-label demos.",
+        ["2D", "Demo"],
+        { type: "polygon", name: "Octagon", params: { sides: 8, radius: 1.45, thetaStart: Math.PI * 0.5 } },
+        "surface",
+        "Primitive"
+      ),
+    ],
+  }),
   unsupportedCard(
     "plane",
     "Plane",
