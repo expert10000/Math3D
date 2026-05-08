@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Math3D Lab is an interactive geometry playground for surfaces, solids, topology, and computational visualization."
+    />
+    <title>Math3D Lab | Interactive Geometry</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <div class="container top-nav reveal">
+        <a class="brand" href="#top">Math3D Lab</a>
+        <nav class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#workflow">Workflow</a>
+          <a href="#download">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="hero container">
+        <div class="hero-copy reveal">
+          <p class="eyebrow">Geometry without friction</p>
+          <h1>Build, analyze, and publish 3D math scenes in one place.</h1>
+          <p class="lead">
+            Math3D combines interactive surfaces, procedural solids, and topology tools with CGAL/VTK-backed workflows.
+            Use it for teaching, prototyping, and research visuals.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="https://expert10000.github.io/Math3D/app/" target="_blank" rel="noreferrer">
+              Launch Browser App
+            </a>
+            <a class="btn btn-ghost" href="https://github.com/expert10000/Math3D/releases" target="_blank" rel="noreferrer">
+              Download Desktop
+            </a>
+          </div>
+          <div class="meta-row">
+            <span>Open source</span>
+            <span>Apache-2.0</span>
+            <span>Electron + React + Python</span>
+          </div>
+        </div>
+
+        <div class="hero-panel reveal reveal-delay-1" role="img" aria-label="Math3D summary panel">
+          <div class="chip-row">
+            <span class="chip">Implicit</span>
+            <span class="chip">Parametric</span>
+            <span class="chip">Topology</span>
+          </div>
+          <div class="panel-grid">
+            <article>
+              <h3>200+</h3>
+              <p>preset scenes and geometry objects</p>
+            </article>
+            <article>
+              <h3>CGAL/VTK</h3>
+              <p>high-fidelity mesh and volume operations</p>
+            </article>
+            <article>
+              <h3>Playwright</h3>
+              <p>tested workflows for release confidence</p>
+            </article>
+            <article>
+              <h3>Desktop + Web</h3>
+              <p>same core app in both runtime modes</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="features" class="container section">
+        <div class="section-head reveal">
+          <p class="eyebrow">Why Math3D</p>
+          <h2>Designed for real math workflows.</h2>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card reveal">
+            <h3>Surface Lab</h3>
+            <p>Explore implicit, explicit, and parametric surfaces with contouring, curvature tools, and diagnostics.</p>
+          </article>
+          <article class="feature-card reveal reveal-delay-1">
+            <h3>Geometry Builder</h3>
+            <p>Create procedural solids and constructions, then inspect constraints and measurements in-context.</p>
+          </article>
+          <article class="feature-card reveal reveal-delay-2">
+            <h3>Topology Workbench</h3>
+            <p>Construct polygon-word models and animate realizations for educational or exploratory topological studies.</p>
+          </article>
+          <article class="feature-card reveal">
+            <h3>Worker-backed Compute</h3>
+            <p>Use Python worker integrations for heavier CGAL/VTK operations when precision and throughput matter.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="workflow" class="container section">
+        <div class="section-head reveal">
+          <p class="eyebrow">Typical Workflow</p>
+          <h2>From equation to artifact.</h2>
+        </div>
+        <ol class="flow-list">
+          <li class="reveal"><span>1.</span>Pick a mode and start from a preset or custom formula.</li>
+          <li class="reveal reveal-delay-1"><span>2.</span>Inspect geometry with overlays, probes, and selection metrics.</li>
+          <li class="reveal reveal-delay-2"><span>3.</span>Run mesh/volume transforms and export for downstream use.</li>
+        </ol>
+      </section>
+
+      <section id="download" class="container section callout reveal">
+        <h2>Try Math3D today.</h2>
+        <p>
+          Start in the browser for quick access, or install the desktop release for local workflows with bundled worker
+          tooling.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://expert10000.github.io/Math3D/app/" target="_blank" rel="noreferrer">
+            Open Web App
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/expert10000/Math3D" target="_blank" rel="noreferrer">
+            View Source
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <p>&copy; <span id="year"></span> Math3D</p>
+        <a href="https://github.com/expert10000/Math3D" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>

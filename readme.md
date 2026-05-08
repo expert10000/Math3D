@@ -137,6 +137,17 @@ npm run build:web:pages
 Note:
 - GitHub Pages serves static files only. Worker-backed API routes (`/api/worker`) are not included there unless you host a separate backend proxy/service.
 
+### Public marketing site (independent app)
+
+- Promo site source: `apps/public-site/src/`
+- Promo site build output: `apps/public-site/dist/`
+- Local dev: `npm run dev:public-site`
+- Build: `npm run build:public-site`
+- Preview build: `npm run preview:public-site`
+- Cloudflare Pages:
+  - Build command: `npm run build:public-site`
+  - Build output directory: `apps/public-site/dist`
+
 ## Python worker modes
 
 Math3D browser mode uses a local proxy (`/api/worker`) for CGAL/VTK-backed operations.
