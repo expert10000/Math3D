@@ -87,6 +87,28 @@ const PRESETS: TopologyPreset[] = [
       }),
   },
   {
+    id: "dunce_map",
+    label: "Dunce map (a a^-1 a)",
+    summary: "Triangle model with boundary word a a^-1 a (two matched, one reversed).",
+    buildDiagram: () =>
+      makeSingleFaceDiagram({
+        id: "preset/dunce-map",
+        name: "Dunce map (a a^-1 a)",
+        description: "Dunce-style triangle quotient with word a a^-1 a.",
+        vertices: [
+          { id: "v0", x: -1.1, y: 0.86, label: "A" },
+          { id: "v1", x: 1.1, y: 0.86, label: "B" },
+          { id: "v2", x: 0, y: -1.05, label: "C" },
+        ],
+        boundary: [
+          { edgeId: "e0", from: "v0", to: "v1", label: "a", orientation: 1, pairings: ["e1", "e2"] },
+          { edgeId: "e1", from: "v1", to: "v2", label: "a", orientation: -1, pairings: ["e0", "e2"] },
+          { edgeId: "e2", from: "v2", to: "v0", label: "a", orientation: 1, pairings: ["e0", "e1"] },
+        ],
+        boundaryWord: "a a^-1 a",
+      }),
+  },
+  {
     id: "mobius_from_rectangle",
     label: "Möbius band from rectangle",
     summary: "Rectangle with one opposite edge pair identified with reversal.",

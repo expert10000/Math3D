@@ -477,7 +477,7 @@ const isDunceCapStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   const fullyPaired = candidate.edges.every((edge) => (candidate.edgePairings[edge.id]?.length ?? 0) >= 2);
   if (!fullyPaired) return false;
   const word = (candidate.faceBoundaryWords[face.id] ?? "").toLowerCase().replace(/\s+/g, "");
-  return word.includes("aaa");
+  return word.includes("aaa") || word.includes("aa^-1a");
 };
 
 const isCylinderStoryDiagram = (candidate: FundamentalDiagram): boolean => candidate.id === "preset/cylinder";
@@ -767,6 +767,11 @@ export const TopologyScreen: React.FC = () => {
   const projectiveStoryEnabled = useMemo(() => isProjectivePlaneStoryDiagram(diagram), [diagram]);
   const kleinStoryEnabled = useMemo(() => isKleinBottleStoryDiagram(diagram), [diagram]);
   const dunceStoryEnabled = useMemo(() => isDunceCapStoryDiagram(diagram), [diagram]);
+  const dunceUsesReversedWord = useMemo(() => {
+    const face = diagram.faces[0];
+    const word = (face ? diagram.faceBoundaryWords[face.id] ?? "" : "").toLowerCase().replace(/\s+/g, "");
+    return diagram.id === "preset/dunce-map" || word.includes("aa^-1a");
+  }, [diagram]);
   const cylinderStoryEnabled = useMemo(() => isCylinderStoryDiagram(diagram), [diagram]);
   const coneStoryEnabled = useMemo(() => isConeStoryDiagram(diagram), [diagram]);
   const suspensionStoryEnabled = useMemo(() => isSuspensionStoryDiagram(diagram), [diagram]);
@@ -1945,6 +1950,10 @@ export const TopologyScreen: React.FC = () => {
               if (edgeId === "cone_boundary") return [edgeId, "#0ea5e9"] as const;
               if (edgeId === "sphere_equator") return [edgeId, "#0ea5e9"] as const;
               if (edgeId === "suspension_equator") return [edgeId, "#0ea5e9"] as const;
+              if (edgeId === "a/dunce-red") return [edgeId, "#dc2626"] as const;
+              if (edgeId === "a/dunce-blue") return [edgeId, "#2563eb"] as const;
+              if (edgeId === "a/dunce-green") return [edgeId, "#16a34a"] as const;
+              if (edgeId === "dunce_vertex_track") return [edgeId, "#111827"] as const;
               const label = quotientEdgeLabelById.get(edgeId);
               const color = edgeColorForLabel(label, "");
               return color ? ([edgeId, color] as const) : null;
@@ -2291,7 +2300,10 @@ export const TopologyScreen: React.FC = () => {
           )}
           {dunceStoryEnabled && (
             <>
-              <div>Dunce cap quotient: contractible 2-complex (attachment word a a a).</div>
+              <div>
+                Dunce cap quotient: contractible 2-complex (attachment word{" "}
+                {dunceUsesReversedWord ? "a a^-1 a" : "a a a"}).
+              </div>
               <div>Not a 2-manifold surface: singular identifications are intrinsic to the topology.</div>
               <div>Orientability is not applicable in the manifold-surface sense.</div>
               <div>This is not a torus.</div>
@@ -2394,6 +2406,12 @@ export const TopologyScreen: React.FC = () => {
       ? Math.max(0, Math.min(activeStoryStages.length - 1, Math.floor(storyFloat + 1e-6)))
       : 0;
     const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
+    const jumpToStoryStage = (targetStageIndex: number) => {
+      if (!activeStoryStages || activeStoryStages.length <= 1) return;
+      const clamped = Math.max(0, Math.min(activeStoryStages.length - 1, targetStageIndex));
+      const progress = clamped / Math.max(1, activeStoryStages.length - 1);
+      setTimelinePosition(progress * timelineMax);
+    };
     const activeStoryKey = torusStoryEnabled
       ? "torus"
       : mobiusStoryEnabled
@@ -2536,6 +2554,10 @@ export const TopologyScreen: React.FC = () => {
                 if (edgeId === "cone_boundary") return [edgeId, "#0ea5e9"] as const;
                 if (edgeId === "sphere_equator") return [edgeId, "#0ea5e9"] as const;
                 if (edgeId === "suspension_equator") return [edgeId, "#0ea5e9"] as const;
+                if (edgeId === "a/dunce-red") return [edgeId, "#dc2626"] as const;
+                if (edgeId === "a/dunce-blue") return [edgeId, "#2563eb"] as const;
+                if (edgeId === "a/dunce-green") return [edgeId, "#16a34a"] as const;
+                if (edgeId === "dunce_vertex_track") return [edgeId, "#111827"] as const;
                 const label = storyQuotientEdgeLabelById.get(edgeId);
                 const color = edgeColorForLabel(label, "");
                 return color ? ([edgeId, color] as const) : null;
@@ -2562,6 +2584,10 @@ export const TopologyScreen: React.FC = () => {
             type="button"
             onClick={() => {
               setTimelinePlaying(false);
+              if (activeStoryStages) {
+                jumpToStoryStage(storyStageIndex - 1);
+                return;
+              }
               setTimelinePosition((v) => Math.max(0, Math.floor(v) - 1));
             }}
           >
@@ -2571,6 +2597,10 @@ export const TopologyScreen: React.FC = () => {
             type="button"
             onClick={() => {
               setTimelinePlaying(false);
+              if (activeStoryStages) {
+                jumpToStoryStage(storyStageIndex + 1);
+                return;
+              }
               setTimelinePosition((v) => Math.min(timelineMax, Math.floor(v) + 1));
             }}
           >
@@ -2721,33 +2751,100 @@ export const TopologyScreen: React.FC = () => {
               gap: 2,
             }}
           >
-            <div>Dunce cap quotient: contractible 2-complex (a a a).</div>
+            <div>Dunce cap quotient: contractible 2-complex ({dunceUsesReversedWord ? "a a^-1 a" : "a a a"}).</div>
             <div>Not a manifold surface: singular edge/vertex identifications are part of the quotient.</div>
             <div>Orientability in the surface sense is not applicable.</div>
             <div>This is not a torus.</div>
           </div>
         )}
         {activeStoryStages && storyStage && (
-          <div style={{ display: "grid", gap: 5 }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Current stage: {storyStage.label}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700 }}>Construction stages</div>
+              <button
+                type="button"
+                onClick={() => setTimelinePlaying((value) => !value)}
+                disabled={timelineOperations.length === 0}
+                style={{ fontSize: 11 }}
+              >
+                {timelinePlaying ? "Pause" : "Animate"}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, overflowX: "scroll", scrollbarGutter: "stable", paddingBottom: 4 }}>
               {activeStoryStages.map((stage, index) => {
                 const active = index === storyStageIndex;
                 const done = index < storyStageIndex;
+                const stageTitle = stage.label.replace(/^S\d+:\s*/i, "").trim();
                 return (
-                  <div
-                    key={`story-stage-${stage.id}`}
-                    style={{
-                      border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
-                      background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
-                      borderRadius: 999,
-                      padding: "3px 9px",
-                      fontSize: 10,
-                      fontWeight: active ? 700 : 600,
-                    }}
-                  >
-                    {stage.label}
+                  <div key={`story-stage-card-${stage.id}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTimelinePlaying(false);
+                        jumpToStoryStage(index);
+                      }}
+                      style={{
+                        minWidth: 248,
+                        maxWidth: 248,
+                        textAlign: "left",
+                        border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
+                        background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
+                        borderRadius: 8,
+                        padding: "6px 8px",
+                        display: "grid",
+                        gap: 3,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 999,
+                            border: "1px solid " + (active ? "#0a66c2" : "#93c5fd"),
+                            background: active ? "#0a66c2" : done ? "#dbeafe" : "#fff",
+                            color: active ? "#fff" : "#1e40af",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 10,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {index + 1}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>{stageTitle}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>{stage.detail}</div>
+                    </button>
+                    {index < activeStoryStages.length - 1 && (
+                      <div style={{ fontSize: 18, color: "#64748b", fontWeight: 700, lineHeight: 1 }}>→</div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+              {activeStoryStages.map((stage, index) => {
+                const active = index === storyStageIndex;
+                return (
+                  <button
+                    key={`story-stage-dot-${stage.id}`}
+                    type="button"
+                    aria-label={`Jump to ${stage.label}`}
+                    onClick={() => {
+                      setTimelinePlaying(false);
+                      jumpToStoryStage(index);
+                    }}
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 999,
+                      border: "1px solid " + (active ? "#0a66c2" : "#94a3b8"),
+                      background: active ? "#0a66c2" : "#fff",
+                      padding: 0,
+                    }}
+                  />
                 );
               })}
             </div>
@@ -3226,7 +3323,9 @@ export const TopologyScreen: React.FC = () => {
                   </text>
 
                   <text x={260} y={54} textAnchor="middle" style={{ fontSize: 11, fontWeight: 700, fill: "#334155" }}>
-                    {"Triangle -> a~a~a -> Dunce cap complex"}
+                    {dunceUsesReversedWord
+                      ? "Triangle -> a~a^-1~a -> Dunce map complex"
+                      : "Triangle -> a~a~a -> Dunce cap complex"}
                   </text>
                   <text x={260} y={72} textAnchor="middle" style={{ fontSize: 10, fill: "#475569", opacity: clamp01(0.4 + 0.6 * tDunceGather) }}>
                     contractible but non-manifold 2-complex; this is not a torus
@@ -3405,6 +3504,9 @@ export const TopologyScreen: React.FC = () => {
           </svg>
         )}
 
+        <details open={!activeStoryStages} style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "8px 10px" }}>
+          <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#0f172a" }}>Advanced timeline controls</summary>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 8 }}>
           <div
             style={{
@@ -3414,8 +3516,7 @@ export const TopologyScreen: React.FC = () => {
               padding: "8px 10px",
               display: "grid",
               gap: 4,
-              maxHeight: 220,
-              overflowY: "auto",
+              minHeight: 120,
             }}
           >
             <div style={{ fontSize: 11, fontWeight: 700 }}>Timeline steps</div>
@@ -3457,8 +3558,7 @@ export const TopologyScreen: React.FC = () => {
               padding: "8px 10px",
               display: "grid",
               gap: 6,
-              maxHeight: 220,
-              overflowY: "auto",
+              minHeight: 120,
             }}
           >
             <div style={{ fontSize: 11, fontWeight: 700 }}>Operation generator</div>
@@ -3515,7 +3615,17 @@ export const TopologyScreen: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", padding: "8px 10px", display: "grid", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+        <div
+          style={{
+            border: "1px solid #dbe4f0",
+            borderRadius: 8,
+            background: "#fff",
+            padding: "8px 10px",
+            display: "grid",
+            gap: 4,
+            minHeight: 90,
+          }}
+        >
           <div style={{ fontSize: 11, fontWeight: 700 }}>Ordered operations</div>
           {timelineOperations.map((operation, index) => {
             const active = index >= opsA && index < opsB;
@@ -3536,6 +3646,8 @@ export const TopologyScreen: React.FC = () => {
             );
           })}
         </div>
+          </div>
+        </details>
       </div>
     );
   };
@@ -3756,6 +3868,7 @@ export const TopologyScreen: React.FC = () => {
                     setActiveView("diagram");
                     return;
                   }
+                  setBuildMode("preset");
                   if (entry.id === "polyhedra") {
                     if (TOPOLOGY_PRESET_BY_ID.has("sphere_boundary_contraction")) {
                       applyPreset("sphere_boundary_contraction");
@@ -3817,6 +3930,9 @@ export const TopologyScreen: React.FC = () => {
                   onClick={() => TOPOLOGY_PRESET_BY_ID.has("klein_bottle_square") && applyPreset("klein_bottle_square")}
                 >
                   Klein
+                </button>
+                <button type="button" onClick={() => TOPOLOGY_PRESET_BY_ID.has("dunce_map") && applyPreset("dunce_map")}>
+                  Dunce map
                 </button>
               </div>
             </div>
@@ -4241,7 +4357,17 @@ export const TopologyScreen: React.FC = () => {
             </label>
           </div>
         </div>
-        <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#f8fbff", padding: 10, overflow: "auto" }}>
+        <div
+          style={{
+            border: "1px solid #dbe4f0",
+            borderRadius: 10,
+            background: "#f8fbff",
+            padding: 10,
+            overflowY: "scroll",
+            overflowX: "hidden",
+            scrollbarGutter: "stable",
+          }}
+        >
           {renderCenterView()}
         </div>
       </div>

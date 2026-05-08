@@ -11033,9 +11033,15 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
           width: "100%",
           margin: 0,
           overflowX: "hidden",
-          paddingBottom: showStatusBar ? 46 : 0,
+          boxSizing: "border-box",
+          position: "relative",
         }
-      : { ...styles.appRoot, overflowX: "hidden", paddingBottom: showStatusBar ? 46 : 0 };
+      : {
+          ...styles.appRoot,
+          overflowX: "hidden",
+          boxSizing: "border-box",
+          position: "relative",
+        };
   const canLoadScreenshotFolder = typeof window.appCapture?.listScreenshots === "function";
 
 
@@ -24047,6 +24053,11 @@ case "mobius":
                 gap: 8,
               }
             : null),
+          ...(showStatusBar
+            ? {
+                paddingBottom: isSurfacePreviewMode ? 56 : 74,
+              }
+            : null),
           ...(mode === "surfaces" || mode === "curves" || mode === "topology" || mode === "geometry"
             ? {
               maxWidth: "100%",
@@ -27069,7 +27080,11 @@ case "mobius":
           </div>
         ) : mode === "topology" ? (
           <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
-            <div data-testid="main-viewer" ref={topologySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
+            <div
+              data-testid="main-viewer"
+              ref={topologySceneCaptureRef}
+              style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
+            >
               <TopologyScreen />
             </div>
           </div>
@@ -30213,7 +30228,7 @@ case "mobius":
         <div
           data-testid="app-status-bar"
           style={{
-            position: "fixed",
+            position: "absolute",
             left: 16,
             right: 16,
             bottom: 10,

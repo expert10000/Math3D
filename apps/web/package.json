@@ -6,6 +6,7 @@
     "proxy": "node server/worker-proxy.cjs",
     "dev": "npm --prefix ../../renderer run dev",
     "build": "npm --prefix ../../renderer run build:web",
+    "build:pages": "npm --prefix ../../renderer run build:web:pages",
     "preview": "npm --prefix ../../renderer run preview:web",
     "test": "npm --prefix ../../renderer run test"
   }

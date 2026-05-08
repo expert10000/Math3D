@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:web": "vite build --base / --outDir ../apps/web/dist --emptyOutDir",
+    "build:web:pages": "vite build --base ./ --outDir ../apps/web/dist --emptyOutDir",
     "preview": "vite preview",
     "preview:web": "vite preview --host --port 4173 --strictPort --base / --outDir ../apps/web/dist",
     "test": "vitest run"

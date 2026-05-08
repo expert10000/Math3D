@@ -21,7 +21,7 @@ export default defineConfig({
   base: "./",        // 👈 IMPORTANT for Electron / file://
   plugins: [react()],
   build: {
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1300,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -105,6 +105,8 @@ const CYLINDER_RADIUS = 1.34;
 const CYLINDER_HALF_HEIGHT = 0.9;
 const CONE_RADIUS = 1.48;
 const CONE_HEIGHT = 1.95;
+const DUNCE_MAP_BASE_RADIUS = 1.5;
+const DUNCE_MAP_HEIGHT = 2.1;
 const SPHERE_RADIUS = 1.32;
 const SUSPENSION_RADIUS = 1.28;
 const SUSPENSION_HALF_HEIGHT = 1.34;
@@ -328,6 +330,18 @@ const conePoint = (u: number, s: number): Vec3 => {
   return [r * Math.cos(u), r * Math.sin(u), z];
 };
 
+const dunceMapPoint = (u: number, s: number): Vec3 => {
+  const taper = 1 - s;
+  const ripple = 0.24 * Math.sin(2.1 * u) * s * (1 - 0.45 * s);
+  const phase = 0.38 * s;
+  const radiusX = DUNCE_MAP_BASE_RADIUS * taper * (1 + 0.08 * Math.cos(3 * u));
+  const radiusY = DUNCE_MAP_BASE_RADIUS * taper * (1 - 0.08 * Math.cos(3 * u));
+  const x = (radiusX + ripple) * Math.cos(u + phase);
+  const y = (radiusY - ripple) * Math.sin(u - 0.26 * s);
+  const z = -DUNCE_MAP_HEIGHT * 0.5 + DUNCE_MAP_HEIGHT * s + 0.28 * Math.sin(3 * u) * s * taper;
+  return [x, y, z];
+};
+
 const sphereSurfacePoint = (u: number, v: number): Vec3 => [
   SPHERE_RADIUS * Math.sin(u) * Math.cos(v),
   SPHERE_RADIUS * Math.sin(u) * Math.sin(v),
@@ -373,6 +387,31 @@ const buildConeFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"]
     for (let is = 0; is <= sSegments; is += 1) {
       const s = is / sSegments;
       vertices.push(conePoint(u, s));
+    }
+  }
+  const row = sSegments + 1;
+  const triangles: Array<[number, number, number]> = [];
+  for (let iu = 0; iu < uSegments; iu += 1) {
+    for (let is = 0; is < sSegments; is += 1) {
+      const a = iu * row + is;
+      const b = (iu + 1) * row + is;
+      const c = (iu + 1) * row + is + 1;
+      const d = iu * row + is + 1;
+      triangles.push([a, b, c], [a, c, d]);
+    }
+  }
+  return [{ faceId, vertices, triangles }];
+};
+
+const buildDunceMapFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
+  const uSegments = 108;
+  const sSegments = 32;
+  const vertices: Vec3[] = [];
+  for (let iu = 0; iu <= uSegments; iu += 1) {
+    const u = (Math.PI * 2 * iu) / uSegments;
+    for (let is = 0; is <= sSegments; is += 1) {
+      const s = is / sSegments;
+      vertices.push(dunceMapPoint(u, s));
     }
   }
   const row = sSegments + 1;
@@ -890,6 +929,71 @@ const buildConePresetRealization = (quotient: QuotientComplex): Realization3D | 
   };
 };
 
+const buildDunceMapPresetRealization = (quotient: QuotientComplex): Realization3D | null => {
+  if (!isPresetQuotient(quotient, "preset/dunce-map")) return null;
+  const faceId = quotient.faces[0]?.id ?? "qF0";
+  const mainEdgeId = quotient.edges[0]?.id ?? "qE0";
+  const edgeCurves: Record<string, Vec3[]> = {};
+
+  for (const edge of quotient.edges) {
+    const phase = quotient.edges.indexOf(edge);
+    edgeCurves[edge.id] = sampleCurve((t) => dunceMapPoint((t + phase * 0.08) * Math.PI * 2, 0.08), 180, true);
+  }
+
+  // Keep the three source-edge tracks visible on the same loop to mimic a, a^-1, a attachment.
+  edgeCurves["a/dunce-red"] = sampleCurve((t) => dunceMapPoint(t * Math.PI * 2, 0.03), 170, true);
+  edgeCurves["a/dunce-blue"] = sampleCurve((t) => dunceMapPoint((1 - t) * Math.PI * 2 + 0.22, 0.09), 170, true);
+  edgeCurves["a/dunce-green"] = sampleCurve((t) => dunceMapPoint((t + 0.37) * Math.PI * 2, 0.15), 170, true);
+  edgeCurves.dunce_vertex_track = sampleCurve((t) => dunceMapPoint(0.24 * Math.PI + t * Math.PI * 2, 0.16), 130, true);
+
+  const vertexPositions: Record<string, Vec3> = {};
+  quotient.vertices.forEach((vertex, index) => {
+    if (index === 0) {
+      vertexPositions[vertex.id] = dunceMapPoint(0.24 * Math.PI, 0.1);
+      return;
+    }
+    const t = (Math.PI * 2 * index) / Math.max(2, quotient.vertices.length);
+    vertexPositions[vertex.id] = dunceMapPoint(t, 0.12 + 0.06 * Math.sin(index));
+  });
+
+  if (vertexPositions[quotient.vertices[0]?.id ?? ""]) {
+    edgeCurves[mainEdgeId] = sampleCurve((t) => dunceMapPoint(t * Math.PI * 2, 0.1), 190, true);
+  }
+
+  const seams = quotient.edges
+    .filter((edge) => edge.sourceEdgeIds.length > 1)
+    .map((edge) => ({
+      edgeId: edge.id,
+      sourceEdgeIds: [...edge.sourceEdgeIds],
+      kind: edge.endpointVertexIds[0] === edge.endpointVertexIds[1] ? "self-identified" : "identified",
+    })) satisfies Realization3D["seams"];
+
+  const singularityMarkers = quotient.vertices
+    .filter((vertex) => vertex.sourceVertexIds.length > 1)
+    .map((vertex) => ({
+      vertexId: vertex.id,
+      kind: "identified-vertex",
+      degree: quotient.incidences.vertexToEdges[vertex.id]?.length ?? 0,
+    })) satisfies Realization3D["singularityMarkers"];
+
+  return {
+    id: `${quotient.id}/realization/dunce-map-smooth`,
+    name: "Dunce map smooth realization (a a^-1 a)",
+    quotientComplexId: quotient.id,
+    vertexPositions,
+    edgeCurves,
+    faceRealizationMesh: buildDunceMapFaceMesh(faceId),
+    seams,
+    singularityMarkers,
+    style: {
+      faceFill: "#f3f4f6",
+      edgeStroke: "#0f172a",
+      seamStroke: "#be123c",
+      singularityColor: "#111827",
+    },
+  };
+};
+
 const buildSpherePresetRealization = (quotient: QuotientComplex): Realization3D | null => {
   if (!isPresetQuotient(quotient, "preset/sphere-boundary-contraction")) return null;
   const faceId = quotient.faces[0]?.id ?? "qF0";
@@ -1247,6 +1351,7 @@ export const buildRealizationChoices = (
 ): Realization3D[] => {
   const cylinderPreset = buildCylinderPresetRealization(quotient);
   const conePreset = buildConePresetRealization(quotient);
+  const dunceMapPreset = buildDunceMapPresetRealization(quotient);
   const spherePreset = buildSpherePresetRealization(quotient);
   const suspensionPreset = buildSuspensionPresetRealization(quotient);
   const kleinImmersed = buildKleinImmersedRealization(quotient, relations);
@@ -1258,6 +1363,7 @@ export const buildRealizationChoices = (
   return [
     ...(cylinderPreset ? [cylinderPreset] : []),
     ...(conePreset ? [conePreset] : []),
+    ...(dunceMapPreset ? [dunceMapPreset] : []),
     ...(spherePreset ? [spherePreset] : []),
     ...(suspensionPreset ? [suspensionPreset] : []),
     ...(kleinImmersed ? [kleinImmersed] : []),

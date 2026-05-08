@@ -125,6 +125,18 @@ Notes:
 - This Docker flow is self-contained (Node + Python deps inside container).
 - Linux containers use `python` worker mode; they do not run Windows `worker.exe`.
 
+### Public frontend publish (GitHub Pages)
+
+- CI deploys docs plus a public browser frontend at `https://expert10000.github.io/Math3D/app/` via `.github/workflows/docs-pages.yml`.
+- Manual local build for that Pages frontend layout:
+
+```bash
+npm run build:web:pages
+```
+
+Note:
+- GitHub Pages serves static files only. Worker-backed API routes (`/api/worker`) are not included there unless you host a separate backend proxy/service.
+
 ## Python worker modes
 
 Math3D browser mode uses a local proxy (`/api/worker`) for CGAL/VTK-backed operations.

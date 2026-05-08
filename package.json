@@ -16,6 +16,7 @@
     "dev:web:client": "npm --prefix apps/web run dev",
     "dev:desktop": "npm --prefix apps/desktop run dev",
     "build:web": "npm --prefix apps/web run build",
+    "build:web:pages": "npm --prefix apps/web run build:pages",
     "preview:web": "concurrently \"npm:preview:web:proxy\" \"npm:preview:web:client\"",
     "preview:web:proxy": "npm --prefix apps/web run proxy",
     "preview:web:client": "npm --prefix apps/web run preview",
