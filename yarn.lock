@@ -195,6 +195,10 @@
   version "0.0.0"
   resolved "file:packages/core"
 
+"@math3d/public-site@file:G:\\Function-viewer-2026-02-05\\Math3D\\apps\\public-site":
+  version "0.0.0"
+  resolved "file:apps/public-site"
+
 "@math3d/renderer@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\renderer":
   version "0.0.0"
   resolved "file:packages/renderer"
@@ -209,6 +213,8 @@
 "@math3d/workbook@file:G:\\Function-viewer-2026-02-05\\Math3D\\packages\\workbook":
   version "0.0.0"
   resolved "file:packages/workbook"
+  dependencies:
+    "@math3d/core" "file:../core"
 
 "@nodelib/fs.scandir@2.1.5":
   version "2.1.5"
