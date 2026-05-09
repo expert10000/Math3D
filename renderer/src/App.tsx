@@ -30553,19 +30553,36 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
   weierstrass: new Set(["enneper", "enneper2", "helicoid", "catenoid", "trig"]),
 };
 
+const resolveGalleryAssetPath = (relativePath: string): string => {
+  const normalized = relativePath.replace(/^\/+/, "");
+  const base =
+    typeof document !== "undefined" && document.baseURI
+      ? document.baseURI
+      : typeof window !== "undefined" && window.location?.href
+        ? window.location.href
+        : "/";
+  try {
+    return new URL(normalized, base).toString();
+  } catch {
+    return `./${normalized}`;
+  }
+};
+
 const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | null => {
   const normalizedId = kind === "weierstrass" && id.startsWith("w-") ? id.slice(2) : id;
   const capturedIds = CAPTURED_PRESET_IDS_BY_KIND[kind];
   if (!capturedIds?.has(normalizedId)) return null;
-  if (kind === "graph") return `../../gallery-images/captured/surfaces/explicit/${normalizedId}.png`;
-  if (kind === "implicit") return `../../gallery-images/captured/surfaces/implicit/${normalizedId}.png`;
-  if (kind === "parametric") return `../../gallery-images/captured/surfaces/parametric/${normalizedId}.png`;
-  if (kind === "spline") return `../../gallery-images/captured/surfaces/spline/${normalizedId}.png`;
-  if (kind === "rotational") return `../../gallery-images/captured/surfaces/constructed/rotational/${normalizedId}.png`;
-  if (kind === "sweep") return `../../gallery-images/captured/surfaces/constructed/sweep/${normalizedId}.png`;
-  if (kind === "tube") return `../../gallery-images/captured/surfaces/constructed/tube/${normalizedId}.png`;
-  if (kind === "ruled") return `../../gallery-images/captured/surfaces/constructed/ruled/${normalizedId}.png`;
-  if (kind === "weierstrass") return `../../gallery-images/captured/surfaces/weierstrass/${normalizedId}.png`;
+  if (kind === "graph") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/explicit/${normalizedId}.png`);
+  if (kind === "implicit") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/implicit/${normalizedId}.png`);
+  if (kind === "parametric") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/parametric/${normalizedId}.png`);
+  if (kind === "spline") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/spline/${normalizedId}.png`);
+  if (kind === "rotational") {
+    return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/rotational/${normalizedId}.png`);
+  }
+  if (kind === "sweep") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/sweep/${normalizedId}.png`);
+  if (kind === "tube") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/tube/${normalizedId}.png`);
+  if (kind === "ruled") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/ruled/${normalizedId}.png`);
+  if (kind === "weierstrass") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/weierstrass/${normalizedId}.png`);
   return null;
 };
 

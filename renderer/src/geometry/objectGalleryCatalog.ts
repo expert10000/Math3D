@@ -170,9 +170,24 @@ const CAPTURED_OBJECT_THUMB_IDS = new Set<string>([
   "pyramid",
 ]);
 
+const resolveGalleryAssetPath = (relativePath: string): string => {
+  const normalized = relativePath.replace(/^\/+/, "");
+  const base =
+    typeof document !== "undefined" && document.baseURI
+      ? document.baseURI
+      : typeof window !== "undefined" && window.location?.href
+        ? window.location.href
+        : "/";
+  try {
+    return new URL(normalized, base).toString();
+  } catch {
+    return `./${normalized}`;
+  }
+};
+
 const capturedObjectThumbPath = (objectId: string): string | null =>
   CAPTURED_OBJECT_THUMB_IDS.has(objectId)
-    ? `../../gallery-images/captured/objects/${objectId}.png`
+    ? resolveGalleryAssetPath(`gallery-images/captured/objects/${objectId}.png`)
     : null;
 
 const preset = (
