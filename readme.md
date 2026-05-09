@@ -7,6 +7,7 @@ Math3D is an interactive geometry app (Electron + React) with browser mode suppo
 
 Live links:
 - Web app: https://expert10000.github.io/Math3D/app/
+- Web app (app.math3dlab.com): https://app.math3dlab.com/
 - Landing page: https://math3dlab.com/
 
 Requirements:
