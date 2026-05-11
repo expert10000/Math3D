@@ -22350,9 +22350,9 @@ case "mobius":
     },
   ];
   const displayModeEntries = [
-    { id: "workspace", label: "Workspace", icon: "W" },
-    { id: "present", label: "Present", icon: "P" },
-    { id: "inspect", label: "Inspect", icon: "I" },
+    { id: "workspace", label: "Workspace" },
+    { id: "present", label: "Present" },
+    { id: "inspect", label: "Inspect" },
   ] as const;
   const activeSectionLabel = sectionNavEntries.find((entry) => entry.active)?.label ?? "Viewer";
   const activeDisplayLabel = displayModeEntries.find((entry) => entry.id === displayMode)?.label ?? "Workspace";
@@ -22439,7 +22439,10 @@ case "mobius":
     border: "1px solid #dbe4f0",
     borderRadius: 10,
     background: "#f8fbff",
-    padding: "5px 8px",
+    paddingTop: 5,
+    paddingRight: 8,
+    paddingBottom: 5,
+    paddingLeft: 8,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -23167,7 +23170,6 @@ case "mobius":
                           aria-pressed={active}
                           style={topNavButtonStyle(active)}
                         >
-                          <span style={{ fontSize: 10, opacity: active ? 1 : 0.72, marginRight: 5 }}>{entry.icon}</span>
                           {entry.label}
                         </button>
                       );
@@ -23183,7 +23185,6 @@ case "mobius":
                       aria-expanded={viewMenuOpen}
                       style={topNavButtonStyle(viewMenuOpen)}
                     >
-                      <span style={{ fontSize: 10, opacity: 0.78, marginRight: 5 }}>V</span>
                       View
                     </button>
                     {viewMenuOpen && (
@@ -27382,7 +27383,11 @@ case "mobius":
                                       </button>
                                       <div className="gallery-scan-card-footer-tools">
                                         <span className="gallery-scan-card-info-pill" title={card.description}>
-                                          i
+                                          <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true" focusable="false">
+                                            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                                            <circle cx="8" cy="5" r="1" fill="currentColor" />
+                                            <path d="M8 7.2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                                          </svg>
                                         </span>
                                       </div>
                                     </div>
@@ -30555,16 +30560,24 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
 
 const resolveGalleryAssetPath = (relativePath: string): string => {
   const normalized = relativePath.replace(/^\/+/, "");
+  const inGalleryRoot = normalized.startsWith("gallery-images/");
   const base =
     typeof document !== "undefined" && document.baseURI
       ? document.baseURI
       : typeof window !== "undefined" && window.location?.href
         ? window.location.href
         : "/";
+  // Desktop runs from file:///.../renderer/dist/index.html.
+  // Captured thumbnails live at repo/app root: ../../gallery-images/...
+  // Rebase only those paths so rendered cards resolve instead of falling back to diagrams.
+  let resolvedPath = normalized;
+  if (inGalleryRoot && typeof window !== "undefined" && window.location?.protocol === "file:") {
+    resolvedPath = `../../${normalized}`;
+  }
   try {
-    return new URL(normalized, base).toString();
+    return new URL(resolvedPath, base).toString();
   } catch {
-    return `./${normalized}`;
+    return `./${resolvedPath}`;
   }
 };
 
@@ -31729,7 +31742,11 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
                               </span>
                               <div className="gallery-scan-card-footer-tools">
                                 <span className="gallery-scan-card-info-pill" title={p.safeDomainReason}>
-                                  i
+                                  <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true" focusable="false">
+                                    <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                                    <circle cx="8" cy="5" r="1" fill="currentColor" />
+                                    <path d="M8 7.2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                                  </svg>
                                 </span>
                               </div>
                             </div>
@@ -31980,7 +31997,11 @@ const SurfacesButtons: React.FC<SurfacesButtonsProps> = ({
                   <div className="gallery-scan-card-footer-tools">
                     {meta?.note && (
                       <span className="gallery-scan-card-info-pill" title={meta.note}>
-                        i
+                        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                          <circle cx="8" cy="5" r="1" fill="currentColor" />
+                          <path d="M8 7.2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
                       </span>
                     )}
                   </div>
@@ -32397,7 +32418,11 @@ const ParamSurfacesButtons: React.FC<ParamSurfacesButtonsProps> = ({
                     </span>
                     <div className="gallery-scan-card-footer-tools">
                       <span className="gallery-scan-card-info-pill" title={s.note}>
-                        i
+                        <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true" focusable="false">
+                          <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                          <circle cx="8" cy="5" r="1" fill="currentColor" />
+                          <path d="M8 7.2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
                       </span>
                     </div>
                   </div>
