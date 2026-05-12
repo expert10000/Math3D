@@ -21,6 +21,13 @@ type PresentationCamera = {
   target: [number, number, number];
 };
 
+type ConstructionGuide =
+  | {
+      kind: "klein";
+      stageIndex: number;
+    }
+  | null;
+
 type TopologyRealization3DViewProps = {
   realization: Realization3D;
   height?: number;
@@ -33,6 +40,7 @@ type TopologyRealization3DViewProps = {
   highlightedEdgeIds?: string[];
   cameraMode?: "perspective" | "orthographic";
   presentationCamera?: PresentationCamera | null;
+  constructionGuide?: ConstructionGuide;
   onEdgeHover?: (edgeId: string | null) => void;
   onEdgeSelect?: (edgeId: string) => void;
 };
@@ -42,6 +50,12 @@ const softenEdgeColor = (input: string, mix = 0.34): string => {
   const c = new THREE.Color(input);
   c.lerp(new THREE.Color("#cbd5e1"), Math.max(0, Math.min(1, mix)));
   return `#${c.getHexString()}`;
+};
+const isWarmEdgeColor = (input: string): boolean => {
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color(input).getHSL(hsl);
+  const hueDeg = hsl.h * 360;
+  return (hueDeg <= 34 || hueDeg >= 346) && hsl.s >= 0.25;
 };
 
 const StudioPostprocessing: React.FC = () => {
@@ -274,6 +288,192 @@ const EdgeTube: React.FC<{
   );
 };
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+const lerp = (a: number, b: number, t: number): number => a * (1 - t) + b * t;
+const remap01 = (value: number, start: number, end: number): number =>
+  clamp01((value - start) / Math.max(1e-6, end - start));
+const bell = (x: number, center: number, halfWidth: number): number => {
+  const n = clamp01(1 - Math.abs(x - center) / Math.max(1e-6, halfWidth));
+  return n * n;
+};
+const ringPoints = (radius: number, y: number, segments = 64): Array<[number, number, number]> =>
+  Array.from({ length: segments + 1 }, (_, i) => {
+    const t = (i / segments) * Math.PI * 2;
+    return [radius * Math.cos(t), y, radius * Math.sin(t)];
+  });
+
+const KleinConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }) => {
+  const stage = Math.max(0, Math.min(5, stageIndex));
+  const tShift = remap01(stage, 3.6, 5.0);
+  const tFinal = remap01(stage, 4.2, 5.0);
+  const squareOpacity = clamp01(1 - remap01(stage, 0.7, 1.7));
+  const cylinderOpacity = clamp01(0.96 * bell(stage, 2.0, 1.05));
+  const bendOpacity = clamp01(0.92 * bell(stage, 3.0, 0.95));
+  const torusOpacity = clamp01(0.92 * bell(stage, 4.0, 0.95));
+  const finalOpacity = clamp01(0.96 * remap01(stage, 4.25, 5.0));
+  const guideMaterialOpacity = 0.23;
+  const finalKleinGeometry = useMemo(() => {
+    const uSegments = 132;
+    const vSegments = 76;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const scale = 0.34;
+    for (let iu = 0; iu <= uSegments; iu += 1) {
+      const u = (Math.PI * 2 * iu) / uSegments;
+      const hu = u * 0.5;
+      for (let iv = 0; iv <= vSegments; iv += 1) {
+        const v = (Math.PI * 2 * iv) / vSegments;
+        const common = 2.0 + Math.cos(hu) * Math.sin(v) - Math.sin(hu) * Math.sin(2 * v);
+        const x = common * Math.cos(u);
+        const y = common * Math.sin(u);
+        const z = Math.sin(hu) * Math.sin(v) + Math.cos(hu) * Math.sin(2 * v);
+        positions.push(scale * x, scale * z, scale * y);
+      }
+    }
+    const row = vSegments + 1;
+    for (let iu = 0; iu < uSegments; iu += 1) {
+      for (let iv = 0; iv < vSegments; iv += 1) {
+        const a = iu * row + iv;
+        const b = (iu + 1) * row + iv;
+        const c = (iu + 1) * row + iv + 1;
+        const d = iu * row + iv + 1;
+        indices.push(a, b, c, a, c, d);
+      }
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+  }, []);
+
+  return (
+    <group position={[lerp(-2.66, -2.42, tShift), 0.24, 0.42]} scale={0.58}>
+      {squareOpacity > 0.01 && (
+        <group rotation={[0, -0.22, 0]}>
+          <Line points={[[-0.95, 0.62, 0], [0.95, 0.62, 0]]} color="#dc2626" transparent opacity={squareOpacity} lineWidth={2.2} />
+          <Line points={[[-0.95, -0.62, 0], [0.95, -0.62, 0]]} color="#dc2626" transparent opacity={squareOpacity} lineWidth={2.2} />
+          <Line points={[[-0.95, 0.62, 0], [-0.95, -0.62, 0]]} color="#2563eb" transparent opacity={squareOpacity} lineWidth={2.2} />
+          <Line points={[[0.95, 0.62, 0], [0.95, -0.62, 0]]} color="#2563eb" transparent opacity={squareOpacity} lineWidth={2.2} />
+          <mesh position={[-0.95, 0.62, 0]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshStandardMaterial color="#0f172a" transparent opacity={squareOpacity} />
+          </mesh>
+          <mesh position={[0.95, 0.62, 0]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshStandardMaterial color="#0f172a" transparent opacity={squareOpacity} />
+          </mesh>
+          <mesh position={[-0.95, -0.62, 0]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshStandardMaterial color="#0f172a" transparent opacity={squareOpacity} />
+          </mesh>
+          <mesh position={[0.95, -0.62, 0]}>
+            <sphereGeometry args={[0.05, 12, 12]} />
+            <meshStandardMaterial color="#0f172a" transparent opacity={squareOpacity} />
+          </mesh>
+        </group>
+      )}
+
+      {cylinderOpacity > 0.01 && (
+        <group rotation={[0, 0.24, 0]} position={[0.15, 0, 0.08]}>
+          <mesh>
+            <cylinderGeometry args={[0.72, 0.72, 1.92, 40, 1, true]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.62} metalness={0} transparent opacity={guideMaterialOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={ringPoints(0.72, 0.96)} color="#dc2626" transparent opacity={cylinderOpacity} lineWidth={2.2} />
+          <Line points={ringPoints(0.72, -0.96)} color="#dc2626" transparent opacity={cylinderOpacity} lineWidth={2.2} />
+          <Line points={[[0.72, 0.96, 0], [0.72, -0.96, 0]]} color="#2563eb" transparent opacity={cylinderOpacity} lineWidth={2.1} />
+          <Line points={[[-0.72, 0.96, 0], [-0.72, -0.96, 0]]} color="#2563eb" transparent opacity={cylinderOpacity} lineWidth={2.1} />
+        </group>
+      )}
+
+      {bendOpacity > 0.01 && (
+        <group rotation={[0.08, -0.11, 0.1]} position={[0.22, -0.03, 0.05]}>
+          <mesh>
+            <torusGeometry args={[0.72, 0.2, 20, 90, Math.PI * 1.26]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.62} metalness={0} transparent opacity={guideMaterialOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh position={[0.66, 0.48, 0]}>
+            <torusGeometry args={[0.2, 0.014, 12, 40]} />
+            <meshStandardMaterial color="#2563eb" transparent opacity={bendOpacity} />
+          </mesh>
+          <mesh position={[-0.66, 0.48, 0]}>
+            <torusGeometry args={[0.2, 0.014, 12, 40]} />
+            <meshStandardMaterial color="#2563eb" transparent opacity={bendOpacity} />
+          </mesh>
+          <Line
+            points={[
+              [0.38, 0.28, 0.14],
+              [0.12, 0.0, 0.28],
+              [-0.1, -0.26, 0.28],
+              [-0.24, -0.44, 0.2],
+            ]}
+            color="#ef4444"
+            transparent
+            opacity={bendOpacity}
+            lineWidth={1.9}
+          />
+        </group>
+      )}
+
+      {torusOpacity > 0.01 && (
+        <group position={[0.24, 0.02, 0.04]} rotation={[0.08, -0.2, -0.08]}>
+          <mesh>
+            <torusGeometry args={[0.76, 0.24, 28, 92]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.6} metalness={0} transparent opacity={guideMaterialOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={ringPoints(0.22, 0.58)} color="#2563eb" transparent opacity={torusOpacity} lineWidth={2.3} />
+          <Line
+            points={[
+              [0.44, 0.12, 0.14],
+              [0.24, -0.08, 0.2],
+              [0.04, -0.26, 0.2],
+              [-0.16, -0.4, 0.14],
+            ]}
+            color="#ef4444"
+            transparent
+            opacity={0.92 * torusOpacity}
+            lineWidth={2.0}
+          />
+        </group>
+      )}
+
+      {finalOpacity > 0.01 && (
+        <group position={[0.22, 0.03, 0.04]} rotation={[0.2, -0.34, -0.14]}>
+          <mesh>
+            <primitive object={finalKleinGeometry} attach="geometry" />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.58} metalness={0} transparent opacity={guideMaterialOpacity + 0.06} side={THREE.DoubleSide} />
+          </mesh>
+          <Line
+            points={[
+              [0.38, 0.18, 0.12],
+              [0.15, -0.02, 0.24],
+              [-0.06, -0.17, 0.2],
+              [-0.24, -0.28, 0.07],
+            ]}
+            color="#ef4444"
+            transparent
+            opacity={finalOpacity}
+            lineWidth={2.25}
+          />
+          <Line
+            points={[
+              [-0.1, 0.2, -0.04],
+              [0.04, 0.25, 0.04],
+              [0.17, 0.2, 0.1],
+              [0.28, 0.08, 0.12],
+            ]}
+            color="#2563eb"
+            transparent
+            opacity={0.94 * finalOpacity}
+            lineWidth={2.1}
+          />
+        </group>
+      )}
+    </group>
+  );
+};
+
 export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps> = ({
   realization,
   height = 380,
@@ -286,6 +486,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   highlightedEdgeIds = [],
   cameraMode = "perspective",
   presentationCamera = null,
+  constructionGuide = null,
   onEdgeHover,
   onEdgeSelect,
 }) => {
@@ -336,9 +537,22 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   const activeCameraTarget = presentationCamera?.target ?? defaultStudioTarget;
   const cameraPosition = presentationCamera?.position ?? (isStudioRealization ? [5.2, 3.95, 5.7] : [3.6, 3.2, 3.8]);
   const useOrthographic = cameraMode === "orthographic";
+  const isPresentationSnapshot = isStudioRealization && useOrthographic && !!presentationCamera;
   const cameraConfig = useOrthographic
-    ? { position: cameraPosition as [number, number, number], zoom: 110, near: 0.1, far: 100 }
+    ? { position: cameraPosition as [number, number, number], zoom: isPresentationSnapshot ? 138 : 110, near: 0.1, far: 100 }
     : { position: cameraPosition as [number, number, number], fov: isStudioRealization ? 34 : 48 };
+  const studioLineSoftenMix = isPresentationSnapshot ? 0.16 : 0.45;
+  const studioLineOpacity = isPresentationSnapshot ? 0.9 : 0.62;
+  const studioHighlightOpacity = isPresentationSnapshot ? 0.98 : 0.78;
+  const studioLineWidth = isPresentationSnapshot ? 1.9 : 1.1;
+  const studioHighlightLineWidth = isPresentationSnapshot ? 3.0 : 2.2;
+  const studioSeamRadius = isPresentationSnapshot ? 0.036 : 0.03;
+  const studioSeamHighlightRadius = isPresentationSnapshot ? 0.044 : 0.036;
+  const floorShadowOpacity = isPresentationSnapshot ? 0.1 : 0.18;
+  const sceneBackground = isPresentationSnapshot ? "#f6f9fd" : "#f7f9fc";
+  const showKleinConstructionGuide =
+    constructionGuide?.kind === "klein" &&
+    realization.id.includes("/realization/klein-immersed");
 
   const sceneContent = (
     <group>
@@ -351,6 +565,9 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
           studio={isStudioRealization}
         />
       ))}
+      {showKleinConstructionGuide && (
+        <KleinConstructionGuide stageIndex={constructionGuide?.stageIndex ?? 0} />
+      )}
 
       {showSkeleton &&
         Object.entries(realization.edgeCurves).map(([edgeId, points]) => {
@@ -364,13 +581,22 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
             isHighlighted
               ? "#0a66c2"
               : customColor ?? (drawAsSeam ? realization.style.seamStroke : realization.style.edgeStroke);
+          const warmPresentationEdge = isPresentationSnapshot && isWarmEdgeColor(strokeColor);
           if (drawAsSeam) {
             return (
               <EdgeTube
                 key={`edge-tube-${edgeId}`}
                 points={points}
                 color={strokeColor}
-                radius={isStudioRealization ? (isHighlighted ? 0.036 : 0.03) : isHighlighted ? 0.03 : 0.024}
+                radius={
+                  isStudioRealization
+                    ? isHighlighted
+                      ? studioSeamHighlightRadius
+                      : studioSeamRadius
+                    : isHighlighted
+                      ? 0.03
+                      : 0.024
+                }
                 onHover={(active) => onEdgeHover?.(active ? edgeId : null)}
                 onSelect={() => onEdgeSelect?.(edgeId)}
               />
@@ -380,10 +606,32 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
             <Line
               key={`edge-${edgeId}`}
               points={points}
-              color={isStudioRealization ? softenEdgeColor(strokeColor, 0.45) : strokeColor}
+              color={
+                isStudioRealization
+                  ? softenEdgeColor(strokeColor, warmPresentationEdge ? 0.04 : studioLineSoftenMix)
+                  : strokeColor
+              }
               transparent={isStudioRealization}
-              opacity={isStudioRealization ? (isHighlighted ? 0.78 : 0.62) : 1}
-              lineWidth={isStudioRealization ? (isHighlighted ? 2.2 : 1.1) : isHighlighted ? 2.8 : 1.5}
+              opacity={
+                isStudioRealization
+                  ? isHighlighted
+                    ? studioHighlightOpacity
+                    : warmPresentationEdge
+                      ? Math.min(1, studioLineOpacity + 0.08)
+                      : studioLineOpacity
+                  : 1
+              }
+              lineWidth={
+                isStudioRealization
+                  ? isHighlighted
+                    ? studioHighlightLineWidth
+                    : warmPresentationEdge
+                      ? studioLineWidth + 0.28
+                      : studioLineWidth
+                  : isHighlighted
+                    ? 2.8
+                    : 1.5
+              }
               depthTest={!isStudioRealization}
               renderOrder={8}
               onPointerOver={(event) => {
@@ -448,7 +696,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
         border: "1px solid #dbe4f0",
         borderRadius: 10,
         overflow: "hidden",
-        background: "#f8fbff",
+        background: isPresentationSnapshot ? "radial-gradient(circle at top, #ffffff 0%, #ecf2f9 100%)" : "#f7f9fc",
       }}
     >
       <Canvas
@@ -459,15 +707,18 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
         camera={cameraConfig}
         onPointerMissed={() => onEdgeHover?.(null)}
         onCreated={({ gl }) => {
+          gl.outputColorSpace = THREE.SRGBColorSpace;
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.15;
           gl.shadowMap.enabled = true;
           gl.shadowMap.type = THREE.PCFSoftShadowMap;
         }}
       >
         <PresentationCameraController config={presentationCamera} controlsRef={studioControlsRef} />
-        <color attach="background" args={["#f8fbff"]} />
+        <color attach="background" args={[sceneBackground]} />
         {isStudioRealization ? (
           <>
-            <StudioPostprocessing />
+            {!isPresentationSnapshot && <StudioPostprocessing />}
             <hemisphereLight args={[0xffffff, 0x8899aa, 1.2]} />
             <directionalLight
               position={[4, 6, 5]}
@@ -485,7 +736,7 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
             {sceneContent}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[sceneBounds.center.x, floorY, sceneBounds.center.z]} receiveShadow>
               <planeGeometry args={[sceneBounds.floorSize, sceneBounds.floorSize]} />
-              <shadowMaterial opacity={0.18} />
+              <shadowMaterial opacity={floorShadowOpacity} />
             </mesh>
             <OrbitControls
               ref={studioControlsRef}

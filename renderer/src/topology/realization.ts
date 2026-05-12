@@ -100,7 +100,7 @@ const TORUS_MINOR_RADIUS = 0.62;
 const MOBIUS_RADIUS = 1.78;
 const MOBIUS_HALF_WIDTH = 0.44;
 const PROJECTIVE_SCALE = 3.15;
-const KLEIN_SCALE = 0.72;
+const KLEIN_SCALE = 0.42;
 const CYLINDER_RADIUS = 1.34;
 const CYLINDER_HALF_HEIGHT = 0.9;
 const CONE_RADIUS = 1.48;
@@ -112,7 +112,7 @@ const SUSPENSION_RADIUS = 1.28;
 const SUSPENSION_HALF_HEIGHT = 1.34;
 const STUDIO_SURFACE_SEGMENTS = {
   torus: { u: 160, v: 96 },
-  klein: { u: 220, v: 140 },
+  klein: { u: 240, v: 140 },
   cylinder: { u: 160, v: 96 },
 } as const;
 
@@ -287,15 +287,15 @@ const pickKleinCycleEdgeIds = (quotient: QuotientComplex): { aEdge: string; bEdg
 };
 
 const kleinPoint = (u: number, v: number, scaleFactor = KLEIN_SCALE): Vec3 => {
-  const r = 2.28;
+  const r = 2.0;
   const cu = Math.cos(u);
   const su = Math.sin(u);
   const hu = u * 0.5;
-  const inner = r + Math.cos(hu) * Math.sin(v) - Math.sin(hu) * Math.sin(2 * v);
-  const x = inner * cu;
-  const y = inner * su;
+  const common = r + Math.cos(hu) * Math.sin(v) - Math.sin(hu) * Math.sin(2 * v);
+  const x = common * cu;
+  const y = common * su;
   const z = Math.sin(hu) * Math.sin(v) + Math.cos(hu) * Math.sin(2 * v);
-  return [x * scaleFactor, y * scaleFactor, z * scaleFactor * 1.25];
+  return [x * scaleFactor, z * scaleFactor, y * scaleFactor];
 };
 
 const buildKleinFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {

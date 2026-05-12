@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
 import { uiStyles as styles } from "../uiStyles";
 import {
   addEdgeToDiagram,
@@ -689,11 +685,73 @@ const SPHERE_STORY_STAGES = [
 ] as const;
 
 const KLEIN_STAGE_CAMERAS: Record<number, { position: [number, number, number]; target: [number, number, number] }> = {
-  1: { position: [0, 0.2, 4], target: [0, 0, 0] },
-  2: { position: [3, 2, 4], target: [0, 0, 0] },
-  3: { position: [3.5, 2.2, 3.5], target: [0, -0.4, 0] },
-  4: { position: [3.2, 2.0, 4.0], target: [0, 0, 0] },
-  5: { position: [3.6, 2.4, 4.2], target: [0, 0, 0] },
+  1: { position: [0.2, 0.62, 3.62], target: [0, 0.24, 0] },
+  2: { position: [2.72, 2.18, 3.68], target: [0, 0.2, 0] },
+  3: { position: [3.08, 2.44, 3.24], target: [0, -0.08, 0] },
+  4: { position: [2.94, 2.2, 3.56], target: [0, 0.14, 0] },
+  5: { position: [3.24, 2.48, 3.72], target: [0, 0.18, 0] },
+};
+
+const escapeXmlText = (value: string): string =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const buildStoryStageThumbnail = (storyKey: string, stageId: string, stageTitle: string): string | null => {
+  if (storyKey !== "klein") return null;
+  const art = (() => {
+    if (stageId === "square") {
+      return `<rect x="50" y="16" width="100" height="68" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="2" />
+<line x1="50" y1="16" x2="150" y2="16" stroke="#dc2626" stroke-width="3" />
+<line x1="50" y1="84" x2="150" y2="84" stroke="#dc2626" stroke-width="3" />
+<line x1="50" y1="16" x2="50" y2="84" stroke="#2563eb" stroke-width="3" />
+<line x1="150" y1="16" x2="150" y2="84" stroke="#2563eb" stroke-width="3" />`;
+    }
+    if (stageId === "a-glue") {
+      return `<ellipse cx="100" cy="30" rx="42" ry="12" fill="#e0f2fe" stroke="#dc2626" stroke-width="2.7" />
+<ellipse cx="100" cy="70" rx="42" ry="12" fill="#e0f2fe" stroke="#dc2626" stroke-width="2.7" />
+<line x1="58" y1="30" x2="58" y2="70" stroke="#2563eb" stroke-width="2.4" />
+<line x1="142" y1="30" x2="142" y2="70" stroke="#2563eb" stroke-width="2.4" />`;
+    }
+    if (stageId === "cylinder") {
+      return `<ellipse cx="100" cy="28" rx="44" ry="12" fill="#dbeafe" stroke="#dc2626" stroke-width="2.8" />
+<ellipse cx="100" cy="74" rx="44" ry="12" fill="#dbeafe" stroke="#dc2626" stroke-width="2.8" />
+<path d="M56 28 C52 52,52 56,56 74" fill="none" stroke="#0284c7" stroke-width="2.5" />
+<path d="M144 28 C148 52,148 56,144 74" fill="none" stroke="#0284c7" stroke-width="2.5" />`;
+    }
+    if (stageId === "b-glue") {
+      return `<path d="M44 44 C58 10,142 10,156 44 C142 78,58 78,44 44 Z" fill="#e0f2fe" stroke="#0284c7" stroke-width="2.8" />
+<path d="M82 44 C92 26,108 26,118 44 C108 62,92 62,82 44 Z" fill="#fff" stroke="#94a3b8" stroke-width="1.7" />
+<path d="M58 38 C80 18,120 18,142 38" fill="none" stroke="#dc2626" stroke-width="2.3" stroke-dasharray="5 3" />`;
+    }
+    if (stageId === "klein") {
+      return `<path d="M42 52 C42 26,72 14,108 18 C140 22,164 36,158 58 C152 80,122 84,92 80 C62 76,42 68,42 52 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.2" />
+<path d="M84 50 C94 36,114 34,128 42 C140 48,142 60,130 68 C118 76,96 74,86 62 C80 56,80 54,84 50 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.4" />
+<path d="M80 42 C106 30,128 42,140 64" fill="none" stroke="#2563eb" stroke-width="2.5" />
+<path d="M70 64 C96 82,126 74,142 54" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-dasharray="5 3" />`;
+    }
+    return `<path d="M42 52 C42 26,72 14,108 18 C140 22,164 36,158 58 C152 80,122 84,92 80 C62 76,42 68,42 52 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.2" />
+<path d="M84 50 C94 36,114 34,128 42 C140 48,142 60,130 68 C118 76,96 74,86 62 C80 56,80 54,84 50 Z" fill="#fff" stroke="#cbd5e1" stroke-width="1.4" />
+<path d="M80 42 C106 30,128 42,140 64" fill="none" stroke="#2563eb" stroke-width="2.5" />
+<path d="M70 64 C96 82,126 74,142 54" fill="none" stroke="#ea580c" stroke-width="2.3" stroke-dasharray="6 3" />`;
+  })();
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="108" viewBox="0 0 200 90" preserveAspectRatio="none">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0%" stop-color="#ffffff" />
+    <stop offset="100%" stop-color="#edf3f9" />
+  </linearGradient>
+</defs>
+<rect x="0.5" y="0.5" width="199" height="89" rx="10" fill="url(#bg)" stroke="#d1d5db" />
+${art}
+<rect x="8" y="68" width="184" height="14" rx="4" fill="#ffffff" opacity="0.84" />
+<text x="12" y="78" font-family="Segoe UI, Arial, sans-serif" font-size="8" font-weight="700" fill="#0f172a">${escapeXmlText(stageTitle)}</text>
+</svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 };
 
 const DunceMapReferenceFigure: React.FC = () => {
@@ -906,116 +964,134 @@ const sampledCurve = (fn: (t: number) => THREE.Vector3, count: number, closed = 
   return out;
 };
 
-const addTube = (scene: THREE.Scene, points: THREE.Vector3[], color: string, radius: number, closed = false): THREE.Mesh => {
+const addTube = (parent: THREE.Object3D, points: THREE.Vector3[], color: string, radius: number, closed = false): THREE.Mesh => {
   const curve = new THREE.CatmullRomCurve3(points, closed, "catmullrom", 0.5);
   const geom = new THREE.TubeGeometry(curve, Math.max(80, points.length * 2), radius, 14, closed);
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.04 });
   const mesh = new THREE.Mesh(geom, mat);
-  scene.add(mesh);
+  parent.add(mesh);
   return mesh;
 };
 
+const DUNCE_STAGE_THUMBNAIL_WIDTH = 600;
+const DUNCE_STAGE_THUMBNAIL_HEIGHT = 420;
+
+const createDunceStageThumbnailCamera = (stageIndex: number): THREE.OrthographicCamera => {
+  const camera = new THREE.OrthographicCamera(-2.2, 2.2, 1.6, -1.6, 0.1, 100);
+  if (stageIndex === 0) camera.position.set(0, 0.2, 4);
+  else if (stageIndex === 4) camera.position.set(3.6, 2.4, 4.2);
+  else camera.position.set(3, 2, 4);
+  camera.lookAt(0, 0, 0);
+  return camera;
+};
+
+const addStudioLights = (scene: THREE.Scene): void => {
+  scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const key = new THREE.DirectionalLight(0xffffff, 1.02);
+  key.position.set(2.4, 2.8, 3.2);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+  fill.position.set(-2.2, 1.1, -1.6);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.26);
+  rim.position.set(-0.6, 2.6, 2.2);
+  scene.add(rim);
+};
+
+const createDunceStageScene = (stageIndex: number): THREE.Object3D => {
+  const root = new THREE.Group();
+  const baseMat = new THREE.MeshPhysicalMaterial({
+    color: 0xd9d9d9,
+    roughness: 0.64,
+    metalness: 0.0,
+    clearcoat: 0.08,
+    clearcoatRoughness: 0.9,
+    side: THREE.DoubleSide,
+  });
+
+  if (stageIndex === 0) {
+    const triGeom = new THREE.BufferGeometry();
+    triGeom.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(
+        [
+          -1.38, -1.14, 0.0, //
+          1.42, -1.14, 0.0, //
+          -0.05, 1.34, 0.0,
+        ],
+        3
+      )
+    );
+    triGeom.setIndex([0, 1, 2]);
+    triGeom.computeVertexNormals();
+    root.add(new THREE.Mesh(triGeom, baseMat.clone()));
+    addTube(root, sampledCurve((t) => new THREE.Vector3(-1.38 + 1.33 * t, -1.14 + 2.48 * t, 0.03), 24), "#dc2626", 0.05);
+    addTube(root, sampledCurve((t) => new THREE.Vector3(-0.05 + 1.47 * t, 1.34 - 2.48 * t, 0.03), 24), "#2563eb", 0.05);
+    addTube(root, sampledCurve((t) => new THREE.Vector3(-1.38 + 2.8 * t, -1.14, 0.03), 24), "#16a34a", 0.05);
+    return root;
+  }
+
+  root.add(new THREE.Mesh(buildDunceSurfaceGeometry(stageIndex), baseMat.clone()));
+  const rimRed = sampledCurve((t) => dunceStagePoint(stageIndex, t, 0.06), 180, true);
+  addTube(root, rimRed, "#dc2626", 0.06, true);
+  const blueU = stageIndex >= 3 ? 0.73 : 0.82;
+  const greenU = stageIndex >= 4 ? 0.72 : 0.59;
+  const blue = sampledCurve((t) => dunceStagePoint(stageIndex, blueU + 0.02 * Math.sin(t * Math.PI), t), 120, false);
+  const green = sampledCurve((t) => dunceStagePoint(stageIndex, greenU + 0.016 * Math.sin(t * Math.PI), t), 120, false);
+  addTube(root, blue, "#2563eb", 0.043, false);
+  addTube(root, green, "#16a34a", 0.043, false);
+  return root;
+};
+
+const disposeObject3D = (root: THREE.Object3D): void => {
+  root.traverse((child) => {
+    const geom = (child as { geometry?: THREE.BufferGeometry }).geometry;
+    if (geom) geom.dispose();
+    const mat = (child as { material?: THREE.Material | THREE.Material[] }).material;
+    if (Array.isArray(mat)) mat.forEach((entry) => entry.dispose());
+    else mat?.dispose();
+  });
+};
+
+const renderDunceStageThumbnail = (stageIndex: number): string => {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf7f9fc);
+  addStudioLights(scene);
+  const object = createDunceStageScene(stageIndex);
+  scene.add(object);
+  const camera = createDunceStageThumbnailCamera(stageIndex);
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setSize(DUNCE_STAGE_THUMBNAIL_WIDTH, DUNCE_STAGE_THUMBNAIL_HEIGHT, false);
+  renderer.setPixelRatio(2);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.render(scene, camera);
+  const dataUrl = renderer.domElement.toDataURL("image/png");
+  disposeObject3D(object);
+  renderer.dispose();
+  return dataUrl;
+};
+
 const DunceMapReference3D: React.FC = () => {
-  const mountRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const [thumbnailUrls, setThumbnailUrls] = useState<string[]>([]);
+
   useEffect(() => {
-    const cleanups: Array<() => void> = [];
-    DUNCE_3D_STAGE_TITLES.forEach((_, stageIndex) => {
-      const mount = mountRefs.current[stageIndex];
-      if (!mount) return;
-      mount.innerHTML = "";
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-      renderer.setSize(198, 258, false);
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      mount.appendChild(renderer.domElement);
-
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color("#ffffff");
-      scene.add(new THREE.AmbientLight(0xffffff, 0.88));
-      const key = new THREE.DirectionalLight(0xffffff, 0.95);
-      key.position.set(2.4, 2.8, 3.2);
-      scene.add(key);
-      const fill = new THREE.DirectionalLight(0xffffff, 0.43);
-      fill.position.set(-2.2, 1.1, -1.6);
-      scene.add(fill);
-
-      const camera = new THREE.OrthographicCamera(-2.2, 2.2, 1.6, -1.6, 0.1, 100);
-      if (stageIndex === 0) camera.position.set(0, 0.2, 4);
-      else if (stageIndex === 4) camera.position.set(3.6, 2.4, 4.2);
-      else camera.position.set(3, 2, 4);
-      camera.lookAt(0, 0, 0);
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-      const ssaoPass = new SSAOPass(scene, camera, 198, 258);
-      ssaoPass.kernelRadius = 12;
-      ssaoPass.minDistance = 0.005;
-      ssaoPass.maxDistance = 0.18;
-      composer.addPass(ssaoPass);
-      composer.addPass(new OutputPass());
-
-      const objects: THREE.Object3D[] = [];
-      const baseMat = new THREE.MeshStandardMaterial({
-        color: "#e6e6e5",
-        roughness: 0.72,
-        metalness: 0.02,
-        side: THREE.DoubleSide,
-      });
-
-      if (stageIndex === 0) {
-        const triGeom = new THREE.BufferGeometry();
-        triGeom.setAttribute(
-          "position",
-          new THREE.Float32BufferAttribute(
-            [
-              -1.38, -1.14, 0.0, //
-              1.42, -1.14, 0.0, //
-              -0.05, 1.34, 0.0,
-            ],
-            3
-          )
-        );
-        triGeom.setIndex([0, 1, 2]);
-        triGeom.computeVertexNormals();
-        const triMesh = new THREE.Mesh(triGeom, baseMat.clone());
-        objects.push(triMesh);
-        scene.add(triMesh);
-
-        addTube(scene, sampledCurve((t) => new THREE.Vector3(-1.38 + 1.33 * t, -1.14 + 2.48 * t, 0.03), 24), "#dc2626", 0.05);
-        addTube(scene, sampledCurve((t) => new THREE.Vector3(-0.05 + 1.47 * t, 1.34 - 2.48 * t, 0.03), 24), "#2563eb", 0.05);
-        addTube(scene, sampledCurve((t) => new THREE.Vector3(-1.38 + 2.8 * t, -1.14, 0.03), 24), "#16a34a", 0.05);
-      } else {
-        const surface = new THREE.Mesh(buildDunceSurfaceGeometry(stageIndex), baseMat.clone());
-        objects.push(surface);
-        scene.add(surface);
-
-        const rimRed = sampledCurve((t) => dunceStagePoint(stageIndex, t, 0.06), 180, true);
-        addTube(scene, rimRed, "#dc2626", 0.06, true);
-        const blueU = stageIndex >= 3 ? 0.73 : 0.82;
-        const greenU = stageIndex >= 4 ? 0.72 : 0.59;
-        const blue = sampledCurve((t) => dunceStagePoint(stageIndex, blueU + 0.02 * Math.sin(t * Math.PI), t), 120, false);
-        const green = sampledCurve((t) => dunceStagePoint(stageIndex, greenU + 0.016 * Math.sin(t * Math.PI), t), 120, false);
-        addTube(scene, blue, "#2563eb", 0.043, false);
-        addTube(scene, green, "#16a34a", 0.043, false);
-      }
-
-      composer.render();
-      cleanups.push(() => {
-        for (const obj of objects) {
-          obj.traverse((child) => {
-            const mesh = child as THREE.Mesh;
-            const geom = mesh.geometry as THREE.BufferGeometry | undefined;
-            if (geom) geom.dispose();
-            const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-            if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-            else mat?.dispose();
-          });
-        }
-        ssaoPass.dispose();
-        composer.dispose();
-        renderer.dispose();
-      });
-    });
-    return () => cleanups.forEach((fn) => fn());
+    let cancelled = false;
+    try {
+      const next = DUNCE_3D_STAGE_TITLES.map((_, stageIndex) => renderDunceStageThumbnail(stageIndex));
+      if (!cancelled) setThumbnailUrls(next);
+    } catch {
+      if (!cancelled) setThumbnailUrls([]);
+    }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -1024,11 +1100,22 @@ const DunceMapReference3D: React.FC = () => {
         <div key={`dunce-ref-3d-${index}`} style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff", padding: 6 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a", minHeight: 30 }}>{title}</div>
           <div
-            ref={(el) => {
-              mountRefs.current[index] = el;
+            style={{
+              width: "100%",
+              height: 258,
+              overflow: "hidden",
+              borderRadius: 8,
+              background: "radial-gradient(circle at top, #ffffff 0%, #eef3f8 100%)",
             }}
-            style={{ width: "100%", height: 258, display: "grid", placeItems: "center", overflow: "hidden", borderRadius: 8 }}
-          />
+          >
+            {thumbnailUrls[index] ? (
+              <img
+                src={thumbnailUrls[index]}
+                alt={title}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              />
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
@@ -2804,6 +2891,18 @@ export const TopologyScreen: React.FC = () => {
           effect: "The quotient classes and resulting topology become more explicit.",
         }
       : null;
+    const storyConstructionGuide =
+      kleinStoryEnabled && storyStage
+        ? ({ kind: "klein", stageIndex: storyStageIndex } as const)
+        : null;
+    const storyStageCardThumbnailById = new Map<string, string>();
+    if (activeStoryStages) {
+      for (const stage of activeStoryStages) {
+        const stageTitle = stage.label.replace(/^S\d+:\s*/i, "").trim();
+        const thumb = buildStoryStageThumbnail(activeStoryKey, stage.id, stageTitle);
+        if (thumb) storyStageCardThumbnailById.set(stage.id, thumb);
+      }
+    }
 
     const blended = (vertexId: string) => {
       const start = projectedStart[vertexId] ?? { x: 260, y: 180 };
@@ -3157,6 +3256,7 @@ export const TopologyScreen: React.FC = () => {
                 const active = index === storyStageIndex;
                 const done = index < storyStageIndex;
                 const stageTitle = stage.label.replace(/^S\d+:\s*/i, "").trim();
+                const thumbnailUrl = storyStageCardThumbnailById.get(stage.id) ?? null;
                 return (
                   <div key={`story-stage-card-${stage.id}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <button
@@ -3174,9 +3274,27 @@ export const TopologyScreen: React.FC = () => {
                         borderRadius: 8,
                         padding: "6px 8px",
                         display: "grid",
-                        gap: 3,
+                        gap: 5,
                       }}
                     >
+                      {thumbnailUrl ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: 72,
+                            borderRadius: 7,
+                            overflow: "hidden",
+                            border: "1px solid #dbe4f0",
+                            background: "radial-gradient(circle at top, #ffffff 0%, #edf3f9 100%)",
+                          }}
+                        >
+                          <img
+                            src={thumbnailUrl}
+                            alt={`${stageTitle} preview`}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
+                        </div>
+                      ) : null}
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span
                           style={{
@@ -3264,6 +3382,7 @@ export const TopologyScreen: React.FC = () => {
             edgeColorOverrides={storyEdgeColorOverrides}
             cameraMode={kleinStoryEnabled ? "orthographic" : "perspective"}
             presentationCamera={kleinPresentationCamera}
+            constructionGuide={storyConstructionGuide}
             hiddenEdgeIds={[
               ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
               ...(showCoreCircle ? [] : ["mobius_core"]),
