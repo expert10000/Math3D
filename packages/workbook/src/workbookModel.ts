@@ -729,6 +729,110 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
     ],
   },
   {
+    id: "olympiad_incircle_reflection_theorem",
+    title: "Olympiad: Incircle reflection theorem",
+    description:
+      "Stage-by-stage workbook for triangle-incircle reflection construction with the target claim ZD perpendicular BC.",
+    tags: ["geometry", "planar geometry", "triangle", "olympiad", "incircle", "reflections"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          {
+            type: "text",
+            title: "Problem statement",
+            text:
+              "Given an acute triangle ABC with AB < AC. The incircle touches BC, CA, AB at D, E, F. " +
+              "Points X and Y lie on EF such that BX and CY are perpendicular to BC. Let M be the midpoint of BC. " +
+              "Reflect line BX across MX and line CY across MY; they meet at Z. Prove that ZD is perpendicular to BC.",
+          },
+          {
+            type: "text",
+            title: "Geometry script (Scratch seed)",
+            text: [
+              "# Stage 1",
+              "point A -0.35 1.35 0",
+              "point B -1.0 0 0",
+              "point C 1.0 0 0",
+              "line A B as AB",
+              "line B C as BC",
+              "line C A as CA",
+              "angle-bisector A B C as bisA",
+              "angle-bisector B A C as bisB",
+              "intersection bisA bisB as I",
+              "perp BC through I as i_perp_BC",
+              "perp CA through I as i_perp_CA",
+              "perp AB through I as i_perp_AB",
+              "intersection i_perp_BC BC as D",
+              "intersection i_perp_CA CA as E",
+              "intersection i_perp_AB AB as F",
+              "circle I D as incircle",
+              "# Stage 2",
+              "line E F as EF",
+              "perp BC through B as lB",
+              "perp BC through C as lC",
+              "intersection EF lB as X",
+              "intersection EF lC as Y",
+              "# Stage 3",
+              "midpoint B C as M",
+              "line M X as MX",
+              "line M Y as MY",
+              "# Stage 4 (B', C' are reflected points in the default seed)",
+              "point Bp -0.3965662990644083 0.918006084100949 0",
+              "point Cp 0.0027815708636855785 0.9999961314242822 0",
+              "line X Bp as reflectedBX",
+              "line Y Cp as reflectedCY",
+              "intersection reflectedBX reflectedCY as Z",
+              "# Stage 5",
+              "line Z D as ZD",
+              "check perpendicular ZD BC",
+            ].join("\n"),
+          },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Construction stages",
+            text:
+              "Viewer stages: (1) triangle+incircle+tangency points, (2) EF with perpendiculars through B,C, " +
+              "(3) midpoint M with axes MX, MY, (4) reflected lines meeting at Z, (5) ZD and right-angle check at D.",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [
+          {
+            type: "visualize",
+            title: "Theorem scene",
+            visualizeNotes:
+              "Use the stage selector in Geometry Demo > Planimetry > Incircle Reflection Theorem to walk through all steps.",
+          },
+        ],
+      },
+      {
+        id: "explain",
+        blocks: [
+          {
+            type: "assert",
+            title: "Target claim",
+            assertExpected: "ZD perpendicular BC and |(Z-D) dot (C-B)| near 0.",
+          },
+          {
+            type: "text",
+            title: "Conclusion",
+            text: "Record residuals and note whether the theorem verification badge is green.",
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: "curve_overlay_demo",
     title: "Curve overlay demo",
     description: "Draw a curve on the surface and compare multiple overlays with ghosting.",
@@ -825,6 +929,19 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["selection", "overlays", "curves"],
     templateIds: ["selection_stats", "curve_overlay_demo"],
+  },
+  {
+    id: "pack_geometry_olympiad_incircle_reflection",
+    title: "Geometry -> Olympiad constructions -> Incircle reflection theorem",
+    description:
+      "Workbook pack for the triangle-incircle reflection theorem with staged construction and scripted seed.",
+    topic: "Geometry -> Olympiad constructions",
+    difficulty: "advanced",
+    prerequisites: ["Classical triangle geometry", "Incircle tangency points", "Line reflection basics"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["geometry", "olympiad", "planar geometry", "triangle", "incircle", "reflections", "theorem"],
+    templateIds: ["olympiad_incircle_reflection_theorem"],
   },
   {
     id: "pack_principal_dirs",

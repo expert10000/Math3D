@@ -11,6 +11,7 @@ import {
 } from "./construct";
 import { buildPolyhedronFromVertexSets, type FaceInfo } from "./polyhedra";
 import {
+  constraintAngleBetweenLines,
   constraintCoplanar,
   constraintEqualAngles,
   constraintEqualDistancesToLines,
@@ -20,7 +21,7 @@ import {
   distancePointToPlane,
   type ConstraintDef,
 } from "./analysis";
-import { distanceVec3 } from "./vec";
+import { addVec3, distanceVec3, dotVec3, normalizeVec3, scaleVec3, subVec3 } from "./vec";
 
 const pt = (x: number, y: number, z: number, label: string, color?: number): Point3 => ({ x, y, z, label, color });
 
@@ -64,6 +65,16 @@ export type PlanimetryDemo = {
   constraints: ConstraintDef[];
   points: Record<string, Point3>;
   circles: PlanimetryCircle[];
+  stages?: Array<{
+    id: string;
+    label: string;
+    summary: string;
+    scene: GeometryScene;
+  }>;
+  theoremCheck?: {
+    dotResidual: number | null;
+    isVerified: boolean;
+  };
 };
 
 export const buildDemoPyramidConstruction = (): GeometryDemo => {
@@ -591,5 +602,341 @@ export const buildDemoPlanimetryTangentCirclesConstruction = (): PlanimetryDemo 
     constraints,
     points: { O1, O2, T },
     circles,
+  };
+};
+
+const intersectLines2D = (a1: Point3, a2: Point3, b1: Point3, b2: Point3): Point3 | null => {
+  const r = subVec3(a2, a1);
+  const s = subVec3(b2, b1);
+  const denom = r.x * s.y - r.y * s.x;
+  if (!Number.isFinite(denom) || Math.abs(denom) < 1e-9) return null;
+  const delta = subVec3(b1, a1);
+  const t = (delta.x * s.y - delta.y * s.x) / denom;
+  if (!Number.isFinite(t)) return null;
+  return { x: a1.x + r.x * t, y: a1.y + r.y * t, z: 0 };
+};
+
+const projectPointToLine = (p: Point3, a: Point3, b: Point3): Point3 | null => {
+  const ab = subVec3(b, a);
+  const denom = dotVec3(ab, ab);
+  if (!Number.isFinite(denom) || Math.abs(denom) < 1e-12) return null;
+  const t = dotVec3(subVec3(p, a), ab) / denom;
+  if (!Number.isFinite(t)) return null;
+  return addVec3(a, scaleVec3(ab, t));
+};
+
+const reflectPointAcrossLine = (p: Point3, a: Point3, b: Point3): Point3 | null => {
+  const h = projectPointToLine(p, a, b);
+  if (!h) return null;
+  return subVec3(scaleVec3(h, 2), p);
+};
+
+const buildDashedSegment = (
+  a: Point3,
+  b: Point3,
+  opts: { color?: number; opacity?: number; radiusScale?: number; dashCount?: number; gapRatio?: number } = {}
+): Segment3[] => {
+  const d = subVec3(b, a);
+  const len = distanceVec3(a, b);
+  if (!Number.isFinite(len) || len <= 1e-9) return [];
+  const dir = scaleVec3(d, 1 / len);
+  const dashCount = Math.max(2, Math.round(opts.dashCount ?? 7));
+  const gapRatio = Math.max(0.05, Math.min(0.9, opts.gapRatio ?? 0.35));
+  const slot = len / dashCount;
+  const dashLen = slot * (1 - gapRatio);
+  const segments: Segment3[] = [];
+  for (let i = 0; i < dashCount; i++) {
+    const start = addVec3(a, scaleVec3(dir, i * slot));
+    const end = addVec3(start, scaleVec3(dir, dashLen));
+    segments.push({
+      a: { x: start.x, y: start.y, z: 0 },
+      b: { x: end.x, y: end.y, z: 0 },
+      color: opts.color,
+      opacity: opts.opacity,
+      radiusScale: opts.radiusScale,
+    });
+  }
+  return segments;
+};
+
+const withStageScene = (
+  points: Point3[],
+  segments: Segment3[],
+  polygons: GeometryScene["polygons"],
+  lines?: Line3[]
+): GeometryScene => ({
+  points,
+  segments,
+  polygons,
+  ...(lines && lines.length ? { lines } : {}),
+});
+
+export const buildDemoPlanimetryIncircleReflectionConstruction = (): PlanimetryDemo => {
+  const A = pt(-0.35, 1.35, 0, "A", 0x111111);
+  const B = pt(-1.0, 0.0, 0, "B", 0x111111);
+  const C = pt(1.0, 0.0, 0, "C", 0x111111);
+
+  const incenter = triangleIncenter(A, B, C);
+  if (!incenter) {
+    return {
+      scene: { points: [A, B, C] },
+      constraints: [],
+      points: { A, B, C },
+      circles: [],
+    };
+  }
+
+  const I: Point3 = { ...incenter.center, z: 0, label: "I", color: 0x2563eb, size: 0.045 };
+  const D = projectPointToLine(I, B, C);
+  const E = projectPointToLine(I, C, A);
+  const F = projectPointToLine(I, A, B);
+  if (!D || !E || !F) {
+    return {
+      scene: { points: [A, B, C, I] },
+      constraints: [],
+      points: { A, B, C, I },
+      circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    };
+  }
+  D.label = "D";
+  E.label = "E";
+  F.label = "F";
+  D.color = 0xf97316;
+  E.color = 0xf97316;
+  F.color = 0xf97316;
+  D.size = 0.045;
+  E.size = 0.045;
+  F.size = 0.045;
+
+  const M: Point3 = { x: 0.5 * (B.x + C.x), y: 0.5 * (B.y + C.y), z: 0, label: "M", color: 0xf59e0b, size: 0.045 };
+
+  const bc = subVec3(C, B);
+  const bcUnit = normalizeVec3({ x: bc.x, y: bc.y, z: 0 });
+  if (!bcUnit) {
+    return {
+      scene: { points: [A, B, C, I, D, E, F, M] },
+      constraints: [],
+      points: { A, B, C, I, D, E, F, M },
+      circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    };
+  }
+  const bcPerp = { x: -bcUnit.y, y: bcUnit.x, z: 0 };
+
+  const X = intersectLines2D(E, F, B, addVec3(B, bcPerp));
+  const Y = intersectLines2D(E, F, C, addVec3(C, bcPerp));
+  if (!X || !Y) {
+    return {
+      scene: { points: [A, B, C, I, D, E, F, M] },
+      constraints: [],
+      points: { A, B, C, I, D, E, F, M },
+      circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    };
+  }
+  X.label = "X";
+  X.color = 0x2563eb;
+  X.size = 0.043;
+  Y.label = "Y";
+  Y.color = 0x2563eb;
+  Y.size = 0.043;
+
+  const Bprime = reflectPointAcrossLine(B, M, X);
+  const Cprime = reflectPointAcrossLine(C, M, Y);
+  if (!Bprime || !Cprime) {
+    return {
+      scene: { points: [A, B, C, I, D, E, F, M, X, Y] },
+      constraints: [],
+      points: { A, B, C, I, D, E, F, M, X, Y },
+      circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    };
+  }
+  Bprime.label = "B'";
+  Bprime.color = 0xdc2626;
+  Bprime.size = 0.04;
+  Cprime.label = "C'";
+  Cprime.color = 0xdc2626;
+  Cprime.size = 0.04;
+
+  const Z = intersectLines2D(X, Bprime, Y, Cprime);
+  if (!Z) {
+    return {
+      scene: { points: [A, B, C, I, D, E, F, M, X, Y, Bprime, Cprime] },
+      constraints: [],
+      points: { A, B, C, I, D, E, F, M, X, Y, B_prime: Bprime, C_prime: Cprime },
+      circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    };
+  }
+  Z.label = "Z";
+  Z.color = 0xdc2626;
+  Z.size = 0.065;
+
+  const lineBC = lineThroughPoints(B, C, { color: 0x111111, opacity: 0.75, length: 4.8 });
+  const lineZD = lineThroughPoints(Z, D, { color: 0x16a34a, opacity: 0.9, length: 3.6 });
+  const lineEF = lineThroughPoints(E, F, { color: 0x7c3aed, opacity: 0.88, length: 4.6 });
+  const lineRefBX = lineThroughPoints(X, Bprime, { color: 0xdc2626, opacity: 0.88, length: 4.2 });
+  const lineRefCY = lineThroughPoints(Y, Cprime, { color: 0xdc2626, opacity: 0.88, length: 4.2 });
+
+  const incircle = buildCircleSegments({ ...incenter.center, z: 0 }, { x: 0, y: 0, z: 1 }, incenter.radius, {
+    segments: 84,
+    color: 0x60a5fa,
+    opacity: 0.9,
+  });
+
+  const triangleEdges: Segment3[] = [
+    { a: A, b: B, color: 0x111111, opacity: 0.95 },
+    { a: B, b: C, color: 0x111111, opacity: 0.95 },
+    { a: C, b: A, color: 0x111111, opacity: 0.95 },
+  ];
+
+  const lineEFSegment: Segment3 = { a: E, b: F, color: 0x7c3aed, opacity: 0.92, radiusScale: 1.15 };
+  const bxDashed = buildDashedSegment(B, X, { color: 0x2563eb, opacity: 0.84, radiusScale: 0.95 });
+  const cyDashed = buildDashedSegment(C, Y, { color: 0x2563eb, opacity: 0.84, radiusScale: 0.95 });
+  const mxDashed = buildDashedSegment(M, X, { color: 0xf59e0b, opacity: 0.88, radiusScale: 0.95 });
+  const myDashed = buildDashedSegment(M, Y, { color: 0xf59e0b, opacity: 0.88, radiusScale: 0.95 });
+
+  const reflectedSegments: Segment3[] = [
+    { a: X, b: Bprime, color: 0xdc2626, opacity: 0.92, radiusScale: 1.2 },
+    { a: Y, b: Cprime, color: 0xdc2626, opacity: 0.92, radiusScale: 1.2 },
+  ];
+
+  const zdSegment: Segment3 = { a: Z, b: D, color: 0x16a34a, opacity: 0.95, radiusScale: 1.6 };
+
+  const zdDir = normalizeVec3(subVec3(Z, D)) ?? { x: 0, y: 1, z: 0 };
+  const markerSize = 0.12;
+  const pU = addVec3(D, scaleVec3(bcUnit, markerSize));
+  const pV = addVec3(D, scaleVec3(zdDir, markerSize));
+  const pUV = addVec3(pU, scaleVec3(zdDir, markerSize));
+  const rightAngleMarker: Segment3[] = [
+    { a: D, b: pU, color: 0x16a34a, opacity: 0.95, radiusScale: 1.05 },
+    { a: pU, b: pUV, color: 0x16a34a, opacity: 0.95, radiusScale: 1.05 },
+    { a: pUV, b: pV, color: 0x16a34a, opacity: 0.95, radiusScale: 1.05 },
+    { a: pV, b: D, color: 0x16a34a, opacity: 0.95, radiusScale: 1.05 },
+  ];
+
+  const theoremDotResidual = Math.abs(dotVec3(subVec3(Z, D), subVec3(C, B)));
+  const abLen = distanceVec3(A, B);
+  const acLen = distanceVec3(A, C);
+  const abLtAcResidual = Math.max(0, abLen - acLen);
+
+  const acuteResidual = (() => {
+    const atA = dotVec3(subVec3(B, A), subVec3(C, A));
+    const atB = dotVec3(subVec3(A, B), subVec3(C, B));
+    const atC = dotVec3(subVec3(A, C), subVec3(B, C));
+    const eps = 1e-9;
+    return Math.max(0, eps - atA, eps - atB, eps - atC);
+  })();
+
+  const constraints: ConstraintDef[] = [
+    {
+      id: "tri_ab_lt_ac",
+      label: "AB < AC",
+      tolerance: 1e-9,
+      unit: "unit",
+      residual: () => abLtAcResidual,
+    },
+    {
+      id: "tri_acute",
+      label: "Triangle ABC is acute",
+      tolerance: 1e-9,
+      unit: "unit",
+      residual: () => acuteResidual,
+    },
+    ...(lineBC && lineZD
+      ? [constraintAngleBetweenLines("theorem_perp", "ZD perpendicular BC", lineZD, lineBC, 90, 0.06)]
+      : []),
+    {
+      id: "theorem_dot",
+      label: "|(Z-D) dot (C-B)| = 0",
+      tolerance: 1e-6,
+      unit: "unit",
+      residual: () => theoremDotResidual,
+    },
+  ];
+
+  const trianglePolygon: GeometryScene["polygons"] = [
+    {
+      id: "abc",
+      label: "Triangle ABC",
+      vertices: [A, B, C],
+      color: 0xe2e8f0,
+      opacity: 0.12,
+    },
+  ];
+
+  const stage1 = withStageScene([A, B, C, I, D, E, F], [...triangleEdges, ...incircle], trianglePolygon);
+  const stage2 = withStageScene(
+    [A, B, C, I, D, E, F, X, Y],
+    [...triangleEdges, ...incircle, lineEFSegment, ...bxDashed, ...cyDashed],
+    trianglePolygon,
+    lineEF ? [lineEF] : []
+  );
+  const stage3 = withStageScene(
+    [A, B, C, I, D, E, F, M, X, Y],
+    [...triangleEdges, ...incircle, lineEFSegment, ...bxDashed, ...cyDashed, ...mxDashed, ...myDashed],
+    trianglePolygon,
+    lineEF ? [lineEF] : []
+  );
+  const stage4 = withStageScene(
+    [A, B, C, I, D, E, F, M, X, Y, Bprime, Cprime, Z],
+    [
+      ...triangleEdges,
+      ...incircle,
+      lineEFSegment,
+      ...bxDashed,
+      ...cyDashed,
+      ...mxDashed,
+      ...myDashed,
+      ...reflectedSegments,
+    ],
+    trianglePolygon,
+    [lineEF, lineRefBX, lineRefCY].filter((line): line is Line3 => !!line)
+  );
+  const stage5 = withStageScene(
+    [A, B, C, I, D, E, F, M, X, Y, Bprime, Cprime, Z],
+    [
+      ...triangleEdges,
+      ...incircle,
+      lineEFSegment,
+      ...bxDashed,
+      ...cyDashed,
+      ...mxDashed,
+      ...myDashed,
+      ...reflectedSegments,
+      zdSegment,
+      ...rightAngleMarker,
+    ],
+    trianglePolygon,
+    [lineEF, lineRefBX, lineRefCY, lineZD].filter((line): line is Line3 => !!line)
+  );
+
+  return {
+    scene: stage5,
+    constraints,
+    points: {
+      A,
+      B,
+      C,
+      I,
+      D,
+      E,
+      F,
+      M,
+      X,
+      Y,
+      B_prime: Bprime,
+      C_prime: Cprime,
+      Z,
+    },
+    circles: [{ id: "incircle", label: "Incircle (I)", center: I, radius: incenter.radius }],
+    stages: [
+      { id: "stage1", label: "Stage 1", summary: "Triangle ABC, incircle, and tangency points D/E/F.", scene: stage1 },
+      { id: "stage2", label: "Stage 2", summary: "Contact line EF and perpendiculars through B and C.", scene: stage2 },
+      { id: "stage3", label: "Stage 3", summary: "Midpoint M and reflection axes MX and MY.", scene: stage3 },
+      { id: "stage4", label: "Stage 4", summary: "Reflected lines XB' and YC' intersect at Z.", scene: stage4 },
+      { id: "stage5", label: "Stage 5", summary: "Draw ZD and verify ZD ⟂ BC.", scene: stage5 },
+    ],
+    theoremCheck: {
+      dotResidual: theoremDotResidual,
+      isVerified: theoremDotResidual <= 1e-6,
+    },
   };
 };

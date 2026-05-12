@@ -72,6 +72,7 @@ import { renderTransform, type TransformPrimitive } from "./d3/TransformRenderer
 import { renderStandardMap, type MapId } from "./d3/StandardMapRenderer";
 
 import {
+  buildDemoPlanimetryIncircleReflectionConstruction,
   buildDemoPlanimetryConstruction,
   buildDemoPlanimetryEulerConstruction,
   buildDemoPlanimetryTangentCirclesConstruction,
@@ -290,7 +291,7 @@ import {
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
 type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
 type GeometryDemoFamily = "stereometry" | "planimetry";
-type PlanimetryPresetId = "task" | "euler" | "tangent";
+type PlanimetryPresetId = "task" | "euler" | "tangent" | "incircle_reflection";
 type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object" | "euler";
 type GeometryEulerScope = "selected" | "scene";
 type GeometryEulerPolygonTemplateId =
@@ -1461,6 +1462,58 @@ const DEMO_PLANIMETRY_TANGENT_SCRIPT = [
   "check collinear O1 T O2",
 ].join("\n");
 
+const DEMO_PLANIMETRY_INCIRCLE_REFLECTION_TASK_TEXT_PL =
+  "Dany jest trojkat ostrokatny ABC, w ktorym AB < AC. Okreg wpisany jest styczny do BC, CA, AB odpowiednio w D, E, F. " +
+  "Punkty X i Y leza na prostej EF, przy czym BX i CY sa prostopadle do BC. " +
+  "Niech M bedzie srodkiem odcinka BC. Odbicia prostych BX wzgledem MX oraz CY wzgledem MY przecinaja sie w Z. " +
+  "Wykazac, ze ZD jest prostopadla do BC.";
+
+const DEMO_PLANIMETRY_INCIRCLE_REFLECTION_TASK_TEXT_EN =
+  "Given an acute triangle ABC with AB < AC. The incircle touches BC, CA, AB at D, E, F. " +
+  "Points X and Y lie on EF such that BX and CY are perpendicular to BC. Let M be midpoint of BC. " +
+  "Reflect line BX about MX and line CY about MY; their images intersect at Z. Prove that ZD is perpendicular to BC.";
+
+const DEMO_PLANIMETRY_INCIRCLE_REFLECTION_SCRIPT = [
+  "# Incircle reflection theorem (guide script + executable seed)",
+  "# Stage 1: triangle + incircle tangency points",
+  "point A -0.35 1.35 0",
+  "point B -1.0 0 0",
+  "point C 1.0 0 0",
+  "line A B as AB",
+  "line B C as BC",
+  "line C A as CA",
+  "angle-bisector A B C as bisA",
+  "angle-bisector B A C as bisB",
+  "intersection bisA bisB as I",
+  "perp BC through I as i_perp_BC",
+  "perp CA through I as i_perp_CA",
+  "perp AB through I as i_perp_AB",
+  "intersection i_perp_BC BC as D",
+  "intersection i_perp_CA CA as E",
+  "intersection i_perp_AB AB as F",
+  "circle I D as incircle",
+  "# Stage 2: EF and perpendiculars through B,C",
+  "line E F as EF",
+  "perp BC through B as lB",
+  "perp BC through C as lC",
+  "intersection EF lB as X",
+  "intersection EF lC as Y",
+  "# Stage 3: midpoint + reflection axes",
+  "midpoint B C as M",
+  "line M X as MX",
+  "line M Y as MY",
+  "# Stage 4: reflected lines (B', C' seeded as reflected points)",
+  "point Bp -0.3965662990644083 0.918006084100949 0",
+  "point Cp 0.0027815708636855785 0.9999961314242822 0",
+  "line X Bp as reflectedBX",
+  "line Y Cp as reflectedCY",
+  "intersection reflectedBX reflectedCY as Z",
+  "# Stage 5: theorem check",
+  "line Z D as ZD",
+  "check perpendicular ZD BC",
+  "check collinear D B C",
+].join("\n");
+
 const PLANIMETRY_PRESET_META: Record<
   PlanimetryPresetId,
   { label: string; taskPl: string; taskEn: string; script: string }
@@ -1482,6 +1535,12 @@ const PLANIMETRY_PRESET_META: Record<
     taskPl: DEMO_PLANIMETRY_TANGENT_TASK_TEXT_PL,
     taskEn: DEMO_PLANIMETRY_TANGENT_TASK_TEXT_EN,
     script: DEMO_PLANIMETRY_TANGENT_SCRIPT,
+  },
+  incircle_reflection: {
+    label: "Incircle Reflection Theorem",
+    taskPl: DEMO_PLANIMETRY_INCIRCLE_REFLECTION_TASK_TEXT_PL,
+    taskEn: DEMO_PLANIMETRY_INCIRCLE_REFLECTION_TASK_TEXT_EN,
+    script: DEMO_PLANIMETRY_INCIRCLE_REFLECTION_SCRIPT,
   },
 };
 
@@ -1562,6 +1621,48 @@ const PLANIMETRY_SCRATCH_SEEDS: Record<PlanimetryPresetId, ConstructionLabSeed> 
       { id: "check_1", label: "T on c1", type: "pointOnCircle", point: "T", circle: "c1", tolerance: 2e-3 },
       { id: "check_2", label: "T on c2", type: "pointOnCircle", point: "T", circle: "c2", tolerance: 2e-3 },
       { id: "check_3", label: "O1,T,O2 collinear", type: "collinear", points: ["O1", "T", "O2"] as [string, string, string], tolerance: 2e-3 },
+    ],
+  },
+  incircle_reflection: {
+    selectedNodeId: "ZD",
+    scriptText: DEMO_PLANIMETRY_INCIRCLE_REFLECTION_SCRIPT,
+    nodes: [
+      { id: "A", label: "A", type: "freePoint", point: { x: -0.35, y: 1.35, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "B", label: "B", type: "freePoint", point: { x: -1.0, y: 0, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "C", label: "C", type: "freePoint", point: { x: 1.0, y: 0, z: 0 }, style: { color: 0xef4444, size: 0.045 } },
+      { id: "AB", label: "AB", type: "lineThroughPoints", a: "A", b: "B", style: { color: 0x6b7280, length: 6 } },
+      { id: "BC", label: "BC", type: "lineThroughPoints", a: "B", b: "C", style: { color: 0x6b7280, length: 6 } },
+      { id: "CA", label: "CA", type: "lineThroughPoints", a: "C", b: "A", style: { color: 0x6b7280, length: 6 } },
+      { id: "bisA", label: "bisA", type: "angleBisector", vertex: "A", a: "B", c: "C", style: { color: 0xa855f7, length: 6 } },
+      { id: "bisB", label: "bisB", type: "angleBisector", vertex: "B", a: "A", c: "C", style: { color: 0xa855f7, length: 6 } },
+      { id: "I", label: "I", type: "lineLineIntersection", lineA: "bisA", lineB: "bisB", style: { color: 0xdc2626, size: 0.05 } },
+      { id: "i_perp_BC", label: "i_perp_BC", type: "perpendicularLine", line: "BC", point: "I", style: { color: 0x0f766e, length: 6 } },
+      { id: "i_perp_CA", label: "i_perp_CA", type: "perpendicularLine", line: "CA", point: "I", style: { color: 0x0f766e, length: 6 } },
+      { id: "i_perp_AB", label: "i_perp_AB", type: "perpendicularLine", line: "AB", point: "I", style: { color: 0x0f766e, length: 6 } },
+      { id: "D", label: "D", type: "lineLineIntersection", lineA: "i_perp_BC", lineB: "BC", style: { color: 0xf97316, size: 0.045 } },
+      { id: "E", label: "E", type: "lineLineIntersection", lineA: "i_perp_CA", lineB: "CA", style: { color: 0xf97316, size: 0.045 } },
+      { id: "F", label: "F", type: "lineLineIntersection", lineA: "i_perp_AB", lineB: "AB", style: { color: 0xf97316, size: 0.045 } },
+      { id: "incircle", label: "incircle", type: "circleCenterPoint", center: "I", point: "D", style: { color: 0x2563eb, segments: 96 } },
+      { id: "EF", label: "EF", type: "lineThroughPoints", a: "E", b: "F", style: { color: 0x7c3aed, length: 6 } },
+      { id: "lB", label: "lB", type: "perpendicularLine", line: "BC", point: "B", style: { color: 0x2563eb, length: 6 } },
+      { id: "lC", label: "lC", type: "perpendicularLine", line: "BC", point: "C", style: { color: 0x2563eb, length: 6 } },
+      { id: "X", label: "X", type: "lineLineIntersection", lineA: "EF", lineB: "lB", style: { color: 0x2563eb, size: 0.045 } },
+      { id: "Y", label: "Y", type: "lineLineIntersection", lineA: "EF", lineB: "lC", style: { color: 0x2563eb, size: 0.045 } },
+      { id: "M", label: "M", type: "midpoint", a: "B", b: "C", style: { color: 0xf59e0b, size: 0.045 } },
+      { id: "MX", label: "MX", type: "lineThroughPoints", a: "M", b: "X", style: { color: 0xf59e0b, length: 5 } },
+      { id: "MY", label: "MY", type: "lineThroughPoints", a: "M", b: "Y", style: { color: 0xf59e0b, length: 5 } },
+      { id: "Bp", label: "Bp", type: "freePoint", point: { x: -0.3965662990644083, y: 0.918006084100949, z: 0 }, style: { color: 0xdc2626, size: 0.04 } },
+      { id: "Cp", label: "Cp", type: "freePoint", point: { x: 0.0027815708636855785, y: 0.9999961314242822, z: 0 }, style: { color: 0xdc2626, size: 0.04 } },
+      { id: "reflectedBX", label: "reflectedBX", type: "lineThroughPoints", a: "X", b: "Bp", style: { color: 0xdc2626, length: 6 } },
+      { id: "reflectedCY", label: "reflectedCY", type: "lineThroughPoints", a: "Y", b: "Cp", style: { color: 0xdc2626, length: 6 } },
+      { id: "Z", label: "Z", type: "lineLineIntersection", lineA: "reflectedBX", lineB: "reflectedCY", style: { color: 0xdc2626, size: 0.055 } },
+      { id: "ZD", label: "ZD", type: "lineThroughPoints", a: "Z", b: "D", style: { color: 0x16a34a, length: 6 } },
+    ],
+    checkDefs: [
+      { id: "check_1", label: "ZD perpendicular BC", type: "perpendicular", lines: ["ZD", "BC"] as [string, string], toleranceDeg: 0.08 },
+      { id: "check_2", label: "D,B,C collinear", type: "collinear", points: ["D", "B", "C"] as [string, string, string], tolerance: 1e-6 },
+      { id: "check_3", label: "E on CA", type: "collinear", points: ["E", "C", "A"] as [string, string, string], tolerance: 2e-3 },
+      { id: "check_4", label: "F on AB", type: "collinear", points: ["F", "A", "B"] as [string, string, string], tolerance: 2e-3 },
     ],
   },
 };
@@ -4883,8 +4984,30 @@ const App: React.FC = () => {
     task: buildDemoPlanimetryConstruction(),
     euler: buildDemoPlanimetryEulerConstruction(),
     tangent: buildDemoPlanimetryTangentCirclesConstruction(),
+    incircle_reflection: buildDemoPlanimetryIncircleReflectionConstruction(),
   }));
   const geometryPlanimetryDemo = geometryPlanimetryDemos[geometryPlanimetryPresetId];
+  const [geometryPlanimetryStageIndex, setGeometryPlanimetryStageIndex] = useState(0);
+  const geometryPlanimetryStages = geometryPlanimetryDemo.stages ?? [];
+  const geometryPlanimetryActiveStage =
+    geometryPlanimetryStages.length > 0
+      ? geometryPlanimetryStages[Math.max(0, Math.min(geometryPlanimetryStages.length - 1, geometryPlanimetryStageIndex))]
+      : null;
+  const geometryPlanimetryScene = geometryPlanimetryActiveStage?.scene ?? geometryPlanimetryDemo.scene;
+  useEffect(() => {
+    if (!geometryPlanimetryStages.length) {
+      setGeometryPlanimetryStageIndex(0);
+      return;
+    }
+    setGeometryPlanimetryStageIndex(geometryPlanimetryStages.length - 1);
+  }, [geometryPlanimetryPresetId, geometryPlanimetryStages.length]);
+  const geometryPlanimetryVisiblePointIds = useMemo(() => {
+    if (!geometryPlanimetryStages.length) return Object.keys(geometryPlanimetryDemo.points);
+    const visiblePoints = geometryPlanimetryScene.points ?? [];
+    return Object.entries(geometryPlanimetryDemo.points)
+      .filter(([, point]) => visiblePoints.includes(point))
+      .map(([id]) => id);
+  }, [geometryPlanimetryDemo.points, geometryPlanimetryScene.points, geometryPlanimetryStages.length]);
   const geometryFaces = geometryDemo.faces ?? [];
   const geometryFaceIncenters = geometryDemo.faceIncenters ?? [];
   const geometryIncenterPlaneCheck = geometryDemo.incenterPlaneCheck ?? null;
@@ -4909,7 +5032,7 @@ const App: React.FC = () => {
     [geometryPlanimetryDemo.points, geometrySelectedPlanimetryPointId]
   );
   useEffect(() => {
-    const ids = Object.keys(geometryPlanimetryDemo.points);
+    const ids = geometryPlanimetryVisiblePointIds;
     if (!ids.length) {
       if (geometrySelectedPlanimetryPointId) setGeometrySelectedPlanimetryPointId(null);
       return;
@@ -4917,7 +5040,7 @@ const App: React.FC = () => {
     if (!geometrySelectedPlanimetryPointId || !ids.includes(geometrySelectedPlanimetryPointId)) {
       setGeometrySelectedPlanimetryPointId(geometryPlanimetryDemo.points.I ? "I" : ids[0]);
     }
-  }, [geometryPlanimetryDemo, geometrySelectedPlanimetryPointId]);
+  }, [geometryPlanimetryDemo, geometryPlanimetryVisiblePointIds, geometrySelectedPlanimetryPointId]);
   const geometrySelectedIncenter = useMemo(
     () => geometryFaceIncenters.find((f) => f.faceId === geometrySelectedFaceId)?.incenter ?? null,
     [geometryFaceIncenters, geometrySelectedFaceId]
@@ -4980,13 +5103,16 @@ const App: React.FC = () => {
       return labels.length ? [{ labels, size: geometryDemoLabelScale }] : null;
     }
     const anchorLabels = geometryDemoShowPointLabels
-      ? Object.entries(geometryPlanimetryDemo.points).map(([id, point]) => ({
+      ? geometryPlanimetryVisiblePointIds.map((id) => {
+          const point = geometryPlanimetryDemo.points[id];
+          return {
           text: point.label ?? id,
           position: { x: point.x, y: point.y, z: point.z },
           color: id === geometrySelectedPlanimetryPointId ? 0x1d4ed8 : 0x111827,
           size: id === geometrySelectedPlanimetryPointId ? 1.08 : 1,
           opacity: 0.98,
-        }))
+          };
+        })
       : [];
     const circleLabels = geometryPlanimetryDemo.circles.map((circle) => ({
       text: `${circle.label} r=${circle.radius.toFixed(3)}`,
@@ -5002,6 +5128,7 @@ const App: React.FC = () => {
     geometryDemo.points,
     geometryPlanimetryDemo.circles,
     geometryPlanimetryDemo.points,
+    geometryPlanimetryVisiblePointIds,
     geometryDemoLabelScale,
     geometryDemoShowPointLabels,
     geometryFaceIncenters,
@@ -5009,10 +5136,12 @@ const App: React.FC = () => {
     geometrySelectedPlanimetryPointId,
   ]);
   const geometryDemoScene =
-    geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryDemo.scene;
+    geometryDemoFamily === "stereometry" ? geometryDemo.scene : geometryPlanimetryScene;
   const [geometryConstructionState, setGeometryConstructionState] = useState<ConstructionLabState | null>(null);
   const [geometryScratchSceneSeed, setGeometryScratchSceneSeed] = useState<ConstructionLabSeed | null>(null);
   const [geometryWorkbookSceneSeeds, setGeometryWorkbookSceneSeeds] = useState<Record<string, ConstructionLabSeed>>({});
+  const [geometryEditorSeedToken, setGeometryEditorSeedToken] = useState(0);
+  const [geometryWorkbookPackStatus, setGeometryWorkbookPackStatus] = useState<string | null>(null);
   const [geometryPointPlacementEnabled, setGeometryPointPlacementEnabled] = useState(false);
   const [geometryProblemCameraOverride, setGeometryProblemCameraOverride] = useState<CameraSyncState | null>(null);
   const [geometryProblemCameraOverrideToken, setGeometryProblemCameraOverrideToken] = useState(0);
@@ -5056,7 +5185,9 @@ const App: React.FC = () => {
     }) => {
       if (geometryDemoFamily === "planimetry") {
         let best: { id: string; distance: number } | null = null;
-        for (const [id, point] of Object.entries(geometryPlanimetryDemo.points)) {
+        for (const id of geometryPlanimetryVisiblePointIds) {
+          const point = geometryPlanimetryDemo.points[id];
+          if (!point) continue;
           const d = Math.hypot(info.point.x - point.x, info.point.y - point.y, info.point.z - point.z);
           if (!Number.isFinite(d)) continue;
           if (!best || d < best.distance) best = { id, distance: d };
@@ -5075,7 +5206,7 @@ const App: React.FC = () => {
       }
       if (best) setGeometrySelectedFaceId(best.id);
     },
-    [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points]
+    [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points, geometryPlanimetryVisiblePointIds]
   );
   const handleProceduralPick = useCallback((info: {
     point: { x: number; y: number; z: number };
@@ -6839,6 +6970,10 @@ const App: React.FC = () => {
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
     [workbooks, activeWorkbookId]
   );
+  const olympiadIncircleReflectionSeed = useMemo(
+    () => normalizeConstructionLabSeed(PLANIMETRY_SCRATCH_SEEDS.incircle_reflection),
+    []
+  );
   const activeWorkbookSceneSeed = useMemo(
     () => (activeWorkbookId ? geometryWorkbookSceneSeeds[activeWorkbookId] ?? null : null),
     [activeWorkbookId, geometryWorkbookSceneSeeds]
@@ -6853,7 +6988,9 @@ const App: React.FC = () => {
     [geometryMode, geometryScratchSceneSeed, activeWorkbookSceneSeed]
   );
   const geometryEditorPanelKey =
-    geometryMode === "workbook" ? `workbook:${activeWorkbookId ?? "none"}` : "scratch";
+    geometryMode === "workbook"
+      ? `workbook:${activeWorkbookId ?? "none"}:${geometryEditorSeedToken}`
+      : `scratch:${geometryEditorSeedToken}`;
   const geometrySceneSourceKey =
     geometryMode === "scratch"
       ? "scratch"
@@ -6864,6 +7001,9 @@ const App: React.FC = () => {
   useEffect(() => {
     setGeometryConstructionState(null);
   }, [geometrySceneSourceKey]);
+  useEffect(() => {
+    setGeometryWorkbookPackStatus(null);
+  }, [geometryMode, activeWorkbookId]);
 
   useEffect(() => {
     if (!geometryConstructionState) return;
@@ -6967,7 +7107,9 @@ const App: React.FC = () => {
   const handleOpenDemoScratch = useCallback(() => {
     if (geometryDemoFamily === "planimetry" && activePlanimetryScratchSeed) {
       setGeometryScratchSceneSeed(activePlanimetryScratchSeed);
+      setGeometryEditorSeedToken((v) => v + 1);
     }
+    setGeometryWorkbookPackStatus(null);
     setGeometryMode("scratch");
   }, [geometryDemoFamily, activePlanimetryScratchSeed]);
   const handleOpenDemoWorkbook = useCallback(() => {
@@ -6977,6 +7119,22 @@ const App: React.FC = () => {
     }
     openGeometryWorkbookMode();
   }, [geometryDemoFamily, activePlanimetryScratchSeed, openGeometryWorkbookMode]);
+  const handleLoadOlympiadIncircleReflectionPack = useCallback(() => {
+    if (!olympiadIncircleReflectionSeed) {
+      setGeometryWorkbookPackStatus("Unable to load the incircle-reflection pack seed.");
+      return;
+    }
+    setGeometryConstructionState(null);
+    if (geometryMode === "workbook" && activeWorkbookId) {
+      setGeometryWorkbookSceneSeeds((prev) => ({ ...prev, [activeWorkbookId]: olympiadIncircleReflectionSeed }));
+      setGeometryEditorSeedToken((v) => v + 1);
+      setGeometryWorkbookPackStatus("Loaded into current workbook scene (with script + checks).");
+      return;
+    }
+    setGeometryScratchSceneSeed(olympiadIncircleReflectionSeed);
+    setGeometryEditorSeedToken((v) => v + 1);
+    setGeometryWorkbookPackStatus("Loaded into scratch scene (with script + checks).");
+  }, [activeWorkbookId, geometryMode, olympiadIncircleReflectionSeed]);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -29320,7 +29478,7 @@ case "mobius":
                     </div>
                     {geometryDemoFamily === "planimetry" && (
                       <div style={{ ...pillRow, marginBottom: 8 }}>
-                        {(["task", "euler", "tangent"] as PlanimetryPresetId[]).map((presetId) => (
+                        {(["task", "euler", "tangent", "incircle_reflection"] as PlanimetryPresetId[]).map((presetId) => (
                           <button
                             key={presetId}
                             type="button"
@@ -29374,8 +29532,41 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.8 }}>
                           {geometryDemoFamily === "stereometry"
                             ? "Demo setup uses a convex base and computes incenters for faces ABS, BCS, CDS, DAS."
-                            : "Demo setup uses triangle ABC with incenter/incircle and circumcenter/circumcircle relations."}
+                            : geometryPlanimetryStages.length
+                              ? "Use stage buttons to walk the construction and theorem check."
+                              : "Demo setup uses triangle ABC with incenter/incircle and circumcenter/circumcircle relations."}
                         </div>
+                        {geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length > 0 && (
+                          <div
+                            style={{
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              display: "grid",
+                              gap: 8,
+                              background: "#fff",
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Stage walkthrough</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {geometryPlanimetryStages.map((stage, idx) => (
+                                <button
+                                  key={stage.id}
+                                  type="button"
+                                  onClick={() => setGeometryPlanimetryStageIndex(idx)}
+                                  style={pill(geometryPlanimetryStageIndex === idx)}
+                                >
+                                  {stage.label}
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.82 }}>
+                              {geometryPlanimetryActiveStage
+                                ? geometryPlanimetryActiveStage.summary
+                                : "Construction stages unavailable for this preset."}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => setGeometryDemoTab("solve")}>
                             Open solve diagnostics
@@ -29402,6 +29593,36 @@ case "mobius":
 
                     {geometryDemoTab === "objects" && (
                       <div style={{ display: "grid", gap: 12 }}>
+                        {geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length > 0 && (
+                          <div
+                            style={{
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              display: "grid",
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Construction stage</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {geometryPlanimetryStages.map((stage, idx) => (
+                                <button
+                                  key={stage.id}
+                                  type="button"
+                                  onClick={() => setGeometryPlanimetryStageIndex(idx)}
+                                  style={pill(geometryPlanimetryStageIndex === idx)}
+                                >
+                                  {idx + 1}
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                              {geometryPlanimetryActiveStage
+                                ? `${geometryPlanimetryActiveStage.label}: ${geometryPlanimetryActiveStage.summary}`
+                                : "Final stage"}
+                            </div>
+                          </div>
+                        )}
                         <div
                           style={{
                             border: "1px solid #e5e7eb",
@@ -29420,7 +29641,7 @@ case "mobius":
                             />
                             {geometryDemoFamily === "stereometry"
                               ? "Show point labels (A, B, C, D, S)"
-                              : "Show point labels (A, B, C, I, O)"}
+                              : "Show point labels"}
                           </label>
                           <label style={{ fontSize: 11 }}>
                             Label scale
@@ -29501,14 +29722,23 @@ case "mobius":
                               fontFamily: "monospace",
                             }}
                           >
-                            {Object.entries(
-                              geometryDemoFamily === "stereometry" ? geometryDemo.points : geometryPlanimetryDemo.points
-                            ).map(([id, p]) => (
-                              <React.Fragment key={id}>
-                                <div>{id}</div>
-                                <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
-                              </React.Fragment>
-                            ))}
+                            {geometryDemoFamily === "stereometry"
+                              ? Object.entries(geometryDemo.points).map(([id, p]) => (
+                                  <React.Fragment key={id}>
+                                    <div>{id}</div>
+                                    <div style={{ opacity: 0.7 }}>{fmt3(p)}</div>
+                                  </React.Fragment>
+                                ))
+                              : geometryPlanimetryVisiblePointIds.map((id) => {
+                                  const point = geometryPlanimetryDemo.points[id];
+                                  if (!point) return null;
+                                  return (
+                                    <React.Fragment key={id}>
+                                      <div>{id}</div>
+                                      <div style={{ opacity: 0.7 }}>{fmt3(point)}</div>
+                                    </React.Fragment>
+                                  );
+                                })}
                           </div>
                         </div>
 
@@ -29598,7 +29828,7 @@ case "mobius":
                             <div>
                               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Focus point</div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                {Object.keys(geometryPlanimetryDemo.points).map((id) => (
+                                {geometryPlanimetryVisiblePointIds.map((id) => (
                                   <button
                                     key={id}
                                     type="button"
@@ -29627,16 +29857,44 @@ case "mobius":
                             onSelectFace={(id) => setGeometrySelectedFaceId(id)}
                           />
                         ) : (
-                          <div
-                            style={{
-                              border: "1px solid #e5e7eb",
-                              borderRadius: 8,
-                              padding: "8px 10px",
-                              fontSize: 11,
-                              background: "#fff",
-                            }}
-                          >
-                            Planimetry diagnostics: check incenter/circumcenter metric relations and angle-bisector split.
+                          <div style={{ display: "grid", gap: 8 }}>
+                            <div
+                              style={{
+                                border: "1px solid #e5e7eb",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                fontSize: 11,
+                                background: "#fff",
+                              }}
+                            >
+                              {geometryPlanimetryDemo.theoremCheck
+                                ? "Theorem diagnostics for the incircle-reflection construction."
+                                : "Planimetry diagnostics: check incenter/circumcenter metric relations and angle-bisector split."}
+                            </div>
+                            {geometryPlanimetryDemo.theoremCheck && (
+                              <div
+                                style={{
+                                  border: `1px solid ${geometryPlanimetryDemo.theoremCheck.isVerified ? "#86efac" : "#fca5a5"}`,
+                                  borderRadius: 8,
+                                  padding: "8px 10px",
+                                  fontSize: 11,
+                                  background: geometryPlanimetryDemo.theoremCheck.isVerified ? "#f0fdf4" : "#fef2f2",
+                                  color: geometryPlanimetryDemo.theoremCheck.isVerified ? "#166534" : "#991b1b",
+                                  display: "grid",
+                                  gap: 4,
+                                }}
+                              >
+                                <div style={{ fontWeight: 700 }}>
+                                  {geometryPlanimetryDemo.theoremCheck.isVerified
+                                    ? "Theorem verified: ZD ⟂ BC"
+                                    : "Theorem check failed: ZD is not perpendicular to BC"}
+                                </div>
+                                <div style={{ fontFamily: "monospace", opacity: 0.85 }}>
+                                  |(Z-D)·(C-B)| ={" "}
+                                  {formatConstraintValue(geometryPlanimetryDemo.theoremCheck.dotResidual, "unit")}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -29789,6 +30047,44 @@ case "mobius":
                           </button>
                         )}
                       </div>
+                    </div>
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        background: "#f8fafc",
+                        padding: "6px 8px",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>Problem pack quick load</div>
+                      <div style={{ fontSize: 11, opacity: 0.82 }}>
+                        Geometry {"->"} Olympiad constructions {"->"} Incircle reflection theorem
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={handleLoadOlympiadIncircleReflectionPack} style={{ fontSize: 11 }}>
+                          Load theorem scene
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGeometryDemoFamily("planimetry");
+                            setGeometryPlanimetryPresetId("incircle_reflection");
+                            setGeometryMode("demo");
+                          }}
+                          style={{ fontSize: 11 }}
+                        >
+                          Open demo preview
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 10, opacity: 0.75 }}>
+                        Includes staged construction, scene script, and theorem checks.
+                      </div>
+                      {geometryWorkbookPackStatus && (
+                        <div style={{ fontSize: 11, color: "#166534" }}>{geometryWorkbookPackStatus}</div>
+                      )}
                     </div>
                     <ConstructionLabPanel
                       key={geometryEditorPanelKey}
