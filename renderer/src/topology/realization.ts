@@ -110,6 +110,11 @@ const DUNCE_MAP_HEIGHT = 2.1;
 const SPHERE_RADIUS = 1.32;
 const SUSPENSION_RADIUS = 1.28;
 const SUSPENSION_HALF_HEIGHT = 1.34;
+const STUDIO_SURFACE_SEGMENTS = {
+  torus: { u: 160, v: 96 },
+  klein: { u: 220, v: 140 },
+  cylinder: { u: 160, v: 96 },
+} as const;
 
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -294,8 +299,8 @@ const kleinPoint = (u: number, v: number, scaleFactor = KLEIN_SCALE): Vec3 => {
 };
 
 const buildKleinFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
-  const uSegments = 96;
-  const vSegments = 42;
+  const uSegments = STUDIO_SURFACE_SEGMENTS.klein.u;
+  const vSegments = STUDIO_SURFACE_SEGMENTS.klein.v;
   const vertices: Vec3[] = [];
   for (let iu = 0; iu <= uSegments; iu += 1) {
     const u = (Math.PI * 2 * iu) / uSegments;
@@ -354,8 +359,8 @@ const suspensionPoint = (u: number, w: number): Vec3 => {
 };
 
 const buildCylinderFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
-  const uSegments = 76;
-  const vSegments = 24;
+  const uSegments = STUDIO_SURFACE_SEGMENTS.cylinder.u;
+  const vSegments = STUDIO_SURFACE_SEGMENTS.cylinder.v;
   const vertices: Vec3[] = [];
   for (let iu = 0; iu <= uSegments; iu += 1) {
     const u = (Math.PI * 2 * iu) / uSegments;
@@ -504,8 +509,8 @@ const buildProjectiveFaceMesh = (faceId: string): Realization3D["faceRealization
 };
 
 const buildTorusFaceMesh = (faceId: string): Realization3D["faceRealizationMesh"] => {
-  const uSegments = 56;
-  const vSegments = 32;
+  const uSegments = STUDIO_SURFACE_SEGMENTS.torus.u;
+  const vSegments = STUDIO_SURFACE_SEGMENTS.torus.v;
   const vertices: Vec3[] = [];
   for (let iu = 0; iu <= uSegments; iu += 1) {
     const u = (Math.PI * 2 * iu) / uSegments;
@@ -1175,6 +1180,8 @@ const buildMobiusRealizationBase = (
   edgeCurves.mobius_boundary = buildMobiusBoundaryCurve();
   edgeCurves.mobius_core = sampleCurve((t) => mobiusPoint(t * Math.PI * 2, 0), 190, true);
   edgeCurves.mobius_orient_track = sampleCurve((t) => mobiusPoint(t * Math.PI * 2, 0.05), 170, true);
+  edgeCurves.mobius_orient_track_iconografic = edgeCurves.mobius_orient_track;
+  edgeCurves.mobius_orient_track_user5 = sampleCurve((t) => mobiusPoint(t * Math.PI * 2, -0.05), 170, true);
 
   const startFrame = mobiusFrame(0, 0);
   const endFrame = mobiusFrame(Math.PI * 2, 0);
@@ -1182,6 +1189,10 @@ const buildMobiusRealizationBase = (
   const endNormalTip = add(endFrame.point, scale(endFrame.normal, 0.38));
   edgeCurves.mobius_orient_normal_start = [startFrame.point, startNormalTip];
   edgeCurves.mobius_orient_normal_end = [endFrame.point, endNormalTip];
+  edgeCurves.mobius_orient_normal_start_iconografic = edgeCurves.mobius_orient_normal_start;
+  edgeCurves.mobius_orient_normal_end_iconografic = edgeCurves.mobius_orient_normal_end;
+  edgeCurves.mobius_orient_normal_start_user5 = [startFrame.point, sub(startFrame.point, scale(startFrame.normal, 0.38))];
+  edgeCurves.mobius_orient_normal_end_user5 = [endFrame.point, sub(endFrame.point, scale(endFrame.normal, 0.38))];
 
   if (kind === "cut-open") {
     edgeCurves.mobius_cut = sampleCurve((t) => mobiusPoint(t * Math.PI * 2, 0), 160, false);

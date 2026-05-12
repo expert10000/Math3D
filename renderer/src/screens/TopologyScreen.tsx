@@ -1,4 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { SSAOPass } from "three/examples/jsm/postprocessing/SSAOPass.js";
 import { uiStyles as styles } from "../uiStyles";
 import {
   addEdgeToDiagram,
@@ -205,6 +210,21 @@ const DIAGRAM_HISTORY_LIMIT = 120;
 const EDGE_CLASS_COLOR_A = "#dc2626";
 const EDGE_CLASS_COLOR_B = "#2563eb";
 const EDGE_CLASS_COLOR_NEUTRAL = "#334155";
+const MOBIUS_ORIENT_TRACK_IDS = ["mobius_orient_track_iconografic", "mobius_orient_track_user5", "mobius_orient_track"] as const;
+const MOBIUS_ORIENT_NORMAL_START_IDS = [
+  "mobius_orient_normal_start_iconografic",
+  "mobius_orient_normal_start_user5",
+  "mobius_orient_normal_start",
+] as const;
+const MOBIUS_ORIENT_NORMAL_END_IDS = [
+  "mobius_orient_normal_end_iconografic",
+  "mobius_orient_normal_end_user5",
+  "mobius_orient_normal_end",
+] as const;
+const MOBIUS_ORIENT_EDGE_IDS = [...MOBIUS_ORIENT_TRACK_IDS, ...MOBIUS_ORIENT_NORMAL_START_IDS, ...MOBIUS_ORIENT_NORMAL_END_IDS] as const;
+
+const firstAvailableCurveId = (edgeCurves: Record<string, Vec3[]>, ids: readonly string[]): string | null =>
+  ids.find((id) => (edgeCurves[id]?.length ?? 0) > 1) ?? null;
 
 const primaryEdgeLabelToken = (rawLabel: string | undefined | null): string => {
   if (!rawLabel) return "";
@@ -667,6 +687,353 @@ const SPHERE_STORY_STAGES = [
   { id: "sphere", label: "S3: sphere target", detail: "Intended sphere-style boundary contraction story." },
   { id: "overlays", label: "S4: overlays", detail: "Inspect collapsed boundary and quotient markers." },
 ] as const;
+
+const KLEIN_STAGE_CAMERAS: Record<number, { position: [number, number, number]; target: [number, number, number] }> = {
+  1: { position: [0, 0.2, 4], target: [0, 0, 0] },
+  2: { position: [3, 2, 4], target: [0, 0, 0] },
+  3: { position: [3.5, 2.2, 3.5], target: [0, -0.4, 0] },
+  4: { position: [3.2, 2.0, 4.0], target: [0, 0, 0] },
+  5: { position: [3.6, 2.4, 4.2], target: [0, 0, 0] },
+};
+
+const DunceMapReferenceFigure: React.FC = () => {
+  const panelTitles = [
+    "Start: flat triangular 2-cell",
+    "Bend first edge into a loop",
+    "Glue second edge as a^-1",
+    "Glue third edge as a",
+    "Dunce cap (final)",
+  ];
+  const panelX = panelTitles.map((_, index) => 16 + index * 222);
+  return (
+    <svg width="100%" viewBox="0 0 1130 620" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#ffffff" }}>
+      <defs>
+        <marker id="dunce-ref-arrow-red" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={7} markerHeight={7} orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626" />
+        </marker>
+        <marker id="dunce-ref-arrow-blue" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={7} markerHeight={7} orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+        </marker>
+        <marker id="dunce-ref-arrow-green" viewBox="0 0 10 10" refX={8} refY={5} markerWidth={7} markerHeight={7} orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#16a34a" />
+        </marker>
+        <linearGradient id="dunce-ref-sheet-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f4f4f3" />
+          <stop offset="42%" stopColor="#d9d9d8" />
+          <stop offset="100%" stopColor="#f2f2f1" />
+        </linearGradient>
+        <radialGradient id="dunce-ref-sheet-shine" cx="28%" cy="18%" r="82%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity={0.7} />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity={0} />
+        </radialGradient>
+        <radialGradient id="dunce-ref-cone-grad" cx="44%" cy="24%" r="84%">
+          <stop offset="0%" stopColor="#f6f6f5" />
+          <stop offset="52%" stopColor="#dddddc" />
+          <stop offset="100%" stopColor="#f2f2f1" />
+        </radialGradient>
+        <radialGradient id="dunce-ref-mouth-grad" cx="50%" cy="50%" r="64%">
+          <stop offset="0%" stopColor="#8f8f8e" />
+          <stop offset="100%" stopColor="#d2d2d1" />
+        </radialGradient>
+        <filter id="dunce-ref-shadow" x="-30%" y="-30%" width="160%" height="180%">
+          <feDropShadow dx="0.8" dy="1.8" stdDeviation="1.8" floodColor="#111827" floodOpacity="0.22" />
+        </filter>
+      </defs>
+
+      {panelX.map((x, index) => (
+        <g key={`dunce-ref-panel-${index}`}>
+          <rect x={x} y={16} width={210} height={520} rx={11} fill="#ffffff" stroke="#0f172a" strokeWidth={1.1} />
+          <circle cx={x + 24} cy={42} r={14} fill="#0f172a" />
+          <text x={x + 24} y={47} textAnchor="middle" style={{ fontSize: 13, fontWeight: 700, fill: "#ffffff" }}>
+            {index + 1}
+          </text>
+          <text x={x + 50} y={45} style={{ fontSize: 10.8, fontWeight: 700, fill: "#111827" }}>
+            {panelTitles[index]}
+          </text>
+        </g>
+      ))}
+
+      <g>
+        <polygon points="56,430 186,430 122,170" fill="#f8fafc" stroke="#cbd5e1" strokeWidth={1.2} />
+        <line x1={56} y1={430} x2={122} y2={170} stroke="#dc2626" strokeWidth={5} />
+        <line x1={122} y1={170} x2={186} y2={430} stroke="#2563eb" strokeWidth={5} />
+        <line x1={56} y1={430} x2={186} y2={430} stroke="#16a34a" strokeWidth={5} />
+        <line x1={80} y1={338} x2={98} y2={270} stroke="#dc2626" strokeWidth={2} markerEnd="url(#dunce-ref-arrow-red)" />
+        <line x1={160} y1={300} x2={170} y2={356} stroke="#2563eb" strokeWidth={2} markerEnd="url(#dunce-ref-arrow-blue)" />
+        <line x1={96} y1={430} x2={142} y2={430} stroke="#16a34a" strokeWidth={2} markerEnd="url(#dunce-ref-arrow-green)" />
+        <text x={36} y={286} style={{ fontSize: 12, fontWeight: 700, fill: "#dc2626" }}>edge 1: a</text>
+        <text x={170} y={292} style={{ fontSize: 12, fontWeight: 700, fill: "#2563eb" }}>edge 2: a^-1</text>
+        <text x={94} y={458} style={{ fontSize: 12, fontWeight: 700, fill: "#15803d" }}>edge 3: a</text>
+      </g>
+
+      <g filter="url(#dunce-ref-shadow)">
+        <path d="M 274 420 Q 328 216 420 428 Q 408 446 330 448 Q 288 444 274 420 z" fill="url(#dunce-ref-sheet-grad)" stroke="#b8b8b8" strokeWidth={1.05} />
+        <path d="M 274 420 Q 328 216 420 428 Q 408 446 330 448 Q 288 444 274 420 z" fill="url(#dunce-ref-sheet-shine)" />
+        <path d="M 292 404 Q 340 306 382 432" fill="none" stroke="#c2c2c2" strokeWidth={0.9} opacity={0.75} />
+        <path d="M 306 430 Q 348 338 394 436" fill="none" stroke="#c9c9c9" strokeWidth={0.8} opacity={0.66} />
+        <ellipse cx={292} cy={292} rx={26} ry={96} fill="none" stroke="#dc2626" strokeWidth={6.3} />
+        <ellipse cx={292} cy={292} rx={20} ry={90} fill="none" stroke="#fca5a5" strokeWidth={1.3} opacity={0.8} />
+        <line x1={274} y1={286} x2={284} y2={250} stroke="#dc2626" strokeWidth={2} markerEnd="url(#dunce-ref-arrow-red)" />
+        <path d="M 360 336 Q 384 374 392 412" fill="none" stroke="#2563eb" strokeWidth={3} markerEnd="url(#dunce-ref-arrow-blue)" />
+        <line x1={310} y1={426} x2={374} y2={426} stroke="#16a34a" strokeWidth={3.2} markerEnd="url(#dunce-ref-arrow-green)" />
+        <text x={286} y={182} style={{ fontSize: 12, fontWeight: 700, fill: "#dc2626" }}>first loop a</text>
+      </g>
+
+      <g filter="url(#dunce-ref-shadow)">
+        <path d="M 496 420 Q 556 196 642 418 Q 636 444 558 448 Q 510 442 496 420 z" fill="url(#dunce-ref-sheet-grad)" stroke="#b8b8b8" strokeWidth={1.05} />
+        <path d="M 496 420 Q 556 196 642 418 Q 636 444 558 448 Q 510 442 496 420 z" fill="url(#dunce-ref-sheet-shine)" />
+        <path d="M 518 422 Q 574 332 614 436" fill="none" stroke="#c4c4c4" strokeWidth={0.9} opacity={0.76} />
+        <path d="M 530 434 Q 584 358 624 438" fill="none" stroke="#cecece" strokeWidth={0.8} opacity={0.62} />
+        <ellipse cx={514} cy={292} rx={24} ry={80} fill="none" stroke="#dc2626" strokeWidth={5.6} />
+        <ellipse cx={514} cy={292} rx={18} ry={74} fill="none" stroke="#fca5a5" strokeWidth={1.2} opacity={0.78} />
+        <path d="M 620 212 Q 658 322 622 428" fill="none" stroke="#2563eb" strokeWidth={5.4} />
+        <path d="M 616 210 Q 626 322 615 432" fill="none" stroke="#93c5fd" strokeWidth={1.1} opacity={0.75} />
+        <path d="M 515 338 Q 575 320 620 230" fill="none" stroke="#2563eb" strokeWidth={2.1} strokeDasharray="6 4" opacity={0.86} />
+        <path d="M 532 190 Q 600 160 646 222" fill="none" stroke="#2563eb" strokeWidth={2.1} markerEnd="url(#dunce-ref-arrow-blue)" />
+        <text x={510} y={170} style={{ fontSize: 12, fontWeight: 700, fill: "#1d4ed8" }}>glue second edge as a^-1</text>
+      </g>
+
+      <g filter="url(#dunce-ref-shadow)">
+        <path d="M 714 416 Q 758 192 854 416 Q 848 440 780 450 Q 724 438 714 416 z" fill="url(#dunce-ref-sheet-grad)" stroke="#b8b8b8" strokeWidth={1.05} />
+        <path d="M 714 416 Q 758 192 854 416 Q 848 440 780 450 Q 724 438 714 416 z" fill="url(#dunce-ref-sheet-shine)" />
+        <path d="M 734 424 Q 778 338 818 436" fill="none" stroke="#c5c5c5" strokeWidth={0.86} opacity={0.78} />
+        <path d="M 748 430 Q 790 352 832 440" fill="none" stroke="#cdcdcd" strokeWidth={0.8} opacity={0.62} />
+        <ellipse cx={736} cy={292} rx={24} ry={76} fill="none" stroke="#dc2626" strokeWidth={5.6} />
+        <ellipse cx={736} cy={292} rx={18} ry={70} fill="none" stroke="#fca5a5" strokeWidth={1.2} opacity={0.78} />
+        <path d="M 756 356 Q 782 332 798 262" fill="none" stroke="#2563eb" strokeWidth={4.8} />
+        <path d="M 753 354 Q 770 332 782 296" fill="none" stroke="#93c5fd" strokeWidth={1.2} opacity={0.75} />
+        <path d="M 786 410 Q 818 336 816 252" fill="none" stroke="#16a34a" strokeWidth={4.9} />
+        <path d="M 782 408 Q 806 350 808 274" fill="none" stroke="#86efac" strokeWidth={1.15} opacity={0.74} />
+        <path d="M 786 470 Q 714 454 712 408" fill="none" stroke="#16a34a" strokeWidth={2} markerEnd="url(#dunce-ref-arrow-green)" />
+        <text x={742} y={484} style={{ fontSize: 12, fontWeight: 700, fill: "#15803d" }}>glue third edge as a</text>
+      </g>
+
+      <g filter="url(#dunce-ref-shadow)">
+        <path d="M 938 420 Q 972 184 1048 118 Q 1094 184 1086 434 Q 1044 444 938 420 z" fill="url(#dunce-ref-cone-grad)" stroke="#b8b8b8" strokeWidth={1.05} />
+        <path d="M 938 420 Q 972 184 1048 118 Q 1094 184 1086 434 Q 1044 444 938 420 z" fill="url(#dunce-ref-sheet-shine)" />
+        <path d="M 972 410 Q 1002 250 1048 160" fill="none" stroke="#cbcbcb" strokeWidth={0.95} opacity={0.8} />
+        <path d="M 988 424 Q 1022 290 1060 194" fill="none" stroke="#d5d5d5" strokeWidth={0.85} opacity={0.7} />
+        <ellipse cx={1008} cy={426} rx={70} ry={30} fill="url(#dunce-ref-mouth-grad)" stroke="#111827" strokeWidth={1.2} opacity={0.86} />
+        <path d="M 940 426 A 70 30 0 0 1 994 400" fill="none" stroke="#dc2626" strokeWidth={6} />
+        <path d="M 994 400 A 70 30 0 0 1 1044 412" fill="none" stroke="#2563eb" strokeWidth={6} />
+        <path d="M 1044 412 A 70 30 0 0 1 1074 438" fill="none" stroke="#16a34a" strokeWidth={6} />
+        <path d="M 1074 438 A 70 30 0 0 1 940 426" fill="none" stroke="#dc2626" strokeWidth={6} />
+        <circle cx={972} cy={444} r={5.3} fill="#111827" />
+        <text x={934} y={468} style={{ fontSize: 12, fontWeight: 700, fill: "#111827" }}>one vertex v</text>
+        <text x={1030} y={474} style={{ fontSize: 12, fontWeight: 700, fill: "#dc2626" }}>one loop a</text>
+        <text x={972} y={510} style={{ fontSize: 10, fill: "#1f2937", fontStyle: "italic" }}>outside view</text>
+      </g>
+
+      <rect x={16} y={552} width={1098} height={52} rx={10} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={1} />
+      <text x={34} y={584} style={{ fontSize: 13, fill: "#0f172a" }}>
+        Before quotienting: three boundary edges (red a, blue a^-1, green a). After quotienting: all become the same loop a.
+      </text>
+    </svg>
+  );
+};
+
+const DUNCE_3D_STAGE_TITLES = [
+  "1. Start: triangular 2-cell",
+  "2. Bend first edge into a loop",
+  "3. Glue second edge as a^-1",
+  "4. Glue third edge as a",
+  "5. Dunce cap (final)",
+] as const;
+
+const dunceStagePoint = (stage: number, u: number, v: number): THREE.Vector3 => {
+  const theta = u * Math.PI * 2;
+  const s = v;
+  const taper = Math.max(0.08, 1 - 0.9 * s);
+  const radial = 1.28 * taper + 0.06;
+  let x = radial * Math.cos(theta) * (1 + 0.08 * (1 - s) * Math.cos(3 * theta));
+  let y = radial * Math.sin(theta) * (1 - 0.05 * (1 - s) * Math.cos(2 * theta));
+  let z = 2.45 * s - 1.24 + 0.18 * Math.sin(3 * theta) * s * taper;
+
+  if (stage >= 1) {
+    x += 0.18 * (u - 0.5) * s;
+    y += 0.12 * Math.sin(theta) * s * (1 - s);
+  }
+  if (stage >= 2) {
+    x += 0.24 * (u - 0.75) * s * s;
+    z += 0.14 * Math.cos(theta * 1.5) * s * (1 - s);
+  }
+  if (stage >= 3) {
+    y -= 0.26 * Math.exp(-Math.pow((u - 0.72) / 0.17, 2)) * s * (0.5 + 0.5 * s);
+    x += 0.14 * Math.exp(-Math.pow((u - 0.15) / 0.2, 2)) * s;
+  }
+  if (stage >= 4) {
+    const close = Math.exp(-Math.pow((u - 0.65) / 0.18, 2));
+    x -= 0.24 * close * (0.2 + 0.8 * s);
+    y -= 0.18 * close * (0.2 + 0.8 * s);
+  }
+  return new THREE.Vector3(x, y, z);
+};
+
+const buildDunceSurfaceGeometry = (stage: number, nu = 160, nv = 96): THREE.BufferGeometry => {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let j = 0; j <= nv; j += 1) {
+    const v = j / nv;
+    for (let i = 0; i <= nu; i += 1) {
+      const u = i / nu;
+      const p = dunceStagePoint(stage, u, v);
+      positions.push(p.x, p.y, p.z);
+    }
+  }
+  for (let j = 0; j < nv; j += 1) {
+    for (let i = 0; i < nu; i += 1) {
+      const a = j * (nu + 1) + i;
+      const b = a + 1;
+      const c = a + (nu + 1);
+      const d = c + 1;
+      indices.push(a, c, b);
+      indices.push(b, c, d);
+    }
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex(indices);
+  geom.computeVertexNormals();
+  return geom;
+};
+
+const sampledCurve = (fn: (t: number) => THREE.Vector3, count: number, closed = false): THREE.Vector3[] => {
+  const out: THREE.Vector3[] = [];
+  const denom = closed ? count : Math.max(1, count - 1);
+  for (let i = 0; i < count; i += 1) {
+    out.push(fn(i / denom));
+  }
+  return out;
+};
+
+const addTube = (scene: THREE.Scene, points: THREE.Vector3[], color: string, radius: number, closed = false): THREE.Mesh => {
+  const curve = new THREE.CatmullRomCurve3(points, closed, "catmullrom", 0.5);
+  const geom = new THREE.TubeGeometry(curve, Math.max(80, points.length * 2), radius, 14, closed);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.04 });
+  const mesh = new THREE.Mesh(geom, mat);
+  scene.add(mesh);
+  return mesh;
+};
+
+const DunceMapReference3D: React.FC = () => {
+  const mountRefs = useRef<Array<HTMLDivElement | null>>([]);
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+    DUNCE_3D_STAGE_TITLES.forEach((_, stageIndex) => {
+      const mount = mountRefs.current[stageIndex];
+      if (!mount) return;
+      mount.innerHTML = "";
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(198, 258, false);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      mount.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color("#ffffff");
+      scene.add(new THREE.AmbientLight(0xffffff, 0.88));
+      const key = new THREE.DirectionalLight(0xffffff, 0.95);
+      key.position.set(2.4, 2.8, 3.2);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.43);
+      fill.position.set(-2.2, 1.1, -1.6);
+      scene.add(fill);
+
+      const camera = new THREE.OrthographicCamera(-2.2, 2.2, 1.6, -1.6, 0.1, 100);
+      if (stageIndex === 0) camera.position.set(0, 0.2, 4);
+      else if (stageIndex === 4) camera.position.set(3.6, 2.4, 4.2);
+      else camera.position.set(3, 2, 4);
+      camera.lookAt(0, 0, 0);
+      const composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const ssaoPass = new SSAOPass(scene, camera, 198, 258);
+      ssaoPass.kernelRadius = 12;
+      ssaoPass.minDistance = 0.005;
+      ssaoPass.maxDistance = 0.18;
+      composer.addPass(ssaoPass);
+      composer.addPass(new OutputPass());
+
+      const objects: THREE.Object3D[] = [];
+      const baseMat = new THREE.MeshStandardMaterial({
+        color: "#e6e6e5",
+        roughness: 0.72,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      });
+
+      if (stageIndex === 0) {
+        const triGeom = new THREE.BufferGeometry();
+        triGeom.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(
+            [
+              -1.38, -1.14, 0.0, //
+              1.42, -1.14, 0.0, //
+              -0.05, 1.34, 0.0,
+            ],
+            3
+          )
+        );
+        triGeom.setIndex([0, 1, 2]);
+        triGeom.computeVertexNormals();
+        const triMesh = new THREE.Mesh(triGeom, baseMat.clone());
+        objects.push(triMesh);
+        scene.add(triMesh);
+
+        addTube(scene, sampledCurve((t) => new THREE.Vector3(-1.38 + 1.33 * t, -1.14 + 2.48 * t, 0.03), 24), "#dc2626", 0.05);
+        addTube(scene, sampledCurve((t) => new THREE.Vector3(-0.05 + 1.47 * t, 1.34 - 2.48 * t, 0.03), 24), "#2563eb", 0.05);
+        addTube(scene, sampledCurve((t) => new THREE.Vector3(-1.38 + 2.8 * t, -1.14, 0.03), 24), "#16a34a", 0.05);
+      } else {
+        const surface = new THREE.Mesh(buildDunceSurfaceGeometry(stageIndex), baseMat.clone());
+        objects.push(surface);
+        scene.add(surface);
+
+        const rimRed = sampledCurve((t) => dunceStagePoint(stageIndex, t, 0.06), 180, true);
+        addTube(scene, rimRed, "#dc2626", 0.06, true);
+        const blueU = stageIndex >= 3 ? 0.73 : 0.82;
+        const greenU = stageIndex >= 4 ? 0.72 : 0.59;
+        const blue = sampledCurve((t) => dunceStagePoint(stageIndex, blueU + 0.02 * Math.sin(t * Math.PI), t), 120, false);
+        const green = sampledCurve((t) => dunceStagePoint(stageIndex, greenU + 0.016 * Math.sin(t * Math.PI), t), 120, false);
+        addTube(scene, blue, "#2563eb", 0.043, false);
+        addTube(scene, green, "#16a34a", 0.043, false);
+      }
+
+      composer.render();
+      cleanups.push(() => {
+        for (const obj of objects) {
+          obj.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            const geom = mesh.geometry as THREE.BufferGeometry | undefined;
+            if (geom) geom.dispose();
+            const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+            if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+            else mat?.dispose();
+          });
+        }
+        ssaoPass.dispose();
+        composer.dispose();
+        renderer.dispose();
+      });
+    });
+    return () => cleanups.forEach((fn) => fn());
+  }, []);
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 8 }}>
+      {DUNCE_3D_STAGE_TITLES.map((title, index) => (
+        <div key={`dunce-ref-3d-${index}`} style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff", padding: 6 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: "#0f172a", minHeight: 30 }}>{title}</div>
+          <div
+            ref={(el) => {
+              mountRefs.current[index] = el;
+            }}
+            style={{ width: "100%", height: 258, display: "grid", placeItems: "center", overflow: "hidden", borderRadius: 8 }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export const TopologyScreen: React.FC = () => {
   const [diagram, setDiagram] = useState<FundamentalDiagram>(() => {
@@ -1808,13 +2175,7 @@ export const TopologyScreen: React.FC = () => {
       ) {
         for (const sourceId of unpairedDiagramEdges) sourceSet.add(sourceId);
       }
-      if (
-        edgeId === "cut_u" ||
-        edgeId === "mobius_cut" ||
-        edgeId === "mobius_orient_track" ||
-        edgeId === "mobius_orient_normal_start" ||
-        edgeId === "mobius_orient_normal_end"
-      ) {
+      if (edgeId === "cut_u" || edgeId === "mobius_cut" || MOBIUS_ORIENT_EDGE_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_EDGE_IDS)[number])) {
         for (const sourceId of diagramEdgesByToken.get("a") ?? []) sourceSet.add(sourceId);
       }
       if (edgeId === "cut_v") {
@@ -1923,7 +2284,7 @@ export const TopologyScreen: React.FC = () => {
     const hiddenEdgeIds = [
       ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
       ...(showCoreCircle ? [] : ["mobius_core"]),
-      ...(showOrientationFlip ? [] : ["mobius_orient_track", "mobius_orient_normal_start", "mobius_orient_normal_end"]),
+      ...(showOrientationFlip ? [] : [...MOBIUS_ORIENT_EDGE_IDS]),
       ...(showCutOpenModel ? [] : ["mobius_cut"]),
       ...(showSelfIntersectionCurves ? [] : ["rp2_self_intersection", "klein_self_intersection"]),
       ...(showBoundaryComponents
@@ -1939,9 +2300,11 @@ export const TopologyScreen: React.FC = () => {
               if (edgeId === "cut_v") return [edgeId, EDGE_CLASS_COLOR_B] as const;
               if (edgeId === "mobius_boundary") return [edgeId, "#0ea5e9"] as const;
               if (edgeId === "mobius_core") return [edgeId, "#f97316"] as const;
-              if (edgeId === "mobius_orient_track") return [edgeId, "#9333ea"] as const;
-              if (edgeId === "mobius_orient_normal_start") return [edgeId, "#16a34a"] as const;
-              if (edgeId === "mobius_orient_normal_end") return [edgeId, "#dc2626"] as const;
+              if (MOBIUS_ORIENT_TRACK_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_TRACK_IDS)[number])) return [edgeId, "#9333ea"] as const;
+              if (MOBIUS_ORIENT_NORMAL_START_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_NORMAL_START_IDS)[number])) {
+                return [edgeId, "#16a34a"] as const;
+              }
+              if (MOBIUS_ORIENT_NORMAL_END_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_NORMAL_END_IDS)[number])) return [edgeId, "#dc2626"] as const;
               if (edgeId === "mobius_cut") return [edgeId, "#0f766e"] as const;
               if (edgeId === "rp2_self_intersection") return [edgeId, "#ea580c"] as const;
               if (edgeId === "klein_self_intersection") return [edgeId, "#ea580c"] as const;
@@ -1965,6 +2328,9 @@ export const TopologyScreen: React.FC = () => {
       edgeColorOverrides[edgeId] = "#0a66c2";
     }
     const modelIsImmersed = !!realization.edgeCurves.rp2_self_intersection || !!realization.edgeCurves.klein_self_intersection;
+    const orientationTrackEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_TRACK_IDS);
+    const orientationStartNormalEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_NORMAL_START_IDS);
+    const orientationEndNormalEdgeId = firstAvailableCurveId(realization.edgeCurves, MOBIUS_ORIENT_NORMAL_END_IDS);
 
     const renderProjectedView = () => (
       <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
@@ -2049,11 +2415,11 @@ export const TopologyScreen: React.FC = () => {
             if (mapped[0]) setSelectedEdgeId(mapped[0]);
           }}
           orientationFlipOverlay={
-            mobiusRealizationAvailable && showOrientationFlip
+            mobiusRealizationAvailable && showOrientationFlip && orientationTrackEdgeId
               ? {
-                  trackEdgeId: "mobius_orient_track",
-                  startNormalEdgeId: "mobius_orient_normal_start",
-                  endNormalEdgeId: "mobius_orient_normal_end",
+                  trackEdgeId: orientationTrackEdgeId,
+                  startNormalEdgeId: orientationStartNormalEdgeId ?? undefined,
+                  endNormalEdgeId: orientationEndNormalEdgeId ?? undefined,
                   speed: 0.1,
                   color: "#9333ea",
                 }
@@ -2406,6 +2772,8 @@ export const TopologyScreen: React.FC = () => {
       ? Math.max(0, Math.min(activeStoryStages.length - 1, Math.floor(storyFloat + 1e-6)))
       : 0;
     const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
+    const kleinStageCameraKey = Math.max(1, Math.min(5, storyStageIndex + 1));
+    const kleinPresentationCamera = kleinStoryEnabled ? KLEIN_STAGE_CAMERAS[kleinStageCameraKey] ?? null : null;
     const jumpToStoryStage = (targetStageIndex: number) => {
       if (!activeStoryStages || activeStoryStages.length <= 1) return;
       const clamped = Math.max(0, Math.min(activeStoryStages.length - 1, targetStageIndex));
@@ -2558,6 +2926,11 @@ export const TopologyScreen: React.FC = () => {
                 if (edgeId === "a/dunce-blue") return [edgeId, "#2563eb"] as const;
                 if (edgeId === "a/dunce-green") return [edgeId, "#16a34a"] as const;
                 if (edgeId === "dunce_vertex_track") return [edgeId, "#111827"] as const;
+                if (MOBIUS_ORIENT_TRACK_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_TRACK_IDS)[number])) return [edgeId, "#9333ea"] as const;
+                if (MOBIUS_ORIENT_NORMAL_START_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_NORMAL_START_IDS)[number])) {
+                  return [edgeId, "#16a34a"] as const;
+                }
+                if (MOBIUS_ORIENT_NORMAL_END_IDS.includes(edgeId as (typeof MOBIUS_ORIENT_NORMAL_END_IDS)[number])) return [edgeId, "#dc2626"] as const;
                 const label = storyQuotientEdgeLabelById.get(edgeId);
                 const color = edgeColorForLabel(label, "");
                 return color ? ([edgeId, color] as const) : null;
@@ -2567,8 +2940,17 @@ export const TopologyScreen: React.FC = () => {
         : {}),
       ...(showBoundaryLoop ? { mobius_boundary: "#0ea5e9" } : {}),
       ...(showCoreCircle ? { mobius_core: "#f97316" } : {}),
-      ...(showOrientationFlip ? { mobius_orient_track: "#9333ea" } : {}),
+      ...(showOrientationFlip
+        ? {
+            mobius_orient_track: "#9333ea",
+            mobius_orient_track_iconografic: "#9333ea",
+            mobius_orient_track_user5: "#9333ea",
+          }
+        : {}),
     };
+    const storyOrientationTrackEdgeId = firstAvailableCurveId(storyRealization.edgeCurves, MOBIUS_ORIENT_TRACK_IDS);
+    const storyOrientationStartNormalEdgeId = firstAvailableCurveId(storyRealization.edgeCurves, MOBIUS_ORIENT_NORMAL_START_IDS);
+    const storyOrientationEndNormalEdgeId = firstAvailableCurveId(storyRealization.edgeCurves, MOBIUS_ORIENT_NORMAL_END_IDS);
 
     return (
       <div style={{ display: "grid", gap: 8 }}>
@@ -2880,17 +3262,19 @@ export const TopologyScreen: React.FC = () => {
             showSkeleton={showOneSkeleton}
             showSingularityMarkers={showCornerIdentifications}
             edgeColorOverrides={storyEdgeColorOverrides}
+            cameraMode={kleinStoryEnabled ? "orthographic" : "perspective"}
+            presentationCamera={kleinPresentationCamera}
             hiddenEdgeIds={[
               ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
               ...(showCoreCircle ? [] : ["mobius_core"]),
-              ...(showOrientationFlip ? [] : ["mobius_orient_track", "mobius_orient_normal_start", "mobius_orient_normal_end"]),
+              ...(showOrientationFlip ? [] : [...MOBIUS_ORIENT_EDGE_IDS]),
             ]}
             orientationFlipOverlay={
-              mobiusStoryEnabled && showOrientationFlip
+              mobiusStoryEnabled && showOrientationFlip && storyOrientationTrackEdgeId
                 ? {
-                    trackEdgeId: "mobius_orient_track",
-                    startNormalEdgeId: "mobius_orient_normal_start",
-                    endNormalEdgeId: "mobius_orient_normal_end",
+                    trackEdgeId: storyOrientationTrackEdgeId,
+                    startNormalEdgeId: storyOrientationStartNormalEdgeId ?? undefined,
+                    endNormalEdgeId: storyOrientationEndNormalEdgeId ?? undefined,
                     speed: 0.12,
                     color: "#9333ea",
                   }
@@ -3256,7 +3640,8 @@ export const TopologyScreen: React.FC = () => {
             })()}
           </svg>
         ) : dunceStoryEnabled ? (
-          <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {(() => {
               const source = diagram.vertices.slice(0, 3).map((vertex) => diagPoint(vertex.x, vertex.y));
               const base =
@@ -3333,7 +3718,23 @@ export const TopologyScreen: React.FC = () => {
                 </>
               );
             })()}
-          </svg>
+            </svg>
+            {dunceStoryEnabled && (
+              <details open style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff", padding: "8px 10px" }}>
+                <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                  {dunceUsesReversedWord
+                    ? "Dunce map reference: 5-step gluing (a a^-1 a)"
+                    : "Dunce cap reference: 5-step gluing (a a a)"}
+                </summary>
+                <div style={{ marginTop: 8 }}>
+                  <DunceMapReferenceFigure />
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <DunceMapReference3D />
+                </div>
+              </details>
+            )}
+          </div>
         ) : cylinderStoryEnabled ? (
           <svg width="100%" viewBox="0 0 520 360" style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff" }}>
             {(() => {
