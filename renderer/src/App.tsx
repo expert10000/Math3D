@@ -7071,6 +7071,10 @@ const App: React.FC = () => {
     if (IS_REPLAY_MODE) return true;
     return localStorage.getItem(UI_SURFACE_VIEW_GIZMO_KEY) !== "0";
   });
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1366,
+    height: typeof window !== "undefined" ? window.innerHeight : 768,
+  }));
   const [uiTheme, setUiTheme] = useState<AppTheme>(() => {
     if (IS_REPLAY_MODE) return "light";
     const saved = localStorage.getItem(UI_THEME_KEY);
@@ -7091,6 +7095,20 @@ const App: React.FC = () => {
     root.style.setProperty("--accent-strong", accent.strong);
     root.style.setProperty("--accent-soft", accent.soft);
   }, [uiTheme, uiAccent]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateViewport = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    return () => {
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+    };
+  }, []);
 
   useEffect(() => {
     if (IS_REPLAY_MODE) return;
@@ -22719,6 +22737,8 @@ case "mobius":
     compareEnabled && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const showSurfaceViewportDebug =
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
+  const isPhoneLandscapeLayout =
+    viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
   const showSurfacesRightPanel =
     !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
@@ -22728,6 +22748,7 @@ case "mobius":
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
+    !isPhoneLandscapeLayout &&
     !cleanScreenshotSurfaceActive;
   const statusCameraLabel = useMemo(() => {
     if (mode === "surfaces" && compareLayoutEnabled) {
@@ -24786,16 +24807,28 @@ case "mobius":
         }}
       >
         {mode === "surfaces" ? (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+              alignItems: "stretch",
+              gap: isPhoneLandscapeLayout ? 8 : 0,
+            }}
+          >
             {/* LEFT */}
             <div
               style={{
                 ...styles.panelLeft,
-                width: surfaceLeftPanelWidth,
+                width: isPhoneLandscapeLayout ? "100%" : surfaceLeftPanelWidth,
+                maxWidth: isPhoneLandscapeLayout ? "100%" : undefined,
                 display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode ? "none" : "flex",
                 flexDirection: "column",
                 minHeight: 0,
+                maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
                 overflowY: "auto",
+                order: isPhoneLandscapeLayout ? 2 : 0,
               }}
             >
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && (
@@ -25252,12 +25285,22 @@ case "mobius":
               onMouseDown={startDragLeft}
               style={{
                 ...splitterStyle,
-                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode ? "none" : undefined,
+                display: cleanScreenshotSurfaceActive || surfacePreviewFocusMode || isPhoneLandscapeLayout ? "none" : undefined,
               }}
             />
 
             {/* MIDDLE */}
-            <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", alignItems: "stretch", justifyContent: "center" }}>
+            <div
+              style={{
+                flex: 1,
+                minWidth: 0,
+                minHeight: isPhoneLandscapeLayout ? 220 : 0,
+                display: "flex",
+                alignItems: "stretch",
+                justifyContent: "center",
+                order: isPhoneLandscapeLayout ? 1 : 0,
+              }}
+            >
               <div
                 data-testid="main-viewer"
                 id="surfaces-main-viewport"
@@ -27160,11 +27203,20 @@ case "mobius":
               </div>
             </div>
 
-            {showSurfacesRightPanel && <div onMouseDown={startDragRight} style={splitterStyle} />}
+            {showSurfacesRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
 
             {/* RIGHT */}
             {showSurfacesRightPanel && (
-            <div style={{ ...styles.panelLeft, width: surfaceRightPanelWidth, maxWidth: maxRight }}>
+            <div
+              style={{
+                ...styles.panelLeft,
+                width: isPhoneLandscapeLayout ? "100%" : surfaceRightPanelWidth,
+                maxWidth: isPhoneLandscapeLayout ? "100%" : maxRight,
+                maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                overflowY: "auto",
+                order: isPhoneLandscapeLayout ? 3 : 0,
+              }}
+            >
               {isPresentDisplayMode ? (
                 <div style={{ display: "grid", gap: 8 }}>
                   <div style={{ fontSize: 12, fontWeight: 700 }}>Inspector (compact)</div>
@@ -27808,9 +27860,26 @@ case "mobius":
             </div>
           </div>
         ) : mode === "geometry" ? (
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row", alignItems: "stretch" }}>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+              alignItems: "stretch",
+              gap: isPhoneLandscapeLayout ? 8 : 0,
+            }}
+          >
             {/* LEFT */}
-            <div style={{ ...styles.panelLeft, width: leftWidth }}>
+            <div
+              style={{
+                ...styles.panelLeft,
+                width: isPhoneLandscapeLayout ? "100%" : leftWidth,
+                maxWidth: isPhoneLandscapeLayout ? "100%" : undefined,
+                maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                order: isPhoneLandscapeLayout ? 2 : 0,
+              }}
+            >
               <section>
                 <h2 style={styles.h2}>Geometry Viewer</h2>
                 <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
@@ -30534,17 +30603,19 @@ case "mobius":
               </section>
             </div>
 
-            <div onMouseDown={startDragLeft} style={splitterStyle} />
+            {!isPhoneLandscapeLayout && <div onMouseDown={startDragLeft} style={splitterStyle} />}
 
             {/* RIGHT */}
             <div
               style={{
                 ...styles.stack,
+                minHeight: isPhoneLandscapeLayout ? 220 : 0,
                 border: "1px solid #9fb0c7",
                 borderRadius: 10,
                 overflow: "visible",
                 background: "#f8fbff",
                 boxShadow: "inset 0 0 0 1px #b8c5d8",
+                order: isPhoneLandscapeLayout ? 1 : 0,
               }}
             >
               {geometryViewerControlsOpen && (
