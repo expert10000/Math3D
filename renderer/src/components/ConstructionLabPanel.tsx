@@ -19,7 +19,7 @@ import {
 import { formatConstraintValue } from "../geometry/analysis";
 
 type BuildMode = "select" | "create" | "check";
-type WorkspaceTab = "task" | "build" | "inspect" | "claims" | "script" | "scene";
+export type ConstructionWorkspaceTab = "task" | "build" | "inspect" | "claims" | "script" | "scene";
 
 type ToolKind =
   | "point"
@@ -100,6 +100,9 @@ type ConstructionLabPanelProps = {
   onViewportPickConsumed?: () => void;
   onFocusObjectInScene?: (focus: { target: { x: number; y: number; z: number }; radius?: number }) => void;
   seed?: ConstructionLabSeed | null;
+  workspaceTab?: ConstructionWorkspaceTab;
+  onWorkspaceTabChange?: (tab: ConstructionWorkspaceTab) => void;
+  hideWorkspaceTabs?: boolean;
 };
 
 type ConstructionHistoryState = {
@@ -674,6 +677,9 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   onViewportPickConsumed,
   onFocusObjectInScene,
   seed = null,
+  workspaceTab: controlledWorkspaceTab,
+  onWorkspaceTabChange,
+  hideWorkspaceTabs = false,
 }) => {
   const seededState = normalizeConstructionSeed(seed);
   const [nodes, setNodes] = useState<ConstructionNode[]>(() =>
@@ -685,7 +691,7 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string>(() => seededState?.selectedNodeId ?? DEFAULT_INITIAL_SCENE.nodes[0]?.id ?? "");
 
   const [buildMode, setBuildMode] = useState<BuildMode>("create");
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>("build");
+  const [workspaceTabState, setWorkspaceTabState] = useState<ConstructionWorkspaceTab>("build");
   const [tool, setTool] = useState<ToolKind>("point");
   const [toolForm, setToolForm] = useState<Record<string, string>>({});
   const [toolError, setToolError] = useState<string | null>(null);
@@ -728,6 +734,14 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   const [presetName, setPresetName] = useState("my-scene");
   const [presets, setPresets] = useState<ScriptPreset[]>(() => loadPresets());
   const [selectedPresetName, setSelectedPresetName] = useState(BUILTIN_TASK_PRESET_NAME);
+  const workspaceTab = controlledWorkspaceTab ?? workspaceTabState;
+  const setWorkspaceTab = useCallback(
+    (tab: ConstructionWorkspaceTab) => {
+      if (controlledWorkspaceTab == null) setWorkspaceTabState(tab);
+      onWorkspaceTabChange?.(tab);
+    },
+    [controlledWorkspaceTab, onWorkspaceTabChange]
+  );
 
   const nodesForSolve = useMemo(
     () =>
@@ -2179,23 +2193,24 @@ export const ConstructionLabPanel: React.FC<ConstructionLabPanelProps> = ({
   return (
     <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        {(["task", "build", "inspect", "claims", "script", "scene"] as WorkspaceTab[]).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setWorkspaceTab(tab)}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1px solid " + (workspaceTab === tab ? "#0a66c2" : "#d1d5db"),
-              background: workspaceTab === tab ? "#e6f0ff" : "#fff",
-              fontWeight: workspaceTab === tab ? 700 : 500,
-              fontSize: 11,
-            }}
-          >
-            {tab[0].toUpperCase() + tab.slice(1)}
-          </button>
-        ))}
+        {!hideWorkspaceTabs &&
+          (["task", "build", "inspect", "claims", "script", "scene"] as ConstructionWorkspaceTab[]).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setWorkspaceTab(tab)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 999,
+                border: "1px solid " + (workspaceTab === tab ? "#0a66c2" : "#d1d5db"),
+                background: workspaceTab === tab ? "#e6f0ff" : "#fff",
+                fontWeight: workspaceTab === tab ? 700 : 500,
+                fontSize: 11,
+              }}
+            >
+              {tab[0].toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         <button
           type="button"
           onClick={undoHistory}

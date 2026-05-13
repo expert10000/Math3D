@@ -54,6 +54,7 @@ import {
   ConstructionLabPanel,
   type ConstructionLabSeed,
   type ConstructionLabState,
+  type ConstructionWorkspaceTab,
 } from "./components/ConstructionLabPanel";
 import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
@@ -303,6 +304,17 @@ type GeometryEulerPolygonTemplateId =
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
+type GeometryFitMode = "scene" | "stage" | "claim";
+type GeometryObjectRole = "primary" | "construction" | "helper" | "claim" | "diagnostic";
+interface GeometryObjectMeta {
+  id: string;
+  label?: string;
+  role: GeometryObjectRole;
+  stage: number;
+  includeInDefaultFit: boolean;
+  includeInStageFit: boolean;
+  includeInClaimFit: boolean;
+}
 type GalleryCardViewMode = "rendered" | "diagram";
 type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
@@ -2704,6 +2716,7 @@ const COLOR_MODE_LABELS: Record<ColorMode, string> = {
   k1: "k1",
   k2: "k2",
 };
+const CONSTRUCTION_WORKSPACE_TABS: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 
 const colorModesForSurfaceViewer = (
   viewerKind: SurfaceViewerKind,
@@ -4957,6 +4970,8 @@ const App: React.FC = () => {
     curveSamplingMode,
   ]);
   const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
+  const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(true);
+  const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
     useState<GeometryProceduralPanelTab>("scene");
@@ -6639,6 +6654,333 @@ const App: React.FC = () => {
   const [geometryShowPlanes, setGeometryShowPlanes] = useState(false);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
+  const [geometryCameraFitCommand, setGeometryCameraFitCommand] = useState<{
+    token: number;
+    center: { x: number; y: number; z: number };
+    radius: number;
+    padding?: number;
+  } | null>(null);
+  const [geometryIncludeHelpersInFit, setGeometryIncludeHelpersInFit] = useState(false);
+  const [geometryViewPreset, setGeometryViewPreset] = useState<"3d" | "planar">("3d");
+
+  const finitePoint3 = useCallback(
+    (point: Point3 | null | undefined): point is Point3 =>
+      !!point && Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z),
+    []
+  );
+
+  const geometryActiveStageNumber = useMemo(() => {
+    if (geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length) {
+      return Math.max(1, Math.min(geometryPlanimetryStages.length, geometryPlanimetryStageIndex + 1));
+    }
+    if (geometryMode === "scratch" || geometryMode === "workbook") {
+      const idx = CONSTRUCTION_WORKSPACE_TABS.indexOf(geometryWorkspaceTab);
+      return idx >= 0 ? idx + 1 : 1;
+    }
+    return 1;
+  }, [
+    geometryMode,
+    geometryDemoFamily,
+    geometryPlanimetryStages.length,
+    geometryPlanimetryStageIndex,
+    geometryWorkspaceTab,
+  ]);
+
+  const geometryPointLookup = useMemo(() => {
+    const map = new Map<string, Point3>();
+    const add = (id: string | null | undefined, point: Point3 | null | undefined) => {
+      if (!id || !finitePoint3(point)) return;
+      map.set(id, point);
+    };
+
+    const currentScenePoints =
+      geometryMode === "scratch" || geometryMode === "workbook"
+        ? geometryConstructionState?.scene?.points ?? geometryScene.points ?? []
+        : geometryScene.points ?? [];
+    for (const point of currentScenePoints) {
+      add(point.id ?? null, point);
+      add(point.label ?? null, point);
+    }
+
+    if (geometryMode === "demo") {
+      if (geometryDemoFamily === "planimetry") {
+        for (const [id, point] of Object.entries(geometryPlanimetryDemo.points)) add(id, point);
+      } else {
+        for (const [id, point] of Object.entries(geometryDemo.points)) add(id, point);
+      }
+    }
+
+    if (geometryMode === "scratch" || geometryMode === "workbook") {
+      for (const node of geometryConstructionState?.nodes ?? []) {
+        const point = map.get(node.id);
+        if (point) add(node.label ?? null, point);
+      }
+    }
+    return map;
+  }, [
+    geometryMode,
+    geometryScene.points,
+    geometryConstructionState?.scene?.points,
+    geometryConstructionState?.nodes,
+    geometryDemoFamily,
+    geometryPlanimetryDemo.points,
+    geometryDemo.points,
+    finitePoint3,
+  ]);
+
+  const geometryObjectMeta = useMemo<GeometryObjectMeta[]>(() => {
+    const rows: GeometryObjectMeta[] = [];
+    const push = (entry: GeometryObjectMeta) => {
+      if (rows.some((row) => row.id === entry.id)) return;
+      rows.push(entry);
+    };
+
+    if (geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryPresetId === "incircle_reflection") {
+      const stageById: Record<string, number> = {
+        A: 1,
+        B: 1,
+        C: 1,
+        I: 1,
+        D: 1,
+        E: 1,
+        F: 1,
+        X: 2,
+        Y: 2,
+        M: 3,
+        B_prime: 4,
+        C_prime: 4,
+        Z: 4,
+      };
+      for (const [id, point] of Object.entries(geometryPlanimetryDemo.points)) {
+        if (!finitePoint3(point)) continue;
+        const stage = stageById[id] ?? 1;
+        const role: GeometryObjectRole = id === "Z" || id === "D" || id === "B" || id === "C" ? "claim" : stage <= 1 ? "primary" : "construction";
+        push({
+          id,
+          label: point.label ?? id,
+          role,
+          stage,
+          includeInDefaultFit: true,
+          includeInStageFit: true,
+          includeInClaimFit: role === "claim" || role === "primary",
+        });
+      }
+      return rows;
+    }
+
+    if (geometryMode === "demo" && geometryDemoFamily === "planimetry") {
+      for (const [id, point] of Object.entries(geometryPlanimetryDemo.points)) {
+        if (!finitePoint3(point)) continue;
+        push({
+          id,
+          label: point.label ?? id,
+          role: "primary",
+          stage: 1,
+          includeInDefaultFit: true,
+          includeInStageFit: true,
+          includeInClaimFit: true,
+        });
+      }
+      return rows;
+    }
+
+    if (geometryMode === "demo" && geometryDemoFamily === "stereometry") {
+      for (const [id, point] of Object.entries(geometryDemo.points)) {
+        if (!finitePoint3(point)) continue;
+        push({
+          id,
+          label: point.label ?? id,
+          role: "primary",
+          stage: 1,
+          includeInDefaultFit: true,
+          includeInStageFit: true,
+          includeInClaimFit: true,
+        });
+      }
+      return rows;
+    }
+
+    if (geometryMode === "scratch" || geometryMode === "workbook") {
+      const pointNodeTypes = new Set([
+        "freePoint",
+        "midpoint",
+        "circumcenter",
+        "lineLineIntersection",
+        "lineCircleIntersection",
+        "circleCircleIntersection",
+        "arcMidpointOnCircle",
+      ]);
+      for (const node of geometryConstructionState?.nodes ?? []) {
+        if (!pointNodeTypes.has(node.type)) continue;
+        const role: GeometryObjectRole = node.hidden ? "helper" : "construction";
+        push({
+          id: node.id,
+          label: node.label ?? node.id,
+          role,
+          stage: geometryActiveStageNumber,
+          includeInDefaultFit: !node.hidden,
+          includeInStageFit: !node.hidden,
+          includeInClaimFit: !node.hidden,
+        });
+      }
+      return rows;
+    }
+
+    for (const point of geometryScene.points ?? []) {
+      if (!finitePoint3(point)) continue;
+      const id = point.id ?? point.label;
+      if (!id) continue;
+      push({
+        id,
+        label: point.label ?? id,
+        role: "primary",
+        stage: 1,
+        includeInDefaultFit: true,
+        includeInStageFit: true,
+        includeInClaimFit: true,
+      });
+    }
+    return rows;
+  }, [
+    geometryMode,
+    geometryDemoFamily,
+    geometryPlanimetryPresetId,
+    geometryPlanimetryDemo.points,
+    geometryDemo.points,
+    geometryConstructionState?.nodes,
+    geometryActiveStageNumber,
+    geometryScene.points,
+    finitePoint3,
+  ]);
+
+  const geometryHelperFitPoints = useMemo<Point3[]>(() => {
+    if (!geometryIncludeHelpersInFit) return [];
+    const sourceScene = geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemScene : geometryScene;
+    const points: Point3[] = [];
+    const push = (point: Point3 | null | undefined) => {
+      if (!finitePoint3(point)) return;
+      points.push(point);
+    };
+    (sourceScene.points ?? []).forEach((point) => push(point));
+    (sourceScene.segments ?? []).forEach((segment) => {
+      push(segment.a);
+      push(segment.b);
+    });
+    (sourceScene.polygons ?? []).forEach((polygon) => polygon.vertices?.forEach((vertex) => push(vertex)));
+    (sourceScene.triangles ?? []).forEach((triangle) => {
+      push(triangle.a);
+      push(triangle.b);
+      push(triangle.c);
+    });
+    return points;
+  }, [geometryIncludeHelpersInFit, geometryMode, geometryProblemScene, geometryScene, finitePoint3]);
+
+  const handleGeometryFit = useCallback(
+    (mode: GeometryFitMode) => {
+      const selectedRoles =
+        mode === "scene"
+          ? new Set<GeometryObjectRole>(["primary", "construction", "claim"])
+          : mode === "claim"
+            ? new Set<GeometryObjectRole>(["claim", "primary"])
+            : new Set<GeometryObjectRole>(["primary", "construction", "claim"]);
+
+      const points: Point3[] = [];
+      const pushById = (id: string) => {
+        const point = geometryPointLookup.get(id);
+        if (finitePoint3(point)) points.push(point);
+      };
+      for (const meta of geometryObjectMeta) {
+        if (!selectedRoles.has(meta.role)) continue;
+        if (mode === "scene" && !meta.includeInDefaultFit) continue;
+        if (mode === "stage" && (!meta.includeInStageFit || meta.stage > geometryActiveStageNumber)) continue;
+        if (mode === "claim" && !meta.includeInClaimFit) continue;
+        pushById(meta.id);
+      }
+
+      if (geometryIncludeHelpersInFit) points.push(...geometryHelperFitPoints);
+
+      if (!points.length) {
+        setGeometryResetToken((token) => token + 1);
+        return;
+      }
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let minZ = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      let maxZ = -Infinity;
+      for (const point of points) {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        minZ = Math.min(minZ, point.z);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+        maxZ = Math.max(maxZ, point.z);
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+        setGeometryResetToken((token) => token + 1);
+        return;
+      }
+
+      const center = {
+        x: 0.5 * (minX + maxX),
+        y: 0.5 * (minY + maxY),
+        z: 0.5 * (minZ + maxZ),
+      };
+      const radius = Math.max(0.35, 0.5 * Math.hypot(maxX - minX, maxY - minY, maxZ - minZ));
+      setGeometryCameraFitCommand((prev) => ({
+        token: (prev?.token ?? 0) + 1,
+        center,
+        radius,
+        padding: mode === "claim" ? 1.18 : mode === "stage" ? 1.12 : 1.08,
+      }));
+    },
+    [
+      geometryPointLookup,
+      geometryObjectMeta,
+      geometryActiveStageNumber,
+      geometryIncludeHelpersInFit,
+      geometryHelperFitPoints,
+      finitePoint3,
+    ]
+  );
+
+  const handleGeometryApplyViewPreset = useCallback(
+    (preset: "3d" | "planar") => {
+      setGeometryViewPreset(preset);
+      if (preset === "planar") {
+        setGeometryShowPlanes(true);
+        setGeometryPrincipalProjectionEnabled(true);
+        setGeometryPrincipalProjectionXY(true);
+        setGeometryPrincipalProjectionYZ(false);
+        setGeometryPrincipalProjectionZX(false);
+        handleGeometryFit("stage");
+        return;
+      }
+      setGeometryShowPlanes(false);
+      setGeometryPrincipalProjectionEnabled(false);
+      handleGeometryFit("scene");
+    },
+    [handleGeometryFit]
+  );
+  useEffect(() => {
+    if (geometryMode !== "demo") return;
+    if (geometryDemoFamily === "planimetry") {
+      setGeometryViewPreset("planar");
+      setGeometryShowPlanes(true);
+      setGeometryPrincipalProjectionEnabled(true);
+      setGeometryPrincipalProjectionXY(true);
+      setGeometryPrincipalProjectionYZ(false);
+      setGeometryPrincipalProjectionZX(false);
+      handleGeometryFit("stage");
+      return;
+    }
+    setGeometryViewPreset("3d");
+    setGeometryShowPlanes(false);
+    setGeometryPrincipalProjectionEnabled(false);
+    handleGeometryFit("scene");
+  }, [geometryMode, geometryDemoFamily, handleGeometryFit]);
   const geometryStats = useMemo(() => {
     if (geometryMode === "procedural") {
       const objCount = geometryObjects.length + geometryDatasetMeshObjects.length;
@@ -18057,13 +18399,12 @@ case "mobius":
 
   const runChartGridOperator = useCallback(
     (_ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
-      const patch: WorkbookComputeOutputs["viewPatch"] = {
+      const patch: NonNullable<WorkbookComputeOutputs["viewPatch"]> = {
         probeEnabled: true,
         showProbeNormal: true,
         showProbeTangentPlane: true,
         showProbeTangents: true,
         showChartGrid: true,
-        showPlanes: false,
       };
       let summary = "Surface chart grid + probe enabled.";
       if (surfaceViewerKind === "param" || surfaceViewerKind === "weierstrass") {
@@ -23948,146 +24289,365 @@ case "mobius":
               </button>
             </div>
           ) : mode === "geometry" ? (
-            <div style={{ ...styles.group, ...styles.groupWide, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={geometryWireframe}
-                  onChange={(e) => setGeometryWireframe(e.target.checked)}
-                />
-                Wireframe
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={geometryShowPlanes}
-                  onChange={(e) => setGeometryShowPlanes(e.target.checked)}
-                />
-                Coordinates
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showXY}
-                  disabled={!geometryShowPlanes}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showXY: e.target.checked,
-                    }))
-                  }
-                />
-                XY
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showXZ}
-                  disabled={!geometryShowPlanes}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showXZ: e.target.checked,
-                    }))
-                  }
-                />
-                XZ
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showYZ}
-                  disabled={!geometryShowPlanes}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showYZ: e.target.checked,
-                    }))
-                  }
-                />
-                YZ
-              </label>
-              <label
+            <>
+              <div
                 style={{
+                  ...styles.group,
+                  ...styles.groupWide,
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
-                  fontSize: 12,
-                  opacity: geometryShowPlanes ? 1 : 0.6,
+                  gap: 8,
+                  flexWrap: "wrap",
+                  border: "1px solid #fcd34d",
+                  borderRadius: 10,
+                  padding: "6px 8px",
+                  background: "linear-gradient(180deg, #fffbeb 0%, #fffbf0 100%)",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showGrid}
-                  disabled={!geometryShowPlanes}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showGrid: e.target.checked,
-                    }))
-                  }
-                />
-                Major
-              </label>
-              <label
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginRight: 2 }}>Mode</span>
+                {([
+                  { id: "procedural" as const, label: "Procedural", onClick: () => setGeometryMode("procedural") },
+                  { id: "demo" as const, label: "Demo preview", onClick: () => setGeometryMode("demo") },
+                  { id: "scratch" as const, label: "Scratch editor", onClick: () => setGeometryMode("scratch") },
+                  {
+                    id: "workbook" as const,
+                    label: "Workbook scene",
+                    onClick: () => openGeometryWorkbookMode(geometryScratchSceneSeed),
+                  },
+                ] as const).map((entry) => {
+                  const active = geometryMode === entry.id;
+                  return (
+                    <button
+                      key={`geometry-mode-top-${entry.id}`}
+                      type="button"
+                      onClick={entry.onClick}
+                      aria-pressed={active}
+                      style={{
+                        ...pill(active),
+                        fontSize: 11,
+                        border: "1px solid " + (active ? "#b45309" : "#99a1ac"),
+                        background: active ? "linear-gradient(180deg, #fde68a 0%, #fcd34d 100%)" : "#f8fafc",
+                        color: active ? "#78350f" : "#334155",
+                        boxShadow: active ? "0 4px 10px rgba(217, 119, 6, 0.22)" : "none",
+                      }}
+                    >
+                      {entry.label}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setGeometryViewerControlsOpen((v) => !v)}
+                  aria-pressed={geometryViewerControlsOpen}
+                  style={{
+                    ...pill(geometryViewerControlsOpen),
+                    marginLeft: "auto",
+                    flex: "0 0 auto",
+                    fontSize: 11,
+                    whiteSpace: "nowrap",
+                    border: "1px solid " + (geometryViewerControlsOpen ? "#0f766e" : "#99a1ac"),
+                    background: geometryViewerControlsOpen
+                      ? "linear-gradient(180deg, #99f6e4 0%, #5eead4 100%)"
+                      : "#f8fafc",
+                    color: geometryViewerControlsOpen ? "#134e4a" : "#334155",
+                    boxShadow: geometryViewerControlsOpen ? "0 4px 10px rgba(13, 148, 136, 0.2)" : "none",
+                  }}
+                >
+                  {geometryViewerControlsOpen ? "Hide viewer bar" : "Show viewer bar"}
+                </button>
+              </div>
+              {geometryMode === "procedural" && (
+                <div
+                  style={{
+                    ...styles.group,
+                    ...styles.groupWide,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    background: "linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)",
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Panel</span>
+                  {([
+                    { id: "scene" as const, label: "Scene" },
+                    { id: "script" as const, label: "Script" },
+                    { id: "transform" as const, label: "Transform" },
+                    { id: "object" as const, label: "Object" },
+                  ] as const).map((entry) => {
+                    const active = geometryProceduralPanelTab === entry.id;
+                    return (
+                      <button
+                        key={`geometry-procedural-panel-top-${entry.id}`}
+                        type="button"
+                        onClick={() => setGeometryProceduralPanelTab(entry.id)}
+                        aria-pressed={active}
+                        style={{
+                          ...pill(active),
+                          fontSize: 11,
+                          border: "1px solid " + (active ? "#334155" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%)" : "#f8fafc",
+                          color: active ? "#0f172a" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(51, 65, 85, 0.18)" : "none",
+                        }}
+                      >
+                        {entry.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {(geometryMode === "scratch" || geometryMode === "workbook") && (
+                <div
+                  style={{
+                    ...styles.group,
+                    ...styles.groupWide,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    border: "1px solid #a7f3d0",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    background: "linear-gradient(180deg, #ecfeff 0%, #f0fdfa 100%)",
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0f766e", marginRight: 2 }}>Workspace</span>
+                  {CONSTRUCTION_WORKSPACE_TABS.map((tab) => {
+                    const active = geometryWorkspaceTab === tab;
+                    return (
+                      <button
+                        key={`geometry-workspace-tab-${tab}`}
+                        type="button"
+                        onClick={() => setGeometryWorkspaceTab(tab)}
+                        aria-pressed={active}
+                        style={{
+                          ...pill(active),
+                          fontSize: 11,
+                          border: "1px solid " + (active ? "#0f766e" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #5eead4 0%, #2dd4bf 100%)" : "#f8fafc",
+                          color: active ? "#022c22" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(13, 148, 136, 0.28)" : "none",
+                        }}
+                      >
+                        {tab[0].toUpperCase() + tab.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {geometryMode === "demo" && (
+                <div
+                  style={{
+                    ...styles.group,
+                    ...styles.groupWide,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    border: "1px solid #93c5fd",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    background: "linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%)",
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginRight: 2 }}>Demo</span>
+                  {([
+                    { id: "stereometry" as const, label: "3D task" },
+                    { id: "planimetry" as const, label: "Planimetry" },
+                  ] as const).map((entry) => {
+                    const active = geometryDemoFamily === entry.id;
+                    return (
+                      <button
+                        key={`geometry-demo-family-top-${entry.id}`}
+                        type="button"
+                        onClick={() => {
+                          setGeometryDemoFamily(entry.id);
+                          setGeometryDemoGuideStatus(null);
+                        }}
+                        aria-pressed={active}
+                        style={{
+                          ...pill(active),
+                          fontSize: 11,
+                          border: "1px solid " + (active ? "#1d4ed8" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                          color: active ? "#1e3a8a" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.24)" : "none",
+                        }}
+                      >
+                        {entry.label}
+                      </button>
+                    );
+                  })}
+                  {(["task", "objects", "solve", "script"] as GeometryDemoTab[]).map((tab) => {
+                    const active = geometryDemoTab === tab;
+                    return (
+                      <button
+                        key={`geometry-demo-tab-top-${tab}`}
+                        type="button"
+                        onClick={() => setGeometryDemoTab(tab)}
+                        aria-pressed={active}
+                        style={{
+                          ...pill(active),
+                          fontSize: 11,
+                          border: "1px solid " + (active ? "#1d4ed8" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                          color: active ? "#1e3a8a" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.24)" : "none",
+                        }}
+                      >
+                        {tab === "task"
+                          ? "Task"
+                          : tab === "objects"
+                            ? "Objects"
+                            : tab === "solve"
+                              ? "Solve"
+                              : "Script"}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {geometryMode === "demo" && geometryDemoFamily === "planimetry" && (
+                <div
+                  style={{
+                    ...styles.group,
+                    ...styles.groupWide,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    border: "1px solid #bfdbfe",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    background: "#f8fbff",
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#1d4ed8", marginRight: 2 }}>Preset</span>
+                  {(["task", "euler", "tangent", "incircle_reflection"] as PlanimetryPresetId[]).map((presetId) => {
+                    const active = geometryPlanimetryPresetId === presetId;
+                    return (
+                      <button
+                        key={`geometry-planimetry-preset-top-${presetId}`}
+                        type="button"
+                        onClick={() => {
+                          setGeometryPlanimetryPresetId(presetId);
+                          setGeometryDemoGuideStatus(null);
+                        }}
+                        aria-pressed={active}
+                        style={{
+                          ...pill(active),
+                          fontSize: 11,
+                          border: "1px solid " + (active ? "#1d4ed8" : "#99a1ac"),
+                          background: active ? "linear-gradient(180deg, #dbeafe 0%, #bfdbfe 100%)" : "#f8fafc",
+                          color: active ? "#1e3a8a" : "#334155",
+                          boxShadow: active ? "0 4px 10px rgba(37, 99, 235, 0.24)" : "none",
+                        }}
+                      >
+                        {PLANIMETRY_PRESET_META[presetId].label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div
                 style={{
+                  ...styles.group,
+                  ...styles.groupWide,
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
-                  fontSize: 12,
-                  opacity: geometryShowPlanes && planeGridSettings.showGrid ? 1 : 0.6,
+                  gap: 8,
+                  flexWrap: "wrap",
+                  border: "1px solid #bae6fd",
+                  borderRadius: 10,
+                  padding: "6px 8px",
+                  background: "linear-gradient(180deg, #f0f9ff 0%, #f8fbff 100%)",
                 }}
               >
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showMinorGrid}
-                  disabled={!geometryShowPlanes || !planeGridSettings.showGrid}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showMinorGrid: e.target.checked,
-                    }))
-                  }
-                />
-                Minor
-              </label>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  fontSize: 12,
-                  opacity: geometryShowPlanes ? 1 : 0.6,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={planeGridSettings.showAxisLabels}
-                  disabled={!geometryShowPlanes}
-                  onChange={(e) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      showAxisLabels: e.target.checked,
-                    }))
-                  }
-                />
-                Axes
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                Opacity
-                <input
-                  type="range"
-                  min={0.2}
-                  max={1}
-                  step={0.05}
-                  value={geometryOpacity}
-                  onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
-                />
-              </label>
-              <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
-                Reset camera
-              </button>
-            </div>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#0c4a6e", marginRight: 2 }}>View</span>
+                <button
+                  type="button"
+                  onClick={() => handleGeometryApplyViewPreset("3d")}
+                  aria-pressed={geometryViewPreset === "3d"}
+                  style={{
+                    ...pill(geometryViewPreset === "3d"),
+                    fontSize: 11,
+                    border: "1px solid " + (geometryViewPreset === "3d" ? "#0369a1" : "#99a1ac"),
+                    background: geometryViewPreset === "3d" ? "linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%)" : "#f8fafc",
+                    color: geometryViewPreset === "3d" ? "#0c4a6e" : "#334155",
+                    boxShadow: geometryViewPreset === "3d" ? "0 4px 10px rgba(2, 132, 199, 0.24)" : "none",
+                  }}
+                >
+                  3D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGeometryApplyViewPreset("planar")}
+                  aria-pressed={geometryViewPreset === "planar"}
+                  style={{
+                    ...pill(geometryViewPreset === "planar"),
+                    fontSize: 11,
+                    border: "1px solid " + (geometryViewPreset === "planar" ? "#0369a1" : "#99a1ac"),
+                    background:
+                      geometryViewPreset === "planar" ? "linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%)" : "#f8fafc",
+                    color: geometryViewPreset === "planar" ? "#0c4a6e" : "#334155",
+                    boxShadow: geometryViewPreset === "planar" ? "0 4px 10px rgba(2, 132, 199, 0.24)" : "none",
+                  }}
+                >
+                  Planar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGeometryFit("scene")}
+                  style={{
+                    ...pill(false),
+                    fontSize: 11,
+                    border: "1px solid #99a1ac",
+                    background: "#f8fafc",
+                    color: "#334155",
+                  }}
+                >
+                  Fit scene
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGeometryFit("stage")}
+                  style={{
+                    ...pill(false),
+                    fontSize: 11,
+                    border: "1px solid #99a1ac",
+                    background: "#f8fafc",
+                    color: "#334155",
+                  }}
+                >
+                  Fit stage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGeometryFit("claim")}
+                  style={{
+                    ...pill(false),
+                    fontSize: 11,
+                    border: "1px solid #99a1ac",
+                    background: "#f8fafc",
+                    color: "#334155",
+                  }}
+                >
+                  Fit claim
+                </button>
+                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#334155" }}>
+                  <input
+                    type="checkbox"
+                    checked={geometryIncludeHelpersInFit}
+                    onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
+                  />
+                  Include helper objects in fit
+                </label>
+              </div>
+            </>
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
               <div
@@ -27257,65 +27817,6 @@ case "mobius":
                   Procedural objects and classic construction scenes.
                 </div>
 
-                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => setGeometryMode("procedural")}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (geometryMode === "procedural" ? "#0a66c2" : "#ddd"),
-                      background: geometryMode === "procedural" ? "#e6f0ff" : "#fff",
-                      fontWeight: geometryMode === "procedural" ? 600 : 400,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Procedural
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGeometryMode("demo")}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (geometryMode === "demo" ? "#0a66c2" : "#ddd"),
-                      background: geometryMode === "demo" ? "#e6f0ff" : "#fff",
-                      fontWeight: geometryMode === "demo" ? 600 : 400,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Demo preview
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setGeometryMode("scratch")}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (geometryMode === "scratch" ? "#0a66c2" : "#ddd"),
-                      background: geometryMode === "scratch" ? "#e6f0ff" : "#fff",
-                      fontWeight: geometryMode === "scratch" ? 600 : 400,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Scratch editor
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openGeometryWorkbookMode(geometryScratchSceneSeed)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (geometryMode === "workbook" ? "#0a66c2" : "#ddd"),
-                      background: geometryMode === "workbook" ? "#e6f0ff" : "#fff",
-                      fontWeight: geometryMode === "workbook" ? 600 : 400,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Workbook scene
-                  </button>
-                </div>
-
                 {geometryMode === "procedural" ? (
                   <>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Object gallery</div>
@@ -27753,25 +28254,6 @@ case "mobius":
                         )}
                       </div>
                     )}
-
-                    <div style={{ ...pillRow, marginTop: 12, marginBottom: 8 }}>
-                      {([
-                        { id: "scene" as const, label: "Scene" },
-                        { id: "script" as const, label: "Script" },
-                        { id: "transform" as const, label: "Transform" },
-                        { id: "object" as const, label: "Object" },
-                      ] as const).map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => setGeometryProceduralPanelTab(entry.id)}
-                          style={pill(geometryProceduralPanelTab === entry.id)}
-                          aria-pressed={geometryProceduralPanelTab === entry.id}
-                        >
-                          {entry.label}
-                        </button>
-                      ))}
-                    </div>
 
                     {geometryProceduralPanelTab === "script" && (
                     <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
@@ -29457,63 +29939,6 @@ case "mobius":
                   </>
                 ) : geometryMode === "demo" ? (
                   <>
-                    <div style={{ ...pillRow, marginBottom: 8 }}>
-                      {([
-                        { id: "stereometry" as const, label: "3D task" },
-                        { id: "planimetry" as const, label: "Planimetry" },
-                      ] as const).map((entry) => (
-                        <button
-                          key={entry.id}
-                          type="button"
-                          onClick={() => {
-                            setGeometryDemoFamily(entry.id);
-                            setGeometryDemoGuideStatus(null);
-                          }}
-                          style={pill(geometryDemoFamily === entry.id)}
-                          aria-pressed={geometryDemoFamily === entry.id}
-                        >
-                          {entry.label}
-                        </button>
-                      ))}
-                    </div>
-                    {geometryDemoFamily === "planimetry" && (
-                      <div style={{ ...pillRow, marginBottom: 8 }}>
-                        {(["task", "euler", "tangent", "incircle_reflection"] as PlanimetryPresetId[]).map((presetId) => (
-                          <button
-                            key={presetId}
-                            type="button"
-                            onClick={() => {
-                              setGeometryPlanimetryPresetId(presetId);
-                              setGeometryDemoGuideStatus(null);
-                            }}
-                            style={pill(geometryPlanimetryPresetId === presetId)}
-                            aria-pressed={geometryPlanimetryPresetId === presetId}
-                          >
-                            {PLANIMETRY_PRESET_META[presetId].label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <div style={{ ...pillRow, marginBottom: 10 }}>
-                      {(["task", "objects", "solve", "script"] as GeometryDemoTab[]).map((tab) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => setGeometryDemoTab(tab)}
-                          style={pill(geometryDemoTab === tab)}
-                          aria-pressed={geometryDemoTab === tab}
-                        >
-                          {tab === "task"
-                            ? "Task"
-                            : tab === "objects"
-                              ? "Objects"
-                              : tab === "solve"
-                                ? "Solve"
-                                : "Script"}
-                        </button>
-                      ))}
-                    </div>
-
                     {geometryDemoTab === "task" && (
                       <div style={{ display: "grid", gap: 8 }}>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>
@@ -30089,6 +30514,9 @@ case "mobius":
                     <ConstructionLabPanel
                       key={geometryEditorPanelKey}
                       seed={geometryEditorSeed}
+                      workspaceTab={geometryWorkspaceTab}
+                      onWorkspaceTabChange={setGeometryWorkspaceTab}
+                      hideWorkspaceTabs={true}
                       onChange={handleConstructionLabChange}
                       onPointPlacementModeChange={setGeometryPointPlacementEnabled}
                       viewportPickPoint={geometryPendingViewportPoint}
@@ -30097,197 +30525,6 @@ case "mobius":
                     />
                   </>
                 )}
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Render</div>
-                  <div style={{ display: "grid", gap: 6 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                      <input
-                        type="checkbox"
-                        checked={geometryWireframe}
-                        onChange={(e) => setGeometryWireframe(e.target.checked)}
-                      />
-                      Wireframe
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                      <input
-                        type="checkbox"
-                        checked={geometryShowPlanes}
-                        onChange={(e) => setGeometryShowPlanes(e.target.checked)}
-                      />
-                      Coordinate planes
-                    </label>
-                    {geometryShowPlanes && (
-                      <div
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 8,
-                          padding: "6px 8px",
-                          display: "grid",
-                          gap: 6,
-                        }}
-                      >
-                        <div style={{ fontSize: 11, fontWeight: 600 }}>Visible coordinate planes</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 18 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showXY}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showXY: e.target.checked,
-                                }))
-                              }
-                            />
-                            XY
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showXZ}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showXZ: e.target.checked,
-                                }))
-                              }
-                            />
-                            XZ
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showYZ}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showYZ: e.target.checked,
-                                }))
-                              }
-                            />
-                            YZ
-                          </label>
-                        </div>
-                        <div style={{ fontSize: 11, fontWeight: 600, marginTop: 2 }}>Grid and axis emphasis</div>
-                        <div style={{ display: "grid", gap: 4, paddingLeft: 18 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showGrid}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showGrid: e.target.checked,
-                                }))
-                              }
-                            />
-                            Major grid
-                          </label>
-                          <label
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 11,
-                              opacity: planeGridSettings.showGrid ? 1 : 0.6,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showMinorGrid}
-                              disabled={!planeGridSettings.showGrid}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showMinorGrid: e.target.checked,
-                                }))
-                              }
-                            />
-                            Minor grid
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={planeGridSettings.showAxisLabels}
-                              onChange={(e) =>
-                                setPlaneGridSettings((prev) => ({
-                                  ...prev,
-                                  showAxisLabels: e.target.checked,
-                                }))
-                              }
-                            />
-                            Distinctive axes (X/Y/Z labels)
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                    <label style={{ fontSize: 11 }}>
-                      Opacity
-                      <input
-                        type="number"
-                        min={0.2}
-                        max={1}
-                        step={0.05}
-                        value={geometryOpacity}
-                        onChange={(e) => setGeometryOpacity(clampNumber(Number(e.target.value), 0.2, 1))}
-                        style={{ width: "100%", marginTop: 4 }}
-                      />
-                    </label>
-                    {(geometryMode === "scratch" || geometryMode === "workbook") && (
-                      <div
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 8,
-                          padding: "6px 8px",
-                          display: "grid",
-                          gap: 6,
-                        }}
-                      >
-                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                          <input
-                            type="checkbox"
-                            checked={geometryPrincipalProjectionEnabled}
-                            onChange={(e) => setGeometryPrincipalProjectionEnabled(e.target.checked)}
-                          />
-                          Projections on principal planes
-                        </label>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingLeft: 18 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryPrincipalProjectionXY}
-                              disabled={!geometryPrincipalProjectionEnabled}
-                              onChange={(e) => setGeometryPrincipalProjectionXY(e.target.checked)}
-                            />
-                            XY
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryPrincipalProjectionYZ}
-                              disabled={!geometryPrincipalProjectionEnabled}
-                              onChange={(e) => setGeometryPrincipalProjectionYZ(e.target.checked)}
-                            />
-                            YZ
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryPrincipalProjectionZX}
-                              disabled={!geometryPrincipalProjectionEnabled}
-                              onChange={(e) => setGeometryPrincipalProjectionZX(e.target.checked)}
-                            />
-                            ZX
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                    <button type="button" onClick={() => setGeometryResetToken((t) => t + 1)}>
-                      Reset view
-                    </button>
-                  </div>
-                </div>
 
                 <div data-testid="geometry-scene-stats" style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
                   {geometryStats.mode === "procedural"
@@ -30300,8 +30537,284 @@ case "mobius":
             <div onMouseDown={startDragLeft} style={splitterStyle} />
 
             {/* RIGHT */}
-            <div style={styles.stack}>
-              <div data-testid="main-viewer" ref={geometrySceneCaptureRef} style={{ flex: 1, minHeight: 0 }}>
+            <div
+              style={{
+                ...styles.stack,
+                border: "1px solid #9fb0c7",
+                borderRadius: 10,
+                overflow: "visible",
+                background: "#f8fbff",
+                boxShadow: "inset 0 0 0 1px #b8c5d8",
+              }}
+            >
+              {geometryViewerControlsOpen && (
+              <div
+                style={{
+                  borderBottom: "1px solid #9fb0c7",
+                  padding: "8px 10px",
+                  background: "linear-gradient(180deg, #f8fbff 0%, #f1f6fd 100%)",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, minWidth: 0, flex: "1 1 420px" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#1e3a8a", marginRight: 2, paddingTop: 3 }}>Viewer</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      minWidth: 0,
+                      overflowX: "auto",
+                      scrollbarWidth: "thin",
+                      paddingBottom: 1,
+                    }}
+                  >
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={geometryWireframe}
+                    onChange={(e) => setGeometryWireframe(e.target.checked)}
+                  />
+                  Wireframe
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={geometryShowPlanes}
+                    onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                  />
+                  Coordinates
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showXY}
+                    disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showXY: e.target.checked,
+                      }))
+                    }
+                  />
+                  XY
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showXZ}
+                    disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showXZ: e.target.checked,
+                      }))
+                    }
+                  />
+                  XZ
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showYZ}
+                    disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showYZ: e.target.checked,
+                      }))
+                    }
+                  />
+                  YZ
+                </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    opacity: geometryShowPlanes ? 1 : 0.6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showGrid}
+                    disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showGrid: e.target.checked,
+                      }))
+                    }
+                  />
+                  Major
+                </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    opacity: geometryShowPlanes && planeGridSettings.showGrid ? 1 : 0.6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showMinorGrid}
+                    disabled={!geometryShowPlanes || !planeGridSettings.showGrid}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showMinorGrid: e.target.checked,
+                      }))
+                    }
+                  />
+                  Minor
+                </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    opacity: geometryShowPlanes ? 1 : 0.6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showAxisLabels}
+                    disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showAxisLabels: e.target.checked,
+                      }))
+                    }
+                  />
+                  Axes
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  Opacity
+                  <input
+                    type="range"
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    value={geometryOpacity}
+                    onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                  />
+                </label>
+                {(geometryMode === "scratch" || geometryMode === "workbook") && (
+                  <>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={geometryPrincipalProjectionEnabled}
+                        onChange={(e) => setGeometryPrincipalProjectionEnabled(e.target.checked)}
+                      />
+                      Projections
+                    </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        opacity: geometryPrincipalProjectionEnabled ? 1 : 0.6,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={geometryPrincipalProjectionXY}
+                        disabled={!geometryPrincipalProjectionEnabled}
+                        onChange={(e) => setGeometryPrincipalProjectionXY(e.target.checked)}
+                      />
+                      P-XY
+                    </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        opacity: geometryPrincipalProjectionEnabled ? 1 : 0.6,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={geometryPrincipalProjectionYZ}
+                        disabled={!geometryPrincipalProjectionEnabled}
+                        onChange={(e) => setGeometryPrincipalProjectionYZ(e.target.checked)}
+                      />
+                      P-YZ
+                    </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        opacity: geometryPrincipalProjectionEnabled ? 1 : 0.6,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={geometryPrincipalProjectionZX}
+                        disabled={!geometryPrincipalProjectionEnabled}
+                        onChange={(e) => setGeometryPrincipalProjectionZX(e.target.checked)}
+                      />
+                      P-ZX
+                    </label>
+                  </>
+                )}
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => handleGeometryFit("scene")}
+                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                  >
+                    Fit scene
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGeometryFit("stage")}
+                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                  >
+                    Fit active stage
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGeometryFit("claim")}
+                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                  >
+                    Fit claim
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGeometryResetToken((t) => t + 1)}
+                    style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
+                  >
+                    Reset camera
+                  </button>
+                </div>
+              </div>
+              )}
+              <div
+                data-testid="main-viewer"
+                ref={geometrySceneCaptureRef}
+                style={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                  background: "#f8fbff",
+                }}
+              >
                 <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
@@ -30329,6 +30842,7 @@ case "mobius":
                       ? geometryProblemCameraOverrideToken
                       : 0
                   }
+                  cameraFitCommand={geometryCameraFitCommand}
                   cameraTourCommand={geometryCameraTourCommand}
                   onCameraTourEvent={handleGeometryCameraTourEvent}
                   highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}

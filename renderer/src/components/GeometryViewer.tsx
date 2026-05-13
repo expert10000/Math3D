@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import {
   SurfaceViewer,
+  type CameraFitCommand,
   type CameraTourCommand,
   type CameraTourEvent,
   type CameraSyncState,
@@ -41,6 +42,7 @@ export type GeometryViewerProps = {
   resetToken?: number;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  cameraFitCommand?: CameraFitCommand | null;
   cameraTourCommand?: CameraTourCommand | null;
   onCameraTourEvent?: (event: CameraTourEvent) => void;
   extraOverlayPolylineGroups?: OverlayPolylineGroup[] | null;
@@ -107,6 +109,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   resetToken,
   cameraOverride = null,
   cameraOverrideToken = 0,
+  cameraFitCommand = null,
   cameraTourCommand = null,
   onCameraTourEvent,
   extraOverlayPolylineGroups = null,
@@ -263,6 +266,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       resetToken={resetToken}
       cameraOverride={cameraOverride}
       cameraOverrideToken={cameraOverrideToken}
+      cameraFitCommand={cameraFitCommand}
       cameraTourCommand={cameraTourCommand}
       onCameraTourEvent={onCameraTourEvent}
       dragEnabled={dragEnabled}

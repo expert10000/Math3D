@@ -22,6 +22,7 @@ export const uiStyles: { [k: string]: React.CSSProperties } = {
     alignItems: "stretch",
     gap: 12,
     padding: "12px 16px 16px",
+    boxSizing: "border-box",
     overflow: "hidden",
   },
 

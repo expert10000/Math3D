@@ -87,6 +87,12 @@ export type CameraTourCommand = {
   captureFileName?: string;
   captureFormat?: CameraTourCaptureFormat;
 };
+export type CameraFitCommand = {
+  token: number;
+  center: { x: number; y: number; z: number };
+  radius: number;
+  padding?: number;
+};
 export type CameraTourEvent =
   | "started"
   | "completed"
@@ -1098,6 +1104,7 @@ type Props = {
   onCameraSync?: (state: CameraSyncState) => void;
   cameraOverride?: CameraSyncState | null;
   cameraOverrideToken?: number;
+  cameraFitCommand?: CameraFitCommand | null;
   renderQuality?: RenderQuality;
   sceneBackgroundMode?: SceneBackgroundMode;
   cameraTourCommand?: CameraTourCommand | null;
@@ -1327,6 +1334,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     onCameraSync,
     cameraOverride = null,
     cameraOverrideToken = 0,
+    cameraFitCommand = null,
     renderQuality = "balanced",
     sceneBackgroundMode = "default",
     cameraTourCommand = null,
@@ -8084,6 +8092,45 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     cam.updateProjectionMatrix();
     ctrls.update();
   }, [cameraOverrideToken]);
+
+  useEffect(() => {
+    if (!cameraFitCommand) return;
+    const cam = cameraRef.current;
+    const ctrls = controlsRef.current;
+    if (!cam || !ctrls) return;
+
+    const { center, radius } = cameraFitCommand;
+    const cx = Number(center?.x);
+    const cy = Number(center?.y);
+    const cz = Number(center?.z);
+    const targetRadius = Number(radius);
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(cz)) return;
+    if (!Number.isFinite(targetRadius) || targetRadius <= 1e-6) return;
+
+    const targetCenter = new THREE.Vector3(cx, cy, cz);
+    const fovY = THREE.MathUtils.degToRad(cam.fov);
+    const fovX = 2 * Math.atan(Math.tan(fovY * 0.5) * cam.aspect);
+    const minFov = Math.max(1e-3, Math.min(fovY, fovX));
+    const fitPadding = Math.max(0.88, Math.min(1.6, Number(cameraFitCommand.padding ?? 1.08)));
+    const requiredDist = (targetRadius * fitPadding) / Math.sin(minFov * 0.5);
+    if (!Number.isFinite(requiredDist) || requiredDist <= 0) return;
+
+    const currentTarget = ctrls.target.clone();
+    const viewDir = cam.position.clone().sub(currentTarget);
+    if (viewDir.lengthSq() < 1e-8) viewDir.set(0.7, 0.58, 1);
+    viewDir.normalize();
+
+    cam.position.copy(targetCenter).addScaledVector(viewDir, requiredDist);
+    ctrls.target.copy(targetCenter);
+    cam.lookAt(targetCenter);
+    ctrls.update();
+
+    centerRef.current.copy(targetCenter);
+    radiusRef.current = targetRadius;
+    setViewMode("free");
+    setLockToAxisPlane(false);
+    setViewGizmoMenuOpen(false);
+  }, [cameraFitCommand?.token]);
 
   useEffect(() => {
     if (!cameraTourCommand) return;
