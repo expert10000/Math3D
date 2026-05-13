@@ -25,3 +25,19 @@ Current production build has a large entry chunk (`assets/index-*.js` around 1.1
 2. Smoke test mode switching and first-load lazy fallback behavior.
 3. Confirm each mode loads once and re-opens from cache without repeated UX disruption.
 
+## Cloudflare deploy blocked by Git LFS quota
+
+Use one of these:
+
+### Immediate paid fix
+1. Click `Manage budgets` on the Git LFS panel.
+2. Set a Git LFS budget `> $0` (and ensure payment method is active).
+3. In Cloudflare: open failed deploy -> `Manage deployment` -> `Retry deployment`.
+
+### Free fix (wait)
+1. Quota resets in about 19 days (around June 1, 2026).
+2. Retry deploy after reset.
+
+### Free immediate workaround (recommended for now)
+1. Deploy from a branch that does not include LFS `data/` assets.
+2. Prepare and push a `pages-deploy` branch, then switch Cloudflare Production branch to it.

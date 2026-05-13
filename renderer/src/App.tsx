@@ -734,6 +734,7 @@ const WORKBOOK_AUTOSAVE_KEY = "math3d.workbook.autosave.v1";
 const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
 const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
+const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
 const WORKBOOK_MANUAL_SAVE_HASH_KEY = "math3d.workbook.manualSaveHash.v1";
 const WORKBOOK_MANUAL_SAVE_AT_KEY = "math3d.workbook.manualSaveAt.v1";
@@ -15001,10 +15002,24 @@ case "mobius":
     recoveryPromptShownRef.current = true;
     const stored = safeParseObject<WorkbookStoredSession>(localStorage.getItem(WORKBOOK_AUTOSAVE_KEY));
     if (!stored || !isWorkbookReplayPayload(stored.payload) || !Number.isFinite(stored.savedAt)) return;
+    const dismissedAt = Number(localStorage.getItem(WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY));
+    if (Number.isFinite(dismissedAt) && dismissedAt >= stored.savedAt) return;
     const manualAt = workbookManualSaveAt ?? 0;
     if (stored.savedAt <= manualAt) return;
     const message = `Recover last autosave from ${new Date(stored.savedAt).toLocaleString()}?`;
-    if (!window.confirm(message)) return;
+    if (!window.confirm(message)) {
+      try {
+        localStorage.setItem(WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY, String(stored.savedAt));
+      } catch {
+        // ignore
+      }
+      return;
+    }
+    try {
+      localStorage.removeItem(WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY);
+    } catch {
+      // ignore
+    }
     if (!applyWorkbookPayload(stored.payload)) return;
     const restoredHash = hashString(JSON.stringify({ version: 1, ...stored.payload }, null, 2));
     const recoveredName = workbookManualSaveName || "recovered-session.math3d";
@@ -32032,10 +32047,51 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     const preset = WEIERSTRASS_PRESETS.find((p) => p.id === presetId) ?? WEIERSTRASS_PRESETS[0];
     if (preset) onApplyWeierstrassPreset(preset);
   };
+  const switchToPresetFamily = (
+    family: "graph" | "implicit" | "param-formula" | "param-spline" | "param-constructed" | "weierstrass"
+  ) => {
+    onChangeDatasetKind("surface");
+    if (family === "graph") {
+      onChangeViewerKind("graph");
+      return;
+    }
+    if (family === "implicit") {
+      onChangeViewerKind("implicit");
+      return;
+    }
+    if (family === "param-formula") {
+      onChangeViewerKind("param");
+      if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+      return;
+    }
+    if (family === "param-spline") {
+      onChangeViewerKind("param");
+      if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
+      return;
+    }
+    if (family === "param-constructed") {
+      onChangeViewerKind("param");
+      if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+      return;
+    }
+    onChangeViewerKind("weierstrass");
+  };
   const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
+  const autoOpenedWorkGalleryRef = useRef(false);
   const [showExtendedFamilies, setShowExtendedFamilies] = useState(false);
   const [showActionMore, setShowActionMore] = useState(false);
   const [surfaceCardSortPreset, setSurfaceCardSortPreset] = useState<GallerySortPreset>("family");
+  useEffect(() => {
+    if (panelMode !== "work") {
+      autoOpenedWorkGalleryRef.current = false;
+      return;
+    }
+    if (autoOpenedWorkGalleryRef.current) return;
+    autoOpenedWorkGalleryRef.current = true;
+    if (datasetKind === "surface") {
+      setShowSurfaceGallery(true);
+    }
+  }, [datasetKind, panelMode, viewerKind]);
   const compactForPresent = displayMode === "present";
   const compareUiEnabled = displayMode !== "present";
   const compareActive = compareUiEnabled && compareEnabled;
@@ -32382,6 +32438,47 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {panelMode === "work" && showSurfaceGallery && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Surface gallery</div>
+          {datasetKind === "surface" && (viewerKind === "mesh" || viewerKind === "complex") && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                flexWrap: "wrap",
+                fontSize: 11,
+                color: "#475569",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>Mesh/Complex mode:</span>
+              <span>switch to a preset family</span>
+              <button type="button" onClick={() => switchToPresetFamily("graph")} style={toolbarChipStyle(false, "family")}>
+                Explicit
+              </button>
+              <button type="button" onClick={() => switchToPresetFamily("implicit")} style={toolbarChipStyle(false, "family")}>
+                Implicit
+              </button>
+              <button
+                type="button"
+                onClick={() => switchToPresetFamily("param-formula")}
+                style={toolbarChipStyle(false, "family")}
+              >
+                Parametric
+              </button>
+              <button type="button" onClick={() => switchToPresetFamily("param-spline")} style={toolbarChipStyle(false, "family")}>
+                Spline
+              </button>
+              <button
+                type="button"
+                onClick={() => switchToPresetFamily("param-constructed")}
+                style={toolbarChipStyle(false, "family")}
+              >
+                Constructed
+              </button>
+              <button type="button" onClick={() => switchToPresetFamily("weierstrass")} style={toolbarChipStyle(false, "family")}>
+                Weierstrass
+              </button>
+            </div>
+          )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {SURFACE_GALLERY_CARDS.map((card) => {
               const active = surfaceGallerySelectedId === card.id;
