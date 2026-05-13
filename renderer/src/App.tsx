@@ -257,6 +257,7 @@ import {
 import {
   createDefaultWorkbook,
   createWorkbookFromTemplate,
+  WORKBOOK_STAGE_ORDER,
   WORKBOOK_TEMPLATES,
   WORKBOOK_PROBLEM_PACKS,
   type Workbook,
@@ -291,6 +292,7 @@ import {
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
 type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
+type GeometryWorkbookUiMode = "compact" | "full";
 type GeometryDemoFamily = "stereometry" | "planimetry";
 type PlanimetryPresetId = "task" | "euler" | "tangent" | "incircle_reflection";
 type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object" | "euler";
@@ -321,6 +323,71 @@ type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
 type AccentPresetId = "blue" | "teal" | "amber" | "rose";
+type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
+type WorkspaceViewMode = "threeD" | "planar" | "claim" | "stage";
+type WorkspaceCameraPreset =
+  | "fit_scene"
+  | "fit_stage"
+  | "fit_claim"
+  | "planar_view"
+  | "threeD_view"
+  | "reset_camera";
+type WorkspaceLocationEntry = {
+  module: WorkspaceModule;
+  workspaceMode?: string;
+  panel?: string;
+  selectedObjectId?: string | null;
+  activeStageId?: string | null;
+  viewMode?: WorkspaceViewMode;
+  cameraPreset?: WorkspaceCameraPreset | null;
+  sceneId?: string | null;
+};
+type WorkspaceNavigationState = {
+  backStack: WorkspaceLocationEntry[];
+  current: WorkspaceLocationEntry;
+  forwardStack: WorkspaceLocationEntry[];
+};
+const MAX_WORKSPACE_HISTORY = 120;
+const GEOMETRY_MODE_VALUES: GeometryMode[] = ["procedural", "demo", "scratch", "workbook"];
+const GEOMETRY_DEMO_TAB_VALUES: GeometryDemoTab[] = ["task", "objects", "solve", "script"];
+const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
+  "scene",
+  "script",
+  "transform",
+  "object",
+  "euler",
+];
+const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
+const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "inspect", "view", "analysis"] as const;
+const PLANIMETRY_PRESET_VALUES: PlanimetryPresetId[] = ["task", "euler", "tangent", "incircle_reflection"];
+const isGeometryModeValue = (value: string | undefined): value is GeometryMode =>
+  !!value && GEOMETRY_MODE_VALUES.includes(value as GeometryMode);
+const isGeometryDemoTabValue = (value: string | undefined): value is GeometryDemoTab =>
+  !!value && GEOMETRY_DEMO_TAB_VALUES.includes(value as GeometryDemoTab);
+const isGeometryProceduralPanelTabValue = (value: string | undefined): value is GeometryProceduralPanelTab =>
+  !!value && GEOMETRY_PROCEDURAL_PANEL_VALUES.includes(value as GeometryProceduralPanelTab);
+const isConstructionWorkspaceTabValue = (value: string | undefined): value is ConstructionWorkspaceTab =>
+  !!value && GEOMETRY_WORKSPACE_TAB_VALUES.includes(value as ConstructionWorkspaceTab);
+const isSurfacesLeftTabValue = (value: string | undefined): value is (typeof SURFACES_LEFT_TAB_VALUES)[number] =>
+  !!value && SURFACES_LEFT_TAB_VALUES.includes(value as (typeof SURFACES_LEFT_TAB_VALUES)[number]);
+const isPlanimetryPresetValue = (value: string | undefined): value is PlanimetryPresetId =>
+  !!value && PLANIMETRY_PRESET_VALUES.includes(value as PlanimetryPresetId);
+const isWorkspaceModuleValue = (value: string | undefined): value is WorkspaceModule =>
+  value === "surfaces" ||
+  value === "mesh" ||
+  value === "volume" ||
+  value === "curves" ||
+  value === "topology" ||
+  value === "geometry";
+const areWorkspaceLocationsEqual = (a: WorkspaceLocationEntry, b: WorkspaceLocationEntry) =>
+  a.module === b.module &&
+  a.workspaceMode === b.workspaceMode &&
+  a.panel === b.panel &&
+  (a.selectedObjectId ?? null) === (b.selectedObjectId ?? null) &&
+  (a.activeStageId ?? null) === (b.activeStageId ?? null) &&
+  a.viewMode === b.viewMode &&
+  (a.cameraPreset ?? null) === (b.cameraPreset ?? null) &&
+  (a.sceneId ?? null) === (b.sceneId ?? null);
 const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
   "implicit",
   "graph",
@@ -4971,6 +5038,7 @@ const App: React.FC = () => {
     curveSamplingMode,
   ]);
   const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
+  const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
   const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(true);
   const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
@@ -5004,6 +5072,7 @@ const App: React.FC = () => {
   }));
   const geometryPlanimetryDemo = geometryPlanimetryDemos[geometryPlanimetryPresetId];
   const [geometryPlanimetryStageIndex, setGeometryPlanimetryStageIndex] = useState(0);
+  const geometryPlanimetryRestoreStageIndexRef = useRef<number | null>(null);
   const geometryPlanimetryStages = geometryPlanimetryDemo.stages ?? [];
   const geometryPlanimetryActiveStage =
     geometryPlanimetryStages.length > 0
@@ -5013,6 +5082,12 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!geometryPlanimetryStages.length) {
       setGeometryPlanimetryStageIndex(0);
+      return;
+    }
+    const restored = geometryPlanimetryRestoreStageIndexRef.current;
+    if (restored != null) {
+      geometryPlanimetryRestoreStageIndexRef.current = null;
+      setGeometryPlanimetryStageIndex(Math.max(0, Math.min(geometryPlanimetryStages.length - 1, Math.round(restored))));
       return;
     }
     setGeometryPlanimetryStageIndex(geometryPlanimetryStages.length - 1);
@@ -6663,6 +6738,7 @@ const App: React.FC = () => {
   } | null>(null);
   const [geometryIncludeHelpersInFit, setGeometryIncludeHelpersInFit] = useState(false);
   const [geometryViewPreset, setGeometryViewPreset] = useState<"3d" | "planar">("3d");
+  const [workspaceCameraPreset, setWorkspaceCameraPreset] = useState<WorkspaceCameraPreset | null>(null);
 
   const finitePoint3 = useCallback(
     (point: Point3 | null | undefined): point is Point3 =>
@@ -6878,6 +6954,7 @@ const App: React.FC = () => {
 
   const handleGeometryFit = useCallback(
     (mode: GeometryFitMode) => {
+      setWorkspaceCameraPreset(mode === "scene" ? "fit_scene" : mode === "stage" ? "fit_stage" : "fit_claim");
       const selectedRoles =
         mode === "scene"
           ? new Set<GeometryObjectRole>(["primary", "construction", "claim"])
@@ -6950,6 +7027,7 @@ const App: React.FC = () => {
   const handleGeometryApplyViewPreset = useCallback(
     (preset: "3d" | "planar") => {
       setGeometryViewPreset(preset);
+      setWorkspaceCameraPreset(preset === "planar" ? "planar_view" : "threeD_view");
       if (preset === "planar") {
         setGeometryShowPlanes(true);
         setGeometryPrincipalProjectionEnabled(true);
@@ -7059,6 +7137,11 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(UI_DISPLAY_MODE_KEY);
     return isDisplayMode(saved) ? saved : "workspace";
   });
+  const [geometryViewerSourceLabel, setGeometryViewerSourceLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (geometryMode === "workbook") return;
+    setGeometryWorkbookUiMode("compact");
+  }, [geometryMode]);
   const [surfaceViewportPreset, setSurfaceViewportPreset] = useState<ViewportPreset>(() => {
     if (IS_REPLAY_MODE) return "study";
     const saved = localStorage.getItem(UI_VIEWPORT_PRESET_KEY);
@@ -11286,6 +11369,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     "scene" | "object" | "inspect" | "view" | "analysis"
   >("scene");
   const prevModeRef = useRef<Mode>(mode);
+  const skipSurfacesAutoBrowseOnModeChangeRef = useRef(false);
   const enterSurfacesWorkMode = useCallback(() => {
     setSurfacesPanelState("work");
     setSurfacesLeftTab("scene");
@@ -11328,7 +11412,11 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
   useEffect(() => {
     if (mode === "surfaces" && prevModeRef.current !== "surfaces") {
-      setSurfacesPanelState("browse");
+      if (skipSurfacesAutoBrowseOnModeChangeRef.current) {
+        skipSurfacesAutoBrowseOnModeChangeRef.current = false;
+      } else {
+        setSurfacesPanelState("browse");
+      }
     }
     prevModeRef.current = mode;
   }, [mode]);
@@ -22203,11 +22291,112 @@ case "mobius":
     () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
     [activeWorkbook, activeStageId]
   );
+  const [fullWorkbookSelectedBlockRef, setFullWorkbookSelectedBlockRef] = useState<{
+    stageId: WorkbookStageId;
+    blockId: string;
+  } | null>(null);
+  useEffect(() => {
+    if (geometryMode === "workbook") return;
+    if (fullWorkbookSelectedBlockRef) setFullWorkbookSelectedBlockRef(null);
+    if (geometryViewerSourceLabel) setGeometryViewerSourceLabel(null);
+  }, [geometryMode, fullWorkbookSelectedBlockRef, geometryViewerSourceLabel]);
+  useEffect(() => {
+    if (!activeWorkbook?.stages?.length) {
+      if (fullWorkbookSelectedBlockRef) setFullWorkbookSelectedBlockRef(null);
+      return;
+    }
+    const keepCurrent = (() => {
+      if (!fullWorkbookSelectedBlockRef) return false;
+      const stage = activeWorkbook.stages.find((item) => item.id === fullWorkbookSelectedBlockRef.stageId);
+      if (!stage) return false;
+      return stage.blocks.some((block) => block.id === fullWorkbookSelectedBlockRef.blockId);
+    })();
+    if (keepCurrent) return;
+    const preferredStage = activeWorkbook.stages.find((stage) => stage.id === activeStageId) ?? activeWorkbook.stages[0];
+    const fallbackStage = preferredStage.blocks.length
+      ? preferredStage
+      : activeWorkbook.stages.find((stage) => stage.blocks.length > 0) ?? preferredStage;
+    const firstBlock = fallbackStage.blocks[0];
+    if (!firstBlock) {
+      setFullWorkbookSelectedBlockRef(null);
+      return;
+    }
+    setFullWorkbookSelectedBlockRef({ stageId: fallbackStage.id, blockId: firstBlock.id });
+  }, [activeStageId, activeWorkbook, fullWorkbookSelectedBlockRef]);
+  const fullWorkbookSelectedBlockMeta = useMemo(() => {
+    if (!activeWorkbook || !fullWorkbookSelectedBlockRef) return null;
+    const stage = activeWorkbook.stages.find((item) => item.id === fullWorkbookSelectedBlockRef.stageId);
+    if (!stage) return null;
+    const block = stage.blocks.find((item) => item.id === fullWorkbookSelectedBlockRef.blockId);
+    if (!block) return null;
+    return {
+      stageId: stage.id,
+      stageTitle: stage.title,
+      block,
+    };
+  }, [activeWorkbook, fullWorkbookSelectedBlockRef]);
+  const fullWorkbookSourceBreadcrumb = useMemo(() => {
+    const workbookTitle = activeWorkbook?.title ?? "Untitled";
+    if (!fullWorkbookSelectedBlockMeta) return `Workbook / ${workbookTitle}`;
+    return `Workbook / ${workbookTitle} / ${fullWorkbookSelectedBlockMeta.stageTitle} / ${fullWorkbookSelectedBlockMeta.block.title}`;
+  }, [activeWorkbook?.title, fullWorkbookSelectedBlockMeta]);
+  const fullWorkbookSelectedStage = useMemo(
+    () =>
+      activeWorkbook?.stages.find(
+        (stage) => stage.id === (fullWorkbookSelectedBlockMeta?.stageId ?? activeStageId)
+      ) ?? null,
+    [activeStageId, activeWorkbook, fullWorkbookSelectedBlockMeta?.stageId]
+  );
   const activeWorkbookStageHasComputeBlocks = !!activeWorkbookStage?.blocks.some((block) => block.type === "compute");
   const workbookHasStaleBlocks = useMemo(
     () => Object.values(computeStatusById).some((status) => status === "stale"),
     [computeStatusById]
   );
+  const compactNextFailedMeta = useMemo(() => {
+    const stageId = activeWorkbookStage?.id;
+    if (!stageId) return null;
+    const computeIds = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
+    const failedId = computeIds.find((id) => computeStatusById[id] === "failed") ?? null;
+    const staleId = computeIds.find((id) => computeStatusById[id] === "stale") ?? null;
+    const blockId = failedId ?? staleId;
+    if (!blockId) return null;
+    return { stageId, blockId };
+  }, [activeWorkbookStage?.id, computeStatusById, workbookGraph.computeBlockIdsByStage]);
+  const compactCanAdvancePlanimetryStage =
+    geometryMode === "demo" &&
+    geometryDemoFamily === "planimetry" &&
+    geometryPlanimetryStages.length > 0 &&
+    geometryPlanimetryStageIndex < geometryPlanimetryStages.length - 1;
+  const handleCompactRunStage = useCallback(() => {
+    if (geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length) {
+      setGeometryPlanimetryStageIndex((index) => Math.min(geometryPlanimetryStages.length - 1, index + 1));
+      return;
+    }
+    void handleRunComputeStage(activeStageId);
+  }, [
+    activeStageId,
+    geometryDemoFamily,
+    geometryMode,
+    geometryPlanimetryStages.length,
+    handleRunComputeStage,
+  ]);
+  const handleCompactRunNextFailed = useCallback(() => {
+    if (compactNextFailedMeta) {
+      void handleRunFromBlock(compactNextFailedMeta.stageId, compactNextFailedMeta.blockId);
+      return;
+    }
+    if (compactCanAdvancePlanimetryStage) {
+      setGeometryPlanimetryStageIndex((index) => Math.min(geometryPlanimetryStages.length - 1, index + 1));
+    }
+  }, [
+    compactCanAdvancePlanimetryStage,
+    compactNextFailedMeta,
+    geometryPlanimetryStages.length,
+    handleRunFromBlock,
+  ]);
+  const compactHasNextFailed = !!compactNextFailedMeta || compactCanAdvancePlanimetryStage;
+  const compactCurrentBlockTitle =
+    geometryMode === "demo" ? "Problem statement" : activeWorkbookStage?.blocks[0]?.title ?? "Problem statement";
   const showSurfaceWorkbookQuickStrip =
     mode === "surfaces" &&
     rightPanelTab === "workbook" &&
@@ -22769,6 +22958,8 @@ case "mobius":
     showViewportDebug && !(mode === "surfaces" && isPresentDisplayMode) && !cleanScreenshotSurfaceActive;
   const isPhoneLandscapeLayout =
     viewportSize.width > viewportSize.height && viewportSize.width <= 980 && viewportSize.height <= 560;
+  const showGeometryFullWorkbookWorkspace =
+    mode === "geometry" && geometryMode === "workbook" && geometryWorkbookUiMode === "full";
   const showSurfacesRightPanel =
     !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
@@ -22806,6 +22997,7 @@ case "mobius":
     }
     if (statusMeshLabel) items.push(statusMeshLabel);
     items.push(statusCameraLabel);
+    if (mode === "geometry" && geometryViewerSourceLabel) items.push(geometryViewerSourceLabel);
     if (mode === "surfaces") items.push(`${lightPreset} lighting`);
     if (statusPickedPointLabel) items.push(statusPickedPointLabel);
     items.push(`display ${displayMode}`);
@@ -22828,6 +23020,7 @@ case "mobius":
     IS_REPLAY_MODE,
     lightPreset,
     mode,
+    geometryViewerSourceLabel,
     screenshotBusy,
     screenshotStatus,
     statusCameraLabel,
@@ -22838,6 +23031,279 @@ case "mobius":
     unifiedSelectedNode,
     workbookDirty,
   ]);
+  const workspaceModule = useMemo<WorkspaceModule>(() => {
+    if (mode === "geometry") return "geometry";
+    if (mode === "topology") return "topology";
+    if (mode === "curves") return "curves";
+    if (mode === "surfaces") {
+      if (datasetKind === "volume") return "volume";
+      if (surfaceViewerKind === "mesh") return "mesh";
+      return "surfaces";
+    }
+    return "surfaces";
+  }, [datasetKind, mode, surfaceViewerKind]);
+  const currentWorkspaceLocation = useMemo<WorkspaceLocationEntry>(() => {
+    let workspaceMode: string | undefined;
+    let panel: string | undefined;
+    let selectedObjectId: string | null | undefined;
+    let activeStageRef: string | null | undefined;
+    let viewMode: WorkspaceViewMode | undefined;
+    let cameraPreset: WorkspaceCameraPreset | null | undefined;
+    let sceneId: string | null | undefined;
+
+    if (workspaceModule === "geometry") {
+      workspaceMode = geometryMode;
+      panel =
+        geometryMode === "procedural"
+          ? geometryProceduralPanelTab
+          : geometryMode === "demo"
+            ? geometryDemoTab
+            : geometryWorkspaceTab;
+      selectedObjectId = geometrySelectedObjectId;
+      if (geometryMode === "demo" && geometryDemoFamily === "planimetry") {
+        activeStageRef = `planimetry:${geometryPlanimetryPresetId}:${geometryPlanimetryStageIndex}`;
+        sceneId = `demo:planimetry:${geometryPlanimetryPresetId}`;
+      } else if (geometryMode === "scratch" || geometryMode === "workbook") {
+        activeStageRef = `workbook:${activeStageId}`;
+        sceneId =
+          geometryMode === "workbook"
+            ? `workbook:${activeWorkbookId ?? "none"}:${geometryWorkbookUiMode}`
+            : "scratch";
+      } else if (geometryMode === "demo") {
+        sceneId = `demo:${geometryDemoFamily}`;
+      } else {
+        sceneId = "procedural";
+      }
+      viewMode = geometryViewPreset === "planar" ? "planar" : "threeD";
+      cameraPreset = workspaceCameraPreset;
+    } else if (workspaceModule === "surfaces" || workspaceModule === "mesh") {
+      workspaceMode = surfaceViewerKind;
+      panel = surfacesPanelState === "browse" ? "browse" : surfacesLeftTab;
+      selectedObjectId =
+        unifiedSelectedNode?.category === "sceneObject"
+          ? (unifiedSelectedNode.objectRefId ?? unifiedSelectedNode.id)
+          : null;
+      if (surfaceViewerKind === "param") sceneId = String(paramSurfaceId);
+      else if (surfaceViewerKind === "weierstrass") sceneId = activeWeierstrassPresetId ?? null;
+      else if (surfaceViewerKind === "complex" || surfaceViewerKind === "mesh") sceneId = "surface_mesh";
+      else sceneId = String(activeEqSurfaceId);
+    } else if (workspaceModule === "volume") {
+      workspaceMode = volumeViewMode;
+      panel = surfacesPanelState === "browse" ? "browse" : surfacesLeftTab;
+      viewMode = volumeViewMode === "3d" ? "threeD" : "planar";
+      sceneId = String(volumePresetId);
+    }
+
+    return {
+      module: workspaceModule,
+      workspaceMode,
+      panel,
+      selectedObjectId,
+      activeStageId: activeStageRef,
+      viewMode,
+      cameraPreset,
+      sceneId,
+    };
+  }, [
+    workspaceModule,
+    geometryMode,
+    geometryProceduralPanelTab,
+    geometryDemoTab,
+    geometryWorkspaceTab,
+    geometrySelectedObjectId,
+    geometryDemoFamily,
+    geometryPlanimetryPresetId,
+    geometryPlanimetryStageIndex,
+    activeStageId,
+    activeWorkbookId,
+    geometryWorkbookUiMode,
+    geometryViewPreset,
+    workspaceCameraPreset,
+    surfaceViewerKind,
+    surfacesPanelState,
+    surfacesLeftTab,
+    unifiedSelectedNode,
+    paramSurfaceId,
+    activeWeierstrassPresetId,
+    activeEqSurfaceId,
+    volumeViewMode,
+    volumePresetId,
+  ]);
+  const [workspaceNavigation, setWorkspaceNavigation] = useState<WorkspaceNavigationState>(() => ({
+    backStack: [],
+    current: currentWorkspaceLocation,
+    forwardStack: [],
+  }));
+  const workspaceNavigationRestoringRef = useRef(false);
+  useEffect(() => {
+    setWorkspaceNavigation((previous) => {
+      if (areWorkspaceLocationsEqual(previous.current, currentWorkspaceLocation)) return previous;
+      if (workspaceNavigationRestoringRef.current) {
+        return { ...previous, current: currentWorkspaceLocation };
+      }
+      const nextBackStack =
+        previous.backStack.length >= MAX_WORKSPACE_HISTORY
+          ? [...previous.backStack.slice(1), previous.current]
+          : [...previous.backStack, previous.current];
+      return {
+        backStack: nextBackStack,
+        current: currentWorkspaceLocation,
+        forwardStack: [],
+      };
+    });
+  }, [currentWorkspaceLocation]);
+  const restoreWorkspaceLocation = useCallback(
+    (entry: WorkspaceLocationEntry) => {
+      if (!isWorkspaceModuleValue(entry.module)) return;
+      setWorkspaceCameraPreset(entry.cameraPreset ?? null);
+      if (entry.module === "surfaces" || entry.module === "mesh" || entry.module === "volume") {
+        skipSurfacesAutoBrowseOnModeChangeRef.current = true;
+      }
+      if (entry.module === "surfaces") {
+        setMode("surfaces");
+        setDatasetKind("surface");
+        if (isSurfaceViewerKind(entry.workspaceMode)) handleChangeViewerKind(entry.workspaceMode);
+      } else if (entry.module === "mesh") {
+        setMode("surfaces");
+        setDatasetKind("surface");
+        handleChangeViewerKind("mesh");
+      } else if (entry.module === "volume") {
+        setMode("surfaces");
+        setDatasetKind("volume");
+      } else if (entry.module === "curves") {
+        setMode("curves");
+      } else if (entry.module === "topology") {
+        setMode("topology");
+      } else if (entry.module === "geometry") {
+        setMode("geometry");
+      }
+
+      if (entry.module === "surfaces" || entry.module === "mesh" || entry.module === "volume") {
+        if (entry.panel === "browse") {
+          setSurfacesPanelState("browse");
+        } else if (isSurfacesLeftTabValue(entry.panel)) {
+          setSurfacesPanelState("work");
+          setSurfacesLeftTab(entry.panel);
+        }
+        if (entry.module === "volume") {
+          if (entry.viewMode === "threeD") setVolumeViewMode("3d");
+          if (entry.viewMode === "planar") setVolumeViewMode("slices");
+        }
+      }
+
+      if (entry.module === "geometry") {
+        const targetGeometryMode = isGeometryModeValue(entry.workspaceMode) ? entry.workspaceMode : geometryMode;
+        if (isGeometryModeValue(entry.workspaceMode)) {
+          setGeometryMode(entry.workspaceMode);
+        }
+        if (targetGeometryMode === "workbook") {
+          const layoutToken = entry.sceneId?.split(":")[2];
+          if (layoutToken === "full" || layoutToken === "compact") {
+            setGeometryWorkbookUiMode(layoutToken);
+          }
+        }
+        if (targetGeometryMode === "procedural" && isGeometryProceduralPanelTabValue(entry.panel)) {
+          setGeometryProceduralPanelTab(entry.panel);
+        } else if (targetGeometryMode === "demo" && isGeometryDemoTabValue(entry.panel)) {
+          setGeometryDemoTab(entry.panel);
+        } else if (
+          (targetGeometryMode === "scratch" || targetGeometryMode === "workbook") &&
+          isConstructionWorkspaceTabValue(entry.panel)
+        ) {
+          setGeometryWorkspaceTab(entry.panel);
+        }
+        if (entry.selectedObjectId !== undefined) {
+          setGeometrySelectedObjectId(entry.selectedObjectId ?? null);
+        }
+        if (entry.activeStageId?.startsWith("planimetry:")) {
+          const [, presetId, rawIndex] = entry.activeStageId.split(":");
+          const parsedIndex = Number(rawIndex);
+          if (isPlanimetryPresetValue(presetId)) {
+            geometryPlanimetryRestoreStageIndexRef.current = Number.isFinite(parsedIndex) ? parsedIndex : 0;
+            setGeometryMode("demo");
+            setGeometryDemoFamily("planimetry");
+            setGeometryPlanimetryPresetId(presetId);
+          }
+        } else if (entry.activeStageId?.startsWith("workbook:")) {
+          const stageId = entry.activeStageId.slice("workbook:".length);
+          if (isWorkbookStageId(stageId)) {
+            setActiveStageId(stageId);
+          }
+        }
+        switch (entry.cameraPreset) {
+          case "fit_scene":
+            handleGeometryFit("scene");
+            break;
+          case "fit_stage":
+            handleGeometryFit("stage");
+            break;
+          case "fit_claim":
+            handleGeometryFit("claim");
+            break;
+          case "planar_view":
+            handleGeometryApplyViewPreset("planar");
+            break;
+          case "threeD_view":
+            handleGeometryApplyViewPreset("3d");
+            break;
+          case "reset_camera":
+            setGeometryResetToken((value) => value + 1);
+            break;
+          default:
+            if (entry.viewMode === "planar") handleGeometryApplyViewPreset("planar");
+            if (entry.viewMode === "threeD") handleGeometryApplyViewPreset("3d");
+            break;
+        }
+      }
+    },
+    [
+      geometryMode,
+      handleChangeViewerKind,
+      handleGeometryApplyViewPreset,
+      handleGeometryFit,
+      setGeometryResetToken,
+    ]
+  );
+  const goWorkspaceBack = useCallback(() => {
+    if (!workspaceNavigation.backStack.length) return;
+    const previous = workspaceNavigation.backStack[workspaceNavigation.backStack.length - 1];
+    const nextState: WorkspaceNavigationState = {
+      backStack: workspaceNavigation.backStack.slice(0, -1),
+      current: previous,
+      forwardStack: [workspaceNavigation.current, ...workspaceNavigation.forwardStack],
+    };
+    workspaceNavigationRestoringRef.current = true;
+    setWorkspaceNavigation(nextState);
+    restoreWorkspaceLocation(previous);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        workspaceNavigationRestoringRef.current = false;
+      }, 0);
+    } else {
+      workspaceNavigationRestoringRef.current = false;
+    }
+  }, [restoreWorkspaceLocation, workspaceNavigation]);
+  const goWorkspaceForward = useCallback(() => {
+    if (!workspaceNavigation.forwardStack.length) return;
+    const next = workspaceNavigation.forwardStack[0];
+    const nextState: WorkspaceNavigationState = {
+      backStack: [...workspaceNavigation.backStack, workspaceNavigation.current],
+      current: next,
+      forwardStack: workspaceNavigation.forwardStack.slice(1),
+    };
+    workspaceNavigationRestoringRef.current = true;
+    setWorkspaceNavigation(nextState);
+    restoreWorkspaceLocation(next);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        workspaceNavigationRestoringRef.current = false;
+      }, 0);
+    } else {
+      workspaceNavigationRestoringRef.current = false;
+    }
+  }, [restoreWorkspaceLocation, workspaceNavigation]);
+  const canGoWorkspaceBack = workspaceNavigation.backStack.length > 0;
+  const canGoWorkspaceForward = workspaceNavigation.forwardStack.length > 0;
   const sectionNavEntries: Array<{
     id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
     label: string;
@@ -23031,6 +23497,14 @@ case "mobius":
     cursor: "pointer",
     boxShadow: active ? "0 2px 6px rgba(10,102,194,0.16)" : "none",
     whiteSpace: "nowrap",
+  });
+  const workspaceNavButtonStyle = (enabled: boolean): React.CSSProperties => ({
+    ...topNavButtonStyle(false),
+    minWidth: 30,
+    padding: "4px 8px",
+    fontWeight: 700,
+    opacity: enabled ? 1 : 0.45,
+    cursor: enabled ? "pointer" : "not-allowed",
   });
   const headerFamilyButtonStyle = (active: boolean, variant: "family" | "aux" = "family"): React.CSSProperties => ({
     padding: "3px 9px",
@@ -23675,6 +24149,28 @@ case "mobius":
               <div style={topNavBarStyle}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0, paddingRight: 16 }}>
                   <h1 style={topNavBrandStyle}>MATH3D</h1>
+                  <div style={topNavSegmentStyle}>
+                    <button
+                      type="button"
+                      onClick={goWorkspaceBack}
+                      disabled={!canGoWorkspaceBack}
+                      aria-label="Workspace back"
+                      title="Workspace back"
+                      style={workspaceNavButtonStyle(canGoWorkspaceBack)}
+                    >
+                      ←
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goWorkspaceForward}
+                      disabled={!canGoWorkspaceForward}
+                      aria-label="Workspace forward"
+                      title="Workspace forward"
+                      style={workspaceNavButtonStyle(canGoWorkspaceForward)}
+                    >
+                      →
+                    </button>
+                  </div>
                   <div style={topNavSegmentStyle}>
                     {sectionNavEntries.map((entry) => {
                       const active = entry.active;
@@ -24363,7 +24859,10 @@ case "mobius":
                   {
                     id: "workbook" as const,
                     label: "Workbook scene",
-                    onClick: () => openGeometryWorkbookMode(geometryScratchSceneSeed),
+                    onClick: () => {
+                      openGeometryWorkbookMode(geometryScratchSceneSeed);
+                      setGeometryWorkbookUiMode("full");
+                    },
                   },
                 ] as const).map((entry) => {
                   const active = geometryMode === entry.id;
@@ -27862,6 +28361,448 @@ case "mobius":
             </div>
           </div>
         ) : mode === "geometry" ? (
+          showGeometryFullWorkbookWorkspace ? (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                border: "1px solid #dbe4f0",
+                borderRadius: 10,
+                background: "#f8fbff",
+                padding: "8px 10px",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>
+                Workbook: {activeWorkbook?.title ?? "Untitled workbook"}
+              </div>
+              <div style={{ fontSize: 11, color: workbookDirty ? "#92400e" : "#166534" }}>
+                Status: {workbookDirty ? "unsaved changes" : "saved"}
+              </div>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={handleSaveWorkbook} disabled={IS_REPLAY_MODE} style={{ fontSize: 11 }}>
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRunComputeStage(activeStageId)}
+                  disabled={IS_REPLAY_MODE || activeStageId !== "compute" || !activeWorkbookStageHasComputeBlocks}
+                  style={{ fontSize: 11 }}
+                >
+                  Run stage
+                </button>
+                <button type="button" onClick={handleRunAllStale} disabled={IS_REPLAY_MODE} style={{ fontSize: 11 }}>
+                  Run all stale
+                </button>
+                <details style={{ position: "relative" }}>
+                  <summary
+                    style={{
+                      listStyle: "none",
+                      cursor: "pointer",
+                      border: "1px solid #d1d5db",
+                      borderRadius: 8,
+                      padding: "3px 10px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      background: "#fff",
+                    }}
+                  >
+                    ⋯
+                  </summary>
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 0,
+                      top: "calc(100% + 6px)",
+                      zIndex: 60,
+                      width: 220,
+                      border: "1px solid #dbe4f0",
+                      borderRadius: 10,
+                      background: "#fff",
+                      boxShadow: "0 10px 24px rgba(15,23,42,0.16)",
+                      padding: 8,
+                      display: "grid",
+                      gap: 6,
+                    }}
+                  >
+                    <button type="button" onClick={handleCreateWorkbook} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
+                      New workbook
+                    </button>
+                    <button
+                      type="button"
+                      disabled={IS_REPLAY_MODE}
+                      onClick={() => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = ".math3d,.json,application/json";
+                        input.onchange = () => {
+                          const file = input.files?.[0];
+                          if (!file) return;
+                          void file.text().then((raw) => handleImportWorkbooks(raw));
+                        };
+                        input.click();
+                      }}
+                      style={{ fontSize: 11, textAlign: "left" }}
+                    >
+                      Open workbook
+                    </button>
+                    <button type="button" onClick={handleSaveWorkbookAs} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
+                      Save as...
+                    </button>
+                    <button type="button" onClick={handleExportWorkbooksMarkdown} style={{ fontSize: 11, textAlign: "left" }}>
+                      Export Markdown
+                    </button>
+                    <button type="button" onClick={handleExportWorkbooksPdf} style={{ fontSize: 11, textAlign: "left" }}>
+                      Export PDF
+                    </button>
+                    <button type="button" onClick={() => void handleExportWorkbooksReplayHtml()} style={{ fontSize: 11, textAlign: "left" }}>
+                      Export Replay HTML
+                    </button>
+                    <button type="button" onClick={() => handleSnapshotWorkbookSession()} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
+                      Snapshot tools
+                    </button>
+                    <button type="button" onClick={handleRestoreWorkbookAutosave} disabled={IS_REPLAY_MODE || !workbookAutosaveAt} style={{ fontSize: 11, textAlign: "left" }}>
+                      Restore autosave
+                    </button>
+                    <button type="button" onClick={() => setGeometryWorkbookUiMode("compact")} style={{ fontSize: 11, textAlign: "left" }}>
+                      Compact viewer mode
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: "grid",
+                gridTemplateColumns: "240px minmax(0, 1fr) 360px",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 10,
+                  background: "#fff",
+                  padding: 10,
+                  overflow: "auto",
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Outline</div>
+                <div style={{ fontSize: 11, color: "#0f172a" }}>
+                  <div style={{ fontWeight: 700 }}>Workbook</div>
+                  <div style={{ opacity: 0.78 }}>{activeWorkbook?.title ?? "Untitled workbook"}</div>
+                </div>
+                <div style={{ fontSize: 11, color: "#0f172a" }}>
+                  <div style={{ fontWeight: 700 }}>Page</div>
+                  <div style={{ opacity: 0.78 }}>Theorem scene</div>
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  {(activeWorkbook?.stages ?? []).map((stage, idx) => (
+                    <div key={`full-workbook-outline-stage-${stage.id}`} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStageId(stage.id)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: "1px solid " + (activeStageId === stage.id ? "#0a66c2" : "#d1d5db"),
+                          background: activeStageId === stage.id ? "#e6f0ff" : "#fff",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {idx + 1}. {stage.title}
+                      </button>
+                      <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                        {stage.blocks.map((block) => {
+                          const selected =
+                            fullWorkbookSelectedBlockMeta?.stageId === stage.id &&
+                            fullWorkbookSelectedBlockMeta.block.id === block.id;
+                          return (
+                            <button
+                              key={`full-workbook-outline-block-${block.id}`}
+                              type="button"
+                              onClick={() => {
+                                setActiveStageId(stage.id);
+                                setFullWorkbookSelectedBlockRef({ stageId: stage.id, blockId: block.id });
+                              }}
+                              style={{
+                                textAlign: "left",
+                                padding: "4px 6px",
+                                borderRadius: 6,
+                                border: "1px solid " + (selected ? "#0a66c2" : "#e5e7eb"),
+                                background: selected ? "#eff6ff" : "#fff",
+                                fontSize: 10,
+                                fontWeight: selected ? 700 : 500,
+                              }}
+                            >
+                              {block.title || `Untitled ${block.type}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 8, display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Quick actions</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGeometryDemoFamily("planimetry");
+                      setGeometryPlanimetryPresetId("incircle_reflection");
+                      setGeometryMode("demo");
+                    }}
+                    style={{ fontSize: 11 }}
+                  >
+                    Open demo preview
+                  </button>
+                  <button type="button" onClick={handleLoadOlympiadIncircleReflectionPack} style={{ fontSize: 11 }}>
+                    Load theorem scene
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, background: "#fff", minHeight: 0, overflow: "auto" }}>
+                <div style={{ borderBottom: "1px solid #e5e7eb", padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+                  Block editor
+                </div>
+                <div style={{ padding: 10, display: "grid", gap: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>
+                    {fullWorkbookSelectedStage
+                      ? `Stage: ${fullWorkbookSelectedStage.title}`
+                      : "Stage"}
+                  </div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {(fullWorkbookSelectedStage?.blocks ?? []).map((block) => {
+                      const selected = fullWorkbookSelectedBlockMeta?.block.id === block.id;
+                      return (
+                        <button
+                          key={`full-workbook-block-row-${block.id}`}
+                          type="button"
+                          onClick={() =>
+                            setFullWorkbookSelectedBlockRef({
+                              stageId: fullWorkbookSelectedStage.id,
+                              blockId: block.id,
+                            })
+                          }
+                          style={{
+                            textAlign: "left",
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "1px solid " + (selected ? "#0a66c2" : "#d1d5db"),
+                            background: selected ? "#e6f0ff" : "#fff",
+                            fontSize: 11,
+                            fontWeight: selected ? 700 : 600,
+                          }}
+                        >
+                          {block.title || `Untitled ${block.type}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {fullWorkbookSelectedBlockMeta ? (
+                    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: 10, display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>Selected block editor</div>
+                      <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                        Title
+                        <input
+                          type="text"
+                          value={fullWorkbookSelectedBlockMeta.block.title}
+                          onChange={(event) =>
+                            handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, {
+                              title: event.target.value,
+                            })
+                          }
+                          style={{ fontSize: 11 }}
+                        />
+                      </label>
+                      {fullWorkbookSelectedBlockMeta.block.type === "text" && (
+                        <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                          Body
+                          <textarea
+                            value={fullWorkbookSelectedBlockMeta.block.text ?? ""}
+                            onChange={(event) =>
+                              handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, {
+                                text: event.target.value,
+                              })
+                            }
+                            rows={8}
+                            style={{ fontSize: 11, fontFamily: "Consolas, monospace" }}
+                          />
+                        </label>
+                      )}
+                      {fullWorkbookSelectedBlockMeta.block.type === "formula" && (
+                        <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                          Formula
+                          <textarea
+                            value={fullWorkbookSelectedBlockMeta.block.formula ?? ""}
+                            onChange={(event) =>
+                              handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, {
+                                formula: event.target.value,
+                              })
+                            }
+                            rows={6}
+                            style={{ fontSize: 11, fontFamily: "Consolas, monospace" }}
+                          />
+                        </label>
+                      )}
+                      {fullWorkbookSelectedBlockMeta.block.type === "assert" && (
+                        <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                          Expected
+                          <textarea
+                            value={fullWorkbookSelectedBlockMeta.block.assert?.expected ?? ""}
+                            onChange={(event) =>
+                              handleUpdateWorkbookBlock(fullWorkbookSelectedBlockMeta.stageId, fullWorkbookSelectedBlockMeta.block.id, {
+                                assert: {
+                                  ...(fullWorkbookSelectedBlockMeta.block.assert ?? { expected: "", status: "pending" }),
+                                  expected: event.target.value,
+                                },
+                              })
+                            }
+                            rows={4}
+                            style={{ fontSize: 11, fontFamily: "Consolas, monospace" }}
+                          />
+                        </label>
+                      )}
+                      {fullWorkbookSelectedBlockMeta.block.type === "visualize" && (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 11, opacity: 0.82 }}>
+                            Snapshot A: {resolveVisualizeSnapshot(fullWorkbookSelectedBlockMeta.block.visualize, "A") ? "available" : "missing"}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleCaptureVisualize(
+                                  fullWorkbookSelectedBlockMeta.stageId,
+                                  fullWorkbookSelectedBlockMeta.block.id,
+                                  "A"
+                                )
+                              }
+                              style={{ fontSize: 11 }}
+                            >
+                              Capture snapshot
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!resolveVisualizeSnapshot(fullWorkbookSelectedBlockMeta.block.visualize, "A")}
+                              onClick={() => {
+                                const snapshot = resolveVisualizeSnapshot(fullWorkbookSelectedBlockMeta.block.visualize, "A");
+                                if (!snapshot) return;
+                                handleApplyVisualize(snapshot, fullWorkbookSelectedBlockMeta.block.id, "A");
+                                setGeometryViewerSourceLabel(fullWorkbookSourceBreadcrumb);
+                              }}
+                              style={{ fontSize: 11 }}
+                            >
+                              Show in main viewer
+                            </button>
+                            <button type="button" onClick={() => handleGeometryFit("scene")} style={{ fontSize: 11 }}>
+                              Fit scene
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, opacity: 0.75 }}>No block selected.</div>
+                  )}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid #dbe4f0",
+                  borderRadius: 10,
+                  background: "#fff",
+                  minHeight: 0,
+                  overflow: "hidden",
+                  display: "grid",
+                  gridTemplateRows: "auto minmax(240px, 1fr) auto",
+                }}
+              >
+                <div style={{ borderBottom: "1px solid #e5e7eb", padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
+                  Live preview
+                </div>
+                <div style={{ minHeight: 0 }}>
+                  <GeometryViewer
+                    scene={geometryScene}
+                    lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
+                    segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
+                    edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
+                    meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
+                    wireframe={geometryWireframe}
+                    showPlanes={geometryShowPlanes}
+                    planeGridSettings={planeGridSettings}
+                    materialOpacity={geometryOpacity}
+                    selectedMeshKey={geometrySelectedObjectId}
+                    cameraResetToken={geometryResetToken}
+                    cameraFitCommand={geometryCameraFitCommand}
+                    viewPreset={geometryViewPreset}
+                    pointLabelScale={geometryDemoLabelScale}
+                    showPointLabels={geometryDemoShowPointLabels}
+                    cameraOverride={
+                      geometryMode === "scratch" || geometryMode === "workbook" ? geometryProblemCameraOverride : null
+                    }
+                    overlayPolylines={
+                      geometryMode === "scratch" || geometryMode === "workbook"
+                        ? geometryConstructionState?.scene?.polylines ?? null
+                        : null
+                    }
+                    highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
+                    highlightedPointIds={
+                      geometryMode === "demo"
+                        ? geometryHighlightedPointIds
+                        : null
+                    }
+                    claimPointIds={
+                      geometryMode === "demo"
+                        ? geometryClaimPointIds
+                        : null
+                    }
+                    pickEnabled={false}
+                  />
+                </div>
+                <div style={{ borderTop: "1px solid #e5e7eb", padding: "8px 10px", display: "grid", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGeometryViewerSourceLabel(fullWorkbookSourceBreadcrumb);
+                      handleGeometryFit("scene");
+                      setGeometryWorkbookUiMode("compact");
+                    }}
+                    style={{ fontSize: 11 }}
+                  >
+                    Show in main viewer
+                  </button>
+                  <button type="button" onClick={() => handleGeometryFit("scene")} style={{ fontSize: 11 }}>
+                    Fit scene
+                  </button>
+                  <div style={{ fontSize: 10, opacity: 0.75 }}>
+                    Source: {fullWorkbookSourceBreadcrumb}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          ) : (
           <div
             style={{
               flex: 1,
@@ -30008,8 +30949,110 @@ case "mobius":
                       </div>
                     )}
                   </>
+                ) : geometryMode === "workbook" && geometryWorkbookUiMode === "compact" ? (
+                  <div
+                    style={{
+                      border: "1px solid #dbe4f0",
+                      borderRadius: 10,
+                      background: "#f8fbff",
+                      padding: "8px 10px",
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700 }}>
+                      Workbook: {geometryMode === "demo" ? `Olympiad: ${activePlanimetryPresetMeta.label}` : activeWorkbook?.title ?? "Scratch workbook"}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.82 }}>
+                      Current block: {compactCurrentBlockTitle}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length > 0
+                        ? geometryPlanimetryStages.map((stage, idx) => (
+                            <button
+                              key={`compact-planimetry-stage-${stage.id}`}
+                              type="button"
+                              onClick={() => setGeometryPlanimetryStageIndex(idx)}
+                              style={pill(geometryPlanimetryStageIndex === idx)}
+                            >
+                              {idx + 1}
+                            </button>
+                          ))
+                        : WORKBOOK_STAGE_ORDER.map((stage, idx) => (
+                            <button
+                              key={`compact-workbook-stage-${stage.id}`}
+                              type="button"
+                              onClick={() => setActiveStageId(stage.id)}
+                              style={pill(activeStageId === stage.id)}
+                            >
+                              {idx + 1}
+                            </button>
+                          ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button type="button" onClick={handleCompactRunStage} style={{ fontSize: 11 }}>
+                        Run stage
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCompactRunNextFailed}
+                        disabled={!compactHasNextFailed}
+                        style={{ fontSize: 11 }}
+                      >
+                        Next failed
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (geometryMode !== "workbook") {
+                            openGeometryWorkbookMode(geometryScratchSceneSeed);
+                          }
+                          setGeometryWorkbookUiMode("full");
+                        }}
+                        style={{ fontSize: 11 }}
+                      >
+                        Open full workbook
+                      </button>
+                    </div>
+                  </div>
                 ) : geometryMode === "demo" ? (
                   <>
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 8,
+                        background: "#f8fbff",
+                        padding: "8px 10px",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>
+                        Workbook: Olympiad - Incircle reflection theorem
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={() => setGeometryDemoTab("task")} style={{ fontSize: 11 }}>
+                          Problem
+                        </button>
+                        <button type="button" onClick={() => setGeometryDemoTab("objects")} style={{ fontSize: 11 }}>
+                          Stages
+                        </button>
+                        <button type="button" onClick={() => setGeometryDemoTab("solve")} style={{ fontSize: 11 }}>
+                          Run stage
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleOpenDemoWorkbook();
+                            setGeometryWorkbookUiMode("full");
+                          }}
+                          style={{ fontSize: 11 }}
+                        >
+                          Open full workbook
+                        </button>
+                      </div>
+                    </div>
                     {geometryDemoTab === "task" && (
                       <div style={{ display: "grid", gap: 8 }}>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>
@@ -30082,6 +31125,15 @@ case "mobius":
                             }}
                           >
                             Open in workbook
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleOpenDemoWorkbook();
+                              setGeometryWorkbookUiMode("full");
+                            }}
+                          >
+                            Open full workbook
                           </button>
                         </div>
                       </div>
@@ -30529,6 +31581,18 @@ case "mobius":
                         </strong>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (geometryMode !== "workbook") {
+                              openGeometryWorkbookMode(geometryScratchSceneSeed);
+                            }
+                            setGeometryWorkbookUiMode("full");
+                          }}
+                          style={{ fontSize: 11 }}
+                        >
+                          Open full workbook
+                        </button>
                         {geometryMode === "workbook" ? (
                           <button type="button" onClick={() => setGeometryMode("scratch")} style={{ fontSize: 11 }}>
                             Use scratch
@@ -30904,7 +31968,10 @@ case "mobius":
                   </button>
                   <button
                     type="button"
-                    onClick={() => setGeometryResetToken((t) => t + 1)}
+                    onClick={() => {
+                      setWorkspaceCameraPreset("reset_camera");
+                      setGeometryResetToken((t) => t + 1);
+                    }}
                     style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
                   >
                     Reset camera
@@ -31006,6 +32073,7 @@ case "mobius":
               </div>
             </div>
           </div>
+          )
         ) : (
           <>
             {/* LEFT (2D modes) */}

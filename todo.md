@@ -41,3 +41,13 @@ Use one of these:
 ### Free immediate workaround (recommended for now)
 1. Deploy from a branch that does not include LFS `data/` assets.
 2. Prepare and push a `pages-deploy` branch, then switch Cloudflare Production branch to it.
+
+Block-focused editing model
+Show collapsed block list (single expanded/selected block).
+Editor center shows only selected block details.
+Workbook structure UX
+Add explicit Workbook > Page > Block outline in left column.
+Start with one page (Theorem scene) and wire stage/block navigation cleanly.
+Viewer handoff clarity
+Add Show in main viewer / Fit scene on visualize blocks.
+Display source breadcrumb in viewer status (Workbook / Title / Block).
