@@ -22199,6 +22199,21 @@ case "mobius":
     !cleanScreenshotSurfaceActive &&
     !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
+  const activeWorkbookStage = useMemo(
+    () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
+    [activeWorkbook, activeStageId]
+  );
+  const activeWorkbookStageHasComputeBlocks = !!activeWorkbookStage?.blocks.some((block) => block.type === "compute");
+  const workbookHasStaleBlocks = useMemo(
+    () => Object.values(computeStatusById).some((status) => status === "stale"),
+    [computeStatusById]
+  );
+  const showSurfaceWorkbookQuickStrip =
+    mode === "surfaces" &&
+    rightPanelTab === "workbook" &&
+    !isPresentDisplayMode &&
+    !cleanScreenshotSurfaceActive &&
+    !isSurfacePreviewMode;
   const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
@@ -24589,100 +24604,6 @@ case "mobius":
                   })}
                 </div>
               )}
-              <div
-                style={{
-                  ...styles.group,
-                  ...styles.groupWide,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  border: "1px solid #bae6fd",
-                  borderRadius: 10,
-                  padding: "6px 8px",
-                  background: "linear-gradient(180deg, #f0f9ff 0%, #f8fbff 100%)",
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#0c4a6e", marginRight: 2 }}>View</span>
-                <button
-                  type="button"
-                  onClick={() => handleGeometryApplyViewPreset("3d")}
-                  aria-pressed={geometryViewPreset === "3d"}
-                  style={{
-                    ...pill(geometryViewPreset === "3d"),
-                    fontSize: 11,
-                    border: "1px solid " + (geometryViewPreset === "3d" ? "#0369a1" : "#99a1ac"),
-                    background: geometryViewPreset === "3d" ? "linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%)" : "#f8fafc",
-                    color: geometryViewPreset === "3d" ? "#0c4a6e" : "#334155",
-                    boxShadow: geometryViewPreset === "3d" ? "0 4px 10px rgba(2, 132, 199, 0.24)" : "none",
-                  }}
-                >
-                  3D
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGeometryApplyViewPreset("planar")}
-                  aria-pressed={geometryViewPreset === "planar"}
-                  style={{
-                    ...pill(geometryViewPreset === "planar"),
-                    fontSize: 11,
-                    border: "1px solid " + (geometryViewPreset === "planar" ? "#0369a1" : "#99a1ac"),
-                    background:
-                      geometryViewPreset === "planar" ? "linear-gradient(180deg, #bae6fd 0%, #7dd3fc 100%)" : "#f8fafc",
-                    color: geometryViewPreset === "planar" ? "#0c4a6e" : "#334155",
-                    boxShadow: geometryViewPreset === "planar" ? "0 4px 10px rgba(2, 132, 199, 0.24)" : "none",
-                  }}
-                >
-                  Planar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGeometryFit("scene")}
-                  style={{
-                    ...pill(false),
-                    fontSize: 11,
-                    border: "1px solid #99a1ac",
-                    background: "#f8fafc",
-                    color: "#334155",
-                  }}
-                >
-                  Fit scene
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGeometryFit("stage")}
-                  style={{
-                    ...pill(false),
-                    fontSize: 11,
-                    border: "1px solid #99a1ac",
-                    background: "#f8fafc",
-                    color: "#334155",
-                  }}
-                >
-                  Fit stage
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGeometryFit("claim")}
-                  style={{
-                    ...pill(false),
-                    fontSize: 11,
-                    border: "1px solid #99a1ac",
-                    background: "#f8fafc",
-                    color: "#334155",
-                  }}
-                >
-                  Fit claim
-                </button>
-                <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#334155" }}>
-                  <input
-                    type="checkbox"
-                    checked={geometryIncludeHelpersInFit}
-                    onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
-                  />
-                  Include helper objects in fit
-                </label>
-              </div>
             </>
           ) : (
             <div style={{ ...styles.group, ...styles.groupWide }}>
@@ -24795,6 +24716,72 @@ case "mobius":
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {showSurfaceWorkbookQuickStrip && (
+        <div style={{ padding: "0 0 10px" }}>
+          <div
+            style={{
+              width: "100%",
+              border: "1px solid #dbe4f0",
+              borderRadius: 10,
+              padding: "6px 10px",
+              background: "linear-gradient(180deg, #ffffff, #f8fbff)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>Workbook</span>
+              <span style={{ fontSize: 11, color: "#64748b" }}>
+                {workbookStatus === "ok" ? "up to date" : workbookStatus === "failed" ? "failed" : "stale"}
+              </span>
+            </div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={handleSaveWorkbook} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, padding: "4px 10px" }}>
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRunComputeStage(activeStageId);
+                }}
+                disabled={IS_REPLAY_MODE || activeStageId !== "compute" || !activeWorkbookStageHasComputeBlocks}
+                style={{ fontSize: 11, padding: "4px 10px" }}
+              >
+                Run stage
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void handleRunAllStale();
+                }}
+                disabled={IS_REPLAY_MODE || !workbookHasStaleBlocks}
+                style={{ fontSize: 11, padding: "4px 10px" }}
+              >
+                Run all stale
+              </button>
+              <button
+                type="button"
+                onClick={handleRestoreWorkbookAutosave}
+                disabled={IS_REPLAY_MODE || !workbookAutosaveAt}
+                style={{ fontSize: 11, padding: "4px 10px" }}
+              >
+                Restore autosave
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSnapshotWorkbookSession()}
+                disabled={IS_REPLAY_MODE}
+                style={{ fontSize: 11, padding: "4px 10px" }}
+              >
+                Snapshot
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -25485,7 +25472,7 @@ case "mobius":
                           margin: compareLayoutEnabled ? "0 0 6px 0" : 0,
                           padding: "8px 10px",
                           borderBottom: "1px solid #e3e8f0",
-                          background: "linear-gradient(180deg, rgba(255,255,255,0.95), rgba(248,250,252,0.95))",
+                          background: "linear-gradient(180deg, rgba(249,251,253,0.98), rgba(244,247,251,0.98))",
                         }}
                       >
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -25501,25 +25488,25 @@ case "mobius":
                               }}
                               disabled={!canOpenSurfaceFormulaEditor}
                               style={{
-                                borderRadius: 999,
+                                borderRadius: 8,
                                 border:
                                   "1px solid " +
-                                  (surfaceFormulaEditorOpen ? "#0a66c2" : canOpenSurfaceFormulaEditor ? "#d1d5db" : "#d5d9e0"),
+                                  (surfaceFormulaEditorOpen ? "#2563eb" : canOpenSurfaceFormulaEditor ? "#c7d2e2" : "#dbe2ec"),
                                 background:
                                   surfaceFormulaEditorOpen
-                                    ? "#e6f0ff"
+                                    ? "#eff6ff"
                                     : canOpenSurfaceFormulaEditor
-                                      ? "#fff"
-                                      : "#f8fafc",
+                                      ? "#f8fafc"
+                                      : "#f1f5f9",
                                 color:
                                   surfaceFormulaEditorOpen
-                                    ? "#0a66c2"
+                                    ? "#1d4ed8"
                                     : canOpenSurfaceFormulaEditor
                                       ? "#334155"
                                       : "#94a3b8",
                                 fontWeight: surfaceFormulaEditorOpen ? 700 : 600,
                                 fontSize: 11,
-                                padding: "4px 10px",
+                                padding: "5px 10px",
                                 cursor: canOpenSurfaceFormulaEditor ? "pointer" : "not-allowed",
                               }}
                               aria-pressed={surfaceFormulaEditorOpen}
@@ -25537,13 +25524,13 @@ case "mobius":
                             onClick={handleDatasetToGeometryScene}
                             disabled={!unifiedCanConvertToMeshObject}
                             style={{
-                              borderRadius: 999,
+                              borderRadius: 8,
                               border: "1px solid " + (unifiedCanConvertToMeshObject ? "#0f766e" : "#d1d5db"),
-                              background: unifiedCanConvertToMeshObject ? "#e7f8f3" : "#fff",
+                              background: unifiedCanConvertToMeshObject ? "#ecfdf5" : "#f8fafc",
                               color: unifiedCanConvertToMeshObject ? "#0f766e" : "#94a3b8",
-                              fontWeight: 700,
+                              fontWeight: 650,
                               fontSize: 11,
-                              padding: "4px 10px",
+                              padding: "5px 10px",
                               cursor: unifiedCanConvertToMeshObject ? "pointer" : "not-allowed",
                             }}
                             title={
@@ -25559,13 +25546,13 @@ case "mobius":
                             onClick={handleConvertToMesh}
                             disabled={!surfaceMeshExportable}
                             style={{
-                              borderRadius: 999,
+                              borderRadius: 8,
                               border: "1px solid " + (surfaceMeshExportable ? "#0a66c2" : "#d1d5db"),
-                              background: surfaceMeshExportable ? "#e6f0ff" : "#fff",
-                              color: surfaceMeshExportable ? "#0a66c2" : "#94a3b8",
-                              fontWeight: 700,
+                              background: surfaceMeshExportable ? "#eff6ff" : "#f8fafc",
+                              color: surfaceMeshExportable ? "#1d4ed8" : "#94a3b8",
+                              fontWeight: 650,
                               fontSize: 11,
-                              padding: "4px 10px",
+                              padding: "5px 10px",
                               cursor: surfaceMeshExportable ? "pointer" : "not-allowed",
                             }}
                             title={
@@ -25580,13 +25567,13 @@ case "mobius":
                             type="button"
                             onClick={() => setShowInViewportOverlayControls((v) => !v)}
                             style={{
-                              borderRadius: 999,
-                              border: "1px solid " + (showInViewportOverlayControls ? "#0a66c2" : "#d1d5db"),
-                              background: showInViewportOverlayControls ? "#e6f0ff" : "#fff",
-                              color: showInViewportOverlayControls ? "#0a66c2" : "#334155",
+                              borderRadius: 8,
+                              border: "1px solid " + (showInViewportOverlayControls ? "#2563eb" : "#c7d2e2"),
+                              background: showInViewportOverlayControls ? "#eff6ff" : "#f8fafc",
+                              color: showInViewportOverlayControls ? "#1d4ed8" : "#334155",
                               fontWeight: showInViewportOverlayControls ? 700 : 600,
                               fontSize: 11,
-                              padding: "4px 10px",
+                              padding: "5px 10px",
                               cursor: "pointer",
                             }}
                             aria-pressed={showInViewportOverlayControls}
@@ -25595,13 +25582,13 @@ case "mobius":
                           </button>
                           <span
                             style={{
-                              borderRadius: 999,
-                              border: "1px solid #d1d5db",
-                              background: "#fff",
+                              borderRadius: 8,
+                              border: "1px solid #c7d2e2",
+                              background: "#f8fafc",
                               color: "#64748b",
                               fontWeight: 600,
                               fontSize: 11,
-                              padding: "4px 10px",
+                              padding: "5px 10px",
                             }}
                           >
                             {showChartGrid ? "Grid: surface chart" : showPlanes ? "Grid: planes" : "Grid: none"}
@@ -25620,13 +25607,13 @@ case "mobius":
                                 }}
                                 aria-pressed={active}
                                 style={{
-                                  borderRadius: 999,
-                                  border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
-                                  background: active ? "#e6f0ff" : "#fff",
-                                  color: active ? "#0a66c2" : "#334155",
+                                  borderRadius: 8,
+                                  border: "1px solid " + (active ? "#2563eb" : "#c7d2e2"),
+                                  background: active ? "#eff6ff" : "#f8fafc",
+                                  color: active ? "#1d4ed8" : "#334155",
                                   fontWeight: active ? 700 : 600,
                                   fontSize: 11,
-                                  padding: "4px 10px",
+                                  padding: "5px 10px",
                                   cursor: "pointer",
                                 }}
                               >
@@ -30862,6 +30849,40 @@ case "mobius":
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto", flexWrap: "wrap" }}>
                   <button
                     type="button"
+                    onClick={() => handleGeometryApplyViewPreset("3d")}
+                    aria-pressed={geometryViewPreset === "3d"}
+                    style={{
+                      whiteSpace: "nowrap",
+                      fontSize: 11,
+                      lineHeight: 1.1,
+                      padding: "4px 10px",
+                      border: "1px solid " + (geometryViewPreset === "3d" ? "#0369a1" : "#d1d5db"),
+                      background: geometryViewPreset === "3d" ? "#e0f2fe" : "#fff",
+                      color: geometryViewPreset === "3d" ? "#0c4a6e" : "#334155",
+                      fontWeight: geometryViewPreset === "3d" ? 700 : 600,
+                    }}
+                  >
+                    3D
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGeometryApplyViewPreset("planar")}
+                    aria-pressed={geometryViewPreset === "planar"}
+                    style={{
+                      whiteSpace: "nowrap",
+                      fontSize: 11,
+                      lineHeight: 1.1,
+                      padding: "4px 10px",
+                      border: "1px solid " + (geometryViewPreset === "planar" ? "#0369a1" : "#d1d5db"),
+                      background: geometryViewPreset === "planar" ? "#e0f2fe" : "#fff",
+                      color: geometryViewPreset === "planar" ? "#0c4a6e" : "#334155",
+                      fontWeight: geometryViewPreset === "planar" ? 700 : 600,
+                    }}
+                  >
+                    Planar
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleGeometryFit("scene")}
                     style={{ whiteSpace: "nowrap", fontSize: 11, lineHeight: 1.1, padding: "4px 10px" }}
                   >
@@ -30888,6 +30909,14 @@ case "mobius":
                   >
                     Reset camera
                   </button>
+                  <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#334155" }}>
+                    <input
+                      type="checkbox"
+                      checked={geometryIncludeHelpersInFit}
+                      onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
+                    />
+                    Include helper objects in fit
+                  </label>
                 </div>
               </div>
               )}

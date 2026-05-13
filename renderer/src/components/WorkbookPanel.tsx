@@ -657,7 +657,13 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     if (!pendingScrollId) return;
     const runScroll = () => {
       const el = document.getElementById(`wb-block-${pendingScrollId}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (!el) return;
+      const coarsePointer =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(pointer: coarse)").matches;
+      el.scrollIntoView({ behavior: coarsePointer ? "auto" : "smooth", block: "start" });
+      setPendingScrollId(null);
     };
     const raf = requestAnimationFrame(() => requestAnimationFrame(runScroll));
     return () => cancelAnimationFrame(raf);
