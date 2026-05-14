@@ -11367,6 +11367,8 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [surfacesLayoutVariant, setSurfacesLayoutVariant] = useState<"layout1" | "layout2" | "layout3" | "layout4">("layout1");
   const [headerSurfaceFamilyMoreOpen, setHeaderSurfaceFamilyMoreOpen] = useState(false);
   const [surfacesPanelState, setSurfacesPanelState] = useState<"browse" | "work">("browse");
+  const [surfacesWorkGalleryOpen, setSurfacesWorkGalleryOpen] = useState(false);
+  const [surfacesTopActionsMoreOpen, setSurfacesTopActionsMoreOpen] = useState(false);
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
   const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "inspect" | "view" | "analysis">("scene");
@@ -23456,6 +23458,40 @@ case "mobius":
   const headerIsParamConstructed = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "constructed";
   const headerShowExtendedFamilyButtons =
     headerSurfaceFamilyMoreOpen || (headerIsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
+  const surfacesWorkspaceTabs = isPresentDisplayMode
+    ? (["scene"] as const)
+    : (["scene", "object", "inspect", "view", "analysis"] as const);
+  const surfacesWorkTabsEnabled = surfacesLayoutVariant !== "layout2";
+  const surfacesCompareToggleEnabled =
+    displayMode !== "present" &&
+    datasetKind === "surface" &&
+    surfaceViewerKind !== "weierstrass" &&
+    surfaceViewerKind !== "mesh" &&
+    surfaceViewerKind !== "complex";
+  const surfacesQuickEditLabel =
+    surfaceViewerKind === "graph"
+      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
+      : surfaceViewerKind === "implicit"
+        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
+        : surfaceViewerKind === "param"
+          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
+          : null;
+  const surfacesQuickEditEnabled =
+    surfaceViewerKind === "graph"
+      ? canEditGraphAsCustom
+      : surfaceViewerKind === "implicit"
+        ? canEditImplicitAsCustom
+        : surfaceViewerKind === "param"
+          ? canEditParamAsCustom
+          : false;
+  const handleSurfacesQuickEdit =
+    surfaceViewerKind === "graph"
+      ? handleEditGraphAsCustom
+      : surfaceViewerKind === "implicit"
+        ? handleEditImplicitAsCustom
+        : surfaceViewerKind === "param"
+          ? handleEditParamAsCustom
+          : undefined;
   const topNavBarStyle: React.CSSProperties = {
     border: "1px solid #dbe4f0",
     borderRadius: 10,
@@ -23521,6 +23557,65 @@ case "mobius":
     fontSize: 10,
     whiteSpace: "nowrap",
     boxShadow: active ? "0 3px 10px rgba(10,102,194,0.22)" : "none",
+  });
+  const surfacesModeStripWrapStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    padding: "3px 4px",
+    border: "1px solid #cfd9e8",
+    borderRadius: 12,
+    background: "linear-gradient(180deg, #f8fafd 0%, #eef2f8 100%)",
+  };
+  const surfacesModeGroupStyle = (tone: "panel" | "actions"): React.CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    flexWrap: "wrap",
+    minWidth: 0,
+    padding: "4px 8px",
+    borderRadius: 12,
+    border: tone === "panel" ? "1px solid #efc46f" : "1px solid #9fb9eb",
+    background:
+      tone === "panel"
+        ? "linear-gradient(180deg, #fffcf2 0%, #fff2cf 100%)"
+        : "linear-gradient(180deg, #f5f9ff 0%, #e9f0ff 100%)",
+  });
+  const surfacesModeLabelStyle = (tone: "panel" | "actions"): React.CSSProperties => ({
+    fontSize: 10,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: tone === "panel" ? "#7a4b00" : "#1e3a8a",
+    marginRight: 2,
+  });
+  const surfacesModeButtonStyle = (
+    active: boolean,
+    tone: "panel" | "actions",
+    disabled = false
+  ): React.CSSProperties => ({
+    padding: "3px 10px",
+    borderRadius: 999,
+    border: `1px solid ${
+      active
+        ? tone === "panel"
+          ? "#b7791f"
+          : "#2563eb"
+        : "#9aa7bc"
+    }`,
+    background: active
+      ? tone === "panel"
+        ? "linear-gradient(180deg, #ffe9a8 0%, #ffd36d 100%)"
+        : "linear-gradient(180deg, #e0ecff 0%, #c8dcff 100%)"
+      : "#f8fafc",
+    color: active ? (tone === "panel" ? "#6b3f00" : "#123071") : "#1f2937",
+    fontWeight: active ? 800 : 600,
+    fontSize: 10,
+    whiteSpace: "nowrap",
+    boxShadow: active ? "0 2px 6px rgba(15, 23, 42, 0.18)" : "none",
+    opacity: disabled ? 0.5 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
   });
   const topNavBrandStyle: React.CSSProperties = {
     ...styles.h1,
@@ -24577,6 +24672,154 @@ case "mobius":
                   </button>
                 </div>
               )}
+              {mode === "surfaces" && (
+                <div style={topNavContextBarStyle}>
+                  <div style={surfacesModeStripWrapStyle}>
+                    <div style={surfacesModeGroupStyle("panel")}>
+                    <span style={surfacesModeLabelStyle("panel")}>
+                      Panel
+                    </span>
+                    {surfacesWorkspaceTabs.map((tab) => {
+                      const active = surfacesPanelState === "work" && surfacesLeftTab === tab;
+                      const disabled = !surfacesWorkTabsEnabled && tab !== "scene";
+                      return (
+                        <button
+                          key={`surface-nav-tab-${tab}`}
+                          type="button"
+                          onClick={() => {
+                            if (disabled) return;
+                            setSurfacesPanelState("work");
+                            setSurfacesLeftTab(tab);
+                          }}
+                          disabled={disabled}
+                          aria-pressed={active}
+                          style={{ ...surfacesModeButtonStyle(active, "panel", disabled), textTransform: "capitalize" }}
+                        >
+                          {tab}
+                        </button>
+                      );
+                    })}
+                    </div>
+                    <div style={surfacesModeGroupStyle("actions")}>
+                    <span style={surfacesModeLabelStyle("actions")}>
+                      Actions
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const noPresetGalleryInCurrentContext =
+                          datasetKind === "volume" || surfaceViewerKind === "mesh" || surfaceViewerKind === "complex";
+                        if (noPresetGalleryInCurrentContext) {
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("graph");
+                          setSurfacesPanelState("browse");
+                          setSurfacesWorkGalleryOpen(false);
+                          return;
+                        }
+                        if (surfacesPanelState !== "work") {
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          setSurfacesWorkGalleryOpen(true);
+                          return;
+                        }
+                        if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
+                        setSurfacesWorkGalleryOpen((v) => !v);
+                      }}
+                      aria-pressed={surfacesPanelState === "work" && surfacesWorkGalleryOpen}
+                      style={surfacesModeButtonStyle(surfacesPanelState === "work" && surfacesWorkGalleryOpen, "actions")}
+                    >
+                      Gallery
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatasetKind("surface");
+                        handleChangeViewerKind("graph");
+                        handlePickEqSurface("graph_mexican");
+                        setSurfacesPanelState("work");
+                        setSurfacesLeftTab("scene");
+                      }}
+                      style={surfacesModeButtonStyle(false, "actions")}
+                    >
+                      New
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDatasetKind("surface");
+                        handleChangeViewerKind("param");
+                        handlePickParamSurface("torus");
+                        setSurfacesPanelState("work");
+                        setSurfacesLeftTab("scene");
+                      }}
+                      style={surfacesModeButtonStyle(false, "actions")}
+                    >
+                      Demo
+                    </button>
+                    {surfacesQuickEditLabel && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!handleSurfacesQuickEdit || !surfacesQuickEditEnabled) return;
+                          handleSurfacesQuickEdit();
+                        }}
+                        disabled={!surfacesQuickEditEnabled}
+                        style={surfacesModeButtonStyle(false, "actions", !surfacesQuickEditEnabled)}
+                      >
+                        {surfacesQuickEditLabel}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!surfacesCompareToggleEnabled) return;
+                        setCompareEnabled((v) => !v);
+                        if (rightPanelTab !== "workbook") setCameraSync(null);
+                      }}
+                      disabled={!surfacesCompareToggleEnabled}
+                      aria-pressed={surfacesCompareToggleEnabled && compareEnabled}
+                      style={surfacesModeButtonStyle(surfacesCompareToggleEnabled && compareEnabled, "actions", !surfacesCompareToggleEnabled)}
+                    >
+                      Compare
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSurfacesTopActionsMoreOpen((v) => !v)}
+                      style={surfacesModeButtonStyle(surfacesTopActionsMoreOpen, "actions")}
+                    >
+                      {surfacesTopActionsMoreOpen ? "Less" : "More"}
+                    </button>
+                    {surfacesTopActionsMoreOpen && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDatasetKind("surface");
+                            handleChangeViewerKind("complex");
+                            setSurfacesPanelState("work");
+                            setSurfacesLeftTab("scene");
+                          }}
+                          style={surfacesModeButtonStyle(datasetKind === "surface" && surfaceViewerKind === "complex", "actions")}
+                        >
+                          Complex
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDatasetKind("volume");
+                            setSurfacesPanelState("work");
+                            setSurfacesLeftTab("scene");
+                          }}
+                          style={surfacesModeButtonStyle(datasetKind === "volume", "actions")}
+                        >
+                          Volume
+                        </button>
+                      </>
+                    )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={topNavContextLabelStyle}>
                 {headerContextLabel}
               </div>
@@ -24645,33 +24888,10 @@ case "mobius":
                   galleryDemoActive={surfacesCameraTourStatus === "playing"}
                   cardViewMode={galleryCardViewMode}
                   onChangeCardViewMode={setGalleryCardViewMode}
-                  quickEditCustomLabel={
-                    surfaceViewerKind === "graph"
-                      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
-                      : surfaceViewerKind === "implicit"
-                        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
-                        : surfaceViewerKind === "param"
-                          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
-                          : null
-                  }
-                  quickEditCustomEnabled={
-                    surfaceViewerKind === "graph"
-                      ? canEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? canEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? canEditParamAsCustom
-                          : false
-                  }
-                  onQuickEditCustom={
-                    surfaceViewerKind === "graph"
-                      ? handleEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? handleEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? handleEditParamAsCustom
-                          : undefined
-                  }
+                  quickEditCustomLabel={surfacesQuickEditLabel}
+                  quickEditCustomEnabled={surfacesQuickEditEnabled}
+                  onQuickEditCustom={handleSurfacesQuickEdit}
+                  showWorkGallery={surfacesWorkGalleryOpen}
                 />
               </div>
               )}
@@ -25347,19 +25567,12 @@ case "mobius":
                     marginBottom: 8,
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "space-between",
+                    justifyContent: "flex-start",
                     gap: 8,
                     flexWrap: "wrap",
                   }}
                 >
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{surfacesWorkBreadcrumb}</div>
-                  <button
-                    type="button"
-                    onClick={returnToSurfacesBrowse}
-                    style={{ padding: "4px 10px", fontSize: 11 }}
-                  >
-                    Back to gallery
-                  </button>
                 </div>
               )}
               {surfacesLayoutUsesLeftBrowseWork && (
@@ -25418,56 +25631,12 @@ case "mobius":
                   galleryDemoActive={surfacesCameraTourStatus === "playing"}
                   cardViewMode={galleryCardViewMode}
                   onChangeCardViewMode={setGalleryCardViewMode}
-                  quickEditCustomLabel={
-                    surfaceViewerKind === "graph"
-                      ? (graphSurfaceId === "graph_custom" ? "Already custom" : "Edit custom z=f(x,y)")
-                      : surfaceViewerKind === "implicit"
-                        ? (implicitSurfaceId === "implicit_custom" ? "Already custom" : "Edit custom f(x,y,z)")
-                        : surfaceViewerKind === "param"
-                          ? (paramSurfaceId === "custom" ? "Already custom" : "Start as custom σ(u,v)")
-                          : null
-                  }
-                  quickEditCustomEnabled={
-                    surfaceViewerKind === "graph"
-                      ? canEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? canEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? canEditParamAsCustom
-                          : false
-                  }
-                  onQuickEditCustom={
-                    surfaceViewerKind === "graph"
-                      ? handleEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? handleEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? handleEditParamAsCustom
-                          : undefined
-                  }
+                  quickEditCustomLabel={surfacesQuickEditLabel}
+                  quickEditCustomEnabled={surfacesQuickEditEnabled}
+                  onQuickEditCustom={handleSurfacesQuickEdit}
+                  showWorkGallery={surfacesWorkGalleryOpen}
                 />
               )}
-              <div style={{ display: surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" ? "flex" : "none", gap: 6, marginBottom: 8 }}>
-                {(isPresentDisplayMode ? (["scene"] as const) : (["scene", "object", "inspect", "view", "analysis"] as const)).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setSurfacesLeftTab(tab)}
-                    style={{
-                      padding: "5px 10px",
-                      borderRadius: 999,
-                      border: "1px solid " + (surfacesLeftTab === tab ? "#0a66c2" : "#ddd"),
-                      background: surfacesLeftTab === tab ? "#e6f0ff" : "#fff",
-                      fontWeight: surfacesLeftTab === tab ? 700 : 500,
-                      fontSize: 12,
-                      cursor: "pointer",
-                      textTransform: "capitalize",
-                    }}
-                  >
-                    {tab}
-                  </button>
-                ))}
-              </div>
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
                 <div style={{ display: "flex", flexDirection: "column", minHeight: 0, height: "100%", flex: 1 }}>
                   <UnifiedObjectTreePanel
@@ -33105,6 +33274,7 @@ type SurfacesControlsProps = {
   quickEditCustomLabel?: string | null;
   quickEditCustomEnabled?: boolean;
   onQuickEditCustom?: () => void;
+  showWorkGallery: boolean;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -33153,6 +33323,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   quickEditCustomLabel = null,
   quickEditCustomEnabled = false,
   onQuickEditCustom = () => {},
+  showWorkGallery,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -33228,31 +33399,9 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     }
     onChangeViewerKind("weierstrass");
   };
-  const [showSurfaceGallery, setShowSurfaceGallery] = useState(false);
-  const autoOpenedWorkGalleryRef = useRef(false);
   const [showExtendedFamilies, setShowExtendedFamilies] = useState(false);
-  const [showActionMore, setShowActionMore] = useState(false);
   const [surfaceCardSortPreset, setSurfaceCardSortPreset] = useState<GallerySortPreset>("family");
-  useEffect(() => {
-    if (panelMode !== "work") {
-      autoOpenedWorkGalleryRef.current = false;
-      return;
-    }
-    if (autoOpenedWorkGalleryRef.current) return;
-    autoOpenedWorkGalleryRef.current = true;
-    if (datasetKind === "surface") {
-      setShowSurfaceGallery(true);
-    }
-  }, [datasetKind, panelMode, viewerKind]);
   const compactForPresent = displayMode === "present";
-  const compareUiEnabled = displayMode !== "present";
-  const compareActive = compareUiEnabled && compareEnabled;
-  const canToggleCompare =
-    compareUiEnabled &&
-    viewerKind !== "weierstrass" &&
-    viewerKind !== "mesh" &&
-    viewerKind !== "complex" &&
-    !isVolume;
   const chipPadding = compactForPresent ? "3px 8px" : "4px 10px";
   const showExtendedFamilyButtons =
     showExtendedFamilies || (isSurface && (viewerKind === "mesh" || viewerKind === "weierstrass"));
@@ -33383,18 +33532,6 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
     gap: 8,
     flexWrap: "wrap",
   };
-  const actionBarStyle: React.CSSProperties = {
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    background: "#ffffff",
-    padding: "4px 8px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 6,
-    flexWrap: "wrap",
-  };
-
   return (
     <div style={{ display: "grid", gap: compactForPresent ? 8 : 10 }}>
       {panelMode === "browse" && showBrowseContextBar && (
@@ -33522,72 +33659,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       </div>
       )}
 
-      {panelMode === "work" && (
-        <div style={actionBarStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0, flexWrap: "wrap" }}>
-            <span
-              style={{ fontSize: 10, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.08em" }}
-              title="Legacy reference: 1. Choose family 2. Choose subtype 3. Choose preset 4. Edit / create / compare"
-            >
-              Actions
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowSurfaceGallery((v) => !v)}
-              style={toolbarChipStyle(showSurfaceGallery, "tool")}
-              aria-expanded={showSurfaceGallery}
-            >
-              Gallery
-            </button>
-            <button type="button" onClick={() => openSurfaceGalleryCard("mexican_hat")} style={toolbarChipStyle(false, "tool")}>
-              New
-            </button>
-            <button type="button" onClick={() => openSurfaceGalleryCard("torus")} style={toolbarChipStyle(false, "tool")}>
-              Demo
-            </button>
-            {quickEditCustomLabel && (
-              <button
-                type="button"
-                onClick={onQuickEditCustom}
-                disabled={!quickEditCustomEnabled}
-                style={toolbarChipStyle(false, "tool", !quickEditCustomEnabled)}
-              >
-                {quickEditCustomLabel}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onToggleCompare}
-              disabled={!canToggleCompare}
-              style={toolbarChipStyle(compareActive, "tool", !canToggleCompare)}
-            >
-              Compare
-            </button>
-            <button type="button" onClick={() => setShowActionMore((v) => !v)} style={toolbarChipStyle(showActionMore, "aux")}>
-              {showActionMore ? "Less" : "More"}
-            </button>
-            {showActionMore && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("complex");
-                  }}
-                  style={toolbarChipStyle(isSurface && isComplex, "aux")}
-                >
-                  Complex
-                </button>
-                <button type="button" onClick={() => onChangeDatasetKind("volume")} style={toolbarChipStyle(isVolume, "aux")}>
-                  Volume
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {panelMode === "work" && showSurfaceGallery && (
+      {panelMode === "work" && showWorkGallery && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Surface gallery</div>
           {datasetKind === "surface" && (viewerKind === "mesh" || viewerKind === "complex") && (

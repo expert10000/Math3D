@@ -19,11 +19,16 @@ type OrientationFlipOverlay = {
 type PresentationCamera = {
   position: [number, number, number];
   target: [number, number, number];
+  zoom?: number;
 };
 
 type ConstructionGuide =
   | {
       kind: "klein";
+      stageIndex: number;
+    }
+  | {
+      kind: "mobius";
       stageIndex: number;
     }
   | null;
@@ -311,7 +316,7 @@ const KleinConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }
   const bendOpacity = clamp01(0.92 * bell(stage, 3.0, 0.95));
   const torusOpacity = clamp01(0.92 * bell(stage, 4.0, 0.95));
   const finalOpacity = clamp01(0.96 * remap01(stage, 4.25, 5.0));
-  const guideMaterialOpacity = 0.23;
+  const guideMaterialOpacity = 0.34;
   const finalKleinGeometry = useMemo(() => {
     const uSegments = 132;
     const vSegments = 76;
@@ -348,7 +353,7 @@ const KleinConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }
   }, []);
 
   return (
-    <group position={[lerp(-2.66, -2.42, tShift), 0.24, 0.42]} scale={0.58}>
+    <group position={[lerp(-2.34, -2.18, tShift), 0.36, 0.52]} scale={0.68}>
       {squareOpacity > 0.01 && (
         <group rotation={[0, -0.22, 0]}>
           <Line points={[[-0.95, 0.62, 0], [0.95, 0.62, 0]]} color="#dc2626" transparent opacity={squareOpacity} lineWidth={2.2} />
@@ -474,6 +479,102 @@ const KleinConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }
   );
 };
 
+const MobiusConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }) => {
+  const stage = Math.max(0, Math.min(6, stageIndex));
+  const mode = stage < 1.6 ? "rectangle" : stage < 2.7 ? "bend" : stage < 4.7 ? "twist" : "mobius";
+  const guideMaterialOpacity = 0.36;
+  const twistAmount = mode === "twist" ? lerp(0.48, 0.92, remap01(stage, 2.7, 4.7)) : 1;
+  const mobiusGeometry = useMemo(() => {
+    const uSegments = 132;
+    const vSegments = 30;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const radius = 0.82;
+    const halfWidth = 0.22;
+    const turn = 0.5 * twistAmount;
+    for (let iu = 0; iu <= uSegments; iu += 1) {
+      const u = (Math.PI * 2 * iu) / uSegments;
+      const cu = Math.cos(u);
+      const su = Math.sin(u);
+      for (let iv = 0; iv <= vSegments; iv += 1) {
+        const tv = iv / vSegments;
+        const v = lerp(-halfWidth, halfWidth, tv);
+        const hu = u * turn;
+        const c = Math.cos(hu);
+        const s = Math.sin(hu);
+        const x = (radius + v * c) * cu;
+        const y = (radius + v * c) * su;
+        const z = v * s;
+        positions.push(x, z, y);
+      }
+    }
+    const row = vSegments + 1;
+    for (let iu = 0; iu < uSegments; iu += 1) {
+      for (let iv = 0; iv < vSegments; iv += 1) {
+        const a = iu * row + iv;
+        const b = (iu + 1) * row + iv;
+        const c = (iu + 1) * row + iv + 1;
+        const d = iu * row + iv + 1;
+        indices.push(a, b, c, a, c, d);
+      }
+    }
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
+  }, [twistAmount]);
+
+  return (
+    <group position={[-1.86, 1.12, 0.56]} scale={0.48}>
+      {mode === "rectangle" && (
+        <group rotation={[0, -0.18, 0]}>
+          <mesh>
+            <planeGeometry args={[1.9, 1.18]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.66} metalness={0} transparent opacity={guideMaterialOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={[[-0.95, 0.59, 0], [-0.95, -0.59, 0]]} color="#dc2626" transparent opacity={0.96} lineWidth={2.3} />
+          <Line points={[[0.95, 0.59, 0], [0.95, -0.59, 0]]} color="#dc2626" transparent opacity={0.96} lineWidth={2.3} />
+          <Line points={[[-0.95, 0.59, 0], [0.95, 0.59, 0]]} color="#0ea5e9" transparent opacity={0.85} lineWidth={2.0} />
+          <Line points={[[-0.95, -0.59, 0], [0.95, -0.59, 0]]} color="#0ea5e9" transparent opacity={0.85} lineWidth={2.0} />
+        </group>
+      )}
+
+      {mode === "bend" && (
+        <group rotation={[0.06, -0.24, 0.16]} position={[0.06, 0.02, 0.04]}>
+          <mesh>
+            <torusGeometry args={[0.78, 0.2, 22, 90, Math.PI * 1.25]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.62} metalness={0} transparent opacity={guideMaterialOpacity} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={ringPoints(0.2, 0.57)} color="#dc2626" transparent opacity={0.96} lineWidth={2.2} />
+          <Line points={ringPoints(0.2, -0.57)} color="#dc2626" transparent opacity={0.96} lineWidth={2.2} />
+        </group>
+      )}
+
+      {(mode === "twist" || mode === "mobius") && (
+        <group position={[0.08, 0.02, 0.05]} rotation={[0.16, -0.3, -0.1]}>
+          <mesh>
+            <primitive object={mobiusGeometry} attach="geometry" />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.58} metalness={0} transparent opacity={guideMaterialOpacity + (mode === "mobius" ? 0.05 : 0)} side={THREE.DoubleSide} />
+          </mesh>
+          <Line
+            points={[
+              [0.46, 0.12, 0.12],
+              [0.2, -0.02, 0.22],
+              [-0.05, -0.18, 0.2],
+              [-0.28, -0.3, 0.1],
+            ]}
+            color="#dc2626"
+            transparent
+            opacity={0.92}
+            lineWidth={2.2}
+          />
+        </group>
+      )}
+    </group>
+  );
+};
+
 export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps> = ({
   realization,
   height = 380,
@@ -501,7 +602,8 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   const isStudioRealization = useMemo(
     () =>
       realization.id.includes("/realization/klein-immersed") ||
-      realization.id.includes("/realization/cylinder-smooth"),
+      realization.id.includes("/realization/cylinder-smooth") ||
+      realization.id.includes("/realization/mobius-smooth"),
     [realization.id]
   );
   const sceneBounds = useMemo(() => {
@@ -539,7 +641,12 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   const useOrthographic = cameraMode === "orthographic";
   const isPresentationSnapshot = isStudioRealization && useOrthographic && !!presentationCamera;
   const cameraConfig = useOrthographic
-    ? { position: cameraPosition as [number, number, number], zoom: isPresentationSnapshot ? 138 : 110, near: 0.1, far: 100 }
+    ? {
+        position: cameraPosition as [number, number, number],
+        zoom: presentationCamera?.zoom ?? (isPresentationSnapshot ? 138 : 110),
+        near: 0.1,
+        far: 100,
+      }
     : { position: cameraPosition as [number, number, number], fov: isStudioRealization ? 34 : 48 };
   const studioLineSoftenMix = isPresentationSnapshot ? 0.16 : 0.45;
   const studioLineOpacity = isPresentationSnapshot ? 0.9 : 0.62;
@@ -553,6 +660,9 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   const showKleinConstructionGuide =
     constructionGuide?.kind === "klein" &&
     realization.id.includes("/realization/klein-immersed");
+  const showMobiusConstructionGuide =
+    constructionGuide?.kind === "mobius" &&
+    realization.id.includes("/realization/mobius-smooth");
 
   const sceneContent = (
     <group>
@@ -567,6 +677,9 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
       ))}
       {showKleinConstructionGuide && (
         <KleinConstructionGuide stageIndex={constructionGuide?.stageIndex ?? 0} />
+      )}
+      {showMobiusConstructionGuide && (
+        <MobiusConstructionGuide stageIndex={constructionGuide?.stageIndex ?? 0} />
       )}
 
       {showSkeleton &&

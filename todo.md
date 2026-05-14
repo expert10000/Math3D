@@ -44,10 +44,3 @@ Use one of these:
 
 
 
-Surfaces nav UX parity (move bottom tabs/actions)
-Current issue: in Surfaces, key controls (`Scene/Object/Inspect/View/Analysis` and action chips like `Gallery/New/Demo/Compare`) are buried at the bottom of the left panel in browse/work layouts.
-Requested change: move these controls into the lower navbar area under the top mode/family bars (similar to Geometry navigation), so they are always visible and consistent.
-Acceptance:
-1. Surfaces navigation/action controls are visible in the lower navbar without scrolling.
-2. Layout variants (`L1/L2/L3/L4`) keep the same behavior and do not hide these controls.
-3. Existing shortcuts and selection state are preserved when switching modes/families.

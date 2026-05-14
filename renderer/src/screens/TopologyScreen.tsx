@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { uiStyles as styles } from "../uiStyles";
 import {
@@ -691,6 +691,15 @@ const KLEIN_STAGE_CAMERAS: Record<number, { position: [number, number, number]; 
   4: { position: [2.94, 2.2, 3.56], target: [0, 0.14, 0] },
   5: { position: [3.24, 2.48, 3.72], target: [0, 0.18, 0] },
 };
+const MOBIUS_STAGE_CAMERAS: Record<number, { position: [number, number, number]; target: [number, number, number]; zoom: number }> = {
+  1: { position: [2.66, 1.88, 3.74], target: [0, 0.02, 0], zoom: 122 },
+  2: { position: [2.82, 2.1, 3.48], target: [0.05, 0.04, 0], zoom: 120 },
+  3: { position: [2.94, 2.22, 3.38], target: [0.08, 0.04, 0], zoom: 118 },
+  4: { position: [3.12, 2.34, 3.3], target: [0.1, 0.02, 0], zoom: 116 },
+  5: { position: [3.04, 2.24, 3.28], target: [0.1, 0, 0], zoom: 116 },
+  6: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 118 },
+  7: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 118 },
+};
 
 const escapeXmlText = (value: string): string =>
   value
@@ -701,8 +710,50 @@ const escapeXmlText = (value: string): string =>
     .replaceAll("'", "&apos;");
 
 const buildStoryStageThumbnail = (storyKey: string, stageId: string, stageTitle: string): string | null => {
-  if (storyKey !== "klein") return null;
+  if (storyKey !== "klein" && storyKey !== "mobius") return null;
   const art = (() => {
+    if (storyKey === "mobius") {
+      if (stageId === "rectangle") {
+        return `<rect x="46" y="16" width="108" height="68" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="2" />
+<line x1="46" y1="16" x2="46" y2="84" stroke="#dc2626" stroke-width="3" />
+<line x1="154" y1="16" x2="154" y2="84" stroke="#dc2626" stroke-width="3" />
+<line x1="46" y1="16" x2="154" y2="16" stroke="#0ea5e9" stroke-width="2.5" />
+<line x1="46" y1="84" x2="154" y2="84" stroke="#0ea5e9" stroke-width="2.5" />`;
+      }
+      if (stageId === "pair") {
+        return `<rect x="48" y="18" width="104" height="64" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.8" />
+<line x1="48" y1="18" x2="48" y2="82" stroke="#dc2626" stroke-width="3.2" />
+<line x1="152" y1="18" x2="152" y2="82" stroke="#dc2626" stroke-width="3.2" />
+<path d="M58 50 C72 38,128 38,142 50" fill="none" stroke="#dc2626" stroke-width="2.1" stroke-dasharray="5 3" />
+<path d="M58 54 C72 66,128 66,142 54" fill="none" stroke="#dc2626" stroke-width="2.1" stroke-dasharray="5 3" />`;
+      }
+      if (stageId === "bend") {
+        return `<path d="M44 52 C52 22,148 22,156 52 C148 80,52 80,44 52 Z" fill="#e0f2fe" stroke="#0284c7" stroke-width="2.8" />
+<path d="M62 52 C72 34,128 34,138 52 C128 68,72 68,62 52 Z" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5" />
+<path d="M62 36 C78 26,122 26,138 36" fill="none" stroke="#dc2626" stroke-width="2.2" />`;
+      }
+      if (stageId === "twist") {
+        return `<path d="M42 54 C48 24,150 22,158 50 C152 78,50 82,42 54 Z" fill="#e2e8f0" stroke="#64748b" stroke-width="2.1" />
+<path d="M70 64 C84 40,116 36,138 46 C148 50,152 62,142 70 C124 84,86 84,70 64 Z" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4" />
+<path d="M64 42 C96 22,130 32,144 58" fill="none" stroke="#dc2626" stroke-width="2.3" />
+<path d="M60 66 C92 84,126 78,146 54" fill="none" stroke="#0ea5e9" stroke-width="2.1" stroke-dasharray="5 3" />`;
+      }
+      if (stageId === "glue") {
+        return `<path d="M38 52 C44 28,96 16,124 24 C142 28,154 44,152 58 C148 78,120 84,88 80 C56 76,36 66,38 52 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.1" />
+<path d="M74 62 C86 76,112 76,132 56" fill="none" stroke="#dc2626" stroke-width="2.2" />
+<path d="M64 44 C92 24,122 28,138 48" fill="none" stroke="#0ea5e9" stroke-width="2.2" stroke-dasharray="5 3" />
+<path d="M154 24 C168 30,176 48,170 64 C166 74,156 80,144 82" fill="none" stroke="#94a3b8" stroke-width="1.5" />`;
+      }
+      if (stageId === "mobius" || stageId === "overlays") {
+        return `<path d="M38 52 C44 28,96 16,124 24 C142 28,154 44,152 58 C148 78,120 84,88 80 C56 76,36 66,38 52 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.1" />
+<path d="M72 62 C86 78,114 76,134 54" fill="none" stroke="#f97316" stroke-width="2.4" />
+<path d="M66 42 C96 20,126 30,142 52" fill="none" stroke="#0ea5e9" stroke-width="2.5" />
+<path d="M102 44 C114 46,120 54,116 62 C112 70,96 72,86 64" fill="none" stroke="#9333ea" stroke-width="2.2" stroke-dasharray="4 3" />`;
+      }
+      return `<path d="M40 52 C46 28,96 16,124 24 C142 28,154 44,152 58 C148 78,120 84,88 80 C56 76,38 66,40 52 Z" fill="#f8fafc" stroke="#64748b" stroke-width="2.1" />
+<path d="M68 42 C98 22,126 30,142 52" fill="none" stroke="#0ea5e9" stroke-width="2.4" />
+<path d="M72 62 C86 78,114 76,134 54" fill="none" stroke="#f97316" stroke-width="2.2" />`;
+    }
     if (stageId === "square") {
       return `<rect x="50" y="16" width="100" height="68" rx="8" fill="#fff" stroke="#94a3b8" stroke-width="2" />
 <line x1="50" y1="16" x2="150" y2="16" stroke="#dc2626" stroke-width="3" />
@@ -748,7 +799,6 @@ const buildStoryStageThumbnail = (storyKey: string, stageId: string, stageTitle:
 </defs>
 <rect x="0.5" y="0.5" width="199" height="89" rx="10" fill="url(#bg)" stroke="#d1d5db" />
 ${art}
-<rect x="8" y="68" width="184" height="14" rx="4" fill="#ffffff" opacity="0.84" />
 <text x="12" y="78" font-family="Segoe UI, Arial, sans-serif" font-size="8" font-weight="700" fill="#0f172a">${escapeXmlText(stageTitle)}</text>
 </svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -1177,6 +1227,7 @@ export const TopologyScreen: React.FC = () => {
   const [jsonDraft, setJsonDraft] = useState(() => JSON.stringify(initialDiagram(), null, 2));
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [animationPlan, setAnimationPlan] = useState<TopologyAnimationPlan | null>(null);
+  const [storyStageThreeVisible, setStoryStageThreeVisible] = useState(false);
   const [currentDocumentPath, setCurrentDocumentPath] = useState<string | null>(null);
   const [docStatus, setDocStatus] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
@@ -1184,6 +1235,13 @@ export const TopologyScreen: React.FC = () => {
   const draggingVertexIdRef = useRef<string | null>(null);
   const draggingStartDiagramRef = useRef<FundamentalDiagram | null>(null);
   const draggingChangedRef = useRef(false);
+  const storyStageStripRef = useRef<HTMLDivElement | null>(null);
+  const scrollStoryStageStrip = useCallback((direction: -1 | 1) => {
+    const host = storyStageStripRef.current;
+    if (!host) return;
+    const step = Math.max(220, Math.floor(host.clientWidth * 0.72));
+    host.scrollBy({ left: step * direction, behavior: "smooth" });
+  }, []);
 
   const diagramSignature = useMemo(() => JSON.stringify(diagram), [diagram]);
   const buildStale = diagramSignature !== builtSignature;
@@ -2860,7 +2918,9 @@ export const TopologyScreen: React.FC = () => {
       : 0;
     const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
     const kleinStageCameraKey = Math.max(1, Math.min(5, storyStageIndex + 1));
+    const mobiusStageCameraKey = Math.max(1, Math.min(7, storyStageIndex + 1));
     const kleinPresentationCamera = kleinStoryEnabled ? KLEIN_STAGE_CAMERAS[kleinStageCameraKey] ?? null : null;
+    const mobiusPresentationCamera = mobiusStoryEnabled ? MOBIUS_STAGE_CAMERAS[mobiusStageCameraKey] ?? null : null;
     const jumpToStoryStage = (targetStageIndex: number) => {
       if (!activeStoryStages || activeStoryStages.length <= 1) return;
       const clamped = Math.max(0, Math.min(activeStoryStages.length - 1, targetStageIndex));
@@ -2892,8 +2952,12 @@ export const TopologyScreen: React.FC = () => {
         }
       : null;
     const storyConstructionGuide =
-      kleinStoryEnabled && storyStage
-        ? ({ kind: "klein", stageIndex: storyStageIndex } as const)
+      storyStage
+        ? kleinStoryEnabled
+          ? ({ kind: "klein", stageIndex: storyStageIndex } as const)
+          : mobiusStoryEnabled
+            ? ({ kind: "mobius", stageIndex: storyStageIndex } as const)
+            : null
         : null;
     const storyStageCardThumbnailById = new Map<string, string>();
     if (activeStoryStages) {
@@ -3240,34 +3304,123 @@ export const TopologyScreen: React.FC = () => {
         )}
         {activeStoryStages && storyStage && (
           <div style={{ display: "grid", gap: 6 }}>
+            {(() => {
+              const stageCount = activeStoryStages.length;
+              const noScrollMode = storyStageThreeVisible && stageCount > 3;
+              const windowStart = Math.min(Math.max(storyStageIndex - 1, 0), Math.max(0, stageCount - 3));
+              const stageEntries = noScrollMode
+                ? activeStoryStages.slice(windowStart, windowStart + 3).map((stage, localIndex) => ({
+                    stage,
+                    index: windowStart + localIndex,
+                  }))
+                : activeStoryStages.map((stage, index) => ({ stage, index }));
+              const canGoPrev = noScrollMode ? storyStageIndex > 0 : true;
+              const canGoNext = noScrollMode ? storyStageIndex < stageCount - 1 : true;
+              return (
+                <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700 }}>Construction stages</div>
-              <button
-                type="button"
-                onClick={() => setTimelinePlaying((value) => !value)}
-                disabled={timelineOperations.length === 0}
-                style={{ fontSize: 11 }}
-              >
-                {timelinePlaying ? "Pause" : "Animate"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (noScrollMode) {
+                      setTimelinePlaying(false);
+                      jumpToStoryStage(storyStageIndex - 1);
+                      return;
+                    }
+                    scrollStoryStageStrip(-1);
+                  }}
+                  disabled={!canGoPrev}
+                  style={{ fontSize: 11 }}
+                  aria-label="Previous stage"
+                >
+                  ←
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (noScrollMode) {
+                      setTimelinePlaying(false);
+                      jumpToStoryStage(storyStageIndex + 1);
+                      return;
+                    }
+                    scrollStoryStageStrip(1);
+                  }}
+                  disabled={!canGoNext}
+                  style={{ fontSize: 11 }}
+                  aria-label="Next stage"
+                >
+                  →
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStoryStageThreeVisible((value) => !value)}
+                  aria-pressed={storyStageThreeVisible}
+                  style={{
+                    fontSize: 11,
+                    border: "1px solid " + (storyStageThreeVisible ? "#0a66c2" : "#d1d5db"),
+                    background: storyStageThreeVisible ? "#e6f0ff" : "#fff",
+                    color: storyStageThreeVisible ? "#0a66c2" : "#334155",
+                    borderRadius: 999,
+                    padding: "3px 8px",
+                    fontWeight: 700,
+                  }}
+                >
+                  3 visible
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTimelinePlaying((value) => !value)}
+                  disabled={timelineOperations.length === 0}
+                  style={{ fontSize: 11 }}
+                >
+                  {timelinePlaying ? "Pause" : "Animate"}
+                </button>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, overflowX: "scroll", scrollbarGutter: "stable", paddingBottom: 4 }}>
-              {activeStoryStages.map((stage, index) => {
+            <div
+              ref={storyStageStripRef}
+              style={{
+                display: noScrollMode ? "grid" : "flex",
+                gridTemplateColumns: noScrollMode ? `repeat(${Math.max(1, stageEntries.length)}, minmax(0, 1fr))` : undefined,
+                gap: 8,
+                overflowX: noScrollMode ? "hidden" : "auto",
+                paddingBottom: 2,
+                paddingInline: 2,
+                scrollSnapType: noScrollMode ? "none" : "x mandatory",
+                msOverflowStyle: "none",
+                scrollbarWidth: noScrollMode ? "none" : "thin",
+              }}
+            >
+              {stageEntries.map(({ stage, index }) => {
                 const active = index === storyStageIndex;
                 const done = index < storyStageIndex;
                 const stageTitle = stage.label.replace(/^S\d+:\s*/i, "").trim();
                 const thumbnailUrl = storyStageCardThumbnailById.get(stage.id) ?? null;
                 return (
-                  <div key={`story-stage-card-${stage.id}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div
+                    key={`story-stage-card-${stage.id}`}
+                    style={noScrollMode ? { minWidth: 0 } : { display: "flex", alignItems: "center", gap: 8 }}
+                  >
                     <button
+                      ref={(node) => {
+                        if (!noScrollMode && active && node) {
+                          node.scrollIntoView({
+                            block: "nearest",
+                            inline: "center",
+                            behavior: timelinePlaying ? "auto" : "smooth",
+                          });
+                        }
+                      }}
                       type="button"
                       onClick={() => {
                         setTimelinePlaying(false);
                         jumpToStoryStage(index);
                       }}
                       style={{
-                        minWidth: 248,
-                        maxWidth: 248,
+                        minWidth: noScrollMode ? 0 : 248,
+                        maxWidth: noScrollMode ? "100%" : 248,
                         textAlign: "left",
                         border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
                         background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
@@ -3275,6 +3428,7 @@ export const TopologyScreen: React.FC = () => {
                         padding: "6px 8px",
                         display: "grid",
                         gap: 5,
+                        scrollSnapAlign: "center",
                       }}
                     >
                       {thumbnailUrl ? (
@@ -3283,7 +3437,7 @@ export const TopologyScreen: React.FC = () => {
                             width: "100%",
                             height: 72,
                             borderRadius: 7,
-                            overflow: "hidden",
+                            overflow: "clip",
                             border: "1px solid #dbe4f0",
                             background: "radial-gradient(circle at top, #ffffff 0%, #edf3f9 100%)",
                           }}
@@ -3291,7 +3445,15 @@ export const TopologyScreen: React.FC = () => {
                           <img
                             src={thumbnailUrl}
                             alt={`${stageTitle} preview`}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                              objectPosition: "center",
+                              display: "block",
+                              padding: "3px 4px",
+                              boxSizing: "border-box",
+                            }}
                           />
                         </div>
                       ) : null}
@@ -3317,7 +3479,7 @@ export const TopologyScreen: React.FC = () => {
                       </div>
                       <div style={{ fontSize: 10, color: "#475569" }}>{stage.detail}</div>
                     </button>
-                    {index < activeStoryStages.length - 1 && (
+                    {!noScrollMode && index < activeStoryStages.length - 1 && (
                       <div style={{ fontSize: 18, color: "#64748b", fontWeight: 700, lineHeight: 1 }}>→</div>
                     )}
                   </div>
@@ -3348,6 +3510,9 @@ export const TopologyScreen: React.FC = () => {
                 );
               })}
             </div>
+                </>
+              );
+            })()}
           </div>
         )}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 10 }}>
@@ -3380,8 +3545,8 @@ export const TopologyScreen: React.FC = () => {
             showSkeleton={showOneSkeleton}
             showSingularityMarkers={showCornerIdentifications}
             edgeColorOverrides={storyEdgeColorOverrides}
-            cameraMode={kleinStoryEnabled ? "orthographic" : "perspective"}
-            presentationCamera={kleinPresentationCamera}
+            cameraMode={kleinStoryEnabled || mobiusStoryEnabled ? "orthographic" : "perspective"}
+            presentationCamera={mobiusPresentationCamera ?? kleinPresentationCamera}
             constructionGuide={storyConstructionGuide}
             hiddenEdgeIds={[
               ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
