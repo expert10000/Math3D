@@ -692,13 +692,21 @@ const KLEIN_STAGE_CAMERAS: Record<number, { position: [number, number, number]; 
   5: { position: [3.24, 2.48, 3.72], target: [0, 0.18, 0] },
 };
 const MOBIUS_STAGE_CAMERAS: Record<number, { position: [number, number, number]; target: [number, number, number]; zoom: number }> = {
-  1: { position: [2.66, 1.88, 3.74], target: [0, 0.02, 0], zoom: 122 },
-  2: { position: [2.82, 2.1, 3.48], target: [0.05, 0.04, 0], zoom: 120 },
-  3: { position: [2.94, 2.22, 3.38], target: [0.08, 0.04, 0], zoom: 118 },
-  4: { position: [3.12, 2.34, 3.3], target: [0.1, 0.02, 0], zoom: 116 },
-  5: { position: [3.04, 2.24, 3.28], target: [0.1, 0, 0], zoom: 116 },
-  6: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 118 },
-  7: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 118 },
+  1: { position: [2.66, 1.88, 3.74], target: [0, 0.02, 0], zoom: 88 },
+  2: { position: [2.82, 2.1, 3.48], target: [0.05, 0.04, 0], zoom: 86 },
+  3: { position: [2.94, 2.22, 3.38], target: [0.08, 0.04, 0], zoom: 84 },
+  4: { position: [3.12, 2.34, 3.3], target: [0.1, 0.02, 0], zoom: 84 },
+  5: { position: [3.04, 2.24, 3.28], target: [0.1, 0, 0], zoom: 84 },
+  6: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 85 },
+  7: { position: [2.92, 2.18, 3.34], target: [0.08, 0.02, 0], zoom: 85 },
+};
+const DUNCE_STAGE_CAMERAS: Record<number, { position: [number, number, number]; target: [number, number, number]; zoom: number }> = {
+  1: { position: [2.84, 2.04, 3.72], target: [0, 0.04, 0], zoom: 86 },
+  2: { position: [2.94, 2.16, 3.56], target: [0.02, 0.06, 0], zoom: 84 },
+  3: { position: [3.06, 2.26, 3.44], target: [0.05, 0.08, 0], zoom: 82 },
+  4: { position: [3.12, 2.3, 3.36], target: [0.06, 0.08, 0], zoom: 82 },
+  5: { position: [3.04, 2.24, 3.34], target: [0.05, 0.08, 0], zoom: 83 },
+  6: { position: [3.04, 2.24, 3.34], target: [0.05, 0.08, 0], zoom: 83 },
 };
 
 const escapeXmlText = (value: string): string =>
@@ -2919,8 +2927,10 @@ export const TopologyScreen: React.FC = () => {
     const storyStage = activeStoryStages?.[storyStageIndex] ?? null;
     const kleinStageCameraKey = Math.max(1, Math.min(5, storyStageIndex + 1));
     const mobiusStageCameraKey = Math.max(1, Math.min(7, storyStageIndex + 1));
+    const dunceStageCameraKey = Math.max(1, Math.min(6, storyStageIndex + 1));
     const kleinPresentationCamera = kleinStoryEnabled ? KLEIN_STAGE_CAMERAS[kleinStageCameraKey] ?? null : null;
     const mobiusPresentationCamera = mobiusStoryEnabled ? MOBIUS_STAGE_CAMERAS[mobiusStageCameraKey] ?? null : null;
+    const duncePresentationCamera = dunceStoryEnabled ? DUNCE_STAGE_CAMERAS[dunceStageCameraKey] ?? null : null;
     const jumpToStoryStage = (targetStageIndex: number) => {
       if (!activeStoryStages || activeStoryStages.length <= 1) return;
       const clamped = Math.max(0, Math.min(activeStoryStages.length - 1, targetStageIndex));
@@ -2957,6 +2967,8 @@ export const TopologyScreen: React.FC = () => {
           ? ({ kind: "klein", stageIndex: storyStageIndex } as const)
           : mobiusStoryEnabled
             ? ({ kind: "mobius", stageIndex: storyStageIndex } as const)
+            : dunceStoryEnabled
+              ? ({ kind: "dunce", stageIndex: storyStageIndex } as const)
             : null
         : null;
     const storyStageCardThumbnailById = new Map<string, string>();
@@ -3058,11 +3070,13 @@ export const TopologyScreen: React.FC = () => {
     const storyRealization =
       mobiusStoryEnabled
         ? result.realizations.find((entry) => entry.id.endsWith("/realization/mobius-smooth")) ?? realization
-        : torusStoryEnabled
+      : torusStoryEnabled
           ? result.realizations.find((entry) => entry.id.endsWith("/realization/torus-smooth")) ?? realization
-          : kleinStoryEnabled
+        : kleinStoryEnabled
             ? result.realizations.find((entry) => entry.id.endsWith("/realization/klein-immersed")) ?? realization
-            : cylinderStoryEnabled
+          : dunceStoryEnabled
+              ? result.realizations.find((entry) => entry.id.endsWith("/realization/dunce-map-smooth")) ?? realization
+          : cylinderStoryEnabled
               ? result.realizations.find((entry) => entry.id.endsWith("/realization/cylinder-smooth")) ?? realization
               : coneStoryEnabled
                 ? result.realizations.find((entry) => entry.id.endsWith("/realization/cone-smooth")) ?? realization
@@ -3421,6 +3435,7 @@ export const TopologyScreen: React.FC = () => {
                       style={{
                         minWidth: noScrollMode ? 0 : 248,
                         maxWidth: noScrollMode ? "100%" : 248,
+                        width: noScrollMode ? "100%" : undefined,
                         textAlign: "left",
                         border: "1px solid " + (active ? "#0a66c2" : done ? "#bfdbfe" : "#d1d5db"),
                         background: active ? "#e6f0ff" : done ? "#eff6ff" : "#fff",
@@ -3545,8 +3560,8 @@ export const TopologyScreen: React.FC = () => {
             showSkeleton={showOneSkeleton}
             showSingularityMarkers={showCornerIdentifications}
             edgeColorOverrides={storyEdgeColorOverrides}
-            cameraMode={kleinStoryEnabled || mobiusStoryEnabled ? "orthographic" : "perspective"}
-            presentationCamera={mobiusPresentationCamera ?? kleinPresentationCamera}
+            cameraMode={kleinStoryEnabled || mobiusStoryEnabled || dunceStoryEnabled ? "orthographic" : "perspective"}
+            presentationCamera={duncePresentationCamera ?? mobiusPresentationCamera ?? kleinPresentationCamera}
             constructionGuide={storyConstructionGuide}
             hiddenEdgeIds={[
               ...(showBoundaryLoop ? [] : ["mobius_boundary"]),

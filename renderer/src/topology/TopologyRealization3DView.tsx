@@ -31,6 +31,10 @@ type ConstructionGuide =
       kind: "mobius";
       stageIndex: number;
     }
+  | {
+      kind: "dunce";
+      stageIndex: number;
+    }
   | null;
 
 type TopologyRealization3DViewProps = {
@@ -575,6 +579,101 @@ const MobiusConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex 
   );
 };
 
+const DunceConstructionGuide: React.FC<{ stageIndex: number }> = ({ stageIndex }) => {
+  const stage = Math.max(0, Math.min(5, stageIndex));
+  const mode = stage < 1.7 ? "triangle" : stage < 3.6 ? "folded" : "cap";
+  const capProgress = remap01(stage, 3.0, 5.0);
+
+  return (
+    <group position={[-1.86, 1.1, 0.58]} scale={0.46}>
+      {mode === "triangle" && (
+        <group rotation={[0.03, -0.24, 0.08]}>
+          <mesh>
+            <shapeGeometry
+              args={[
+                (() => {
+                  const s = new THREE.Shape();
+                  s.moveTo(-0.95, -0.52);
+                  s.lineTo(0.96, -0.52);
+                  s.lineTo(0.02, 0.86);
+                  s.closePath();
+                  return s;
+                })(),
+              ]}
+            />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.66} metalness={0} transparent opacity={0.38} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={[[-0.95, -0.52, 0], [0.02, 0.86, 0]]} color="#dc2626" transparent opacity={0.96} lineWidth={2.2} />
+          <Line points={[[0.02, 0.86, 0], [0.96, -0.52, 0]]} color="#2563eb" transparent opacity={0.96} lineWidth={2.2} />
+          <Line points={[[0.96, -0.52, 0], [-0.95, -0.52, 0]]} color="#16a34a" transparent opacity={0.96} lineWidth={2.2} />
+        </group>
+      )}
+
+      {mode === "folded" && (
+        <group rotation={[0.12, -0.28, 0.12]} position={[0.04, -0.02, 0.02]}>
+          <mesh>
+            <coneGeometry args={[0.84, 1.56, 64, 1, true]} />
+            <meshPhysicalMaterial color={0xf8fafc} roughness={0.62} metalness={0} transparent opacity={0.36} side={THREE.DoubleSide} />
+          </mesh>
+          <Line points={ringPoints(0.84, -0.78)} color="#dc2626" transparent opacity={0.95} lineWidth={2.2} />
+          <Line
+            points={[
+              [0.0, 0.78, 0.0],
+              [0.56, 0.16, 0.26],
+              [0.72, -0.38, 0.12],
+            ]}
+            color="#2563eb"
+            transparent
+            opacity={0.92}
+            lineWidth={2.0}
+          />
+          <Line
+            points={[
+              [0.0, 0.78, 0.0],
+              [-0.52, 0.12, 0.18],
+              [-0.74, -0.42, -0.02],
+            ]}
+            color="#16a34a"
+            transparent
+            opacity={0.92}
+            lineWidth={2.0}
+          />
+        </group>
+      )}
+
+      {mode === "cap" && (
+        <group rotation={[0.15, -0.32, 0.12]} position={[0.06, -0.01, 0.02]}>
+          <mesh>
+            <coneGeometry args={[0.8, 1.58, 72, 1, true]} />
+            <meshPhysicalMaterial
+              color={0xf8fafc}
+              roughness={0.58}
+              metalness={0}
+              transparent
+              opacity={0.38 + 0.08 * capProgress}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          <Line points={ringPoints(0.8, -0.79)} color="#111827" transparent opacity={0.92} lineWidth={2.3} />
+          <Line points={ringPoints(0.78, -0.79)} color="#dc2626" transparent opacity={0.95} lineWidth={2.0} />
+          <Line
+            points={[
+              [-0.7, -0.8, 0.0],
+              [-0.26, -0.78, 0.18],
+              [0.18, -0.8, 0.14],
+              [0.58, -0.76, -0.04],
+            ]}
+            color="#2563eb"
+            transparent
+            opacity={0.92}
+            lineWidth={1.9}
+          />
+        </group>
+      )}
+    </group>
+  );
+};
+
 export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps> = ({
   realization,
   height = 380,
@@ -603,7 +702,8 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
     () =>
       realization.id.includes("/realization/klein-immersed") ||
       realization.id.includes("/realization/cylinder-smooth") ||
-      realization.id.includes("/realization/mobius-smooth"),
+      realization.id.includes("/realization/mobius-smooth") ||
+      realization.id.includes("/realization/dunce-map-smooth"),
     [realization.id]
   );
   const sceneBounds = useMemo(() => {
@@ -663,6 +763,9 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
   const showMobiusConstructionGuide =
     constructionGuide?.kind === "mobius" &&
     realization.id.includes("/realization/mobius-smooth");
+  const showDunceConstructionGuide =
+    constructionGuide?.kind === "dunce" &&
+    realization.id.includes("/realization/dunce-map-smooth");
 
   const sceneContent = (
     <group>
@@ -680,6 +783,9 @@ export const TopologyRealization3DView: React.FC<TopologyRealization3DViewProps>
       )}
       {showMobiusConstructionGuide && (
         <MobiusConstructionGuide stageIndex={constructionGuide?.stageIndex ?? 0} />
+      )}
+      {showDunceConstructionGuide && (
+        <DunceConstructionGuide stageIndex={constructionGuide?.stageIndex ?? 0} />
       )}
 
       {showSkeleton &&
