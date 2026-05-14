@@ -8,6 +8,9 @@
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "android": {
+      "package": "com.anonymous.math3dmobile"
+    }
   }
 }

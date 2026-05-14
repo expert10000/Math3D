@@ -104,3 +104,67 @@ adb reverse tcp:8081 tcp:8081
 cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile
 npx expo start --localhost --clear --port 8081
 ```
+
+## 8) Android debug build (Gradle) - correct project directory
+
+If you run `gradlew.bat` from repo root without `-p`, Gradle fails with:
+
+`Directory ... does not contain a Gradle build.`
+
+Use one of these:
+
+```powershell
+# Option A (recommended): cd into android folder first
+cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile\android
+.\gradlew.bat app:assembleDebug -x lint -x test --stacktrace
+```
+
+```powershell
+# Option B: run from repo root with explicit project dir
+cd G:\Function-viewer-2026-02-05\Math3D
+.\apps\mobile\android\gradlew.bat -p .\apps\mobile\android app:assembleDebug -x lint -x test --stacktrace
+```
+
+## 9) Fix: SDK location not found
+
+If Gradle reports:
+
+`SDK location not found... define ANDROID_HOME or sdk.dir...`
+
+Create `apps/mobile/android/local.properties`:
+
+```powershell
+$sdk = "$env:LOCALAPPDATA\Android\Sdk" -replace '\\','/'
+"sdk.dir=$sdk" | Set-Content -Path "G:\Function-viewer-2026-02-05\Math3D\apps\mobile\android\local.properties"
+```
+
+Expected file content example:
+
+```text
+sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
+```
+
+## 10) PowerShell `>>` prompt (continuation mode) fix
+
+If prompt changes to `>>`, current command is incomplete or paste got corrupted.
+
+```powershell
+# cancel current broken input
+Ctrl + C
+```
+
+Then run the command again as a clean single line.
+
+## 11) USB native run (after build is healthy)
+
+```powershell
+# 1) device
+adb devices
+
+# 2) metro over USB
+adb reverse tcp:8081 tcp:8081
+
+# 3) run android build/install via expo
+cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile
+npx expo run:android
+```

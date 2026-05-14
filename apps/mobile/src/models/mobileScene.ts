@@ -26,6 +26,21 @@ export type MobileGalleryItem = {
   defaultCamera?: CameraPreset;
 };
 
+export type MobileFunctionPreset = {
+  id: string;
+  name: string;
+  description: string;
+  surface: SurfaceDefinition;
+};
+
+export type MobileStoredSceneProject = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  lastOpenedAt: number;
+  serializedProject: string;
+};
+
 export type MobileWorkerJob = {
   id: string;
   request: WorkerRequest;
@@ -37,4 +52,3 @@ export type MobileWorkerResult = {
   response: WorkerResponse;
   receivedAt: number;
 };
-
