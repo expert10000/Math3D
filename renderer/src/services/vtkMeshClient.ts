@@ -1,15 +1,7 @@
-export type VtkMeshRequest = {
-  jobId: string;
-  positions: ArrayBuffer | ArrayBufferView;
-  indices: ArrayBuffer | ArrayBufferView;
-  options?: {
-    targetReduction?: number;
-    targetFaces?: number;
-    iterations?: number;
-    passband?: number;
-    computeNormals?: boolean;
-  };
-};
+import type { VtkMeshRequest, VtkPreviewRequest } from "@math3d/api-client";
+import { meshBackend } from "./meshBackend";
+
+export type { VtkMeshRequest, VtkPreviewRequest };
 
 export type VtkMeshResponse =
   | {
@@ -21,21 +13,6 @@ export type VtkMeshResponse =
       triCount: number;
     }
   | { ok: false; error: string };
-
-export type VtkPreviewRequest = {
-  jobId: string;
-  expr: string;
-  iso: number;
-  domain: { min: [number, number, number]; max: [number, number, number] };
-  resolution: number;
-  targetFaces?: number;
-  targetReduction?: number;
-};
-
-function makeJobId() {
-  const c: any = globalThis.crypto;
-  return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
-}
 
 function toArrayBuffer(data: ArrayBuffer | ArrayBufferView): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data;
@@ -52,13 +29,12 @@ function toUint32(data: ArrayBuffer | ArrayBufferView): Uint32Array {
   return new Uint32Array(buf);
 }
 
-async function runVtk(op: "cleanNormals" | "decimate" | "smooth", req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse> {
-  const api = (window as any).vtkMesh;
-  if (!api || typeof api[op] !== "function") return { ok: false, error: "VTK IPC unavailable" };
-  const jobId = makeJobId();
-  const res = await api[op]({ ...req, jobId });
+function normalizeVtkMeshResponse(
+  res: Awaited<ReturnType<typeof meshBackend.vtkSmooth>>,
+  errorMessage: string
+): VtkMeshResponse {
   if (!res || res.ok === false) {
-    return { ok: false, error: res?.error ?? "VTK worker failed" };
+    return { ok: false, error: res?.error ?? errorMessage };
   }
   return {
     ok: true,
@@ -70,22 +46,18 @@ async function runVtk(op: "cleanNormals" | "decimate" | "smooth", req: Omit<VtkM
   };
 }
 
-export async function vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse> {
-  const api = (window as any).vtkMesh;
-  if (!api || typeof api.previewImplicit !== "function") return { ok: false, error: "VTK IPC unavailable" };
-  const jobId = makeJobId();
-  const res = await api.previewImplicit({ ...req, jobId });
-  if (!res || res.ok === false) {
-    return { ok: false, error: res?.error ?? "VTK preview failed" };
+async function runVtk(op: "cleanNormals" | "decimate" | "smooth", req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse> {
+  if (op === "cleanNormals") {
+    return normalizeVtkMeshResponse(await meshBackend.vtkCleanNormals(req), "VTK worker failed");
   }
-  return {
-    ok: true,
-    positions: toFloat32(res.positions),
-    indices: toUint32(res.indices),
-    normals: res.normals ? toFloat32(res.normals) : undefined,
-    vertexCount: Number(res.vertexCount) || Math.floor(toArrayBuffer(res.positions).byteLength / 12),
-    triCount: Number(res.triCount) || Math.floor(toArrayBuffer(res.indices).byteLength / 12),
-  };
+  if (op === "decimate") {
+    return normalizeVtkMeshResponse(await meshBackend.vtkDecimate(req), "VTK worker failed");
+  }
+  return normalizeVtkMeshResponse(await meshBackend.vtkSmooth(req), "VTK worker failed");
+}
+
+export async function vtkPreviewImplicit(req: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse> {
+  return normalizeVtkMeshResponse(await meshBackend.vtkPreviewImplicit(req), "VTK preview failed");
 }
 
 export async function vtkCleanNormals(

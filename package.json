@@ -16,6 +16,7 @@
     "dev:web:client": "npm --prefix apps/web run dev",
     "dev:public-site": "npm --prefix apps/public-site run dev",
     "dev:desktop": "npm --prefix apps/desktop run dev",
+    "dev:mobile": "npm --prefix apps/mobile run dev",
     "build:web": "npm --prefix apps/web run build",
     "build:web:pages": "npm --prefix apps/web run build:pages",
     "build:public-site": "npm --prefix apps/public-site run build",

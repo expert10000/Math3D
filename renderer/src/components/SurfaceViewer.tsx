@@ -33,7 +33,7 @@ import {
   createLayeredReferenceGrid,
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
-} from "@math3d/renderer";
+} from "@math3d/renderer-web";
 
 export type ColorMode = CoreColorMode;
 
@@ -9520,3 +9520,4 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     </div>
   );
 };
+

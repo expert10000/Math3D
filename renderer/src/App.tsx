@@ -126,7 +126,7 @@ import {
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
 import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
-import { vtkVolumeDistance } from "./services/vtkVolumeClient";
+import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
 import { buildCurveFromPreset } from "./math/curvePresetFactory";
@@ -16412,7 +16412,7 @@ case "mobius":
       setVolumeDistanceError("Surface mesh not ready yet.");
       return;
     }
-    if (!(window as any).vtkVolume?.distanceField) {
+    if (!supportsVtkVolumeDistance()) {
       setVolumeDistanceError("VTK volume worker unavailable.");
       return;
     }

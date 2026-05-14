@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Math3D Mobile",
+    "slug": "math3d-mobile",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}

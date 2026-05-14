@@ -91,10 +91,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@math3d/core": path.resolve(rootDir, "../packages/core/src"),
-      "@math3d/renderer": path.resolve(rootDir, "../packages/renderer/src"),
+      "@math3d/renderer-web": path.resolve(rootDir, "../packages/renderer-web/src"),
       "@math3d/ui": path.resolve(rootDir, "../packages/ui/src"),
       "@math3d/workbook": path.resolve(rootDir, "../packages/workbook/src"),
+      "@math3d/api-client": path.resolve(rootDir, "../packages/api-client/src"),
       three: path.resolve(rootDir, "node_modules/three"),
     },
   },
 });
+

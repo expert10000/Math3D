@@ -1,0 +1,22 @@
+{
+  "name": "@math3d/app-mobile",
+  "private": true,
+  "version": "0.0.0",
+  "main": "expo/AppEntry",
+  "scripts": {
+    "dev": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@math3d/core": "file:../../packages/core",
+    "expo": "^54.0.34",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
+  }
+}

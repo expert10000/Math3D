@@ -18,7 +18,12 @@ import {
   type VolumeSliceReport,
   type VolumeSliceWindow,
 } from "../scene/volume/sliceVolume";
-import { vtkVolumeIsosurface, vtkVolumeSlice, vtkVolumeStreamlines } from "../services/vtkVolumeClient";
+import {
+  supportsVtkVolumeSlice,
+  vtkVolumeIsosurface,
+  vtkVolumeSlice,
+  vtkVolumeStreamlines,
+} from "../services/vtkVolumeClient";
 import { vtkSmooth } from "../services/vtkMeshClient";
 
 export type VolumeViewerProps = {
@@ -552,7 +557,7 @@ export const VolumeViewer: React.FC<VolumeViewerProps> = ({
     let cancelled = false;
     const grid = dataset.grid;
     const total = grid.dims[0] * grid.dims[1] * grid.dims[2];
-    const canUseVtk = Boolean((window as any).vtkVolume?.slice) && total > VTK_SLICE_THRESHOLD;
+    const canUseVtk = supportsVtkVolumeSlice() && total > VTK_SLICE_THRESHOLD;
     const plane = sliceData.plane;
     const windowReq = sliceWindow ? { low: sliceWindow.low, high: sliceWindow.high } : undefined;
     const planeReq = plane

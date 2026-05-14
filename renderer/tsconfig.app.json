@@ -17,12 +17,14 @@
     "paths": {
       "@math3d/core": ["../packages/core/src/index.ts"],
       "@math3d/core/*": ["../packages/core/src/*"],
-      "@math3d/renderer": ["../packages/renderer/src/index.ts"],
-      "@math3d/renderer/*": ["../packages/renderer/src/*"],
+      "@math3d/renderer-web": ["../packages/renderer-web/src/index.ts"],
+      "@math3d/renderer-web/*": ["../packages/renderer-web/src/*"],
       "@math3d/ui": ["../packages/ui/src/index.ts"],
       "@math3d/ui/*": ["../packages/ui/src/*"],
       "@math3d/workbook": ["../packages/workbook/src/index.ts"],
+      "@math3d/api-client": ["../packages/api-client/src/index.ts"],
       "@math3d/workbook/*": ["../packages/workbook/src/*"],
+      "@math3d/api-client/*": ["../packages/api-client/src/*"],
       "three": ["./node_modules/@types/three/index.d.ts"],
       "three/*": ["./node_modules/@types/three/*"]
     },
@@ -39,8 +41,10 @@
   "include": [
     "src",
     "../packages/core/src/**/*.ts",
-    "../packages/renderer/src/**/*.ts",
+    "../packages/renderer-web/src/**/*.ts",
     "../packages/ui/src/**/*.ts",
-    "../packages/workbook/src/**/*.ts"
+    "../packages/workbook/src/**/*.ts",
+    "../packages/api-client/src/**/*.ts"
   ]
 }
+

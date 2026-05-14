@@ -1,12 +1,11 @@
 {
-  "name": "@math3d/renderer",
+  "name": "@math3d/api-client",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
-    "@math3d/core": "file:../core",
-    "three": "^0.181.2"
+    "@math3d/core": "file:../core"
   }
 }

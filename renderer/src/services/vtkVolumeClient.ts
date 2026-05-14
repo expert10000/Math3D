@@ -1,23 +1,16 @@
-import type { SliceAxis } from "../scene/volume/sliceVolume";
+import type {
+  VtkVolumeDistanceRequest,
+  VtkVolumeIsosurfaceRequest,
+  VtkVolumeSliceRequest,
+  VtkVolumeStreamlinesRequest,
+} from "@math3d/api-client";
+import { getMeshBackendCapabilities, meshBackend } from "./meshBackend";
 
-export type VtkVolumeSliceRequest = {
-  jobId: string;
-  dims: [number, number, number];
-  scalars: ArrayBuffer | ArrayBufferView;
-  axis?: SliceAxis;
-  index?: number;
-  spacing?: [number, number, number];
-  origin?: [number, number, number];
-  plane?: {
-    center: [number, number, number];
-    normal: [number, number, number];
-    u: [number, number, number];
-    v: [number, number, number];
-    width: number;
-    height: number;
-    resolution?: [number, number];
-  };
-  window?: { low: number; high: number };
+export type {
+  VtkVolumeDistanceRequest,
+  VtkVolumeIsosurfaceRequest,
+  VtkVolumeSliceRequest,
+  VtkVolumeStreamlinesRequest,
 };
 
 export type VtkVolumeSliceResponse =
@@ -32,15 +25,6 @@ export type VtkVolumeSliceResponse =
     }
   | { ok: false; error: string };
 
-export type VtkVolumeIsosurfaceRequest = {
-  jobId: string;
-  dims: [number, number, number];
-  scalars: ArrayBuffer | ArrayBufferView;
-  iso: number;
-  spacing?: [number, number, number];
-  origin?: [number, number, number];
-};
-
 export type VtkVolumeIsosurfaceResponse =
   | {
       ok: true;
@@ -52,17 +36,6 @@ export type VtkVolumeIsosurfaceResponse =
   }
   | { ok: false; error: string };
 
-export type VtkVolumeDistanceRequest = {
-  jobId: string;
-  dims: [number, number, number];
-  positions: ArrayBuffer | ArrayBufferView;
-  indices: ArrayBuffer | ArrayBufferView;
-  spacing?: [number, number, number];
-  origin?: [number, number, number];
-  signed?: boolean;
-  windingNumber?: boolean;
-};
-
 export type VtkVolumeDistanceResponse =
   | {
       ok: true;
@@ -71,26 +44,12 @@ export type VtkVolumeDistanceResponse =
     }
   | { ok: false; error: string };
 
-export type VtkVolumeStreamlinesRequest = {
-  jobId: string;
-  dims: [number, number, number];
-  vectors: ArrayBuffer | ArrayBufferView;
-  spacing?: [number, number, number];
-  origin?: [number, number, number];
-  seeds: [number, number, number][];
-  stepSize?: number;
-  maxSteps?: number;
-  maxLength?: number;
-};
-
 export type VtkVolumeStreamlinesResponse =
   | { ok: true; lines: [number, number, number][][] }
   | { ok: false; error: string };
 
-function makeJobId() {
-  const c: any = globalThis.crypto;
-  return typeof c?.randomUUID === "function" ? c.randomUUID() : `${Date.now()}_${Math.random()}`;
-}
+export const supportsVtkVolumeSlice = (): boolean => getMeshBackendCapabilities().vtkVolumeSlice;
+export const supportsVtkVolumeDistance = (): boolean => getMeshBackendCapabilities().vtkVolumeDistance;
 
 function toArrayBuffer(data: ArrayBuffer | ArrayBufferView): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data;
@@ -100,12 +59,7 @@ function toArrayBuffer(data: ArrayBuffer | ArrayBufferView): ArrayBuffer {
 export async function vtkVolumeSlice(
   req: Omit<VtkVolumeSliceRequest, "jobId">
 ): Promise<VtkVolumeSliceResponse> {
-  const api = (window as any).vtkVolume;
-  if (!api || typeof api.slice !== "function") {
-    return { ok: false, error: "VTK volume IPC unavailable" };
-  }
-  const jobId = makeJobId();
-  const res = await api.slice({ ...req, jobId });
+  const res = await meshBackend.vtkVolumeSlice(req);
   if (!res || res.ok === false) {
     return { ok: false, error: res?.error ?? "VTK volume slice failed" };
   }
@@ -134,12 +88,7 @@ function toUint32(data: ArrayBuffer | ArrayBufferView): Uint32Array {
 export async function vtkVolumeIsosurface(
   req: Omit<VtkVolumeIsosurfaceRequest, "jobId">
 ): Promise<VtkVolumeIsosurfaceResponse> {
-  const api = (window as any).vtkVolume;
-  if (!api || typeof api.isosurface !== "function") {
-    return { ok: false, error: "VTK volume IPC unavailable" };
-  }
-  const jobId = makeJobId();
-  const res = await api.isosurface({ ...req, jobId });
+  const res = await meshBackend.vtkVolumeIsosurface(req);
   if (!res || res.ok === false) {
     return { ok: false, error: res?.error ?? "VTK volume isosurface failed" };
   }
@@ -156,12 +105,7 @@ export async function vtkVolumeIsosurface(
 export async function vtkVolumeDistance(
   req: Omit<VtkVolumeDistanceRequest, "jobId">
 ): Promise<VtkVolumeDistanceResponse> {
-  const api = (window as any).vtkVolume;
-  if (!api || typeof api.distanceField !== "function") {
-    return { ok: false, error: "VTK volume IPC unavailable" };
-  }
-  const jobId = makeJobId();
-  const res = await api.distanceField({ ...req, jobId });
+  const res = await meshBackend.vtkVolumeDistance(req);
   if (!res || res.ok === false) {
     return { ok: false, error: res?.error ?? "VTK volume distance failed" };
   }
@@ -175,12 +119,7 @@ export async function vtkVolumeDistance(
 export async function vtkVolumeStreamlines(
   req: Omit<VtkVolumeStreamlinesRequest, "jobId">
 ): Promise<VtkVolumeStreamlinesResponse> {
-  const api = (window as any).vtkVolume;
-  if (!api || typeof api.streamlines !== "function") {
-    return { ok: false, error: "VTK volume IPC unavailable" };
-  }
-  const jobId = makeJobId();
-  const res = await api.streamlines({ ...req, jobId });
+  const res = await meshBackend.vtkVolumeStreamlines(req);
   if (!res || res.ok === false) {
     return { ok: false, error: res?.error ?? "VTK streamlines failed" };
   }

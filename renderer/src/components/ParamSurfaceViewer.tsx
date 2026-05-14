@@ -61,7 +61,7 @@ import {
   createLayeredReferenceGrid,
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneGridSettings,
-} from "@math3d/renderer";
+} from "@math3d/renderer-web";
 import type { ParamSurfaceId as CoreParamSurfaceId } from "@math3d/core";
 
 type ParamPreset = {
@@ -72,7 +72,6 @@ type ParamPreset = {
   zExpr: string;
   createdAt: number;
 };
-
 const LS_PARAM_KEY = "mathapp.surfacePresets.param.v1";
 const TAU = Math.PI * 2;
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
@@ -6749,4 +6748,3 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     </div>
   );
 };
-
