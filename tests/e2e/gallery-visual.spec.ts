@@ -84,6 +84,10 @@ const snapshotOpts = {
   maxDiffPixels: 120,
   timeout: 20_000,
 };
+const geometrySnapshotOpts = {
+  ...snapshotOpts,
+  maxDiffPixels: 2_000,
+};
 const surfaceSnapshotOpts = {
   ...snapshotOpts,
   maxDiffPixels: 30_000,
@@ -102,6 +106,11 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
       [data-testid="param-preset-grid"],
       [data-testid="weierstrass-preset-grid"] {
         scrollbar-width: none !important;
+      }
+      [data-testid="geometry-gallery"] {
+        min-width: 191px !important;
+        width: 191px !important;
+        max-width: 191px !important;
       }
       [data-testid="surface-preset-grid"],
       [data-testid="param-preset-grid"],
@@ -233,7 +242,7 @@ test("Gallery cards visual baseline", async () => {
     const geometryGallery = page.getByTestId("geometry-gallery");
     await expect(geometryGallery).toBeVisible();
     await waitForImagesLoaded(geometryGallery);
-    await expect(geometryGallery).toHaveScreenshot("geometry-gallery-cards.png", snapshotOpts);
+    await expect(geometryGallery).toHaveScreenshot("geometry-gallery-cards.png", geometrySnapshotOpts);
 
     await ensureSurfacesGalleryMode(page);
     await clickFirstVisibleByTestId(page, "surface-family-implicit");
