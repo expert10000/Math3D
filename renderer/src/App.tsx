@@ -7563,6 +7563,11 @@ const App: React.FC = () => {
     }
     openGeometryWorkbookMode();
   }, [geometryDemoFamily, activePlanimetryScratchSeed, openGeometryWorkbookMode]);
+  const handleOpenDetailedWorkbookSceneFromSurfaces = useCallback(() => {
+    openGeometryWorkbookMode(geometryScratchSceneSeed);
+    setGeometryWorkbookUiMode("full");
+    setMode("geometry");
+  }, [openGeometryWorkbookMode, geometryScratchSceneSeed]);
   const handleLoadOlympiadIncircleReflectionPack = useCallback(() => {
     if (!olympiadIncircleReflectionSeed) {
       setGeometryWorkbookPackStatus("Unable to load the incircle-reflection pack seed.");
@@ -25671,108 +25676,138 @@ case "mobius":
                 />
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
-                <SurfacesViewPanel
-                  editCustomLabel={
-                    surfaceViewerKind === "graph"
-                      ? "Edit as Custom z=f(x,y)"
-                      : surfaceViewerKind === "implicit"
-                        ? "Edit as Custom f(x,y,z)"
-                        : surfaceViewerKind === "param"
-                          ? "Start as Custom σ(u,v)"
-                          : null
-                  }
-                  canEditCustom={
-                    surfaceViewerKind === "graph"
-                      ? canEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? canEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? canEditParamAsCustom
-                          : false
-                  }
-                  onEditCustom={
-                    surfaceViewerKind === "graph"
-                      ? handleEditGraphAsCustom
-                      : surfaceViewerKind === "implicit"
-                        ? handleEditImplicitAsCustom
-                        : surfaceViewerKind === "param"
-                          ? handleEditParamAsCustom
-                          : null
-                  }
-                  renderQuality={surfaceRenderQuality}
-                  onChangeRenderQuality={setSurfaceRenderQuality}
-                  colorModes={viewColorModes}
-                  colorMode={colorMode}
-                  onChangeColorMode={setColorMode}
-                  colorPalette={colorPalette}
-                  onChangeColorPalette={setColorPalette}
-                  lightPreset={lightPreset}
-                  onChangeLightPreset={setLightPreset}
-                  materialRoughness={materialRoughness}
-                  onSetMaterialRoughness={setMaterialRoughness}
-                  materialMetalness={materialMetalness}
-                  onSetMaterialMetalness={setMaterialMetalness}
-                  materialOpacity={materialOpacity}
-                  onSetMaterialOpacity={setMaterialOpacity}
-                  showWireframe={showWireframe}
-                  onToggleWireframe={() => setShowWireframe((w) => !w)}
-                  showBoundingBox={showBoundingBox}
-                  onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
-                  showViewGizmo={showSurfaceViewGizmo}
-                  onToggleViewGizmo={() => setShowSurfaceViewGizmo((v) => !v)}
-                  showChartGrid={showChartGrid}
-                  onToggleChartGrid={toggleSurfaceChartGrid}
-                  showPlanes={showPlanes}
-                  onTogglePlanes={toggleCoordinatePlanes}
-                  showPrincipalProjections={showPrincipalProjections}
-                  onTogglePrincipalProjections={() => setShowPrincipalProjections((v) => !v)}
-                  principalProjectionXY={principalProjectionXY}
-                  onTogglePrincipalProjectionXY={() => setPrincipalProjectionXY((v) => !v)}
-                  principalProjectionXZ={principalProjectionXZ}
-                  onTogglePrincipalProjectionXZ={() => setPrincipalProjectionXZ((v) => !v)}
-                  principalProjectionYZ={principalProjectionYZ}
-                  onTogglePrincipalProjectionYZ={() => setPrincipalProjectionYZ((v) => !v)}
-                  planeGridSettings={planeGridSettings}
-                  onTogglePlaneGrid={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }))
-                  }
-                  onTogglePlaneMinorGrid={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: !prev.showMinorGrid }))
-                  }
-                  onTogglePlaneLabels={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showLabels: !prev.showLabels }))
-                  }
-                  onTogglePlaneAxisLabels={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: !prev.showAxisLabels }))
-                  }
-                  onChangePlaneLabelSkin={(skin) =>
-                    setPlaneGridSettings((prev) => ({ ...prev, labelSkin: skin }))
-                  }
-                  onTogglePlaneXY={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showXY: !prev.showXY }))
-                  }
-                  onTogglePlaneXZ={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showXZ: !prev.showXZ }))
-                  }
-                  onTogglePlaneYZ={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, showYZ: !prev.showYZ }))
-                  }
-                  onTogglePlaneAutoScale={() =>
-                    setPlaneGridSettings((prev) => ({ ...prev, autoGridScale: !prev.autoGridScale }))
-                  }
-                  onChangePlaneGridDensity={(value) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      gridDensity: Math.max(4, Math.min(20, Number.isFinite(value) ? value : prev.gridDensity)),
-                    }))
-                  }
-                  onChangePlaneOpacity={(value) =>
-                    setPlaneGridSettings((prev) => ({
-                      ...prev,
-                      planeOpacity: Math.max(0, Math.min(0.35, Number.isFinite(value) ? value : prev.planeOpacity)),
-                    }))
-                  }
-                />
+                <>
+                  {datasetKind === "surface" && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                    <div
+                      style={{
+                        marginBottom: 10,
+                        border: "1px solid #dbe4f0",
+                        borderRadius: 8,
+                        background: "#f8fbff",
+                        padding: "8px 10px",
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 700 }}>Workbook scene</div>
+                      <div style={{ fontSize: 10, opacity: 0.78 }}>
+                        Open detailed workbook scene from the current explicit/implicit workflow.
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          data-testid="surface-open-workbook-scene-detailed"
+                          onClick={handleOpenDetailedWorkbookSceneFromSurfaces}
+                          style={{ fontSize: 11 }}
+                        >
+                          Open workbook scene (detailed)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <SurfacesViewPanel
+                    editCustomLabel={
+                      surfaceViewerKind === "graph"
+                        ? "Edit as Custom z=f(x,y)"
+                        : surfaceViewerKind === "implicit"
+                          ? "Edit as Custom f(x,y,z)"
+                          : surfaceViewerKind === "param"
+                            ? "Start as Custom σ(u,v)"
+                            : null
+                    }
+                    canEditCustom={
+                      surfaceViewerKind === "graph"
+                        ? canEditGraphAsCustom
+                        : surfaceViewerKind === "implicit"
+                          ? canEditImplicitAsCustom
+                          : surfaceViewerKind === "param"
+                            ? canEditParamAsCustom
+                            : false
+                    }
+                    onEditCustom={
+                      surfaceViewerKind === "graph"
+                        ? handleEditGraphAsCustom
+                        : surfaceViewerKind === "implicit"
+                          ? handleEditImplicitAsCustom
+                          : surfaceViewerKind === "param"
+                            ? handleEditParamAsCustom
+                            : null
+                    }
+                    renderQuality={surfaceRenderQuality}
+                    onChangeRenderQuality={setSurfaceRenderQuality}
+                    colorModes={viewColorModes}
+                    colorMode={colorMode}
+                    onChangeColorMode={setColorMode}
+                    colorPalette={colorPalette}
+                    onChangeColorPalette={setColorPalette}
+                    lightPreset={lightPreset}
+                    onChangeLightPreset={setLightPreset}
+                    materialRoughness={materialRoughness}
+                    onSetMaterialRoughness={setMaterialRoughness}
+                    materialMetalness={materialMetalness}
+                    onSetMaterialMetalness={setMaterialMetalness}
+                    materialOpacity={materialOpacity}
+                    onSetMaterialOpacity={setMaterialOpacity}
+                    showWireframe={showWireframe}
+                    onToggleWireframe={() => setShowWireframe((w) => !w)}
+                    showBoundingBox={showBoundingBox}
+                    onToggleBoundingBox={() => setShowBoundingBox((b) => !b)}
+                    showViewGizmo={showSurfaceViewGizmo}
+                    onToggleViewGizmo={() => setShowSurfaceViewGizmo((v) => !v)}
+                    showChartGrid={showChartGrid}
+                    onToggleChartGrid={toggleSurfaceChartGrid}
+                    showPlanes={showPlanes}
+                    onTogglePlanes={toggleCoordinatePlanes}
+                    showPrincipalProjections={showPrincipalProjections}
+                    onTogglePrincipalProjections={() => setShowPrincipalProjections((v) => !v)}
+                    principalProjectionXY={principalProjectionXY}
+                    onTogglePrincipalProjectionXY={() => setPrincipalProjectionXY((v) => !v)}
+                    principalProjectionXZ={principalProjectionXZ}
+                    onTogglePrincipalProjectionXZ={() => setPrincipalProjectionXZ((v) => !v)}
+                    principalProjectionYZ={principalProjectionYZ}
+                    onTogglePrincipalProjectionYZ={() => setPrincipalProjectionYZ((v) => !v)}
+                    planeGridSettings={planeGridSettings}
+                    onTogglePlaneGrid={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }))
+                    }
+                    onTogglePlaneMinorGrid={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: !prev.showMinorGrid }))
+                    }
+                    onTogglePlaneLabels={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showLabels: !prev.showLabels }))
+                    }
+                    onTogglePlaneAxisLabels={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: !prev.showAxisLabels }))
+                    }
+                    onChangePlaneLabelSkin={(skin) =>
+                      setPlaneGridSettings((prev) => ({ ...prev, labelSkin: skin }))
+                    }
+                    onTogglePlaneXY={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showXY: !prev.showXY }))
+                    }
+                    onTogglePlaneXZ={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showXZ: !prev.showXZ }))
+                    }
+                    onTogglePlaneYZ={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, showYZ: !prev.showYZ }))
+                    }
+                    onTogglePlaneAutoScale={() =>
+                      setPlaneGridSettings((prev) => ({ ...prev, autoGridScale: !prev.autoGridScale }))
+                    }
+                    onChangePlaneGridDensity={(value) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        gridDensity: Math.max(4, Math.min(20, Number.isFinite(value) ? value : prev.gridDensity)),
+                      }))
+                    }
+                    onChangePlaneOpacity={(value) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        planeOpacity: Math.max(0, Math.min(0.35, Number.isFinite(value) ? value : prev.planeOpacity)),
+                      }))
+                    }
+                  />
+                </>
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "analysis" && (
                 <div style={{ marginTop: 10 }}>
@@ -26062,6 +26097,26 @@ case "mobius":
                           >
                             Promote to SurfaceMesh
                           </button>
+                          {datasetKind === "surface" && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                            <button
+                              type="button"
+                              data-testid="surface-open-workbook-scene-detailed"
+                              onClick={handleOpenDetailedWorkbookSceneFromSurfaces}
+                              style={{
+                                borderRadius: 8,
+                                border: "1px solid #0f766e",
+                                background: "#ecfdf5",
+                                color: "#0f766e",
+                                fontWeight: 650,
+                                fontSize: 11,
+                                padding: "5px 10px",
+                                cursor: "pointer",
+                              }}
+                              title="Open full workbook scene in Geometry from the current explicit/implicit surface workflow."
+                            >
+                              Open workbook scene (detailed)
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setShowInViewportOverlayControls((v) => !v)}
