@@ -42,12 +42,12 @@ Use one of these:
 1. Deploy from a branch that does not include LFS `data/` assets.
 2. Prepare and push a `pages-deploy` branch, then switch Cloudflare Production branch to it.
 
-Block-focused editing model
-Show collapsed block list (single expanded/selected block).
-Editor center shows only selected block details.
-Workbook structure UX
-Add explicit Workbook > Page > Block outline in left column.
-Start with one page (Theorem scene) and wire stage/block navigation cleanly.
-Viewer handoff clarity
-Add Show in main viewer / Fit scene on visualize blocks.
-Display source breadcrumb in viewer status (Workbook / Title / Block).
+
+
+Surfaces nav UX parity (move bottom tabs/actions)
+Current issue: in Surfaces, key controls (`Scene/Object/Inspect/View/Analysis` and action chips like `Gallery/New/Demo/Compare`) are buried at the bottom of the left panel in browse/work layouts.
+Requested change: move these controls into the lower navbar area under the top mode/family bars (similar to Geometry navigation), so they are always visible and consistent.
+Acceptance:
+1. Surfaces navigation/action controls are visible in the lower navbar without scrolling.
+2. Layout variants (`L1/L2/L3/L4`) keep the same behavior and do not hide these controls.
+3. Existing shortcuts and selection state are preserved when switching modes/families.
