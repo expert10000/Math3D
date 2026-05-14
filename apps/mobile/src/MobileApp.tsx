@@ -4,7 +4,16 @@ import type { SceneDocument } from "@math3d/core";
 import type { MobileGalleryItem, MobileSceneSummary } from "./models/mobileScene";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
 
-type MobileTab = "home" | "gallery" | "viewer" | "learn";
+type MobileTab = "home" | "gallery" | "viewer" | "learn" | "functions" | "settings";
+
+const tabs: ReadonlyArray<{ key: MobileTab; label: string }> = [
+  { key: "home", label: "home" },
+  { key: "gallery", label: "gallery" },
+  { key: "viewer", label: "viewer" },
+  { key: "functions", label: "functions" },
+  { key: "learn", label: "learn" },
+  { key: "settings", label: "settings" },
+];
 
 const demoScenes: MobileSceneSummary[] = [
   { id: "s-1", title: "Implicit Sphere", updatedAt: Date.now() - 86_400_000, surfaceCount: 1 },
@@ -42,6 +51,7 @@ const asDate = (timestamp: number) => new Date(timestamp).toLocaleDateString();
 
 export const MobileApp: React.FC = () => {
   const [tab, setTab] = useState<MobileTab>("home");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(demoScenes[0]?.id ?? null);
   const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(gallery[0]?.id ?? null);
 
@@ -71,21 +81,50 @@ export const MobileApp: React.FC = () => {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.title}>Math3D Mobile</Text>
-        <Text style={styles.subtitle}>Companion app shell</Text>
+        <View style={styles.headerTop}>
+          <View>
+            <Text style={styles.title}>Math3D Mobile</Text>
+            <Text style={styles.subtitle}>Companion app shell</Text>
+          </View>
+          <Pressable onPress={() => setMenuOpen((value) => !value)} style={styles.menuBtn}>
+            <Text style={styles.menuBtnText}>{menuOpen ? "Close" : "Menu"}</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.navRow}>
-        {(["home", "gallery", "viewer", "learn"] as const).map((key) => (
+      {menuOpen && (
+        <View style={styles.menuPanel}>
+          {tabs.map(({ key, label }) => (
+            <Pressable
+              key={`menu-${key}`}
+              onPress={() => {
+                setTab(key);
+                setMenuOpen(false);
+              }}
+              style={[styles.menuItem, tab === key ? styles.menuItemActive : null]}
+            >
+              <Text style={[styles.menuItemText, tab === key ? styles.menuItemTextActive : null]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.navScroll}
+        contentContainerStyle={styles.navRow}
+      >
+        {tabs.map(({ key, label }) => (
           <Pressable
             key={key}
             onPress={() => setTab(key)}
             style={[styles.navBtn, tab === key ? styles.navBtnActive : null]}
           >
-            <Text style={[styles.navBtnText, tab === key ? styles.navBtnTextActive : null]}>{key}</Text>
+            <Text style={[styles.navBtnText, tab === key ? styles.navBtnTextActive : null]}>{label}</Text>
           </Pressable>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView contentContainerStyle={styles.content}>
         {tab === "home" && (
@@ -140,6 +179,22 @@ export const MobileApp: React.FC = () => {
             <Text style={styles.note}>This tab will host workbook explanations and guided examples.</Text>
           </View>
         )}
+
+        {tab === "functions" && (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Function library</Text>
+            <Text style={styles.note}>Quick presets for implicit, parametric, and complex mappings will appear here.</Text>
+            <Text style={styles.itemMeta}>Upcoming: save favorites, recent formulas, and one-tap load to viewer.</Text>
+          </View>
+        )}
+
+        {tab === "settings" && (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Settings</Text>
+            <Text style={styles.note}>Device and rendering settings will be managed here.</Text>
+            <Text style={styles.itemMeta}>Current state: scenes {demoScenes.length}, gallery items {gallery.length}.</Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -155,6 +210,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
   },
+  headerTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
   title: {
     fontSize: 24,
     fontWeight: "700",
@@ -165,11 +225,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#566172",
   },
+  menuBtn: {
+    backgroundColor: "#163b66",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  menuBtnText: {
+    color: "#ffffff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  menuPanel: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d5dbe2",
+    padding: 8,
+    gap: 8,
+  },
+  menuItem: {
+    borderRadius: 8,
+    backgroundColor: "#edf2f7",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  menuItemActive: {
+    backgroundColor: "#163b66",
+  },
+  menuItemText: {
+    color: "#203047",
+    fontWeight: "600",
+    textTransform: "capitalize",
+  },
+  menuItemTextActive: {
+    color: "#ffffff",
+  },
   navRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
+    paddingTop: 2,
     paddingBottom: 8,
+  },
+  navScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    maxHeight: 52,
   },
   navBtn: {
     paddingVertical: 8,
@@ -229,4 +334,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-

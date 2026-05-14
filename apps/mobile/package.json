@@ -2,7 +2,7 @@
   "name": "@math3d/app-mobile",
   "private": true,
   "version": "0.0.0",
-  "main": "expo/AppEntry",
+  "main": "index.js",
   "scripts": {
     "dev": "expo start",
     "android": "expo start --android",

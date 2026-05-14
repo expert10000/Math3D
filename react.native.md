@@ -71,3 +71,36 @@ Remove-Item -Recurse -Force .\apps\mobile\.expo -ErrorAction SilentlyContinue
 Remove-Item -Recurse -Force .\apps\mobile\.expo-shared -ErrorAction SilentlyContinue
 ```
 
+## 6) Second path (direct mobile folder)
+
+```powershell
+cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile
+```
+
+## 7) USB run (second path, full commands)
+
+```powershell
+# 0) device check
+adb devices
+
+# 1) map Metro port over USB
+adb reverse tcp:8081 tcp:8081
+
+# 2) go direct to mobile app
+cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile
+
+# 3) start clean localhost session
+npx expo start --localhost --clear --port 8081
+```
+
+If app still shows old bundle, close stale Expo processes and restart:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "name='node.exe'" `
+| Where-Object { $_.CommandLine -match 'expo start' } `
+| ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+adb reverse tcp:8081 tcp:8081
+cd G:\Function-viewer-2026-02-05\Math3D\apps\mobile
+npx expo start --localhost --clear --port 8081
+```

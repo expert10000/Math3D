@@ -3,6 +3,7 @@
     "name": "Math3D Mobile",
     "slug": "math3d-mobile",
     "version": "0.0.0",
+    "entryPoint": "./index.js",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
