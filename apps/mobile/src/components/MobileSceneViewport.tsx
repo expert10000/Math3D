@@ -16,13 +16,18 @@ type MobileSceneViewportProps = {
   scene: SceneDocument;
   quality: MobileRenderQuality;
   visibleSurfaceIds?: string[];
+  selectedSurfaceId?: string | null;
   cameraCommand?: { type: "reset" | "fit"; token: number } | null;
   forceFallback?: boolean;
   implicitMeshBySurfaceId?: Record<string, MobileMeshPayload | undefined>;
   onRenderReady?: () => void;
+  initialOrbit?: OrbitState | null;
+  onOrbitChange?: (orbit: OrbitState) => void;
+  onSelectedSurfaceChange?: (surfaceId: string) => void;
+  renderPaused?: boolean;
 };
 
-type OrbitState = {
+export type OrbitState = {
   azimuth: number;
   polar: number;
   distance: number;
@@ -140,10 +145,15 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   scene,
   quality,
   visibleSurfaceIds,
+  selectedSurfaceId,
   cameraCommand,
   forceFallback = false,
   implicitMeshBySurfaceId,
   onRenderReady,
+  initialOrbit,
+  onOrbitChange,
+  onSelectedSurfaceChange,
+  renderPaused = false,
 }) => {
   const previews = useMemo(
     () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId }),
@@ -164,14 +174,25 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
     [visiblePreviews]
   );
 
-  const orbitRef = useRef<OrbitState>({ ...DEFAULT_ORBIT });
+  const orbitRef = useRef<OrbitState>(initialOrbit ? { ...initialOrbit } : { ...DEFAULT_ORBIT });
 
   const previousTouchesRef = useRef<TouchPoint[]>([]);
+  const lastTapRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [gestureHint, setGestureHint] = useState("1-finger orbit | 2-finger pan + pinch zoom");
+  const [doubleTapToken, setDoubleTapToken] = useState(0);
 
   useEffect(() => {
     orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current);
   }, [scene.id, quality, visiblePreviews]);
+
+  useEffect(() => {
+    if (!initialOrbit) return;
+    orbitRef.current = { ...initialOrbit };
+  }, [initialOrbit]);
+
+  useEffect(() => {
+    onOrbitChange?.(orbitRef.current);
+  }, [onOrbitChange, cameraCommand?.token, visiblePreviews, doubleTapToken]);
 
   useEffect(() => {
     if (!cameraCommand) return;
@@ -207,6 +228,24 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
   const handleResponderGrant = (event: GestureResponderEvent) => {
     previousTouchesRef.current = readTouches(event);
+    const touches = previousTouchesRef.current;
+    if (touches.length !== 1) return;
+    const current = touches[0];
+    const now = Date.now();
+    const lastTap = lastTapRef.current;
+    if (
+      lastTap &&
+      now - lastTap.at < 260 &&
+      Math.abs(lastTap.x - current.x) < 22 &&
+      Math.abs(lastTap.y - current.y) < 22
+    ) {
+      orbitRef.current = fitOrbitToPreviews(visiblePreviews, orbitRef.current);
+      setGestureHint("Focused visible surfaces");
+      setDoubleTapToken((value) => value + 1);
+      lastTapRef.current = null;
+      return;
+    }
+    lastTapRef.current = { at: now, x: current.x, y: current.y };
   };
 
   const handleResponderMove = (event: GestureResponderEvent) => {
@@ -219,6 +258,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       orbitRef.current.azimuth -= dx * 0.012;
       orbitRef.current.polar = clamp(orbitRef.current.polar + dy * 0.012, 0.12, Math.PI - 0.12);
       setGestureHint("Orbiting");
+      onOrbitChange?.(orbitRef.current);
     } else if (currentTouches.length >= 2 && previousTouches.length >= 2) {
       const c0 = centerBetween(currentTouches[0], currentTouches[1]);
       const p0 = centerBetween(previousTouches[0], previousTouches[1]);
@@ -235,6 +275,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
 
       orbitRef.current.distance = clamp(orbitRef.current.distance / clamp(zoomRatio, 0.7, 1.4), 1.5, 40);
       setGestureHint("Panning / Zooming");
+      onOrbitChange?.(orbitRef.current);
     }
 
     previousTouchesRef.current = currentTouches;
@@ -259,11 +300,19 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         style={styles.canvas}
         camera={{ fov: 52, near: 0.01, far: 1000, position: [0, 0, 6] }}
         gl={{ antialias: true }}
+        frameloop={renderPaused ? "demand" : "always"}
       >
         {SHOW_GRID ? <gridHelper args={[12, 12, "#8ea3bb", "#b7c6d7"]} /> : null}
 
         {visiblePreviews.map((preview, index) => (
-          <SurfaceMesh key={`surface-preview-${preview.id}-${index}`} preview={preview} />
+          <group
+            key={`surface-preview-${preview.id}-${index}`}
+            onPointerDown={() => {
+              onSelectedSurfaceChange?.(preview.id);
+            }}
+          >
+            <SurfaceMesh preview={preview} />
+          </group>
         ))}
 
         <CameraRig orbitRef={orbitRef} />
@@ -273,6 +322,8 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
       <View style={styles.overlay} pointerEvents="none">
         <Text style={styles.overlayText}>{gestureHint}</Text>
         <Text style={styles.overlayText}>Visible surfaces: {visiblePreviews.length}</Text>
+        {selectedSurfaceId ? <Text style={styles.overlayText}>Selected: {selectedSurfaceId}</Text> : null}
+        {renderPaused ? <Text style={styles.overlayText}>Paused in background</Text> : null}
       </View>
 
       {warnings.length > 0 && (

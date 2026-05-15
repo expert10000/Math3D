@@ -10,6 +10,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@math3d/api-client": "file:../../packages/api-client",
     "@math3d/core": "file:../../packages/core",
     "@react-three/fiber": "^9.4.2",
     "base-64": "^1.0.0",

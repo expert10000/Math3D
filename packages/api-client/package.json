@@ -6,6 +6,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
+    "base-64": "^1.0.0",
     "@math3d/core": "file:../core"
   }
 }

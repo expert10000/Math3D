@@ -85,25 +85,135 @@ No mobile-specific scene format. Mobile must read/write the same `math3d.scene-p
 1. User can pick a gallery item and see a rendered mesh on device.
 2. Camera controls are stable on both Android and iOS.
 
-## Phase 4: Companion Feature Completion (4-6 days)
-1. Add recent scenes list with search/sort.
+## Phase 4: Mobile Companion Workflow + Operational UX (4-7 days)
+1. Add recent scenes list with search, sort, thumbnails, and last-opened metadata.
 2. Add lightweight function presets and quick-load to viewer.
-3. Add settings panel: backend URL, render quality preset, cache clear, diagnostics.
-4. Add crash-safe retry UX for backend failures/timeouts.
+3. Add scene/session restore:
+   - reopen last scene after app restart,
+   - preserve camera state,
+   - preserve selected object when possible.
+4. Add settings panel:
+   - backend URL,
+   - render quality preset,
+   - mesh resolution cap,
+   - cache clear,
+   - diagnostics,
+   - app/build version,
+   - worker/proxy version.
+5. Add backend diagnostics screen:
+   - health check,
+   - latency check,
+   - supported endpoints,
+   - last error,
+   - request timeout status,
+   - payload size warning.
+6. Add crash-safe retry UX for backend failures/timeouts:
+   - retry,
+   - reduce quality and retry,
+   - open diagnostics,
+   - use cached result if available.
+7. Add offline/limited mode:
+   - local sample scenes still open,
+   - persisted scenes still visible,
+   - remote compute actions disabled with clear message.
+8. Add mesh cache:
+   - cache last successful preview result,
+   - invalidate cache by scene hash / parameter hash / schema version.
+9. Add mobile lifecycle handling:
+   - pause rendering when app goes background,
+   - resume GL context safely,
+   - cancel or detach pending compute request on screen exit.
+10. Add touch UX polish:
+   - stable orbit/pan/zoom gestures,
+   - reset camera button,
+   - fit object to view,
+   - double-tap focus,
+   - loading overlay that does not block navigation completely.
 
 ### Exit criteria
 1. Companion workflow is usable without desktop.
-2. Top 3 failure modes (network down, worker timeout, invalid payload) have clear user recovery.
+2. User can browse recent scenes, open a preset, render it, leave the app, return, and recover the scene.
+3. Top failure modes have clear recovery:
+   - network down,
+   - wrong backend URL,
+   - worker timeout,
+   - invalid scene payload,
+   - mesh too large,
+   - app resume after background.
+4. Cached preview can be reused when backend is unavailable.
+5. Diagnostics screen gives enough information to debug user reports.
 
 ## Phase 5: Stabilization + Release Readiness (4-6 days)
 1. Performance profiling on representative devices (mid-range Android + iPhone).
 2. Memory and frame-time tuning (mesh decimation defaults, resolution guards).
 3. Test matrix and release checklist automation.
 4. Internal beta build distribution.
+5. Track execution against `docs/mobile-phase5-stability-checklist.md`.
 
 ### Exit criteria
 1. Cold start, scene load, and preview operations meet agreed budget.
 2. No blocker-level crash in smoke test matrix.
+
+## Phase 5: Stabilization + Release Readiness (5-8 days)
+
+1. Performance profiling on representative devices:
+   - mid-range Android,
+   - low-memory Android if possible,
+   - iPhone simulator,
+   - one physical iPhone if available.
+2. Define mobile performance budgets:
+   - cold start time,
+   - first screen render time,
+   - gallery load time,
+   - scene open time,
+   - remote preview request time,
+   - max mesh vertex/triangle count for default quality,
+   - target FPS during camera interaction.
+3. Memory and frame-time tuning:
+   - mesh decimation defaults,
+   - resolution guards,
+   - vertex count warnings,
+   - dispose geometry/materials/textures on scene close,
+   - pause render loop when inactive.
+4. Add quality presets:
+   - Low: safe for weak devices,
+   - Medium: default,
+   - High: better preview for tablets/newer phones.
+5. Add test matrix and release checklist automation:
+   - typecheck,
+   - lint,
+   - unit tests,
+   - package/shared contract tests,
+   - Android build,
+   - iOS build where available,
+   - smoke test checklist.
+6. Add crash/error reporting strategy:
+   - local error log screen at minimum,
+   - optional remote telemetry later,
+   - export/share diagnostic report.
+7. Add version compatibility checks:
+   - mobile app version,
+   - scene schema version,
+   - worker API version,
+   - unsupported backend warning.
+8. Prepare internal beta build distribution:
+   - Android APK/AAB internal build,
+   - iOS TestFlight path if targeting iOS,
+   - release notes,
+   - known limitations list.
+9. Add security/privacy checks:
+   - no hardcoded production secrets,
+   - backend URL stored safely,
+   - clear warning for non-HTTPS backend outside local/dev,
+   - no accidental logging of large payloads or private scene data.
+
+### Exit criteria
+1. Cold start, scene load, and preview operations meet agreed budgets.
+2. App remains stable after repeated open/render/close cycles.
+3. No blocker-level crash in smoke test matrix.
+4. Mobile detects incompatible worker/schema versions clearly.
+5. Internal beta build can be installed and tested by another person.
+6. Release notes and known limitations are documented.
 
 ## 6. Cross-Cutting Refactors (Parallel Track)
 1. Extract pure reusable logic from `renderer/src/App.tsx` into packages incrementally (start with service adapters and scene transformation helpers).

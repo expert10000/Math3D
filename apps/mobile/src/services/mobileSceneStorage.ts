@@ -143,6 +143,10 @@ export const saveStoredSceneProjects = async (projects: MobileStoredSceneProject
   storageFile.write(JSON.stringify(payload, null, 2), { encoding: "utf8" });
 };
 
+export const clearStoredSceneProjects = async (): Promise<void> => {
+  await saveStoredSceneProjects([]);
+};
+
 export const createStoredProjectFromScene = (
   scene: SceneDocument,
   lastOpenedAt = Date.now()

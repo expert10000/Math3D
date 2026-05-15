@@ -9,12 +9,42 @@ type PersistedSettingsPayload = {
   workerBaseUrl: string;
   androidGlEnabled?: boolean;
   androidGlProbePending?: boolean;
+  meshResolutionCap?: number;
+  lastSceneId?: string;
+  lastSelectedSurfaceId?: string;
+  lastBackendError?: string;
+  lastBackendLatencyMs?: number;
+  lastRequestTimeout?: boolean;
+  cameraOrbit?: {
+    azimuth: number;
+    polar: number;
+    distance: number;
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+  };
 };
 
 export type MobileSettingsLoad = {
   workerBaseUrl: string | null;
   androidGlEnabled: boolean | null;
   androidGlProbePending: boolean | null;
+  meshResolutionCap: number | null;
+  lastSceneId: string | null;
+  lastSelectedSurfaceId: string | null;
+  lastBackendError: string | null;
+  lastBackendLatencyMs: number | null;
+  lastRequestTimeout: boolean | null;
+  cameraOrbit:
+    | {
+        azimuth: number;
+        polar: number;
+        distance: number;
+        targetX: number;
+        targetY: number;
+        targetZ: number;
+      }
+    | null;
   issues: string[];
 };
 
@@ -31,10 +61,38 @@ const ensureStorageLocation = () => {
 export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
   try {
     ensureStorageLocation();
-    if (!settingsFile.exists) return { workerBaseUrl: null, androidGlEnabled: null, androidGlProbePending: null, issues: [] };
+    if (!settingsFile.exists) {
+      return {
+        workerBaseUrl: null,
+        androidGlEnabled: null,
+        androidGlProbePending: null,
+        meshResolutionCap: null,
+        lastSceneId: null,
+        lastSelectedSurfaceId: null,
+        lastBackendError: null,
+        lastBackendLatencyMs: null,
+        lastRequestTimeout: null,
+        cameraOrbit: null,
+        issues: [],
+      };
+    }
 
     const raw = await settingsFile.text();
-    if (!raw.trim()) return { workerBaseUrl: null, androidGlEnabled: null, androidGlProbePending: null, issues: [] };
+    if (!raw.trim()) {
+      return {
+        workerBaseUrl: null,
+        androidGlEnabled: null,
+        androidGlProbePending: null,
+        meshResolutionCap: null,
+        lastSceneId: null,
+        lastSelectedSurfaceId: null,
+        lastBackendError: null,
+        lastBackendLatencyMs: null,
+        lastRequestTimeout: null,
+        cameraOrbit: null,
+        issues: [],
+      };
+    }
 
     let parsed: unknown;
     try {
@@ -44,6 +102,13 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         workerBaseUrl: null,
         androidGlEnabled: null,
         androidGlProbePending: null,
+        meshResolutionCap: null,
+        lastSceneId: null,
+        lastSelectedSurfaceId: null,
+        lastBackendError: null,
+        lastBackendLatencyMs: null,
+        lastRequestTimeout: null,
+        cameraOrbit: null,
         issues: [`Settings JSON parse failed: ${String((error as Error).message ?? error)}`],
       };
     }
@@ -53,6 +118,13 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
         workerBaseUrl: null,
         androidGlEnabled: null,
         androidGlProbePending: null,
+        meshResolutionCap: null,
+        lastSceneId: null,
+        lastSelectedSurfaceId: null,
+        lastBackendError: null,
+        lastBackendLatencyMs: null,
+        lastRequestTimeout: null,
+        cameraOrbit: null,
         issues: ["Settings payload must be an object."],
       };
     }
@@ -68,13 +140,46 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
 
     if (typeof payload.workerBaseUrl !== "string" || payload.workerBaseUrl.trim().length === 0) {
       issues.push("Settings workerBaseUrl is missing or invalid.");
-      return { workerBaseUrl: null, androidGlEnabled: null, androidGlProbePending: null, issues };
+      return {
+        workerBaseUrl: null,
+        androidGlEnabled: null,
+        androidGlProbePending: null,
+        meshResolutionCap: null,
+        lastSceneId: null,
+        lastSelectedSurfaceId: null,
+        lastBackendError: null,
+        lastBackendLatencyMs: null,
+        lastRequestTimeout: null,
+        cameraOrbit: null,
+        issues,
+      };
     }
+
+    const cameraOrbit =
+      payload.cameraOrbit &&
+      typeof payload.cameraOrbit.azimuth === "number" &&
+      typeof payload.cameraOrbit.polar === "number" &&
+      typeof payload.cameraOrbit.distance === "number" &&
+      typeof payload.cameraOrbit.targetX === "number" &&
+      typeof payload.cameraOrbit.targetY === "number" &&
+      typeof payload.cameraOrbit.targetZ === "number"
+        ? payload.cameraOrbit
+        : null;
 
     return {
       workerBaseUrl: payload.workerBaseUrl.trim(),
       androidGlEnabled: typeof payload.androidGlEnabled === "boolean" ? payload.androidGlEnabled : null,
       androidGlProbePending: typeof payload.androidGlProbePending === "boolean" ? payload.androidGlProbePending : null,
+      meshResolutionCap: typeof payload.meshResolutionCap === "number" ? payload.meshResolutionCap : null,
+      lastSceneId: typeof payload.lastSceneId === "string" ? payload.lastSceneId : null,
+      lastSelectedSurfaceId:
+        typeof payload.lastSelectedSurfaceId === "string" ? payload.lastSelectedSurfaceId : null,
+      lastBackendError: typeof payload.lastBackendError === "string" ? payload.lastBackendError : null,
+      lastBackendLatencyMs:
+        typeof payload.lastBackendLatencyMs === "number" ? payload.lastBackendLatencyMs : null,
+      lastRequestTimeout:
+        typeof payload.lastRequestTimeout === "boolean" ? payload.lastRequestTimeout : null,
+      cameraOrbit,
       issues,
     };
   } catch (error) {
@@ -82,6 +187,13 @@ export const loadMobileSettings = async (): Promise<MobileSettingsLoad> => {
       workerBaseUrl: null,
       androidGlEnabled: null,
       androidGlProbePending: null,
+      meshResolutionCap: null,
+      lastSceneId: null,
+      lastSelectedSurfaceId: null,
+      lastBackendError: null,
+      lastBackendLatencyMs: null,
+      lastRequestTimeout: null,
+      cameraOrbit: null,
       issues: [`Failed to load settings: ${String((error as Error).message ?? error)}`],
     };
   }
@@ -91,6 +203,20 @@ export const saveMobileSettings = async (settings: {
   workerBaseUrl: string;
   androidGlEnabled: boolean;
   androidGlProbePending?: boolean;
+  meshResolutionCap?: number;
+  lastSceneId?: string;
+  lastSelectedSurfaceId?: string;
+  lastBackendError?: string;
+  lastBackendLatencyMs?: number;
+  lastRequestTimeout?: boolean;
+  cameraOrbit?: {
+    azimuth: number;
+    polar: number;
+    distance: number;
+    targetX: number;
+    targetY: number;
+    targetZ: number;
+  } | null;
 }): Promise<void> => {
   ensureStorageLocation();
   const payload: PersistedSettingsPayload = {
@@ -98,6 +224,16 @@ export const saveMobileSettings = async (settings: {
     workerBaseUrl: settings.workerBaseUrl.trim(),
     androidGlEnabled: settings.androidGlEnabled,
     androidGlProbePending: typeof settings.androidGlProbePending === "boolean" ? settings.androidGlProbePending : false,
+    meshResolutionCap: typeof settings.meshResolutionCap === "number" ? settings.meshResolutionCap : undefined,
+    lastSceneId: typeof settings.lastSceneId === "string" ? settings.lastSceneId : undefined,
+    lastSelectedSurfaceId:
+      typeof settings.lastSelectedSurfaceId === "string" ? settings.lastSelectedSurfaceId : undefined,
+    lastBackendError: typeof settings.lastBackendError === "string" ? settings.lastBackendError : undefined,
+    lastBackendLatencyMs:
+      typeof settings.lastBackendLatencyMs === "number" ? settings.lastBackendLatencyMs : undefined,
+    lastRequestTimeout:
+      typeof settings.lastRequestTimeout === "boolean" ? settings.lastRequestTimeout : undefined,
+    cameraOrbit: settings.cameraOrbit && typeof settings.cameraOrbit === "object" ? settings.cameraOrbit : undefined,
   };
   settingsFile.write(JSON.stringify(payload, null, 2), { encoding: "utf8" });
 };

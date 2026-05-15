@@ -1,23 +1,38 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import type { SceneDocument, SurfaceDefinition } from "@math3d/core";
-import { MobileSceneViewport } from "./components/MobileSceneViewport";
+import {
+  ActivityIndicator,
+  AppState,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import type { SceneDocument, SurfaceDefinition, VtkPreviewRequest } from "@math3d/core";
+import Constants from "expo-constants";
+import { MobileSceneViewport, type OrbitState } from "./components/MobileSceneViewport";
 import { mobileFunctionPresets, mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
 import type { MobileSceneSummary, MobileStoredSceneProject } from "./models/mobileScene";
 import {
   buildSceneSummary,
+  clearStoredSceneProjects,
   createStoredProjectFromScene,
   loadStoredSceneProjects,
   readSceneFromStoredProject,
   saveStoredSceneProjects,
 } from "./services/mobileSceneStorage";
 import { createMobileMeshBackend } from "./services/mobileMeshBackend";
+import { clearMeshCache, createMeshCacheKey, readCachedMesh, writeCachedMesh } from "./services/mobileMeshCacheStorage";
 import { loadMobileSettings, saveMobileSettings } from "./services/mobileSettingsStorage";
 import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurfacePreview";
 
 type MobileTab = "home" | "gallery" | "viewer" | "learn" | "functions" | "settings";
 type StorageStatus = "loading" | "ready" | "error";
 type CameraCommandType = "reset" | "fit";
+type SceneSortMode = "recent" | "updated" | "title";
 const ANDROID_GL_DEFAULT_ENABLED = true;
 const FORCE_ANDROID_SAFE_MODE = false;
 
@@ -35,7 +50,7 @@ const roadmapSteps: ReadonlyArray<{ id: string; title: string; status: "done" | 
   { id: "m2", title: "Gallery and function preset loading", status: "done" },
   { id: "m3", title: "Scene persistence and validation", status: "done" },
   { id: "m4", title: "Native 3D viewport integration", status: "done" },
-  { id: "m5", title: "Backend compute integration", status: "in_progress" },
+  { id: "m5", title: "Backend compute integration", status: "done" },
 ];
 
 const asDate = (timestamp: number) => new Date(timestamp).toLocaleDateString();
@@ -59,17 +74,47 @@ type ImplicitPreviewState = {
   error?: string;
   vertexCount?: number;
   triCount?: number;
+  cached?: boolean;
 };
 type ImplicitPreviewBySurfaceId = Record<string, ImplicitPreviewState | undefined>;
 type BackendHealthStatus = "idle" | "loading" | "ok" | "error";
+type DiagnosticsStatus = "idle" | "running" | "ready" | "error";
+type BackendDiagnostics = {
+  status: DiagnosticsStatus;
+  healthOk: boolean | null;
+  latencyMs: number | null;
+  workerVersion: string | null;
+  lastError: string | null;
+  timeoutDetected: boolean;
+  lastPayloadBytes: number | null;
+};
 
 const DEFAULT_WORKER_BASE_URL =
   process.env.EXPO_PUBLIC_MATH3D_WORKER_BASE_URL || "http://127.0.0.1:8787/api/worker";
+const DEFAULT_MESH_RESOLUTION_CAP = 96;
+const MESH_RESOLUTION_CAP_MIN = 36;
+const MESH_RESOLUTION_CAP_MAX = 192;
+const PREVIEW_PAYLOAD_WARNING_BYTES = 25_000;
+const PREVIEW_SCHEMA_VERSION = 1;
 
 const normalizeWorkerBaseUrl = (value: string): string => {
   const trimmed = value.trim();
   if (!trimmed) return DEFAULT_WORKER_BASE_URL;
   return trimmed.replace(/\/+$/, "");
+};
+
+const clampInt = (value: number, min: number, max: number): number => {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.round(value)));
+};
+
+const hashText = (value: string): string => {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
 };
 
 const toArrayBuffer = (input: ArrayBuffer | ArrayBufferView): ArrayBuffer => {
@@ -119,6 +164,8 @@ export const MobileApp: React.FC = () => {
   const [storedProjects, setStoredProjects] = useState<MobileStoredSceneProject[]>([]);
   const [storageIssues, setStorageIssues] = useState<string[]>([]);
   const [storageStatus, setStorageStatus] = useState<StorageStatus>("loading");
+  const [sceneSearchQuery, setSceneSearchQuery] = useState("");
+  const [sceneSortMode, setSceneSortMode] = useState<SceneSortMode>("recent");
   const [visibleSurfaceIds, setVisibleSurfaceIds] = useState<string[]>([]);
   const [cameraCommandType, setCameraCommandType] = useState<CameraCommandType | null>(null);
   const [cameraCommandToken, setCameraCommandToken] = useState(0);
@@ -126,6 +173,25 @@ export const MobileApp: React.FC = () => {
   const [workerBaseUrlDraft, setWorkerBaseUrlDraft] = useState(DEFAULT_WORKER_BASE_URL);
   const [backendHealthStatus, setBackendHealthStatus] = useState<BackendHealthStatus>("idle");
   const [backendHealthMessage, setBackendHealthMessage] = useState("");
+  const [backendDiagnostics, setBackendDiagnostics] = useState<BackendDiagnostics>({
+    status: "idle",
+    healthOk: null,
+    latencyMs: null,
+    workerVersion: null,
+    lastError: null,
+    timeoutDetected: false,
+    lastPayloadBytes: null,
+  });
+  const [settingsActionMessage, setSettingsActionMessage] = useState("");
+  const [meshResolutionCap, setMeshResolutionCap] = useState(DEFAULT_MESH_RESOLUTION_CAP);
+  const [meshResolutionCapDraft, setMeshResolutionCapDraft] = useState(String(DEFAULT_MESH_RESOLUTION_CAP));
+  const [selectedSurfaceId, setSelectedSurfaceId] = useState<string | null>(null);
+  const [cameraOrbit, setCameraOrbit] = useState<OrbitState | null>(null);
+  const [appIsForeground, setAppIsForeground] = useState(true);
+  const [limitedMode, setLimitedMode] = useState(false);
+  const [lastPreviewTimeout, setLastPreviewTimeout] = useState(false);
+  const [viewerLoadingMessage, setViewerLoadingMessage] = useState("");
+  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
   const [androidGlEnabled, setAndroidGlEnabled] = useState(ANDROID_GL_DEFAULT_ENABLED);
   const [androidGlProbePending, setAndroidGlProbePending] = useState(false);
   const [androidGlRecoveredFromCrash, setAndroidGlRecoveredFromCrash] = useState(false);
@@ -133,6 +199,7 @@ export const MobileApp: React.FC = () => {
     Record<string, MobileMeshPayload | undefined>
   >({});
   const [implicitPreviewBySurfaceId, setImplicitPreviewBySurfaceId] = useState<ImplicitPreviewBySurfaceId>({});
+  const [implicitPreviewRetryToken, setImplicitPreviewRetryToken] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -148,6 +215,10 @@ export const MobileApp: React.FC = () => {
       const loadedWorkerBaseUrl = loadedSettings.workerBaseUrl
         ? normalizeWorkerBaseUrl(loadedSettings.workerBaseUrl)
         : DEFAULT_WORKER_BASE_URL;
+      const loadedMeshResolutionCap =
+        typeof loadedSettings.meshResolutionCap === "number"
+          ? clampInt(loadedSettings.meshResolutionCap, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX)
+          : DEFAULT_MESH_RESOLUTION_CAP;
       const loadedAndroidGlEnabled =
         typeof loadedSettings.androidGlEnabled === "boolean"
           ? loadedSettings.androidGlEnabled
@@ -177,6 +248,18 @@ export const MobileApp: React.FC = () => {
       setStorageIssues(issues);
       setWorkerBaseUrl(loadedWorkerBaseUrl);
       setWorkerBaseUrlDraft(loadedWorkerBaseUrl);
+      setMeshResolutionCap(loadedMeshResolutionCap);
+      setMeshResolutionCapDraft(String(loadedMeshResolutionCap));
+      setSelectedSceneId(loadedSettings.lastSceneId || null);
+      setSelectedSurfaceId(loadedSettings.lastSelectedSurfaceId || null);
+      setCameraOrbit(loadedSettings.cameraOrbit || null);
+      setBackendDiagnostics((current) => ({
+        ...current,
+        lastError: loadedSettings.lastBackendError,
+        latencyMs: loadedSettings.lastBackendLatencyMs,
+        timeoutDetected: loadedSettings.lastRequestTimeout === true,
+      }));
+      if (loadedSettings.lastBackendError) setLimitedMode(true);
       setAndroidGlEnabled(effectiveAndroidGlEnabled);
       setAndroidGlProbePending(false);
       setAndroidGlRecoveredFromCrash(recoveredFromCrash);
@@ -190,6 +273,17 @@ export const MobileApp: React.FC = () => {
           workerBaseUrl: loadedWorkerBaseUrl,
           androidGlEnabled: effectiveAndroidGlEnabled,
           androidGlProbePending: false,
+          meshResolutionCap: loadedMeshResolutionCap,
+          lastSceneId: loadedSettings.lastSceneId || undefined,
+          lastSelectedSurfaceId: loadedSettings.lastSelectedSurfaceId || undefined,
+          cameraOrbit: loadedSettings.cameraOrbit || undefined,
+          lastBackendError: loadedSettings.lastBackendError || undefined,
+          lastBackendLatencyMs:
+            typeof loadedSettings.lastBackendLatencyMs === "number"
+              ? loadedSettings.lastBackendLatencyMs
+              : undefined,
+          lastRequestTimeout:
+            typeof loadedSettings.lastRequestTimeout === "boolean" ? loadedSettings.lastRequestTimeout : undefined,
         }).catch((error) => {
           if (!active) return;
           setStorageIssues((current) => [
@@ -200,7 +294,8 @@ export const MobileApp: React.FC = () => {
         });
       }
 
-      const firstProject = projects[0] ?? null;
+      const initialSceneId = loadedSettings.lastSceneId || projects[0]?.id || null;
+      const firstProject = initialSceneId ? projects.find((project) => project.id === initialSceneId) ?? projects[0] ?? null : null;
       setSelectedSceneId(firstProject?.id ?? null);
       if (firstProject) {
         const parsed = readSceneFromStoredProject(firstProject);
@@ -234,15 +329,57 @@ export const MobileApp: React.FC = () => {
     [sceneSummaries, selectedSceneId]
   );
 
+  const filteredSceneSummaries = useMemo(() => {
+    const query = sceneSearchQuery.trim().toLowerCase();
+    const source = sceneSummaries.filter((scene) => {
+      if (!query) return true;
+      return scene.title.toLowerCase().includes(query) || scene.id.toLowerCase().includes(query);
+    });
+
+    const lastOpenedById = new Map(storedProjects.map((project) => [project.id, project.lastOpenedAt]));
+    const sorted = [...source];
+    if (sceneSortMode === "title") {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      return sorted;
+    }
+    if (sceneSortMode === "updated") {
+      sorted.sort((a, b) => b.updatedAt - a.updatedAt);
+      return sorted;
+    }
+    sorted.sort((a, b) => (lastOpenedById.get(b.id) ?? 0) - (lastOpenedById.get(a.id) ?? 0));
+    return sorted;
+  }, [sceneSearchQuery, sceneSortMode, sceneSummaries, storedProjects]);
+
   const selectedGallery = useMemo(
     () => mobileGallery.find((item) => item.id === selectedGalleryId) ?? null,
     [selectedGalleryId]
   );
   const viewerSurfaces = viewerDocument?.surfaces ?? [];
+  const hasImplicitPreviewErrors = useMemo(
+    () =>
+      (viewerDocument?.surfaces ?? [])
+        .filter((surface) => surface.kind === "implicit")
+        .some((surface) => implicitPreviewBySurfaceId[surface.id]?.status === "error"),
+    [implicitPreviewBySurfaceId, viewerDocument]
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (next) => {
+      const foreground = next === "active";
+      setAppIsForeground(foreground);
+      if (!foreground) {
+        setViewerLoadingMessage("");
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     const surfaceIds = (viewerDocument?.surfaces ?? []).map((surface) => surface.id);
     setVisibleSurfaceIds(surfaceIds);
+    setSelectedSurfaceId((current) => (current && surfaceIds.includes(current) ? current : surfaceIds[0] ?? null));
     if (surfaceIds.length > 0) {
       setCameraCommandType("fit");
       setCameraCommandToken((value) => value + 1);
@@ -253,7 +390,7 @@ export const MobileApp: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    if (!viewerDocument) return;
+    if (!viewerDocument || tab !== "viewer" || !appIsForeground) return;
 
     const implicitSurfaces = (viewerDocument.surfaces ?? []).filter(
       (surface): surface is Extract<SurfaceDefinition, { kind: "implicit" }> => surface.kind === "implicit"
@@ -268,6 +405,7 @@ export const MobileApp: React.FC = () => {
         loadingState[surface.id] = { status: "loading" };
       }
       if (!cancelled) setImplicitPreviewBySurfaceId((current) => ({ ...current, ...loadingState }));
+      if (!cancelled) setViewerLoadingMessage("Computing implicit previews...");
 
       for (const surface of implicitSurfaces) {
         if (cancelled) return;
@@ -275,31 +413,113 @@ export const MobileApp: React.FC = () => {
         const xSpan = Math.max(0.5, surface.domain?.xSpan ?? 2.4);
         const ySpan = Math.max(0.5, surface.domain?.ySpan ?? 2.4);
         const zSpan = Math.max(0.5, surface.domain?.zSpan ?? Math.max(xSpan, ySpan));
-        const resolution = renderQuality === "performance" ? 52 : renderQuality === "balanced" ? 72 : 96;
+        const baseResolution = renderQuality === "performance" ? 52 : renderQuality === "balanced" ? 72 : 96;
+        const resolution = Math.min(baseResolution, meshResolutionCap);
+        const requestPayload: Omit<VtkPreviewRequest, "jobId"> = {
+          expr: surface.expression,
+          iso: 0,
+          domain: {
+            min: [-xSpan, -ySpan, -zSpan],
+            max: [xSpan, ySpan, zSpan],
+          },
+          resolution,
+          targetFaces: renderQuality === "performance" ? 16000 : 28000,
+        };
+        const requestPayloadBytes = JSON.stringify(requestPayload).length;
+        const cacheKey = createMeshCacheKey([
+          PREVIEW_SCHEMA_VERSION,
+          viewerDocument.id,
+          surface.id,
+          hashText(surface.expression),
+          xSpan,
+          ySpan,
+          zSpan,
+          resolution,
+          requestPayload.targetFaces ?? -1,
+          renderQuality,
+        ]);
+
+        if (!cancelled) {
+          setBackendDiagnostics((current) => ({
+            ...current,
+            lastPayloadBytes: requestPayloadBytes,
+          }));
+        }
+
+        if (limitedMode) {
+          const cached = await readCachedMesh(cacheKey);
+          if (cancelled) return;
+          if (cached) {
+            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: cached }));
+            setImplicitPreviewBySurfaceId((current) => ({
+              ...current,
+              [surface.id]: {
+                status: "ready",
+                vertexCount: cached.vertexCount,
+                triCount: cached.triCount,
+                cached: true,
+              },
+            }));
+          } else {
+            setImplicitPreviewBySurfaceId((current) => ({
+              ...current,
+              [surface.id]: {
+                status: "error",
+                error: "Remote compute disabled in limited mode and no cached preview is available.",
+              },
+            }));
+            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
+          }
+          continue;
+        }
 
         const response = await backend
-          .previewImplicit({
-            expr: surface.expression,
-            iso: 0,
-            domain: {
-              min: [-xSpan, -ySpan, -zSpan],
-              max: [xSpan, ySpan, zSpan],
-            },
-            resolution,
-            targetFaces: renderQuality === "performance" ? 16000 : 28000,
-          })
+          .previewImplicit(requestPayload)
           .catch((error) => ({ ok: false as const, error: String((error as Error).message ?? error) }));
 
         if (cancelled) return;
 
         if (!response.ok) {
+          const timeoutDetected = /timeout|aborted|abort/i.test(response.error || "");
+          const cached = await readCachedMesh(cacheKey);
+          if (cached) {
+            setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: cached }));
+            setImplicitPreviewBySurfaceId((current) => ({
+              ...current,
+              [surface.id]: {
+                status: "ready",
+                vertexCount: cached.vertexCount,
+                triCount: cached.triCount,
+                cached: true,
+              },
+            }));
+            setBackendDiagnostics((current) => ({
+              ...current,
+              lastError: `Using cached preview: ${response.error}`,
+              timeoutDetected,
+            }));
+            setLastPreviewTimeout(timeoutDetected);
+            continue;
+          }
+
           setImplicitPreviewBySurfaceId((current) => ({
             ...current,
             [surface.id]: { status: "error", error: response.error },
           }));
           setImplicitMeshBySurfaceId((current) => ({ ...current, [surface.id]: undefined }));
+          setBackendDiagnostics((current) => ({
+            ...current,
+            status: "error",
+            lastError: response.error,
+            timeoutDetected,
+          }));
+          setLastPreviewTimeout(timeoutDetected);
+          setLimitedMode(true);
           continue;
         }
+
+        setLimitedMode(false);
+        setLastPreviewTimeout(false);
 
         const meshPayload: MobileMeshPayload = {
           positions: toFloat32(response.positions),
@@ -316,17 +536,30 @@ export const MobileApp: React.FC = () => {
             status: "ready",
             vertexCount: meshPayload.vertexCount,
             triCount: meshPayload.triCount,
+            cached: false,
           },
         }));
+        void writeCachedMesh(cacheKey, meshPayload);
       }
+      if (!cancelled) setViewerLoadingMessage("");
     };
 
     void loadImplicitPreviews();
 
     return () => {
       cancelled = true;
+      setViewerLoadingMessage("");
     };
-  }, [viewerDocument, renderQuality, workerBaseUrl]);
+  }, [
+    viewerDocument,
+    renderQuality,
+    workerBaseUrl,
+    implicitPreviewRetryToken,
+    meshResolutionCap,
+    limitedMode,
+    appIsForeground,
+    tab,
+  ]);
 
   const cameraCommand = useMemo(() => {
     if (!cameraCommandType) return null;
@@ -348,9 +581,8 @@ export const MobileApp: React.FC = () => {
     if (shouldProbeAndroidGl) {
       if (androidGlProbePending) return;
       setAndroidGlProbePending(true);
-      void saveMobileSettings({
+      void persistMobileSettings({
         workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
-        androidGlEnabled,
         androidGlProbePending: true,
       }).catch((error) => {
         setStorageIssues((current) => [
@@ -364,9 +596,8 @@ export const MobileApp: React.FC = () => {
 
     if (!androidGlProbePending) return;
     setAndroidGlProbePending(false);
-    void saveMobileSettings({
+    void persistMobileSettings({
       workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
-      androidGlEnabled,
       androidGlProbePending: false,
     }).catch((error) => {
       setStorageIssues((current) => [
@@ -380,9 +611,8 @@ export const MobileApp: React.FC = () => {
   const onViewportRenderReady = () => {
     if (Platform.OS !== "android" || !androidGlProbePending) return;
     setAndroidGlProbePending(false);
-    void saveMobileSettings({
+    void persistMobileSettings({
       workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
-      androidGlEnabled,
       androidGlProbePending: false,
     }).catch((error) => {
       setStorageIssues((current) => [
@@ -460,16 +690,39 @@ export const MobileApp: React.FC = () => {
   };
 
   const toggleSurfaceVisibility = (surfaceId: string) => {
-    setVisibleSurfaceIds((current) =>
-      current.includes(surfaceId) ? current.filter((value) => value !== surfaceId) : [...current, surfaceId]
-    );
+    setVisibleSurfaceIds((current) => {
+      const next = current.includes(surfaceId)
+        ? current.filter((value) => value !== surfaceId)
+        : [...current, surfaceId];
+      if (!next.includes(selectedSurfaceId || "")) {
+        setSelectedSurfaceId(next[0] ?? null);
+      }
+      return next;
+    });
   };
 
   const setAllSurfacesVisible = (visible: boolean) => {
     if (!viewerDocument) return;
     const ids = visible ? (viewerDocument.surfaces ?? []).map((surface) => surface.id) : [];
     setVisibleSurfaceIds(ids);
+    setSelectedSurfaceId(ids[0] ?? null);
     if (visible) runCameraCommand("fit");
+  };
+
+  const persistMobileSettings = async (overrides?: Partial<Parameters<typeof saveMobileSettings>[0]>) => {
+    await saveMobileSettings({
+      workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+      androidGlEnabled,
+      androidGlProbePending,
+      meshResolutionCap,
+      lastSceneId: selectedSceneId || undefined,
+      lastSelectedSurfaceId: selectedSurfaceId || undefined,
+      cameraOrbit,
+      lastBackendError: backendDiagnostics.lastError || undefined,
+      lastBackendLatencyMs: backendDiagnostics.latencyMs ?? undefined,
+      lastRequestTimeout: backendDiagnostics.timeoutDetected,
+      ...(overrides || {}),
+    });
   };
 
   const applyWorkerBaseUrl = async () => {
@@ -480,11 +733,7 @@ export const MobileApp: React.FC = () => {
     setBackendHealthMessage("");
 
     try {
-      await saveMobileSettings({
-        workerBaseUrl: normalizedUrl,
-        androidGlEnabled,
-        androidGlProbePending,
-      });
+      await persistMobileSettings({ workerBaseUrl: normalizedUrl });
     } catch (error) {
       setStorageIssues((current) => [
         ...current,
@@ -498,19 +747,137 @@ export const MobileApp: React.FC = () => {
     const normalizedUrl = normalizeWorkerBaseUrl(workerBaseUrlDraft);
     setBackendHealthStatus("loading");
     setBackendHealthMessage(`Checking ${normalizedUrl} ...`);
+    setSettingsActionMessage("");
+    setBackendDiagnostics((current) => ({ ...current, status: "running" }));
 
-    const response = await createMobileMeshBackend(normalizedUrl)
+    const backend = createMobileMeshBackend(normalizedUrl);
+    const startedAt = Date.now();
+    const response = await backend
       .health()
       .catch((error) => ({ ok: false, error: String((error as Error).message ?? error) }));
+    const latencyMs = Date.now() - startedAt;
+    const versionResult = await (async () => {
+      try {
+        const result = await fetch(`${normalizedUrl}/cgal/version`, { method: "GET" });
+        const payload = (await result.json().catch(() => null)) as { version?: string; error?: string } | null;
+        if (!result.ok || !payload) return null;
+        return typeof payload.version === "string" ? payload.version : null;
+      } catch {
+        return null;
+      }
+    })();
 
     if (response.ok) {
       setBackendHealthStatus("ok");
-      setBackendHealthMessage(`Backend healthy at ${normalizedUrl}`);
+      setBackendHealthMessage(`Backend healthy at ${normalizedUrl} (${latencyMs} ms)`);
+      setBackendDiagnostics((current) => ({
+        ...current,
+        status: "ready",
+        healthOk: true,
+        latencyMs,
+        workerVersion: versionResult,
+        lastError: null,
+        timeoutDetected: false,
+      }));
+      setLimitedMode(false);
+      setLastPreviewTimeout(false);
+      await persistMobileSettings({
+        workerBaseUrl: normalizedUrl,
+        lastBackendLatencyMs: latencyMs,
+        lastBackendError: undefined,
+        lastRequestTimeout: false,
+      }).catch(() => undefined);
       return;
     }
 
+    const timeoutDetected = /timeout|aborted|abort/i.test(response.error || "");
     setBackendHealthStatus("error");
     setBackendHealthMessage(response.error || `Health check failed for ${normalizedUrl}`);
+    setBackendDiagnostics((current) => ({
+      ...current,
+      status: "error",
+      healthOk: false,
+      latencyMs,
+      workerVersion: versionResult,
+      lastError: response.error || `Health check failed for ${normalizedUrl}`,
+      timeoutDetected,
+    }));
+    setLimitedMode(true);
+    setLastPreviewTimeout(timeoutDetected);
+    await persistMobileSettings({
+      workerBaseUrl: normalizedUrl,
+      lastBackendLatencyMs: latencyMs,
+      lastBackendError: response.error || `Health check failed for ${normalizedUrl}`,
+      lastRequestTimeout: timeoutDetected,
+    }).catch(() => undefined);
+  };
+
+  const retryImplicitPreviews = () => {
+    setImplicitPreviewBySurfaceId((current) => {
+      const next: ImplicitPreviewBySurfaceId = { ...current };
+      for (const [surfaceId, state] of Object.entries(next)) {
+        if (state?.status === "error") {
+          next[surfaceId] = { status: "loading" };
+        }
+      }
+      return next;
+    });
+    setImplicitPreviewRetryToken((value) => value + 1);
+  };
+
+  const clearSceneCache = async () => {
+    setSettingsActionMessage("");
+    try {
+      await clearStoredSceneProjects();
+      setStoredProjects([]);
+      setSelectedSceneId(null);
+      setViewerDocument(null);
+      setImplicitMeshBySurfaceId({});
+      setImplicitPreviewBySurfaceId({});
+      setStorageStatus("ready");
+      setSettingsActionMessage("Local scene cache cleared.");
+    } catch (error) {
+      setStorageIssues((current) => [
+        ...current,
+        `Failed to clear local scene cache: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+      setSettingsActionMessage("Failed to clear local scene cache.");
+    }
+  };
+
+  const clearPreviewCache = () => {
+    setImplicitMeshBySurfaceId({});
+    setImplicitPreviewBySurfaceId({});
+    setSettingsActionMessage("Preview cache cleared for current session.");
+  };
+
+  const applyMeshResolutionCap = async () => {
+    const parsed = Number(meshResolutionCapDraft);
+    const normalized = clampInt(parsed, MESH_RESOLUTION_CAP_MIN, MESH_RESOLUTION_CAP_MAX);
+    setMeshResolutionCap(normalized);
+    setMeshResolutionCapDraft(String(normalized));
+    setSettingsActionMessage(`Mesh resolution cap set to ${normalized}.`);
+    try {
+      await persistMobileSettings({ meshResolutionCap: normalized });
+    } catch (error) {
+      setStorageIssues((current) => [
+        ...current,
+        `Failed to persist mesh resolution cap: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+    }
+  };
+
+  const reduceQualityAndRetry = () => {
+    setRenderQuality((current) => (current === "sharp" ? "balanced" : current === "balanced" ? "performance" : "performance"));
+    retryImplicitPreviews();
+  };
+
+  const openDiagnostics = () => {
+    setShowDiagnosticsPanel(true);
+    setTab("settings");
+    setMenuOpen(false);
   };
 
   const toggleAndroidGl = async () => {
@@ -518,8 +885,7 @@ export const MobileApp: React.FC = () => {
     setAndroidGlEnabled(next);
     if (!next) setAndroidGlProbePending(false);
     try {
-      await saveMobileSettings({
-        workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+      await persistMobileSettings({
         androidGlEnabled: next,
         androidGlProbePending: next ? androidGlProbePending : false,
       });
@@ -531,6 +897,25 @@ export const MobileApp: React.FC = () => {
       setStorageStatus("error");
     }
   };
+
+  useEffect(() => {
+    if (storageStatus === "loading") return;
+    const handle = setTimeout(() => {
+      void persistMobileSettings().catch(() => undefined);
+    }, 250);
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [
+    selectedSceneId,
+    selectedSurfaceId,
+    cameraOrbit,
+    storageStatus,
+    backendDiagnostics.lastError,
+    backendDiagnostics.latencyMs,
+    backendDiagnostics.timeoutDetected,
+    meshResolutionCap,
+  ]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -584,11 +969,34 @@ export const MobileApp: React.FC = () => {
         {tab === "home" && (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Recent scenes</Text>
+            <View style={styles.settingRow}>
+              <TextInput
+                value={sceneSearchQuery}
+                onChangeText={setSceneSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="Search scenes..."
+                style={styles.textInput}
+              />
+              <View style={styles.settingChoiceRow}>
+                {(["recent", "updated", "title"] as const).map((mode) => (
+                  <Pressable
+                    key={`scene-sort-${mode}`}
+                    onPress={() => setSceneSortMode(mode)}
+                    style={[styles.pill, sceneSortMode === mode ? styles.pillActive : null]}
+                  >
+                    <Text style={[styles.pillText, sceneSortMode === mode ? styles.pillTextActive : null]}>
+                      {mode}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
             {storageStatus === "loading" && <Text style={styles.note}>Loading local scene storage...</Text>}
-            {storageStatus !== "loading" && sceneSummaries.length === 0 && (
+            {storageStatus !== "loading" && filteredSceneSummaries.length === 0 && (
               <Text style={styles.note}>No local scenes available.</Text>
             )}
-            {sceneSummaries.map((scene) => (
+            {filteredSceneSummaries.map((scene) => (
               <Pressable
                 key={scene.id}
                 onPress={() => {
@@ -596,10 +1004,19 @@ export const MobileApp: React.FC = () => {
                 }}
                 style={styles.item}
               >
-                <Text style={styles.itemTitle}>{scene.title}</Text>
-                <Text style={styles.itemMeta}>
-                  updated {asDate(scene.updatedAt)} | surfaces: {scene.surfaceCount}
-                </Text>
+                <View style={styles.sceneListRow}>
+                  <View style={styles.sceneThumb}>
+                    <Text style={styles.sceneThumbText}>{scene.title.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.sceneListMeta}>
+                    <Text style={styles.itemTitle}>{scene.title}</Text>
+                    <Text style={styles.itemMeta}>
+                      updated {asDate(scene.updatedAt)} | last opened{" "}
+                      {asDate(storedProjects.find((project) => project.id === scene.id)?.lastOpenedAt ?? scene.updatedAt)} |
+                      surfaces: {scene.surfaceCount}
+                    </Text>
+                  </View>
+                </View>
               </Pressable>
             ))}
             {selectedScene && <Text style={styles.note}>Selected: {selectedScene.title}</Text>}
@@ -655,6 +1072,11 @@ export const MobileApp: React.FC = () => {
                 <Text style={styles.note}>
                   Native preview mode is active. This slice runs fully local and keeps backend integration for the final phase.
                 </Text>
+                {limitedMode && (
+                  <Text style={styles.warningNote}>
+                    Limited mode is active. Remote compute is disabled; cached previews will be used when available.
+                  </Text>
+                )}
                 {androidFallbackForced && (
                   <Text style={styles.warningNote}>
                     Android safe mode is enforced because `expo-gl` crashes on this device.
@@ -672,16 +1094,40 @@ export const MobileApp: React.FC = () => {
                   <Pressable onPress={() => runCameraCommand("fit")} style={styles.secondaryBtn}>
                     <Text style={styles.secondaryBtnText}>Fit Visible</Text>
                   </Pressable>
+                  <Pressable onPress={openDiagnostics} style={styles.secondaryBtn}>
+                    <Text style={styles.secondaryBtnText}>Open Diagnostics</Text>
+                  </Pressable>
+                  {hasImplicitPreviewErrors && (
+                    <Pressable onPress={retryImplicitPreviews} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Retry Failed Previews</Text>
+                    </Pressable>
+                  )}
+                  {hasImplicitPreviewErrors && !limitedMode && (
+                    <Pressable onPress={reduceQualityAndRetry} style={styles.secondaryBtn}>
+                      <Text style={styles.secondaryBtnText}>Reduce Quality + Retry</Text>
+                    </Pressable>
+                  )}
                 </View>
                 <MobileSceneViewport
                   scene={viewerDocument}
                   quality={renderQuality}
                   visibleSurfaceIds={visibleSurfaceIds}
+                  selectedSurfaceId={selectedSurfaceId}
                   cameraCommand={cameraCommand}
                   forceFallback={androidFallbackForced}
                   implicitMeshBySurfaceId={implicitMeshBySurfaceId}
                   onRenderReady={onViewportRenderReady}
+                  initialOrbit={cameraOrbit}
+                  onOrbitChange={setCameraOrbit}
+                  onSelectedSurfaceChange={setSelectedSurfaceId}
+                  renderPaused={!appIsForeground}
                 />
+                {viewerLoadingMessage.length > 0 && (
+                  <View style={styles.loadingOverlay} pointerEvents="none">
+                    <ActivityIndicator color="#ffffff" size="small" />
+                    <Text style={styles.loadingOverlayText}>{viewerLoadingMessage}</Text>
+                  </View>
+                )}
 
                 <View style={styles.visibilityPanel}>
                   <Text style={styles.subPanelTitle}>Surface visibility</Text>
@@ -724,10 +1170,30 @@ export const MobileApp: React.FC = () => {
                         {previewState?.status === "ready" && (
                           <Text style={styles.itemMeta}>
                             Vertices: {previewState.vertexCount ?? 0} | Triangles: {previewState.triCount ?? 0}
+                            {previewState.cached ? " | cached" : ""}
                           </Text>
                         )}
                         {previewState?.status === "error" && (
-                          <Text style={styles.issueText}>Error: {previewState.error}</Text>
+                          <>
+                            <Text style={styles.issueText}>Error: {previewState.error}</Text>
+                            {!limitedMode ? (
+                              <View style={styles.viewerToolbarRow}>
+                                <Pressable onPress={retryImplicitPreviews} style={styles.smallBtn}>
+                                  <Text style={styles.smallBtnText}>Retry</Text>
+                                </Pressable>
+                                <Pressable onPress={reduceQualityAndRetry} style={styles.smallBtn}>
+                                  <Text style={styles.smallBtnText}>Reduce + Retry</Text>
+                                </Pressable>
+                                <Pressable onPress={openDiagnostics} style={styles.smallBtn}>
+                                  <Text style={styles.smallBtnText}>Diagnostics</Text>
+                                </Pressable>
+                              </View>
+                            ) : (
+                              <Pressable onPress={openDiagnostics} style={styles.smallBtn}>
+                                <Text style={styles.smallBtnText}>Diagnostics</Text>
+                              </Pressable>
+                            )}
+                          </>
                         )}
                       </View>
                     );
@@ -798,9 +1264,31 @@ export const MobileApp: React.FC = () => {
               </View>
               <Text style={styles.itemMeta}>Applied URL: {workerBaseUrl}</Text>
               <Text style={styles.itemMeta}>Health: {backendHealthStatus}</Text>
+              <Text style={styles.itemMeta}>Request policy: timeout 25s + 1 automatic retry</Text>
               {backendHealthMessage.length > 0 && (
                 <Text style={backendHealthStatus === "error" ? styles.issueText : styles.note}>{backendHealthMessage}</Text>
               )}
+            </View>
+
+            <View style={styles.settingRow}>
+              <Text style={styles.itemMeta}>Mesh resolution cap</Text>
+              <TextInput
+                value={meshResolutionCapDraft}
+                onChangeText={setMeshResolutionCapDraft}
+                keyboardType="numeric"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholder="96"
+                style={styles.textInput}
+              />
+              <View style={styles.viewerToolbarRow}>
+                <Pressable onPress={() => void applyMeshResolutionCap()} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Apply cap</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.itemMeta}>
+                Active cap: {meshResolutionCap} (allowed {MESH_RESOLUTION_CAP_MIN}-{MESH_RESOLUTION_CAP_MAX})
+              </Text>
             </View>
 
             <View style={styles.settingRow}>
@@ -825,6 +1313,46 @@ export const MobileApp: React.FC = () => {
               <Pressable onPress={() => setDiagnosticsEnabled((value) => !value)} style={styles.pill}>
                 <Text style={styles.pillText}>{diagnosticsEnabled ? "enabled" : "disabled"}</Text>
               </Pressable>
+            </View>
+
+            <View style={styles.settingRow}>
+              <Text style={styles.itemMeta}>Local cache</Text>
+              <View style={styles.viewerToolbarRow}>
+                <Pressable onPress={() => void clearSceneCache()} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Clear scene cache</Text>
+                </Pressable>
+                <Pressable onPress={clearPreviewCache} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Clear preview cache</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    void clearMeshCache()
+                      .then(() => setSettingsActionMessage("Mesh cache cleared."))
+                      .catch((error) =>
+                        setSettingsActionMessage(`Failed to clear mesh cache: ${String((error as Error).message ?? error)}`)
+                      );
+                  }}
+                  style={styles.secondaryBtn}
+                >
+                  <Text style={styles.secondaryBtnText}>Clear mesh cache</Text>
+                </Pressable>
+              </View>
+              {settingsActionMessage.length > 0 && <Text style={styles.note}>{settingsActionMessage}</Text>}
+            </View>
+
+            <View style={styles.settingRow}>
+              <Text style={styles.itemMeta}>Runtime mode</Text>
+              <View style={styles.viewerToolbarRow}>
+                <Pressable onPress={() => setLimitedMode((value) => !value)} style={styles.pill}>
+                  <Text style={styles.pillText}>{limitedMode ? "limited/offline" : "online"}</Text>
+                </Pressable>
+                <Pressable onPress={openDiagnostics} style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>Open diagnostics</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.itemMeta}>
+                In limited mode, remote compute is disabled and cached previews are preferred.
+              </Text>
             </View>
 
             {Platform.OS === "android" && !FORCE_ANDROID_SAFE_MODE && (
@@ -857,8 +1385,51 @@ export const MobileApp: React.FC = () => {
 
             <Text style={styles.itemMeta}>Storage status: {storageStatus}</Text>
             <Text style={styles.itemMeta}>
+              App version: {Constants.expoConfig?.version || "unknown"} | Build:{" "}
+              {typeof Constants.expoConfig?.runtimeVersion === "string"
+                ? Constants.expoConfig.runtimeVersion
+                : Constants.expoConfig?.runtimeVersion &&
+                    typeof Constants.expoConfig.runtimeVersion === "object" &&
+                    "policy" in Constants.expoConfig.runtimeVersion
+                  ? String(Constants.expoConfig.runtimeVersion.policy)
+                  : "n/a"}
+            </Text>
+            <Text style={styles.itemMeta}>Worker/proxy version: {backendDiagnostics.workerVersion || "unknown"}</Text>
+            <Text style={styles.itemMeta}>
               Scenes: {sceneSummaries.length} | Gallery items: {mobileGallery.length} | Presets: {mobileFunctionPresets.length}
             </Text>
+
+            {(showDiagnosticsPanel || diagnosticsEnabled) && (
+              <View style={styles.backendPanel}>
+                <Text style={styles.backendPanelTitle}>Backend diagnostics</Text>
+                <Text style={styles.itemMeta}>Status: {backendDiagnostics.status}</Text>
+                <Text style={styles.itemMeta}>Health: {backendDiagnostics.healthOk == null ? "unknown" : backendDiagnostics.healthOk ? "ok" : "error"}</Text>
+                <Text style={styles.itemMeta}>Latency: {backendDiagnostics.latencyMs == null ? "n/a" : `${backendDiagnostics.latencyMs} ms`}</Text>
+                <Text style={styles.itemMeta}>
+                  Endpoints: /cgal/health, /cgal/version, /vtk/preview, /volume/isosurface
+                </Text>
+                <Text style={styles.itemMeta}>Request timeout detected: {backendDiagnostics.timeoutDetected ? "yes" : "no"}</Text>
+                <Text style={styles.itemMeta}>
+                  Last payload estimate:{" "}
+                  {backendDiagnostics.lastPayloadBytes == null ? "n/a" : `${backendDiagnostics.lastPayloadBytes} bytes`}
+                </Text>
+                {backendDiagnostics.lastPayloadBytes != null &&
+                  backendDiagnostics.lastPayloadBytes > PREVIEW_PAYLOAD_WARNING_BYTES && (
+                    <Text style={styles.warningNote}>
+                      Payload size warning: preview request may be heavy for unstable networks.
+                    </Text>
+                  )}
+                {backendDiagnostics.lastError ? <Text style={styles.issueText}>Last error: {backendDiagnostics.lastError}</Text> : null}
+                <View style={styles.viewerToolbarRow}>
+                  <Pressable onPress={() => void runBackendHealthCheck()} style={styles.secondaryBtn}>
+                    <Text style={styles.secondaryBtnText}>Run diagnostics</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setShowDiagnosticsPanel(false)} style={styles.secondaryBtn}>
+                    <Text style={styles.secondaryBtnText}>Hide diagnostics</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
 
             {storageIssues.length > 0 && (
               <View style={styles.issuePanel}>
@@ -1009,6 +1580,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e3e8ef",
   },
+  sceneListRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  sceneThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: "#163b66",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  sceneThumbText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  sceneListMeta: {
+    flex: 1,
+  },
   itemActive: {
     borderColor: "#163b66",
     backgroundColor: "#edf4ff",
@@ -1075,6 +1668,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(17,33,50,0.82)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingOverlayText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "600",
   },
   visibilityPanel: {
     marginTop: 8,
