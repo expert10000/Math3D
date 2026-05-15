@@ -15,7 +15,7 @@
     "base-64": "^1.0.0",
     "expo": "^54.0.34",
     "expo-file-system": "~19.0.22",
-    "expo-gl": "~15.1.7",
+    "expo-gl": "^16.0.7",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "three": "^0.181.2"

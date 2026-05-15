@@ -4035,10 +4035,10 @@ expo-font@>=14.0.4, expo-font@~14.0.11:
   dependencies:
     fontfaceobserver "^2.1.0"
 
-expo-gl@>=11.0, expo-gl@~15.1.7:
-  version "15.1.7"
-  resolved "https://registry.npmjs.org/expo-gl/-/expo-gl-15.1.7.tgz"
-  integrity sha512-ozvaQn3Ev1oZ3lraOpp6PJpSCbb5DRxu29K/prtfUdygrNJbCFhhxG7zgpEcPaFZXj4b1Yc7jzn1UzOylfUdaw==
+expo-gl@^15.1.6:
+  version "15.1.6"
+  resolved "https://registry.npmjs.org/expo-gl/-/expo-gl-15.1.6.tgz"
+  integrity sha512-DZn4c23BN4TvhmUC82/Gb3Z6qokQTbg+1QPYoefvlZU6+2JxFwfsBYD6JeX05KkmpEkrKtkWNeOOF33DZF80ag==
   dependencies:
     invariant "^2.2.4"
 

@@ -18,7 +18,8 @@ import type { MobileMeshPayload, MobileRenderQuality } from "./viewer/mobileSurf
 type MobileTab = "home" | "gallery" | "viewer" | "learn" | "functions" | "settings";
 type StorageStatus = "loading" | "ready" | "error";
 type CameraCommandType = "reset" | "fit";
-const ANDROID_GL_ENABLED = true;
+const ANDROID_GL_DEFAULT_ENABLED = true;
+const FORCE_ANDROID_SAFE_MODE = false;
 
 const tabs: ReadonlyArray<{ key: MobileTab; label: string }> = [
   { key: "home", label: "home" },
@@ -125,6 +126,9 @@ export const MobileApp: React.FC = () => {
   const [workerBaseUrlDraft, setWorkerBaseUrlDraft] = useState(DEFAULT_WORKER_BASE_URL);
   const [backendHealthStatus, setBackendHealthStatus] = useState<BackendHealthStatus>("idle");
   const [backendHealthMessage, setBackendHealthMessage] = useState("");
+  const [androidGlEnabled, setAndroidGlEnabled] = useState(ANDROID_GL_DEFAULT_ENABLED);
+  const [androidGlProbePending, setAndroidGlProbePending] = useState(false);
+  const [androidGlRecoveredFromCrash, setAndroidGlRecoveredFromCrash] = useState(false);
   const [implicitMeshBySurfaceId, setImplicitMeshBySurfaceId] = useState<
     Record<string, MobileMeshPayload | undefined>
   >({});
@@ -144,6 +148,19 @@ export const MobileApp: React.FC = () => {
       const loadedWorkerBaseUrl = loadedSettings.workerBaseUrl
         ? normalizeWorkerBaseUrl(loadedSettings.workerBaseUrl)
         : DEFAULT_WORKER_BASE_URL;
+      const loadedAndroidGlEnabled =
+        typeof loadedSettings.androidGlEnabled === "boolean"
+          ? loadedSettings.androidGlEnabled
+          : ANDROID_GL_DEFAULT_ENABLED;
+      const loadedAndroidGlProbePending = loadedSettings.androidGlProbePending === true;
+      const preferAndroidGlByDefault = Platform.OS === "android" && !FORCE_ANDROID_SAFE_MODE;
+      let effectiveAndroidGlEnabled = preferAndroidGlByDefault ? true : loadedAndroidGlEnabled;
+      let recoveredFromCrash = false;
+      if (!preferAndroidGlByDefault && Platform.OS === "android" && loadedAndroidGlEnabled && loadedAndroidGlProbePending) {
+        effectiveAndroidGlEnabled = false;
+        recoveredFromCrash = true;
+        issues.push("Android GL auto-disabled after previous startup crash. Re-enable in Settings to retry.");
+      }
 
       if (projects.length === 0) {
         projects = mobileSeedScenes.map((scene) => createStoredProjectFromScene(scene, scene.updatedAt));
@@ -160,6 +177,28 @@ export const MobileApp: React.FC = () => {
       setStorageIssues(issues);
       setWorkerBaseUrl(loadedWorkerBaseUrl);
       setWorkerBaseUrlDraft(loadedWorkerBaseUrl);
+      setAndroidGlEnabled(effectiveAndroidGlEnabled);
+      setAndroidGlProbePending(false);
+      setAndroidGlRecoveredFromCrash(recoveredFromCrash);
+
+      if (
+        recoveredFromCrash ||
+        loadedAndroidGlProbePending ||
+        effectiveAndroidGlEnabled !== loadedAndroidGlEnabled
+      ) {
+        void saveMobileSettings({
+          workerBaseUrl: loadedWorkerBaseUrl,
+          androidGlEnabled: effectiveAndroidGlEnabled,
+          androidGlProbePending: false,
+        }).catch((error) => {
+          if (!active) return;
+          setStorageIssues((current) => [
+            ...current,
+            `Failed to persist GL recovery setting: ${String((error as Error).message ?? error)}`,
+          ]);
+          setStorageStatus("error");
+        });
+      }
 
       const firstProject = projects[0] ?? null;
       setSelectedSceneId(firstProject?.id ?? null);
@@ -294,6 +333,66 @@ export const MobileApp: React.FC = () => {
     return { type: cameraCommandType, token: cameraCommandToken };
   }, [cameraCommandType, cameraCommandToken]);
 
+  const androidFallbackForced = Platform.OS === "android" && FORCE_ANDROID_SAFE_MODE;
+
+  const shouldProbeAndroidGl =
+    Platform.OS === "android" &&
+    !FORCE_ANDROID_SAFE_MODE &&
+    androidGlEnabled &&
+    tab === "viewer" &&
+    Boolean(viewerDocument);
+
+  useEffect(() => {
+    if (Platform.OS !== "android" || FORCE_ANDROID_SAFE_MODE) return;
+
+    if (shouldProbeAndroidGl) {
+      if (androidGlProbePending) return;
+      setAndroidGlProbePending(true);
+      void saveMobileSettings({
+        workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+        androidGlEnabled,
+        androidGlProbePending: true,
+      }).catch((error) => {
+        setStorageIssues((current) => [
+          ...current,
+          `Failed to persist Android GL probe start: ${String((error as Error).message ?? error)}`,
+        ]);
+        setStorageStatus("error");
+      });
+      return;
+    }
+
+    if (!androidGlProbePending) return;
+    setAndroidGlProbePending(false);
+    void saveMobileSettings({
+      workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+      androidGlEnabled,
+      androidGlProbePending: false,
+    }).catch((error) => {
+      setStorageIssues((current) => [
+        ...current,
+        `Failed to persist Android GL probe reset: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+    });
+  }, [androidGlEnabled, androidGlProbePending, shouldProbeAndroidGl, workerBaseUrl]);
+
+  const onViewportRenderReady = () => {
+    if (Platform.OS !== "android" || !androidGlProbePending) return;
+    setAndroidGlProbePending(false);
+    void saveMobileSettings({
+      workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+      androidGlEnabled,
+      androidGlProbePending: false,
+    }).catch((error) => {
+      setStorageIssues((current) => [
+        ...current,
+        `Failed to persist Android GL probe completion: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+    });
+  };
+
   const openStoredScene = async (projectId: string) => {
     const target = storedProjects.find((item) => item.id === projectId);
     if (!target) return;
@@ -381,7 +480,11 @@ export const MobileApp: React.FC = () => {
     setBackendHealthMessage("");
 
     try {
-      await saveMobileSettings(normalizedUrl);
+      await saveMobileSettings({
+        workerBaseUrl: normalizedUrl,
+        androidGlEnabled,
+        androidGlProbePending,
+      });
     } catch (error) {
       setStorageIssues((current) => [
         ...current,
@@ -408,6 +511,25 @@ export const MobileApp: React.FC = () => {
 
     setBackendHealthStatus("error");
     setBackendHealthMessage(response.error || `Health check failed for ${normalizedUrl}`);
+  };
+
+  const toggleAndroidGl = async () => {
+    const next = !androidGlEnabled;
+    setAndroidGlEnabled(next);
+    if (!next) setAndroidGlProbePending(false);
+    try {
+      await saveMobileSettings({
+        workerBaseUrl: normalizeWorkerBaseUrl(workerBaseUrl),
+        androidGlEnabled: next,
+        androidGlProbePending: next ? androidGlProbePending : false,
+      });
+    } catch (error) {
+      setStorageIssues((current) => [
+        ...current,
+        `Failed to persist Android GL setting: ${String((error as Error).message ?? error)}`,
+      ]);
+      setStorageStatus("error");
+    }
   };
 
   return (
@@ -533,9 +655,14 @@ export const MobileApp: React.FC = () => {
                 <Text style={styles.note}>
                   Native preview mode is active. This slice runs fully local and keeps backend integration for the final phase.
                 </Text>
-                {Platform.OS === "android" && !ANDROID_GL_ENABLED && (
+                {androidFallbackForced && (
                   <Text style={styles.warningNote}>
                     Android safe mode is enforced because `expo-gl` crashes on this device.
+                  </Text>
+                )}
+                {Platform.OS === "android" && androidGlRecoveredFromCrash && (
+                  <Text style={styles.warningNote}>
+                    Android GL crashed on a previous run, so safe mode was auto-enabled.
                   </Text>
                 )}
                 <View style={styles.viewerToolbarRow}>
@@ -551,8 +678,9 @@ export const MobileApp: React.FC = () => {
                   quality={renderQuality}
                   visibleSurfaceIds={visibleSurfaceIds}
                   cameraCommand={cameraCommand}
-                  forceFallback={Platform.OS === "android" && !ANDROID_GL_ENABLED}
+                  forceFallback={androidFallbackForced}
                   implicitMeshBySurfaceId={implicitMeshBySurfaceId}
+                  onRenderReady={onViewportRenderReady}
                 />
 
                 <View style={styles.visibilityPanel}>
@@ -698,6 +826,34 @@ export const MobileApp: React.FC = () => {
                 <Text style={styles.pillText}>{diagnosticsEnabled ? "enabled" : "disabled"}</Text>
               </Pressable>
             </View>
+
+            {Platform.OS === "android" && !FORCE_ANDROID_SAFE_MODE && (
+              <View style={styles.settingRow}>
+                <Text style={styles.itemMeta}>Android GL renderer</Text>
+                <Pressable
+                  onPress={() => {
+                    void toggleAndroidGl();
+                  }}
+                  style={[styles.pill, androidGlEnabled ? styles.pillActive : null]}
+                >
+                  <Text style={[styles.pillText, androidGlEnabled ? styles.pillTextActive : null]}>
+                    {androidGlEnabled ? "enabled (may crash)" : "safe mode (fallback)"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+            {Platform.OS === "android" && androidGlProbePending && (
+              <Text style={styles.itemMeta}>Android GL probe: pending startup verification</Text>
+            )}
+            {Platform.OS === "android" && androidGlRecoveredFromCrash && (
+              <Text style={styles.warningNote}>
+                Crash recovery is active. Re-enable Android GL only if you want to retry.
+              </Text>
+            )}
+
+            {Platform.OS === "android" && FORCE_ANDROID_SAFE_MODE && (
+              <Text style={styles.warningNote}>Android GL renderer is locked to safe fallback mode.</Text>
+            )}
 
             <Text style={styles.itemMeta}>Storage status: {storageStatus}</Text>
             <Text style={styles.itemMeta}>

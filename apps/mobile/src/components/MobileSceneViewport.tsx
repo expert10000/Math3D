@@ -19,6 +19,7 @@ type MobileSceneViewportProps = {
   cameraCommand?: { type: "reset" | "fit"; token: number } | null;
   forceFallback?: boolean;
   implicitMeshBySurfaceId?: Record<string, MobileMeshPayload | undefined>;
+  onRenderReady?: () => void;
 };
 
 type OrbitState = {
@@ -81,6 +82,16 @@ const CameraRig: React.FC<{ orbitRef: React.MutableRefObject<OrbitState> }> = ({
   return null;
 };
 
+const RenderReadyPing: React.FC<{ onReady?: () => void }> = ({ onReady }) => {
+  const sentRef = useRef(false);
+  useFrame(() => {
+    if (sentRef.current || !onReady) return;
+    sentRef.current = true;
+    onReady();
+  });
+  return null;
+};
+
 const fitOrbitToPreviews = (previews: MobileSurfacePreview[], current: OrbitState): OrbitState => {
   if (previews.length === 0) return { ...DEFAULT_ORBIT };
 
@@ -132,6 +143,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
   cameraCommand,
   forceFallback = false,
   implicitMeshBySurfaceId,
+  onRenderReady,
 }) => {
   const previews = useMemo(
     () => buildSceneSurfacePreviews(scene, quality, { implicitMeshBySurfaceId }),
@@ -255,6 +267,7 @@ export const MobileSceneViewport: React.FC<MobileSceneViewportProps> = ({
         ))}
 
         <CameraRig orbitRef={orbitRef} />
+        <RenderReadyPing onReady={onRenderReady} />
       </Canvas>
 
       <View style={styles.overlay} pointerEvents="none">

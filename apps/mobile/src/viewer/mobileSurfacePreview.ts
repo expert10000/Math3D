@@ -3,9 +3,11 @@ import type { SceneDocument, SurfaceDefinition } from "@math3d/core";
 
 export type MobileRenderQuality = "performance" | "balanced" | "sharp";
 
+type MobileIndexArray = Uint16Array | Uint32Array;
+
 export type MobileMeshPayload = {
   positions: Float32Array;
-  indices: Uint32Array;
+  indices: MobileIndexArray;
   normals?: Float32Array;
   vertexCount: number;
   triCount: number;
@@ -29,11 +31,14 @@ const QUALITY_CAP: Record<MobileRenderQuality, number> = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const MAX_COORD_MAGNITUDE = 1e4;
 
 const asFinite = (value: unknown, fallback: number): number => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
+
+const sanitizeCoord = (value: unknown): number => clamp(asFinite(value, 0), -MAX_COORD_MAGNITUDE, MAX_COORD_MAGNITUDE);
 
 type ScalarFn = (x: number, y: number, z: number, u: number, v: number) => number;
 
@@ -71,8 +76,11 @@ type GridArgs = {
 const buildGridGeometry = ({ uMin, uMax, vMin, vMax, segments, wrapU = false, evaluate }: GridArgs): THREE.BufferGeometry => {
   const rows = segments + 1;
   const cols = wrapU ? segments : segments + 1;
+  const vertexCount = rows * cols;
   const positions = new Float32Array(rows * cols * 3);
-  const indices = new Uint32Array(segments * segments * 6);
+  const indexCount = segments * segments * 6;
+  const indices: MobileIndexArray =
+    vertexCount <= 65535 ? new Uint16Array(indexCount) : new Uint32Array(indexCount);
 
   let p = 0;
   for (let iy = 0; iy <= segments; iy += 1) {
@@ -82,9 +90,9 @@ const buildGridGeometry = ({ uMin, uMax, vMin, vMax, segments, wrapU = false, ev
       const uT = wrapU ? ix / cols : ix / segments;
       const u = uMin + (uMax - uMin) * uT;
       const [x, y, z] = evaluate(u, v);
-      positions[p++] = asFinite(x, 0);
-      positions[p++] = asFinite(y, 0);
-      positions[p++] = asFinite(z, 0);
+      positions[p++] = sanitizeCoord(x);
+      positions[p++] = sanitizeCoord(y);
+      positions[p++] = sanitizeCoord(z);
     }
   }
 
@@ -137,9 +145,9 @@ const buildParametricGeometry = (surface: Extract<SurfaceDefinition, { kind: "pa
   const yFn = compileScalar(surface.yExpr, 0);
   const zFn = compileScalar(surface.zExpr, 0);
   const evaluate = (u: number, v: number): [number, number, number] => [
-    xFn(0, 0, 0, u, v),
-    yFn(0, 0, 0, u, v),
-    zFn(0, 0, 0, u, v),
+    sanitizeCoord(xFn(0, 0, 0, u, v)),
+    sanitizeCoord(yFn(0, 0, 0, u, v)),
+    sanitizeCoord(zFn(0, 0, 0, u, v)),
   ];
 
   // Auto-close periodic U seams (e.g. catenoid/torus-like surfaces) to avoid visible white slit.
