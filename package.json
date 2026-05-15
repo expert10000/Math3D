@@ -49,6 +49,9 @@
     "test:app:e2e:functional": "playwright test tests/e2e/surface-functional.spec.ts",
     "test:app:e2e:worker-failures": "playwright test tests/e2e/worker-failure-injection.spec.ts",
     "test:app:e2e:packaged": "playwright test tests/e2e/packaged-desktop.spec.ts",
+    "phase5:mobile:gate": "node scripts/mobile-phase5-gate.mjs",
+    "phase5:mobile:release-metadata": "node scripts/mobile-phase5-gate.mjs --artifact docs/mobile-phase5-stability-checklist.md --artifact output/logs --report output/mobile-phase5-release-metadata.md",
+    "phase5:mobile:device-runbook": "node scripts/mobile-phase5-device-runbook.mjs --artifact output/logs",
     "docs:api": "npx -y typedoc --options typedoc.json",
     "docs:site": "python -m mkdocs build --clean",
     "docs:build": "npm run docs:api && npm run docs:site",
@@ -62,7 +65,9 @@
     "analyze:deps:arkit:packages": "npm run analyze:deps:prepare && arkit packages -o analysis/dependency/arkit/packages-architecture.puml",
     "analyze:deps:arkit:apps": "npm run analyze:deps:prepare && arkit apps -o analysis/dependency/arkit/apps-architecture.puml",
     "analyze:deps:arkit": "npm run analyze:deps:arkit:renderer && npm run analyze:deps:arkit:electron && npm run analyze:deps:arkit:packages && npm run analyze:deps:arkit:apps",
-    "analyze:deps": "npm run analyze:deps:depcruise && npm run analyze:deps:arkit"
+    "analyze:deps": "npm run analyze:deps:depcruise && npm run analyze:deps:arkit",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -75,8 +80,11 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
-    "better-sqlite3": "^12.5.0",
-    "d3": "^7.9.0"
+    "better-sqlite3": "^12.10.0",
+    "d3": "^7.9.0",
+    "expo": "~54.0.34",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   },
   "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72",
   "engines": {

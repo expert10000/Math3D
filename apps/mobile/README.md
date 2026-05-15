@@ -25,3 +25,13 @@ Or directly:
 ```bash
 npm --prefix apps/mobile run dev
 ```
+
+## Phase 5 Gate Helpers
+
+From repo root:
+
+```bash
+npm run phase5:mobile:gate
+npm run phase5:mobile:release-metadata
+npm run phase5:mobile:device-runbook
+```

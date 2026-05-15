@@ -7,11 +7,12 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar,
   Text,
   TextInput,
   View,
 } from "react-native";
-import type { SceneDocument, SurfaceDefinition, VtkPreviewRequest } from "@math3d/core";
+import { SCENE_PROJECT_VERSION, type SceneDocument, type SurfaceDefinition, type VtkPreviewRequest } from "@math3d/core";
 import Constants from "expo-constants";
 import { MobileSceneViewport, type OrbitState } from "./components/MobileSceneViewport";
 import { mobileFunctionPresets, mobileGallery, mobileSeedScenes } from "./data/mobileSeedData";
@@ -84,6 +85,7 @@ type BackendDiagnostics = {
   healthOk: boolean | null;
   latencyMs: number | null;
   workerVersion: string | null;
+  workerProtocol: string | null;
   lastError: string | null;
   timeoutDetected: boolean;
   lastPayloadBytes: number | null;
@@ -91,6 +93,7 @@ type BackendDiagnostics = {
 
 const DEFAULT_WORKER_BASE_URL =
   process.env.EXPO_PUBLIC_MATH3D_WORKER_BASE_URL || "http://127.0.0.1:8787/api/worker";
+const EXPECTED_WORKER_PROTOCOL = process.env.EXPO_PUBLIC_MATH3D_WORKER_PROTOCOL || "2026-03-15";
 const DEFAULT_MESH_RESOLUTION_CAP = 96;
 const MESH_RESOLUTION_CAP_MIN = 36;
 const MESH_RESOLUTION_CAP_MAX = 192;
@@ -108,6 +111,43 @@ const clampInt = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, Math.round(value)));
 };
 
+const isLikelyLocalHost = (host: string): boolean => {
+  const normalized = host.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1") return true;
+  if (/^10\.\d+\.\d+\.\d+$/.test(normalized)) return true;
+  if (/^192\.168\.\d+\.\d+$/.test(normalized)) return true;
+  const match172 = normalized.match(/^172\.(\d+)\.\d+\.\d+$/);
+  if (match172) {
+    const second = Number(match172[1]);
+    if (Number.isFinite(second) && second >= 16 && second <= 31) return true;
+  }
+  return false;
+};
+
+const inspectWorkerBaseUrl = (
+  value: string
+):
+  | { supported: true; insecure: boolean; host: string; isLocal: boolean }
+  | { supported: false; reason: string } => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { supported: false, reason: `Unsupported protocol ${parsed.protocol}` };
+    }
+    const host = parsed.hostname || "";
+    const isLocal = isLikelyLocalHost(host);
+    return {
+      supported: true,
+      insecure: parsed.protocol === "http:",
+      host,
+      isLocal,
+    };
+  } catch {
+    return { supported: false, reason: "Invalid URL format" };
+  }
+};
+
 const hashText = (value: string): string => {
   let hash = 2166136261;
   for (let i = 0; i < value.length; i += 1) {
@@ -116,6 +156,19 @@ const hashText = (value: string): string => {
   }
   return (hash >>> 0).toString(16);
 };
+
+const buildSceneHash = (scene: SceneDocument): string =>
+  hashText(
+    JSON.stringify({
+      id: scene.id,
+      updatedAt: scene.updatedAt,
+      title: scene.title,
+      surfaceIds: (scene.surfaces ?? []).map((surface) => surface.id),
+    })
+  );
+
+const buildImplicitParameterHash = (payload: Omit<VtkPreviewRequest, "jobId">, quality: MobileRenderQuality): string =>
+  hashText(JSON.stringify({ payload, quality }));
 
 const toArrayBuffer = (input: ArrayBuffer | ArrayBufferView): ArrayBuffer => {
   if (input instanceof ArrayBuffer) return input;
@@ -154,6 +207,7 @@ const upsertStoredProject = (
 };
 
 export const MobileApp: React.FC = () => {
+  const androidTopInset = Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0;
   const [tab, setTab] = useState<MobileTab>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
@@ -178,6 +232,7 @@ export const MobileApp: React.FC = () => {
     healthOk: null,
     latencyMs: null,
     workerVersion: null,
+    workerProtocol: null,
     lastError: null,
     timeoutDetected: false,
     lastPayloadBytes: null,
@@ -362,6 +417,20 @@ export const MobileApp: React.FC = () => {
         .some((surface) => implicitPreviewBySurfaceId[surface.id]?.status === "error"),
     [implicitPreviewBySurfaceId, viewerDocument]
   );
+  const backendUrlStatus = useMemo(() => inspectWorkerBaseUrl(workerBaseUrl), [workerBaseUrl]);
+  const backendSecurityWarning = useMemo(() => {
+    if (!backendUrlStatus.supported) return `Backend URL warning: ${backendUrlStatus.reason}.`;
+    if (backendUrlStatus.insecure && !backendUrlStatus.isLocal) {
+      return "Backend URL warning: non-HTTPS endpoint outside local network may expose traffic.";
+    }
+    return null;
+  }, [backendUrlStatus]);
+  const workerProtocolCompatibility = useMemo(() => {
+    const protocol = backendDiagnostics.workerProtocol;
+    if (!protocol) return "unknown";
+    if (protocol === EXPECTED_WORKER_PROTOCOL) return "compatible";
+    return "mismatch";
+  }, [backendDiagnostics.workerProtocol]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (next) => {
@@ -426,17 +495,13 @@ export const MobileApp: React.FC = () => {
           targetFaces: renderQuality === "performance" ? 16000 : 28000,
         };
         const requestPayloadBytes = JSON.stringify(requestPayload).length;
+        const sceneHash = buildSceneHash(viewerDocument);
+        const parameterHash = buildImplicitParameterHash(requestPayload, renderQuality);
         const cacheKey = createMeshCacheKey([
           PREVIEW_SCHEMA_VERSION,
-          viewerDocument.id,
+          sceneHash,
           surface.id,
-          hashText(surface.expression),
-          xSpan,
-          ySpan,
-          zSpan,
-          resolution,
-          requestPayload.targetFaces ?? -1,
-          renderQuality,
+          parameterHash,
         ]);
 
         if (!cancelled) {
@@ -756,16 +821,11 @@ export const MobileApp: React.FC = () => {
       .health()
       .catch((error) => ({ ok: false, error: String((error as Error).message ?? error) }));
     const latencyMs = Date.now() - startedAt;
-    const versionResult = await (async () => {
-      try {
-        const result = await fetch(`${normalizedUrl}/cgal/version`, { method: "GET" });
-        const payload = (await result.json().catch(() => null)) as { version?: string; error?: string } | null;
-        if (!result.ok || !payload) return null;
-        return typeof payload.version === "string" ? payload.version : null;
-      } catch {
-        return null;
-      }
-    })();
+    const versionResponse = await backend
+      .version()
+      .catch((error) => ({ ok: false as const, error: String((error as Error).message ?? error) }));
+    const workerVersion = versionResponse.ok ? versionResponse.version || null : null;
+    const workerProtocol = versionResponse.ok ? versionResponse.protocol || null : null;
 
     if (response.ok) {
       setBackendHealthStatus("ok");
@@ -775,7 +835,8 @@ export const MobileApp: React.FC = () => {
         status: "ready",
         healthOk: true,
         latencyMs,
-        workerVersion: versionResult,
+        workerVersion,
+        workerProtocol,
         lastError: null,
         timeoutDetected: false,
       }));
@@ -798,7 +859,8 @@ export const MobileApp: React.FC = () => {
       status: "error",
       healthOk: false,
       latencyMs,
-      workerVersion: versionResult,
+      workerVersion,
+      workerProtocol,
       lastError: response.error || `Health check failed for ${normalizedUrl}`,
       timeoutDetected,
     }));
@@ -918,7 +980,8 @@ export const MobileApp: React.FC = () => {
   ]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, androidTopInset > 0 ? { paddingTop: androidTopInset } : null]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f4f6f8" translucent={false} />
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
@@ -1265,6 +1328,7 @@ export const MobileApp: React.FC = () => {
               <Text style={styles.itemMeta}>Applied URL: {workerBaseUrl}</Text>
               <Text style={styles.itemMeta}>Health: {backendHealthStatus}</Text>
               <Text style={styles.itemMeta}>Request policy: timeout 25s + 1 automatic retry</Text>
+              {backendSecurityWarning ? <Text style={styles.warningNote}>{backendSecurityWarning}</Text> : null}
               {backendHealthMessage.length > 0 && (
                 <Text style={backendHealthStatus === "error" ? styles.issueText : styles.note}>{backendHealthMessage}</Text>
               )}
@@ -1395,6 +1459,15 @@ export const MobileApp: React.FC = () => {
                   : "n/a"}
             </Text>
             <Text style={styles.itemMeta}>Worker/proxy version: {backendDiagnostics.workerVersion || "unknown"}</Text>
+            <Text style={styles.itemMeta}>Worker protocol: {backendDiagnostics.workerProtocol || "unknown"}</Text>
+            <Text style={styles.itemMeta}>Expected protocol: {EXPECTED_WORKER_PROTOCOL}</Text>
+            <Text style={styles.itemMeta}>Scene schema version: {SCENE_PROJECT_VERSION}</Text>
+            <Text style={styles.itemMeta}>Protocol compatibility: {workerProtocolCompatibility}</Text>
+            {workerProtocolCompatibility === "mismatch" ? (
+              <Text style={styles.warningNote}>
+                Unsupported backend warning: worker protocol does not match mobile expectation.
+              </Text>
+            ) : null}
             <Text style={styles.itemMeta}>
               Scenes: {sceneSummaries.length} | Gallery items: {mobileGallery.length} | Presets: {mobileFunctionPresets.length}
             </Text>
@@ -1405,6 +1478,8 @@ export const MobileApp: React.FC = () => {
                 <Text style={styles.itemMeta}>Status: {backendDiagnostics.status}</Text>
                 <Text style={styles.itemMeta}>Health: {backendDiagnostics.healthOk == null ? "unknown" : backendDiagnostics.healthOk ? "ok" : "error"}</Text>
                 <Text style={styles.itemMeta}>Latency: {backendDiagnostics.latencyMs == null ? "n/a" : `${backendDiagnostics.latencyMs} ms`}</Text>
+                <Text style={styles.itemMeta}>Worker version: {backendDiagnostics.workerVersion || "unknown"}</Text>
+                <Text style={styles.itemMeta}>Worker protocol: {backendDiagnostics.workerProtocol || "unknown"}</Text>
                 <Text style={styles.itemMeta}>
                   Endpoints: /cgal/health, /cgal/version, /vtk/preview, /volume/isosurface
                 </Text>

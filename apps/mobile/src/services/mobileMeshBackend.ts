@@ -3,6 +3,7 @@ import type {
   CgalHealthResponse,
   CgalMeshRequest,
   CgalMeshResponse,
+  CgalVersionResponse,
   GeodesicHeatRequest,
   GeodesicHeatResponse,
   VtkMeshResponse,
@@ -13,6 +14,7 @@ import type {
 
 export interface MobileMeshBackend {
   health(): Promise<CgalHealthResponse>;
+  version(): Promise<CgalVersionResponse>;
   generateImplicitMesh(request: Omit<CgalMeshRequest, "jobId">): Promise<CgalMeshResponse>;
   previewImplicit(request: Omit<VtkPreviewRequest, "jobId">): Promise<VtkMeshResponse>;
   volumeIsosurface(
@@ -31,6 +33,7 @@ export const createMobileMeshBackend = (baseUrl: string): MobileMeshBackend => (
     });
     return {
       health: () => backend.cgalHealth(),
+      version: () => backend.cgalVersion(),
       generateImplicitMesh: (request: Omit<CgalMeshRequest, "jobId">) => backend.runCgalMesh(request),
       previewImplicit: (request: Omit<VtkPreviewRequest, "jobId">) => backend.vtkPreviewImplicit(request),
       volumeIsosurface: (request: Omit<VtkVolumeIsosurfaceRequest, "jobId">) =>

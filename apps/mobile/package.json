@@ -7,24 +7,25 @@
     "dev": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@math3d/api-client": "file:../../packages/api-client",
     "@math3d/core": "file:../../packages/core",
-    "@react-three/fiber": "^9.4.2",
-    "base-64": "^1.0.0",
-    "expo": "^54.0.34",
-    "expo-file-system": "~19.0.22",
-    "expo-gl": "^16.0.7",
+    "@react-three/fiber": "9.4.2",
+    "base-64": "1.0.0",
+    "expo": "54.0.34",
+    "expo-constants": "18.0.10",
+    "expo-file-system": "19.0.22",
+    "expo-gl": "16.0.7",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "three": "^0.181.2"
+    "three": "0.181.2"
   },
   "devDependencies": {
-    "@types/base-64": "^1.0.2",
-    "@types/react": "~19.1.10",
-    "@types/three": "^0.181.0",
-    "typescript": "~5.9.2"
+    "@types/base-64": "1.0.2",
+    "@types/react": "19.1.10",
+    "typescript": "5.9.2"
   }
 }

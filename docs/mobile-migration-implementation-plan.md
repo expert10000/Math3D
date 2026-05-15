@@ -10,6 +10,14 @@ Ship a production-ready `apps/mobile` companion app (Expo + React Native) that c
 
 Execution note (May 15, 2026): implementation order is frontend-first, with backend integration intentionally moved to the final phase.
 
+Status note (May 15, 2026):
+1. Phase 4 companion workflow is implemented in `apps/mobile` (recents, restore, diagnostics, retry/offline mode, lifecycle handling, cache invalidation by scene/parameter/schema hash).
+2. Phase 5 is active with in-repo hardening started:
+   - worker protocol compatibility checks and unsupported backend warnings in Settings/Diagnostics,
+   - pinned mobile dependency versions for QA reproducibility,
+   - scripted Phase 5 gate report + artifact hash metadata (`npm run phase5:mobile:gate`).
+3. Remaining Phase 5 items requiring device lab execution stay pending until Android/iOS matrix runs complete.
+
 ## 2. Scope (v1)
 
 ### In scope

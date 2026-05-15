@@ -15,7 +15,7 @@ export type MobileMeshPayload = {
 
 export type MobileSurfacePreview = {
   id: string;
-  geometry: THREE.BufferGeometry;
+  geometry: any;
   color: string;
   warning?: string;
 };
@@ -73,7 +73,7 @@ type GridArgs = {
   evaluate: (u: number, v: number) => [number, number, number];
 };
 
-const buildGridGeometry = ({ uMin, uMax, vMin, vMax, segments, wrapU = false, evaluate }: GridArgs): THREE.BufferGeometry => {
+const buildGridGeometry = ({ uMin, uMax, vMin, vMax, segments, wrapU = false, evaluate }: GridArgs): any => {
   const rows = segments + 1;
   const cols = wrapU ? segments : segments + 1;
   const vertexCount = rows * cols;
@@ -213,7 +213,7 @@ const buildImplicitProxyGeometry = (surface: Extract<SurfaceDefinition, { kind: 
   return new THREE.SphereGeometry(1.1, segments, segments);
 };
 
-const buildGeometryFromMeshPayload = (mesh: MobileMeshPayload): THREE.BufferGeometry => {
+const buildGeometryFromMeshPayload = (mesh: MobileMeshPayload): any => {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(mesh.positions, 3));
   geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
