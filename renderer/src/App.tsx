@@ -26274,6 +26274,24 @@ case "mobius":
                         planeOpacity: Math.max(0, Math.min(0.35, Number.isFinite(value) ? value : prev.planeOpacity)),
                       }))
                     }
+                    showPrincipalDirections={showPrincipalDirections}
+                    onTogglePrincipalDirections={() => setShowPrincipalDirections((v) => !v)}
+                    showPrincipalNormalPlanes={showPrincipalNormalPlanes}
+                    onTogglePrincipalNormalPlanes={() => setShowPrincipalNormalPlanes((v) => !v)}
+                    showPrincipalLines={showPrincipalLines}
+                    onTogglePrincipalLines={() => setShowPrincipalLines((v) => !v)}
+                    showPrincipalGlyphs={showPrincipalGlyphs}
+                    onTogglePrincipalGlyphs={() => setShowPrincipalGlyphs((v) => !v)}
+                    principalGlyphDensity={principalGlyphDensity}
+                    onChangePrincipalGlyphDensity={(value) =>
+                      setPrincipalGlyphDensity([50, 100, 200, 400].includes(value) ? value : 100)
+                    }
+                    principalGlyphLength={principalGlyphLength}
+                    onChangePrincipalGlyphLength={(value) =>
+                      setPrincipalGlyphLength(Math.max(0.05, Math.min(1.2, Number.isFinite(value) ? value : principalGlyphLength)))
+                    }
+                    principalGlyphMode={principalGlyphMode}
+                    onChangePrincipalGlyphMode={setPrincipalGlyphMode}
                   />
                 </>
               )}
@@ -37603,6 +37621,20 @@ type SurfacesViewPanelProps = {
   onTogglePlaneAutoScale: () => void;
   onChangePlaneGridDensity: (value: number) => void;
   onChangePlaneOpacity: (value: number) => void;
+  showPrincipalDirections: boolean;
+  onTogglePrincipalDirections: () => void;
+  showPrincipalNormalPlanes: boolean;
+  onTogglePrincipalNormalPlanes: () => void;
+  showPrincipalLines: boolean;
+  onTogglePrincipalLines: () => void;
+  showPrincipalGlyphs: boolean;
+  onTogglePrincipalGlyphs: () => void;
+  principalGlyphDensity: number;
+  onChangePrincipalGlyphDensity: (value: number) => void;
+  principalGlyphLength: number;
+  onChangePrincipalGlyphLength: (value: number) => void;
+  principalGlyphMode: "both" | "d1";
+  onChangePrincipalGlyphMode: (mode: "both" | "d1") => void;
 };
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
@@ -37657,6 +37689,20 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onTogglePlaneAutoScale,
   onChangePlaneGridDensity,
   onChangePlaneOpacity,
+  showPrincipalDirections,
+  onTogglePrincipalDirections,
+  showPrincipalNormalPlanes,
+  onTogglePrincipalNormalPlanes,
+  showPrincipalLines,
+  onTogglePrincipalLines,
+  showPrincipalGlyphs,
+  onTogglePrincipalGlyphs,
+  principalGlyphDensity,
+  onChangePrincipalGlyphDensity,
+  principalGlyphLength,
+  onChangePrincipalGlyphLength,
+  principalGlyphMode,
+  onChangePrincipalGlyphMode,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
     {editCustomLabel && onEditCustom && (
@@ -37670,6 +37716,71 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
         >
           {editCustomLabel}
         </button>
+      </div>
+    )}
+
+    {(viewerKind === "param" ||
+      viewerKind === "weierstrass" ||
+      viewerKind === "graph" ||
+      viewerKind === "implicit") && (
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+        <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+          <input type="checkbox" checked={showPrincipalDirections} onChange={onTogglePrincipalDirections} style={{ marginRight: 6 }} />
+          Show principal directions
+        </label>
+        <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+          <input type="checkbox" checked={showPrincipalNormalPlanes} onChange={onTogglePrincipalNormalPlanes} style={{ marginRight: 6 }} />
+          Show principal normal planes
+        </label>
+        <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+          <input type="checkbox" checked={showPrincipalLines} onChange={onTogglePrincipalLines} style={{ marginRight: 6 }} />
+          Trace principal curvature lines
+        </label>
+        <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+          <input type="checkbox" checked={showPrincipalGlyphs} onChange={onTogglePrincipalGlyphs} style={{ marginRight: 6 }} />
+          Show principal direction glyphs
+        </label>
+        {showPrincipalGlyphs && (
+          <div style={{ marginLeft: 20, marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Density</span>
+              <select
+                value={principalGlyphDensity}
+                onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
+                style={{ fontSize: 11, padding: "2px 4px" }}
+              >
+                <option value={50}>1/50</option>
+                <option value={100}>1/100</option>
+                <option value={200}>1/200</option>
+                <option value={400}>1/400</option>
+              </select>
+            </label>
+            <div style={{ minWidth: 160 }}>
+              <div style={{ fontSize: 10, color: "#555" }}>Length {principalGlyphLength.toFixed(2)}</div>
+              <input
+                type="range"
+                min={0.05}
+                max={1.2}
+                step={0.05}
+                value={principalGlyphLength}
+                onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
+                style={{ width: 160 }}
+              />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span>Mode</span>
+              <select
+                value={principalGlyphMode}
+                onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
+                style={{ fontSize: 11, padding: "2px 4px" }}
+              >
+                <option value="both">d1 + d2</option>
+                <option value="d1">d1 only</option>
+              </select>
+            </label>
+          </div>
+        )}
       </div>
     )}
 
@@ -41530,103 +41641,9 @@ onChangeImplicitExpr,
       <div style={{ ...cardStyle, marginTop: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Display & analysis</div>
         <div style={{ marginTop: 0, fontSize: 12 }}>
-        <div style={{ marginTop: 0, fontSize: 12 }}>
-          {(viewerKind === "param" ||
-            viewerKind === "weierstrass" ||
-            viewerKind === "graph" ||
-            viewerKind === "implicit") && (
-            <div style={{ marginTop: 6 }}>
-              <label style={{ display: "block", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalDirections}
-                  onChange={onTogglePrincipalDirections}
-                  style={{ marginRight: 6 }}
-                />
-                Show principal directions
-              </label>
-              <label style={{ display: "block", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalNormalPlanes}
-                  onChange={onTogglePrincipalNormalPlanes}
-                  style={{ marginRight: 6 }}
-                />
-                Show principal normal planes
-              </label>
-              <label style={{ display: "block", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalLines}
-                  onChange={onTogglePrincipalLines}
-                  style={{ marginRight: 6 }}
-                />
-                Trace principal curvature lines
-              </label>
-              <label style={{ display: "block", cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={showPrincipalGlyphs}
-                  onChange={onTogglePrincipalGlyphs}
-                  style={{ marginRight: 6 }}
-                />
-                Show principal direction glyphs
-              </label>
-              {showPrincipalGlyphs && (
-                <div
-                  style={{
-                    marginLeft: 20,
-                    marginTop: 6,
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    alignItems: "center",
-                    fontSize: 11,
-                  }}
-                >
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>Density</span>
-                    <select
-                      value={principalGlyphDensity}
-                      onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
-                      style={{ fontSize: 11, padding: "2px 4px" }}
-                    >
-                      <option value={50}>1/50</option>
-                      <option value={100}>1/100</option>
-                      <option value={200}>1/200</option>
-                      <option value={400}>1/400</option>
-                    </select>
-                  </label>
-                  <div style={{ minWidth: 160 }}>
-                    <div style={{ fontSize: 10, color: "#555" }}>
-                      Length {principalGlyphLength.toFixed(2)}
-                    </div>
-                    <input
-                      type="range"
-                      min={0.05}
-                      max={1.2}
-                      step={0.05}
-                      value={principalGlyphLength}
-                      onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
-                      style={{ width: 160 }}
-                    />
-                  </div>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>Mode</span>
-                    <select
-                      value={principalGlyphMode}
-                      onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
-                      style={{ fontSize: 11, padding: "2px 4px" }}
-                    >
-                      <option value="both">d1 + d2</option>
-                      <option value="d1">d1 only</option>
-                    </select>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+          <div style={{ marginTop: 0, fontSize: 12 }}>
+            {/* Principal-direction display controls moved to View tab */}
+          </div>
 
         <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 8, flexWrap: "wrap" }}>
           <button
@@ -42710,6 +42727,102 @@ onChangeImplicitExpr,
       )}
       {showViewControls && (
       <>
+      {(viewerKind === "param" ||
+        viewerKind === "weierstrass" ||
+        viewerKind === "graph" ||
+        viewerKind === "implicit") && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Display & analysis</div>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showPrincipalDirections}
+              onChange={onTogglePrincipalDirections}
+              style={{ marginRight: 6 }}
+            />
+            Show principal directions
+          </label>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showPrincipalNormalPlanes}
+              onChange={onTogglePrincipalNormalPlanes}
+              style={{ marginRight: 6 }}
+            />
+            Show principal normal planes
+          </label>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showPrincipalLines}
+              onChange={onTogglePrincipalLines}
+              style={{ marginRight: 6 }}
+            />
+            Trace principal curvature lines
+          </label>
+          <label style={{ display: "block", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={showPrincipalGlyphs}
+              onChange={onTogglePrincipalGlyphs}
+              style={{ marginRight: 6 }}
+            />
+            Show principal direction glyphs
+          </label>
+          {showPrincipalGlyphs && (
+            <div
+              style={{
+                marginLeft: 20,
+                marginTop: 6,
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                fontSize: 11,
+              }}
+            >
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Density</span>
+                <select
+                  value={principalGlyphDensity}
+                  onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
+                  style={{ fontSize: 11, padding: "2px 4px" }}
+                >
+                  <option value={50}>1/50</option>
+                  <option value={100}>1/100</option>
+                  <option value={200}>1/200</option>
+                  <option value={400}>1/400</option>
+                </select>
+              </label>
+              <div style={{ minWidth: 160 }}>
+                <div style={{ fontSize: 10, color: "#555" }}>
+                  Length {principalGlyphLength.toFixed(2)}
+                </div>
+                <input
+                  type="range"
+                  min={0.05}
+                  max={1.2}
+                  step={0.05}
+                  value={principalGlyphLength}
+                  onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
+                  style={{ width: 160 }}
+                />
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span>Mode</span>
+                <select
+                  value={principalGlyphMode}
+                  onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
+                  style={{ fontSize: 11, padding: "2px 4px" }}
+                >
+                  <option value="both">d1 + d2</option>
+                  <option value="d1">d1 only</option>
+                </select>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
       {!hideViewControls && (
       <>
 
