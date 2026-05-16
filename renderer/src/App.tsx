@@ -306,6 +306,12 @@ type GeometryEulerPolygonTemplateId =
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type MeshChartGridMode = "local" | "meshFace";
+type SurfaceMeshAssetPreset = {
+  id: string;
+  label: string;
+  assetUrl: string;
+  fileName: string;
+};
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
 type GeometryFitMode = "scene" | "stage" | "claim";
 type GeometryObjectRole = "primary" | "construction" | "helper" | "claim" | "diagnostic";
@@ -2631,6 +2637,15 @@ const SURFACE_MESH_PRESETS: SurfaceMeshPreset[] = [
   { id: "mesh_ellipsoid", label: "Ellipsoid", build: buildEllipsoidGeometry },
   { id: "mesh_bumpy", label: "Bumpy sphere", build: buildBumpySphereGeometry },
   { id: "mesh_wavy_torus", label: "Wavy torus", build: buildWavyTorusGeometry },
+];
+
+const SURFACE_MESH_ASSET_PRESETS: SurfaceMeshAssetPreset[] = [
+  {
+    id: "mesh_stanford_bunny",
+    label: "Stanford bunny (OBJ)",
+    assetUrl: "/mesh-presets/stanford-bunny.obj",
+    fileName: "stanford-bunny.obj",
+  },
 ];
 
 /* ---------------- Surfaces meta ---------------- */
@@ -15864,6 +15879,30 @@ case "mobius":
     }
   }, []);
 
+  const handleGenerateSurfaceMeshAssetPreset = useCallback(
+    async (presetId: string) => {
+      const preset = SURFACE_MESH_ASSET_PRESETS.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      setSurfaceMeshImportBusy(true);
+      setSurfaceMeshImportError(null);
+      try {
+        const resp = await fetch(preset.assetUrl);
+        if (!resp.ok) throw new Error(`Failed to fetch ${preset.label} (${resp.status})`);
+        const blob = await resp.blob();
+        const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
+        const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
+        setMeshDataset(applySurfaceMeshOps(base));
+        setSurfaceViewerKind("mesh");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to load bundled mesh preset.";
+        setSurfaceMeshImportError(msg);
+      } finally {
+        setSurfaceMeshImportBusy(false);
+      }
+    },
+    [surfaceMeshMergeVertices]
+  );
+
   const handleLoadSurfaceMeshFile = useCallback(
     async (files: FileList | File[] | null) => {
       if (!files || (files as FileList).length === 0) return;
@@ -23736,6 +23775,7 @@ case "mobius":
                   surfaceMeshImportError={surfaceMeshImportError}
                   surfaceMeshMergeVertices={surfaceMeshMergeVertices}
                   surfaceMeshPresets={SURFACE_MESH_PRESETS}
+                  surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   surfaceMeshExportable={surfaceMeshExportable}
                   surfaceMeshExportBusy={surfaceMeshExportBusy}
                   surfaceMeshExportError={surfaceMeshExportError}
@@ -23771,6 +23811,7 @@ case "mobius":
                   onResetImplicitBakeBounds={handleResetImplicitBakeBounds}
                   onToggleSurfaceMeshMergeVertices={setSurfaceMeshMergeVertices}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
+                  onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                   onLoadSurfaceMeshFile={handleLoadSurfaceMeshFile}
                   onConvertToMesh={handleConvertToMesh}
                   onToggleVolumeDistanceSigned={setVolumeDistanceSigned}
@@ -24708,7 +24749,7 @@ case "mobius":
                       type="button"
                       onClick={() => {
                         const noPresetGalleryInCurrentContext =
-                          datasetKind === "volume" || surfaceViewerKind === "mesh" || surfaceViewerKind === "complex";
+                          datasetKind === "volume" || surfaceViewerKind === "complex";
                         if (noPresetGalleryInCurrentContext) {
                           setDatasetKind("surface");
                           handleChangeViewerKind("graph");
@@ -24892,6 +24933,10 @@ case "mobius":
                   quickEditCustomEnabled={surfacesQuickEditEnabled}
                   onQuickEditCustom={handleSurfacesQuickEdit}
                   showWorkGallery={surfacesWorkGalleryOpen}
+                  surfaceMeshPresets={SURFACE_MESH_PRESETS}
+                  surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
+                  onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
+                  onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                 />
               </div>
               )}
@@ -25635,6 +25680,10 @@ case "mobius":
                   quickEditCustomEnabled={surfacesQuickEditEnabled}
                   onQuickEditCustom={handleSurfacesQuickEdit}
                   showWorkGallery={surfacesWorkGalleryOpen}
+                  surfaceMeshPresets={SURFACE_MESH_PRESETS}
+                  surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
+                  onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
+                  onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
                 />
               )}
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
@@ -33282,6 +33331,10 @@ type SurfacesControlsProps = {
   quickEditCustomEnabled?: boolean;
   onQuickEditCustom?: () => void;
   showWorkGallery: boolean;
+  surfaceMeshPresets: SurfaceMeshPreset[];
+  surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
+  onGenerateSurfaceMeshPreset: (id: string) => void;
+  onGenerateSurfaceMeshAssetPreset: (id: string) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -33331,6 +33384,10 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   quickEditCustomEnabled = false,
   onQuickEditCustom = () => {},
   showWorkGallery,
+  surfaceMeshPresets,
+  surfaceMeshAssetPresets,
+  onGenerateSurfaceMeshPreset,
+  onGenerateSurfaceMeshAssetPreset,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -33669,7 +33726,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {panelMode === "work" && showWorkGallery && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Surface gallery</div>
-          {datasetKind === "surface" && (viewerKind === "mesh" || viewerKind === "complex") && (
+          {datasetKind === "surface" && viewerKind === "complex" && (
             <div
               style={{
                 display: "flex",
@@ -33710,48 +33767,86 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
             </div>
           )}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {SURFACE_GALLERY_CARDS.map((card) => {
-              const active = surfaceGallerySelectedId === card.id;
-              return (
-                <button
-                  key={card.id}
-                  data-testid={`surface-gallery-card-${card.id}`}
-                  type="button"
-                  onClick={() => openSurfaceGalleryCard(card.id)}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
-                    background: active ? "#e6f0ff" : "#fff",
-                    fontWeight: active ? 700 : 550,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={card.description}
-                >
-                  {card.title}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => onRunGalleryDemo(surfaceGallerySelectedId ?? "torus")}
-              disabled={galleryDemoActive}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 999,
-                border: "1px solid #d1d5db",
-                background: "#fff",
-                fontWeight: 550,
-                cursor: galleryDemoActive ? "not-allowed" : "pointer",
-                opacity: galleryDemoActive ? 0.6 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Demo active preset
-            </button>
-          </div>
+          {datasetKind === "surface" && viewerKind === "mesh" ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 11, color: "#475569" }}>
+                Mesh presets are available directly in Mesh mode.
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Generated meshes</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {surfaceMeshPresets.map((preset) => (
+                  <button
+                    key={`surface-mesh-preset-${preset.id}`}
+                    type="button"
+                    onClick={() => onGenerateSurfaceMeshPreset(preset.id)}
+                    style={{ padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              {surfaceMeshAssetPresets.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Bundled meshes</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {surfaceMeshAssetPresets.map((preset) => (
+                      <button
+                        key={`surface-mesh-asset-${preset.id}`}
+                        type="button"
+                        onClick={() => onGenerateSurfaceMeshAssetPreset(preset.id)}
+                        style={{ padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {SURFACE_GALLERY_CARDS.map((card) => {
+                const active = surfaceGallerySelectedId === card.id;
+                return (
+                  <button
+                    key={card.id}
+                    data-testid={`surface-gallery-card-${card.id}`}
+                    type="button"
+                    onClick={() => openSurfaceGalleryCard(card.id)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid " + (active ? "#0a66c2" : "#d1d5db"),
+                      background: active ? "#e6f0ff" : "#fff",
+                      fontWeight: active ? 700 : 550,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={card.description}
+                  >
+                    {card.title}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => onRunGalleryDemo(surfaceGallerySelectedId ?? "torus")}
+                disabled={galleryDemoActive}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  fontWeight: 550,
+                  cursor: galleryDemoActive ? "not-allowed" : "pointer",
+                  opacity: galleryDemoActive ? 0.6 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Demo active preset
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -34015,9 +34110,33 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       {panelMode === "browse" && datasetKind !== "volume" && (viewerKind === "mesh" || viewerKind === "complex") && (
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Mesh workspace</div>
-          <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
-            Preset gallery is hidden in mesh view. Use Scene/Object tabs and the main-view Save options overlay.
-          </div>
+          {viewerKind === "mesh" ? (
+            <>
+              <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+                Use mesh presets directly here, or open Scene/Object tabs for full mesh tools.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {surfaceMeshPresets.map((preset) => (
+                  <button key={`browse-mesh-preset-${preset.id}`} type="button" onClick={() => onGenerateSurfaceMeshPreset(preset.id)}>
+                    {preset.label}
+                  </button>
+                ))}
+                {surfaceMeshAssetPresets.map((preset) => (
+                  <button
+                    key={`browse-mesh-asset-${preset.id}`}
+                    type="button"
+                    onClick={() => onGenerateSurfaceMeshAssetPreset(preset.id)}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
+              Complex mode uses workspace tools; switch to Mesh to use mesh presets.
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
@@ -37407,6 +37526,7 @@ type SurfacesLeftPanelProps = {
   surfaceMeshImportError: string | null;
   surfaceMeshMergeVertices: boolean;
   surfaceMeshPresets: SurfaceMeshPreset[];
+  surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
   surfaceMeshExportable: boolean;
   surfaceMeshExportBusy: boolean;
   surfaceMeshExportError: string | null;
@@ -37442,6 +37562,7 @@ type SurfacesLeftPanelProps = {
   onResetImplicitBakeBounds: () => void;
   onToggleSurfaceMeshMergeVertices: (v: boolean) => void;
   onGenerateSurfaceMeshPreset: (id: string) => void;
+  onGenerateSurfaceMeshAssetPreset: (id: string) => void;
   onLoadSurfaceMeshFile: (files: FileList | File[] | null) => void;
   onConvertToMesh: () => void;
   onToggleVolumeDistanceSigned: (v: boolean) => void;
@@ -37946,6 +38067,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   surfaceMeshImportError,
   surfaceMeshMergeVertices,
   surfaceMeshPresets,
+  surfaceMeshAssetPresets,
   surfaceMeshExportable,
   surfaceMeshExportBusy,
   surfaceMeshExportError,
@@ -37981,6 +38103,7 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onResetImplicitBakeBounds,
   onToggleSurfaceMeshMergeVertices,
   onGenerateSurfaceMeshPreset,
+  onGenerateSurfaceMeshAssetPreset,
   onLoadSurfaceMeshFile,
   onConvertToMesh,
   onToggleVolumeDistanceSigned,
@@ -40588,6 +40711,18 @@ onChangeImplicitExpr,
                 </button>
               ))}
             </div>
+            {surfaceMeshAssetPresets.length > 0 && (
+              <>
+                <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Bundled presets</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                  {surfaceMeshAssetPresets.map((p) => (
+                    <button key={p.id} type="button" onClick={() => onGenerateSurfaceMeshAssetPreset(p.id)}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Load file</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
