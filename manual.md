@@ -203,6 +203,12 @@ UI option:
   - `Local chart patch` (local tangent-plane chart around probe)
   - `Mesh-face grid` (triangle-cell decomposition overlay)
 
+What `Local chart patch` means:
+- Draws a small rectangular chart patch around the current probe point.
+- Uses a local tangent basis `(xi, eta)` built from the probe normal and two orthogonal tangent directions.
+- Intended for local differential behavior (tangent directions and nearby shape), not whole-surface decomposition.
+- Unlike `Mesh-face grid`, it does not follow global triangle faces.
+
 How `Mesh-face grid` is computed (implicit torus included):
 - Read the rendered surface mesh triangles (world-space positions).
 - Downsample faces with a stride so total overlay cells stay bounded by chart density.
@@ -216,6 +222,20 @@ How `Mesh-face grid` is computed (implicit torus included):
   - optional centers, normals, and per-cell area coloring.
 
 This is a mesh decomposition overlay, not a true `u,v` parametric chart.
+
+Which surfaces have the `Mesh-face grid` option?
+- `Mesh-face grid` appears only for mesh-like surface viewers:
+  - `mesh`
+  - `implicit`
+  - `complex`
+- In UI terms, this includes:
+  - imported or baked meshes
+  - implicit surfaces (including implicit torus / CGAL results)
+  - complex or mesh-backed surface pipelines
+- It does not appear for pure:
+  - `graph` (explicit `z = f(x,y)`)
+  - `parametric`
+  - `weierstrass`
 
 ### Inspect domain navigator (surface-local)
 - Added a Domain navigator card inside the left `Inspect` tab for graph/param/Weierstrass viewers.
