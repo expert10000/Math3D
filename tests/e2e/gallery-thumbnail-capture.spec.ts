@@ -20,11 +20,18 @@ type SurfaceCaptureEntry = {
   file: string;
 };
 
+type MeshCaptureEntry = {
+  id: string;
+  kind: "preset" | "asset";
+  file: string;
+};
+
 type CaptureManifest = {
   generatedAt: string;
   outputRoot: string;
   objects: ObjectCaptureEntry[];
   surfaces: SurfaceCaptureEntry[];
+  meshes: MeshCaptureEntry[];
 };
 
 type CaptureViewPolicy = {
@@ -52,6 +59,16 @@ const toPosixRelative = (absolutePath: string): string =>
 const captureMode = (process.env.MATH3D_THUMBNAIL_CAPTURE_MODE ?? "smoke").trim().toLowerCase();
 const fullCaptureMode = captureMode === "full";
 const runThumbnailCapture = (process.env.MATH3D_RUN_THUMBNAIL_CAPTURE_E2E ?? "").trim() === "1";
+const captureTargets = new Set(
+  (process.env.MATH3D_THUMBNAIL_CAPTURE_TARGETS ?? "objects,surfaces,mesh")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+);
+const shouldCaptureObjects = captureTargets.has("objects");
+const shouldCaptureSurfaces = captureTargets.has("surfaces");
+const shouldCaptureMesh = captureTargets.has("mesh");
+const captureMeshAssets = (process.env.MATH3D_THUMBNAIL_CAPTURE_MESH_ASSETS ?? "").trim() === "1";
 const captureDelayMs = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_DELAY_MS ?? (fullCaptureMode ? 450 : 160));
 const captureTestTimeoutMs = Number(process.env.MATH3D_THUMBNAIL_TEST_TIMEOUT_MS ?? (fullCaptureMode ? 45 * 60 * 1000 : 15 * 60 * 1000));
 const captureLimitPerGroup = Number(process.env.MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP ?? (fullCaptureMode ? 0 : 2));
@@ -83,6 +100,18 @@ const OBJECT_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>
   torus: { padding: 1.74, direction: { x: 1.03, y: 0.66, z: 1.2 } },
   cone: { padding: 1.78, direction: { x: 1.06, y: 0.58, z: 1.22 } },
   cylinder: { padding: 1.78, direction: { x: 1.04, y: 0.6, z: 1.22 } },
+};
+
+const MESH_CAPTURE_POLICY_OVERRIDES: Record<string, Partial<CaptureViewPolicy>> = {
+  mesh_box: { padding: 1.84, direction: { x: 1.02, y: 0.64, z: 1.24 } },
+  mesh_icosphere: { padding: 1.76, direction: { x: 1, y: 0.7, z: 1.18 } },
+  mesh_torus: { padding: 1.76, direction: { x: 1.05, y: 0.62, z: 1.22 } },
+  mesh_knot: { padding: 1.82, direction: { x: 1.06, y: 0.6, z: 1.24 } },
+  mesh_dodeca: { padding: 1.84, direction: { x: 1.04, y: 0.66, z: 1.22 } },
+  mesh_ellipsoid: { padding: 1.8, direction: { x: 1.02, y: 0.7, z: 1.2 } },
+  mesh_bumpy: { padding: 1.82, direction: { x: 1.04, y: 0.68, z: 1.22 } },
+  mesh_wavy_torus: { padding: 1.84, direction: { x: 1.06, y: 0.62, z: 1.24 } },
+  mesh_stanford_bunny: { padding: 1.92, direction: { x: 1.08, y: 0.58, z: 1.24 } },
 };
 
 const OPEN_SURFACE_HINTS = [
@@ -140,6 +169,16 @@ const resolveObjectCapturePolicy = (id: string): CaptureViewPolicy => {
   const direct = OBJECT_CAPTURE_POLICY_OVERRIDES[key];
   if (direct) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, direct);
   for (const [match, override] of Object.entries(OBJECT_CAPTURE_POLICY_OVERRIDES)) {
+    if (key.includes(match)) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, override);
+  }
+  return CANONICAL_CAPTURE_POLICY;
+};
+
+const resolveMeshCapturePolicy = (id: string): CaptureViewPolicy => {
+  const key = id.trim().toLowerCase();
+  const direct = MESH_CAPTURE_POLICY_OVERRIDES[key];
+  if (direct) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, direct);
+  for (const [match, override] of Object.entries(MESH_CAPTURE_POLICY_OVERRIDES)) {
     if (key.includes(match)) return mergeCapturePolicy(CANONICAL_CAPTURE_POLICY, override);
   }
   return CANONICAL_CAPTURE_POLICY;
@@ -235,6 +274,18 @@ const openSurfacesWorkspace = async (page: Page): Promise<void> => {
   }
 };
 
+const openMeshWorkspace = async (page: Page): Promise<void> => {
+  await clickFirstVisibleButton(page, "Mesh");
+  await setSurfacesLayout(page, 3);
+  await setSurfacesLayout3PanelMode(page, "work");
+  const meshPresetsButton = page.getByRole("button", { name: "Mesh presets", exact: true });
+  if ((await meshPresetsButton.count()) > 0 && (await meshPresetsButton.first().isVisible())) {
+    await clickFirstVisible(meshPresetsButton, 'button "Mesh presets"');
+    await settleRenderer(page);
+  }
+  await expect(page.getByTestId("mesh-preset-grid")).toBeVisible();
+};
+
 const getSurfacesLayout3ModeToggle = (page: Page) => page.getByTestId("surfaces-layout3-mode-toggle").first();
 
 const readToggleLabel = async (toggle: ReturnType<typeof getSurfacesLayout3ModeToggle>): Promise<string> =>
@@ -304,6 +355,14 @@ const prepareSurfaceCaptureUi = async (page: Page): Promise<void> => {
     document.head.appendChild(style);
   });
   await page.waitForTimeout(120);
+};
+
+const prepareMeshCaptureUi = async (page: Page): Promise<void> => {
+  await prepareSurfaceCaptureUi(page);
+  await setCheckboxValueIfVisible(page, "Selectable cells", false);
+  await setCheckboxValueIfVisible(page, "Cell centers", false);
+  await setCheckboxValueIfVisible(page, "Cell normals", false);
+  await setCheckboxValueIfVisible(page, "Show Gauss map (S²)", false);
 };
 
 const resetCameraIfAvailable = async (page: Page): Promise<void> => {
@@ -498,6 +557,50 @@ const captureSurfaceCards = async (
   await ensureSurfacesGalleryMode(page);
 };
 
+const captureMeshCards = async (page: Page, outputRoot: string, manifest: CaptureManifest): Promise<void> => {
+  await openMeshWorkspace(page);
+  await expect.poll(async () => page.locator("[data-testid^='mesh-preset-card-']").count()).toBeGreaterThan(0);
+  const presetIds = applyCaptureLimit(await getIdsByTestIdPrefix(page, "mesh-preset-card-", { visibleOnly: true }));
+  for (const id of presetIds) {
+    await openMeshWorkspace(page);
+    const card = page.getByTestId(`mesh-preset-card-${id}`);
+    if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
+    await card.first().scrollIntoViewIfNeeded();
+    await clickFirstVisible(card, `data-testid=mesh-preset-card-${id}`);
+    await settleRenderer(page);
+    await page.waitForTimeout(2800);
+    await prepareMeshCaptureUi(page);
+    const outPath = path.join(outputRoot, "mesh", `${id}.png`);
+    await captureScene(page, outPath, resolveMeshCapturePolicy(id));
+    manifest.meshes.push({
+      id,
+      kind: "preset",
+      file: toPosixRelative(outPath),
+    });
+  }
+
+  if (captureMeshAssets) {
+    const assetIds = applyCaptureLimit(await getIdsByTestIdPrefix(page, "mesh-asset-card-", { visibleOnly: true }));
+    for (const id of assetIds) {
+      await openMeshWorkspace(page);
+      const card = page.getByTestId(`mesh-asset-card-${id}`);
+      if ((await card.count()) === 0 || !(await card.first().isVisible())) continue;
+      await card.first().scrollIntoViewIfNeeded();
+      await clickFirstVisible(card, `data-testid=mesh-asset-card-${id}`);
+      await settleRenderer(page);
+      await page.waitForTimeout(2800);
+      await prepareMeshCaptureUi(page);
+      const outPath = path.join(outputRoot, "mesh", `${id}.png`);
+      await captureScene(page, outPath, resolveMeshCapturePolicy(id));
+      manifest.meshes.push({
+        id,
+        kind: "asset",
+        file: toPosixRelative(outPath),
+      });
+    }
+  }
+};
+
 test.setTimeout(captureTestTimeoutMs);
 test.skip(!runThumbnailCapture, "Set MATH3D_RUN_THUMBNAIL_CAPTURE_E2E=1 to run thumbnail capture.");
 
@@ -512,6 +615,7 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
     outputRoot: toPosixRelative(outputRoot),
     objects: [],
     surfaces: [],
+    meshes: [],
   };
 
   let app: ElectronApplication | null = null;
@@ -521,61 +625,69 @@ test("Capture gallery thumbnails for objects and surfaces", async () => {
     const page = launched.page;
     await resetStorage(page);
 
-    await openProceduralGeometry(page);
-    await captureObjectGallery(page, outputRoot, manifest);
+    if (shouldCaptureObjects) {
+      await openProceduralGeometry(page);
+      await captureObjectGallery(page, outputRoot, manifest);
+    }
 
-    await openSurfacesWorkspace(page);
-    await ensureSurfacesGalleryMode(page);
+    if (shouldCaptureSurfaces) {
+      await openSurfacesWorkspace(page);
+      await ensureSurfacesGalleryMode(page);
 
-    await page.getByTestId("surface-family-explicit").click();
-    await captureSurfaceCards(page, outputRoot, manifest, {
-      family: "explicit",
-      testIdPrefix: "surface-preset-card-",
-      folder: path.join("surfaces", "explicit"),
-    });
-
-    await page.getByTestId("surface-family-implicit").click();
-    await captureSurfaceCards(page, outputRoot, manifest, {
-      family: "implicit",
-      testIdPrefix: "surface-preset-card-",
-      folder: path.join("surfaces", "implicit"),
-    });
-
-    await page.getByTestId("surface-family-parametric").click();
-    await captureSurfaceCards(page, outputRoot, manifest, {
-      family: "parametric",
-      testIdPrefix: "param-preset-card-",
-      folder: path.join("surfaces", "parametric"),
-    });
-
-    await page.getByTestId("surface-family-spline").click();
-    await captureSurfaceCards(page, outputRoot, manifest, {
-      family: "spline",
-      testIdPrefix: "param-preset-card-",
-      folder: path.join("surfaces", "spline"),
-    });
-
-    await page.getByTestId("surface-family-constructed").click();
-    for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
-      await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+      await page.getByTestId("surface-family-explicit").click();
       await captureSurfaceCards(page, outputRoot, manifest, {
-        family: "constructed",
-        subtype,
+        family: "explicit",
+        testIdPrefix: "surface-preset-card-",
+        folder: path.join("surfaces", "explicit"),
+      });
+
+      await page.getByTestId("surface-family-implicit").click();
+      await captureSurfaceCards(page, outputRoot, manifest, {
+        family: "implicit",
+        testIdPrefix: "surface-preset-card-",
+        folder: path.join("surfaces", "implicit"),
+      });
+
+      await page.getByTestId("surface-family-parametric").click();
+      await captureSurfaceCards(page, outputRoot, manifest, {
+        family: "parametric",
         testIdPrefix: "param-preset-card-",
-        folder: path.join("surfaces", "constructed", subtype),
+        folder: path.join("surfaces", "parametric"),
+      });
+
+      await page.getByTestId("surface-family-spline").click();
+      await captureSurfaceCards(page, outputRoot, manifest, {
+        family: "spline",
+        testIdPrefix: "param-preset-card-",
+        folder: path.join("surfaces", "spline"),
+      });
+
+      await page.getByTestId("surface-family-constructed").click();
+      for (const subtype of ["rotational", "sweep", "tube", "ruled"] as const) {
+        await page.getByTestId(`param-constructed-subtype-${subtype}`).click();
+        await captureSurfaceCards(page, outputRoot, manifest, {
+          family: "constructed",
+          subtype,
+          testIdPrefix: "param-preset-card-",
+          folder: path.join("surfaces", "constructed", subtype),
+        });
+      }
+
+      const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
+      if (!(await weierstrassFamilyButton.isVisible())) {
+        await page.getByTestId("surface-family-more").click();
+      }
+      await page.getByTestId("surface-family-weierstrass").click();
+      await captureSurfaceCards(page, outputRoot, manifest, {
+        family: "weierstrass",
+        testIdPrefix: "weierstrass-preset-card-",
+        folder: path.join("surfaces", "weierstrass"),
       });
     }
 
-    const weierstrassFamilyButton = page.getByTestId("surface-family-weierstrass");
-    if (!(await weierstrassFamilyButton.isVisible())) {
-      await page.getByTestId("surface-family-more").click();
+    if (shouldCaptureMesh) {
+      await captureMeshCards(page, outputRoot, manifest);
     }
-    await page.getByTestId("surface-family-weierstrass").click();
-    await captureSurfaceCards(page, outputRoot, manifest, {
-      family: "weierstrass",
-      testIdPrefix: "weierstrass-preset-card-",
-      folder: path.join("surfaces", "weierstrass"),
-    });
 
     writeFileSync(path.join(outputRoot, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
   } finally {

@@ -9718,6 +9718,16 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       return next;
     });
   }, []);
+  const handleSurfaceCellSelectionEnabledChange = useCallback(
+    (enabled: boolean) => {
+      if (!enabled) return;
+      if (datasetKind !== "surface" || surfaceViewerKind !== "mesh") return;
+      if (meshChartGridMode === "meshFace") {
+        setMeshChartGridMode("local");
+      }
+    },
+    [datasetKind, meshChartGridMode, surfaceViewerKind]
+  );
   const [showPrincipalProjections, setShowPrincipalProjections] = useState(false);
   const [principalProjectionXY, setPrincipalProjectionXY] = useState(true);
   const [principalProjectionXZ, setPrincipalProjectionXZ] = useState(true);
@@ -11461,6 +11471,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     if (surfacesPanelState !== "work") setSurfacesPanelState("work");
     if (surfacesLeftTab !== "scene") setSurfacesLeftTab("scene");
   }, [mode, surfacesLayoutVariant, surfacesPanelState, surfacesLeftTab]);
+  useEffect(() => {
+    if (mode !== "surfaces") return;
+    if (surfacesLayoutVariant !== "layout4") return;
+    if (datasetKind !== "surface" || surfaceViewerKind !== "mesh") return;
+    if (showChartGrid) setShowChartGrid(false);
+    if (meshChartGridMode !== "local") setMeshChartGridMode("local");
+  }, [datasetKind, meshChartGridMode, mode, showChartGrid, surfaceViewerKind, surfacesLayoutVariant]);
 
   useEffect(() => {
     if (mode !== "surfaces") {
@@ -23350,6 +23367,11 @@ case "mobius":
   }, [restoreWorkspaceLocation, workspaceNavigation]);
   const canGoWorkspaceBack = workspaceNavigation.backStack.length > 0;
   const canGoWorkspaceForward = workspaceNavigation.forwardStack.length > 0;
+  const meshNewPresetId = SURFACE_MESH_PRESETS[0]?.id ?? null;
+  const meshDemoPresetId =
+    SURFACE_MESH_PRESETS.find((preset) => preset.id === "mesh_knot")?.id ??
+    SURFACE_MESH_PRESETS[1]?.id ??
+    meshNewPresetId;
   const sectionNavEntries: Array<{
     id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
     label: string;
@@ -23378,6 +23400,9 @@ case "mobius":
         setDatasetKind("surface");
         setSurfacesPanelState("work");
         setSurfacesLeftTab("scene");
+        setSurfacesWorkGalleryOpen(true);
+        setHeaderSurfaceFamilyMoreOpen(true);
+        setSurfacesTopActionsMoreOpen(false);
         handleChangeViewerKind("mesh");
       },
     },
@@ -23445,7 +23470,9 @@ case "mobius":
       : null;
   const headerContextLabel =
     mode === "surfaces"
-      ? `Surfaces / ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` / ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
+      ? surfaceViewerKind === "mesh" && datasetKind === "surface"
+        ? "Mesh / Workspace"
+        : `Surfaces / ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` / ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
       : `${activeSectionLabel} / ${activeDisplayLabel}`;
   const surfacesWorkSubtypeLabel =
     surfaceViewerKind === "graph"
@@ -23465,7 +23492,7 @@ case "mobius":
           : surfaceViewerKind === "weierstrass"
             ? "Minimal"
             : surfaceViewerKind === "mesh"
-              ? "Imported"
+              ? "Preset"
               : surfaceViewerKind === "complex"
                 ? "Map"
                 : datasetKind === "volume"
@@ -23485,8 +23512,17 @@ case "mobius":
               : datasetKind === "volume"
                 ? "Volume Workspace"
                 : "Preset";
-  const surfacesWorkBreadcrumb =
-    `Surfaces / ${headerSurfacesFamilyLabel} / ${surfacesWorkSubtypeLabel} / ${surfacesWorkPresetLabel}`;
+  const surfacesWorkBreadcrumbParts = [
+    surfaceViewerKind === "mesh" && datasetKind === "surface" ? "Mesh" : "Surfaces",
+    headerSurfacesFamilyLabel,
+    surfacesWorkSubtypeLabel,
+    surfacesWorkPresetLabel,
+  ].filter((part, index, parts) => {
+    if (!part) return false;
+    if (index === 0) return true;
+    return part.toLowerCase() !== parts[index - 1]?.toLowerCase();
+  });
+  const surfacesWorkBreadcrumb = surfacesWorkBreadcrumbParts.join(" / ");
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
@@ -24606,111 +24642,168 @@ case "mobius":
               </div>
               {mode === "surfaces" && datasetKind === "surface" && (
                 <div style={topNavContextBarStyle}>
-                  <button
-                    type="button"
-                    data-testid="surface-family-explicit"
-                    onClick={() => {
-                      setSurfacesPanelState("browse");
-                      setDatasetKind("surface");
-                      handleChangeViewerKind("graph");
-                    }}
-                    style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "graph")}
-                  >
-                    Explicit
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="surface-family-implicit"
-                    onClick={() => {
-                      setSurfacesPanelState("browse");
-                      setDatasetKind("surface");
-                      handleChangeViewerKind("implicit");
-                    }}
-                    style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "implicit")}
-                  >
-                    Implicit
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="surface-family-parametric"
-                    onClick={() => {
-                      setSurfacesPanelState("browse");
-                      if (paramSurfaceSourceKindFor(paramSurfaceId) !== "formula") handlePickParamSurface("torus");
-                      else {
-                        setDatasetKind("surface");
-                        handleChangeViewerKind("param");
-                      }
-                    }}
-                    style={headerFamilyButtonStyle(headerIsParamFormula)}
-                  >
-                    Parametric
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="surface-family-spline"
-                    onClick={() => {
-                      setSurfacesPanelState("browse");
-                      if (!isSplineParamSurfaceId(paramSurfaceId)) handlePickParamSurface("bezierSurface");
-                      else {
-                        setDatasetKind("surface");
-                        handleChangeViewerKind("param");
-                      }
-                    }}
-                    style={headerFamilyButtonStyle(headerIsParamSpline)}
-                  >
-                    Spline
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="surface-family-constructed"
-                    onClick={() => {
-                      setSurfacesPanelState("browse");
-                      if (!isConstructedParamSurfaceId(paramSurfaceId)) handlePickParamSurface("rotationalGraph");
-                      else {
-                        setDatasetKind("surface");
-                        handleChangeViewerKind("param");
-                      }
-                    }}
-                    style={headerFamilyButtonStyle(headerIsParamConstructed)}
-                  >
-                    Constructed
-                  </button>
-                  {headerShowExtendedFamilyButtons && (
+                  {headerIsSurface && surfaceViewerKind === "mesh" ? (
                     <>
                       <button
                         type="button"
-                        data-testid="surface-family-weierstrass"
                         onClick={() => {
-                          setSurfacesPanelState("browse");
-                          setDatasetKind("surface");
-                          handleChangeViewerKind("weierstrass");
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          setSurfacesWorkGalleryOpen(true);
                         }}
-                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "weierstrass")}
+                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "scene")}
                       >
-                        Weierstrass
+                        Mesh presets
                       </button>
                       <button
                         type="button"
-                        data-testid="surface-family-mesh"
+                        onClick={() => {
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("analysis");
+                          setSurfacesWorkGalleryOpen(false);
+                        }}
+                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "analysis")}
+                      >
+                        Mesh tools
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("object");
+                          setSurfacesWorkGalleryOpen(false);
+                        }}
+                        style={headerFamilyButtonStyle(surfacesPanelState === "work" && surfacesLeftTab === "object")}
+                      >
+                        Object
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          setSurfacesWorkGalleryOpen(false);
+                          setSurfacesTopActionsMoreOpen(false);
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("graph");
+                        }}
+                        style={headerFamilyButtonStyle(false, "aux")}
+                      >
+                        Back to Surfaces
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        data-testid="surface-family-explicit"
                         onClick={() => {
                           setSurfacesPanelState("browse");
                           setDatasetKind("surface");
-                          handleChangeViewerKind("mesh");
+                          handleChangeViewerKind("graph");
                         }}
-                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "mesh")}
+                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "graph")}
                       >
-                        Mesh
+                        Explicit
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-implicit"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          setDatasetKind("surface");
+                          handleChangeViewerKind("implicit");
+                        }}
+                        style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "implicit")}
+                      >
+                        Implicit
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-parametric"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          if (paramSurfaceSourceKindFor(paramSurfaceId) !== "formula") handlePickParamSurface("torus");
+                          else {
+                            setDatasetKind("surface");
+                            handleChangeViewerKind("param");
+                          }
+                        }}
+                        style={headerFamilyButtonStyle(headerIsParamFormula)}
+                      >
+                        Parametric
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-spline"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          if (!isSplineParamSurfaceId(paramSurfaceId)) handlePickParamSurface("bezierSurface");
+                          else {
+                            setDatasetKind("surface");
+                            handleChangeViewerKind("param");
+                          }
+                        }}
+                        style={headerFamilyButtonStyle(headerIsParamSpline)}
+                      >
+                        Spline
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="surface-family-constructed"
+                        onClick={() => {
+                          setSurfacesPanelState("browse");
+                          if (!isConstructedParamSurfaceId(paramSurfaceId)) handlePickParamSurface("rotationalGraph");
+                          else {
+                            setDatasetKind("surface");
+                            handleChangeViewerKind("param");
+                          }
+                        }}
+                        style={headerFamilyButtonStyle(headerIsParamConstructed)}
+                      >
+                        Constructed
+                      </button>
+                      {headerShowExtendedFamilyButtons && (
+                        <>
+                          <button
+                            type="button"
+                            data-testid="surface-family-weierstrass"
+                            onClick={() => {
+                              setSurfacesPanelState("browse");
+                              setDatasetKind("surface");
+                              handleChangeViewerKind("weierstrass");
+                            }}
+                            style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "weierstrass")}
+                          >
+                            Weierstrass
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="surface-family-mesh"
+                            onClick={() => {
+                              setSurfacesPanelState("work");
+                              setSurfacesLeftTab("scene");
+                              setSurfacesWorkGalleryOpen(true);
+                              setSurfacesTopActionsMoreOpen(false);
+                              setHeaderSurfaceFamilyMoreOpen(true);
+                              setDatasetKind("surface");
+                              handleChangeViewerKind("mesh");
+                            }}
+                            style={headerFamilyButtonStyle(headerIsSurface && surfaceViewerKind === "mesh")}
+                          >
+                            Mesh
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        data-testid="surface-family-more"
+                        onClick={() => setHeaderSurfaceFamilyMoreOpen((v) => !v)}
+                        style={headerFamilyButtonStyle(headerShowExtendedFamilyButtons, "aux")}
+                      >
+                        {headerShowExtendedFamilyButtons ? "Less" : "More"}
                       </button>
                     </>
                   )}
-                  <button
-                    type="button"
-                    data-testid="surface-family-more"
-                    onClick={() => setHeaderSurfaceFamilyMoreOpen((v) => !v)}
-                    style={headerFamilyButtonStyle(headerShowExtendedFamilyButtons, "aux")}
-                  >
-                    {headerShowExtendedFamilyButtons ? "Less" : "More"}
-                  </button>
                 </div>
               )}
               {mode === "surfaces" && (
@@ -24774,6 +24867,12 @@ case "mobius":
                     <button
                       type="button"
                       onClick={() => {
+                        if (datasetKind === "surface" && surfaceViewerKind === "mesh") {
+                          if (meshNewPresetId) handleGenerateSurfaceMeshPreset(meshNewPresetId);
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          return;
+                        }
                         setDatasetKind("surface");
                         handleChangeViewerKind("graph");
                         handlePickEqSurface("graph_mexican");
@@ -24787,6 +24886,12 @@ case "mobius":
                     <button
                       type="button"
                       onClick={() => {
+                        if (datasetKind === "surface" && surfaceViewerKind === "mesh") {
+                          if (meshDemoPresetId) handleGenerateSurfaceMeshPreset(meshDemoPresetId);
+                          setSurfacesPanelState("work");
+                          setSurfacesLeftTab("scene");
+                          return;
+                        }
                         setDatasetKind("surface");
                         handleChangeViewerKind("param");
                         handlePickParamSurface("torus");
@@ -26468,6 +26573,7 @@ case "mobius":
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
                             chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
+                            onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             showViewGizmo={showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
@@ -27831,6 +27937,7 @@ case "mobius":
                               colorPalette={secondaryOverlay.colorPalette}
                               showChartGrid={secondaryOverlay.showChartGrid}
                               chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
+                              onSurfaceCellSelectionEnabledChange={handleSurfaceCellSelectionEnabledChange}
                               showOverlayControls={false}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
@@ -32690,6 +32797,7 @@ type PresetThumbKind =
   | "parametric"
   | "spline"
   | "constructed"
+  | "mesh"
   | "rotational"
   | "sweep"
   | "tube"
@@ -32808,6 +32916,16 @@ const CAPTURED_PRESET_IDS_BY_KIND: Partial<Record<PresetThumbKind, ReadonlySet<s
     "twistedStrip",
   ]),
   spline: new Set(["bezierSurface", "bSplineSurface", "nurbsSurface", "rotationalFreeProfile"]),
+  mesh: new Set([
+    "mesh_box",
+    "mesh_icosphere",
+    "mesh_torus",
+    "mesh_knot",
+    "mesh_dodeca",
+    "mesh_ellipsoid",
+    "mesh_bumpy",
+    "mesh_wavy_torus",
+  ]),
   rotational: new Set([
     "rotationalDevelopable",
     "rotationalGraph",
@@ -32862,6 +32980,7 @@ const capturedPresetThumbPath = (id: string, kind: PresetThumbKind): string | nu
   if (kind === "implicit") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/implicit/${normalizedId}.png`);
   if (kind === "parametric") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/parametric/${normalizedId}.png`);
   if (kind === "spline") return resolveGalleryAssetPath(`gallery-images/captured/surfaces/spline/${normalizedId}.png`);
+  if (kind === "mesh") return resolveGalleryAssetPath(`gallery-images/captured/mesh/${normalizedId}.png`);
   if (kind === "rotational") {
     return resolveGalleryAssetPath(`gallery-images/captured/surfaces/constructed/rotational/${normalizedId}.png`);
   }
@@ -33522,9 +33641,13 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
           : viewerKind === "mesh"
             ? "Mesh Workspace"
             : viewerKind === "complex"
-              ? "Complex Workspace"
+            ? "Complex Workspace"
               : "Preset";
-  const workflowPath = `Surfaces -> ${activeFamilyLabel} -> ${activeSubtypeLabel} -> ${activePresetLabel}`;
+  const contextRootLabel = isSurface && isMesh ? "Mesh" : "Surfaces";
+  const workflowSegments = [contextRootLabel, activeFamilyLabel, activeSubtypeLabel, activePresetLabel].filter(
+    (segment, index, parts) => index === 0 || segment.toLowerCase() !== parts[index - 1]?.toLowerCase()
+  );
+  const workflowPath = workflowSegments.join(" -> ");
   const sortedImplicitSurfaces = useMemo(() => {
     if (surfaceCardSortPreset === "family") return implicitSurfaces;
     return [...implicitSurfaces].sort((a, b) =>
@@ -33602,7 +33725,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
       <div style={stickyTopStyle}>
         <div style={contextBarStyle}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", minWidth: 0, flexWrap: "wrap" }} aria-label={workflowPath}>
-            {(["Surfaces", activeFamilyLabel, activeSubtypeLabel, activePresetLabel] as const).map((segment, index) => (
+            {workflowSegments.map((segment, index) => (
               <React.Fragment key={`surface-context-${segment}-${index}`}>
                 {index > 0 && <span style={{ fontSize: 11, color: "#64748b" }}>/</span>}
                 <span
@@ -33625,98 +33748,122 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
             )}
           </div>
           <div style={{ display: "flex", gap: 4, alignItems: "center", minWidth: 0, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              data-testid="surface-family-explicit"
-              onClick={() => {
-                onChangeDatasetKind("surface");
-                onChangeViewerKind("graph");
-              }}
-              style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
-            >
-              Explicit
-            </button>
-            <button
-              type="button"
-              data-testid="surface-family-implicit"
-              onClick={() => {
-                onChangeDatasetKind("surface");
-                onChangeViewerKind("implicit");
-              }}
-              style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
-            >
-              Implicit
-            </button>
-            <button
-              type="button"
-              data-testid="surface-family-parametric"
-              onClick={() => {
-                onChangeDatasetKind("surface");
-                onChangeViewerKind("param");
-                if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
-              }}
-              style={toolbarChipStyle(isParamFormula, "family")}
-            >
-              Parametric
-            </button>
-            <button
-              type="button"
-              data-testid="surface-family-spline"
-              onClick={() => {
-                onChangeDatasetKind("surface");
-                onChangeViewerKind("param");
-                if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
-              }}
-              style={toolbarChipStyle(isParamSpline, "family")}
-            >
-              Spline
-            </button>
-            <button
-              type="button"
-              data-testid="surface-family-constructed"
-              onClick={() => {
-                onChangeDatasetKind("surface");
-                onChangeViewerKind("param");
-                if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
-              }}
-              style={toolbarChipStyle(isParamConstructed, "family")}
-            >
-              Constructed
-            </button>
-            {showExtendedFamilyButtons && (
+            {isSurface && isMesh ? (
               <>
                 <button
                   type="button"
-                  data-testid="surface-family-weierstrass"
-                  onClick={() => {
-                    onChangeDatasetKind("surface");
-                    onChangeViewerKind("weierstrass");
-                  }}
-                  style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
+                  onClick={() => onEnterWorkMode()}
+                  style={toolbarChipStyle(false, "tool")}
                 >
-                  Weierstrass
+                  Mesh presets
                 </button>
                 <button
                   type="button"
-                  data-testid="surface-family-mesh"
                   onClick={() => {
                     onChangeDatasetKind("surface");
-                    onChangeViewerKind("mesh");
+                    onChangeViewerKind("graph");
                   }}
-                  style={toolbarChipStyle(isSurface && isMesh, "family")}
+                  style={toolbarChipStyle(false, "aux")}
                 >
-                  Mesh
+                  Back to Surfaces
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  data-testid="surface-family-explicit"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("graph");
+                  }}
+                  style={toolbarChipStyle(isSurface && viewerKind === "graph", "family")}
+                >
+                  Explicit
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-implicit"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("implicit");
+                  }}
+                  style={toolbarChipStyle(isSurface && viewerKind === "implicit", "family")}
+                >
+                  Implicit
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-parametric"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (paramSurfaceSourceKindFor(paramId) !== "formula") onChangeParamId("torus");
+                  }}
+                  style={toolbarChipStyle(isParamFormula, "family")}
+                >
+                  Parametric
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-spline"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (!isSplineParamSurfaceId(paramId)) onChangeParamId("bezierSurface");
+                  }}
+                  style={toolbarChipStyle(isParamSpline, "family")}
+                >
+                  Spline
+                </button>
+                <button
+                  type="button"
+                  data-testid="surface-family-constructed"
+                  onClick={() => {
+                    onChangeDatasetKind("surface");
+                    onChangeViewerKind("param");
+                    if (!isConstructedParamSurfaceId(paramId)) onChangeParamId("rotationalGraph");
+                  }}
+                  style={toolbarChipStyle(isParamConstructed, "family")}
+                >
+                  Constructed
+                </button>
+                {showExtendedFamilyButtons && (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="surface-family-weierstrass"
+                      onClick={() => {
+                        onChangeDatasetKind("surface");
+                        onChangeViewerKind("weierstrass");
+                      }}
+                      style={toolbarChipStyle(isSurface && viewerKind === "weierstrass", "family")}
+                    >
+                      Weierstrass
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="surface-family-mesh"
+                      onClick={() => {
+                        onChangeDatasetKind("surface");
+                        onChangeViewerKind("mesh");
+                      }}
+                      style={toolbarChipStyle(isSurface && isMesh, "family")}
+                    >
+                      Mesh
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  data-testid="surface-family-more"
+                  onClick={() => setShowExtendedFamilies((v) => !v)}
+                  style={toolbarChipStyle(showExtendedFamilyButtons, "aux")}
+                >
+                  {showExtendedFamilyButtons ? "Less" : "More"}
                 </button>
               </>
             )}
-            <button
-              type="button"
-              data-testid="surface-family-more"
-              onClick={() => setShowExtendedFamilies((v) => !v)}
-              style={toolbarChipStyle(showExtendedFamilyButtons, "aux")}
-            >
-              {showExtendedFamilyButtons ? "Less" : "More"}
-            </button>
           </div>
         </div>
 
@@ -33725,7 +33872,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
       {panelMode === "work" && showWorkGallery && (
         <div style={bandStyle}>
-          <div style={bandTitleStyle}>Surface gallery</div>
+          <div style={bandTitleStyle}>{datasetKind === "surface" && viewerKind === "mesh" ? "Mesh gallery" : "Surface gallery"}</div>
           {datasetKind === "surface" && viewerKind === "complex" && (
             <div
               style={{
@@ -33772,36 +33919,155 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               <div style={{ fontSize: 11, color: "#475569" }}>
                 Mesh presets are available directly in Mesh mode.
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Generated meshes</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {surfaceMeshPresets.map((preset) => (
-                  <button
-                    key={`surface-mesh-preset-${preset.id}`}
-                    type="button"
-                    onClick={() => onGenerateSurfaceMeshPreset(preset.id)}
-                    style={{ padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
+              <div className="surface-card-grid" data-testid="mesh-preset-grid" data-gallery-grid="true">
+                {surfaceMeshPresets.map((preset) => {
+                  const diagramThumb = makePresetThumb(
+                    preset.id,
+                    preset.label,
+                    "Mesh preset",
+                    "mesh",
+                    "diagram"
+                  );
+                  const renderedThumb = makePresetThumb(preset.id, preset.label, "Mesh preset", "mesh", "rendered");
+                  const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
+                  const summary = compactSummary("Procedural triangle mesh preset.");
+                  return (
+                    <button
+                      key={`mesh-gallery-card-${preset.id}`}
+                      type="button"
+                      data-testid={`mesh-preset-card-${preset.id}`}
+                      onClick={() => onGenerateSurfaceMeshPreset(preset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "left");
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "right");
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "up");
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "down");
+                        }
+                      }}
+                      className="gallery-scan-card surface-preset-card"
+                      title={`${preset.label}\nMesh preset`}
+                    >
+                      <div className="gallery-scan-card-preview">
+                        <div className="gallery-scan-card-preview-frame">
+                          <img
+                            src={thumb}
+                            alt={`${preset.label} mesh preset`}
+                            className="gallery-scan-card-preview-image"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                          />
+                        </div>
+                      </div>
+                      <div className="gallery-scan-card-meta">
+                        <div className="gallery-scan-card-title-row">
+                          <div className="gallery-scan-card-title">{preset.label}</div>
+                        </div>
+                        <div className="gallery-scan-card-summary" title="Procedural triangle mesh preset.">
+                          {summary}
+                        </div>
+                        <div className="gallery-scan-card-formula">triangle mesh preset</div>
+                        <div className="gallery-scan-card-chips">
+                          {["Mesh", "Preset"].map((chip) => (
+                            <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="gallery-scan-card-footer">
+                          <span className="gallery-scan-card-cta">Open</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {surfaceMeshAssetPresets.map((preset) => {
+                  const diagramThumb = makePresetThumb(
+                    preset.id,
+                    preset.label,
+                    "Asset preset",
+                    "mesh",
+                    "diagram"
+                  );
+                  const renderedThumb = makePresetThumb(
+                    preset.id,
+                    preset.label,
+                    "Asset preset",
+                    "mesh",
+                    "rendered"
+                  );
+                  const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
+                  const summary = compactSummary("Bundled mesh asset preset.");
+                  return (
+                    <button
+                      key={`mesh-gallery-asset-card-${preset.id}`}
+                      type="button"
+                      data-testid={`mesh-asset-card-${preset.id}`}
+                      onClick={() => onGenerateSurfaceMeshAssetPreset(preset.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowLeft") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "left");
+                        } else if (e.key === "ArrowRight") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "right");
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "up");
+                        } else if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          focusGalleryCardNeighbor(e.currentTarget, "down");
+                        }
+                      }}
+                      className="gallery-scan-card surface-preset-card"
+                      title={`${preset.label}\nAsset preset`}
+                    >
+                      <div className="gallery-scan-card-preview">
+                        <div className="gallery-scan-card-preview-frame">
+                          <img
+                            src={thumb}
+                            alt={`${preset.label} bundled mesh`}
+                            className="gallery-scan-card-preview-image"
+                            loading="lazy"
+                            decoding="async"
+                            onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                          />
+                        </div>
+                      </div>
+                      <div className="gallery-scan-card-meta">
+                        <div className="gallery-scan-card-title-row">
+                          <div className="gallery-scan-card-title">{preset.label}</div>
+                        </div>
+                        <div className="gallery-scan-card-summary" title="Bundled mesh asset preset.">
+                          {summary}
+                        </div>
+                        <div className="gallery-scan-card-formula">asset mesh preset</div>
+                        <div className="gallery-scan-card-chips">
+                          {["Mesh", "Asset"].map((chip) => (
+                            <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                              {chip}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="gallery-scan-card-footer">
+                          <span className="gallery-scan-card-cta">Open</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              {surfaceMeshAssetPresets.length > 0 && (
-                <>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#334155" }}>Bundled meshes</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {surfaceMeshAssetPresets.map((preset) => (
-                      <button
-                        key={`surface-mesh-asset-${preset.id}`}
-                        type="button"
-                        onClick={() => onGenerateSurfaceMeshAssetPreset(preset.id)}
-                        style={{ padding: "4px 10px", borderRadius: 999, whiteSpace: "nowrap" }}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+              <div style={{ fontSize: 11, color: "#64748b" }}>
+                Use Scene/Object tabs for import/export and advanced mesh operations.
+              </div>
             </div>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

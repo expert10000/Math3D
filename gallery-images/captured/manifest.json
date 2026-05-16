@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-05T09:54:08.385Z",
+  "generatedAt": "2026-05-16T16:27:29.838Z",
   "outputRoot": "gallery-images/captured",
   "objects": [
     {
@@ -423,6 +423,48 @@
       "id": "trig",
       "family": "weierstrass",
       "file": "gallery-images/captured/surfaces/weierstrass/trig.png"
+    }
+  ],
+  "meshes": [
+    {
+      "id": "mesh_box",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_box.png"
+    },
+    {
+      "id": "mesh_icosphere",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_icosphere.png"
+    },
+    {
+      "id": "mesh_torus",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_torus.png"
+    },
+    {
+      "id": "mesh_knot",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_knot.png"
+    },
+    {
+      "id": "mesh_dodeca",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_dodeca.png"
+    },
+    {
+      "id": "mesh_ellipsoid",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_ellipsoid.png"
+    },
+    {
+      "id": "mesh_bumpy",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_bumpy.png"
+    },
+    {
+      "id": "mesh_wavy_torus",
+      "kind": "preset",
+      "file": "gallery-images/captured/mesh/mesh_wavy_torus.png"
     }
   ]
 }

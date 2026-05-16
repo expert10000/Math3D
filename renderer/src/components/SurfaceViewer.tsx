@@ -1108,6 +1108,7 @@ type Props = {
   graphDomain?: GraphDomain;
   showChartGrid?: boolean;
   chartGridMode?: "local" | "mesh-face";
+  onSurfaceCellSelectionEnabledChange?: (enabled: boolean) => void;
   chartGridCountU?: number;
   chartGridCountV?: number;
   isCameraLeader?: boolean;
@@ -1339,6 +1340,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     graphDomain,
     showChartGrid = false,
     chartGridMode = "local",
+    onSurfaceCellSelectionEnabledChange,
     chartGridCountU = 11,
     chartGridCountV = 11,
     isCameraLeader = false,
@@ -1562,7 +1564,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const principalFieldRef = useRef<{ key: string; data: PrincipalField | null } | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const [probeXY, setProbeXY] = useState<{ x: number; y: number } | null>(null);
-  const [surfaceCellSelectionEnabled, setSurfaceCellSelectionEnabled] = useState(true);
+  const [surfaceCellSelectionEnabled, setSurfaceCellSelectionEnabled] = useState(() => surfaceId !== "surface_mesh");
   const [surfaceCellCentersVisible, setSurfaceCellCentersVisible] = useState(false);
   const [surfaceCellNormalsVisible, setSurfaceCellNormalsVisible] = useState(false);
   const [surfaceCellValuesVisible, setSurfaceCellValuesVisible] = useState(false);
@@ -1773,6 +1775,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     surfaceCellSelectionEnabledRef.current = surfaceCellSelectionEnabled;
   }, [surfaceCellSelectionEnabled]);
+  useEffect(() => {
+    onSurfaceCellSelectionEnabledChange?.(surfaceCellSelectionEnabled);
+  }, [onSurfaceCellSelectionEnabledChange, surfaceCellSelectionEnabled]);
+  useEffect(() => {
+    if (surfaceId === "surface_mesh") {
+      setSurfaceCellSelectionEnabled(false);
+    }
+  }, [surfaceId]);
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
