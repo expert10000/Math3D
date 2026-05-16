@@ -25042,6 +25042,8 @@ case "mobius":
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  volumePresetId={volumePresetId}
+                  onChangeVolumePresetId={setVolumePresetId}
                 />
               </div>
               )}
@@ -25789,6 +25791,8 @@ case "mobius":
                   surfaceMeshAssetPresets={SURFACE_MESH_ASSET_PRESETS}
                   onGenerateSurfaceMeshPreset={handleGenerateSurfaceMeshPreset}
                   onGenerateSurfaceMeshAssetPreset={handleGenerateSurfaceMeshAssetPreset}
+                  volumePresetId={volumePresetId}
+                  onChangeVolumePresetId={setVolumePresetId}
                 />
               )}
               {(surfacesLayoutVariant === "layout2" || (surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "scene")) && (
@@ -33454,6 +33458,8 @@ type SurfacesControlsProps = {
   surfaceMeshAssetPresets: SurfaceMeshAssetPreset[];
   onGenerateSurfaceMeshPreset: (id: string) => void;
   onGenerateSurfaceMeshAssetPreset: (id: string) => void;
+  volumePresetId: VolumePresetId;
+  onChangeVolumePresetId: (id: VolumePresetId) => void;
 };
 
 const SurfacesControls: React.FC<SurfacesControlsProps> = ({
@@ -33507,6 +33513,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   surfaceMeshAssetPresets,
   onGenerateSurfaceMeshPreset,
   onGenerateSurfaceMeshAssetPreset,
+  volumePresetId,
+  onChangeVolumePresetId,
 }) => {
   const implicitSurfaces = SURFACES_EQ_META.filter((s) => !isGraphSurface(s.id));
   const graphSurfaces = SURFACES_EQ_META.filter((s) => isGraphSurface(s.id));
@@ -34419,7 +34427,92 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
         <div style={bandStyle}>
           <div style={bandTitleStyle}>Volume workspace</div>
           <div style={{ fontSize: 11, color: "#475569", fontWeight: 600 }}>
-            Volume presets and object controls live in Scene/Object tabs.
+            Choose a scalar-field preset, then open Scene/Object tabs for advanced volume tools.
+          </div>
+          <div className="surface-card-grid" data-testid="volume-preset-grid" data-gallery-grid="true">
+            {VOLUME_PRESETS.filter((preset) => preset.id !== "custom").map((preset) => {
+              const active = volumePresetId === preset.id;
+              const diagramThumb = makePresetThumb(
+                preset.id,
+                preset.label,
+                preset.formula,
+                "implicit",
+                "diagram"
+              );
+              const renderedThumb = makePresetThumb(
+                preset.id,
+                preset.label,
+                preset.formula,
+                "implicit",
+                "rendered"
+              );
+              const thumb = thumbByViewMode(renderedThumb, diagramThumb, cardViewMode);
+              const summary = compactSummary(preset.note ?? "Scalar field volume preset.");
+              return (
+                <button
+                  key={`volume-preset-card-${preset.id}`}
+                  type="button"
+                  data-testid={`volume-preset-card-${preset.id}`}
+                  onClick={() => {
+                    onChangeDatasetKind("volume");
+                    onChangeVolumePresetId(preset.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "left");
+                    } else if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "right");
+                    } else if (e.key === "ArrowUp") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "up");
+                    } else if (e.key === "ArrowDown") {
+                      e.preventDefault();
+                      focusGalleryCardNeighbor(e.currentTarget, "down");
+                    }
+                  }}
+                  className="gallery-scan-card surface-preset-card"
+                  style={{
+                    borderColor: active ? "#0a66c2" : undefined,
+                    boxShadow: active ? "0 0 0 2px rgba(10,102,194,0.18)" : undefined,
+                  }}
+                  title={`${preset.label}\n${preset.formula}`}
+                >
+                  <div className="gallery-scan-card-preview">
+                    <div className="gallery-scan-card-preview-frame">
+                      <img
+                        src={thumb}
+                        alt={`${preset.label} volume preset`}
+                        className="gallery-scan-card-preview-image"
+                        loading="lazy"
+                        decoding="async"
+                        onError={(event) => handleGalleryImageLoadError(event, diagramThumb)}
+                      />
+                    </div>
+                  </div>
+                  <div className="gallery-scan-card-meta">
+                    <div className="gallery-scan-card-title-row">
+                      <div className="gallery-scan-card-title">{preset.label}</div>
+                    </div>
+                    <div className="gallery-scan-card-summary" title={preset.note ?? "Scalar field volume preset."}>
+                      {summary}
+                    </div>
+                    <div className="gallery-scan-card-formula">{preset.formula}</div>
+                    <div className="gallery-scan-card-chips">
+                      {["Volume", "Preset"].map((chip) => (
+                        <span key={`${preset.id}-${chip}`} className="gallery-scan-card-chip">
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="gallery-scan-card-footer">
+                      <span className="gallery-scan-card-cta">{active ? "Active" : "Open"}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
