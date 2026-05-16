@@ -62,8 +62,11 @@ jobs:
               }
 
               $outputText = ($output | Out-String)
-              $lockMismatch = ($outputText -match "npm error code EUSAGE") -and
-                ($outputText -match "npm ci` can only install packages when your package.json and package-lock.json")
+              $lockMismatch = ($outputText -match "npm error code EUSAGE") -and (
+                ($outputText -match "can only install packages when your package\.json and package-lock\.json") -or
+                ($outputText -match "Invalid:\s+lock file") -or
+                ($outputText -match "Please update your lock file with `npm install`")
+              )
               if ($lockMismatch) {
                 throw "[$Label] failed with lockfile mismatch. npm ci cannot proceed when package.json and package-lock.json are out of sync. Run npm install locally, commit updated lockfiles, and rerun CI."
               }
