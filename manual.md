@@ -203,6 +203,20 @@ UI option:
   - `Local chart patch` (local tangent-plane chart around probe)
   - `Mesh-face grid` (triangle-cell decomposition overlay)
 
+How `Mesh-face grid` is computed (implicit torus included):
+- Read the rendered surface mesh triangles (world-space positions).
+- Downsample faces with a stride so total overlay cells stay bounded by chart density.
+- For each kept triangle `(a,b,c)`:
+  - center: `(a + b + c) / 3`
+  - area: `0.5 * |(b-a) x (c-a)|`
+  - normal: `normalize((b-a) x (c-a))`
+- Render:
+  - triangle edges (decomposition lines)
+  - translucent per-cell fills
+  - optional centers, normals, and per-cell area coloring.
+
+This is a mesh decomposition overlay, not a true `u,v` parametric chart.
+
 ### Inspect domain navigator (surface-local)
 - Added a Domain navigator card inside the left `Inspect` tab for graph/param/Weierstrass viewers.
 - The card is attached to the current primary surface (not a separate scene object/global setting).

@@ -10447,7 +10447,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     if (!torusPerformanceGuardActive) return;
     if (paramResolution > 40) setParamResolution(40);
-    if (showChartGrid) setShowChartGrid(false);
     if (showContours) setShowContours(false);
     if (showPrincipalProjections) setShowPrincipalProjections(false);
     if (probeEnabled) setProbeEnabled(false);
@@ -10469,7 +10468,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [
     torusPerformanceGuardActive,
     paramResolution,
-    showChartGrid,
     showContours,
     showPrincipalProjections,
     probeEnabled,
