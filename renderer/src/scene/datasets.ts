@@ -18,7 +18,7 @@ export type SurfaceFields = {
 };
 
 export type MeshDataset = {
-  kind: "surface";
+  kind: "mesh";
   surfaceType: "mesh";
   mesh: SurfaceMesh;
   fields?: SurfaceFields | null;

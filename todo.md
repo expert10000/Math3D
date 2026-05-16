@@ -44,3 +44,12 @@ Use one of these:
 
 
 
+Shared pipeline: surface tools (curvature, geodesics, chart/pick) run on triangle meshes anyway.
+Simpler state model: only surface | volume at dataset root in viewerTypes.ts.
+Existing conversion flow: “surface mesh dataset -> detached mesh object” already exists in App.tsx.
+When mesh should become a top object:
+You want mesh-first workflows independent of surface semantics.
+You want imported/edited meshes to be first-class (selection/history/ops/export) without going through “surface mode”.
+You plan non-surface mesh types or broader geometry pipelines.
+Recommendation for this codebase now: keep current model unless you’re committing to mesh-first UX.
+If yes, I can draft a clean refactor to DatasetKind = "surface" | "mesh" | "volume" with minimal breakage

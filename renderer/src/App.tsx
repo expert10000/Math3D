@@ -405,6 +405,8 @@ const SURFACE_VIEWER_KINDS: SurfaceViewerKind[] = [
 ];
 const isSurfaceViewerKind = (value: string | undefined): value is SurfaceViewerKind =>
   !!value && SURFACE_VIEWER_KINDS.includes(value as SurfaceViewerKind);
+const isSurfaceDatasetKind = (value: DatasetKind): value is "surface" | "mesh" =>
+  value === "surface" || value === "mesh";
 const surfaceTypeFromViewerKind = (value: SurfaceViewerKind): SurfaceType => {
   if (value === "graph") return "explicit";
   if (value === "implicit") return "implicit";
@@ -901,7 +903,7 @@ type WorkbookEmbeddedMesh = {
 };
 type WorkbookDatasetRecipe = {
   id: string;
-  kind: "surface" | "volume";
+  kind: "surface" | "mesh" | "volume";
   source: string;
   recipe: Record<string, unknown>;
   mesh?: WorkbookEmbeddedMesh | null;
@@ -1011,7 +1013,7 @@ const REPLAY_PAYLOAD: WorkbookReplayPayload | null = (() => {
   const anyWin = globalThis as any;
   const payload = anyWin?.__MATH3D_REPLAY__;
   if (!payload || !Array.isArray(payload.workbooks)) return null;
-  return payload as WorkbookReplayPayload;
+  return migrateWorkbookReplayPayload(payload as WorkbookReplayPayload);
 })();
 const IS_REPLAY_MODE = !!REPLAY_PAYLOAD;
 const COMPARE_IGNORE_OVERLAYS_KEY = "math3d.compare.ignoreWorkbookOverlays.v1";
@@ -1160,7 +1162,7 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
 };
 
 const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
-  mesh ? { kind: "surface", surfaceType: "mesh", mesh } : null;
+  mesh ? { kind: "mesh", surfaceType: "mesh", mesh } : null;
 
 const cloneSurfaceMeshData = (mesh: SurfaceMeshData, labelOverride?: string): SurfaceMeshData => ({
   ...mesh,
@@ -3679,6 +3681,57 @@ const resolveVisualizeSnapshot = (
   return visualize.snapshotB ?? null;
 };
 
+function normalizeSnapshotDatasetKind(snapshot: WorkbookViewSnapshot): DatasetKind {
+  if (snapshot.datasetKind === "volume") return "volume";
+  if (snapshot.datasetKind === "mesh") return "mesh";
+  if (snapshot.viewerKind === "mesh") return "mesh";
+  if (typeof snapshot.datasetRef === "string" && snapshot.datasetRef.startsWith("mesh:")) return "mesh";
+  return "surface";
+}
+
+function migrateWorkbookViewSnapshot(snapshot: WorkbookViewSnapshot | null): WorkbookViewSnapshot | null {
+  if (!snapshot) return snapshot;
+  const datasetKind = normalizeSnapshotDatasetKind(snapshot);
+  if (datasetKind === snapshot.datasetKind) return snapshot;
+  return { ...snapshot, datasetKind };
+}
+
+function migrateWorkbookWorkspace(workspace: WorkbookWorkspaceState | undefined): WorkbookWorkspaceState | undefined {
+  if (!workspace || typeof workspace !== "object") return workspace;
+  const items = Array.isArray(workspace.datasets?.items) ? workspace.datasets.items : [];
+  let itemsChanged = false;
+  const migratedItems = items.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    if (item.id === "surface:mesh" && item.kind === "surface") {
+      itemsChanged = true;
+      return { ...item, kind: "mesh" as const };
+    }
+    return item;
+  });
+  const currentRefRaw = workspace.datasets?.currentDatasetRef;
+  const currentDatasetRef =
+    typeof currentRefRaw === "string" && currentRefRaw.startsWith("surface:mesh")
+      ? `mesh:${currentRefRaw.slice("surface:".length)}`
+      : currentRefRaw ?? "";
+  const refChanged = currentDatasetRef !== currentRefRaw;
+  if (!itemsChanged && !refChanged) return workspace;
+  return {
+    ...workspace,
+    datasets: {
+      ...(workspace.datasets ?? { currentDatasetRef: "", items: [] }),
+      currentDatasetRef,
+      items: migratedItems,
+    },
+  };
+}
+
+function migrateWorkbookReplayPayload(payload: WorkbookReplayPayload): WorkbookReplayPayload {
+  return {
+    ...payload,
+    workspace: migrateWorkbookWorkspace(payload.workspace),
+  };
+}
+
 function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
   return raw.map((wb) => ({
     ...wb,
@@ -3687,8 +3740,8 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
       blocks: stage.blocks.map((block) => {
         if (block.type === "visualize") {
           const visualize = block.visualize ?? { live: true };
-          const snapshotA = visualize.snapshotA ?? visualize.snapshot ?? null;
-          const snapshotB = visualize.snapshotB ?? null;
+          const snapshotA = migrateWorkbookViewSnapshot(visualize.snapshotA ?? visualize.snapshot ?? null);
+          const snapshotB = migrateWorkbookViewSnapshot(visualize.snapshotB ?? null);
           if (visualize.snapshotA === snapshotA && visualize.snapshotB === snapshotB) return block;
           return {
             ...block,
@@ -8128,6 +8181,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       source,
     };
     setMeshDataset(applySurfaceMeshOps(baked));
+    setDatasetKind("mesh");
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
     return true;
@@ -8218,25 +8272,93 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       source,
     };
     setMeshDataset(applySurfaceMeshOps(baked));
+    setDatasetKind("mesh");
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
   }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
 
-  const handleDatasetToGeometryScene = useCallback(() => {
+  function handleDatasetToGeometryScene() {
     setGeometryBakeError(null);
     if (datasetKind === "volume") {
       setGeometryBakeError("SurfaceMesh -> Mesh works with surface mesh datasets only.");
       return;
     }
-    if (!surfaceMeshData?.positions?.length) {
+    let meshForConversion: SurfaceMeshData | null = surfaceMeshData;
+
+    if (surfaceViewerKind === "implicit") {
+      if (!activeCgalMesh?.positions?.length || !activeCgalMesh.indices?.length) {
+        setGeometryBakeError("Implicit mesh not ready. Run CGAL mesh first.");
+        return;
+      }
+      meshForConversion = applySurfaceMeshOps({
+        label: buildActiveMeshLabel(),
+        positions: Float32Array.from(activeCgalMesh.positions),
+        indices: Uint32Array.from(activeCgalMesh.indices),
+        source: { kind: "bakedFromImplicit" },
+      });
+    } else if (surfaceViewerKind === "graph") {
+      const baked = bakeGraphSurface({
+        surfaceId: activeEqSurfaceId,
+        graphExpr,
+        domain: activeGraphDomain,
+        resolution: graphResolution,
+        label: buildActiveMeshLabel(),
+      });
+      if ("error" in baked) {
+        setGeometryBakeError(baked.error);
+        return;
+      }
+      meshForConversion = applySurfaceMeshOps(baked.mesh);
+    } else if (surfaceViewerKind === "param") {
+      const baked = bakeParamSurface({
+        surfaceId: paramSurfaceId,
+        domain: activeParamDomain,
+        resolution: paramResolution,
+        label: buildActiveMeshLabel(),
+        customX: paramXExpr,
+        customY: paramYExpr,
+        customZ: paramZExpr,
+        rotationalProfileMode,
+        rotationalProfileRExpr,
+        rotationalProfileZExpr,
+        rotationalProfilePointsText,
+        rotationalAxisOrigin,
+        rotationalAxisDirection,
+        splineSettings: splineSurfaceSettings,
+      });
+      if ("error" in baked) {
+        setGeometryBakeError(baked.error);
+        return;
+      }
+      meshForConversion = applySurfaceMeshOps(baked.mesh);
+    } else if (surfaceViewerKind === "weierstrass") {
+      const gExpr = (weierstrassGExpr ?? "z").trim() || "z";
+      const phiExpr = (weierstrassPhiExpr ?? "1").trim() || "1";
+      const baked = bakeWeierstrassSurface({
+        gExpr,
+        phiExpr,
+        domain: activeWeierstrassDomain,
+        resolution: weierstrassResolution,
+        label: buildActiveMeshLabel(),
+        recenterRescale: weierstrassRecenter,
+      });
+      if ("error" in baked) {
+        setGeometryBakeError(baked.error);
+        return;
+      }
+      meshForConversion = applySurfaceMeshOps(baked.mesh);
+    }
+
+    if (!meshForConversion?.positions?.length) {
       setGeometryBakeError("SurfaceMesh dataset not ready.");
       return;
     }
+    setMeshDataset(meshForConversion);
     const id = makeId();
     const obj: GeometryDatasetMeshObject = {
       id,
-      name: `${surfaceMeshData.label ?? "Surface mesh"} (mesh object)`,
-      mesh: toDetachedMeshData(surfaceMeshData),
+      name: `${meshForConversion.label ?? "Surface mesh"} (mesh object)`,
+      mesh: toDetachedMeshData(meshForConversion),
       transform: {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
@@ -8247,8 +8369,12 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     };
     setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
     setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
-    focusGeometryObjectMeshInfo(id);
-  }, [datasetKind, focusGeometryObjectMeshInfo, surfaceMeshData]);
+    setGeometrySelectedObjectId(id);
+    setGeometryProceduralPanelTab("object");
+    setGeometryMode("procedural");
+    setMode("geometry");
+    accentGeometryMeshInfo(id);
+  }
 
   useEffect(() => {
     const finitePoint = (p: { x: number; y: number; z: number } | null | undefined) =>
@@ -9721,7 +9847,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const handleSurfaceCellSelectionEnabledChange = useCallback(
     (enabled: boolean) => {
       if (!enabled) return;
-      if (datasetKind !== "surface" || surfaceViewerKind !== "mesh") return;
+      if (!isSurfaceDatasetKind(datasetKind) || surfaceViewerKind !== "mesh") return;
       if (meshChartGridMode === "meshFace") {
         setMeshChartGridMode("local");
       }
@@ -9958,7 +10084,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   }, [surfacesCameraTourStatus, surfacesCameraTourCaptureStatus, pushSurfacesCameraTourCommand]);
   const playSurfacesTour = useCallback(
     (captureVideo: boolean) => {
-      if (mode !== "surfaces" || datasetKind !== "surface") return;
+      if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) return;
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const ext = surfacesCameraTourCaptureFormat === "mp4" ? "mp4" : "webm";
       let focusRadius = 2.8;
@@ -10128,7 +10254,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const activeSurfaceId = surfacesCameraTourSurfaceIdRef.current;
     if (!activeSurfaceId) return;
     const currentKey =
-      mode !== "surfaces" || datasetKind !== "surface"
+      mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)
         ? null
         : surfaceViewerKind === "implicit"
           ? `implicit:${implicitSurfaceId}`
@@ -10384,13 +10510,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   );
 
   useEffect(() => {
-    if (mode !== "surfaces" || datasetKind !== "surface" || surfaceViewportPresetAppliedRef.current) return;
+    if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind) || surfaceViewportPresetAppliedRef.current) return;
     surfaceViewportPresetAppliedRef.current = true;
     applySurfaceViewportPreset(surfaceViewportPreset);
   }, [applySurfaceViewportPreset, datasetKind, mode, surfaceViewportPreset]);
 
   useEffect(() => {
-    if (mode !== "surfaces" || datasetKind !== "surface") return;
+    if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) return;
     if (displayMode === "present") {
       applySurfaceViewportPreset("minimal");
       return;
@@ -10403,7 +10529,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     const shouldAutoReframeMesh =
       mode === "surfaces" &&
-      datasetKind === "surface" &&
+      isSurfaceDatasetKind(datasetKind) &&
       (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
       !!surfaceMeshData?.positions?.length;
     if (!shouldAutoReframeMesh) {
@@ -10565,13 +10691,13 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [meshSaveOverlayOpen, setMeshSaveOverlayOpen] = useState(false);
   const showMeshSaveOverlayLauncher =
     mode === "surfaces" &&
-    datasetKind === "surface" &&
+    isSurfaceDatasetKind(datasetKind) &&
     (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
     !!surfaceMeshStats;
   useEffect(() => {
     const isMeshViewActive =
       mode === "surfaces" &&
-      datasetKind === "surface" &&
+      isSurfaceDatasetKind(datasetKind) &&
       (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
       !!surfaceMeshStats;
     if (!isMeshViewActive) {
@@ -10621,7 +10747,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   ]);
   const surfaceFormulaEditorTargetKey =
     mode === "surfaces" &&
-    datasetKind === "surface" &&
+    isSurfaceDatasetKind(datasetKind) &&
     (surfaceViewerKind === "graph" ||
       surfaceViewerKind === "implicit" ||
       surfaceViewerKind === "param" ||
@@ -11210,7 +11336,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const primaryOverlay = compareEnabled ? compareOverlayA : baseOverlaySettings;
   const secondaryOverlay = compareEnabled ? compareOverlayB : baseOverlaySettings;
   const showParamSurfaceOverlayContext =
-    mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "param";
+    mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "param";
   const paramSurfaceOverlayHasRotationalTab =
     showParamSurfaceOverlayContext && supportsGeneralRotationalProfile(primaryParamId);
   const paramSurfaceOverlayHasSplineTab = showParamSurfaceOverlayContext && isSplinePatchSurfaceId(primaryParamId);
@@ -11474,7 +11600,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   useEffect(() => {
     if (mode !== "surfaces") return;
     if (surfacesLayoutVariant !== "layout4") return;
-    if (datasetKind !== "surface" || surfaceViewerKind !== "mesh") return;
+    if (!isSurfaceDatasetKind(datasetKind) || surfaceViewerKind !== "mesh") return;
     if (showChartGrid) setShowChartGrid(false);
     if (meshChartGridMode !== "local") setMeshChartGridMode("local");
   }, [datasetKind, meshChartGridMode, mode, showChartGrid, surfaceViewerKind, surfacesLayoutVariant]);
@@ -11648,7 +11774,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         requestAnimationFrame(step);
       });
 
-    if (mode !== "surfaces" || datasetKind !== "surface") {
+    if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) {
       await handleScreenshot("scene");
       return;
     }
@@ -13022,7 +13148,7 @@ case "mobius":
   }, [surfaceFormulaEditorOpen, surfaceFormulaEditorTargetKey]);
 
   useEffect(() => {
-    if (mode !== "surfaces" || datasetKind !== "surface") setSurfaceFormulaEditorOpen(false);
+    if (mode !== "surfaces" || !isSurfaceDatasetKind(datasetKind)) setSurfaceFormulaEditorOpen(false);
   }, [datasetKind, mode]);
 
   useEffect(() => {
@@ -13294,7 +13420,7 @@ case "mobius":
 
   const handleChangeViewerKind = useCallback((kind: SurfaceViewerKind) => {
     setSurfaceViewerKind(kind);
-    setDatasetKind("surface");
+    setDatasetKind(kind === "mesh" ? "mesh" : "surface");
     if (kind === "weierstrass" || kind === "mesh" || kind === "complex") {
       setCompareEnabled(false);
       setCameraSync(null);
@@ -14221,7 +14347,7 @@ case "mobius":
         setSurfacesLeftTab("scene");
       } else if (snapshot.viewerKind && isSurfaceViewerKind(snapshot.viewerKind)) {
         setSurfaceViewerKind(snapshot.viewerKind);
-        setDatasetKind("surface");
+        setDatasetKind(snapshot.viewerKind === "mesh" ? "mesh" : "surface");
       }
 
       if (snapshot.viewerKind === "param" || snapshot.viewerKind === "weierstrass") {
@@ -14446,7 +14572,7 @@ case "mobius":
           : [];
       datasetItems.push({
         id: "surface:mesh",
-        kind: "surface",
+        kind: "mesh",
         source: source.kind,
         recipe: {
           label: meshDataset.mesh.label,
@@ -14752,6 +14878,7 @@ case "mobius":
 
   const applyWorkbookWorkspace = (workspace: WorkbookWorkspaceState | undefined) => {
     if (!workspace || typeof workspace !== "object") return;
+    workspace = migrateWorkbookWorkspace(workspace);
 
     const geometry = workspace.geometry;
     if (geometry && typeof geometry === "object") {
@@ -14896,8 +15023,8 @@ case "mobius":
     if (meshItem?.mesh) {
       const mesh = applySurfaceMeshOps(deserializeSurfaceMeshData(meshItem.mesh));
       setMeshDataset(mesh);
+      setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
-      setDatasetKind("surface");
     }
 
     const volumeRecipe = byId.get("volume:active")?.recipe as any;
@@ -14947,7 +15074,7 @@ case "mobius":
       setDatasetKind("surface");
       setSurfaceViewerKind("weierstrass");
     } else if (currentRef.startsWith("mesh:")) {
-      setDatasetKind("surface");
+      setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
     } else if (currentRef.startsWith("volume:")) {
       setDatasetKind("volume");
@@ -15034,24 +15161,26 @@ case "mobius":
     (raw: unknown) => {
       if (IS_REPLAY_MODE) return false;
       const parsed = raw as any;
-      const nextWorkbooks: Workbook[] = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.workbooks)
-          ? parsed.workbooks
-          : [];
+      const payloadLike: WorkbookReplayPayload = Array.isArray(parsed)
+        ? { workbooks: parsed }
+        : (parsed as WorkbookReplayPayload);
+      const migratedPayload = migrateWorkbookReplayPayload(payloadLike);
+      const nextWorkbooks: Workbook[] = Array.isArray(migratedPayload?.workbooks)
+        ? migratedPayload.workbooks
+        : [];
       if (!nextWorkbooks.length) return false;
       const normalized = normalizeWorkbooks(nextWorkbooks);
       setWorkbooks(normalized);
       const nextActive =
-        typeof parsed?.activeWorkbookId === "string" &&
-        normalized.some((w) => w.id === parsed.activeWorkbookId)
-          ? parsed.activeWorkbookId
+        typeof migratedPayload?.activeWorkbookId === "string" &&
+        normalized.some((w) => w.id === migratedPayload.activeWorkbookId)
+          ? migratedPayload.activeWorkbookId
           : normalized[0].id;
-      const nextStage = isWorkbookStageId(parsed?.activeStageId) ? parsed.activeStageId : "define";
+      const nextStage = isWorkbookStageId(migratedPayload?.activeStageId) ? migratedPayload.activeStageId : "define";
       setActiveWorkbookId(nextActive);
       setActiveStageId(nextStage);
-      if (parsed?.workspace) {
-        applyWorkbookWorkspace(parsed.workspace as WorkbookWorkspaceState);
+      if (migratedPayload?.workspace) {
+        applyWorkbookWorkspace(migratedPayload.workspace as WorkbookWorkspaceState);
       }
       const nextHash = hashString(
         JSON.stringify(
@@ -15889,6 +16018,7 @@ case "mobius":
       );
       setMeshDataset(applySurfaceMeshOps(base));
       setSurfaceMeshImportError(null);
+      setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
@@ -15909,6 +16039,7 @@ case "mobius":
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
         setMeshDataset(applySurfaceMeshOps(base));
+        setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load bundled mesh preset.";
@@ -15928,6 +16059,7 @@ case "mobius":
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
         setMeshDataset(applySurfaceMeshOps(base));
+        setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
@@ -16258,6 +16390,7 @@ case "mobius":
         source,
       };
       setMeshDataset(applySurfaceMeshOps(next));
+      setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
     },
@@ -20257,6 +20390,7 @@ case "mobius":
             normals: null,
             source: { kind: "bakedFromImplicit" },
           });
+          setDatasetKind("mesh");
           setSurfaceViewerKind("mesh");
           setGenerateSurfaceStatus({
             state: "success",
@@ -20461,23 +20595,27 @@ case "mobius":
         const kind = (tokens[1] ?? "").toLowerCase();
         const id = tokens[2] as SurfaceId | ParamSurfaceId | undefined;
         if (kind === "mesh") {
+          setDatasetKind("mesh");
           setSurfaceViewerKind("mesh");
           return say("surface viewer = mesh");
         }
         if (!id) return say("Missing surface id.");
         if (kind === "graph") {
           if (!isGraphSurface(id as SurfaceId)) return say(`Not a graph surface: ${id}`);
+          setDatasetKind("surface");
           setSurfaceViewerKind("graph");
           setGraphSurfaceId(id as SurfaceId);
           return say(`graph surface = ${id}`);
         }
         if (kind === "implicit") {
           if (isGraphSurface(id as SurfaceId)) return say(`Not an implicit surface: ${id}`);
+          setDatasetKind("surface");
           setSurfaceViewerKind("implicit");
           setImplicitSurfaceId(id as SurfaceId);
           return say(`implicit surface = ${id}`);
         }
         if (kind === "param") {
+          setDatasetKind("surface");
           setSurfaceViewerKind("param");
           setParamSurfaceId(id as ParamSurfaceId);
           return say(`param surface = ${id}`);
@@ -20923,7 +21061,7 @@ case "mobius":
           return;
         case "insert:new-mesh":
           setMode("surfaces");
-          setDatasetKind("surface");
+          setDatasetKind("mesh");
           setSurfaceViewerKind("mesh");
           setSurfacesLeftTab("scene");
           return;
@@ -21155,7 +21293,7 @@ case "mobius":
     }
 
     let activeDefinitionNodeId: string | null = null;
-    if (datasetKind === "surface") {
+    if (isSurfaceDatasetKind(datasetKind)) {
       if (surfaceViewerKind === "implicit") {
         activeDefinitionNodeId = `def:implicit:${activeEqSurfaceId}`;
         addRaw({
@@ -21452,7 +21590,7 @@ case "mobius":
         });
       }
       if (
-        datasetKind === "surface" &&
+        isSurfaceDatasetKind(datasetKind) &&
         surfaceViewerKind !== "mesh" &&
         surfaceViewerKind !== "complex" &&
         surfaceViewerKind !== "weierstrass"
@@ -21913,7 +22051,7 @@ case "mobius":
     [handleRemoveGeometryObject, handleToggleUnifiedNodeVisibility, unifiedObjectModel.nodeById]
   );
   const handleSendUnifiedObjectToCompare = useCallback(() => {
-    if (datasetKind !== "surface" || !unifiedSelectedNode) return;
+    if (!isSurfaceDatasetKind(datasetKind) || !unifiedSelectedNode) return;
     if (unifiedSelectedNode.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
       const baked = bakeGeometryObjectToDatasetById(unifiedSelectedNode.objectRefId);
       if (!baked) return;
@@ -21953,14 +22091,14 @@ case "mobius":
 
   const unifiedCanBake =
     (unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId) ||
-    (unifiedSelectedNode?.category === "surfaceDefinition" && datasetKind === "surface");
-  const unifiedCanConvertToMeshObject = datasetKind === "surface" && !!surfaceMeshData?.positions?.length;
-  const unifiedCanSurfaceOps = datasetKind === "surface";
+    (unifiedSelectedNode?.category === "surfaceDefinition" && isSurfaceDatasetKind(datasetKind));
+  const unifiedCanConvertToMeshObject = isSurfaceDatasetKind(datasetKind) && !!surfaceMeshData?.positions?.length;
+  const unifiedCanSurfaceOps = isSurfaceDatasetKind(datasetKind);
   const unifiedMeshReady = !!surfaceMeshData?.positions?.length;
   const unifiedCanPointCloud = unifiedMeshReady;
   const unifiedCanNormals = unifiedCanSurfaceOps && (unifiedMeshReady || surfaceViewerKind === "implicit");
   const unifiedCanExport = unifiedCanSurfaceOps && unifiedMeshReady;
-  const unifiedCanSendToCompare = datasetKind === "surface" && !!unifiedSelectedNode;
+  const unifiedCanSendToCompare = isSurfaceDatasetKind(datasetKind) && !!unifiedSelectedNode;
   const unifiedCanIsolateSelected =
     unifiedSelectedNode?.category === "sceneObject" && !!unifiedSelectedNode.objectRefId;
   const unifiedCanShowAllSceneObjects =
@@ -22058,7 +22196,7 @@ case "mobius":
           bakeGeometryObjectToDatasetById(unifiedSelectedNode.objectRefId);
           return;
         }
-        if (datasetKind === "surface") {
+        if (isSurfaceDatasetKind(datasetKind)) {
           handleConvertToMesh();
         }
         return;
@@ -22301,7 +22439,7 @@ case "mobius":
     if (unifiedSelectedSceneMeshStats) {
       return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
     }
-    if (mode === "surfaces" && datasetKind === "surface" && surfaceMeshStats) {
+    if (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceMeshStats) {
       return `${surfaceMeshStats.vertCount.toLocaleString()} vertices / ${surfaceMeshStats.triCount.toLocaleString()} faces`;
     }
     if (mode === "surfaces" && datasetKind === "volume") {
@@ -22331,7 +22469,7 @@ case "mobius":
   }, [geometryProceduralPick?.point, inspectPos, mode, probeInfo?.point]);
   const isPresentDisplayMode = displayMode === "present";
   const isInspectDisplayMode = displayMode === "inspect";
-  const cleanScreenshotSurfaceActive = cleanScreenshotActive && mode === "surfaces" && datasetKind === "surface";
+  const cleanScreenshotSurfaceActive = cleanScreenshotActive && mode === "surfaces" && isSurfaceDatasetKind(datasetKind);
   const cleanScreenshotSceneBackgroundMode: SceneBackgroundMode = cleanScreenshotSurfaceActive
     ? cleanScreenshotBackground === "transparent"
       ? "transparent"
@@ -22345,7 +22483,7 @@ case "mobius":
     surfacesPanelState === "browse";
   const showSurfaceWorkflowStrip =
     mode === "surfaces" &&
-    datasetKind === "surface" &&
+    isSurfaceDatasetKind(datasetKind) &&
     !isPresentDisplayMode &&
     !cleanScreenshotSurfaceActive &&
     !surfacesBrowseModeActive;
@@ -22469,7 +22607,7 @@ case "mobius":
   const surfacePreviewReframePaddingFactor = isSurfacePreviewMode ? 0.92 : 1.08;
   const showSurfaceFormulaEditorLauncher =
     mode === "surfaces" &&
-    datasetKind === "surface" &&
+    isSurfaceDatasetKind(datasetKind) &&
     (surfaceViewerKind === "graph" ||
       surfaceViewerKind === "implicit" ||
       surfaceViewerKind === "param" ||
@@ -23382,7 +23520,7 @@ case "mobius":
     {
       id: "surfaces",
       label: "Surfaces",
-      active: mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind !== "mesh",
+      active: mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "mesh",
       onSelect: () => {
         setMode("surfaces");
         setDatasetKind("surface");
@@ -23394,10 +23532,10 @@ case "mobius":
     {
       id: "mesh",
       label: "Mesh",
-      active: mode === "surfaces" && datasetKind === "surface" && surfaceViewerKind === "mesh",
+      active: mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh",
       onSelect: () => {
         setMode("surfaces");
-        setDatasetKind("surface");
+        setDatasetKind("mesh");
         setSurfacesPanelState("work");
         setSurfacesLeftTab("scene");
         setSurfacesWorkGalleryOpen(true);
@@ -23470,7 +23608,7 @@ case "mobius":
       : null;
   const headerContextLabel =
     mode === "surfaces"
-      ? surfaceViewerKind === "mesh" && datasetKind === "surface"
+      ? surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind)
         ? "Mesh / Workspace"
         : `Surfaces / ${headerSurfacesFamilyLabel}${headerSurfacesSubtypeLabel ? ` / ${headerSurfacesSubtypeLabel[0].toUpperCase()}${headerSurfacesSubtypeLabel.slice(1)}` : ""}`
       : `${activeSectionLabel} / ${activeDisplayLabel}`;
@@ -23513,7 +23651,7 @@ case "mobius":
                 ? "Volume Workspace"
                 : "Preset";
   const surfacesWorkBreadcrumbParts = [
-    surfaceViewerKind === "mesh" && datasetKind === "surface" ? "Mesh" : "Surfaces",
+    surfaceViewerKind === "mesh" && isSurfaceDatasetKind(datasetKind) ? "Mesh" : "Surfaces",
     headerSurfacesFamilyLabel,
     surfacesWorkSubtypeLabel,
     surfacesWorkPresetLabel,
@@ -23527,7 +23665,7 @@ case "mobius":
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const headerParamSourceKind = paramSurfaceSourceKindFor(paramSurfaceId);
-  const headerIsSurface = datasetKind === "surface";
+  const headerIsSurface = isSurfaceDatasetKind(datasetKind);
   const headerIsParamFormula = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "formula";
   const headerIsParamSpline = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "spline";
   const headerIsParamConstructed = headerIsSurface && surfaceViewerKind === "param" && headerParamSourceKind === "constructed";
@@ -23539,7 +23677,7 @@ case "mobius":
   const surfacesWorkTabsEnabled = surfacesLayoutVariant !== "layout2";
   const surfacesCompareToggleEnabled =
     displayMode !== "present" &&
-    datasetKind === "surface" &&
+    isSurfaceDatasetKind(datasetKind) &&
     surfaceViewerKind !== "weierstrass" &&
     surfaceViewerKind !== "mesh" &&
     surfaceViewerKind !== "complex";
@@ -24640,7 +24778,7 @@ case "mobius":
                   )}
                 </div>
               </div>
-              {mode === "surfaces" && datasetKind === "surface" && (
+              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && (
                 <div style={topNavContextBarStyle}>
                   {headerIsSurface && surfaceViewerKind === "mesh" ? (
                     <>
@@ -24867,7 +25005,7 @@ case "mobius":
                     <button
                       type="button"
                       onClick={() => {
-                        if (datasetKind === "surface" && surfaceViewerKind === "mesh") {
+                        if (isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
                           if (meshNewPresetId) handleGenerateSurfaceMeshPreset(meshNewPresetId);
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
@@ -24886,7 +25024,7 @@ case "mobius":
                     <button
                       type="button"
                       onClick={() => {
-                        if (datasetKind === "surface" && surfaceViewerKind === "mesh") {
+                        if (isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "mesh") {
                           if (meshDemoPresetId) handleGenerateSurfaceMeshPreset(meshDemoPresetId);
                           setSurfacesPanelState("work");
                           setSurfacesLeftTab("scene");
@@ -24945,7 +25083,7 @@ case "mobius":
                             setSurfacesPanelState("work");
                             setSurfacesLeftTab("scene");
                           }}
-                          style={surfacesModeButtonStyle(datasetKind === "surface" && surfaceViewerKind === "complex", "actions")}
+                          style={surfacesModeButtonStyle(isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex", "actions")}
                         >
                           Complex
                         </button>
@@ -25846,7 +25984,7 @@ case "mobius":
                     canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                     onShowAllSceneObjects={handleShowAllUnifiedObjects}
                   />
-                  {datasetKind === "surface" && surfaceViewerKind === "implicit" && (
+                  {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "implicit" && (
                     <div
                       style={{
                         marginTop: 10,
@@ -26004,7 +26142,7 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <>
-                  {datasetKind === "surface" && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                  {isSurfaceDatasetKind(datasetKind) && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
                     <div
                       style={{
                         marginBottom: 10,
@@ -26427,7 +26565,7 @@ case "mobius":
                           >
                             Promote to SurfaceMesh
                           </button>
-                          {datasetKind === "surface" && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
+                          {isSurfaceDatasetKind(datasetKind) && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
                             <button
                               type="button"
                               data-testid="surface-open-workbook-scene-detailed"
@@ -26637,8 +26775,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={datasetKind === "surface" ? surfacesCameraTourCommand : null}
-                            onCameraTourEvent={datasetKind === "surface" ? handleSurfacesCameraTourEvent : undefined}
+                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
@@ -26781,8 +26919,8 @@ case "mobius":
                             onCameraSync={cameraSyncEnabled ? setCameraSync : undefined}
                             cameraOverride={cameraOverride}
                             cameraOverrideToken={cameraOverrideToken}
-                            cameraTourCommand={datasetKind === "surface" ? surfacesCameraTourCommand : null}
-                            onCameraTourEvent={datasetKind === "surface" ? handleSurfacesCameraTourEvent : undefined}
+                            cameraTourCommand={isSurfaceDatasetKind(datasetKind) ? surfacesCameraTourCommand : null}
+                            onCameraTourEvent={isSurfaceDatasetKind(datasetKind) ? handleSurfacesCameraTourEvent : undefined}
                             captureToken={workbookCaptureToken}
                             onCaptureThumbnail={handleWorkbookThumbnail}
                           gaussMapEnabled={cleanScreenshotSurfaceActive ? false : showGaussMap}
@@ -26830,7 +26968,7 @@ case "mobius":
                       />
                         )}
                         {!cleanScreenshotSurfaceActive &&
-                          datasetKind === "surface" &&
+                          isSurfaceDatasetKind(datasetKind) &&
                           (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") &&
                           meshCenterOverlayVisible &&
                           surfaceMeshStats && (
@@ -33521,7 +33659,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
   const isVolume = datasetKind === "volume";
   const isMesh = viewerKind === "mesh";
   const isComplex = viewerKind === "complex";
-  const isSurface = datasetKind === "surface";
+  const isSurface = isSurfaceDatasetKind(datasetKind);
   const paramSourceKind = viewerKind === "param" ? paramSurfaceSourceKindFor(paramId) : null;
   const constructedSubtype = viewerKind === "param" ? constructedParamSubtypeFor(paramId) : null;
   const isParamFormula = isSurface && viewerKind === "param" && paramSourceKind === "formula";
@@ -33880,8 +34018,8 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
 
       {panelMode === "work" && showWorkGallery && (
         <div style={bandStyle}>
-          <div style={bandTitleStyle}>{datasetKind === "surface" && viewerKind === "mesh" ? "Mesh gallery" : "Surface gallery"}</div>
-          {datasetKind === "surface" && viewerKind === "complex" && (
+          <div style={bandTitleStyle}>{isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? "Mesh gallery" : "Surface gallery"}</div>
+          {isSurfaceDatasetKind(datasetKind) && viewerKind === "complex" && (
             <div
               style={{
                 display: "flex",
@@ -33922,7 +34060,7 @@ const SurfacesControls: React.FC<SurfacesControlsProps> = ({
               </button>
             </div>
           )}
-          {datasetKind === "surface" && viewerKind === "mesh" ? (
+          {isSurfaceDatasetKind(datasetKind) && viewerKind === "mesh" ? (
             <div style={{ display: "grid", gap: 8 }}>
               <div style={{ fontSize: 11, color: "#475569" }}>
                 Mesh presets are available directly in Mesh mode.

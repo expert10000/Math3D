@@ -1,4 +1,4 @@
-export type DatasetKind = "surface" | "volume";
+export type DatasetKind = "surface" | "mesh" | "volume";
 
 export type SurfaceType = "implicit" | "explicit" | "param" | "weierstrass" | "mesh";
 
