@@ -305,6 +305,7 @@ type GeometryEulerPolygonTemplateId =
   | "cylinder_uava_inv";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
 type ChartMode = "auto" | "xy" | "uv" | "local";
+type MeshChartGridMode = "local" | "meshFace";
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
 type GeometryFitMode = "scene" | "stage" | "claim";
 type GeometryObjectRole = "primary" | "construction" | "helper" | "claim" | "diagnostic";
@@ -9675,6 +9676,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const [showChartGrid, setShowChartGrid] = useState(false);
   const [chartGridDensity, setChartGridDensity] = useState(11);
   const [chartMode, setChartMode] = useState<ChartMode>("auto");
+  const [meshChartGridMode, setMeshChartGridMode] = useState<MeshChartGridMode>("local");
   const [chartCoordinateReadoutEnabled, setChartCoordinateReadoutEnabled] = useState(true);
   const chartGridCountU = chartGridDensity;
   const chartGridCountV = chartGridDensity;
@@ -25875,6 +25877,7 @@ case "mobius":
                     </div>
                   )}
                   <SurfacesViewPanel
+                    viewerKind={surfaceViewerKind}
                     editCustomLabel={
                       surfaceViewerKind === "graph"
                         ? "Edit as Custom z=f(x,y)"
@@ -25925,6 +25928,8 @@ case "mobius":
                     onToggleViewGizmo={() => setShowSurfaceViewGizmo((v) => !v)}
                     showChartGrid={showChartGrid}
                     onToggleChartGrid={toggleSurfaceChartGrid}
+                    meshChartGridMode={meshChartGridMode}
+                    onChangeMeshChartGridMode={setMeshChartGridMode}
                     showPlanes={showPlanes}
                     onTogglePlanes={toggleCoordinatePlanes}
                     showPrincipalProjections={showPrincipalProjections}
@@ -26415,6 +26420,7 @@ case "mobius":
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             showViewGizmo={showSurfaceViewGizmo}
                             chartGridCountU={chartGridCountU}
@@ -26562,6 +26568,7 @@ case "mobius":
                             colorMode={primaryOverlay.colorMode}
                             colorPalette={primaryOverlay.colorPalette}
                             showChartGrid={cleanScreenshotSurfaceActive ? false : primaryOverlay.showChartGrid}
+                            chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                             showOverlayControls={cleanScreenshotSurfaceActive ? false : showInViewportOverlayControls}
                             chartGridCountU={chartGridCountU}
                             chartGridCountV={chartGridCountV}
@@ -27776,6 +27783,7 @@ case "mobius":
                               colorMode={secondaryOverlay.colorMode}
                               colorPalette={secondaryOverlay.colorPalette}
                               showChartGrid={secondaryOverlay.showChartGrid}
+                              chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                               showOverlayControls={false}
                               chartGridCountU={chartGridCountU}
                               chartGridCountV={chartGridCountV}
@@ -27855,6 +27863,7 @@ case "mobius":
                               showContours={secondaryOverlay.showContours}
                               contourCount={contourCount}
                               showChartGrid={secondaryOverlay.showChartGrid}
+                              chartGridMode={meshChartGridMode === "meshFace" ? "mesh-face" : "local"}
                               showOverlayControls={false}
                               showViewGizmo={showSurfaceViewGizmo}
                               chartGridCountU={chartGridCountU}
@@ -36929,6 +36938,7 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
 };
 
 type SurfacesViewPanelProps = {
+  viewerKind: SurfaceViewerKind;
   editCustomLabel: string | null;
   canEditCustom: boolean;
   onEditCustom: (() => void) | null;
@@ -36955,6 +36965,8 @@ type SurfacesViewPanelProps = {
   onToggleViewGizmo: () => void;
   showChartGrid: boolean;
   onToggleChartGrid: () => void;
+  meshChartGridMode: MeshChartGridMode;
+  onChangeMeshChartGridMode: (mode: MeshChartGridMode) => void;
   showPlanes: boolean;
   onTogglePlanes: () => void;
   showPrincipalProjections: boolean;
@@ -36980,6 +36992,7 @@ type SurfacesViewPanelProps = {
 };
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
+  viewerKind,
   editCustomLabel,
   canEditCustom,
   onEditCustom,
@@ -37006,6 +37019,8 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onToggleViewGizmo,
   showChartGrid,
   onToggleChartGrid,
+  meshChartGridMode,
+  onChangeMeshChartGridMode,
   showPlanes,
   onTogglePlanes,
   showPrincipalProjections,
@@ -37157,6 +37172,29 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
         <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} />
         Surface chart grid
       </label>
+      {showChartGrid && (viewerKind === "mesh" || viewerKind === "implicit" || viewerKind === "complex") && (
+        <div style={{ marginTop: 6, paddingLeft: 20, display: "grid", gap: 4 }}>
+          <div style={{ fontSize: 10, color: "#64748b" }}>Mesh-like grid mode</div>
+          <div style={pillRow}>
+            <button
+              type="button"
+              onClick={() => onChangeMeshChartGridMode("local")}
+              style={pill(meshChartGridMode === "local")}
+              aria-pressed={meshChartGridMode === "local"}
+            >
+              Local chart patch
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeMeshChartGridMode("meshFace")}
+              style={pill(meshChartGridMode === "meshFace")}
+              aria-pressed={meshChartGridMode === "meshFace"}
+            >
+              Mesh-face grid
+            </button>
+          </div>
+        </div>
+      )}
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, marginTop: 6 }}>
         <input type="checkbox" checked={showPlanes} onChange={onTogglePlanes} />
         Coordinate planes
@@ -43336,6 +43374,51 @@ onChangeImplicitExpr,
             <div>Second fundamental form: e = dot(n, Xuu), f = dot(n, Xuv), g = dot(n, Xvv).</div>
             <div>Curvatures: K = (eg - f^2)/(EG - F^2), H = (Eg - 2Ff + Ge)/(2(EG - F^2)).</div>
           </div>
+          {(viewerKind === "mesh" || viewerKind === "implicit" || viewerKind === "complex") && (
+            <div style={{ marginTop: 12, fontSize: 12, opacity: 0.92, lineHeight: 1.5 }}>
+              <div style={{ fontWeight: 700, fontSize: 22, marginBottom: 8 }}>B. Mesh-face grid</div>
+              <div style={{ marginBottom: 6 }}>Best for:</div>
+              <pre
+                style={{
+                  margin: 0,
+                  marginBottom: 10,
+                  background: "#f3f4f6",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {"imported meshes\nimplicit CGAL surfaces\nVTK-generated meshes\nbaked surfaces"}
+              </pre>
+              <div style={{ marginBottom: 8 }}>
+                Here the surface may not have natural <i>u, v</i> coordinates.
+              </div>
+              <div style={{ marginBottom: 6 }}>
+                So instead of true rectangular parameter cells, we can display:
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  marginBottom: 10,
+                  background: "#f3f4f6",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                  fontSize: 12,
+                  lineHeight: 1.7,
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {"mesh triangle cells\nremeshed cells\nsubdivision cells\nselected connected regions"}
+              </pre>
+              <div>This is not the same as a parametric grid, but it is still useful.</div>
+            </div>
+          )}
         </div>
       </div>
     </section>

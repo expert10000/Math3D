@@ -67,16 +67,28 @@ jobs:
 
             for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
               Write-Host "[$Label] attempt $attempt/$MaxAttempts"
-              & $Command
-              if ($LASTEXITCODE -eq 0) {
+              $output = & $Command 2>&1
+              $exitCode = $LASTEXITCODE
+              if ($output) {
+                $output | ForEach-Object { Write-Host $_ }
+              }
+
+              if ($exitCode -eq 0) {
                 return
               }
 
-              if ($attempt -eq $MaxAttempts) {
-                throw "[$Label] failed after $MaxAttempts attempts (exit $LASTEXITCODE)."
+              $outputText = ($output | Out-String)
+              $lockMismatch = ($outputText -match "npm error code EUSAGE") -and
+                ($outputText -match "npm ci` can only install packages when your package.json and package-lock.json")
+              if ($lockMismatch) {
+                throw "[$Label] failed with lockfile mismatch. npm ci cannot proceed when package.json and package-lock.json are out of sync. Run npm install locally, commit updated lockfiles, and rerun CI."
               }
 
-              Write-Warning "[$Label] failed with exit $LASTEXITCODE. Cleaning up and retrying..."
+              if ($attempt -eq $MaxAttempts) {
+                throw "[$Label] failed after $MaxAttempts attempts (exit $exitCode)."
+              }
+
+              Write-Warning "[$Label] failed with exit $exitCode. Cleaning up and retrying..."
               if (Test-Path $CleanupPath) {
                 Remove-Item -Recurse -Force $CleanupPath -ErrorAction SilentlyContinue
               }

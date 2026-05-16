@@ -72,6 +72,18 @@ type ParamPreset = {
   zExpr: string;
   createdAt: number;
 };
+type SurfaceCellData = {
+  i: number;
+  j: number;
+  u0: number;
+  u1: number;
+  v0: number;
+  v1: number;
+  center: THREE.Vector3;
+  normal: THREE.Vector3;
+  area: number;
+  corners: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
+};
 const LS_PARAM_KEY = "mathapp.surfacePresets.param.v1";
 const TAU = Math.PI * 2;
 type ParamDomain = { uMin: number; uMax: number; vMin: number; vMax: number };
@@ -1584,6 +1596,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const onGeodesicHeatPickRef = useRef(onGeodesicHeatPick);
   const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
   const onGeodesicDiskPickRef = useRef(onGeodesicDiskPick);
+  const showChartGridRef = useRef(showChartGrid);
   const showProbeNormalRef = useRef(showProbeNormal);
   const showProbeTangentPlaneRef = useRef(showProbeTangentPlane);
   const showProbeTangentsRef = useRef(showProbeTangents);
@@ -1596,6 +1609,13 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
 
   // geodesic UI + line
   const [showGeodesic, setShowGeodesic] = useState(false);
+  const [surfaceCellSelectionEnabled, setSurfaceCellSelectionEnabled] = useState(true);
+  const [surfaceCellCentersVisible, setSurfaceCellCentersVisible] = useState(false);
+  const [surfaceCellNormalsVisible, setSurfaceCellNormalsVisible] = useState(false);
+  const [surfaceCellValuesVisible, setSurfaceCellValuesVisible] = useState(false);
+  const [selectedSurfaceCellIndex, setSelectedSurfaceCellIndex] = useState<number | null>(null);
+  const [selectedSurfaceCellInfo, setSelectedSurfaceCellInfo] = useState<SurfaceCellData | null>(null);
+  const surfaceCellSelectionEnabledRef = useRef(surfaceCellSelectionEnabled);
   // direction stored in NORMALIZED uv-space (unit-ish, for the picker)
   const [geoDir, setGeoDir] = useState<{ du: number; dv: number }>({ du: 1, dv: 0 });
   const geodesicLineRef = useRef<THREE.Line | null>(null);
@@ -1716,6 +1736,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const ridgeLinesRef = useRef<THREE.Object3D | null>(null);
   const valleyLinesRef = useRef<THREE.Object3D | null>(null);
   const chartGridRef = useRef<THREE.Group | null>(null);
+  const chartGridPickMeshRef = useRef<THREE.Mesh | null>(null);
+  const chartGridCellsRef = useRef<SurfaceCellData[]>([]);
   const principalFieldRef = useRef<{ key: string; data: PrincipalField | null } | null>(null);
   const prevPrincipalRef = useRef<PrincipalCurvatureResult | null>(null);
   const sliceLinesRef = useRef<THREE.LineSegments | null>(null);
@@ -1995,11 +2017,29 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     onGeodesicDiskPickRef.current = onGeodesicDiskPick;
   }, [onGeodesicDiskPick]);
   useEffect(() => {
+    showChartGridRef.current = showChartGrid;
+  }, [showChartGrid]);
+  useEffect(() => {
+    surfaceCellSelectionEnabledRef.current = surfaceCellSelectionEnabled;
+  }, [surfaceCellSelectionEnabled]);
+  useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
   useEffect(() => {
     onInspectPickRef.current = onInspectPick;
   }, [onInspectPick]);
+  useEffect(() => {
+    if (!showChartGrid) {
+      setSelectedSurfaceCellIndex(null);
+      setSelectedSurfaceCellInfo(null);
+    }
+  }, [showChartGrid]);
+  useEffect(() => {
+    if (!surfaceCellSelectionEnabled) {
+      setSelectedSurfaceCellIndex(null);
+      setSelectedSurfaceCellInfo(null);
+    }
+  }, [surfaceCellSelectionEnabled]);
 
   useEffect(() => {
     sliceParamsRef.current = {
@@ -3458,6 +3498,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           geodesicDiskPickEnabled: geodesicDiskPickEnabledRef.current,
         });
         if (
+          !(showChartGridRef.current && surfaceCellSelectionEnabledRef.current) &&
           !probeEnabledRef.current &&
           !selectRegionEnabledRef.current &&
           !inspectEnabledRef.current &&
@@ -3473,6 +3514,29 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       pointer.set(x, y);
 
       raycaster.setFromCamera(pointer, camera);
+      const gridPickMesh = chartGridPickMeshRef.current;
+      if (showChartGridRef.current && surfaceCellSelectionEnabledRef.current && gridPickMesh) {
+        const cellHits = raycaster.intersectObject(gridPickMesh, false);
+        if (cellHits.length) {
+          const faceIndex = cellHits[0].faceIndex ?? -1;
+          const cellIndex = faceIndex >= 0 ? Math.floor(faceIndex / 2) : -1;
+          const cell = cellIndex >= 0 ? chartGridCellsRef.current[cellIndex] : null;
+          if (cell) {
+            setSelectedSurfaceCellIndex(cellIndex);
+            setSelectedSurfaceCellInfo(cell);
+            if (
+              !probeEnabledRef.current &&
+              !selectRegionEnabledRef.current &&
+              !inspectEnabledRef.current &&
+              !geodesicPathEnabledRef.current &&
+              !geodesicHeatEnabledRef.current &&
+              !geodesicDiskPickEnabledRef.current
+            ) {
+              return;
+            }
+          }
+        }
+      }
       const intersects = raycaster.intersectObjects([mesh], true);
       if (!intersects.length) return;
 
@@ -6031,6 +6095,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       scene.remove(chartGridRef.current);
       chartGridRef.current = null;
     }
+    chartGridPickMeshRef.current = null;
+    chartGridCellsRef.current = [];
 
     if (!showChartGrid) return;
     const state = viewerRef.current;
@@ -6042,7 +6108,21 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const steps = 120;
 
     const group = new THREE.Group();
+    group.name = "surface-cell-grid";
     group.renderOrder = 150;
+    const cells: SurfaceCellData[] = [];
+    const areaValues: number[] = [];
+    const cellPositions: number[] = [];
+    const cellIndices: number[] = [];
+    let vertexCursor = 0;
+    const tmpP00 = new THREE.Vector3();
+    const tmpP10 = new THREE.Vector3();
+    const tmpP11 = new THREE.Vector3();
+    const tmpP01 = new THREE.Vector3();
+    const eA = new THREE.Vector3();
+    const eB = new THREE.Vector3();
+    const nA = new THREE.Vector3();
+    const nB = new THREE.Vector3();
 
     const addGrid = (axis: "u" | "v", count: number, color: number) => {
       const positions: number[] = [];
@@ -6085,13 +6165,262 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     addGrid("u", uCount, 0x1f77b4);
     addGrid("v", vCount, 0xff7f0e);
 
+    for (let i = 0; i < uCount - 1; i++) {
+      const u0 = uMin + ((uMax - uMin) * i) / (uCount - 1);
+      const u1 = uMin + ((uMax - uMin) * (i + 1)) / (uCount - 1);
+      for (let j = 0; j < vCount - 1; j++) {
+        const v0 = vMin + ((vMax - vMin) * j) / (vCount - 1);
+        const v1 = vMin + ((vMax - vMin) * (j + 1)) / (vCount - 1);
+        paramFunc(u0, v0, tmpP00);
+        paramFunc(u1, v0, tmpP10);
+        paramFunc(u1, v1, tmpP11);
+        paramFunc(u0, v1, tmpP01);
+        if (
+          !Number.isFinite(tmpP00.x) || !Number.isFinite(tmpP00.y) || !Number.isFinite(tmpP00.z) ||
+          !Number.isFinite(tmpP10.x) || !Number.isFinite(tmpP10.y) || !Number.isFinite(tmpP10.z) ||
+          !Number.isFinite(tmpP11.x) || !Number.isFinite(tmpP11.y) || !Number.isFinite(tmpP11.z) ||
+          !Number.isFinite(tmpP01.x) || !Number.isFinite(tmpP01.y) || !Number.isFinite(tmpP01.z)
+        ) {
+          continue;
+        }
+
+        const p00 = tmpP00.clone();
+        const p10 = tmpP10.clone();
+        const p11 = tmpP11.clone();
+        const p01 = tmpP01.clone();
+        const center = new THREE.Vector3()
+          .copy(p00)
+          .add(p10)
+          .add(p11)
+          .add(p01)
+          .multiplyScalar(0.25);
+
+        const tri1Area = nA
+          .crossVectors(eA.subVectors(p10, p00), eB.subVectors(p01, p00))
+          .length() * 0.5;
+        const tri2Area = nB
+          .crossVectors(eA.subVectors(p11, p10), eB.subVectors(p01, p10))
+          .length() * 0.5;
+        const area = tri1Area + tri2Area;
+
+        const normal = new THREE.Vector3()
+          .crossVectors(eA.subVectors(p10, p00), eB.subVectors(p01, p00))
+          .add(nB.crossVectors(eA.subVectors(p11, p10), eB.subVectors(p01, p10)))
+          .normalize();
+        if (!Number.isFinite(normal.x) || !Number.isFinite(normal.y) || !Number.isFinite(normal.z)) {
+          normal.set(0, 1, 0);
+        }
+
+        const cell: SurfaceCellData = {
+          i,
+          j,
+          u0,
+          u1,
+          v0,
+          v1,
+          center,
+          normal,
+          area,
+          corners: [p00, p10, p11, p01],
+        };
+        cells.push(cell);
+        areaValues.push(area);
+
+        cellPositions.push(
+          p00.x, p00.y, p00.z,
+          p10.x, p10.y, p10.z,
+          p11.x, p11.y, p11.z,
+          p01.x, p01.y, p01.z
+        );
+        cellIndices.push(
+          vertexCursor,
+          vertexCursor + 1,
+          vertexCursor + 2,
+          vertexCursor,
+          vertexCursor + 2,
+          vertexCursor + 3
+        );
+        vertexCursor += 4;
+      }
+    }
+
+    chartGridCellsRef.current = cells;
+    if (selectedSurfaceCellIndex != null) {
+      setSelectedSurfaceCellInfo(cells[selectedSurfaceCellIndex] ?? null);
+    }
+    if (!cells.length) {
+      if (selectedSurfaceCellIndex != null) {
+        setSelectedSurfaceCellIndex(null);
+        setSelectedSurfaceCellInfo(null);
+      }
+      if (group.children.length) {
+        chartGridRef.current = group;
+        scene.add(group);
+      } else {
+        group.traverse(disposeObject3D);
+      }
+      return;
+    }
+
+    const fillGeometry = new THREE.BufferGeometry();
+    fillGeometry.setAttribute("position", new THREE.Float32BufferAttribute(cellPositions, 3));
+    fillGeometry.setIndex(cellIndices);
+    const areaMin = Math.min(...areaValues);
+    const areaMax = Math.max(...areaValues);
+    const areaSpan = Math.max(1e-9, areaMax - areaMin);
+    const colors: number[] = [];
+    for (let idx = 0; idx < cells.length; idx++) {
+      const t = surfaceCellValuesVisible
+        ? Math.min(1, Math.max(0, (cells[idx].area - areaMin) / areaSpan))
+        : 0;
+      const color = surfaceCellValuesVisible
+        ? new THREE.Color().setHSL(0.62 - 0.53 * t, 0.86, 0.54)
+        : new THREE.Color(0x4f8cff);
+      for (let k = 0; k < 4; k++) {
+        colors.push(color.r, color.g, color.b);
+      }
+    }
+    fillGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    const fillMaterial = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: surfaceCellValuesVisible ? 0.36 : 0.14,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const fillMesh = new THREE.Mesh(fillGeometry, fillMaterial);
+    fillMesh.renderOrder = 140;
+    group.add(fillMesh);
+
+    const pickGeometry = fillGeometry.clone();
+    const pickMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.001,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const pickMesh = new THREE.Mesh(pickGeometry, pickMaterial);
+    pickMesh.renderOrder = 145;
+    group.add(pickMesh);
+    chartGridPickMeshRef.current = pickMesh;
+
+    if (surfaceCellCentersVisible) {
+      const centerPositions = new Float32Array(cells.length * 3);
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i].center;
+        centerPositions[3 * i] = c.x;
+        centerPositions[3 * i + 1] = c.y;
+        centerPositions[3 * i + 2] = c.z;
+      }
+      const centerGeometry = new THREE.BufferGeometry();
+      centerGeometry.setAttribute("position", new THREE.BufferAttribute(centerPositions, 3));
+      const centerMaterial = new THREE.PointsMaterial({
+        color: 0x0f172a,
+        size: Math.max(0.015, (radiusRef.current || 3) * 0.012),
+        sizeAttenuation: true,
+        depthWrite: false,
+      });
+      const centerPoints = new THREE.Points(centerGeometry, centerMaterial);
+      centerPoints.renderOrder = 160;
+      group.add(centerPoints);
+    }
+
+    if (surfaceCellNormalsVisible) {
+      const normalScale = Math.max(0.05, (radiusRef.current || 3) * 0.08);
+      const normalSegments = new Float32Array(cells.length * 6);
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const p0 = cell.center;
+        const p1 = cell.center.clone().addScaledVector(cell.normal, normalScale);
+        normalSegments[6 * i] = p0.x;
+        normalSegments[6 * i + 1] = p0.y;
+        normalSegments[6 * i + 2] = p0.z;
+        normalSegments[6 * i + 3] = p1.x;
+        normalSegments[6 * i + 4] = p1.y;
+        normalSegments[6 * i + 5] = p1.z;
+      }
+      const normalGeometry = new THREE.BufferGeometry();
+      normalGeometry.setAttribute("position", new THREE.BufferAttribute(normalSegments, 3));
+      const normalMaterial = new THREE.LineBasicMaterial({
+        color: 0x14532d,
+        transparent: true,
+        opacity: 0.85,
+      });
+      const normalLines = new THREE.LineSegments(normalGeometry, normalMaterial);
+      normalLines.renderOrder = 161;
+      group.add(normalLines);
+    }
+
+    if (selectedSurfaceCellIndex != null) {
+      const selectedCell = cells[selectedSurfaceCellIndex];
+      if (selectedCell) {
+        const selectedGeometry = new THREE.BufferGeometry();
+        const [p00, p10, p11, p01] = selectedCell.corners;
+        selectedGeometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(
+            [
+              p00.x, p00.y, p00.z,
+              p10.x, p10.y, p10.z,
+              p11.x, p11.y, p11.z,
+              p01.x, p01.y, p01.z,
+            ],
+            3
+          )
+        );
+        selectedGeometry.setIndex([0, 1, 2, 0, 2, 3]);
+        const selectedMaterial = new THREE.MeshBasicMaterial({
+          color: 0xf43f5e,
+          transparent: true,
+          opacity: 0.48,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        const selectedMesh = new THREE.Mesh(selectedGeometry, selectedMaterial);
+        selectedMesh.renderOrder = 170;
+        group.add(selectedMesh);
+
+        const borderGeometry = new THREE.BufferGeometry();
+        borderGeometry.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(
+            [
+              p00.x, p00.y, p00.z,
+              p10.x, p10.y, p10.z,
+              p10.x, p10.y, p10.z,
+              p11.x, p11.y, p11.z,
+              p11.x, p11.y, p11.z,
+              p01.x, p01.y, p01.z,
+              p01.x, p01.y, p01.z,
+              p00.x, p00.y, p00.z,
+            ],
+            3
+          )
+        );
+        const borderMaterial = new THREE.LineBasicMaterial({ color: 0xbe123c, transparent: true, opacity: 0.95 });
+        const borderLines = new THREE.LineSegments(borderGeometry, borderMaterial);
+        borderLines.renderOrder = 171;
+        group.add(borderLines);
+      }
+    }
+
     if (group.children.length) {
       chartGridRef.current = group;
       scene.add(group);
     } else {
       group.traverse(disposeObject3D);
     }
-  }, [showChartGrid, chartGridCountU, chartGridCountV, sceneEpoch]);
+  }, [
+    showChartGrid,
+    chartGridCountU,
+    chartGridCountV,
+    surfaceCellCentersVisible,
+    surfaceCellNormalsVisible,
+    surfaceCellValuesVisible,
+    selectedSurfaceCellIndex,
+    sceneEpoch,
+  ]);
 
   useEffect(() => {
     if (!onCaptureThumbnail || !captureToken) return;
@@ -6566,6 +6895,68 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
                 <input type="checkbox" checked={gaussMapEnabled} onChange={onToggleGaussMap} />
                 <span>Show Gauss map (S²)</span>
               </label>
+            )}
+            {showChartGrid && (
+              <div
+                style={{
+                  marginTop: 2,
+                  paddingTop: 8,
+                  borderTop: "1px solid rgba(148,163,184,0.45)",
+                  display: "grid",
+                  gap: 6,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>
+                  Surface decomposition
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                  <input
+                    type="checkbox"
+                    checked={surfaceCellSelectionEnabled}
+                    onChange={(e) => setSurfaceCellSelectionEnabled(e.target.checked)}
+                  />
+                  <span>Selectable cells</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                  <input
+                    type="checkbox"
+                    checked={surfaceCellCentersVisible}
+                    onChange={(e) => setSurfaceCellCentersVisible(e.target.checked)}
+                  />
+                  <span>Cell centers</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                  <input
+                    type="checkbox"
+                    checked={surfaceCellNormalsVisible}
+                    onChange={(e) => setSurfaceCellNormalsVisible(e.target.checked)}
+                  />
+                  <span>Cell normals</span>
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                  <input
+                    type="checkbox"
+                    checked={surfaceCellValuesVisible}
+                    onChange={(e) => setSurfaceCellValuesVisible(e.target.checked)}
+                  />
+                  <span>Per-cell area values</span>
+                </label>
+                {selectedSurfaceCellInfo && (
+                  <div
+                    style={{
+                      fontSize: 10,
+                      lineHeight: 1.35,
+                      color: "#334155",
+                      background: "rgba(241,245,249,0.85)",
+                      border: "1px solid rgba(148,163,184,0.35)",
+                      borderRadius: 6,
+                      padding: "6px 8px",
+                    }}
+                  >
+                    {`Cell [${selectedSurfaceCellInfo.i}, ${selectedSurfaceCellInfo.j}]  area=${selectedSurfaceCellInfo.area.toFixed(4)}`}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </>

@@ -173,6 +173,36 @@ The status bar is docked and persistent to provide passive context with low UI c
   - Param/Weierstrass: iso-u / iso-v curves on the surface
   - Mesh-like: local tangent-plane patch grid around the probe point
 
+#### B. Mesh-face grid
+Best for:
+
+```
+imported meshes
+implicit CGAL surfaces
+VTK-generated meshes
+baked surfaces
+```
+
+Here the surface may not have natural *u, v* coordinates.
+
+So instead of true rectangular parameter cells, we can display:
+
+```
+mesh triangle cells
+remeshed cells
+subdivision cells
+selected connected regions
+```
+
+This is not the same as a parametric grid, but it is still useful.
+
+UI option:
+- Open `Surfaces -> View -> Mesh display`.
+- Enable `Surface chart grid`.
+- For mesh-like viewers (`mesh` / `implicit` / `complex`), choose `Mesh-like grid mode`:
+  - `Local chart patch` (local tangent-plane chart around probe)
+  - `Mesh-face grid` (triangle-cell decomposition overlay)
+
 ### Inspect domain navigator (surface-local)
 - Added a Domain navigator card inside the left `Inspect` tab for graph/param/Weierstrass viewers.
 - The card is attached to the current primary surface (not a separate scene object/global setting).
