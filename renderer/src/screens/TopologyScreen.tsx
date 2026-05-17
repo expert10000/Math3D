@@ -4526,6 +4526,112 @@ export const TopologyScreen: React.FC = () => {
       .filter((entry) => entry.incidentCount > 2)
       .sort((a, b) => b.incidentCount - a.incidentCount);
   }, [buildResult.quotient.edges, buildResult.quotient.incidences.edgeToFaces]);
+  const vertexStarDisconnectionDiagnostics = useMemo(() => {
+    const edges = buildResult.quotient.edges ?? [];
+    const faces = buildResult.quotient.cellBoundaries ?? [];
+    const vertexToEdges = buildResult.quotient.incidences.vertexToEdges ?? {};
+    const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
+    const result: Array<{
+      vertexId: string;
+      incidentEdgeCount: number;
+      components: number;
+      edgeIds: string[];
+    }> = [];
+
+    for (const [vertexId, rawIncidentEdges] of Object.entries(vertexToEdges)) {
+      const incidentEdges = (rawIncidentEdges ?? []).filter((edgeId) => edgeById.has(edgeId));
+      if (incidentEdges.length < 2) continue;
+      const incidentSet = new Set(incidentEdges);
+      const adjacency: Record<string, Set<string>> = {};
+      incidentEdges.forEach((edgeId) => {
+        adjacency[edgeId] = new Set<string>();
+      });
+
+      for (const face of faces) {
+        const faceEdges = (face.edgeWalk ?? [])
+          .map((entry) => entry.edgeId)
+          .filter((edgeId) => incidentSet.has(edgeId));
+        if (faceEdges.length < 2) continue;
+        const uniqueFaceEdges = Array.from(new Set(faceEdges));
+        for (let i = 0; i < uniqueFaceEdges.length; i += 1) {
+          for (let j = i + 1; j < uniqueFaceEdges.length; j += 1) {
+            adjacency[uniqueFaceEdges[i]]?.add(uniqueFaceEdges[j]);
+            adjacency[uniqueFaceEdges[j]]?.add(uniqueFaceEdges[i]);
+          }
+        }
+      }
+
+      let components = 0;
+      const visited = new Set<string>();
+      for (const edgeId of incidentEdges) {
+        if (visited.has(edgeId)) continue;
+        components += 1;
+        const stack = [edgeId];
+        visited.add(edgeId);
+        while (stack.length) {
+          const current = stack.pop();
+          if (!current) continue;
+          for (const next of adjacency[current] ?? []) {
+            if (visited.has(next)) continue;
+            visited.add(next);
+            stack.push(next);
+          }
+        }
+      }
+
+      if (components > 1) {
+        result.push({
+          vertexId,
+          incidentEdgeCount: incidentEdges.length,
+          components,
+          edgeIds: incidentEdges.slice().sort((a, b) => a.localeCompare(b)),
+        });
+      }
+    }
+
+    return result.sort((a, b) => b.components - a.components || b.incidentEdgeCount - a.incidentEdgeCount);
+  }, [buildResult.quotient.cellBoundaries, buildResult.quotient.edges, buildResult.quotient.incidences.vertexToEdges]);
+  const invalidBoundaryCycleDiagnostics = useMemo(() => {
+    const edgeById = new Map(buildResult.quotient.edges.map((edge) => [edge.id, edge]));
+    const faceById = new Map(buildResult.quotient.faces.map((face) => [face.id, face]));
+    const result: Array<{ faceId: string; reason: string; edgeIds: string[] }> = [];
+    for (const boundary of buildResult.quotient.cellBoundaries ?? []) {
+      const faceId = boundary.faceId;
+      const edgeIds = (boundary.edgeWalk ?? []).map((entry) => entry.edgeId);
+      if (edgeIds.length < 3) {
+        result.push({ faceId, reason: "boundary has fewer than 3 edges", edgeIds });
+        continue;
+      }
+      const missingEdge = edgeIds.find((edgeId) => !edgeById.has(edgeId));
+      if (missingEdge) {
+        result.push({ faceId, reason: `missing quotient edge '${missingEdge}'`, edgeIds });
+        continue;
+      }
+      let contiguous = true;
+      for (let i = 0; i < edgeIds.length; i += 1) {
+        const current = edgeById.get(edgeIds[i]);
+        const next = edgeById.get(edgeIds[(i + 1) % edgeIds.length]);
+        if (!current || !next) {
+          contiguous = false;
+          break;
+        }
+        const currentVerts = new Set(current.endpointVertexIds);
+        const sharesVertex = next.endpointVertexIds.some((vertexId) => currentVerts.has(vertexId));
+        if (!sharesVertex) {
+          contiguous = false;
+          break;
+        }
+      }
+      if (!contiguous) {
+        result.push({ faceId, reason: "non-contiguous edge chain in quotient boundary", edgeIds });
+        continue;
+      }
+      if (!faceById.has(faceId)) {
+        result.push({ faceId, reason: "missing quotient face for boundary record", edgeIds });
+      }
+    }
+    return result.sort((a, b) => a.faceId.localeCompare(b.faceId));
+  }, [buildResult.quotient.cellBoundaries, buildResult.quotient.edges, buildResult.quotient.faces]);
   const unifiedTopologyDiagnostics = useMemo(() => {
     const invariants = buildResult.quotient.invariants;
     const eulerCharacteristic =
@@ -4537,7 +4643,11 @@ export const TopologyScreen: React.FC = () => {
     const orientableText = derivedTopologyHints.orientableText;
     const nonManifoldEdgeCount =
       nonManifoldEdgeDiagnostics.length || invariants?.nonManifoldEdgeCount || 0;
-    const hasNonManifold = nonManifoldEdgeCount > 0 || /non-manifold/i.test(orientableText ?? "");
+    const hasNonManifold =
+      nonManifoldEdgeCount > 0 ||
+      vertexStarDisconnectionDiagnostics.length > 0 ||
+      invalidBoundaryCycleDiagnostics.length > 0 ||
+      /non-manifold/i.test(orientableText ?? "");
 
     let genusLabel = "n/a";
     if (!hasNonManifold && connectedComponents === 1 && eulerCharacteristic !== null && boundaryComponents !== null) {
@@ -4567,10 +4677,18 @@ export const TopologyScreen: React.FC = () => {
       orientable,
       orientableText,
       nonManifoldEdgeCount,
+      vertexStarDisconnectionCount: vertexStarDisconnectionDiagnostics.length,
+      invalidBoundaryCycleCount: invalidBoundaryCycleDiagnostics.length,
       hasNonManifold,
       genusLabel,
     };
-  }, [buildResult.quotient.invariants, derivedTopologyHints, nonManifoldEdgeDiagnostics.length]);
+  }, [
+    buildResult.quotient.invariants,
+    derivedTopologyHints,
+    invalidBoundaryCycleDiagnostics.length,
+    nonManifoldEdgeDiagnostics.length,
+    vertexStarDisconnectionDiagnostics.length,
+  ]);
   const selectedPresetBoundaryWord = useMemo(() => {
     const faceId = diagram.faces[0]?.id;
     if (!faceId) return "(none)";
@@ -5245,6 +5363,26 @@ export const TopologyScreen: React.FC = () => {
               >
                 Non-manifold edges: {unifiedTopologyDiagnostics.nonManifoldEdgeCount}
               </div>
+              <div
+                style={{
+                  color:
+                    unifiedTopologyDiagnostics.vertexStarDisconnectionCount > 0
+                      ? "#b91c1c"
+                      : "#166534",
+                }}
+              >
+                Vertex-star disconnections: {unifiedTopologyDiagnostics.vertexStarDisconnectionCount}
+              </div>
+              <div
+                style={{
+                  color:
+                    unifiedTopologyDiagnostics.invalidBoundaryCycleCount > 0
+                      ? "#b91c1c"
+                      : "#166534",
+                }}
+              >
+                Invalid boundary cycles: {unifiedTopologyDiagnostics.invalidBoundaryCycleCount}
+              </div>
             </div>
             {nonManifoldEdgeDiagnostics.length > 0 && (
               <div
@@ -5279,6 +5417,81 @@ export const TopologyScreen: React.FC = () => {
                       </div>
                       <div>Faces: {entry.incidentFaces.join(", ") || "n/a"}</div>
                       <div>Source edges: {entry.sourceEdgeIds.join(", ") || "n/a"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {vertexStarDisconnectionDiagnostics.length > 0 && (
+              <div
+                style={{
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  background: "#fff1f2",
+                  padding: "7px 8px",
+                  display: "grid",
+                  gap: 5,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                  Vertex-star disconnection detail
+                </div>
+                <div style={{ display: "grid", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                  {vertexStarDisconnectionDiagnostics.map((entry) => (
+                    <div
+                      key={`vertex-star-${entry.vertexId}`}
+                      style={{
+                        border: "1px solid #fecaca",
+                        borderRadius: 6,
+                        background: "#fff",
+                        padding: "5px 6px",
+                        fontSize: 10,
+                        display: "grid",
+                        gap: 2,
+                      }}
+                    >
+                      <div>
+                        <strong>{entry.vertexId}</strong> star components: {entry.components}
+                      </div>
+                      <div>Incident edges: {entry.incidentEdgeCount}</div>
+                      <div>Edges: {entry.edgeIds.join(", ")}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {invalidBoundaryCycleDiagnostics.length > 0 && (
+              <div
+                style={{
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  background: "#fff1f2",
+                  padding: "7px 8px",
+                  display: "grid",
+                  gap: 5,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                  Boundary-cycle validity detail
+                </div>
+                <div style={{ display: "grid", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                  {invalidBoundaryCycleDiagnostics.map((entry) => (
+                    <div
+                      key={`invalid-boundary-${entry.faceId}`}
+                      style={{
+                        border: "1px solid #fecaca",
+                        borderRadius: 6,
+                        background: "#fff",
+                        padding: "5px 6px",
+                        fontSize: 10,
+                        display: "grid",
+                        gap: 2,
+                      }}
+                    >
+                      <div>
+                        <strong>{entry.faceId}</strong>: {entry.reason}
+                      </div>
+                      <div>Edges: {entry.edgeIds.join(", ") || "n/a"}</div>
                     </div>
                   ))}
                 </div>

@@ -46,13 +46,23 @@ Final UX sweep (2026-05-17):
 Status: `in progress`
 
 - [x] Add unified diagnostics panel combining: orientability/genus, boundary components, connected components, and non-manifold flags.
-- [ ] Add explicit non-manifold detectors (edge incidence >2, vertex star disconnection, invalid boundary cycles) with row-level details.
+- [x] Add explicit non-manifold detectors (edge incidence >2, vertex star disconnection, invalid boundary cycles) with row-level details.
   - [x] edge incidence >2 with per-edge incident-face details in diagnostics panel
-  - [ ] vertex star disconnection detector
-  - [ ] invalid boundary-cycle detector
+  - [x] vertex star disconnection detector
+  - [x] invalid boundary-cycle detector
 - [ ] Add one-click jump/highlight from diagnostics row to corresponding topology entities in the viewer/editor.
 - [ ] Add export action for topology diagnostics report (`JSON` + `CSV`).
 - [ ] Add regression tests for canonical presets (sphere/torus/projective/klein/mobius/cylinder/cone) and non-manifold fixtures.
+
+Next 60-minute implementation reference (P0.3):
+1. Add diagnostic row actions (`Focus edge`, `Focus vertex`, `Focus face`) and wire them to existing topology selection/highlight state.
+2. Add persistent highlight style for focused diagnostic entities in 2D/3D views so jumps are visually obvious.
+3. Add export button for unified diagnostics payload (`JSON`) plus flat table export (`CSV`).
+4. Add one regression test file covering:
+   - canonical preset invariant sanity checks
+   - one non-manifold fixture triggering `edge incidence >2`
+   - one fixture triggering vertex-star disconnection and invalid boundary-cycle flags
+5. Update P0.3 checklist status based on the above and rerun renderer build/tests.
 
 ## P1 (strong release upgrades)
 
