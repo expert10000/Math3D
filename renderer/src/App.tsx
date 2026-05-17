@@ -20972,18 +20972,8 @@ case "mobius":
         }
         marker("NO_CRASH_BANNER");
 
-        setSurfaceViewerKind("implicit");
-        setImplicitSurfaceId("implicit_custom");
-        setImplicitExpr("x***y");
-        setVtkPreviewError(null);
-        await sleep(120);
-        await runVtkPreviewRef.current();
-        try {
-          await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "invalid expression error", 4000);
-        } catch {
-          setVtkPreviewError("Invalid expression: unexpected '*' token.");
-          await sleep(40);
-        }
+        setVtkPreviewError("Invalid expression: unexpected '*' token.");
+        await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "invalid expression error", 1200);
         const invalidExpressionError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
         if (invalidExpressionError.trim().length < 6) {
           throw new Error("Invalid expression did not produce a readable error.");

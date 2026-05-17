@@ -25,7 +25,14 @@ const geometrySmokeTimeoutMs = Math.max(
 // Work around Windows occlusion/background throttling glitches that can freeze
 // interactive text controls until a maximize/minimize/devtools reframe occurs.
 if (process.platform === "win32") {
-  app.disableHardwareAcceleration();
+  if (isGeometrySmoke) {
+    // Geometry smoke runs in CI/headless-like environments where GPU access can be
+    // inconsistent; force SwiftShader explicitly to avoid unstable fallback paths.
+    app.commandLine.appendSwitch("enable-unsafe-swiftshader");
+    app.commandLine.appendSwitch("use-angle", "swiftshader");
+  } else {
+    app.disableHardwareAcceleration();
+  }
   app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
   app.commandLine.appendSwitch("disable-renderer-backgrounding");
   app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
