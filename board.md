@@ -13,17 +13,17 @@ Scope pillars: `trust`, `workflow speed`, `depth`
 
 ### P0.1 Execution Board: Unified Analysis Workspace
 
-Status: `in progress`
+Status: `done` (2026-05-18)
 
-- [x] Persist per-compute saved runs in workbook model (`runHistory` with timing/logs/status/cache metadata).
-- [x] Persist parameter snapshots per run (`params`) and exact upstream references (`inputRefs` + `inputHash`).
-- [x] Persist viewer snapshot per run (`viewSnapshot`) for reproducible camera/dataset state.
-- [x] Migrate legacy `lastRun` data into new saved-run history on load.
-- [x] Expose run-history UI in analysis compute boxes (collapsible "Saved runs", timestamp/status/cache/duration).
-- [x] Add `Replay run` action restoring snapshot + params then re-executing operator.
-- [x] Add workspace summary metadata (`runCount`, `latestRunAt`) for analysis overlays.
-- [x] Add deterministic reference-scene replay test for saved-run reproducibility.
-- [x] Add export/import validation test ensuring saved runs survive `.math3d` roundtrip.
+- [x] ✅ Persist per-compute saved runs in workbook model (`runHistory` with timing/logs/status/cache metadata).
+- [x] ✅ Persist parameter snapshots per run (`params`) and exact upstream references (`inputRefs` + `inputHash`).
+- [x] ✅ Persist viewer snapshot per run (`viewSnapshot`) for reproducible camera/dataset state.
+- [x] ✅ Migrate legacy `lastRun` data into new saved-run history on load.
+- [x] ✅ Expose run-history UI in analysis compute boxes (collapsible "Saved runs", timestamp/status/cache/duration).
+- [x] ✅ Add `Replay run` action restoring snapshot + params then re-executing operator.
+- [x] ✅ Add workspace summary metadata (`runCount`, `latestRunAt`) for analysis overlays.
+- [x] ✅ Add deterministic reference-scene replay test for saved-run reproducibility.
+- [x] ✅ Add export/import validation test ensuring saved runs survive `.math3d` roundtrip.
 
 ### P0.2 Execution Board: Geometry Viewer Parity
 
