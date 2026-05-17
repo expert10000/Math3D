@@ -45,6 +45,7 @@ type WorkbookPanelProps = {
   onRunComputeStage: (stageId: WorkbookStageId) => void;
   onRunAllStale: () => void;
   onRunFromBlock: (stageId: WorkbookStageId, blockId: string) => void;
+  onReplayComputeSavedRun: (stageId: WorkbookStageId, blockId: string, runId: string) => void;
   onClearWorkbookSelection: () => void;
   onAddBlockParam: (stageId: WorkbookStageId, blockId: string, defId: string) => void;
   onRemoveBlockParam: (stageId: WorkbookStageId, blockId: string, paramId: string) => void;
@@ -466,6 +467,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onRunComputeStage,
   onRunAllStale,
   onRunFromBlock,
+  onReplayComputeSavedRun,
   onClearWorkbookSelection,
   onAddBlockParam,
   onRemoveBlockParam,
@@ -640,6 +642,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const workspaceAnalysisItems = useMemo(() => {
     if (!activeWorkbook) return [];
     const overlays = new Set<string>();
+    let runCount = 0;
+    let latestRunAt = 0;
     for (const stage of activeWorkbook.stages) {
       for (const block of stage.blocks) {
         if (block.type !== "compute") continue;
@@ -648,9 +652,16 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         if (block.compute?.outputs?.directionOverlay?.polylines?.length) overlays.add("direction overlay");
         if (block.compute?.outputs?.selectionMask?.count) overlays.add("selection mask");
         if (block.compute?.outputs?.geodesicPath?.indices?.length) overlays.add("geodesic path");
+        runCount += block.compute?.runHistory?.length ?? 0;
+        latestRunAt = Math.max(latestRunAt, block.compute?.runHistory?.[0]?.savedAt ?? 0);
       }
     }
-    return Array.from(overlays);
+    const items = Array.from(overlays);
+    if (runCount > 0) {
+      items.push(`saved runs: ${runCount}`);
+      items.push(`latest run: ${new Date(latestRunAt).toLocaleString()}`);
+    }
+    return items;
   }, [activeWorkbook]);
 
   useEffect(() => {
@@ -1844,6 +1855,66 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                           ) : null}
                         </div>
                       )}
+                      {block.compute?.runHistory?.length ? (
+                        <details style={{ marginTop: 6 }}>
+                          <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                            Saved runs ({block.compute.runHistory.length})
+                          </summary>
+                          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+                            {block.compute.runHistory.slice(0, 8).map((run) => (
+                              <div
+                                key={run.id}
+                                style={{
+                                  border: "1px solid #e2e8f0",
+                                  borderRadius: 8,
+                                  padding: "6px 8px",
+                                  background: "#f8fafc",
+                                  fontSize: 10,
+                                  color: "#334155",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 4,
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  <span style={{ fontWeight: 700, textTransform: "uppercase" }}>{run.status}</span>
+                                  <span>{new Date(run.savedAt).toLocaleString()}</span>
+                                  {run.cacheHit ? (
+                                    <span style={{ padding: "1px 6px", borderRadius: 999, background: "#ecfeff", color: "#0e7490", fontWeight: 700 }}>
+                                      cache
+                                    </span>
+                                  ) : null}
+                                  {run.timing?.durationMs != null ? (
+                                    <span>{Math.max(0, Math.round(run.timing.durationMs))} ms</span>
+                                  ) : null}
+                                </div>
+                                <div style={{ opacity: 0.85 }}>
+                                  {run.datasetRef} · {run.viewerKind} · params {Object.keys(run.params ?? {}).length}
+                                </div>
+                                {run.summary ? <div style={{ opacity: 0.85 }}>{run.summary}</div> : null}
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => onReplayComputeSavedRun(activeStageId, block.id, run.id)}
+                                    disabled={readOnly}
+                                    style={{ padding: "2px 8px", fontSize: 10 }}
+                                  >
+                                    Replay run
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => run.viewSnapshot && onApplyVisualize(run.viewSnapshot, block.id)}
+                                    disabled={!run.viewSnapshot}
+                                    style={{ padding: "2px 8px", fontSize: 10 }}
+                                  >
+                                    Jump to view
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      ) : null}
                     </div>
                   );
                 })()}

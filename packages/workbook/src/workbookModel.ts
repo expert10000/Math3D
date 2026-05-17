@@ -123,6 +123,24 @@ export type WorkbookComputeRun = {
   timing?: WorkbookComputeTiming;
   cacheHit?: boolean;
 };
+export type WorkbookComputeSavedRun = {
+  id: string;
+  savedAt: number;
+  operatorId: string;
+  datasetRef: string;
+  viewerKind: string;
+  inputHash: string;
+  inputRefs: WorkbookComputeInputRef[];
+  params: Record<string, WorkbookParamValue>;
+  viewSnapshot: WorkbookViewSnapshot | null;
+  status: WorkbookComputeRunStatus;
+  summary?: string;
+  outputHash?: string;
+  outputs?: WorkbookComputeOutputs;
+  logs?: string[];
+  timing?: WorkbookComputeTiming;
+  cacheHit?: boolean;
+};
 export type WorkbookComputeInputRef = {
   portId: string;
   type: WorkbookValueType;
@@ -268,6 +286,7 @@ export type WorkbookBlock = {
     inputs?: WorkbookComputeInputRef[];
     outputs?: WorkbookComputeOutputs;
     lastRun?: WorkbookComputeRun;
+    runHistory?: WorkbookComputeSavedRun[];
     status?: "idle" | "ok" | "stale" | "failed";
     summary?: string;
     datasetRef?: string;
@@ -437,6 +456,7 @@ const buildBlockFromSpec = (spec: WorkbookTemplateBlockSpec, makeId: () => strin
         inputs: [],
         outputs: undefined,
         lastRun: undefined,
+        runHistory: [],
         cache: {},
       },
     };

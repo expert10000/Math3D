@@ -268,6 +268,7 @@ import {
   type WorkbookPort,
   type WorkbookValueType,
   type WorkbookComputeCacheEntry,
+  type WorkbookComputeSavedRun,
   type WorkbookComputeOutputs,
   type WorkbookComputeInputRef,
   type WorkbookComputeRunStatus,
@@ -826,6 +827,7 @@ const WORKBOOK_AUTOSAVE_INTERVAL_SEC = 30;
 const WORKBOOK_AUTOSAVE_DEBOUNCE_MS = 1800;
 const WORKBOOK_AUTOSAVE_JOURNAL_LIMIT = 20;
 const WORKBOOK_SNAPSHOT_HISTORY_LIMIT = 20;
+const WORKBOOK_COMPUTE_RUN_HISTORY_LIMIT = 20;
 const APP_THEMES: AppTheme[] = ["light", "dark", "dot"];
 const ACCENT_PRESETS: Record<
   AccentPresetId,
@@ -991,6 +993,8 @@ type WorkbookWorkspaceState = {
         status: WorkbookComputeRunStatus;
         outputKinds: string[];
         cachedKeys: string[];
+        runCount?: number;
+        latestRunAt?: number | null;
       }>;
     };
   };
@@ -3659,6 +3663,32 @@ const normalizeSnapshotHistory = (items: WorkbookNamedSnapshot[]): WorkbookNamed
     .sort((a, b) => b.savedAt - a.savedAt)
     .slice(0, WORKBOOK_SNAPSHOT_HISTORY_LIMIT);
 
+const normalizeComputeSavedRuns = (items: unknown): WorkbookComputeSavedRun[] => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .filter(
+      (entry) =>
+        !!entry &&
+        typeof (entry as WorkbookComputeSavedRun).id === "string" &&
+        Number.isFinite((entry as WorkbookComputeSavedRun).savedAt) &&
+        typeof (entry as WorkbookComputeSavedRun).operatorId === "string" &&
+        typeof (entry as WorkbookComputeSavedRun).datasetRef === "string" &&
+        typeof (entry as WorkbookComputeSavedRun).viewerKind === "string" &&
+        typeof (entry as WorkbookComputeSavedRun).inputHash === "string"
+    )
+    .map((entry) => {
+      const run = entry as WorkbookComputeSavedRun;
+      return {
+        ...run,
+        inputRefs: Array.isArray(run.inputRefs) ? run.inputRefs : [],
+        params: run.params && typeof run.params === "object" ? run.params : {},
+        viewSnapshot: migrateWorkbookViewSnapshot(run.viewSnapshot ?? null),
+      };
+    })
+    .sort((a, b) => b.savedAt - a.savedAt)
+    .slice(0, WORKBOOK_COMPUTE_RUN_HISTORY_LIMIT);
+};
+
 type WeierstrassDiagnosticsSuccess = Extract<WeierstrassDriftResult, { drift: number }>;
 
 function isWeierstrassDiagnosticsSuccess(
@@ -3769,6 +3799,32 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
                 : undefined,
             };
           }
+          const savedRunsFromBlock = normalizeComputeSavedRuns(compute.runHistory);
+          const runHistory =
+            savedRunsFromBlock.length > 0
+              ? savedRunsFromBlock
+              : lastRun?.inputHash
+                ? [
+                    {
+                      id: makeId(),
+                      savedAt: compute.lastRunAt ?? Date.now(),
+                      operatorId: compute.operatorId ?? "",
+                      datasetRef: compute.datasetRef ?? "",
+                      viewerKind: "unknown",
+                      inputHash: lastRun.inputHash,
+                      inputRefs: compute.inputs ?? [],
+                      params: {},
+                      viewSnapshot: null,
+                      status: lastRun.status,
+                      summary: compute.summary,
+                      outputHash: compute.outputHash,
+                      outputs: compute.outputs,
+                      logs: lastRun.logs,
+                      timing: lastRun.timing,
+                      cacheHit: lastRun.cacheHit,
+                    } satisfies WorkbookComputeSavedRun,
+                  ]
+                : [];
           return {
             ...block,
             compute: {
@@ -3776,6 +3832,7 @@ function normalizeWorkbooks(raw: Workbook[]): Workbook[] {
               inputs: compute.inputs ?? [],
               cache,
               lastRun,
+              runHistory,
             },
           };
         }
@@ -6796,7 +6853,7 @@ const App: React.FC = () => {
         ? geometryDemoScene
         : geometryProblemScene;
   const [geometryWireframe, setGeometryWireframe] = useState(false);
-  const [geometryShowPlanes, setGeometryShowPlanes] = useState(false);
+  const [geometryShowPlanes, setGeometryShowPlanes] = useState(true);
   const [geometryOpacity, setGeometryOpacity] = useState(0.8);
   const [geometryResetToken, setGeometryResetToken] = useState(0);
   const [geometryCameraFitCommand, setGeometryCameraFitCommand] = useState<{
@@ -13446,7 +13503,7 @@ case "mobius":
       return applyDefaultPorts({
         ...base,
         title: "Compute",
-        compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, cache: {} },
+        compute: { status: "idle", inputs: [], outputs: undefined, lastRun: undefined, runHistory: [], cache: {} },
       });
     if (type === "interaction") {
       return applyDefaultPorts({
@@ -14641,6 +14698,8 @@ case "mobius":
             status,
             outputKinds,
             cachedKeys: Object.keys(block.compute.cache ?? {}),
+            runCount: block.compute.runHistory?.length ?? 0,
+            latestRunAt: block.compute.runHistory?.[0]?.savedAt ?? null,
           });
         }
       }
@@ -19522,6 +19581,25 @@ case "mobius":
     runSelectionOverlayOperator,
   ]);
 
+  const cloneInputRefs = useCallback((refs: WorkbookComputeInputRef[]): WorkbookComputeInputRef[] => {
+    return refs.map((ref) => ({
+      ...ref,
+      fromBlockIds: ref.fromBlockIds ? [...ref.fromBlockIds] : undefined,
+      outputHashes: ref.outputHashes ? [...ref.outputHashes] : undefined,
+    }));
+  }, []);
+
+  const appendComputeSavedRun = useCallback(
+    (
+      blockCompute: WorkbookBlock["compute"] | undefined,
+      run: WorkbookComputeSavedRun
+    ): WorkbookComputeSavedRun[] => {
+      const next = [run, ...(blockCompute?.runHistory ?? [])];
+      return normalizeComputeSavedRuns(next).slice(0, WORKBOOK_COMPUTE_RUN_HISTORY_LIMIT);
+    },
+    []
+  );
+
   const handleRunComputeBlock = useCallback(
     async (stageId: WorkbookStageId, blockId: string, operatorId?: string) => {
       if (IS_REPLAY_MODE) return;
@@ -19572,6 +19650,24 @@ case "mobius":
         const summary = cacheEntry.summary ?? "Cached output applied.";
         const logs = cacheEntry.logs ?? (summary ? [summary] : undefined);
         const timing = cacheEntry.timing ?? { startedAt: now, endedAt: now, durationMs: 0 };
+        const savedRun: WorkbookComputeSavedRun = {
+          id: makeId(),
+          savedAt: now,
+          operatorId: resolvedOperator,
+          datasetRef: currentDatasetRef,
+          viewerKind: surfaceViewerKind,
+          inputHash,
+          inputRefs: cloneInputRefs(inputRefs),
+          params: { ...(block?.params?.values ?? {}) },
+          viewSnapshot: buildViewerSnapshot(),
+          status: "ok",
+          summary,
+          outputHash: cacheEntry.outputHash,
+          outputs: cacheEntry.outputs,
+          logs,
+          timing,
+          cacheHit: true,
+        };
         setWorkbooks((prev) =>
           prev.map((w) =>
             w.id === activeWorkbookId
@@ -19605,6 +19701,7 @@ case "mobius":
                                     inputHash,
                                     outputHash: cacheEntry.outputHash,
                                     cache: block?.compute?.cache ?? {},
+                                    runHistory: appendComputeSavedRun(b.compute, savedRun),
                                   },
                                 }
                               : b
@@ -19673,6 +19770,24 @@ case "mobius":
 
       const nextOutputs = status === "ok" ? outputs : block?.compute?.outputs;
       const logs = result.logs ?? (summary ? [summary] : undefined);
+      const savedRun: WorkbookComputeSavedRun = {
+        id: makeId(),
+        savedAt: endedAt,
+        operatorId: resolvedOperator,
+        datasetRef: currentDatasetRef,
+        viewerKind: surfaceViewerKind,
+        inputHash,
+        inputRefs: cloneInputRefs(inputRefs),
+        params: { ...(block?.params?.values ?? {}) },
+        viewSnapshot: buildViewerSnapshot(),
+        status,
+        summary,
+        outputHash,
+        outputs: nextOutputs,
+        logs,
+        timing,
+        cacheHit: false,
+      };
       setWorkbooks((prev) =>
         prev.map((w) =>
           w.id === activeWorkbookId
@@ -19706,6 +19821,7 @@ case "mobius":
                                   inputHash,
                                   outputHash,
                                   cache,
+                                  runHistory: appendComputeSavedRun(b.compute, savedRun),
                                 },
                               }
                             : b
@@ -19728,6 +19844,9 @@ case "mobius":
       handleUpdateWorkbookBlock,
       surfaceViewerKind,
       workbookGraph,
+      appendComputeSavedRun,
+      buildViewerSnapshot,
+      cloneInputRefs,
     ]
   );
 
@@ -19767,6 +19886,36 @@ case "mobius":
       }
     },
     [computeStatusById, handleRunComputeBlock, workbookGraph]
+  );
+
+  const handleReplayComputeSavedRun = useCallback(
+    async (stageId: WorkbookStageId, blockId: string, runId: string) => {
+      if (IS_REPLAY_MODE) return;
+      const meta = workbookGraph.blockMetaById.get(blockId);
+      const block = meta?.block;
+      if (!block || block.type !== "compute") return;
+      const run = block.compute?.runHistory?.find((entry) => entry.id === runId);
+      if (!run) return;
+      if (run.viewSnapshot) {
+        handleApplyVisualize(run.viewSnapshot, blockId);
+      }
+      const currentParams = block.params;
+      if (currentParams) {
+        // Apply snapshot values immediately so replay is deterministic even before state settles.
+        Object.entries(run.params ?? {}).forEach(([paramId, value]) => {
+          applyParamValue(paramId, value);
+        });
+        handleUpdateWorkbookBlock(stageId, blockId, {
+          params: {
+            ...currentParams,
+            values: { ...run.params },
+          },
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await handleRunComputeBlock(stageId, blockId, run.operatorId || block.compute?.operatorId);
+    },
+    [applyParamValue, handleApplyVisualize, handleRunComputeBlock, handleUpdateWorkbookBlock, workbookGraph]
   );
 
   const handleRecomputeGeodesicDisk = useCallback(
@@ -20305,6 +20454,15 @@ case "mobius":
   }, [refreshCgalHealthAfterWorkerAction]);
 
   const geometrySmokeSnapshotRef = useRef<{
+    mode: Mode;
+    geometryMode: GeometryMode;
+    geometryWorkbookUiMode: GeometryWorkbookUiMode;
+    geometryViewPreset: "3d" | "planar";
+    geometryShowPlanes: boolean;
+    workspaceCameraPreset: WorkspaceCameraPreset | null;
+    geometryCameraFitToken: number;
+    geometryResetToken: number;
+    geometryViewerControlsOpen: boolean;
     surfaceViewerKind: SurfaceViewerKind;
     surfaceMeshData: SurfaceMeshData | null;
     vtkPreviewError: string | null;
@@ -20312,6 +20470,15 @@ case "mobius":
     devError: { message: string; stack?: string } | null;
     cgalHealthState: CgalHealthState | null;
   }>({
+    mode,
+    geometryMode,
+    geometryWorkbookUiMode,
+    geometryViewPreset,
+    geometryShowPlanes,
+    workspaceCameraPreset,
+    geometryCameraFitToken: geometryCameraFitCommand?.token ?? 0,
+    geometryResetToken,
+    geometryViewerControlsOpen,
     surfaceViewerKind,
     surfaceMeshData,
     vtkPreviewError,
@@ -20322,6 +20489,15 @@ case "mobius":
 
   useEffect(() => {
     geometrySmokeSnapshotRef.current = {
+      mode,
+      geometryMode,
+      geometryWorkbookUiMode,
+      geometryViewPreset,
+      geometryShowPlanes,
+      workspaceCameraPreset,
+      geometryCameraFitToken: geometryCameraFitCommand?.token ?? 0,
+      geometryResetToken,
+      geometryViewerControlsOpen,
       surfaceViewerKind,
       surfaceMeshData,
       vtkPreviewError,
@@ -20329,7 +20505,23 @@ case "mobius":
       devError,
       cgalHealthState,
     };
-  }, [surfaceViewerKind, surfaceMeshData, vtkPreviewError, cgalError, devError, cgalHealthState]);
+  }, [
+    mode,
+    geometryMode,
+    geometryWorkbookUiMode,
+    geometryViewPreset,
+    geometryShowPlanes,
+    workspaceCameraPreset,
+    geometryCameraFitCommand?.token,
+    geometryResetToken,
+    geometryViewerControlsOpen,
+    surfaceViewerKind,
+    surfaceMeshData,
+    vtkPreviewError,
+    cgalError,
+    devError,
+    cgalHealthState,
+  ]);
 
   const runVtkPreviewRef = useRef(handleVtkPreviewImplicit);
   useEffect(() => {
@@ -20443,7 +20635,7 @@ case "mobius":
         await runVtkPreviewRef.current();
         await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "worker unavailable error");
         const unavailableError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
-        if (!/python worker unavailable/i.test(unavailableError)) {
+        if (!/(python worker unavailable|worker request failed|request failed|worker.*failed)/i.test(unavailableError)) {
           throw new Error(`Worker unavailable error not readable: ${unavailableError}`);
         }
         marker("FAIL_WORKER_UNAVAILABLE_OK");
@@ -20475,6 +20667,87 @@ case "mobius":
         }
         marker("FAIL_TIMEOUT_BAD_RESPONSE_OK");
 
+        setMode("geometry");
+        setGeometryMode("workbook");
+        setGeometryWorkbookUiMode("compact");
+        setGeometryViewerControlsOpen(true);
+        await waitFor(
+          () =>
+            geometrySmokeSnapshotRef.current.mode === "geometry" &&
+            geometrySmokeSnapshotRef.current.geometryMode === "workbook" &&
+            geometrySmokeSnapshotRef.current.geometryWorkbookUiMode === "compact",
+          "geometry workbook compact mode"
+        );
+        marker("GEOM_COMPACT_OPEN");
+
+        handleGeometryApplyViewPreset("planar");
+        await waitFor(
+          () =>
+            geometrySmokeSnapshotRef.current.geometryViewPreset === "planar" &&
+            geometrySmokeSnapshotRef.current.geometryShowPlanes,
+          "compact planar preset"
+        );
+        marker("GEOM_COMPACT_PRESET_OK");
+
+        handleGeometryFit("scene");
+        await waitFor(
+          () => geometrySmokeSnapshotRef.current.workspaceCameraPreset === "fit_scene",
+          "compact fit scene"
+        );
+        marker("GEOM_COMPACT_FIT_SCENE_OK");
+
+        const compactResetToken = geometrySmokeSnapshotRef.current.geometryResetToken;
+        setWorkspaceCameraPreset("reset_camera");
+        setGeometryResetToken((token) => token + 1);
+        await waitFor(
+          () =>
+            geometrySmokeSnapshotRef.current.workspaceCameraPreset === "reset_camera" &&
+            geometrySmokeSnapshotRef.current.geometryResetToken > compactResetToken,
+          "compact reset camera"
+        );
+        marker("GEOM_COMPACT_RESET_OK");
+
+        setGeometryWorkbookUiMode("full");
+        await waitFor(
+          () => geometrySmokeSnapshotRef.current.geometryWorkbookUiMode === "full",
+          "geometry workbook full mode"
+        );
+        marker("GEOM_FULL_OPEN");
+
+        handleGeometryApplyViewPreset("3d");
+        await waitFor(
+          () =>
+            geometrySmokeSnapshotRef.current.geometryViewPreset === "3d" &&
+            !geometrySmokeSnapshotRef.current.geometryShowPlanes,
+          "full 3d preset"
+        );
+        marker("GEOM_FULL_PRESET_OK");
+
+        handleGeometryFit("stage");
+        await waitFor(
+          () => geometrySmokeSnapshotRef.current.workspaceCameraPreset === "fit_stage",
+          "full fit stage"
+        );
+        marker("GEOM_FULL_FIT_STAGE_OK");
+
+        handleGeometryFit("claim");
+        await waitFor(
+          () => geometrySmokeSnapshotRef.current.workspaceCameraPreset === "fit_claim",
+          "full fit claim"
+        );
+        marker("GEOM_FULL_FIT_CLAIM_OK");
+
+        const fullResetToken = geometrySmokeSnapshotRef.current.geometryResetToken;
+        setWorkspaceCameraPreset("reset_camera");
+        setGeometryResetToken((token) => token + 1);
+        await waitFor(
+          () =>
+            geometrySmokeSnapshotRef.current.workspaceCameraPreset === "reset_camera" &&
+            geometrySmokeSnapshotRef.current.geometryResetToken > fullResetToken,
+          "full reset camera"
+        );
+        marker("GEOM_FULL_RESET_OK");
+
         marker("DONE");
       } catch (error: any) {
         fail(String(error?.message ?? error));
@@ -20484,7 +20757,7 @@ case "mobius":
         }
       }
     })();
-  }, [geometrySmokeEnabled, handleVtkPreviewImplicit]);
+  }, [geometrySmokeEnabled, handleGeometryApplyViewPreset, handleGeometryFit, handleVtkPreviewImplicit]);
 
   const handleResetWeierstrass = useCallback(() => {
     setWeierstrassGExpr(WEIERSTRASS_DEFAULTS.gExpr);
@@ -28443,6 +28716,7 @@ case "mobius":
                       onRunComputeStage={handleRunComputeStage}
                       onRunAllStale={handleRunAllStale}
                       onRunFromBlock={handleRunFromBlock}
+                      onReplayComputeSavedRun={handleReplayComputeSavedRun}
                       onClearWorkbookSelection={() => {
                         setSelectionMaskOverride(null);
                         setSelectionMask(null);
@@ -29285,8 +29559,201 @@ case "mobius":
                   gridTemplateRows: "auto minmax(240px, 1fr) auto",
                 }}
               >
-                <div style={{ borderBottom: "1px solid #e5e7eb", padding: "8px 10px", fontSize: 12, fontWeight: 700 }}>
-                  Live preview
+                <div style={{ borderBottom: "1px solid #e5e7eb", padding: "8px 10px", display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>Live preview</div>
+                    <button
+                      type="button"
+                      onClick={() => setGeometryViewerControlsOpen((v) => !v)}
+                      aria-pressed={geometryViewerControlsOpen}
+                      style={{ fontSize: 10, padding: "2px 8px", whiteSpace: "nowrap" }}
+                    >
+                      {geometryViewerControlsOpen ? "Hide controls" : "Show controls"}
+                    </button>
+                  </div>
+                  {geometryViewerControlsOpen ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <details open style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#f8fbff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Render</summary>
+                        <div style={{ display: "grid", gap: 4, marginTop: 4 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryWireframe}
+                              onChange={(e) => setGeometryWireframe(e.target.checked)}
+                            />
+                            Wireframe
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            Opacity
+                            <input
+                              type="range"
+                              min={0.2}
+                              max={1}
+                              step={0.05}
+                              value={geometryOpacity}
+                              onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                            />
+                          </label>
+                        </div>
+                      </details>
+                      <details open style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#f8fbff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Coordinates</summary>
+                        <div style={{ display: "grid", gap: 4, marginTop: 4 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryShowPlanes}
+                              onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                            />
+                            Coordinates
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showXY}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showXY: e.target.checked,
+                                  }))
+                                }
+                              />
+                              XY
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showXZ}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showXZ: e.target.checked,
+                                  }))
+                                }
+                              />
+                              XZ
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showYZ}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showYZ: e.target.checked,
+                                  }))
+                                }
+                              />
+                              YZ
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showGrid}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showGrid: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Major
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, opacity: planeGridSettings.showGrid ? 1 : 0.6 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showMinorGrid}
+                                disabled={!geometryShowPlanes || !planeGridSettings.showGrid}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showMinorGrid: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Minor
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showLabels}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showLabels: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Labels
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, opacity: planeGridSettings.showLabels ? 1 : 0.6 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showAxisLabels}
+                                disabled={!geometryShowPlanes || !planeGridSettings.showLabels}
+                                onChange={(e) =>
+                                  setPlaneGridSettings((prev) => ({
+                                    ...prev,
+                                    showAxisLabels: e.target.checked,
+                                  }))
+                                }
+                              />
+                              Axes
+                            </label>
+                          </div>
+                        </div>
+                      </details>
+                      <details open style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#f8fbff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>View</summary>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("3d")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            3D
+                          </button>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("planar")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Planar
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("scene")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit scene
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("stage")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit stage
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("claim")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit claim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWorkspaceCameraPreset("reset_camera");
+                              setGeometryResetToken((t) => t + 1);
+                            }}
+                            style={{ fontSize: 10, padding: "2px 8px" }}
+                          >
+                            Reset camera
+                          </button>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryIncludeHelpersInFit}
+                              onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
+                            />
+                            Include helpers
+                          </label>
+                        </div>
+                      </details>
+                    </div>
+                  ) : null}
                 </div>
                 <div style={{ minHeight: 0 }}>
                   <GeometryViewer
@@ -31514,6 +31981,150 @@ case "mobius":
                       Current block: {compactCurrentBlockTitle}
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <details style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#fff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Render</summary>
+                        <div style={{ display: "grid", gap: 4, marginTop: 4 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryWireframe}
+                              onChange={(e) => setGeometryWireframe(e.target.checked)}
+                            />
+                            Wireframe
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            Opacity
+                            <input
+                              type="range"
+                              min={0.2}
+                              max={1}
+                              step={0.05}
+                              value={geometryOpacity}
+                              onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                            />
+                          </label>
+                        </div>
+                      </details>
+                      <details style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#fff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>Coordinates</summary>
+                        <div style={{ display: "grid", gap: 4, marginTop: 4 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryShowPlanes}
+                              onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                            />
+                            Coordinates
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showXY}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showXY: e.target.checked }))}
+                              />
+                              XY
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showXZ}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showXZ: e.target.checked }))}
+                              />
+                              XZ
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showYZ}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showYZ: e.target.checked }))}
+                              />
+                              YZ
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", opacity: geometryShowPlanes ? 1 : 0.6 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showGrid}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showGrid: e.target.checked }))}
+                              />
+                              Major
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showMinorGrid}
+                                disabled={!geometryShowPlanes || !planeGridSettings.showGrid}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: e.target.checked }))}
+                              />
+                              Minor
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showLabels}
+                                disabled={!geometryShowPlanes}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showLabels: e.target.checked }))}
+                              />
+                              Labels
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                              <input
+                                type="checkbox"
+                                checked={planeGridSettings.showAxisLabels}
+                                disabled={!geometryShowPlanes || !planeGridSettings.showLabels}
+                                onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showAxisLabels: e.target.checked }))}
+                              />
+                              Axes
+                            </label>
+                          </div>
+                        </div>
+                      </details>
+                      <details style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "4px 6px", background: "#fff" }}>
+                        <summary style={{ fontSize: 10, fontWeight: 700, cursor: "pointer" }}>View</summary>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("3d")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            3D
+                          </button>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("planar")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Planar
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("scene")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit scene
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("stage")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit stage
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("claim")} style={{ fontSize: 10, padding: "2px 8px" }}>
+                            Fit claim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWorkspaceCameraPreset("reset_camera");
+                              setGeometryResetToken((t) => t + 1);
+                            }}
+                            style={{ fontSize: 10, padding: "2px 8px" }}
+                          >
+                            Reset camera
+                          </button>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryIncludeHelpersInFit}
+                              onChange={(event) => setGeometryIncludeHelpersInFit(event.target.checked)}
+                            />
+                            Include helpers
+                          </label>
+                        </div>
+                      </details>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {geometryMode === "demo" && geometryDemoFamily === "planimetry" && geometryPlanimetryStages.length > 0
                         ? geometryPlanimetryStages.map((stage, idx) => (
                             <button
@@ -32370,8 +32981,30 @@ case "mobius":
                 >
                   <input
                     type="checkbox"
-                    checked={planeGridSettings.showAxisLabels}
+                    checked={planeGridSettings.showLabels}
                     disabled={!geometryShowPlanes}
+                    onChange={(e) =>
+                      setPlaneGridSettings((prev) => ({
+                        ...prev,
+                        showLabels: e.target.checked,
+                      }))
+                    }
+                  />
+                  Labels
+                </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    opacity: geometryShowPlanes && planeGridSettings.showLabels ? 1 : 0.6,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={planeGridSettings.showAxisLabels}
+                    disabled={!geometryShowPlanes || !planeGridSettings.showLabels}
                     onChange={(e) =>
                       setPlaneGridSettings((prev) => ({
                         ...prev,
@@ -37719,7 +38352,7 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
       </div>
     )}
 
-    {(viewerKind === "param" ||
+    {false && (viewerKind === "param" ||
       viewerKind === "weierstrass" ||
       viewerKind === "graph" ||
       viewerKind === "implicit") && (
@@ -38887,7 +39520,14 @@ onChangeImplicitExpr,
   onToggleWeierstrassRecenter,
   onResetWeierstrass,
   weierstrassError,
+  showChartGrid,
+  onToggleChartGrid,
+  chartGridDensity,
+  onChangeChartGridDensity,
+  chartMode,
+  onChangeChartMode,
   chartCoordinateReadoutEnabled,
+  onToggleChartCoordinateReadout,
   chartCoordinateReadout,
   lightPreset,
   onChangeLightPreset,
@@ -39181,7 +39821,6 @@ onChangeImplicitExpr,
     return value === "controls" ? "scene" : value;
   }, []);
   const [leftTab, setLeftTab] = useState<SurfacesLeftTab>(() => normalizeLeftTab(initialLeftTab));
-  const [analysisTab, setAnalysisTab] = useState<"vector" | "curvature" | "ridges">("vector");
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
   const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
@@ -39235,6 +39874,18 @@ onChangeImplicitExpr,
     boxShadow: active ? "0 2px 10px rgba(10,102,194,0.18)" : "none",
     whiteSpace: "nowrap",
   });
+  const analysisAccordionStyle: React.CSSProperties = {
+    marginTop: 8,
+    border: "1px solid #dbe4f0",
+    borderRadius: 8,
+    background: "#f8fbff",
+    padding: "6px 8px",
+  };
+  const analysisAccordionSummaryStyle: React.CSSProperties = {
+    cursor: "pointer",
+    fontWeight: 700,
+    fontSize: 12,
+  };
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -41639,42 +42290,110 @@ onChangeImplicitExpr,
 
       {leftTab === "analysis" && (
       <div style={{ ...cardStyle, marginTop: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Display & analysis</div>
+        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 8 }}>Analysis</div>
         <div style={{ marginTop: 0, fontSize: 12 }}>
-          <div style={{ marginTop: 0, fontSize: 12 }}>
-            {/* Principal-direction display controls moved to View tab */}
+          <div style={{ fontSize: 11, color: "#475467", marginBottom: 10 }}>
+            Run computation workflows here. Keep viewer interaction in the View tab.
           </div>
 
-        <div style={{ display: "flex", gap: 6, marginTop: 8, marginBottom: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setAnalysisTab("vector")}
-            style={pill(analysisTab === "vector")}
-            aria-pressed={analysisTab === "vector"}
-          >
-            Vector calculus
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalysisTab("curvature")}
-            style={pill(analysisTab === "curvature")}
-            aria-pressed={analysisTab === "curvature"}
-          >
-            Curvature lines
-          </button>
-          <button
-            type="button"
-            onClick={() => setAnalysisTab("ridges")}
-            style={pill(analysisTab === "ridges")}
-            aria-pressed={analysisTab === "ridges"}
-          >
-            Ridges / Valleys
-          </button>
-        </div>
+          <details style={analysisAccordionStyle} open>
+            <summary style={analysisAccordionSummaryStyle}>Differential geometry</summary>
+            <div style={{ marginTop: 8, marginBottom: 10, marginLeft: 4 }}>
+            <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Compute principal curvatures</div>
+            <label style={{ display: "block", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showPrincipalDirections}
+                onChange={onTogglePrincipalDirections}
+                style={{ marginRight: 6 }}
+              />
+              Show principal directions
+            </label>
+            <label style={{ display: "block", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showPrincipalNormalPlanes}
+                onChange={onTogglePrincipalNormalPlanes}
+                style={{ marginRight: 6 }}
+              />
+              Show principal normal planes
+            </label>
+            <label style={{ display: "block", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showPrincipalLines}
+                onChange={onTogglePrincipalLines}
+                style={{ marginRight: 6 }}
+              />
+              Trace principal curvature lines
+            </label>
+            <label style={{ display: "block", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={showPrincipalGlyphs}
+                onChange={onTogglePrincipalGlyphs}
+                style={{ marginRight: 6 }}
+              />
+              Show principal direction glyphs
+            </label>
+            {showPrincipalGlyphs && (
+              <div
+                style={{
+                  marginLeft: 20,
+                  marginTop: 6,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  fontSize: 11,
+                }}
+              >
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Density</span>
+                  <select
+                    value={principalGlyphDensity}
+                    onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
+                    style={{ fontSize: 11, padding: "2px 4px" }}
+                  >
+                    <option value={50}>1/50</option>
+                    <option value={100}>1/100</option>
+                    <option value={200}>1/200</option>
+                    <option value={400}>1/400</option>
+                  </select>
+                </label>
+                <div style={{ minWidth: 160 }}>
+                  <div style={{ fontSize: 10, color: "#555" }}>
+                    Length {principalGlyphLength.toFixed(2)}
+                  </div>
+                  <input
+                    type="range"
+                    min={0.05}
+                    max={1.2}
+                    step={0.05}
+                    value={principalGlyphLength}
+                    onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
+                    style={{ width: 160 }}
+                  />
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Mode</span>
+                  <select
+                    value={principalGlyphMode}
+                    onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
+                    style={{ fontSize: 11, padding: "2px 4px" }}
+                  >
+                    <option value="both">d1 + d2</option>
+                    <option value="d1">d1 only</option>
+                  </select>
+                </label>
+              </div>
+            )}
+            </div>
+          </details>
 
-        <div style={{ marginTop: 8, display: analysisTab === "vector" ? "block" : "none" }}>
-          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Vector calculus (Track A)</div>
-          <div style={{ marginTop: 6, fontSize: 12 }}>
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Vector calculus</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
               <span>Scalar source</span>
               <select
@@ -41815,11 +42534,11 @@ onChangeImplicitExpr,
               </div>
             )}
           </div>
-        </div>
+        </details>
 
-        <div style={{ marginTop: 8, display: analysisTab === "curvature" ? "block" : "none" }}>
-          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Curvature lines</div>
-          <div style={{ marginTop: 6, fontSize: 12 }}>
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Compute curvature lines</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             <label style={{ display: "block", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -41963,11 +42682,11 @@ onChangeImplicitExpr,
               </button>
             </div>
           </div>
-        </div>
+        </details>
 
-        <div style={{ marginTop: 8, display: analysisTab === "ridges" ? "block" : "none" }}>
-          <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Ridges / Valleys</div>
-          <div style={{ marginTop: 6, fontSize: 12 }}>
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Compute ridges / valleys</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             {(() => {
               const ridgeValleyAvailable =
                 viewerKind === "graph" ||
@@ -42201,9 +42920,61 @@ onChangeImplicitExpr,
               );
             })()}
           </div>
-        </div>
+        </details>
 
-        <div style={{ marginTop: 8 }}>
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Surface chart (chart-cell analysis)</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, display: "grid", gap: 6, fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+              <input type="checkbox" checked={showChartGrid} onChange={onToggleChartGrid} style={{ marginRight: 6 }} />
+              Surface chart grid
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Chart mode</span>
+              <select
+                value={chartMode}
+                onChange={(e) => onChangeChartMode(e.target.value as ChartMode)}
+                style={{ fontSize: 11, padding: "2px 4px" }}
+              >
+                <option value="auto">Auto</option>
+                <option value="xy">XY</option>
+                <option value="uv">UV</option>
+                <option value="local">Local</option>
+              </select>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span>Chart density</span>
+              <input
+                type="number"
+                min={2}
+                max={64}
+                step={1}
+                value={chartGridDensity}
+                onChange={(e) => onChangeChartGridDensity(clampInt(Number(e.target.value), 2, 64))}
+                style={{ width: 76 }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={chartCoordinateReadoutEnabled}
+                onChange={onToggleChartCoordinateReadout}
+                style={{ marginRight: 6 }}
+              />
+              Coordinate readout
+            </label>
+            {chartCoordinateReadoutEnabled && chartCoordinateReadout && (
+              <div style={{ color: "#475467" }}>
+                Chart coord: ({fmt(chartCoordinateReadout.u)}, {fmt(chartCoordinateReadout.v)})
+                {chartCoordinateReadout.valid ? "" : " invalid"}
+              </div>
+            )}
+          </div>
+        </details>
+
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Mesh quality analysis</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
           <label style={{ display: "block", cursor: "pointer" }}>
             <input
               type="checkbox"
@@ -42343,8 +43114,19 @@ onChangeImplicitExpr,
               </div>
             </details>
           )}
+          {surfaceMeshStats && (
+            <div style={{ marginLeft: 20, marginTop: 8, fontSize: 11, color: "#475467" }}>
+              Active mesh: {surfaceMeshStats.vertCount.toLocaleString()} vertices / {surfaceMeshStats.triCount.toLocaleString()} triangles
+            </div>
+          )}
+          </div>
+        </details>
+
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Geodesics</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
           <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicDiskEnabled}>
-            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic disk</summary>
+            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Compute geodesic disk</summary>
             <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 8 }}>
               <label
                 style={{
@@ -42468,7 +43250,7 @@ onChangeImplicitExpr,
             </div>
           </details>
           <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicPathEnabled}>
-            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Geodesic path</summary>
+            <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Compute geodesic path</summary>
             <div style={{ marginTop: 6, fontSize: 11, display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <input
@@ -42636,7 +43418,15 @@ onChangeImplicitExpr,
               </div>
             </div>
           </details>
-          <div style={{ marginLeft: 20, marginTop: 10, fontSize: 12 }}>
+          </div>
+        </details>
+
+        <details style={analysisAccordionStyle}>
+          <summary style={analysisAccordionSummaryStyle}>Diagnostics</summary>
+          <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
+            <div style={{ fontSize: 11, color: "#475467", marginBottom: 6 }}>
+              Analysis results are shown in the right panel. Topology diagnostics are available in the Topology module.
+            </div>
             <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -42706,7 +43496,7 @@ onChangeImplicitExpr,
           </div>
         )}
         </div>
-        </div>
+        </details>
         <button
           type="button"
           onClick={onResetCamera}
@@ -42727,7 +43517,7 @@ onChangeImplicitExpr,
       )}
       {showViewControls && (
       <>
-      {(viewerKind === "param" ||
+      {false && (viewerKind === "param" ||
         viewerKind === "weierstrass" ||
         viewerKind === "graph" ||
         viewerKind === "implicit") && (

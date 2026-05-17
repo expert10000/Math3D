@@ -20,6 +20,15 @@ const requiredMarkers = [
   "[geometry-smoke] FAIL_INVALID_EXPRESSION_OK",
   "[geometry-smoke] FAIL_WORKER_UNAVAILABLE_OK",
   "[geometry-smoke] FAIL_TIMEOUT_BAD_RESPONSE_OK",
+  "[geometry-smoke] GEOM_COMPACT_OPEN",
+  "[geometry-smoke] GEOM_COMPACT_PRESET_OK",
+  "[geometry-smoke] GEOM_COMPACT_FIT_SCENE_OK",
+  "[geometry-smoke] GEOM_COMPACT_RESET_OK",
+  "[geometry-smoke] GEOM_FULL_OPEN",
+  "[geometry-smoke] GEOM_FULL_PRESET_OK",
+  "[geometry-smoke] GEOM_FULL_FIT_STAGE_OK",
+  "[geometry-smoke] GEOM_FULL_FIT_CLAIM_OK",
+  "[geometry-smoke] GEOM_FULL_RESET_OK",
   "[geometry-smoke] DONE",
 ];
 
