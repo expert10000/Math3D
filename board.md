@@ -27,19 +27,19 @@ Status: `done` (2026-05-18)
 
 ### P0.2 Execution Board: Geometry Viewer Parity
 
-Status: `done`
+Status: `done` (2026-05-18)
 
-- [x] Add parity controls to full-workbook Live preview (`Wireframe`, `Coordinates`, `XY/XZ/YZ`, `Major/Minor`, `Labels/Axes`, presets, fit/reset, include helpers).
-- [x] Align remaining viewer surfaces (if any) to the same parity control contract and behavior.
-- [x] Add smoke test coverage for reset/preset/fit parity in both compact and full workbook viewer layouts.
+- [x] ✅ Add parity controls to full-workbook Live preview (`Wireframe`, `Coordinates`, `XY/XZ/YZ`, `Major/Minor`, `Labels/Axes`, presets, fit/reset, include helpers).
+- [x] ✅ Align remaining viewer surfaces (if any) to the same parity control contract and behavior.
+- [x] ✅ Add smoke test coverage for reset/preset/fit parity in both compact and full workbook viewer layouts.
 
 Final UX sweep (2026-05-17):
-- [x] Verified parity controls visible and consistent in main Geometry viewer toolbar.
-- [x] Verified parity controls available in full workbook Live preview (boxed/toggleable).
-- [x] Verified parity controls available in compact workbook layout (boxed/toggleable).
-- [x] Verified camera actions (`3D`, `Planar`, `Fit scene/stage/claim`, `Reset camera`) covered in smoke flow.
-- [x] `npm --prefix renderer run build` passing after parity merge.
-- [x] `npm run test:app:geometry:smoke` passing with new compact/full parity markers.
+- [x] ✅ Verified parity controls visible and consistent in main Geometry viewer toolbar.
+- [x] ✅ Verified parity controls available in full workbook Live preview (boxed/toggleable).
+- [x] ✅ Verified parity controls available in compact workbook layout (boxed/toggleable).
+- [x] ✅ Verified camera actions (`3D`, `Planar`, `Fit scene/stage/claim`, `Reset camera`) covered in smoke flow.
+- [x] ✅ `npm --prefix renderer run build` passing after parity merge.
+- [x] ✅ `npm run test:app:geometry:smoke` passing with new compact/full parity markers.
 
 ### P0.3 Execution Board: Topology + Diagnostics Expansion
 
