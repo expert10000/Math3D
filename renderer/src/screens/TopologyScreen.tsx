@@ -4510,6 +4510,67 @@ export const TopologyScreen: React.FC = () => {
   ]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
+  const nonManifoldEdgeDiagnostics = useMemo(() => {
+    const edges = buildResult.quotient.edges ?? [];
+    const edgeToFaces = buildResult.quotient.incidences.edgeToFaces ?? {};
+    return edges
+      .map((edge) => {
+        const incidentFaces = edgeToFaces[edge.id] ?? [];
+        return {
+          edgeId: edge.id,
+          sourceEdgeIds: edge.sourceEdgeIds ?? [],
+          incidentFaces,
+          incidentCount: incidentFaces.length,
+        };
+      })
+      .filter((entry) => entry.incidentCount > 2)
+      .sort((a, b) => b.incidentCount - a.incidentCount);
+  }, [buildResult.quotient.edges, buildResult.quotient.incidences.edgeToFaces]);
+  const unifiedTopologyDiagnostics = useMemo(() => {
+    const invariants = buildResult.quotient.invariants;
+    const eulerCharacteristic =
+      derivedTopologyHints.eulerCharacteristic ?? invariants?.eulerCharacteristic ?? null;
+    const connectedComponents =
+      derivedTopologyHints.connectedComponents ?? invariants?.connectedComponents ?? null;
+    const boundaryComponents = derivedTopologyHints.boundaryComponents;
+    const orientable = derivedTopologyHints.orientable;
+    const orientableText = derivedTopologyHints.orientableText;
+    const nonManifoldEdgeCount =
+      nonManifoldEdgeDiagnostics.length || invariants?.nonManifoldEdgeCount || 0;
+    const hasNonManifold = nonManifoldEdgeCount > 0 || /non-manifold/i.test(orientableText ?? "");
+
+    let genusLabel = "n/a";
+    if (!hasNonManifold && connectedComponents === 1 && eulerCharacteristic !== null && boundaryComponents !== null) {
+      if (orientable === true) {
+        const genus = (2 - boundaryComponents - eulerCharacteristic) / 2;
+        genusLabel =
+          Number.isInteger(genus) && genus >= 0
+            ? `${genus} (orientable genus g)`
+            : "inconsistent invariants";
+      } else if (orientable === false) {
+        const genus = 2 - boundaryComponents - eulerCharacteristic;
+        genusLabel =
+          Number.isInteger(genus) && genus >= 0
+            ? `${genus} (nonorientable genus n)`
+            : "inconsistent invariants";
+      } else if (orientableText) {
+        genusLabel = orientableText;
+      }
+    } else if (hasNonManifold) {
+      genusLabel = "n/a (non-manifold)";
+    }
+
+    return {
+      eulerCharacteristic,
+      connectedComponents,
+      boundaryComponents,
+      orientable,
+      orientableText,
+      nonManifoldEdgeCount,
+      hasNonManifold,
+      genusLabel,
+    };
+  }, [buildResult.quotient.invariants, derivedTopologyHints, nonManifoldEdgeDiagnostics.length]);
   const selectedPresetBoundaryWord = useMemo(() => {
     const faceId = diagram.faces[0]?.id;
     if (!faceId) return "(none)";
@@ -5149,28 +5210,79 @@ export const TopologyScreen: React.FC = () => {
         <section style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
           <h2 style={styles.h2}>C. Diagnostics</h2>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
-            {buildResult.quotient.invariants && (
-              <>
-                <div>
-                  Euler characteristic:{" "}
-                  {derivedTopologyHints.eulerCharacteristic ?? buildResult.quotient.invariants.eulerCharacteristic}
+            <div
+              style={{
+                border: "1px solid #dbe4f0",
+                borderRadius: 8,
+                background: "#fff",
+                padding: "7px 8px",
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                Unified topology diagnostics
+              </div>
+              <div>Euler characteristic: {unifiedTopologyDiagnostics.eulerCharacteristic ?? "n/a"}</div>
+              <div>Connected components: {unifiedTopologyDiagnostics.connectedComponents ?? "n/a"}</div>
+              <div>Boundary components: {unifiedTopologyDiagnostics.boundaryComponents ?? "n/a"}</div>
+              <div>
+                Orientable:{" "}
+                {unifiedTopologyDiagnostics.orientableText !== null
+                  ? unifiedTopologyDiagnostics.orientableText
+                  : unifiedTopologyDiagnostics.orientable !== null
+                    ? unifiedTopologyDiagnostics.orientable
+                      ? "Yes"
+                      : "No"
+                    : "n/a"}
+              </div>
+              <div>Genus: {unifiedTopologyDiagnostics.genusLabel}</div>
+              <div
+                style={{
+                  color: unifiedTopologyDiagnostics.hasNonManifold ? "#b91c1c" : "#166534",
+                  fontWeight: 700,
+                }}
+              >
+                Non-manifold edges: {unifiedTopologyDiagnostics.nonManifoldEdgeCount}
+              </div>
+            </div>
+            {nonManifoldEdgeDiagnostics.length > 0 && (
+              <div
+                style={{
+                  border: "1px solid #fecaca",
+                  borderRadius: 8,
+                  background: "#fff1f2",
+                  padding: "7px 8px",
+                  display: "grid",
+                  gap: 5,
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                  Non-manifold detail
                 </div>
-                <div>
-                  Connected components:{" "}
-                  {derivedTopologyHints.connectedComponents ?? buildResult.quotient.invariants.connectedComponents}
+                <div style={{ display: "grid", gap: 4, maxHeight: 120, overflowY: "auto" }}>
+                  {nonManifoldEdgeDiagnostics.map((entry) => (
+                    <div
+                      key={`non-manifold-edge-${entry.edgeId}`}
+                      style={{
+                        border: "1px solid #fecaca",
+                        borderRadius: 6,
+                        background: "#fff",
+                        padding: "5px 6px",
+                        fontSize: 10,
+                        display: "grid",
+                        gap: 2,
+                      }}
+                    >
+                      <div>
+                        <strong>{entry.edgeId}</strong> incident faces: {entry.incidentCount}
+                      </div>
+                      <div>Faces: {entry.incidentFaces.join(", ") || "n/a"}</div>
+                      <div>Source edges: {entry.sourceEdgeIds.join(", ") || "n/a"}</div>
+                    </div>
+                  ))}
                 </div>
-                {derivedTopologyHints.boundaryComponents !== null && (
-                  <div>Boundary components: {derivedTopologyHints.boundaryComponents}</div>
-                )}
-                {derivedTopologyHints.orientableText !== null ? (
-                  <div>Orientable: {derivedTopologyHints.orientableText}</div>
-                ) : (
-                  derivedTopologyHints.orientable !== null && (
-                    <div>Orientable: {derivedTopologyHints.orientable ? "Yes" : "No"}</div>
-                  )
-                )}
-                <div>Non-manifold edges: {buildResult.quotient.invariants.nonManifoldEdgeCount}</div>
-              </>
+              </div>
             )}
             <div style={{ marginTop: 4, fontWeight: 700 }}>Warnings ({warningDiagnostics.length})</div>
             {warningDiagnostics.length === 0 ? (

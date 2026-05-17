@@ -45,8 +45,11 @@ Final UX sweep (2026-05-17):
 
 Status: `in progress`
 
-- [ ] Add unified diagnostics panel combining: orientability/genus, boundary components, connected components, and non-manifold flags.
+- [x] Add unified diagnostics panel combining: orientability/genus, boundary components, connected components, and non-manifold flags.
 - [ ] Add explicit non-manifold detectors (edge incidence >2, vertex star disconnection, invalid boundary cycles) with row-level details.
+  - [x] edge incidence >2 with per-edge incident-face details in diagnostics panel
+  - [ ] vertex star disconnection detector
+  - [ ] invalid boundary-cycle detector
 - [ ] Add one-click jump/highlight from diagnostics row to corresponding topology entities in the viewer/editor.
 - [ ] Add export action for topology diagnostics report (`JSON` + `CSV`).
 - [ ] Add regression tests for canonical presets (sphere/torus/projective/klein/mobius/cylinder/cone) and non-manifold fixtures.
