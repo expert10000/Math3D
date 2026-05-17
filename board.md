@@ -9,7 +9,7 @@ Scope pillars: `trust`, `workflow speed`, `depth`
 3. `Topology + Diagnostics` expansion: genus/boundary/components/non-manifold checks in one panel.
 4. `Mesh Quality Report` module: min/avg/max metrics, highlighted defects, export to JSON/CSV.
 5. `Performance pass`: worker offloading, cancellation tokens, progressive compute UI, cached recompute. ✅ DONE (2026-05-18)
-6. `Project format v2`: versioned save files with migration so old projects open safely.
+6. `Project format v2`: versioned save files with migration so old projects open safely. ✅ DONE (2026-05-18)
 
 ### P0.1 Execution Board: Unified Analysis Workspace
 
@@ -91,6 +91,23 @@ Status: `done` (2026-05-18)
 - [x] Keep existing report/export/highlight behavior unchanged while worker path is active.
 - [x] Verify with `npm --prefix renderer run build`.
 - [x] Verify with `npm run test:app:geometry:smoke`.
+
+### P0.6 Execution Board: Project Format v2
+
+Status: `done` (2026-05-18)
+
+- [x] Introduce explicit `math3d-project` file envelope with schema `version: 2`.
+- [x] Keep `.math3d` extension and include `assetMode` + `payload` in v2 envelope.
+- [x] Add migration-aware parser supporting:
+  - v2 project envelopes
+  - legacy v1 `math3d-bundle` envelopes
+  - legacy wrapped payload objects (`{ payload: ... }`)
+  - legacy raw payload forms (`{ workbooks: ... }` and bare workbook arrays)
+- [x] Route import/open workflow through the migration parser before applying payload.
+- [x] Update save/export workflow to emit v2 envelopes.
+- [x] Add project-format unit tests covering v2 build and legacy parse/migration cases.
+- [x] Verify with `npm --prefix renderer run test -- src/workbook/projectFormat.test.ts`.
+- [x] Verify with `npm --prefix renderer run build`.
 
 ## P1 (strong release upgrades)
 

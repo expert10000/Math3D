@@ -290,6 +290,13 @@ import {
   WORKBOOK_OPERATOR_REGISTRY,
   createOperatorRegistry,
 } from "@math3d/workbook";
+import {
+  WORKBOOK_PROJECT_FORMAT,
+  WORKBOOK_PROJECT_FORMAT_VERSION,
+  buildWorkbookProjectEnvelope,
+  parseWorkbookProject,
+  type WorkbookBundleAssetMode,
+} from "./workbook/projectFormat";
 /* ---------------- App modes ---------------- */
 
 type Mode = "mobius" | "chebyshev" | "transform" | "maps" | "surfaces" | "curves" | "topology" | "geometry";
@@ -869,20 +876,11 @@ const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }
   { id: "promote", label: "Promote" },
   { id: "save", label: "Save" },
 ];
-type WorkbookBundleAssetMode = "embedded" | "linked";
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
   activeWorkbookId?: string | null;
   activeStageId?: WorkbookStageId;
   workspace?: WorkbookWorkspaceState;
-};
-type WorkbookBundleEnvelope = {
-  version: 1;
-  format: "math3d-bundle";
-  extension: ".math3d";
-  savedAt: number;
-  assetMode: WorkbookBundleAssetMode;
-  payload: WorkbookReplayPayload;
 };
 type WorkbookStoredSession = {
   savedAt: number;
@@ -918,7 +916,7 @@ type WorkbookDatasetRecipe = {
   };
 };
 type WorkbookWorkspaceState = {
-  version: 1;
+  version: 1 | 2;
   savedAt: number;
   geometry: {
     mode: GeometryMode;
@@ -3643,12 +3641,6 @@ function isWorkbookReplayPayload(value: unknown): value is WorkbookReplayPayload
   return Array.isArray(payload.workbooks);
 }
 
-function isWorkbookBundleEnvelope(value: unknown): value is WorkbookBundleEnvelope {
-  if (!value || typeof value !== "object") return false;
-  const env = value as WorkbookBundleEnvelope;
-  return env.format === "math3d-bundle" && env.extension === ".math3d" && isWorkbookReplayPayload(env.payload);
-}
-
 const toLinkedWorkspace = (workspace: WorkbookWorkspaceState | undefined): WorkbookWorkspaceState | undefined => {
   if (!workspace) return workspace;
   return {
@@ -3883,19 +3875,6 @@ function sanitizeFileBase(label: string, fallback: string) {
   const cleaned = raw.replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return cleaned || fallback;
 }
-
-const buildWorkbookBundleEnvelope = (
-  payload: WorkbookReplayPayload,
-  assetMode: WorkbookBundleAssetMode,
-  savedAt: number
-): WorkbookBundleEnvelope => ({
-  version: 1,
-  format: "math3d-bundle",
-  extension: ".math3d",
-  savedAt,
-  assetMode,
-  payload,
-});
 
 const WORKBOOK_EXPORT_BLOCK_LABELS: Record<WorkbookBlockType, string> = {
   text: "Text",
@@ -7652,7 +7631,11 @@ const App: React.FC = () => {
     [workbooks, activeWorkbookId, activeStageId]
   );
   const workbookSessionExportPayload = useMemo(
-    () => ({ version: 1 as const, ...workbookSessionPayload }),
+    () => ({
+      version: WORKBOOK_PROJECT_FORMAT_VERSION,
+      format: WORKBOOK_PROJECT_FORMAT,
+      payload: workbookSessionPayload,
+    }),
     [workbookSessionPayload]
   );
   const workbookSessionJson = useMemo(
@@ -14963,7 +14946,7 @@ case "mobius":
     }
 
     return {
-      version: 1,
+      version: 2,
       savedAt: now,
       geometry: {
         mode: geometryMode,
@@ -15142,7 +15125,16 @@ case "mobius":
   );
 
   const workbookSessionJsonWithWorkspace = useMemo(
-    () => JSON.stringify({ version: 1, ...workbookSessionPayloadWithWorkspace }, null, 2),
+    () =>
+      JSON.stringify(
+        {
+          version: WORKBOOK_PROJECT_FORMAT_VERSION,
+          format: WORKBOOK_PROJECT_FORMAT,
+          payload: workbookSessionPayloadWithWorkspace,
+        },
+        null,
+        2
+      ),
     [workbookSessionPayloadWithWorkspace]
   );
   const workbookSessionHashWithWorkspace = useMemo(
@@ -15162,7 +15154,7 @@ case "mobius":
   const workbookBundleJson = useMemo(
     () =>
       JSON.stringify(
-        buildWorkbookBundleEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
+        buildWorkbookProjectEnvelope(workbookBundlePayload, workbookBundleAssetMode, Date.now()),
         null,
         2
       ),
@@ -15501,10 +15493,13 @@ case "mobius":
       const nextHash = hashString(
         JSON.stringify(
           {
-            version: 1,
-            workbooks: normalized,
-            activeWorkbookId: nextActive,
-            activeStageId: nextStage,
+            version: WORKBOOK_PROJECT_FORMAT_VERSION,
+            format: WORKBOOK_PROJECT_FORMAT,
+            payload: {
+              workbooks: normalized,
+              activeWorkbookId: nextActive,
+              activeStageId: nextStage,
+            },
           },
           null,
           2
@@ -15593,7 +15588,17 @@ case "mobius":
       // ignore
     }
     if (!applyWorkbookPayload(stored.payload)) return;
-    const restoredHash = hashString(JSON.stringify({ version: 1, ...stored.payload }, null, 2));
+    const restoredHash = hashString(
+      JSON.stringify(
+        {
+          version: WORKBOOK_PROJECT_FORMAT_VERSION,
+          format: WORKBOOK_PROJECT_FORMAT,
+          payload: stored.payload,
+        },
+        null,
+        2
+      )
+    );
     const recoveredName = workbookManualSaveName || "recovered-session.math3d";
     markWorkbookManualSave(restoredHash, stored.savedAt, ensureMath3dExtension(recoveredName));
   }, [applyWorkbookPayload, markWorkbookManualSave, workbookManualSaveAt, workbookManualSaveName]);
@@ -15671,7 +15676,17 @@ case "mobius":
       const found = workbookSnapshots.find((snap) => snap.id === snapshotId);
       if (!found || !isWorkbookReplayPayload(found.payload)) return;
       if (!applyWorkbookPayload(found.payload)) return;
-      const restoredHash = hashString(JSON.stringify({ version: 1, ...found.payload }, null, 2));
+      const restoredHash = hashString(
+        JSON.stringify(
+          {
+            version: WORKBOOK_PROJECT_FORMAT_VERSION,
+            format: WORKBOOK_PROJECT_FORMAT,
+            payload: found.payload,
+          },
+          null,
+          2
+        )
+      );
       markWorkbookManualSave(restoredHash, found.savedAt, workbookManualSaveName || "restored-snapshot.math3d");
     },
     [workbookSnapshots, applyWorkbookPayload, markWorkbookManualSave, workbookManualSaveName]
@@ -15705,7 +15720,15 @@ case "mobius":
     if (!stored || !isWorkbookReplayPayload(stored.payload)) return;
     if (!applyWorkbookPayload(stored.payload)) return;
     const restoredHash = hashString(
-      JSON.stringify({ version: 1, ...stored.payload }, null, 2)
+      JSON.stringify(
+        {
+          version: WORKBOOK_PROJECT_FORMAT_VERSION,
+          format: WORKBOOK_PROJECT_FORMAT,
+          payload: stored.payload,
+        },
+        null,
+        2
+      )
     );
     markWorkbookManualSave(restoredHash, Number.isFinite(stored.savedAt) ? stored.savedAt : Date.now());
   }, [applyWorkbookPayload, markWorkbookManualSave]);
@@ -15762,16 +15785,10 @@ case "mobius":
       if (IS_REPLAY_MODE) return;
       try {
         const parsed = JSON.parse(raw);
-        if (isWorkbookBundleEnvelope(parsed)) {
-          setWorkbookBundleAssetMode(parsed.assetMode === "linked" ? "linked" : "embedded");
-          applyWorkbookPayload(parsed.payload);
-          return;
-        }
-        if (parsed && typeof parsed === "object" && isWorkbookReplayPayload((parsed as any).payload)) {
-          applyWorkbookPayload((parsed as any).payload);
-          return;
-        }
-        applyWorkbookPayload(parsed);
+        const decoded = parseWorkbookProject(parsed);
+        if (!decoded) return;
+        setWorkbookBundleAssetMode(decoded.assetMode === "linked" ? "linked" : "embedded");
+        applyWorkbookPayload(decoded.payload);
       } catch {
         // ignore
       }
