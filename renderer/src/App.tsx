@@ -189,7 +189,7 @@ import {
   subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
-import { computeMeshQualityReport, type MeshQualityReport } from "./mesh/meshQualityReport";
+import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
   MeshDataset,
@@ -1052,6 +1052,26 @@ type ComplexMapDistortionProbe = {
   ratio: number;
   conformalErr: number;
 };
+type MeshQualityWorkerProgressMessage = {
+  type: "progress";
+  jobId: string;
+  phase: MeshQualityReportPhase;
+  progress: number;
+};
+type MeshQualityWorkerResultMessage =
+  | {
+      type: "result";
+      jobId: string;
+      ok: true;
+      report: MeshQualityReport;
+    }
+  | {
+      type: "result";
+      jobId: string;
+      ok: false;
+      error: string;
+    };
+type MeshQualityWorkerMessage = MeshQualityWorkerProgressMessage | MeshQualityWorkerResultMessage;
 type ComplexMapProbe = {
   u: number;
   v: number;
@@ -9469,27 +9489,176 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexDistortionMode !== "none" &&
     !!complexMapDistortionValues3d?.length;
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
+  const meshQualityWorkerRef = useRef<Worker | null>(null);
+  const meshQualityJobRef = useRef<string | null>(null);
+  const meshQualityCacheKeyRef = useRef<string | null>(null);
+  const meshQualityCacheRef = useRef(new Map<string, { report: MeshQualityReport; ts: number }>());
+  const meshQualityArrayIdsRef = useRef(new WeakMap<object, number>());
+  const meshQualityNextArrayIdRef = useRef(1);
   const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
   const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
   const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
   const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
   const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
   const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
-  const meshQualityResult = useMemo<{ report: MeshQualityReport | null; error: string | null }>(() => {
-    if (!surfaceMeshData?.positions?.length) return { report: null, error: null };
-    try {
-      const report = computeMeshQualityReport(surfaceMeshData, {
-        highAspectRatioThreshold: meshQualityHighAspectThreshold,
-        maxListedDefects: meshQualityMaxListedDefects,
-      });
-      return { report, error: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to compute mesh quality report.";
-      return { report: null, error: message };
+  const [meshQualityReport, setMeshQualityReport] = useState<MeshQualityReport | null>(null);
+  const [meshQualityError, setMeshQualityError] = useState<string | null>(null);
+  const [meshQualityBusy, setMeshQualityBusy] = useState(false);
+  const [meshQualityProgress, setMeshQualityProgress] = useState(0);
+  const [meshQualityPhase, setMeshQualityPhase] = useState<MeshQualityReportPhase | "idle">("idle");
+  const [meshQualityCacheHit, setMeshQualityCacheHit] = useState(false);
+  const getMeshQualityArrayId = useCallback((value: object | null): number => {
+    if (!value) return 0;
+    const known = meshQualityArrayIdsRef.current.get(value);
+    if (known != null) return known;
+    const next = meshQualityNextArrayIdRef.current++;
+    meshQualityArrayIdsRef.current.set(value, next);
+    return next;
+  }, []);
+  const buildMeshQualityCacheKey = useCallback(
+    (positions: Float32Array, indices: Uint32Array | null, highAspectThreshold: number, maxListed: number) => {
+      const positionsId = getMeshQualityArrayId(positions);
+      const indicesId = getMeshQualityArrayId(indices);
+      return [
+        positionsId,
+        positions.length,
+        indicesId,
+        indices?.length ?? 0,
+        highAspectThreshold.toFixed(4),
+        Math.max(1, Math.floor(maxListed)),
+      ].join(":");
+    },
+    [getMeshQualityArrayId]
+  );
+  const storeMeshQualityCache = useCallback((key: string, report: MeshQualityReport) => {
+    const cache = meshQualityCacheRef.current;
+    cache.set(key, { report, ts: Date.now() });
+    if (cache.size <= 8) return;
+    let oldestKey: string | null = null;
+    let oldestTs = Number.POSITIVE_INFINITY;
+    for (const [entryKey, entry] of cache.entries()) {
+      if (entry.ts < oldestTs) {
+        oldestTs = entry.ts;
+        oldestKey = entryKey;
+      }
     }
-  }, [meshQualityHighAspectThreshold, meshQualityMaxListedDefects, surfaceMeshData]);
-  const meshQualityReport = meshQualityResult.report;
-  const meshQualityError = meshQualityResult.error;
+    if (oldestKey) cache.delete(oldestKey);
+  }, []);
+  const terminateMeshQualityWorker = useCallback(() => {
+    if (!meshQualityWorkerRef.current) return;
+    meshQualityWorkerRef.current.terminate();
+    meshQualityWorkerRef.current = null;
+  }, []);
+  useEffect(() => () => terminateMeshQualityWorker(), [terminateMeshQualityWorker]);
+  const handleCancelMeshQualityCompute = useCallback(() => {
+    if (!meshQualityBusy) return;
+    meshQualityJobRef.current = null;
+    meshQualityCacheKeyRef.current = null;
+    terminateMeshQualityWorker();
+    setMeshQualityBusy(false);
+    setMeshQualityPhase("idle");
+    setMeshQualityProgress(0);
+    setMeshQualityError("Mesh quality computation canceled.");
+  }, [meshQualityBusy, terminateMeshQualityWorker]);
+  useEffect(() => {
+    if (!surfaceMeshData?.positions?.length) {
+      meshQualityJobRef.current = null;
+      meshQualityCacheKeyRef.current = null;
+      terminateMeshQualityWorker();
+      setMeshQualityReport(null);
+      setMeshQualityError(null);
+      setMeshQualityBusy(false);
+      setMeshQualityProgress(0);
+      setMeshQualityPhase("idle");
+      setMeshQualityCacheHit(false);
+      return;
+    }
+    const positions = surfaceMeshData.positions;
+    const indices = surfaceMeshData.indices ?? null;
+    const cacheKey = buildMeshQualityCacheKey(
+      positions,
+      indices,
+      meshQualityHighAspectThreshold,
+      meshQualityMaxListedDefects
+    );
+    const cached = meshQualityCacheRef.current.get(cacheKey);
+    if (cached) {
+      cached.ts = Date.now();
+      setMeshQualityReport(cached.report);
+      setMeshQualityError(null);
+      setMeshQualityBusy(false);
+      setMeshQualityProgress(1);
+      setMeshQualityPhase("idle");
+      setMeshQualityCacheHit(true);
+      return;
+    }
+
+    terminateMeshQualityWorker();
+    const worker = new Worker(new URL("./workers/meshQualityReportWorker.ts", import.meta.url), {
+      type: "module",
+    });
+    meshQualityWorkerRef.current = worker;
+    const jobId = makeId();
+    meshQualityJobRef.current = jobId;
+    meshQualityCacheKeyRef.current = cacheKey;
+    setMeshQualityBusy(true);
+    setMeshQualityError(null);
+    setMeshQualityProgress(0);
+    setMeshQualityPhase("faces");
+    setMeshQualityCacheHit(false);
+    const onMessage = (event: MessageEvent<MeshQualityWorkerMessage>) => {
+      const msg = event.data;
+      if (!msg || msg.jobId !== jobId) return;
+      if (msg.type === "progress") {
+        setMeshQualityPhase(msg.phase);
+        setMeshQualityProgress(Math.max(0, Math.min(1, Number(msg.progress ?? 0))));
+        return;
+      }
+      if (msg.type === "result") {
+        setMeshQualityBusy(false);
+        setMeshQualityPhase("idle");
+        setMeshQualityProgress(1);
+        if (msg.ok) {
+          setMeshQualityReport(msg.report);
+          setMeshQualityError(null);
+          const resultCacheKey = meshQualityCacheKeyRef.current;
+          if (resultCacheKey) storeMeshQualityCache(resultCacheKey, msg.report);
+        } else {
+          setMeshQualityError(msg.error || "Failed to compute mesh quality report.");
+        }
+        meshQualityJobRef.current = null;
+        meshQualityCacheKeyRef.current = null;
+        if (meshQualityWorkerRef.current === worker) {
+          meshQualityWorkerRef.current = null;
+        }
+        worker.removeEventListener("message", onMessage);
+        worker.terminate();
+      }
+    };
+    worker.addEventListener("message", onMessage);
+    worker.postMessage({
+      type: "compute",
+      jobId,
+      positions,
+      indices,
+      highAspectRatioThreshold: meshQualityHighAspectThreshold,
+      maxListedDefects: meshQualityMaxListedDefects,
+    });
+    return () => {
+      worker.removeEventListener("message", onMessage);
+      if (meshQualityWorkerRef.current === worker) {
+        worker.terminate();
+        meshQualityWorkerRef.current = null;
+      }
+    };
+  }, [
+    surfaceMeshData,
+    meshQualityHighAspectThreshold,
+    meshQualityMaxListedDefects,
+    buildMeshQualityCacheKey,
+    storeMeshQualityCache,
+    terminateMeshQualityWorker,
+  ]);
   const meshQualityOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (!isMeshLikeViewer || !meshQualityReport) return null;
     const sets: OverlayPointSet[] = [];
@@ -24843,6 +25012,10 @@ case "mobius":
                 onRefreshSelectionStats={handleRefreshSelectionStats}
                 meshQualityReport={meshQualityReport}
                 meshQualityError={meshQualityError}
+                meshQualityBusy={meshQualityBusy}
+                meshQualityProgress={meshQualityProgress}
+                meshQualityPhase={meshQualityPhase}
+                meshQualityCacheHit={meshQualityCacheHit}
                 meshQualityHighAspectThreshold={meshQualityHighAspectThreshold}
                 onChangeMeshQualityHighAspectThreshold={setMeshQualityHighAspectThreshold}
                 meshQualityMaxListedDefects={meshQualityMaxListedDefects}
@@ -24853,6 +25026,7 @@ case "mobius":
                 onToggleMeshQualityShowHighAspectFaces={() => setMeshQualityShowHighAspectFaces((v) => !v)}
                 meshQualityShowNonManifoldEdges={meshQualityShowNonManifoldEdges}
                 onToggleMeshQualityShowNonManifoldEdges={() => setMeshQualityShowNonManifoldEdges((v) => !v)}
+                onCancelMeshQualityCompute={handleCancelMeshQualityCompute}
                 meshQualityExportStatus={meshQualityExportStatus}
                 onExportMeshQualityReportJson={handleExportMeshQualityReportJson}
                 onExportMeshQualityReportCsv={handleExportMeshQualityReportCsv}
@@ -39403,6 +39577,10 @@ type SurfacesLeftPanelProps = {
   onRefreshSelectionStats: () => void;
   meshQualityReport: MeshQualityReport | null;
   meshQualityError: string | null;
+  meshQualityBusy: boolean;
+  meshQualityProgress: number;
+  meshQualityPhase: MeshQualityReportPhase | "idle";
+  meshQualityCacheHit: boolean;
   meshQualityHighAspectThreshold: number;
   onChangeMeshQualityHighAspectThreshold: (value: number) => void;
   meshQualityMaxListedDefects: number;
@@ -39413,6 +39591,7 @@ type SurfacesLeftPanelProps = {
   onToggleMeshQualityShowHighAspectFaces: () => void;
   meshQualityShowNonManifoldEdges: boolean;
   onToggleMeshQualityShowNonManifoldEdges: () => void;
+  onCancelMeshQualityCompute: () => void;
   meshQualityExportStatus: string | null;
   onExportMeshQualityReportJson: () => void;
   onExportMeshQualityReportCsv: () => void;
@@ -39932,6 +40111,10 @@ onChangeImplicitExpr,
   onRefreshSelectionStats,
   meshQualityReport,
   meshQualityError,
+  meshQualityBusy,
+  meshQualityProgress,
+  meshQualityPhase,
+  meshQualityCacheHit,
   meshQualityHighAspectThreshold,
   onChangeMeshQualityHighAspectThreshold,
   meshQualityMaxListedDefects,
@@ -39942,6 +40125,7 @@ onChangeImplicitExpr,
   onToggleMeshQualityShowHighAspectFaces,
   meshQualityShowNonManifoldEdges,
   onToggleMeshQualityShowNonManifoldEdges,
+  onCancelMeshQualityCompute,
   meshQualityExportStatus,
   onExportMeshQualityReportJson,
   onExportMeshQualityReportCsv,
@@ -39954,6 +40138,15 @@ onChangeImplicitExpr,
 }) => {
   const meshReady = !!surfaceMeshStats;
   const implicitBakePercent = Math.max(0, Math.min(100, Math.round(implicitBakeProgress * 100)));
+  const meshQualityPercent = Math.max(0, Math.min(100, Math.round(meshQualityProgress * 100)));
+  const meshQualityPhaseLabel =
+    meshQualityPhase === "faces"
+      ? "Scanning faces"
+      : meshQualityPhase === "edges"
+      ? "Scanning edges"
+      : meshQualityPhase === "finalize"
+      ? "Finalizing report"
+      : "Idle";
   const eqMeta = SURFACES_EQ_META.find((m) => m.id === surfaceId) ?? SURFACES_EQ_META[0];
   const paramMeta = PARAM_SURFACES_META.find((m) => m.id === paramId) ?? PARAM_SURFACES_META[0];
   const geodesicSmoothEnabled = viewerKind === "param" || viewerKind === "weierstrass";
@@ -43397,6 +43590,24 @@ onChangeImplicitExpr,
                   </label>
                 </div>
                 {!meshReady && <div style={{ color: "#667085" }}>Load or generate a mesh to compute report metrics.</div>}
+                {meshReady && (
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", color: "#475467" }}>
+                    {meshQualityBusy ? (
+                      <>
+                        <span>
+                          {meshQualityPhaseLabel} ({meshQualityPercent}%)
+                        </span>
+                        <button type="button" onClick={onCancelMeshQualityCompute} style={{ padding: "3px 8px" }}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : meshQualityCacheHit ? (
+                      <span>Using cached report.</span>
+                    ) : (
+                      <span>Report up to date.</span>
+                    )}
+                  </div>
+                )}
                 {meshQualityError && <div style={{ color: "#b42318" }}>{meshQualityError}</div>}
                 {meshReady && meshQualityReport && (
                   <>
@@ -43447,10 +43658,20 @@ onChangeImplicitExpr,
                       <span>Listed non-manifold: {meshQualityReport.defects.nonManifoldEdges.length.toLocaleString()}</span>
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <button type="button" onClick={onExportMeshQualityReportJson} style={{ padding: "3px 8px" }}>
+                      <button
+                        type="button"
+                        onClick={onExportMeshQualityReportJson}
+                        style={{ padding: "3px 8px" }}
+                        disabled={meshQualityBusy}
+                      >
                         Export JSON
                       </button>
-                      <button type="button" onClick={onExportMeshQualityReportCsv} style={{ padding: "3px 8px" }}>
+                      <button
+                        type="button"
+                        onClick={onExportMeshQualityReportCsv}
+                        style={{ padding: "3px 8px" }}
+                        disabled={meshQualityBusy}
+                      >
                         Export CSV
                       </button>
                     </div>

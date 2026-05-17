@@ -8,7 +8,7 @@ Scope pillars: `trust`, `workflow speed`, `depth`
 2. Full `Geometry Viewer parity` controls everywhere (coordinates, planes, labels, axes, presets, reset behavior). ✅ DONE (2026-05-17)
 3. `Topology + Diagnostics` expansion: genus/boundary/components/non-manifold checks in one panel.
 4. `Mesh Quality Report` module: min/avg/max metrics, highlighted defects, export to JSON/CSV.
-5. `Performance pass`: worker offloading, cancellation tokens, progressive compute UI, cached recompute.
+5. `Performance pass`: worker offloading, cancellation tokens, progressive compute UI, cached recompute. ✅ DONE (2026-05-18)
 6. `Project format v2`: versioned save files with migration so old projects open safely.
 
 ### P0.1 Execution Board: Unified Analysis Workspace
@@ -79,6 +79,18 @@ Status: `done` (2026-05-17)
 - [x] Add regression tests for manifold baseline, non-manifold edge, and degenerate/high-aspect fixtures.
 - [x] Verify with `npm --prefix renderer run test -- src/mesh/meshQualityReport.test.ts`.
 - [x] Verify with `npm --prefix renderer run build`.
+
+### P0.5 Execution Board: Performance Pass
+
+Status: `done` (2026-05-18)
+
+- [x] Offload mesh-quality analysis compute from main renderer thread into a dedicated web worker.
+- [x] Add cancellation-token behavior for mesh-quality runs: newer runs cancel/replace in-flight runs; UI `Cancel` stops current worker job.
+- [x] Add progressive compute UI for mesh-quality report with phase + percentage (`faces`, `edges`, `finalize`).
+- [x] Add cached recompute for mesh-quality results keyed by mesh identity + options (threshold/max-listed defects), with LRU cap.
+- [x] Keep existing report/export/highlight behavior unchanged while worker path is active.
+- [x] Verify with `npm --prefix renderer run build`.
+- [x] Verify with `npm run test:app:geometry:smoke`.
 
 ## P1 (strong release upgrades)
 

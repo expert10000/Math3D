@@ -53,6 +53,14 @@ export type MeshQualityReport = {
 export type MeshQualityReportOptions = {
   highAspectRatioThreshold?: number;
   maxListedDefects?: number;
+  onProgress?: (event: MeshQualityReportProgressEvent) => void;
+};
+
+export type MeshQualityReportPhase = "faces" | "edges" | "finalize";
+
+export type MeshQualityReportProgressEvent = {
+  phase: MeshQualityReportPhase;
+  progress: number;
 };
 
 type FaceRecord = {
@@ -141,6 +149,12 @@ export const computeMeshQualityReport = (
   mesh: Pick<SurfaceMeshData, "positions" | "indices">,
   options: MeshQualityReportOptions = {}
 ): MeshQualityReport => {
+  const emitProgress = (phase: MeshQualityReportPhase, progress: number) => {
+    options.onProgress?.({
+      phase,
+      progress: Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0)),
+    });
+  };
   const highAspectRatioThreshold = Number.isFinite(options.highAspectRatioThreshold)
     ? Math.max(1, Number(options.highAspectRatioThreshold))
     : 8;
@@ -159,6 +173,7 @@ export const computeMeshQualityReport = (
   const aspectRatios: number[] = [];
   const allEdgeLengths: number[] = [];
   const degenerateFaces: MeshQualityFaceDefect[] = [];
+  const faceProgressStride = Math.max(1, Math.floor(faceCount / 40));
 
   for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
     const tri = triangleFromIndex(indices, faceIndex, vertexCount);
@@ -241,12 +256,18 @@ export const computeMeshQualityReport = (
         });
       }
     }
+    if (faceIndex % faceProgressStride === 0 || faceIndex === faceCount - 1) {
+      emitProgress("faces", faceCount > 0 ? (faceIndex + 1) / faceCount : 1);
+    }
   }
 
   const vertexNeighbors: Array<Set<number>> = Array.from({ length: vertexCount }, () => new Set<number>());
   const dihedralAngles: number[] = [];
   let boundaryEdgeCount = 0;
   const nonManifoldEdges: MeshQualityEdgeDefect[] = [];
+  let edgeIndex = 0;
+  const edgeCount = edgeMap.size;
+  const edgeProgressStride = Math.max(1, Math.floor(Math.max(1, edgeCount) / 40));
 
   for (const [key, edge] of edgeMap) {
     vertexNeighbors[edge.a]?.add(edge.b);
@@ -278,6 +299,10 @@ export const computeMeshQualityReport = (
       const angle = safeAcosDeg(dot);
       if (Number.isFinite(angle)) dihedralAngles.push(angle);
     }
+    if (edgeIndex % edgeProgressStride === 0 || edgeIndex === edgeCount - 1) {
+      emitProgress("edges", edgeCount > 0 ? (edgeIndex + 1) / edgeCount : 1);
+    }
+    edgeIndex += 1;
   }
 
   const vertexValence = vertexNeighbors
@@ -293,6 +318,7 @@ export const computeMeshQualityReport = (
       area: entry.area,
       aspectRatio: entry.aspectRatio,
     }));
+  emitProgress("finalize", 0.5);
 
   const report: MeshQualityReport = {
     generatedAt: new Date().toISOString(),
@@ -320,6 +346,7 @@ export const computeMeshQualityReport = (
         .slice(0, maxListedDefects),
     },
   };
+  emitProgress("finalize", 1);
 
   return report;
 };
