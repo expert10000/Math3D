@@ -15,6 +15,9 @@ import {
   buildQuotientPipeline,
   cloneFundamentalDiagram,
   createTopologyDocument,
+  computeInvalidBoundaryCycleDiagnostics,
+  computeNonManifoldEdgeDiagnostics,
+  computeVertexStarDisconnectionDiagnostics,
   moveOperationInPlan,
   moveVertexInDiagram,
   normalizeAnimationPlan,
@@ -22,13 +25,16 @@ import {
   removeEdgeFromDiagram,
   removeVertexFromDiagram,
   setOperationGroupInPlan,
+  type InvalidBoundaryCycleDiagnostic,
   type FundamentalDiagram,
   type FundamentalDiagramEdge,
+  type NonManifoldEdgeDiagnostic,
   type QuotientBuildResult,
   type QuotientWarning,
   type TopologyAnimationPlan,
   type TopologyDocumentView,
   type Vec3,
+  type VertexStarDisconnectionDiagnostic,
   isTopologyDocument,
 } from "../topology";
 
@@ -36,6 +42,7 @@ type TopologyView = TopologyDocumentView | "compare";
 type TopologyBuildMode = "preset" | "editor";
 type DiagramToolMode = "select" | "addVertex" | "addEdge";
 type TopologyTopicTab = "euler" | "constructingPolygon" | "polyhedra" | "klein" | "mobius";
+type DiagnosticsFocusKind = "edge" | "vertex" | "face";
 
 const TOPOLOGY_TOPIC_TABS: Array<{ id: TopologyTopicTab; label: string }> = [
   { id: "euler", label: "Euler" },
@@ -399,6 +406,23 @@ const warningExplanationFor = (warning: QuotientWarning) =>
     inspect: "Inspect the referenced edge/face/vertex ids if present.",
     fix: "Review pairings and face boundaries, then rebuild.",
   };
+
+const downloadTextFile = (content: string, suggestedName: string, mimeType: string): void => {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = suggestedName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
+
+const csvCell = (value: string | number | boolean | null | undefined): string => {
+  if (value === null || value === undefined) return "";
+  const raw = String(value);
+  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, "\"\"")}"`;
+  return raw;
+};
 
 const isTorusSquareStoryDiagram = (candidate: FundamentalDiagram): boolean => {
   const face = candidate.faces[0];
@@ -1229,6 +1253,12 @@ export const TopologyScreen: React.FC = () => {
       : TOPOLOGY_PRESETS[1]?.id ?? TOPOLOGY_PRESETS[0]?.id ?? DEFAULT_TOPOLOGY_PRESET_ID
   );
   const [expandedWarningId, setExpandedWarningId] = useState<string | null>(null);
+  const [diagnosticsFocusKind, setDiagnosticsFocusKind] = useState<DiagnosticsFocusKind | null>(null);
+  const [diagnosticsFocusLabel, setDiagnosticsFocusLabel] = useState<string | null>(null);
+  const [focusedDiagnosticEdgeIds, setFocusedDiagnosticEdgeIds] = useState<string[]>([]);
+  const [focusedDiagnosticVertexId, setFocusedDiagnosticVertexId] = useState<string | null>(null);
+  const [focusedDiagnosticFaceId, setFocusedDiagnosticFaceId] = useState<string | null>(null);
+  const [diagnosticsExportStatus, setDiagnosticsExportStatus] = useState<string | null>(null);
   const [storyRenderMode, setStoryRenderMode] = useState<"explain2d" | "real3d">("explain2d");
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [timelinePlaying, setTimelinePlaying] = useState(false);
@@ -1312,6 +1342,77 @@ export const TopologyScreen: React.FC = () => {
     const preset = TOPOLOGY_PRESET_BY_ID.get(compareRightPresetId) ?? TOPOLOGY_PRESETS[1] ?? TOPOLOGY_PRESETS[0];
     return preset ? buildQuotientPipeline(preset.buildDiagram()) : null;
   }, [compareRightPresetId]);
+  const quotientEdgeById = useMemo(
+    () => new Map(buildResult.quotient.edges.map((edge) => [edge.id, edge])),
+    [buildResult.quotient.edges]
+  );
+  const quotientVertexById = useMemo(
+    () => new Map(buildResult.quotient.vertices.map((vertex) => [vertex.id, vertex])),
+    [buildResult.quotient.vertices]
+  );
+  const quotientBoundaryByFaceId = useMemo(
+    () => new Map(buildResult.quotient.cellBoundaries.map((boundary) => [boundary.faceId, boundary])),
+    [buildResult.quotient.cellBoundaries]
+  );
+
+  const mapQuotientEdgeIdsToDiagramEdgeIds = useCallback(
+    (quotientEdgeIds: string[]): string[] => {
+      const out = new Set<string>();
+      for (const quotientEdgeId of quotientEdgeIds) {
+        const quotientEdge = quotientEdgeById.get(quotientEdgeId);
+        if (quotientEdge) {
+          for (const sourceEdgeId of quotientEdge.sourceEdgeIds ?? []) {
+            for (const peerId of edgePeerSet(diagram, sourceEdgeId)) out.add(peerId);
+          }
+        } else if (edgeById.has(quotientEdgeId)) {
+          for (const peerId of edgePeerSet(diagram, quotientEdgeId)) out.add(peerId);
+        }
+      }
+      return [...out].sort((a, b) => a.localeCompare(b));
+    },
+    [diagram, edgeById, quotientEdgeById]
+  );
+
+  const clearDiagnosticsFocus = useCallback(() => {
+    setDiagnosticsFocusKind(null);
+    setDiagnosticsFocusLabel(null);
+    setFocusedDiagnosticEdgeIds([]);
+    setFocusedDiagnosticVertexId(null);
+    setFocusedDiagnosticFaceId(null);
+    setDiagnosticsExportStatus(null);
+  }, []);
+
+  const applyDiagnosticsFocus = useCallback(
+    (kind: DiagnosticsFocusKind, label: string, quotientEdgeIds: string[], options?: { vertexId?: string | null; faceId?: string | null }) => {
+      const mappedDiagramEdges = mapQuotientEdgeIdsToDiagramEdgeIds(quotientEdgeIds);
+      setDiagnosticsFocusKind(kind);
+      setDiagnosticsFocusLabel(label);
+      setFocusedDiagnosticEdgeIds(quotientEdgeIds.slice().sort((a, b) => a.localeCompare(b)));
+      setFocusedDiagnosticVertexId(options?.vertexId ?? null);
+      setFocusedDiagnosticFaceId(options?.faceId ?? null);
+      setHoverEdgeId(null);
+      setLinkedHoveredRealizationEdgeId(null);
+      setDiagnosticsExportStatus(null);
+      if (mappedDiagramEdges[0]) {
+        setSelectedEdgeId(mappedDiagramEdges[0]);
+      }
+      if (kind === "vertex" && options?.vertexId) {
+        const sourceVertexId = quotientVertexById.get(options.vertexId)?.sourceVertexIds?.[0] ?? null;
+        setSelectedVertexId(sourceVertexId);
+      } else {
+        setSelectedVertexId(null);
+      }
+      if (quotientEdgeIds[0]) {
+        setLinkedSelectedRealizationEdgeId(quotientEdgeIds[0]);
+      } else if (mappedDiagramEdges[0]) {
+        setLinkedSelectedRealizationEdgeId(mappedDiagramEdges[0]);
+      } else {
+        setLinkedSelectedRealizationEdgeId(null);
+      }
+      setActiveView("realization");
+    },
+    [mapQuotientEdgeIdsToDiagramEdgeIds, quotientVertexById]
+  );
 
   const resetHistory = () => {
     setUndoStack([]);
@@ -1425,6 +1526,7 @@ export const TopologyScreen: React.FC = () => {
     setDocStatus(`Loaded preset '${preset.label}'.`);
     setDocError(null);
     setJsonError(null);
+    clearDiagnosticsFocus();
   };
 
   const applyRegularPolygonTemplate = (sides: number, label: string) => {
@@ -1451,6 +1553,7 @@ export const TopologyScreen: React.FC = () => {
     setDocError(null);
     setJsonError(null);
     setTopicTab("constructingPolygon");
+    clearDiagnosticsFocus();
   };
 
   const ensureBuilt = () => {
@@ -1635,6 +1738,26 @@ export const TopologyScreen: React.FC = () => {
     setTimelinePosition((prev) => Math.max(0, Math.min(timelineMax, prev)));
   }, [timelineMax]);
 
+  useEffect(() => {
+    if (!diagnosticsFocusKind) return;
+    const hasEdge = focusedDiagnosticEdgeIds.some((edgeId) => quotientEdgeById.has(edgeId) || edgeById.has(edgeId));
+    const hasVertex = !!(focusedDiagnosticVertexId && quotientVertexById.has(focusedDiagnosticVertexId));
+    const hasFace = !!(focusedDiagnosticFaceId && quotientBoundaryByFaceId.has(focusedDiagnosticFaceId));
+    if (!hasEdge && !hasVertex && !hasFace) {
+      clearDiagnosticsFocus();
+    }
+  }, [
+    clearDiagnosticsFocus,
+    diagnosticsFocusKind,
+    edgeById,
+    focusedDiagnosticEdgeIds,
+    focusedDiagnosticFaceId,
+    focusedDiagnosticVertexId,
+    quotientBoundaryByFaceId,
+    quotientEdgeById,
+    quotientVertexById,
+  ]);
+
   const applyLoadedTopologyPayload = (raw: unknown, sourceLabel: string, sourcePath: string | null) => {
     if (isTopologyDocument(raw)) {
       const loadedDiagram = raw.payload.diagram;
@@ -1667,6 +1790,7 @@ export const TopologyScreen: React.FC = () => {
       setCurrentDocumentPath(sourcePath);
       setDocStatus(`Loaded ${sourceLabel}`);
       setDocError(null);
+      clearDiagnosticsFocus();
       return true;
     }
     if ((raw as any)?.edges && (raw as any)?.vertices && (raw as any)?.faces) {
@@ -1687,6 +1811,7 @@ export const TopologyScreen: React.FC = () => {
       setCurrentDocumentPath(sourcePath);
       setDocStatus(`Loaded diagram ${sourceLabel}`);
       setDocError(null);
+      clearDiagnosticsFocus();
       return true;
     }
     return false;
@@ -2416,6 +2541,7 @@ export const TopologyScreen: React.FC = () => {
       if (realization.edgeCurves[edgeId]) out.add(edgeId);
       return [...out];
     };
+    const mappedDiagnosticDiagramEdges = mapQuotientEdgeIdsToDiagramEdgeIds(focusedDiagnosticEdgeIds);
     const highlightedDiagramEdges = new Set<string>();
     if (hoverEdgeId) {
       for (const edgeId of edgePeerSet(diagram, hoverEdgeId)) highlightedDiagramEdges.add(edgeId);
@@ -2426,6 +2552,7 @@ export const TopologyScreen: React.FC = () => {
     if (linkedSelectedRealizationEdgeId) {
       for (const edgeId of diagramEdgesForRealizationEdge(linkedSelectedRealizationEdgeId)) highlightedDiagramEdges.add(edgeId);
     }
+    for (const edgeId of mappedDiagnosticDiagramEdges) highlightedDiagramEdges.add(edgeId);
     const highlightedRealizationEdgeIds = new Set<string>();
     if (hoverEdgeId) {
       for (const sourceEdge of edgePeerSet(diagram, hoverEdgeId)) {
@@ -2434,6 +2561,10 @@ export const TopologyScreen: React.FC = () => {
     }
     if (linkedHoveredRealizationEdgeId) highlightedRealizationEdgeIds.add(linkedHoveredRealizationEdgeId);
     if (linkedSelectedRealizationEdgeId) highlightedRealizationEdgeIds.add(linkedSelectedRealizationEdgeId);
+    for (const sourceEdge of mappedDiagnosticDiagramEdges) {
+      for (const realizedEdge of realizationEdgesForDiagramEdge(sourceEdge)) highlightedRealizationEdgeIds.add(realizedEdge);
+    }
+    for (const edgeId of focusedDiagnosticEdgeIds) highlightedRealizationEdgeIds.add(edgeId);
     const hiddenEdgeIds = [
       ...(showBoundaryLoop ? [] : ["mobius_boundary"]),
       ...(showCoreCircle ? [] : ["mobius_core"]),
@@ -4510,128 +4641,18 @@ export const TopologyScreen: React.FC = () => {
   ]);
   const warningDiagnostics = buildResult.warnings.filter((warning) => warning.level !== "info");
   const infoDiagnostics = buildResult.warnings.filter((warning) => warning.level === "info");
-  const nonManifoldEdgeDiagnostics = useMemo(() => {
-    const edges = buildResult.quotient.edges ?? [];
-    const edgeToFaces = buildResult.quotient.incidences.edgeToFaces ?? {};
-    return edges
-      .map((edge) => {
-        const incidentFaces = edgeToFaces[edge.id] ?? [];
-        return {
-          edgeId: edge.id,
-          sourceEdgeIds: edge.sourceEdgeIds ?? [],
-          incidentFaces,
-          incidentCount: incidentFaces.length,
-        };
-      })
-      .filter((entry) => entry.incidentCount > 2)
-      .sort((a, b) => b.incidentCount - a.incidentCount);
-  }, [buildResult.quotient.edges, buildResult.quotient.incidences.edgeToFaces]);
-  const vertexStarDisconnectionDiagnostics = useMemo(() => {
-    const edges = buildResult.quotient.edges ?? [];
-    const faces = buildResult.quotient.cellBoundaries ?? [];
-    const vertexToEdges = buildResult.quotient.incidences.vertexToEdges ?? {};
-    const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
-    const result: Array<{
-      vertexId: string;
-      incidentEdgeCount: number;
-      components: number;
-      edgeIds: string[];
-    }> = [];
-
-    for (const [vertexId, rawIncidentEdges] of Object.entries(vertexToEdges)) {
-      const incidentEdges = (rawIncidentEdges ?? []).filter((edgeId) => edgeById.has(edgeId));
-      if (incidentEdges.length < 2) continue;
-      const incidentSet = new Set(incidentEdges);
-      const adjacency: Record<string, Set<string>> = {};
-      incidentEdges.forEach((edgeId) => {
-        adjacency[edgeId] = new Set<string>();
-      });
-
-      for (const face of faces) {
-        const faceEdges = (face.edgeWalk ?? [])
-          .map((entry) => entry.edgeId)
-          .filter((edgeId) => incidentSet.has(edgeId));
-        if (faceEdges.length < 2) continue;
-        const uniqueFaceEdges = Array.from(new Set(faceEdges));
-        for (let i = 0; i < uniqueFaceEdges.length; i += 1) {
-          for (let j = i + 1; j < uniqueFaceEdges.length; j += 1) {
-            adjacency[uniqueFaceEdges[i]]?.add(uniqueFaceEdges[j]);
-            adjacency[uniqueFaceEdges[j]]?.add(uniqueFaceEdges[i]);
-          }
-        }
-      }
-
-      let components = 0;
-      const visited = new Set<string>();
-      for (const edgeId of incidentEdges) {
-        if (visited.has(edgeId)) continue;
-        components += 1;
-        const stack = [edgeId];
-        visited.add(edgeId);
-        while (stack.length) {
-          const current = stack.pop();
-          if (!current) continue;
-          for (const next of adjacency[current] ?? []) {
-            if (visited.has(next)) continue;
-            visited.add(next);
-            stack.push(next);
-          }
-        }
-      }
-
-      if (components > 1) {
-        result.push({
-          vertexId,
-          incidentEdgeCount: incidentEdges.length,
-          components,
-          edgeIds: incidentEdges.slice().sort((a, b) => a.localeCompare(b)),
-        });
-      }
-    }
-
-    return result.sort((a, b) => b.components - a.components || b.incidentEdgeCount - a.incidentEdgeCount);
-  }, [buildResult.quotient.cellBoundaries, buildResult.quotient.edges, buildResult.quotient.incidences.vertexToEdges]);
-  const invalidBoundaryCycleDiagnostics = useMemo(() => {
-    const edgeById = new Map(buildResult.quotient.edges.map((edge) => [edge.id, edge]));
-    const faceById = new Map(buildResult.quotient.faces.map((face) => [face.id, face]));
-    const result: Array<{ faceId: string; reason: string; edgeIds: string[] }> = [];
-    for (const boundary of buildResult.quotient.cellBoundaries ?? []) {
-      const faceId = boundary.faceId;
-      const edgeIds = (boundary.edgeWalk ?? []).map((entry) => entry.edgeId);
-      if (edgeIds.length < 3) {
-        result.push({ faceId, reason: "boundary has fewer than 3 edges", edgeIds });
-        continue;
-      }
-      const missingEdge = edgeIds.find((edgeId) => !edgeById.has(edgeId));
-      if (missingEdge) {
-        result.push({ faceId, reason: `missing quotient edge '${missingEdge}'`, edgeIds });
-        continue;
-      }
-      let contiguous = true;
-      for (let i = 0; i < edgeIds.length; i += 1) {
-        const current = edgeById.get(edgeIds[i]);
-        const next = edgeById.get(edgeIds[(i + 1) % edgeIds.length]);
-        if (!current || !next) {
-          contiguous = false;
-          break;
-        }
-        const currentVerts = new Set(current.endpointVertexIds);
-        const sharesVertex = next.endpointVertexIds.some((vertexId) => currentVerts.has(vertexId));
-        if (!sharesVertex) {
-          contiguous = false;
-          break;
-        }
-      }
-      if (!contiguous) {
-        result.push({ faceId, reason: "non-contiguous edge chain in quotient boundary", edgeIds });
-        continue;
-      }
-      if (!faceById.has(faceId)) {
-        result.push({ faceId, reason: "missing quotient face for boundary record", edgeIds });
-      }
-    }
-    return result.sort((a, b) => a.faceId.localeCompare(b.faceId));
-  }, [buildResult.quotient.cellBoundaries, buildResult.quotient.edges, buildResult.quotient.faces]);
+  const nonManifoldEdgeDiagnostics = useMemo(
+    () => computeNonManifoldEdgeDiagnostics(buildResult.quotient),
+    [buildResult.quotient]
+  );
+  const vertexStarDisconnectionDiagnostics = useMemo(
+    () => computeVertexStarDisconnectionDiagnostics(buildResult.quotient),
+    [buildResult.quotient]
+  );
+  const invalidBoundaryCycleDiagnostics = useMemo(
+    () => computeInvalidBoundaryCycleDiagnostics(buildResult.quotient),
+    [buildResult.quotient]
+  );
   const unifiedTopologyDiagnostics = useMemo(() => {
     const invariants = buildResult.quotient.invariants;
     const eulerCharacteristic =
@@ -4689,6 +4710,147 @@ export const TopologyScreen: React.FC = () => {
     nonManifoldEdgeDiagnostics.length,
     vertexStarDisconnectionDiagnostics.length,
   ]);
+  const diagnosticsReport = useMemo(
+    () => ({
+      generatedAt: new Date().toISOString(),
+      diagram: {
+        id: diagram.id,
+        name: diagram.name,
+      },
+      unified: unifiedTopologyDiagnostics,
+      nonManifoldEdges: nonManifoldEdgeDiagnostics,
+      vertexStarDisconnections: vertexStarDisconnectionDiagnostics,
+      invalidBoundaryCycles: invalidBoundaryCycleDiagnostics,
+      warnings: warningDiagnostics,
+      info: infoDiagnostics,
+    }),
+    [
+      diagram.id,
+      diagram.name,
+      infoDiagnostics,
+      invalidBoundaryCycleDiagnostics,
+      nonManifoldEdgeDiagnostics,
+      unifiedTopologyDiagnostics,
+      vertexStarDisconnectionDiagnostics,
+      warningDiagnostics,
+    ]
+  );
+  const diagnosticsExportBaseName = useMemo(() => {
+    const cleanName = (diagram.name || "topology")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    return cleanName || "topology";
+  }, [diagram.name]);
+  const exportDiagnosticsJson = useCallback(() => {
+    downloadTextFile(
+      JSON.stringify(diagnosticsReport, null, 2),
+      `${diagnosticsExportBaseName}-topology-diagnostics.json`,
+      "application/json"
+    );
+    setDiagnosticsExportStatus(`Exported ${diagnosticsExportBaseName}-topology-diagnostics.json`);
+  }, [diagnosticsExportBaseName, diagnosticsReport]);
+  const exportDiagnosticsCsv = useCallback(() => {
+    const rows: string[][] = [
+      ["section", "kind", "id", "metric", "value", "details"],
+      ["summary", "topology", "eulerCharacteristic", "value", String(unifiedTopologyDiagnostics.eulerCharacteristic ?? ""), ""],
+      ["summary", "topology", "connectedComponents", "value", String(unifiedTopologyDiagnostics.connectedComponents ?? ""), ""],
+      ["summary", "topology", "boundaryComponents", "value", String(unifiedTopologyDiagnostics.boundaryComponents ?? ""), ""],
+      [
+        "summary",
+        "topology",
+        "orientable",
+        "value",
+        unifiedTopologyDiagnostics.orientableText ??
+          (unifiedTopologyDiagnostics.orientable === null ? "" : unifiedTopologyDiagnostics.orientable ? "yes" : "no"),
+        "",
+      ],
+      ["summary", "topology", "genus", "value", unifiedTopologyDiagnostics.genusLabel, ""],
+    ];
+    for (const entry of nonManifoldEdgeDiagnostics) {
+      rows.push([
+        "detail",
+        "non_manifold_edge",
+        entry.edgeId,
+        "incident_faces",
+        String(entry.incidentCount),
+        `faces=${entry.incidentFaces.join("|")}; sourceEdges=${entry.sourceEdgeIds.join("|")}`,
+      ]);
+    }
+    for (const entry of vertexStarDisconnectionDiagnostics) {
+      rows.push([
+        "detail",
+        "vertex_star_disconnection",
+        entry.vertexId,
+        "star_components",
+        String(entry.components),
+        `incidentEdges=${entry.edgeIds.join("|")}`,
+      ]);
+    }
+    for (const entry of invalidBoundaryCycleDiagnostics) {
+      rows.push([
+        "detail",
+        "invalid_boundary_cycle",
+        entry.faceId,
+        "reason",
+        entry.reason,
+        `edges=${entry.edgeIds.join("|")}`,
+      ]);
+    }
+    for (const warning of warningDiagnostics) {
+      rows.push([
+        "warning",
+        warning.code,
+        warning.edgeId ?? warning.faceId ?? warning.vertexId ?? "",
+        "level",
+        warning.level,
+        warning.message,
+      ]);
+    }
+    const csv = rows.map((row) => row.map((cell) => csvCell(cell)).join(",")).join("\n");
+    downloadTextFile(csv, `${diagnosticsExportBaseName}-topology-diagnostics.csv`, "text/csv;charset=utf-8");
+    setDiagnosticsExportStatus(`Exported ${diagnosticsExportBaseName}-topology-diagnostics.csv`);
+  }, [
+    diagnosticsExportBaseName,
+    invalidBoundaryCycleDiagnostics,
+    nonManifoldEdgeDiagnostics,
+    unifiedTopologyDiagnostics.boundaryComponents,
+    unifiedTopologyDiagnostics.connectedComponents,
+    unifiedTopologyDiagnostics.eulerCharacteristic,
+    unifiedTopologyDiagnostics.genusLabel,
+    unifiedTopologyDiagnostics.orientable,
+    unifiedTopologyDiagnostics.orientableText,
+    vertexStarDisconnectionDiagnostics,
+    warningDiagnostics,
+  ]);
+  const focusNonManifoldEdge = useCallback(
+    (entry: NonManifoldEdgeDiagnostic) => {
+      applyDiagnosticsFocus("edge", `Focused edge ${entry.edgeId}`, [entry.edgeId]);
+    },
+    [applyDiagnosticsFocus]
+  );
+  const focusVertexStar = useCallback(
+    (entry: VertexStarDisconnectionDiagnostic) => {
+      applyDiagnosticsFocus("vertex", `Focused vertex ${entry.vertexId}`, entry.edgeIds, { vertexId: entry.vertexId });
+    },
+    [applyDiagnosticsFocus]
+  );
+  const focusFaceById = useCallback(
+    (faceId: string) => {
+      const boundaryEdgeIds = quotientBoundaryByFaceId.get(faceId)?.edgeWalk.map((edge) => edge.edgeId) ?? [];
+      applyDiagnosticsFocus("face", `Focused face ${faceId}`, boundaryEdgeIds, { faceId });
+    },
+    [applyDiagnosticsFocus, quotientBoundaryByFaceId]
+  );
+  const focusInvalidBoundaryCycle = useCallback(
+    (entry: InvalidBoundaryCycleDiagnostic) => {
+      const boundaryEdgeIds = quotientBoundaryByFaceId.get(entry.faceId)?.edgeWalk.map((edge) => edge.edgeId) ?? entry.edgeIds;
+      applyDiagnosticsFocus("face", `Focused face ${entry.faceId}`, boundaryEdgeIds, { faceId: entry.faceId });
+    },
+    [applyDiagnosticsFocus, quotientBoundaryByFaceId]
+  );
   const selectedPresetBoundaryWord = useMemo(() => {
     const faceId = diagram.faces[0]?.id;
     if (!faceId) return "(none)";
@@ -5341,6 +5503,19 @@ export const TopologyScreen: React.FC = () => {
               <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4 }}>
                 Unified topology diagnostics
               </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={exportDiagnosticsJson} style={{ fontSize: 10 }}>
+                  Export JSON
+                </button>
+                <button type="button" onClick={exportDiagnosticsCsv} style={{ fontSize: 10 }}>
+                  Export CSV
+                </button>
+                {diagnosticsFocusKind && (
+                  <button type="button" onClick={clearDiagnosticsFocus} style={{ fontSize: 10 }}>
+                    Clear focus
+                  </button>
+                )}
+              </div>
               <div>Euler characteristic: {unifiedTopologyDiagnostics.eulerCharacteristic ?? "n/a"}</div>
               <div>Connected components: {unifiedTopologyDiagnostics.connectedComponents ?? "n/a"}</div>
               <div>Boundary components: {unifiedTopologyDiagnostics.boundaryComponents ?? "n/a"}</div>
@@ -5383,6 +5558,12 @@ export const TopologyScreen: React.FC = () => {
               >
                 Invalid boundary cycles: {unifiedTopologyDiagnostics.invalidBoundaryCycleCount}
               </div>
+              {diagnosticsFocusKind && diagnosticsFocusLabel && (
+                <div style={{ fontSize: 10, color: "#0a66c2", fontWeight: 700 }}>
+                  {diagnosticsFocusLabel}
+                </div>
+              )}
+              {diagnosticsExportStatus && <div style={{ fontSize: 10, color: "#166534" }}>{diagnosticsExportStatus}</div>}
             </div>
             {nonManifoldEdgeDiagnostics.length > 0 && (
               <div
@@ -5403,7 +5584,7 @@ export const TopologyScreen: React.FC = () => {
                     <div
                       key={`non-manifold-edge-${entry.edgeId}`}
                       style={{
-                        border: "1px solid #fecaca",
+                        border: "1px solid " + (focusedDiagnosticEdgeIds.includes(entry.edgeId) ? "#0a66c2" : "#fecaca"),
                         borderRadius: 6,
                         background: "#fff",
                         padding: "5px 6px",
@@ -5417,6 +5598,16 @@ export const TopologyScreen: React.FC = () => {
                       </div>
                       <div>Faces: {entry.incidentFaces.join(", ") || "n/a"}</div>
                       <div>Source edges: {entry.sourceEdgeIds.join(", ") || "n/a"}</div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 2 }}>
+                        <button type="button" onClick={() => focusNonManifoldEdge(entry)} style={{ fontSize: 10 }}>
+                          Focus edge
+                        </button>
+                        {entry.incidentFaces[0] && (
+                          <button type="button" onClick={() => focusFaceById(entry.incidentFaces[0])} style={{ fontSize: 10 }}>
+                            Focus face
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -5441,7 +5632,9 @@ export const TopologyScreen: React.FC = () => {
                     <div
                       key={`vertex-star-${entry.vertexId}`}
                       style={{
-                        border: "1px solid #fecaca",
+                        border:
+                          "1px solid " +
+                          (focusedDiagnosticVertexId === entry.vertexId ? "#0a66c2" : focusedDiagnosticEdgeIds.some((id) => entry.edgeIds.includes(id)) ? "#0a66c2" : "#fecaca"),
                         borderRadius: 6,
                         background: "#fff",
                         padding: "5px 6px",
@@ -5455,6 +5648,11 @@ export const TopologyScreen: React.FC = () => {
                       </div>
                       <div>Incident edges: {entry.incidentEdgeCount}</div>
                       <div>Edges: {entry.edgeIds.join(", ")}</div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 2 }}>
+                        <button type="button" onClick={() => focusVertexStar(entry)} style={{ fontSize: 10 }}>
+                          Focus vertex
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -5479,7 +5677,11 @@ export const TopologyScreen: React.FC = () => {
                     <div
                       key={`invalid-boundary-${entry.faceId}`}
                       style={{
-                        border: "1px solid #fecaca",
+                        border:
+                          "1px solid " +
+                          (focusedDiagnosticFaceId === entry.faceId || focusedDiagnosticEdgeIds.some((id) => entry.edgeIds.includes(id))
+                            ? "#0a66c2"
+                            : "#fecaca"),
                         borderRadius: 6,
                         background: "#fff",
                         padding: "5px 6px",
@@ -5492,6 +5694,11 @@ export const TopologyScreen: React.FC = () => {
                         <strong>{entry.faceId}</strong>: {entry.reason}
                       </div>
                       <div>Edges: {entry.edgeIds.join(", ") || "n/a"}</div>
+                      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 2 }}>
+                        <button type="button" onClick={() => focusInvalidBoundaryCycle(entry)} style={{ fontSize: 10 }}>
+                          Focus face
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

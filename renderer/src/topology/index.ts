@@ -7,3 +7,4 @@ export * from "./editorTools";
 export * from "./animationPlan";
 export * from "./TopologyRealization3DView";
 export * from "./polygonWord";
+export * from "./diagnostics";

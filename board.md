@@ -43,18 +43,18 @@ Final UX sweep (2026-05-17):
 
 ### P0.3 Execution Board: Topology + Diagnostics Expansion
 
-Status: `in progress`
+Status: `done` (2026-05-17)
 
 - [x] Add unified diagnostics panel combining: orientability/genus, boundary components, connected components, and non-manifold flags.
 - [x] Add explicit non-manifold detectors (edge incidence >2, vertex star disconnection, invalid boundary cycles) with row-level details.
   - [x] edge incidence >2 with per-edge incident-face details in diagnostics panel
   - [x] vertex star disconnection detector
   - [x] invalid boundary-cycle detector
-- [ ] Add one-click jump/highlight from diagnostics row to corresponding topology entities in the viewer/editor.
-- [ ] Add export action for topology diagnostics report (`JSON` + `CSV`).
-- [ ] Add regression tests for canonical presets (sphere/torus/projective/klein/mobius/cylinder/cone) and non-manifold fixtures.
+- [x] Add one-click jump/highlight from diagnostics row to corresponding topology entities in the viewer/editor.
+- [x] Add export action for topology diagnostics report (`JSON` + `CSV`).
+- [x] Add regression tests for canonical presets (sphere/torus/projective/klein/mobius/cylinder/cone) and non-manifold fixtures.
 
-Next 60-minute implementation reference (P0.3):
+Implemented in this pass (P0.3):
 1. Add diagnostic row actions (`Focus edge`, `Focus vertex`, `Focus face`) and wire them to existing topology selection/highlight state.
 2. Add persistent highlight style for focused diagnostic entities in 2D/3D views so jumps are visually obvious.
 3. Add export button for unified diagnostics payload (`JSON`) plus flat table export (`CSV`).
