@@ -311,6 +311,15 @@ const setupGeometrySmokeHarness = (win: BrowserWindow): void => {
     "FAIL_INVALID_EXPRESSION_OK",
     "FAIL_WORKER_UNAVAILABLE_OK",
     "FAIL_TIMEOUT_BAD_RESPONSE_OK",
+    "GEOM_COMPACT_OPEN",
+    "GEOM_COMPACT_PRESET_OK",
+    "GEOM_COMPACT_FIT_SCENE_OK",
+    "GEOM_COMPACT_RESET_OK",
+    "GEOM_FULL_OPEN",
+    "GEOM_FULL_PRESET_OK",
+    "GEOM_FULL_FIT_STAGE_OK",
+    "GEOM_FULL_FIT_CLAIM_OK",
+    "GEOM_FULL_RESET_OK",
     "DONE",
   ];
   const pokeRendererStart = () => {

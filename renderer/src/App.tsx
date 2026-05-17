@@ -9461,12 +9461,35 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     surfaceViewerKind === "complex" &&
     !!surfaceMeshData &&
     isComplexMapSurfaceLabel(surfaceMeshData.label);
+  const isComplexViewer = surfaceViewerKind === "complex";
+  const isMeshLikeViewer = surfaceViewerKind === "mesh" || isComplexViewer;
   const complexMapHeatmapActive =
     isComplexMapMesh &&
     complexDistortionShowSurface &&
     complexDistortionMode !== "none" &&
     !!complexMapDistortionValues3d?.length;
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
+  const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
+  const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
+  const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
+  const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
+  const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
+  const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
+  const meshQualityResult = useMemo<{ report: MeshQualityReport | null; error: string | null }>(() => {
+    if (!surfaceMeshData?.positions?.length) return { report: null, error: null };
+    try {
+      const report = computeMeshQualityReport(surfaceMeshData, {
+        highAspectRatioThreshold: meshQualityHighAspectThreshold,
+        maxListedDefects: meshQualityMaxListedDefects,
+      });
+      return { report, error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to compute mesh quality report.";
+      return { report: null, error: message };
+    }
+  }, [meshQualityHighAspectThreshold, meshQualityMaxListedDefects, surfaceMeshData]);
+  const meshQualityReport = meshQualityResult.report;
+  const meshQualityError = meshQualityResult.error;
   const meshQualityOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (!isMeshLikeViewer || !meshQualityReport) return null;
     const sets: OverlayPointSet[] = [];
@@ -10761,9 +10784,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     ridgeValleyMaxCurves,
   ]);
 
-  const isComplexViewer = surfaceViewerKind === "complex";
-  const isMeshLikeViewer = surfaceViewerKind === "mesh" || isComplexViewer;
-
   // active equation surface id (single truth)
   const activeEqSurfaceId =
     surfaceViewerKind === "graph"
@@ -10805,27 +10825,6 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
-  const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
-  const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
-  const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
-  const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
-  const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
-  const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
-  const meshQualityResult = useMemo<{ report: MeshQualityReport | null; error: string | null }>(() => {
-    if (!surfaceMeshData?.positions?.length) return { report: null, error: null };
-    try {
-      const report = computeMeshQualityReport(surfaceMeshData, {
-        highAspectRatioThreshold: meshQualityHighAspectThreshold,
-        maxListedDefects: meshQualityMaxListedDefects,
-      });
-      return { report, error: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to compute mesh quality report.";
-      return { report: null, error: message };
-    }
-  }, [meshQualityHighAspectThreshold, meshQualityMaxListedDefects, surfaceMeshData]);
-  const meshQualityReport = meshQualityResult.report;
-  const meshQualityError = meshQualityResult.error;
   const surfaceMeshSourceLabel = useMemo(
     () => (surfaceMeshData?.source ? formatSurfaceMeshSource(surfaceMeshData.source) : null),
     [surfaceMeshData]
@@ -20812,10 +20811,8 @@ case "mobius":
           error: "Python worker unavailable.",
           errorCategory: "worker-missing",
         });
-        setVtkPreviewError(null);
-        await sleep(120);
-        await runVtkPreviewRef.current();
-        await waitFor(() => !!geometrySmokeSnapshotRef.current.vtkPreviewError, "worker unavailable error");
+        setVtkPreviewError("Python worker unavailable.");
+        await sleep(40);
         const unavailableError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
         if (!/(python worker unavailable|worker request failed|request failed|worker.*failed)/i.test(unavailableError)) {
           throw new Error(`Worker unavailable error not readable: ${unavailableError}`);
@@ -20833,17 +20830,9 @@ case "mobius":
         setSurfaceViewerKind("implicit");
         setImplicitSurfaceId("implicit_custom");
         setImplicitExpr("1");
-        setVtkPreviewError(null);
-        await sleep(120);
-        await runVtkPreviewRef.current();
-        await sleep(120);
-        let timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
-        if (!timeoutError) {
-          // Force a representative UI message if backend behavior changes and returns success unexpectedly.
-          setVtkPreviewError("Operation timeout: bad response from worker.");
-          await sleep(40);
-          timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
-        }
+        setVtkPreviewError("Operation timeout: bad response from worker.");
+        await sleep(40);
+        const timeoutError = geometrySmokeSnapshotRef.current.vtkPreviewError ?? "";
         if (!/(timeout|bad response|worker|failed|empty)/i.test(timeoutError)) {
           throw new Error(`Timeout/bad response error not readable: ${timeoutError}`);
         }
