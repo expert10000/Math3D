@@ -64,6 +64,22 @@ Implemented in this pass (P0.3):
    - one fixture triggering vertex-star disconnection and invalid boundary-cycle flags
 5. Update P0.3 checklist status based on the above and rerun renderer build/tests.
 
+### P0.4 Execution Board: Mesh Quality Report Module
+
+Status: `done` (2026-05-17)
+
+- [x] Add mesh quality report compute module with min/avg/max metrics:
+  edge length, triangle area, aspect ratio, vertex valence, dihedral angle.
+- [x] Add topology counters in report:
+  boundary edges, non-manifold edges, degenerate faces.
+- [x] Add defect extraction with bounded listings:
+  degenerate faces, high-aspect faces, non-manifold edges.
+- [x] Add in-view defect highlighting controls in Surfaces analysis panel.
+- [x] Add mesh quality export actions for report payload (`JSON`) and flattened table (`CSV`).
+- [x] Add regression tests for manifold baseline, non-manifold edge, and degenerate/high-aspect fixtures.
+- [x] Verify with `npm --prefix renderer run test -- src/mesh/meshQualityReport.test.ts`.
+- [x] Verify with `npm --prefix renderer run build`.
+
 ## P1 (strong release upgrades)
 
 1. `Geodesics suite`: multi-source paths, constrained geodesics, disk comparison (heat vs dijkstra), error bounds.

@@ -189,6 +189,7 @@ import {
   subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
+import { computeMeshQualityReport, type MeshQualityReport } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
   MeshDataset,
@@ -3949,6 +3950,13 @@ const downloadTextFile = (contents: string, filename: string, mime = "text/plain
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+};
+
+const csvCell = (value: string | number | boolean | null | undefined): string => {
+  if (value === null || value === undefined) return "";
+  const raw = String(value);
+  if (/[",\n]/.test(raw)) return `"${raw.replace(/"/g, "\"\"")}"`;
+  return raw;
 };
 
 const escapeHtml = (value: string) =>
@@ -9459,6 +9467,63 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     complexDistortionMode !== "none" &&
     !!complexMapDistortionValues3d?.length;
   const complexMapOverlayPointsActive = isComplexMapMesh ? complexMapOverlayPointSets : null;
+  const meshQualityOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (!isMeshLikeViewer || !meshQualityReport) return null;
+    const sets: OverlayPointSet[] = [];
+    if (meshQualityShowDegenerateFaces && meshQualityReport.defects.degenerateFaces.length) {
+      sets.push({
+        points: meshQualityReport.defects.degenerateFaces.map((entry) => entry.centroid),
+        color: 0xdc2626,
+        size: 0.06,
+        opacity: 0.95,
+      });
+    }
+    if (meshQualityShowHighAspectFaces && meshQualityReport.defects.highAspectFaces.length) {
+      sets.push({
+        points: meshQualityReport.defects.highAspectFaces.map((entry) => entry.centroid),
+        color: 0xf59e0b,
+        size: 0.055,
+        opacity: 0.92,
+      });
+    }
+    if (meshQualityShowNonManifoldEdges && meshQualityReport.defects.nonManifoldEdges.length) {
+      sets.push({
+        points: meshQualityReport.defects.nonManifoldEdges.map((entry) => entry.midpoint),
+        color: 0x7c3aed,
+        size: 0.07,
+        opacity: 0.95,
+      });
+    }
+    return sets.length ? sets : null;
+  }, [
+    isMeshLikeViewer,
+    meshQualityReport,
+    meshQualityShowDegenerateFaces,
+    meshQualityShowHighAspectFaces,
+    meshQualityShowNonManifoldEdges,
+  ]);
+  const meshQualityOverlayPolylineGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (!isMeshLikeViewer || !meshQualityReport || !meshQualityShowNonManifoldEdges) return null;
+    const lines = meshQualityReport.defects.nonManifoldEdges.map((entry) => [
+      { x: entry.pointA.x, y: entry.pointA.y, z: entry.pointA.z },
+      { x: entry.pointB.x, y: entry.pointB.y, z: entry.pointB.z },
+    ]);
+    if (!lines.length) return null;
+    return [
+      {
+        lines,
+        color: 0x7c3aed,
+        opacity: 0.95,
+        radiusScale: 2.3,
+      },
+    ];
+  }, [isMeshLikeViewer, meshQualityReport, meshQualityShowNonManifoldEdges]);
+  const combinedOverlayPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    const sets: OverlayPointSet[] = [];
+    if (complexMapOverlayPointsActive?.length) sets.push(...complexMapOverlayPointsActive);
+    if (meshQualityOverlayPointSets?.length) sets.push(...meshQualityOverlayPointSets);
+    return sets.length ? sets : null;
+  }, [complexMapOverlayPointsActive, meshQualityOverlayPointSets]);
 
   const [probeInfo, setProbeInfo] = useState<ProbeInfo | null>(null);
   const [probeCurv, setProbeCurv] = useState<CurvatureData | null>(null);
@@ -10740,6 +10805,27 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const [meshQualityHighAspectThreshold, setMeshQualityHighAspectThreshold] = useState(8);
+  const [meshQualityMaxListedDefects, setMeshQualityMaxListedDefects] = useState(120);
+  const [meshQualityShowDegenerateFaces, setMeshQualityShowDegenerateFaces] = useState(true);
+  const [meshQualityShowHighAspectFaces, setMeshQualityShowHighAspectFaces] = useState(true);
+  const [meshQualityShowNonManifoldEdges, setMeshQualityShowNonManifoldEdges] = useState(true);
+  const [meshQualityExportStatus, setMeshQualityExportStatus] = useState<string | null>(null);
+  const meshQualityResult = useMemo<{ report: MeshQualityReport | null; error: string | null }>(() => {
+    if (!surfaceMeshData?.positions?.length) return { report: null, error: null };
+    try {
+      const report = computeMeshQualityReport(surfaceMeshData, {
+        highAspectRatioThreshold: meshQualityHighAspectThreshold,
+        maxListedDefects: meshQualityMaxListedDefects,
+      });
+      return { report, error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to compute mesh quality report.";
+      return { report: null, error: message };
+    }
+  }, [meshQualityHighAspectThreshold, meshQualityMaxListedDefects, surfaceMeshData]);
+  const meshQualityReport = meshQualityResult.report;
+  const meshQualityError = meshQualityResult.error;
   const surfaceMeshSourceLabel = useMemo(
     () => (surfaceMeshData?.source ? formatSurfaceMeshSource(surfaceMeshData.source) : null),
     [surfaceMeshData]
@@ -10778,6 +10864,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       setMeshSaveOverlayOpen(false);
     }
   }, [showMeshSaveOverlayLauncher]);
+  useEffect(() => {
+    setMeshQualityExportStatus(null);
+  }, [surfaceMeshLabel]);
   const currentDatasetRef = useMemo(() => {
     if (datasetKind === "volume") {
       const label = volumeDatasetOverride?.label;
@@ -15711,6 +15800,7 @@ case "mobius":
   const combinedOverlayPolylineGroups = useMemo(() => {
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
+    if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (workbookCurveOverlayGhostGroups?.length) groups.push(...workbookCurveOverlayGhostGroups);
     if (workbookDirectionOverlayGhostGroups?.length) groups.push(...workbookDirectionOverlayGhostGroups);
     if (workbookVectorFieldOverlayGhostGroups?.length) groups.push(...workbookVectorFieldOverlayGhostGroups);
@@ -15723,6 +15813,7 @@ case "mobius":
   }, [
     calculusVectorOverlayGroups,
     complexMapOverlayPolylineGroups,
+    meshQualityOverlayPolylineGroups,
     workbookCurveOverlayGhostGroups,
     workbookDirectionOverlayGhostGroups,
     workbookVectorFieldOverlayGhostGroups,
@@ -15736,6 +15827,7 @@ case "mobius":
     if (!compareIgnoreWorkbookOverlays) return combinedOverlayPolylineGroups;
     const groups: { lines: PolylineSet; color: number; opacity?: number; radiusScale?: number }[] = [];
     if (complexMapOverlayPolylineGroups?.length) groups.push(...complexMapOverlayPolylineGroups);
+    if (meshQualityOverlayPolylineGroups?.length) groups.push(...meshQualityOverlayPolylineGroups);
     if (calculusVectorOverlayGroups?.length) groups.push(...calculusVectorOverlayGroups);
     return groups.length ? groups : null;
   }, [
@@ -15743,6 +15835,7 @@ case "mobius":
     compareIgnoreWorkbookOverlays,
     combinedOverlayPolylineGroups,
     complexMapOverlayPolylineGroups,
+    meshQualityOverlayPolylineGroups,
   ]);
 
   const handleBuildComplexMapSweep = useCallback(() => {
@@ -16183,6 +16276,95 @@ case "mobius":
       setSurfaceMeshExportBusy(false);
     }
   }, [surfaceMeshExportBusy, surfaceMeshData]);
+
+  const handleExportMeshQualityReportJson = useCallback(() => {
+    if (!meshQualityReport) {
+      setMeshQualityExportStatus("Mesh quality report is not available.");
+      return;
+    }
+    const base = sanitizeFileBase(surfaceMeshLabel || "surface_mesh", "surface_mesh");
+    const fileName = `${base}-mesh-quality-${new Date().toISOString().slice(0, 10)}.json`;
+    downloadTextFile(JSON.stringify(meshQualityReport, null, 2), fileName, "application/json");
+    setMeshQualityExportStatus(`Exported ${fileName}`);
+  }, [meshQualityReport, surfaceMeshLabel]);
+
+  const handleExportMeshQualityReportCsv = useCallback(() => {
+    if (!meshQualityReport) {
+      setMeshQualityExportStatus("Mesh quality report is not available.");
+      return;
+    }
+    const report = meshQualityReport;
+    const rows: Array<Array<string | number | boolean | null>> = [
+      ["section", "key", "value"],
+      ["meta", "generatedAt", report.generatedAt],
+      ["meta", "vertexCount", report.vertexCount],
+      ["meta", "faceCount", report.faceCount],
+      ["topology", "boundaryEdgeCount", report.topology.boundaryEdgeCount],
+      ["topology", "nonManifoldEdgeCount", report.topology.nonManifoldEdgeCount],
+      ["topology", "degenerateFaceCount", report.topology.degenerateFaceCount],
+      ["metric.edgeLength", "min", report.metrics.edgeLength.min],
+      ["metric.edgeLength", "avg", report.metrics.edgeLength.avg],
+      ["metric.edgeLength", "max", report.metrics.edgeLength.max],
+      ["metric.triangleArea", "min", report.metrics.triangleArea.min],
+      ["metric.triangleArea", "avg", report.metrics.triangleArea.avg],
+      ["metric.triangleArea", "max", report.metrics.triangleArea.max],
+      ["metric.aspectRatio", "min", report.metrics.aspectRatio.min],
+      ["metric.aspectRatio", "avg", report.metrics.aspectRatio.avg],
+      ["metric.aspectRatio", "max", report.metrics.aspectRatio.max],
+      ["metric.vertexValence", "min", report.metrics.vertexValence.min],
+      ["metric.vertexValence", "avg", report.metrics.vertexValence.avg],
+      ["metric.vertexValence", "max", report.metrics.vertexValence.max],
+      ["metric.dihedralAngleDeg", "min", report.metrics.dihedralAngleDeg.min],
+      ["metric.dihedralAngleDeg", "avg", report.metrics.dihedralAngleDeg.avg],
+      ["metric.dihedralAngleDeg", "max", report.metrics.dihedralAngleDeg.max],
+      ["defects", "degenerateFaces", report.defects.degenerateFaces.length],
+      ["defects", "highAspectFaces", report.defects.highAspectFaces.length],
+      ["defects", "nonManifoldEdges", report.defects.nonManifoldEdges.length],
+      [],
+      ["defectType", "id", "metricA", "metricB", "metricC", "x", "y", "z"],
+    ];
+    for (const face of report.defects.degenerateFaces) {
+      rows.push([
+        "degenerateFace",
+        face.faceIndex,
+        face.area,
+        face.aspectRatio,
+        null,
+        face.centroid.x,
+        face.centroid.y,
+        face.centroid.z,
+      ]);
+    }
+    for (const face of report.defects.highAspectFaces) {
+      rows.push([
+        "highAspectFace",
+        face.faceIndex,
+        face.aspectRatio,
+        face.area,
+        null,
+        face.centroid.x,
+        face.centroid.y,
+        face.centroid.z,
+      ]);
+    }
+    for (const edge of report.defects.nonManifoldEdges) {
+      rows.push([
+        "nonManifoldEdge",
+        edge.edgeId,
+        edge.length,
+        edge.incidentFaceCount,
+        edge.incidentFaces.join("|"),
+        edge.midpoint.x,
+        edge.midpoint.y,
+        edge.midpoint.z,
+      ]);
+    }
+    const csv = rows.map((row) => row.map((cell) => csvCell(cell)).join(",")).join("\n");
+    const base = sanitizeFileBase(surfaceMeshLabel || "surface_mesh", "surface_mesh");
+    const fileName = `${base}-mesh-quality-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadTextFile(csv, fileName, "text/csv;charset=utf-8");
+    setMeshQualityExportStatus(`Exported ${fileName}`);
+  }, [meshQualityReport, surfaceMeshLabel]);
 
   const handleWeldSurfaceMesh = useCallback(() => {
     if (surfaceMeshWeldBusy) return;
@@ -24670,6 +24852,21 @@ case "mobius":
                 selectedMetric={selectedMetric}
                 onChangeSelectedMetric={setSelectedMetric}
                 onRefreshSelectionStats={handleRefreshSelectionStats}
+                meshQualityReport={meshQualityReport}
+                meshQualityError={meshQualityError}
+                meshQualityHighAspectThreshold={meshQualityHighAspectThreshold}
+                onChangeMeshQualityHighAspectThreshold={setMeshQualityHighAspectThreshold}
+                meshQualityMaxListedDefects={meshQualityMaxListedDefects}
+                onChangeMeshQualityMaxListedDefects={setMeshQualityMaxListedDefects}
+                meshQualityShowDegenerateFaces={meshQualityShowDegenerateFaces}
+                onToggleMeshQualityShowDegenerateFaces={() => setMeshQualityShowDegenerateFaces((v) => !v)}
+                meshQualityShowHighAspectFaces={meshQualityShowHighAspectFaces}
+                onToggleMeshQualityShowHighAspectFaces={() => setMeshQualityShowHighAspectFaces((v) => !v)}
+                meshQualityShowNonManifoldEdges={meshQualityShowNonManifoldEdges}
+                onToggleMeshQualityShowNonManifoldEdges={() => setMeshQualityShowNonManifoldEdges((v) => !v)}
+                meshQualityExportStatus={meshQualityExportStatus}
+                onExportMeshQualityReportJson={handleExportMeshQualityReportJson}
+                onExportMeshQualityReportCsv={handleExportMeshQualityReportCsv}
               />
   );
 
@@ -27107,6 +27304,7 @@ case "mobius":
                             geodesicHeatmapValues={geodesicHeatHeatmapValues}
                             geodesicHeatmapEnabled={geodesicHeatHeatmapActive}
                             overlayPolylineGroups={combinedOverlayPolylineGroups}
+                            overlayPointSets={combinedOverlayPointSets}
                             geodesicDiskEnabled={geodesicDiskEnabled}
                             geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                             onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -27245,7 +27443,7 @@ case "mobius":
                         overlayPolylines={complexMapOverlayPolylines}
                         overlayPolylinesColor={0xffd400}
                         overlayPolylineGroups={combinedOverlayPolylineGroups}
-                        overlayPointSets={complexMapOverlayPointsActive}
+                        overlayPointSets={combinedOverlayPointSets}
                         geodesicDiskEnabled={geodesicDiskEnabled}
                         geodesicDiskPickEnabled={geodesicDiskEnabled && geodesicDiskPickMode}
                         onGeodesicDiskPick={handleGeodesicDiskPick}
@@ -39214,6 +39412,21 @@ type SurfacesLeftPanelProps = {
   selectedMetric: SelectionMetricKey;
   onChangeSelectedMetric: (metric: SelectionMetricKey) => void;
   onRefreshSelectionStats: () => void;
+  meshQualityReport: MeshQualityReport | null;
+  meshQualityError: string | null;
+  meshQualityHighAspectThreshold: number;
+  onChangeMeshQualityHighAspectThreshold: (value: number) => void;
+  meshQualityMaxListedDefects: number;
+  onChangeMeshQualityMaxListedDefects: (value: number) => void;
+  meshQualityShowDegenerateFaces: boolean;
+  onToggleMeshQualityShowDegenerateFaces: () => void;
+  meshQualityShowHighAspectFaces: boolean;
+  onToggleMeshQualityShowHighAspectFaces: () => void;
+  meshQualityShowNonManifoldEdges: boolean;
+  onToggleMeshQualityShowNonManifoldEdges: () => void;
+  meshQualityExportStatus: string | null;
+  onExportMeshQualityReportJson: () => void;
+  onExportMeshQualityReportCsv: () => void;
 
 };
 
@@ -39728,6 +39941,21 @@ onChangeImplicitExpr,
   selectedMetric,
   onChangeSelectedMetric,
   onRefreshSelectionStats,
+  meshQualityReport,
+  meshQualityError,
+  meshQualityHighAspectThreshold,
+  onChangeMeshQualityHighAspectThreshold,
+  meshQualityMaxListedDefects,
+  onChangeMeshQualityMaxListedDefects,
+  meshQualityShowDegenerateFaces,
+  onToggleMeshQualityShowDegenerateFaces,
+  meshQualityShowHighAspectFaces,
+  onToggleMeshQualityShowHighAspectFaces,
+  meshQualityShowNonManifoldEdges,
+  onToggleMeshQualityShowNonManifoldEdges,
+  meshQualityExportStatus,
+  onExportMeshQualityReportJson,
+  onExportMeshQualityReportCsv,
   weierstrassDiagnostics,
   weierstrassPathDisagreement,
   weierstrassDiagnosticError,
@@ -43118,6 +43346,130 @@ onChangeImplicitExpr,
             <div style={{ marginLeft: 20, marginTop: 8, fontSize: 11, color: "#475467" }}>
               Active mesh: {surfaceMeshStats.vertCount.toLocaleString()} vertices / {surfaceMeshStats.triCount.toLocaleString()} triangles
             </div>
+          )}
+          {isMeshViewer && (
+            <details style={{ marginLeft: 20, marginTop: 8 }} open>
+              <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Mesh quality report</summary>
+              <div style={{ marginTop: 8, display: "grid", gap: 8, fontSize: 11 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ display: "grid", gap: 3 }}>
+                    <span>High aspect threshold</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      step={0.5}
+                      value={Number.isFinite(meshQualityHighAspectThreshold) ? meshQualityHighAspectThreshold : 8}
+                      onChange={(e) =>
+                        onChangeMeshQualityHighAspectThreshold(clampNumber(Number(e.target.value), 1, 1000))
+                      }
+                      style={{ width: 88, padding: "2px 4px", fontSize: 11 }}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 3 }}>
+                    <span>Max listed defects</span>
+                    <input
+                      type="number"
+                      min={10}
+                      max={1000}
+                      step={10}
+                      value={Number.isFinite(meshQualityMaxListedDefects) ? meshQualityMaxListedDefects : 120}
+                      onChange={(e) =>
+                        onChangeMeshQualityMaxListedDefects(clampInt(Number(e.target.value), 10, 1000))
+                      }
+                      style={{ width: 88, padding: "2px 4px", fontSize: 11 }}
+                    />
+                  </label>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshQualityShowDegenerateFaces}
+                      onChange={onToggleMeshQualityShowDegenerateFaces}
+                    />
+                    Highlight degenerate faces
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshQualityShowHighAspectFaces}
+                      onChange={onToggleMeshQualityShowHighAspectFaces}
+                    />
+                    Highlight high-aspect faces
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={meshQualityShowNonManifoldEdges}
+                      onChange={onToggleMeshQualityShowNonManifoldEdges}
+                    />
+                    Highlight non-manifold edges
+                  </label>
+                </div>
+                {!meshReady && <div style={{ color: "#667085" }}>Load or generate a mesh to compute report metrics.</div>}
+                {meshQualityError && <div style={{ color: "#b42318" }}>{meshQualityError}</div>}
+                {meshReady && meshQualityReport && (
+                  <>
+                    <div style={{ color: "#475467" }}>
+                      Generated: {new Date(meshQualityReport.generatedAt).toLocaleString()}
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(120px, auto) repeat(3, minmax(64px, auto))",
+                        gap: "4px 8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <strong>Metric</strong>
+                      <strong>Min</strong>
+                      <strong>Avg</strong>
+                      <strong>Max</strong>
+                      <span>Edge length</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeLength.min ?? NaN, 4)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeLength.avg ?? NaN, 4)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.edgeLength.max ?? NaN, 4)}</span>
+                      <span>Triangle area</span>
+                      <span>{fmtVal(meshQualityReport.metrics.triangleArea.min ?? NaN, 4)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.triangleArea.avg ?? NaN, 4)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.triangleArea.max ?? NaN, 4)}</span>
+                      <span>Aspect ratio</span>
+                      <span>{fmtVal(meshQualityReport.metrics.aspectRatio.min ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.aspectRatio.avg ?? NaN, 3)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.aspectRatio.max ?? NaN, 3)}</span>
+                      <span>Vertex valence</span>
+                      <span>{fmtVal(meshQualityReport.metrics.vertexValence.min ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.vertexValence.avg ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.vertexValence.max ?? NaN, 2)}</span>
+                      <span>Dihedral (deg)</span>
+                      <span>{fmtVal(meshQualityReport.metrics.dihedralAngleDeg.min ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.dihedralAngleDeg.avg ?? NaN, 2)}</span>
+                      <span>{fmtVal(meshQualityReport.metrics.dihedralAngleDeg.max ?? NaN, 2)}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "#334155" }}>
+                      <span>Boundary edges: {meshQualityReport.topology.boundaryEdgeCount.toLocaleString()}</span>
+                      <span>Non-manifold edges: {meshQualityReport.topology.nonManifoldEdgeCount.toLocaleString()}</span>
+                      <span>Degenerate faces: {meshQualityReport.topology.degenerateFaceCount.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", color: "#334155" }}>
+                      <span>Listed degenerate: {meshQualityReport.defects.degenerateFaces.length.toLocaleString()}</span>
+                      <span>Listed high-aspect: {meshQualityReport.defects.highAspectFaces.length.toLocaleString()}</span>
+                      <span>Listed non-manifold: {meshQualityReport.defects.nonManifoldEdges.length.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button type="button" onClick={onExportMeshQualityReportJson} style={{ padding: "3px 8px" }}>
+                        Export JSON
+                      </button>
+                      <button type="button" onClick={onExportMeshQualityReportCsv} style={{ padding: "3px 8px" }}>
+                        Export CSV
+                      </button>
+                    </div>
+                    {meshQualityExportStatus && <div style={{ color: "#475467" }}>{meshQualityExportStatus}</div>}
+                  </>
+                )}
+              </div>
+            </details>
           )}
           </div>
         </details>
