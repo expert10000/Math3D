@@ -150,7 +150,7 @@ The status bar is docked and persistent to provide passive context with low UI c
 1. Point info + chart grid: reports local chart coordinates, tangents, and normal, and enables chart grid or wireframe.
 2. Curvature field + principal directions: enables curvature coloring and principal direction glyphs.
 3. Geodesic distance (heat): computes a heatmap from a seed point and an optional target and returns a shortest path.
-4. Geodesic path: computes a shortest path between two picked points on the same mesh.
+4. Geodesic path: computes a shortest path from one or more picked source points to the latest picked target point on the same mesh.
 5. Curve overlay: renders the latest Draw curve output as a polyline overlay.
 6. Direction overlay: draws a direction arrow from the latest Pick direction output.
 7. Parallel transport (curve): transports a picked tangent direction along the latest Draw curve and renders vectors along it.
@@ -463,7 +463,7 @@ Parallel transport (curve)
 7. Session snapshot/restore is for the entire workbook payload; Visualize Capture A/B is for per-block view snapshots.
 
 ### Practical workflows
-1. Geodesic path: two Pick point interactions, then Compute -> Geodesic path.
+1. Geodesic path: add Pick point interactions, then Compute -> Geodesic path (latest pick is target; earlier picks are sources).
 2. Curvature study: Compute -> Curvature field + principal directions, then capture Visualize snapshots.
 3. Vector calculus: Compute -> Grad, then Compute -> Div or Laplacian with the gradient field.
 4. Overlay review: Draw curve or Pick direction, then Compute -> Curve overlay or Direction overlay; toggle Ghost overlays to compare iterations.

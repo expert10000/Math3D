@@ -1013,9 +1013,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
         <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>How to use interaction blocks</summary>
         <div style={{ fontSize: 11, opacity: 0.8, marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
           <div>PickPoint → Geodesic heat/path</div>
-          <div>1. Add two Interact blocks set to Pick point, then capture two points.</div>
+          <div>1. Add two or more Interact blocks set to Pick point, then capture points.</div>
           <div>2. Add a Compute block → Geodesic heat or Geodesic path.</div>
-          <div>3. Click Run operator (uses the latest two PickPoint outputs).</div>
+          <div>3. Click Run operator (latest PickPoint is target; earlier PickPoint outputs are path sources).</div>
           <div>DrawCurve → Curve overlay</div>
           <div>1. Add an Interact block set to Draw curve. Arm pick, click to add points, then Finish curve.</div>
           <div>2. Add a Compute block → Curve overlay and Run operator.</div>

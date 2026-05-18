@@ -285,27 +285,58 @@ export type DijkstraResult = {
 };
 
 export function dijkstraDistancesAndPrev(params: {
-  seedIndex: number;
+  seedIndex?: number;
+  seedIndices?: number[];
   neighbors: number[][];
   weights: number[][];
   maxDist?: number;
   allowed?: Uint8Array | boolean[] | null;
   targetIndex?: number;
 }): DijkstraResult {
-  const { seedIndex, neighbors, weights, maxDist = Number.POSITIVE_INFINITY, allowed, targetIndex } = params;
+  const {
+    seedIndex,
+    seedIndices,
+    neighbors,
+    weights,
+    maxDist = Number.POSITIVE_INFINITY,
+    allowed,
+    targetIndex,
+  } = params;
   const count = neighbors.length;
   const dist = new Float64Array(count);
   const prev = new Int32Array(count);
   dist.fill(Number.POSITIVE_INFINITY);
   prev.fill(-1);
 
-  if (seedIndex < 0 || seedIndex >= count) return { dist, prev };
-  if (allowed && !allowed[seedIndex]) return { dist, prev };
+  const resolvedSeeds = (() => {
+    const out: number[] = [];
+    const seen = new Set<number>();
+    if (Array.isArray(seedIndices)) {
+      for (const seed of seedIndices) {
+        if (!Number.isInteger(seed)) continue;
+        if (seed < 0 || seed >= count) continue;
+        if (allowed && !allowed[seed]) continue;
+        if (seen.has(seed)) continue;
+        seen.add(seed);
+        out.push(seed);
+      }
+    }
+    if (Number.isInteger(seedIndex) && seedIndex != null) {
+      const seed = seedIndex;
+      if (seed >= 0 && seed < count && (!allowed || allowed[seed]) && !seen.has(seed)) {
+        out.push(seed);
+      }
+    }
+    return out;
+  })();
 
-  dist[seedIndex] = 0;
+  if (!resolvedSeeds.length) return { dist, prev };
 
   const heap = new MinHeap();
-  heap.push({ node: seedIndex, dist: 0 });
+  for (const seed of resolvedSeeds) {
+    dist[seed] = 0;
+    heap.push({ node: seed, dist: 0 });
+  }
 
   while (heap.size) {
     const current = heap.pop();
@@ -349,4 +380,35 @@ export function reconstructPath(prev: Int32Array, start: number, end: number): n
   }
   if (!path.length || path[path.length - 1] !== start) return [];
   return path.reverse();
+}
+
+export function reconstructPathToAnySeed(
+  prev: Int32Array,
+  end: number,
+  seeds: ArrayLike<number>
+): number[] {
+  if (!seeds.length) return [];
+  const seedSet = new Set<number>();
+  for (let i = 0; i < seeds.length; i++) {
+    const seed = seeds[i];
+    if (Number.isInteger(seed) && seed >= 0 && seed < prev.length) {
+      seedSet.add(seed);
+    }
+  }
+  if (!seedSet.size || end < 0 || end >= prev.length) return [];
+  if (seedSet.has(end)) return [end];
+  if (prev[end] === -1) return [];
+
+  const path: number[] = [];
+  let current = end;
+  let guard = 0;
+  while (current !== -1 && guard <= prev.length) {
+    path.push(current);
+    if (seedSet.has(current)) {
+      return path.reverse();
+    }
+    current = prev[current];
+    guard++;
+  }
+  return [];
 }

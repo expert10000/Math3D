@@ -117,6 +117,18 @@ Status: `done` (2026-05-18)
 4. `Command palette` + keyboard-first workflow for power users.
 5. `Export system`: screenshots, animations, analysis tables, and session bundle.
 
+### P1.1 Execution Board: Geodesics Suite
+
+Status: `in progress` (2026-05-18)
+
+- [x] Add multi-source geodesic-path compute support:
+  latest PickPoint = target, all earlier PickPoint outputs = source set.
+- [x] Extend graph shortest-path core to support multi-seed Dijkstra and path reconstruction to nearest seed.
+- [x] Add unit tests for single-source compatibility and multi-source nearest-seed behavior.
+- [ ] Add constrained geodesic parity checks across multi-source path and heat flows.
+- [ ] Add disk comparison report (heat vs dijkstra) with quantitative deltas.
+- [ ] Add geodesic error-bound reporting and export fields.
+
 ## P2 (post-release or stretch)
 
 1. Plugin-style `analysis operators` API.

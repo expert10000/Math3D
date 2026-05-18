@@ -112,7 +112,11 @@ import {
   type SelectionMask,
 } from "./math/selection/selectionModel";
 import { buildMeshAdjacency, computeGeodesicDistances } from "./math/selection/geodesicSelection";
-import { dijkstraDistancesAndPrev, reconstructPath } from "./math/selection/geodesicGraph";
+import {
+  dijkstraDistancesAndPrev,
+  reconstructPath,
+  reconstructPathToAnySeed,
+} from "./math/selection/geodesicGraph";
 import {
   computeSelectionStats,
   type SelectionMetricKey,
@@ -12867,6 +12871,18 @@ case "mobius":
     [collectInteractionPointOutputs]
   );
 
+  const resolveInteractionPathSources = useCallback(
+    (blockId: string) => {
+      const points = collectInteractionPointOutputs(blockId);
+      if (points.length < 2) return null;
+      const target = points[points.length - 1];
+      const sources = points.slice(0, points.length - 1);
+      if (!sources.length) return null;
+      return { sources, target };
+    },
+    [collectInteractionPointOutputs]
+  );
+
   const resolveInteractionPointSeeds = useCallback(
     (blockId: string) => {
       const points = collectInteractionPointOutputs(blockId);
@@ -17532,60 +17548,94 @@ case "mobius":
   );
 
   const computeGeodesicPathResult = useCallback(
-    (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint): WorkbookComputeOutputs["geodesicPath"] => {
-      const startOut: WorkbookPathEndpoint = { meshKey: start.meshKey, vertexIndex: start.vertexIndex };
+    (sources: GeodesicPathEndpoint[], end: GeodesicPathEndpoint): WorkbookComputeOutputs["geodesicPath"] => {
       const endOut: WorkbookPathEndpoint = { meshKey: end.meshKey, vertexIndex: end.vertexIndex };
       let indices: number[] | null = null;
       let length: number | null = null;
       let message: string | null = null;
       let debugInfo: string | null = null;
+      let startOut: WorkbookPathEndpoint | null = null;
 
-      if (start.meshKey !== end.meshKey) {
-        message = "Start/End on different meshes.";
-        return { indices, length, message, debugInfo, start: startOut, end: endOut };
+      const validSources = sources.filter(
+        (source) => source.meshKey === end.meshKey && Number.isInteger(source.vertexIndex)
+      );
+      if (!validSources.length) {
+        message = "No valid source points on the target mesh.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
       }
-      const adj = geodesicAdjacency.get(start.meshKey);
+      const adj = geodesicAdjacency.get(end.meshKey);
       if (!adj) {
         message = "No mesh adjacency available.";
-        return { indices, length, message, debugInfo, start: startOut, end: endOut };
+        return { indices, length, message, debugInfo, start: null, end: endOut };
       }
       const vertexToMerged = adj.vertexToMerged;
       const mergedToVertex = adj.mergedToVertex;
       const edgeSources = adj.edgeSources;
       const edgeTargets = adj.edgeTargets;
-      const startIndex = vertexToMerged ? vertexToMerged[start.vertexIndex] : start.vertexIndex;
-      const endIndex = vertexToMerged ? vertexToMerged[end.vertexIndex] : end.vertexIndex;
-      if (startIndex == null || endIndex == null) {
-        message = "Start/End outside mesh bounds.";
-        return { indices, length, message, debugInfo, start: startOut, end: endOut };
+      const sourceRawUnique: number[] = [];
+      const sourceRawSet = new Set<number>();
+      for (const source of validSources) {
+        const rawIndex = source.vertexIndex;
+        if (rawIndex < 0) continue;
+        if (sourceRawSet.has(rawIndex)) continue;
+        sourceRawSet.add(rawIndex);
+        sourceRawUnique.push(rawIndex);
       }
-      if (
-        startIndex < 0 ||
-        endIndex < 0 ||
-        startIndex >= adj.neighbors.length ||
-        endIndex >= adj.neighbors.length
-      ) {
-        message = "Start/End outside mesh bounds.";
-        return { indices, length, message, debugInfo, start: startOut, end: endOut };
+      if (!sourceRawUnique.length) {
+        message = "Source points outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
       }
 
-      const allowed = buildAllowedVertexMask(start.meshKey, adj.neighbors.length, vertexToMerged);
+      const sourceRawByMerged = new Map<number, number>();
+      const sourceIndices: number[] = [];
+      for (const rawIndex of sourceRawUnique) {
+        const mergedIndex = vertexToMerged ? vertexToMerged[rawIndex] : rawIndex;
+        if (mergedIndex == null || mergedIndex < 0 || mergedIndex >= adj.neighbors.length) continue;
+        if (!sourceRawByMerged.has(mergedIndex)) {
+          sourceRawByMerged.set(mergedIndex, rawIndex);
+          sourceIndices.push(mergedIndex);
+        }
+      }
+      if (!sourceIndices.length) {
+        message = "Source points outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
+      }
+
+      const endIndex = vertexToMerged ? vertexToMerged[end.vertexIndex] : end.vertexIndex;
+      if (endIndex == null) {
+        message = "End outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
+      }
+      if (endIndex < 0 || endIndex >= adj.neighbors.length) {
+        message = "End outside mesh bounds.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
+      }
+
+      const allowed = buildAllowedVertexMask(end.meshKey, adj.neighbors.length, vertexToMerged);
       if (geodesicPathConstrain) {
-        if (!allowed || !allowed[startIndex] || !allowed[endIndex]) {
-          message = "Start/End not in selection.";
-          return { indices, length, message, debugInfo, start: startOut, end: endOut };
+        if (!allowed || !allowed[endIndex]) {
+          message = "End not in selection.";
+          return { indices, length, message, debugInfo, start: null, end: endOut };
+        }
+        const anySourceAllowed = sourceIndices.some((idx) => !!allowed[idx]);
+        if (!anySourceAllowed) {
+          message = "No source point in selection.";
+          return { indices, length, message, debugInfo, start: null, end: endOut };
         }
       }
 
       const { dist, prev } = dijkstraDistancesAndPrev({
-        seedIndex: startIndex,
+        seedIndices: sourceIndices,
         neighbors: adj.neighbors,
         weights: adj.weights,
         allowed,
         targetIndex: endIndex,
       });
       const distLength = dist[endIndex];
-      const path = reconstructPath(prev, startIndex, endIndex);
+      const path =
+        sourceIndices.length === 1
+          ? reconstructPath(prev, sourceIndices[0], endIndex)
+          : reconstructPathToAnySeed(prev, endIndex, sourceIndices);
       if (!path.length || !Number.isFinite(distLength)) {
         message = "No path found.";
         if (geodesicPathDebug) {
@@ -17593,24 +17643,34 @@ case "mobius":
             neighbors: adj.neighbors,
             weights: adj.weights,
             dist,
-            startIndex,
+            startIndex: sourceIndices[0] ?? -1,
             endIndex,
             vertexToMerged,
           });
           console.log("[geodesic] no path", {
-            meshKey: start.meshKey,
-            startIndex,
+            meshKey: end.meshKey,
+            sourceIndices,
             endIndex,
             debugInfo,
           });
         }
-        return { indices, length, message, debugInfo, start: startOut, end: endOut };
+        return { indices, length, message, debugInfo, start: null, end: endOut };
       }
+
+      const selectedStartMerged = path[0];
+      const selectedStartRaw =
+        sourceRawByMerged.get(selectedStartMerged) ??
+        (mergedToVertex ? mergedToVertex[selectedStartMerged] : selectedStartMerged);
+      if (selectedStartRaw == null || selectedStartRaw < 0) {
+        message = "Path source resolution failed.";
+        return { indices, length, message, debugInfo, start: null, end: endOut };
+      }
+      startOut = { meshKey: end.meshKey, vertexIndex: selectedStartRaw };
 
       let mappedPath = mergedToVertex ? path.map((idx) => mergedToVertex[idx]) : path;
       if (vertexToMerged && edgeSources && edgeTargets) {
         const expanded: number[] = [];
-        const startRaw = start.vertexIndex;
+        const startRaw = selectedStartRaw;
         const endRaw = end.vertexIndex;
         expanded.push(startRaw);
         for (let i = 0; i + 1 < path.length; i++) {
@@ -17629,11 +17689,11 @@ case "mobius":
         mappedPath = expanded;
       }
       let resolvedLength = distLength;
-      const mesh = surfaceSampleSet?.meshData?.find((m) => m.key === start.meshKey);
+      const mesh = surfaceSampleSet?.meshData?.find((m) => m.key === end.meshKey);
       const positions = mesh?.positions;
       if (positions && positions.length >= 3) {
         const last = Math.floor(positions.length / 3);
-        const startRaw = start.vertexIndex;
+        const startRaw = selectedStartRaw;
         const endRaw = end.vertexIndex;
         const isParamSphere =
           geodesicPathSmooth && surfaceViewerKind === "param" && paramSurfaceIdForView === "sphere";
@@ -17700,7 +17760,7 @@ case "mobius":
           neighbors: adj.neighbors,
           weights: adj.weights,
           dist,
-          startIndex,
+          startIndex: sourceIndices[0] ?? -1,
           endIndex,
           vertexToMerged,
         });
@@ -17743,7 +17803,7 @@ case "mobius":
 
   const computeGeodesicPath = useCallback(
     (start: GeodesicPathEndpoint, end: GeodesicPathEndpoint) => {
-      const result = computeGeodesicPathResult(start, end);
+      const result = computeGeodesicPathResult([start], end);
       applyGeodesicPathResult(result);
     },
     [
@@ -19832,40 +19892,48 @@ case "mobius":
 
   const runGeodesicPathOperator = useCallback(
     (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
-      const pointPair = resolveInteractionPointPair(ctx.blockId);
-      let resolvedStart = geodesicPathStart;
+      const pointRequest = resolveInteractionPathSources(ctx.blockId);
+      let resolvedSources = geodesicPathStart ? [geodesicPathStart] : [];
       let resolvedEnd = geodesicPathEnd;
       let usingInteraction = false;
+      let interactionSourceCount = 0;
 
-      if (pointPair) {
-        const start = buildPathEndpointFromPoint(pointPair.start);
-        const end = buildPathEndpointFromPoint(pointPair.end);
-        if (!start || !end) {
+      if (pointRequest) {
+        const parsedSources = pointRequest.sources
+          .map((point) => buildPathEndpointFromPoint(point))
+          .filter((entry): entry is GeodesicPathEndpoint => !!entry);
+        const end = buildPathEndpointFromPoint(pointRequest.target);
+        if (!parsedSources.length || !end) {
           return {
             status: "stale",
             summary: "Pick points on the surface mesh (PickPoint outputs missing vertex data).",
           };
         }
-        resolvedStart = start;
+        resolvedSources = parsedSources;
         resolvedEnd = end;
         usingInteraction = true;
+        interactionSourceCount = parsedSources.length;
       }
 
-      if (!resolvedStart || !resolvedEnd) {
+      if (!resolvedSources.length || !resolvedEnd) {
         return {
           status: "stale",
-          summary: pointPair ? "Need two PickPoint outputs before running." : "Pick two points on the surface before running.",
+          summary: pointRequest
+            ? "Need at least two PickPoint outputs before running."
+            : "Pick two points on the surface before running.",
         };
       }
-      if (resolvedStart.meshKey !== resolvedEnd.meshKey) {
-        return { status: "stale", summary: "Pick both points on the same mesh." };
+      if (resolvedSources.some((source) => source.meshKey !== resolvedEnd.meshKey)) {
+        return { status: "stale", summary: "Pick all points on the same mesh." };
       }
 
-      const pathResult = computeGeodesicPathResult(resolvedStart, resolvedEnd);
+      const pathResult = computeGeodesicPathResult(resolvedSources, resolvedEnd);
       const ok = !!pathResult?.indices?.length;
       const summary = ok
         ? usingInteraction
-          ? "Geodesic path from PickPoint outputs."
+          ? interactionSourceCount > 1
+            ? `Multi-source geodesic path from ${interactionSourceCount} PickPoint sources.`
+            : "Geodesic path from PickPoint outputs."
           : "Geodesic path computed."
         : pathResult?.message ?? "No path found.";
       return {
@@ -19879,7 +19947,7 @@ case "mobius":
       computeGeodesicPathResult,
       geodesicPathEnd,
       geodesicPathStart,
-      resolveInteractionPointPair,
+      resolveInteractionPathSources,
     ]
   );
 
