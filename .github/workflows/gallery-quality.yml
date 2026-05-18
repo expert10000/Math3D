@@ -93,6 +93,9 @@ jobs:
         run: npm run test:app:e2e:visual
 
       - name: Gallery thumbnail capture
+        env:
+          MATH3D_THUMBNAIL_CAPTURE_LIMIT_PER_GROUP: "1"
+          MATH3D_THUMBNAIL_TEST_TIMEOUT_MS: "1200000"
         run: npm run test:app:e2e:thumbnails
 
       - name: Upload playwright artifacts on failure
