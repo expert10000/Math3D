@@ -5,6 +5,7 @@ import {
   closeSurfaceApp,
   launchSurfaceApp,
   openSurfaceGenerator,
+  setSurfaceExpression,
   setSimpleSurfaceExpression,
   waitForWorkerReady,
   type LaunchedSurfaceApp,
@@ -45,7 +46,6 @@ test.describe("Worker failure injection", () => {
 
         await openSurfaceGenerator(ctx.page);
         await waitForWorkerReady(ctx.page);
-        await ctx.page.getByTestId("sample-surface-button").first().click();
 
         await setSimpleSurfaceExpression(ctx.page);
         await clickGenerate(ctx.page);
@@ -56,7 +56,7 @@ test.describe("Worker failure injection", () => {
 
         await assertGenerateButtonReset(ctx.page);
 
-        await ctx.page.getByTestId("surface-input").first().fill("x*y + z");
+        await setSurfaceExpression(ctx.page, "x*y + z");
         await expect(ctx.page.getByTestId("surface-input").first()).toHaveValue("x*y + z");
       } finally {
         await closeSurfaceApp(ctx);

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -73,11 +73,35 @@ async function clickFirstVisibleButton(page: Page, name: string): Promise<void> 
   throw new Error(`Visible button not found: ${name}`);
 }
 
+async function clickFirstVisibleButtonByNamePattern(scope: Page | Locator, name: RegExp): Promise<void> {
+  const buttons = scope.getByRole("button", { name });
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    const button = buttons.nth(i);
+    if (!(await button.isVisible())) continue;
+    await button.click();
+    return;
+  }
+  throw new Error(`Visible button not found for pattern: ${name.toString()}`);
+}
+
+function getInspectorSection(page: Page): Locator {
+  return page.locator("section", {
+    has: page.getByRole("heading", { name: /^INSPECTOR$/ }),
+  }).first();
+}
+
+async function clickInspectorTab(page: Page, tabName: RegExp): Promise<void> {
+  const inspector = getInspectorSection(page);
+  await clickFirstVisibleButtonByNamePattern(inspector, tabName);
+}
+
 export async function openSurfaceGenerator(page: Page): Promise<void> {
   await resetSurfaceAppState(page);
   await clickFirstVisibleButton(page, "Surfaces");
   await clickFirstVisibleButton(page, "Inspector");
   await expect(page.getByTestId("surface-input").first()).toBeVisible();
+  await clickInspectorTab(page, /^Results\b/i);
   await expect(page.getByTestId("generate-button").first()).toBeVisible();
   await expect(page.getByTestId("worker-status").first()).toBeVisible();
 }
@@ -89,15 +113,24 @@ export async function waitForWorkerReady(page: Page): Promise<void> {
   ).toContain("worker: ready");
 }
 
+export async function setSurfaceExpression(page: Page, expression: string): Promise<void> {
+  await clickInspectorTab(page, /^Object\b/i);
+  await expect(page.getByTestId("surface-input").first()).toBeVisible();
+  await page.getByTestId("surface-input").first().fill(expression);
+}
+
 export async function setSimpleSurfaceExpression(page: Page): Promise<void> {
-  await page.getByTestId("surface-input").first().fill("x*x + y*y + z*z - 1");
+  await setSurfaceExpression(page, "x*x + y*y + z*z - 1");
 }
 
 export async function clickGenerate(page: Page): Promise<void> {
+  await clickInspectorTab(page, /^Results\b/i);
+  await expect(page.getByTestId("generate-button").first()).toBeVisible();
   await page.getByTestId("generate-button").first().click();
 }
 
 export async function assertGenerateButtonReset(page: Page): Promise<void> {
+  await clickInspectorTab(page, /^Results\b/i);
   const generate = page.getByTestId("generate-button").first();
   await expect(generate).toBeEnabled({ timeout: 15_000 });
   await expect(generate).toHaveText(/preview \(VTK\)/i);

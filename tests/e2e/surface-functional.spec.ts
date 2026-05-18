@@ -6,6 +6,7 @@ import {
   launchSurfaceApp,
   openSurfaceGenerator,
   readWorkerStatusText,
+  setSurfaceExpression,
   setSimpleSurfaceExpression,
   waitForWorkerReady,
   type LaunchedSurfaceApp,
@@ -36,7 +37,6 @@ test.describe("Surface functional flow", () => {
       });
       await openSurfaceGenerator(ctx.page);
       await waitForWorkerReady(ctx.page);
-      await ctx.page.getByTestId("sample-surface-button").first().click();
 
       await setSimpleSurfaceExpression(ctx.page);
       await clickGenerate(ctx.page);
@@ -44,7 +44,7 @@ test.describe("Surface functional flow", () => {
       await expect(ctx.page.getByTestId("app-status-bar")).toContainText("3 vertices / 1 faces", {
         timeout: 10_000,
       });
-      await expect(ctx.page.getByText("Triangle surface mesh", { exact: true })).toBeVisible();
+      await expect(ctx.page.getByTestId("app-status-bar")).toContainText("type mesh");
       await expect(ctx.page.getByTestId("error-banner")).toHaveCount(0);
     } finally {
       await closeSurfaceApp(ctx);
@@ -59,9 +59,8 @@ test.describe("Surface functional flow", () => {
       });
       await openSurfaceGenerator(ctx.page);
       await waitForWorkerReady(ctx.page);
-      await ctx.page.getByTestId("sample-surface-button").first().click();
 
-      await ctx.page.getByTestId("surface-input").first().fill("x***y");
+      await setSurfaceExpression(ctx.page, "x***y");
       await clickGenerate(ctx.page);
 
       const banner = ctx.page.getByTestId("error-banner").first();
