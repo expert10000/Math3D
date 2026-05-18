@@ -17871,8 +17871,34 @@ case "mobius":
           }
         }
       }
+      let lowerBound: number | null = null;
+      let upperBound: number | null = Number.isFinite(resolvedLength) ? resolvedLength : null;
       indices = mappedPath;
       length = resolvedLength;
+      if (positions && positions.length >= 3) {
+        const last = Math.floor(positions.length / 3);
+        const startRaw = selectedStartRaw;
+        const endRaw = end.vertexIndex;
+        if (startRaw >= 0 && endRaw >= 0 && startRaw < last && endRaw < last) {
+          const ax = positions[startRaw * 3];
+          const ay = positions[startRaw * 3 + 1];
+          const az = positions[startRaw * 3 + 2];
+          const bx = positions[endRaw * 3];
+          const by = positions[endRaw * 3 + 1];
+          const bz = positions[endRaw * 3 + 2];
+          const chord = Math.hypot(bx - ax, by - ay, bz - az);
+          if (Number.isFinite(chord)) {
+            lowerBound = chord;
+          }
+        }
+      }
+      if (lowerBound != null && upperBound != null && upperBound < lowerBound) {
+        upperBound = lowerBound;
+      }
+      const absBound =
+        lowerBound != null && upperBound != null ? Math.max(0, upperBound - lowerBound) : null;
+      const relBound =
+        absBound != null && lowerBound != null && lowerBound > 1e-9 ? absBound / lowerBound : null;
       if (geodesicPathDebug) {
         debugInfo = formatGeodesicDebugInfo({
           neighbors: adj.neighbors,
@@ -17883,7 +17909,20 @@ case "mobius":
           vertexToMerged,
         });
       }
-      return { indices, length, message, debugInfo, start: startOut, end: endOut };
+      return {
+        indices,
+        length,
+        message,
+        debugInfo,
+        start: startOut,
+        end: endOut,
+        errorBounds: {
+          lowerBound,
+          upperBound,
+          absBound,
+          relBound,
+        },
+      };
     },
     [
       buildAllowedVertexMask,
@@ -20009,28 +20048,47 @@ case "mobius":
   );
 
   const runGeodesicPathOperator = useCallback(
-    (ctx: WorkbookOperatorRunContext): WorkbookOperatorRunResult => {
+    async (ctx: WorkbookOperatorRunContext): Promise<WorkbookOperatorRunResult> => {
+      const safeDelta = (a: number | null, b: number | null) => {
+        if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) {
+          return { abs: null as number | null, rel: null as number | null };
+        }
+        const abs = Math.abs(a - b);
+        const rel = b > 1e-9 ? abs / b : null;
+        return { abs, rel };
+      };
       const pointRequest = resolveInteractionPathSources(ctx.blockId);
       let resolvedSources = geodesicPathStart ? [geodesicPathStart] : [];
       let resolvedEnd = geodesicPathEnd;
+      let resolvedSourcePairs: { path: GeodesicPathEndpoint; heat: GeodesicHeatEndpoint | null }[] =
+        resolvedSources.map((path) => ({ path, heat: null }));
+      let resolvedEndHeatEndpoint: GeodesicHeatEndpoint | null = null;
       let usingInteraction = false;
       let interactionSourceCount = 0;
 
       if (pointRequest) {
-        const parsedSources = pointRequest.sources
-          .map((point) => buildPathEndpointFromPoint(point))
-          .filter((entry): entry is GeodesicPathEndpoint => !!entry);
+        const parsedSources = pointRequest.sources.map((point) => ({
+          path: buildPathEndpointFromPoint(point),
+          heat: buildHeatEndpointFromPoint(point),
+        }));
+        const validPathSources = parsedSources.filter(
+          (entry): entry is { path: GeodesicPathEndpoint; heat: GeodesicHeatEndpoint | null } =>
+            !!entry.path
+        );
         const end = buildPathEndpointFromPoint(pointRequest.target);
-        if (!parsedSources.length || !end) {
+        const heatEnd = buildHeatEndpointFromPoint(pointRequest.target);
+        if (!validPathSources.length || !end) {
           return {
             status: "stale",
             summary: "Pick points on the surface mesh (PickPoint outputs missing vertex data).",
           };
         }
-        resolvedSources = parsedSources;
+        resolvedSources = validPathSources.map((entry) => entry.path);
+        resolvedSourcePairs = validPathSources;
         resolvedEnd = end;
+        resolvedEndHeatEndpoint = heatEnd;
         usingInteraction = true;
-        interactionSourceCount = parsedSources.length;
+        interactionSourceCount = validPathSources.length;
       }
 
       if (!resolvedSources.length || !resolvedEnd) {
@@ -20046,6 +20104,94 @@ case "mobius":
       }
 
       const pathResult = computeGeodesicPathResult(resolvedSources, resolvedEnd);
+      if (pathResult?.start && Number.isFinite(pathResult.length)) {
+        const nearestSourceVertex = pathResult.start.vertexIndex ?? null;
+        if (resolvedEndHeatEndpoint && nearestSourceVertex != null) {
+          const nearestSourcePair = resolvedSourcePairs.find(
+            (pair) =>
+              pair.path.meshKey === pathResult.start?.meshKey &&
+              pair.path.vertexIndex === nearestSourceVertex
+          );
+          const nearestHeatSource = nearestSourcePair?.heat ?? null;
+          if (nearestHeatSource) {
+            const heatResult = await computeGeodesicHeatResult({
+              start: nearestHeatSource,
+              end: resolvedEndHeatEndpoint,
+            });
+            const heatLength =
+              heatResult.status === "ok"
+                ? (heatResult.outputs?.geodesicHeat?.length ?? null)
+                : null;
+            const dijkstraLength = pathResult.length ?? null;
+            const delta = safeDelta(heatLength, dijkstraLength);
+            pathResult.parity = {
+              status: heatResult.status === "ok" ? "ok" : "failed",
+              sourceCount: resolvedSources.length,
+              nearestSourceVertex,
+              dijkstraLength,
+              heatLength,
+              absDelta: delta.abs,
+              relDelta: delta.rel,
+              note:
+                heatResult.status === "ok"
+                  ? "Heat vs Dijkstra endpoint parity."
+                  : heatResult.summary ?? "Heat parity run failed.",
+            };
+            pathResult.diskComparison = {
+              status: heatResult.status === "ok" ? "ok" : "skipped",
+              metric: "endpoint_distance",
+              dijkstraDistance: dijkstraLength,
+              heatDistance: heatLength,
+              absDelta: delta.abs,
+              relDelta: delta.rel,
+              note:
+                heatResult.status === "ok"
+                  ? "Endpoint distance delta between heat and Dijkstra flows."
+                  : "Heat field unavailable for disk comparison.",
+            };
+          } else {
+            pathResult.parity = {
+              status: "skipped",
+              sourceCount: resolvedSources.length,
+              nearestSourceVertex,
+              dijkstraLength: pathResult.length ?? null,
+              heatLength: null,
+              absDelta: null,
+              relDelta: null,
+              note: "Nearest source is missing heat endpoint data.",
+            };
+            pathResult.diskComparison = {
+              status: "skipped",
+              metric: "endpoint_distance",
+              dijkstraDistance: pathResult.length ?? null,
+              heatDistance: null,
+              absDelta: null,
+              relDelta: null,
+              note: "Missing heat endpoint data.",
+            };
+          }
+        } else {
+          pathResult.parity = {
+            status: "skipped",
+            sourceCount: resolvedSources.length,
+            nearestSourceVertex,
+            dijkstraLength: pathResult.length ?? null,
+            heatLength: null,
+            absDelta: null,
+            relDelta: null,
+            note: "Path parity requires PickPoint outputs with mesh-face mapping.",
+          };
+          pathResult.diskComparison = {
+            status: "skipped",
+            metric: "endpoint_distance",
+            dijkstraDistance: pathResult.length ?? null,
+            heatDistance: null,
+            absDelta: null,
+            relDelta: null,
+            note: "No heat endpoint for target point.",
+          };
+        }
+      }
       const ok = !!pathResult?.indices?.length;
       const summary = ok
         ? usingInteraction
@@ -20061,7 +20207,9 @@ case "mobius":
       };
     },
     [
+      buildHeatEndpointFromPoint,
       buildPathEndpointFromPoint,
+      computeGeodesicHeatResult,
       computeGeodesicPathResult,
       geodesicPathEnd,
       geodesicPathStart,

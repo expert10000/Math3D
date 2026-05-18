@@ -156,6 +156,31 @@ export type WorkbookPathEndpoint = {
   meshKey?: string;
   vertexIndex?: number;
 };
+export type WorkbookGeodesicParityReport = {
+  status: "ok" | "skipped" | "failed";
+  sourceCount: number;
+  nearestSourceVertex?: number | null;
+  dijkstraLength?: number | null;
+  heatLength?: number | null;
+  absDelta?: number | null;
+  relDelta?: number | null;
+  note?: string | null;
+};
+export type WorkbookGeodesicDiskComparisonReport = {
+  status: "ok" | "skipped";
+  metric: "endpoint_distance";
+  dijkstraDistance?: number | null;
+  heatDistance?: number | null;
+  absDelta?: number | null;
+  relDelta?: number | null;
+  note?: string | null;
+};
+export type WorkbookGeodesicErrorBounds = {
+  lowerBound: number | null;
+  upperBound: number | null;
+  absBound: number | null;
+  relBound: number | null;
+};
 export type WorkbookGeodesicPathOutput = {
   indices: number[] | null;
   length: number | null;
@@ -163,6 +188,9 @@ export type WorkbookGeodesicPathOutput = {
   debugInfo?: string | null;
   start?: WorkbookPathEndpoint | null;
   end?: WorkbookPathEndpoint | null;
+  parity?: WorkbookGeodesicParityReport;
+  diskComparison?: WorkbookGeodesicDiskComparisonReport;
+  errorBounds?: WorkbookGeodesicErrorBounds;
 };
 
 export type WorkbookCameraState = {

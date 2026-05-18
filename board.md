@@ -119,26 +119,26 @@ Status: `done` (2026-05-18)
 
 ### P1.1 Execution Board: Geodesics Suite
 
-Status: `in progress` (2026-05-18)
+Status: `done` (2026-05-18)
 
 - [x] Add multi-source geodesic-path compute support:
   latest PickPoint = target, all earlier PickPoint outputs = source set.
 - [x] Extend graph shortest-path core to support multi-seed Dijkstra and path reconstruction to nearest seed.
 - [x] Add unit tests for single-source compatibility and multi-source nearest-seed behavior.
-- [ ] Add constrained geodesic parity checks across multi-source path and heat flows.
-- [ ] Add disk comparison report (heat vs dijkstra) with quantitative deltas.
-- [ ] Add geodesic error-bound reporting and export fields.
+- [x] Add constrained geodesic parity checks across multi-source path and heat flows.
+- [x] Add disk comparison report (heat vs dijkstra) with quantitative deltas.
+- [x] Add geodesic error-bound reporting and export fields.
 
 ### P1.2 Execution Board: Surface Chart Tooling
 
-Status: `in progress` (2026-05-18)
+Status: `done` (2026-05-18)
 
 - [x] Add chart-cell diagnostics summary (valid/invalid/seam/area stats) in param-surface chart tooling panel.
 - [x] Add seam visualization overlay toggle for wrapped param domains (`wrapU`/`wrapV` seams).
 - [x] Add editable chart-cell masking workflow (mask/unmask selected cell + clear masks).
 - [x] Add unit tests for chart-grid diagnostics math (invalid and seam counting).
-- [ ] Extend the same diagnostics/edit workflow to mesh-face decomposition mode in `SurfaceViewer`.
-- [ ] Add explicit invalid-cell row drilldown table with jump-to-cell actions.
+- [x] Extend the same diagnostics/edit workflow to mesh-face decomposition mode in `SurfaceViewer`.
+- [x] Add explicit invalid-cell row drilldown table with jump-to-cell actions.
 
 ### P1.3 Execution Board: Analysis Pipeline Boxes
 

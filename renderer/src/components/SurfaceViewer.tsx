@@ -195,14 +195,28 @@ export type OverlayMeshGroup = {
   doubleSided?: boolean;
 };
 type SurfaceDecompositionCell = {
+  id: string;
   kind: "graph" | "mesh";
   i?: number;
   j?: number;
   meshKey?: string;
+  triangleIndex?: number;
   center: THREE.Vector3;
   normal: THREE.Vector3;
   area: number;
   corners: THREE.Vector3[];
+  invalidReason?: "non_finite" | "degenerate" | "out_of_bounds";
+};
+type SurfaceDecompositionDiagnostics = {
+  validCells: number;
+  maskedCells: number;
+  invalidCells: number;
+  skippedNonFinite: number;
+  skippedDegenerate: number;
+  skippedOutOfBounds: number;
+  minArea: number | null;
+  maxArea: number | null;
+  avgArea: number | null;
 };
 
 const DBG_COLORS = false;
@@ -1570,7 +1584,21 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const [surfaceCellValuesVisible, setSurfaceCellValuesVisible] = useState(false);
   const [selectedSurfaceCellIndex, setSelectedSurfaceCellIndex] = useState<number | null>(null);
   const [selectedSurfaceCellInfo, setSelectedSurfaceCellInfo] = useState<SurfaceDecompositionCell | null>(null);
+  const [surfaceCellMaskedIds, setSurfaceCellMaskedIds] = useState<Set<string>>(new Set());
+  const [surfaceCellDiagnostics, setSurfaceCellDiagnostics] = useState<SurfaceDecompositionDiagnostics>({
+    validCells: 0,
+    maskedCells: 0,
+    invalidCells: 0,
+    skippedNonFinite: 0,
+    skippedDegenerate: 0,
+    skippedOutOfBounds: 0,
+    minArea: null,
+    maxArea: null,
+    avgArea: null,
+  });
+  const [surfaceCellInvalidRows, setSurfaceCellInvalidRows] = useState<SurfaceDecompositionCell[]>([]);
   const surfaceCellSelectionEnabledRef = useRef(surfaceCellSelectionEnabled);
+  const chartGridRenderableCellIndicesRef = useRef<number[]>([]);
   const [sceneEpoch, setSceneEpoch] = useState(0);
   const sliceFrameRef = useRef<{
     n: THREE.Vector3;
@@ -1808,6 +1836,18 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     if (!showChartGrid || chartGridMode !== "mesh-face") {
       setSelectedSurfaceCellIndex(null);
       setSelectedSurfaceCellInfo(null);
+      setSurfaceCellInvalidRows([]);
+      setSurfaceCellDiagnostics({
+        validCells: 0,
+        maskedCells: 0,
+        invalidCells: 0,
+        skippedNonFinite: 0,
+        skippedDegenerate: 0,
+        skippedOutOfBounds: 0,
+        minArea: null,
+        maxArea: null,
+        avgArea: null,
+      });
     }
   }, [showChartGrid, chartGridMode]);
   useEffect(() => {
@@ -4174,10 +4214,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (cellHits.length) {
           const faceIndex = cellHits[0].faceIndex ?? -1;
           const cellFaceFactor = Math.max(1, chartGridCellFaceFactorRef.current);
-          const cellIndex = faceIndex >= 0 ? Math.floor(faceIndex / cellFaceFactor) : -1;
-          const cell = cellIndex >= 0 ? chartGridCellsRef.current[cellIndex] : null;
+          const renderableCellIndex = faceIndex >= 0 ? Math.floor(faceIndex / cellFaceFactor) : -1;
+          const mappedCellIndex =
+            renderableCellIndex >= 0
+              ? (chartGridRenderableCellIndicesRef.current[renderableCellIndex] ?? -1)
+              : -1;
+          const cell = mappedCellIndex >= 0 ? chartGridCellsRef.current[mappedCellIndex] : null;
           if (cell) {
-            setSelectedSurfaceCellIndex(cellIndex);
+            setSelectedSurfaceCellIndex(mappedCellIndex);
             setSelectedSurfaceCellInfo(cell);
             if (
               !probeEnabled &&
@@ -8649,6 +8693,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
     chartGridPickMeshRef.current = null;
     chartGridCellsRef.current = [];
+    chartGridRenderableCellIndicesRef.current = [];
     chartGridCellFaceFactorRef.current = 1;
 
     if (!showChartGrid) return;
@@ -8659,7 +8704,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     group.name = "surface-decomposition-overlay";
     group.renderOrder = 150;
     const cells: SurfaceDecompositionCell[] = [];
-    const areaValues: number[] = [];
+    const renderableCellIndices: number[] = [];
+    let areaMin = Number.POSITIVE_INFINITY;
+    let areaMax = Number.NEGATIVE_INFINITY;
+    let areaSum = 0;
+    let areaCount = 0;
+    let maskedCells = 0;
+    let skippedNonFinite = 0;
+    let skippedDegenerate = 0;
+    let skippedOutOfBounds = 0;
     const fillPositions: number[] = [];
     const fillIndices: number[] = [];
     let vertexCursor = 0;
@@ -8695,7 +8748,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         .add(p01)
         .multiplyScalar(0.25);
       const area = tri1Area + tri2Area;
-      cells.push({
+      const id = `graph:${i}:${j}`;
+      const cell: SurfaceDecompositionCell = {
+        id,
         kind: "graph",
         i,
         j,
@@ -8703,8 +8758,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         normal,
         area,
         corners: [p00.clone(), p10.clone(), p11.clone(), p01.clone()],
-      });
-      areaValues.push(area);
+      };
+      const cellIndex = cells.push(cell) - 1;
+      if (surfaceCellMaskedIds.has(id)) {
+        maskedCells += 1;
+        return;
+      }
+      renderableCellIndices.push(cellIndex);
+      if (Number.isFinite(area) && area > 0) {
+        areaMin = Math.min(areaMin, area);
+        areaMax = Math.max(areaMax, area);
+        areaSum += area;
+        areaCount += 1;
+      }
       fillPositions.push(
         p00.x, p00.y, p00.z,
         p10.x, p10.y, p10.z,
@@ -8725,24 +8791,72 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       addEdge(p11, p01);
       addEdge(p01, p00);
     };
-    const addTriCell = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, meshKey?: string) => {
+    const addTriCell = (
+      a: THREE.Vector3,
+      b: THREE.Vector3,
+      c: THREE.Vector3,
+      meshKey?: string,
+      triangleIndex?: number
+    ) => {
+      const id = `${meshKey ?? "mesh"}:${triangleIndex ?? cells.length}`;
       const cross = new THREE.Vector3().crossVectors(
         new THREE.Vector3().subVectors(b, a),
         new THREE.Vector3().subVectors(c, a)
       );
       const area = cross.length() * 0.5;
-      if (!(Number.isFinite(area) && area > 1e-12)) return;
-      const normal = cross.normalize();
       const center = new THREE.Vector3().copy(a).add(b).add(c).multiplyScalar(1 / 3);
-      cells.push({
+      if (!Number.isFinite(area)) {
+        cells.push({
+          id,
+          kind: "mesh",
+          meshKey,
+          triangleIndex,
+          center,
+          normal: new THREE.Vector3(0, 1, 0),
+          area: Number.NaN,
+          corners: [a.clone(), b.clone(), c.clone()],
+          invalidReason: "non_finite",
+        });
+        skippedNonFinite += 1;
+        return;
+      }
+      if (area <= 1e-12) {
+        const normalDeg = cross.lengthSq() > 1e-16 ? cross.clone().normalize() : new THREE.Vector3(0, 1, 0);
+        cells.push({
+          id,
+          kind: "mesh",
+          meshKey,
+          triangleIndex,
+          center,
+          normal: normalDeg,
+          area,
+          corners: [a.clone(), b.clone(), c.clone()],
+          invalidReason: "degenerate",
+        });
+        skippedDegenerate += 1;
+        return;
+      }
+      const normal = cross.normalize();
+      const cell: SurfaceDecompositionCell = {
+        id,
         kind: "mesh",
         meshKey,
+        triangleIndex,
         center,
         normal,
         area,
         corners: [a.clone(), b.clone(), c.clone()],
-      });
-      areaValues.push(area);
+      };
+      const cellIndex = cells.push(cell) - 1;
+      if (surfaceCellMaskedIds.has(id)) {
+        maskedCells += 1;
+        return;
+      }
+      renderableCellIndices.push(cellIndex);
+      areaMin = Math.min(areaMin, area);
+      areaMax = Math.max(areaMax, area);
+      areaSum += area;
+      areaCount += 1;
       fillPositions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
       fillIndices.push(vertexCursor, vertexCursor + 1, vertexCursor + 2);
       vertexCursor += 3;
@@ -8826,7 +8940,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       chartGridCellFaceFactorRef.current = 2;
     } else if (chartGridMode === "mesh-face") {
       const root = surfaceObjRef.current;
-      if (!root) return;
+      if (!root) {
+        setSurfaceCellInvalidRows([]);
+        setSurfaceCellDiagnostics({
+          validCells: 0,
+          maskedCells: 0,
+          invalidCells: 0,
+          skippedNonFinite: 0,
+          skippedDegenerate: 0,
+          skippedOutOfBounds: 0,
+          minArea: null,
+          maxArea: null,
+          avgArea: null,
+        });
+        return;
+      }
       root.updateMatrixWorld(true);
       const meshCandidates: THREE.Mesh[] = [];
       root.traverse((obj) => {
@@ -8837,7 +8965,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (!geom || !pos || pos.count < 3) return;
         meshCandidates.push(mesh);
       });
-      if (!meshCandidates.length) return;
+      if (!meshCandidates.length) {
+        setSurfaceCellInvalidRows([]);
+        setSurfaceCellDiagnostics({
+          validCells: 0,
+          maskedCells: 0,
+          invalidCells: 0,
+          skippedNonFinite: 0,
+          skippedDegenerate: 0,
+          skippedOutOfBounds: 0,
+          minArea: null,
+          maxArea: null,
+          avgArea: null,
+        });
+        return;
+      }
 
       let triCountTotal = 0;
       for (const mesh of meshCandidates) {
@@ -8867,6 +9009,18 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             i0 < 0 || i1 < 0 || i2 < 0 ||
             i0 >= posAttr.count || i1 >= posAttr.count || i2 >= posAttr.count
           ) {
+            cells.push({
+              id: `${mesh.uuid}:${t}`,
+              kind: "mesh",
+              meshKey: mesh.uuid,
+              triangleIndex: t,
+              center: new THREE.Vector3(),
+              normal: new THREE.Vector3(0, 1, 0),
+              area: Number.NaN,
+              corners: [],
+              invalidReason: "out_of_bounds",
+            });
+            skippedOutOfBounds += 1;
             continue;
           }
           localA.set(posAttr.getX(i0), posAttr.getY(i0), posAttr.getZ(i0)).applyMatrix4(mesh.matrixWorld);
@@ -8877,9 +9031,21 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
             !Number.isFinite(localB.x) || !Number.isFinite(localB.y) || !Number.isFinite(localB.z) ||
             !Number.isFinite(localC.x) || !Number.isFinite(localC.y) || !Number.isFinite(localC.z)
           ) {
+            cells.push({
+              id: `${mesh.uuid}:${t}`,
+              kind: "mesh",
+              meshKey: mesh.uuid,
+              triangleIndex: t,
+              center: new THREE.Vector3(),
+              normal: new THREE.Vector3(0, 1, 0),
+              area: Number.NaN,
+              corners: [localA.clone(), localB.clone(), localC.clone()],
+              invalidReason: "non_finite",
+            });
+            skippedNonFinite += 1;
             continue;
           }
-          addTriCell(localA, localB, localC, mesh.uuid);
+          addTriCell(localA, localB, localC, mesh.uuid, t);
         }
       }
       chartGridCellFaceFactorRef.current = 1;
@@ -8956,6 +9122,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     }
 
     chartGridCellsRef.current = cells;
+    chartGridRenderableCellIndicesRef.current = renderableCellIndices;
+    setSurfaceCellInvalidRows(cells.filter((cell) => !!cell.invalidReason));
+    setSurfaceCellDiagnostics({
+      validCells: renderableCellIndices.length,
+      maskedCells,
+      invalidCells: skippedNonFinite + skippedDegenerate + skippedOutOfBounds + maskedCells,
+      skippedNonFinite,
+      skippedDegenerate,
+      skippedOutOfBounds,
+      minArea: areaCount ? areaMin : null,
+      maxArea: areaCount ? areaMax : null,
+      avgArea: areaCount ? areaSum / areaCount : null,
+    });
     if (selectedSurfaceCellIndex != null) {
       setSelectedSurfaceCellInfo(cells[selectedSurfaceCellIndex] ?? null);
     }
@@ -8964,6 +9143,15 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         setSelectedSurfaceCellIndex(null);
         setSelectedSurfaceCellInfo(null);
       }
+      if (group.children.length) {
+        chartGridRef.current = group;
+        scene.add(group);
+      } else {
+        group.traverse(disposeObject3D);
+      }
+      return;
+    }
+    if (!renderableCellIndices.length) {
       if (group.children.length) {
         chartGridRef.current = group;
         scene.add(group);
@@ -8989,18 +9177,17 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     const fillGeometry = new THREE.BufferGeometry();
     fillGeometry.setAttribute("position", new THREE.Float32BufferAttribute(fillPositions, 3));
     fillGeometry.setIndex(fillIndices);
-    const areaMin = Math.min(...areaValues);
-    const areaMax = Math.max(...areaValues);
-    const areaSpan = Math.max(1e-9, areaMax - areaMin);
+    const areaSpan = Math.max(1e-9, (areaCount ? areaMax : 0) - (areaCount ? areaMin : 0));
     const colors: number[] = [];
-    for (let i = 0; i < cells.length; i++) {
+    for (const cellIndex of renderableCellIndices) {
+      const cell = cells[cellIndex];
       const t = surfaceCellValuesVisible
-        ? Math.min(1, Math.max(0, (cells[i].area - areaMin) / areaSpan))
+        ? Math.min(1, Math.max(0, (cell.area - (areaCount ? areaMin : 0)) / areaSpan))
         : 0;
       const color = surfaceCellValuesVisible
         ? new THREE.Color().setHSL(0.62 - 0.53 * t, 0.86, 0.54)
         : new THREE.Color(0x4f8cff);
-      const verts = cells[i].corners.length;
+      const verts = cell.corners.length;
       for (let k = 0; k < verts; k++) {
         colors.push(color.r, color.g, color.b);
       }
@@ -9031,11 +9218,12 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     chartGridPickMeshRef.current = pickMesh;
 
     if (surfaceCellCentersVisible) {
-      const centerPositions = new Float32Array(cells.length * 3);
-      for (let i = 0; i < cells.length; i++) {
-        centerPositions[3 * i] = cells[i].center.x;
-        centerPositions[3 * i + 1] = cells[i].center.y;
-        centerPositions[3 * i + 2] = cells[i].center.z;
+      const centerPositions = new Float32Array(renderableCellIndices.length * 3);
+      for (let i = 0; i < renderableCellIndices.length; i++) {
+        const cell = cells[renderableCellIndices[i]];
+        centerPositions[3 * i] = cell.center.x;
+        centerPositions[3 * i + 1] = cell.center.y;
+        centerPositions[3 * i + 2] = cell.center.z;
       }
       const centerGeometry = new THREE.BufferGeometry();
       centerGeometry.setAttribute("position", new THREE.BufferAttribute(centerPositions, 3));
@@ -9052,9 +9240,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     if (surfaceCellNormalsVisible) {
       const normalScale = Math.max(0.05, (radiusRef.current || 3) * 0.08);
-      const normalSegments = new Float32Array(cells.length * 6);
-      for (let i = 0; i < cells.length; i++) {
-        const cell = cells[i];
+      const normalSegments = new Float32Array(renderableCellIndices.length * 6);
+      for (let i = 0; i < renderableCellIndices.length; i++) {
+        const cell = cells[renderableCellIndices[i]];
         const p0 = cell.center;
         const p1 = cell.center.clone().addScaledVector(cell.normal, normalScale);
         normalSegments[6 * i] = p0.x;
@@ -9140,6 +9328,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
     graphDomain?.xSpan,
     graphDomain?.ySpan,
     probePointToken,
+    surfaceCellMaskedIds,
     sceneEpoch,
   ]);
 
@@ -9361,6 +9550,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       .add(frame.e2.clone().multiplyScalar(st.t));
     return { st, world };
   })();
+  const selectedSurfaceCellMasked = !!(
+    selectedSurfaceCellInfo && surfaceCellMaskedIds.has(selectedSurfaceCellInfo.id)
+  );
   const showProbeHud = probeEnabled && probeHudLines.length > 0;
   const presetButtonStyle = (active: boolean) => ({
     padding: "2px 8px",
@@ -9615,9 +9807,130 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                     padding: "6px 8px",
                   }}
                 >
-                  {selectedSurfaceCellInfo.kind === "graph" && selectedSurfaceCellInfo.i != null && selectedSurfaceCellInfo.j != null
-                    ? `Cell [${selectedSurfaceCellInfo.i}, ${selectedSurfaceCellInfo.j}]  area=${selectedSurfaceCellInfo.area.toFixed(4)}`
-                    : `Cell area=${selectedSurfaceCellInfo.area.toFixed(4)}`}
+                  {selectedSurfaceCellInfo.kind === "graph" &&
+                  selectedSurfaceCellInfo.i != null &&
+                  selectedSurfaceCellInfo.j != null
+                    ? `Cell [${selectedSurfaceCellInfo.i}, ${selectedSurfaceCellInfo.j}]  area=${
+                        Number.isFinite(selectedSurfaceCellInfo.area)
+                          ? selectedSurfaceCellInfo.area.toFixed(4)
+                          : "nan"
+                      }`
+                    : `Cell area=${
+                        Number.isFinite(selectedSurfaceCellInfo.area)
+                          ? selectedSurfaceCellInfo.area.toFixed(4)
+                          : "nan"
+                      }`}
+                  {selectedSurfaceCellInfo.invalidReason
+                    ? `  invalid=${selectedSurfaceCellInfo.invalidReason}`
+                    : ""}
+                  {selectedSurfaceCellMasked ? "  masked" : ""}
+                  <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      style={{ padding: "2px 6px", fontSize: 10 }}
+                      onClick={() =>
+                        setSurfaceCellMaskedIds((prev) => {
+                          const next = new Set(prev);
+                          if (selectedSurfaceCellMasked) next.delete(selectedSurfaceCellInfo.id);
+                          else next.add(selectedSurfaceCellInfo.id);
+                          return next;
+                        })
+                      }
+                    >
+                      {selectedSurfaceCellMasked ? "Unmask cell" : "Mask cell"}
+                    </button>
+                    <button
+                      type="button"
+                      style={{ padding: "2px 6px", fontSize: 10 }}
+                      onClick={() => setSurfaceCellMaskedIds(new Set())}
+                      disabled={surfaceCellDiagnostics.maskedCells === 0}
+                    >
+                      Clear masks
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div
+                style={{
+                  fontSize: 10,
+                  lineHeight: 1.35,
+                  color: "#334155",
+                  background: "rgba(248,250,252,0.9)",
+                  border: "1px solid rgba(148,163,184,0.3)",
+                  borderRadius: 6,
+                  padding: "6px 8px",
+                }}
+              >
+                <div>Valid cells: {surfaceCellDiagnostics.validCells}</div>
+                <div>
+                  Invalid cells: {surfaceCellDiagnostics.invalidCells}
+                  {" "}
+                  (non-finite {surfaceCellDiagnostics.skippedNonFinite}, degenerate{" "}
+                  {surfaceCellDiagnostics.skippedDegenerate}, out-of-bounds{" "}
+                  {surfaceCellDiagnostics.skippedOutOfBounds}, masked {surfaceCellDiagnostics.maskedCells})
+                </div>
+                <div>
+                  Area min/avg/max:{" "}
+                  {surfaceCellDiagnostics.minArea == null
+                    ? "—"
+                    : `${surfaceCellDiagnostics.minArea.toFixed(4)} / ${(
+                        surfaceCellDiagnostics.avgArea ?? 0
+                      ).toFixed(4)} / ${(
+                        surfaceCellDiagnostics.maxArea ?? 0
+                      ).toFixed(4)}`}
+                </div>
+              </div>
+              {surfaceCellInvalidRows.length > 0 && (
+                <div
+                  style={{
+                    maxHeight: 150,
+                    overflowY: "auto",
+                    border: "1px solid rgba(148,163,184,0.3)",
+                    borderRadius: 6,
+                    background: "rgba(255,255,255,0.92)",
+                    padding: "4px 6px",
+                    display: "grid",
+                    gap: 4,
+                  }}
+                >
+                  {surfaceCellInvalidRows.slice(0, 40).map((row) => {
+                    const cellIndex = chartGridCellsRef.current.indexOf(row);
+                    const label = row.triangleIndex != null ? `tri ${row.triangleIndex}` : row.id;
+                    return (
+                      <div
+                        key={`${row.id}:${row.invalidReason ?? "invalid"}`}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "1fr auto",
+                          gap: 6,
+                          alignItems: "center",
+                          fontSize: 10,
+                          color: "#334155",
+                        }}
+                      >
+                        <span>
+                          {label} · {row.invalidReason}
+                        </span>
+                        <button
+                          type="button"
+                          style={{ padding: "1px 6px", fontSize: 10 }}
+                          onClick={() => {
+                            if (cellIndex >= 0) {
+                              setSelectedSurfaceCellIndex(cellIndex);
+                              setSelectedSurfaceCellInfo(row);
+                            }
+                          }}
+                        >
+                          Jump
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {surfaceCellInvalidRows.length > 40 && (
+                    <div style={{ fontSize: 10, color: "#64748b" }}>
+                      Showing first 40 invalid rows.
+                    </div>
+                  )}
                 </div>
               )}
             </div>
