@@ -137,6 +137,9 @@ jobs:
           npm run docs:api
           npm run docs:site
 
+      - name: Build web app bundle
+        run: npm run build:web
+
       - name: Build Windows installer
         run: npm run dist:ci
 
@@ -172,6 +175,15 @@ jobs:
               -Force
           } else {
             Write-Warning "site directory not found; skipping docs zip."
+          }
+
+          $webDist = Join-Path $PWD "apps/web/dist"
+          if (Test-Path $webDist) {
+            Compress-Archive -Path (Join-Path $webDist "*") `
+              -DestinationPath (Join-Path $assetsDir "Math3D-web-$version.zip") `
+              -Force
+          } else {
+            Write-Warning "apps/web/dist not found; skipping web app zip."
           }
 
           $optionalFiles = @(
