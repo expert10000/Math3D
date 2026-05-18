@@ -338,6 +338,13 @@ interface GeometryObjectMeta {
   includeInClaimFit: boolean;
 }
 type GalleryCardViewMode = "rendered" | "diagram";
+type CommandPaletteItem = {
+  id: string;
+  title: string;
+  keywords: string;
+  shortcut?: string;
+  run: () => void | Promise<void>;
+};
 type GallerySortPreset = "name" | "family" | "complexity" | "demoReady";
 type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
@@ -3962,6 +3969,8 @@ const csvCell = (value: string | number | boolean | null | undefined): string =>
   return raw;
 };
 
+const isWorkbookBlockEnabled = (block: WorkbookBlock) => block.enabled !== false;
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, "&amp;")
@@ -4049,6 +4058,72 @@ const buildWorkbooksMarkdown = (workbooks: Workbook[], activeWorkbookId: string 
     });
   });
   return lines.join("\n\n");
+};
+
+const buildWorkbookAnalysisTablesCsv = (workbooks: Workbook[], activeWorkbookId: string | null) => {
+  const header = [
+    "workbookTitle",
+    "activeWorkbook",
+    "stageTitle",
+    "blockIndex",
+    "blockId",
+    "blockTitle",
+    "blockType",
+    "enabled",
+    "computeOperator",
+    "status",
+    "summary",
+    "lastRunAt",
+    "durationMs",
+    "cacheHit",
+    "runCount",
+    "latestRunSavedAt",
+    "datasetRef",
+    "inputHash",
+    "paramCount",
+  ];
+  const rows = [header.join(",")];
+  for (const workbook of workbooks) {
+    for (const stage of workbook.stages) {
+      stage.blocks.forEach((block, idx) => {
+        const enabled = isWorkbookBlockEnabled(block);
+        const params = block.params?.values ?? {};
+        const runHistory = block.compute?.runHistory ?? [];
+        const latestRun = runHistory[0] ?? block.compute?.lastRun ?? null;
+        const status =
+          !enabled
+            ? "disabled"
+            : block.type === "compute"
+              ? block.compute?.lastRun?.status ?? block.compute?.status ?? "stale"
+              : block.type === "assert"
+                ? block.assert?.status ?? "pending"
+                : "ok";
+        const row = [
+          workbook.title,
+          workbook.id === activeWorkbookId,
+          stage.title,
+          idx + 1,
+          block.id,
+          block.title || WORKBOOK_EXPORT_BLOCK_LABELS[block.type],
+          block.type,
+          enabled,
+          block.compute?.operatorId ?? "",
+          status,
+          block.compute?.summary ?? block.interaction?.summary ?? "",
+          block.compute?.lastRunAt ? formatExportTimestamp(block.compute.lastRunAt) : "",
+          latestRun?.timing?.durationMs ?? "",
+          latestRun?.cacheHit ?? "",
+          runHistory.length,
+          runHistory[0]?.savedAt ? formatExportTimestamp(runHistory[0].savedAt) : "",
+          block.compute?.datasetRef ?? "",
+          block.compute?.lastRun?.inputHash ?? block.compute?.inputHash ?? "",
+          Object.keys(params).length,
+        ];
+        rows.push(row.map((value) => csvCell(value as any)).join(","));
+      });
+    }
+  }
+  return rows.join("\n");
 };
 
 const buildWorkbooksReportHtml = (workbooks: Workbook[], activeWorkbookId: string | null) => {
@@ -10678,6 +10753,9 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   // command prompt
   const [commandInput, setCommandInput] = useState("");
   const [commandHistory, setCommandHistory] = useState<{ cmd: string; out: string }[]>([]);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandPaletteQuery, setCommandPaletteQuery] = useState("");
+  const [commandPaletteIndex, setCommandPaletteIndex] = useState(0);
 
   // contours (graph + implicit)
   const [showContours, setShowContours] = useState(true);
@@ -11067,7 +11145,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         inputRefsById: new Map<string, WorkbookComputeInputRef[]>(),
         inputHashById: new Map<string, string>(),
         outputHashById: new Map<string, string>(),
-        computeStatusById: new Map<string, "ok" | "stale" | "failed">(),
+        computeStatusById: new Map<string, "ok" | "stale" | "failed" | "disabled">(),
         computeBlockIdsByStage: {
           define: [],
           compute: [],
@@ -11103,7 +11181,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     const inputRefsById = new Map<string, WorkbookComputeInputRef[]>();
     const inputHashById = new Map<string, string>();
     const outputHashById = new Map<string, string>();
-    const computeStatusById = new Map<string, "ok" | "stale" | "failed">();
+    const computeStatusById = new Map<string, "ok" | "stale" | "failed" | "disabled">();
     const outputByType = new Map<WorkbookValueType, { blockId: string; hash: string }[]>();
 
     const blockContentPayload = (block: WorkbookBlock) => ({
@@ -11158,6 +11236,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
 
     for (const entry of orderedBlocks) {
       const { block } = entry;
+      const blockEnabled = isWorkbookBlockEnabled(block);
       const { inputs, outputs } = resolveBlockPorts(block);
       const deps = new Set<string>();
       const inputRefs: WorkbookComputeInputRef[] = inputs.map((input) => {
@@ -11205,8 +11284,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         inputRefsById.set(block.id, inputRefs);
         inputHashById.set(block.id, inputHash);
         const cacheEntry = block.compute?.cache?.[inputHash];
-        let status: "ok" | "stale" | "failed" = "stale";
-        if (cacheEntry?.status === "failed") {
+        let status: "ok" | "stale" | "failed" | "disabled" = "stale";
+        if (!blockEnabled) {
+          status = "disabled";
+        } else if (cacheEntry?.status === "failed") {
           status = "failed";
         } else if (cacheEntry?.status === "ok") {
           status = "ok";
@@ -11220,19 +11301,23 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
         computeStatusById.set(block.id, status);
         const outputHash = hashValue({ operatorId, inputHash });
         outputHashById.set(block.id, outputHash);
-        outputs.forEach((output) => {
-          const list = outputByType.get(output.type) ?? [];
-          list.push({ blockId: block.id, hash: outputHash });
-          outputByType.set(output.type, list);
-        });
+        if (blockEnabled) {
+          outputs.forEach((output) => {
+            const list = outputByType.get(output.type) ?? [];
+            list.push({ blockId: block.id, hash: outputHash });
+            outputByType.set(output.type, list);
+          });
+        }
       } else {
-        const outputHash = hashValue(blockContentPayload(block));
+        const outputHash = hashValue({ ...blockContentPayload(block), enabled: blockEnabled });
         outputHashById.set(block.id, outputHash);
-        outputs.forEach((output) => {
-          const list = outputByType.get(output.type) ?? [];
-          list.push({ blockId: block.id, hash: outputHash });
-          outputByType.set(output.type, list);
-        });
+        if (blockEnabled) {
+          outputs.forEach((output) => {
+            const list = outputByType.get(output.type) ?? [];
+            list.push({ blockId: block.id, hash: outputHash });
+            outputByType.set(output.type, list);
+          });
+        }
       }
     }
 
@@ -11257,7 +11342,7 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
     };
   }, [activeWorkbook, currentDatasetRef, surfaceViewerKind]);
   const computeStatusById = useMemo(() => {
-    const map: Record<string, "ok" | "stale" | "failed"> = {};
+    const map: Record<string, "ok" | "stale" | "failed" | "disabled"> = {};
     for (const [id, status] of workbookGraph.computeStatusById) {
       map[id] = status;
     }
@@ -13955,6 +14040,14 @@ case "mobius":
     [activeWorkbookId]
   );
 
+  const handleToggleWorkbookBlockEnabled = useCallback(
+    (stageId: WorkbookStageId, blockId: string, enabled: boolean) => {
+      if (IS_REPLAY_MODE) return;
+      handleUpdateWorkbookBlock(stageId, blockId, { enabled });
+    },
+    [handleUpdateWorkbookBlock]
+  );
+
   const paramScrubTimersRef = useRef<Map<string, number>>(new Map());
 
   const handleAddBlockParam = useCallback(
@@ -15795,6 +15888,31 @@ case "mobius":
     const html = buildReplayHtml(payload, assets, title);
     downloadTextFile(html, `${base}-${new Date().toISOString().slice(0, 10)}-replay.html`, "text/html");
   }, [workbookSessionPayloadWithWorkspace, workbooks.length, activeWorkbook]);
+
+  const handleExportWorkbookAnalysisTables = useCallback(() => {
+    const csv = buildWorkbookAnalysisTablesCsv(workbooks, activeWorkbookId);
+    const base =
+      workbooks.length > 1
+        ? "math3d-book"
+        : sanitizeFileBase(activeWorkbook?.title ?? "workbook", "workbook");
+    downloadTextFile(csv, `${base}-${new Date().toISOString().slice(0, 10)}-analysis.csv`, "text/csv");
+  }, [workbooks, activeWorkbookId, activeWorkbook]);
+
+  const handleExportWorkbookScreenshot = useCallback(async () => {
+    await handleScreenshot("scene");
+  }, [handleScreenshot]);
+
+  const handleExportWorkbookAnimation = useCallback(() => {
+    if (mode === "surfaces" && isSurfaceDatasetKind(datasetKind)) {
+      handleCaptureSurfacesImplicitDemo();
+      return;
+    }
+    if (mode === "geometry") {
+      handleCaptureGeometryTorusDemo();
+      return;
+    }
+    setScreenshotStatus("Animation export is currently available in Surfaces and Geometry views.");
+  }, [datasetKind, handleCaptureGeometryTorusDemo, handleCaptureSurfacesImplicitDemo, mode]);
 
   const handleImportWorkbooks = useCallback(
     (raw: string) => {
@@ -20041,6 +20159,9 @@ case "mobius":
       if (!activeWorkbookId) return;
       const meta = workbookGraph.blockMetaById.get(blockId);
       const block = meta?.block;
+      if (block && !isWorkbookBlockEnabled(block)) {
+        return;
+      }
       const resolvedOperator = operatorId ?? block?.compute?.operatorId;
       if (!resolvedOperator) {
         handleUpdateWorkbookBlock(stageId, blockId, {
@@ -20291,6 +20412,7 @@ case "mobius":
       const ids = workbookGraph.computeBlockIdsByStage[stageId] ?? [];
       for (const id of ids) {
         const meta = workbookGraph.blockMetaById.get(id);
+        if (!meta || !isWorkbookBlockEnabled(meta.block)) continue;
         await handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
       }
     },
@@ -20315,8 +20437,9 @@ case "mobius":
       if (startIdx < 0) return;
       for (const id of ids.slice(startIdx)) {
         const status = computeStatusById[id];
-        if (status === "ok") continue;
+        if (status === "ok" || status === "disabled") continue;
         const meta = workbookGraph.blockMetaById.get(id);
+        if (!meta || !isWorkbookBlockEnabled(meta.block)) continue;
         await handleRunComputeBlock(stageId, id, meta?.block.compute?.operatorId);
       }
     },
@@ -21816,7 +21939,7 @@ case "mobius":
           setRightPanelTab("inspector");
           return;
         case "help:shortcuts":
-          notify("Shortcuts: Ctrl+N new workspace, Ctrl+O open, Ctrl+S save, Ctrl+D duplicate object.");
+          notify("Shortcuts: Ctrl+N new workspace, Ctrl+O open, Ctrl+S save, Ctrl/Cmd+K command palette, Ctrl+D duplicate object.");
           return;
         case "help:preset-guide":
           setMode("surfaces");
@@ -21891,6 +22014,103 @@ case "mobius":
       void handleMenuCommand(command);
     });
   }, [handleMenuCommand]);
+
+  const commandPaletteItems = useMemo<CommandPaletteItem[]>(
+    () => [
+      { id: "menu:new-workspace", title: "New workspace", keywords: "file workspace new", shortcut: "Ctrl/Cmd+N", run: () => handleMenuCommand("file:new-workspace") },
+      { id: "menu:open-workspace", title: "Open workspace", keywords: "file workspace open", shortcut: "Ctrl/Cmd+O", run: () => handleMenuCommand("file:open-workspace") },
+      { id: "menu:save-workspace", title: "Save workspace", keywords: "file workspace save", shortcut: "Ctrl/Cmd+S", run: () => handleMenuCommand("file:save-workspace") },
+      { id: "menu:save-workspace-as", title: "Save workspace as", keywords: "file workspace save as", shortcut: "Ctrl/Cmd+Shift+S", run: () => handleMenuCommand("file:save-workspace-as") },
+      { id: "wb:run-stage", title: "Run compute stage", keywords: "workbook run stage compute", run: () => handleRunComputeStage(activeStageId) },
+      { id: "wb:run-stale", title: "Run all stale compute blocks", keywords: "workbook run stale", run: () => handleRunAllStale() },
+      { id: "export:session", title: "Export session bundle (.math3d)", keywords: "export session bundle workbook", run: () => handleExportWorkbooks() },
+      { id: "export:screenshot", title: "Export screenshot", keywords: "export screenshot image", run: () => handleExportWorkbookScreenshot() },
+      { id: "export:animation", title: "Export animation", keywords: "export animation video mp4 webm", run: () => handleExportWorkbookAnimation() },
+      { id: "export:analysis", title: "Export analysis tables (CSV)", keywords: "export analysis tables csv", run: () => handleExportWorkbookAnalysisTables() },
+      { id: "export:markdown", title: "Export workbook markdown", keywords: "export markdown md", run: () => handleExportWorkbooksMarkdown() },
+      { id: "export:pdf", title: "Export workbook report (print/PDF)", keywords: "export pdf report", run: () => handleExportWorkbooksPdf() },
+      { id: "export:replay-html", title: "Export replay HTML", keywords: "export replay html share", run: () => handleExportWorkbooksReplayHtml() },
+      { id: "surface:help", title: "Surface command help", keywords: "command prompt help", run: () => handleRunCommand("help") },
+      { id: "surface:wireframe-on", title: "Surface command: wireframe on", keywords: "surface command wireframe", run: () => handleRunCommand("wireframe on") },
+      { id: "surface:wireframe-off", title: "Surface command: wireframe off", keywords: "surface command wireframe", run: () => handleRunCommand("wireframe off") },
+      { id: "surface:probe-on", title: "Surface command: probe on", keywords: "surface command probe", run: () => handleRunCommand("probe on") },
+      { id: "surface:probe-off", title: "Surface command: probe off", keywords: "surface command probe", run: () => handleRunCommand("probe off") },
+      { id: "surface:gaussian", title: "Surface command: colorMode gaussian", keywords: "surface command color curvature", run: () => handleRunCommand("colorMode gaussian") },
+    ],
+    [
+      activeStageId,
+      handleExportWorkbookAnalysisTables,
+      handleExportWorkbookAnimation,
+      handleExportWorkbookScreenshot,
+      handleExportWorkbooks,
+      handleExportWorkbooksMarkdown,
+      handleExportWorkbooksPdf,
+      handleExportWorkbooksReplayHtml,
+      handleMenuCommand,
+      handleRunAllStale,
+      handleRunCommand,
+      handleRunComputeStage,
+    ]
+  );
+  const filteredCommandPaletteItems = useMemo(() => {
+    const q = commandPaletteQuery.trim().toLowerCase();
+    if (!q) return commandPaletteItems;
+    return commandPaletteItems.filter((item) => {
+      const hay = `${item.title} ${item.keywords} ${item.shortcut ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [commandPaletteItems, commandPaletteQuery]);
+  const visibleCommandPaletteItems = useMemo(
+    () => filteredCommandPaletteItems.slice(0, 40),
+    [filteredCommandPaletteItems]
+  );
+  const runCommandPaletteItem = useCallback((item: CommandPaletteItem | null) => {
+    if (!item) return;
+    setCommandPaletteOpen(false);
+    setCommandPaletteQuery("");
+    setCommandPaletteIndex(0);
+    void item.run();
+  }, []);
+  useEffect(() => {
+    if (!commandPaletteOpen) return;
+    setCommandPaletteIndex(0);
+  }, [commandPaletteOpen, commandPaletteQuery]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const metaOrCtrl = event.metaKey || event.ctrlKey;
+      const target = event.target as HTMLElement | null;
+      const isEditable =
+        !!target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (metaOrCtrl && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
+      if (metaOrCtrl && event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        setCommandPaletteOpen(true);
+        return;
+      }
+      if (isEditable || commandPaletteOpen) return;
+      if (metaOrCtrl && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        void handleMenuCommand("file:new-workspace");
+        return;
+      }
+      if (metaOrCtrl && event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        void handleMenuCommand("file:open-workspace");
+        return;
+      }
+      if (metaOrCtrl && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        if (event.shiftKey) void handleMenuCommand("file:save-workspace-as");
+        else void handleMenuCommand("file:save-workspace");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [commandPaletteOpen, handleMenuCommand]);
 
   useEffect(() => {
     if (!isDev || typeof window === "undefined") return;
@@ -25421,6 +25641,16 @@ case "mobius":
                       )}
                       </div>
                     )}
+                  </div>
+                  <div style={topNavSegmentStyle}>
+                    <button
+                      type="button"
+                      onClick={() => setCommandPaletteOpen(true)}
+                      title="Command palette (Ctrl/Cmd+K)"
+                      style={topNavButtonStyle(commandPaletteOpen)}
+                    >
+                      Palette
+                    </button>
                   </div>
                   {mode === "surfaces" && (
                     <div style={topNavSegmentStyle}>
@@ -29145,6 +29375,7 @@ case "mobius":
                       onUpdateBlock={handleUpdateWorkbookBlock}
                       onRemoveBlock={handleRemoveWorkbookBlock}
                       onMoveBlock={handleMoveWorkbookBlock}
+                      onToggleBlockEnabled={handleToggleWorkbookBlockEnabled}
                       onCaptureVisualize={handleCaptureVisualize}
                       onApplyVisualize={handleApplyVisualize}
                       onToggleVisualizeLive={handleToggleVisualizeLive}
@@ -29176,6 +29407,9 @@ case "mobius":
                       onExportMarkdown={handleExportWorkbooksMarkdown}
                       onExportPdf={handleExportWorkbooksPdf}
                       onExportReplayHtml={handleExportWorkbooksReplayHtml}
+                      onExportAnalysisTables={handleExportWorkbookAnalysisTables}
+                      onExportScreenshot={handleExportWorkbookScreenshot}
+                      onExportAnimation={handleExportWorkbookAnimation}
                       onImportJson={handleImportWorkbooks}
                       onSaveWorkbook={handleSaveWorkbook}
                       onSaveWorkbookAs={handleSaveWorkbookAs}
@@ -33836,6 +34070,127 @@ case "mobius":
         >
           {formatViewportDebug("Primary", viewportDebugPrimary)}
           {compareLayoutEnabled ? `\n\n${formatViewportDebug("Secondary", viewportDebugSecondary)}` : ""}
+        </div>
+      )}
+      {commandPaletteOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.35)",
+            zIndex: 2600,
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "center",
+            paddingTop: "10vh",
+            paddingInline: 12,
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setCommandPaletteOpen(false);
+            }
+          }}
+        >
+          <div
+            style={{
+              width: 760,
+              maxWidth: "min(96vw, 760px)",
+              maxHeight: "78vh",
+              borderRadius: 12,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+              boxShadow: "0 18px 42px rgba(15, 23, 42, 0.24)",
+              overflow: "hidden",
+              display: "grid",
+              gridTemplateRows: "auto auto minmax(120px, 1fr)",
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div style={{ padding: "10px 12px", borderBottom: "1px solid #e2e8f0", fontSize: 12, fontWeight: 700 }}>
+              Command palette
+            </div>
+            <div style={{ padding: 10, borderBottom: "1px solid #e2e8f0" }}>
+              <input
+                type="text"
+                value={commandPaletteQuery}
+                autoFocus
+                onChange={(event) => {
+                  setCommandPaletteQuery(event.target.value);
+                  setCommandPaletteIndex(0);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setCommandPaletteOpen(false);
+                    return;
+                  }
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setCommandPaletteIndex((idx) => {
+                      const nextMax = Math.max(0, visibleCommandPaletteItems.length - 1);
+                      return Math.min(nextMax, idx + 1);
+                    });
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setCommandPaletteIndex((idx) => Math.max(0, idx - 1));
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    runCommandPaletteItem(visibleCommandPaletteItems[commandPaletteIndex] ?? null);
+                  }
+                }}
+                placeholder="Type a command (examples: export, screenshot, run stage)..."
+                style={{
+                  width: "100%",
+                  borderRadius: 8,
+                  border: "1px solid #cbd5e1",
+                  padding: "8px 10px",
+                  fontSize: 13,
+                }}
+              />
+            </div>
+            <div style={{ overflowY: "auto", padding: 8, display: "grid", gap: 6 }}>
+              {visibleCommandPaletteItems.length ? (
+                visibleCommandPaletteItems.map((item, idx) => {
+                  const active = idx === commandPaletteIndex;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onMouseEnter={() => setCommandPaletteIndex(idx)}
+                      onClick={() => runCommandPaletteItem(item)}
+                      style={{
+                        textAlign: "left",
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid " + (active ? "#93c5fd" : "#e2e8f0"),
+                        background: active ? "#eff6ff" : "#fff",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        fontSize: 12,
+                      }}
+                    >
+                      <span>{item.title}</span>
+                      {item.shortcut && (
+                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>
+                          {item.shortcut}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              ) : (
+                <div style={{ padding: "10px 8px", fontSize: 12, color: "#64748b" }}>
+                  No commands match this query.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
       {showStatusBar && (

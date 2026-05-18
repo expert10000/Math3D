@@ -129,6 +129,43 @@ Status: `in progress` (2026-05-18)
 - [ ] Add disk comparison report (heat vs dijkstra) with quantitative deltas.
 - [ ] Add geodesic error-bound reporting and export fields.
 
+### P1.2 Execution Board: Surface Chart Tooling
+
+Status: `in progress` (2026-05-18)
+
+- [x] Add chart-cell diagnostics summary (valid/invalid/seam/area stats) in param-surface chart tooling panel.
+- [x] Add seam visualization overlay toggle for wrapped param domains (`wrapU`/`wrapV` seams).
+- [x] Add editable chart-cell masking workflow (mask/unmask selected cell + clear masks).
+- [x] Add unit tests for chart-grid diagnostics math (invalid and seam counting).
+- [ ] Extend the same diagnostics/edit workflow to mesh-face decomposition mode in `SurfaceViewer`.
+- [ ] Add explicit invalid-cell row drilldown table with jump-to-cell actions.
+
+### P1.3 Execution Board: Analysis Pipeline Boxes
+
+Status: `done` (2026-05-18)
+
+- [x] Keep compute pipeline reorder support and add explicit per-step enable/disable toggles in workbook blocks.
+- [x] Add selectable pipeline-step behavior in workbook outline/cards with active-step visual state.
+- [x] Add per-step status support for disabled compute steps (`disabled` state in pipeline status model).
+- [x] Ensure disabled steps are skipped by stage/run-from execution and excluded from pipeline outputs.
+
+### P1.4 Execution Board: Command Palette
+
+Status: `done` (2026-05-18)
+
+- [x] Add global command palette modal with keyboard shortcut (`Ctrl/Cmd+K`, `Ctrl/Cmd+Shift+P`).
+- [x] Add keyboard-first command filtering + arrow navigation + enter-to-run flow.
+- [x] Wire command palette actions to existing menu/workbook/export/surface-command handlers.
+- [x] Add explicit top-nav command-palette launcher for discoverability.
+
+### P1.5 Execution Board: Export System
+
+Status: `done` (2026-05-18)
+
+- [x] Add visible workbook export actions for screenshots, animations, analysis tables (CSV), and session bundle (`.math3d`).
+- [x] Implement analysis-table export generator for workbook blocks/runs metadata.
+- [x] Expose new export actions through the command palette for keyboard-first workflows.
+
 ## P2 (post-release or stretch)
 
 1. Plugin-style `analysis operators` API.

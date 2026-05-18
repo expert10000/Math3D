@@ -269,6 +269,7 @@ export type WorkbookBlock = {
   id: string;
   type: WorkbookBlockType;
   title: string;
+  enabled?: boolean;
   inputs?: WorkbookPort[];
   outputs?: WorkbookPort[];
   text?: string;

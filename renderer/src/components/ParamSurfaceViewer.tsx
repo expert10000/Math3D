@@ -50,6 +50,11 @@ import { Slice2DPreview } from "./Slice2DPreview";
 import type { ColorPalette } from "./colorPalette";
 import type { GaussPoint } from "./gaussMapUtils";
 import {
+  buildChartCellId,
+  computeChartGridDiagnostics,
+  type ChartGridDiagnostics,
+} from "../math/chartGridDiagnostics";
+import {
   buildSurfaceSampleSetFromViewer,
   getNonIndexedDrawCount,
   type SurfaceSample,
@@ -73,12 +78,15 @@ type ParamPreset = {
   createdAt: number;
 };
 type SurfaceCellData = {
+  id: string;
   i: number;
   j: number;
   u0: number;
   u1: number;
   v0: number;
   v1: number;
+  seamU: boolean;
+  seamV: boolean;
   center: THREE.Vector3;
   normal: THREE.Vector3;
   area: number;
@@ -1613,8 +1621,22 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
   const [surfaceCellCentersVisible, setSurfaceCellCentersVisible] = useState(false);
   const [surfaceCellNormalsVisible, setSurfaceCellNormalsVisible] = useState(false);
   const [surfaceCellValuesVisible, setSurfaceCellValuesVisible] = useState(false);
+  const [surfaceCellSeamsVisible, setSurfaceCellSeamsVisible] = useState(true);
   const [selectedSurfaceCellIndex, setSelectedSurfaceCellIndex] = useState<number | null>(null);
   const [selectedSurfaceCellInfo, setSelectedSurfaceCellInfo] = useState<SurfaceCellData | null>(null);
+  const [surfaceCellMaskedIds, setSurfaceCellMaskedIds] = useState<Set<string>>(new Set());
+  const [surfaceCellDiagnostics, setSurfaceCellDiagnostics] = useState<ChartGridDiagnostics>({
+    validCells: 0,
+    seamUCells: 0,
+    seamVCells: 0,
+    maskedCells: 0,
+    skippedNonFinite: 0,
+    skippedDegenerate: 0,
+    invalidCells: 0,
+    minArea: null,
+    maxArea: null,
+    avgArea: null,
+  });
   const surfaceCellSelectionEnabledRef = useRef(surfaceCellSelectionEnabled);
   // direction stored in NORMALIZED uv-space (unit-ish, for the picker)
   const [geoDir, setGeoDir] = useState<{ du: number; dv: number }>({ du: 1, dv: 0 });
@@ -2040,6 +2062,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       setSelectedSurfaceCellInfo(null);
     }
   }, [surfaceCellSelectionEnabled]);
+  useEffect(() => {
+    setSurfaceCellMaskedIds(new Set());
+    setSelectedSurfaceCellIndex(null);
+    setSelectedSurfaceCellInfo(null);
+  }, [surfaceId]);
 
   useEffect(() => {
     sliceParamsRef.current = {
@@ -6103,6 +6130,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     if (!state) return;
 
     const { paramFunc, uMin, uMax, vMin, vMax } = state;
+    const { wrapU, wrapV } = wrapFlagsFor(surfaceId);
     const uCount = Math.max(2, Math.round(chartGridCountU));
     const vCount = Math.max(2, Math.round(chartGridCountV));
     const steps = 120;
@@ -6123,6 +6151,8 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const eB = new THREE.Vector3();
     const nA = new THREE.Vector3();
     const nB = new THREE.Vector3();
+    let skippedNonFinite = 0;
+    let skippedDegenerate = 0;
 
     const addGrid = (axis: "u" | "v", count: number, color: number) => {
       const positions: number[] = [];
@@ -6162,8 +6192,52 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
       group.add(lines);
     };
 
+    const addSeam = (axis: "u" | "v", fixed: number, color: number) => {
+      const positions: number[] = [];
+      const mat = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+      });
+      const tmp = new THREE.Vector3();
+      let prev: THREE.Vector3 | null = null;
+      for (let j = 0; j < steps; j++) {
+        const s = steps === 1 ? 0.5 : j / (steps - 1);
+        const u = axis === "u" ? fixed : uMin + (uMax - uMin) * s;
+        const v = axis === "v" ? fixed : vMin + (vMax - vMin) * s;
+        paramFunc(u, v, tmp);
+        if (!Number.isFinite(tmp.x) || !Number.isFinite(tmp.y) || !Number.isFinite(tmp.z)) {
+          prev = null;
+          continue;
+        }
+        if (prev) {
+          positions.push(prev.x, prev.y, prev.z, tmp.x, tmp.y, tmp.z);
+        }
+        prev = tmp.clone();
+      }
+      if (!positions.length) {
+        mat.dispose();
+        return;
+      }
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const line = new THREE.LineSegments(geom, mat);
+      line.renderOrder = 165;
+      group.add(line);
+    };
+
     addGrid("u", uCount, 0x1f77b4);
     addGrid("v", vCount, 0xff7f0e);
+    if (surfaceCellSeamsVisible) {
+      if (wrapU) {
+        addSeam("u", uMin, 0xdb2777);
+        addSeam("u", uMax, 0xdb2777);
+      }
+      if (wrapV) {
+        addSeam("v", vMin, 0x14b8a6);
+        addSeam("v", vMax, 0x14b8a6);
+      }
+    }
 
     for (let i = 0; i < uCount - 1; i++) {
       const u0 = uMin + ((uMax - uMin) * i) / (uCount - 1);
@@ -6181,6 +6255,7 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           !Number.isFinite(tmpP11.x) || !Number.isFinite(tmpP11.y) || !Number.isFinite(tmpP11.z) ||
           !Number.isFinite(tmpP01.x) || !Number.isFinite(tmpP01.y) || !Number.isFinite(tmpP01.z)
         ) {
+          skippedNonFinite += 1;
           continue;
         }
 
@@ -6202,6 +6277,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
           .crossVectors(eA.subVectors(p11, p10), eB.subVectors(p01, p10))
           .length() * 0.5;
         const area = tri1Area + tri2Area;
+        if (!(Number.isFinite(area) && area > 1e-12)) {
+          skippedDegenerate += 1;
+          continue;
+        }
 
         const normal = new THREE.Vector3()
           .crossVectors(eA.subVectors(p10, p00), eB.subVectors(p01, p00))
@@ -6212,12 +6291,15 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
         }
 
         const cell: SurfaceCellData = {
+          id: buildChartCellId(i, j),
           i,
           j,
           u0,
           u1,
           v0,
           v1,
+          seamU: wrapU && (i === 0 || i === uCount - 2),
+          seamV: wrapV && (j === 0 || j === vCount - 2),
           center,
           normal,
           area,
@@ -6245,6 +6327,14 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     }
 
     chartGridCellsRef.current = cells;
+    setSurfaceCellDiagnostics(
+      computeChartGridDiagnostics({
+        cells,
+        maskedIds: surfaceCellMaskedIds,
+        skippedNonFinite,
+        skippedDegenerate,
+      })
+    );
     if (selectedSurfaceCellIndex != null) {
       setSelectedSurfaceCellInfo(cells[selectedSurfaceCellIndex] ?? null);
     }
@@ -6270,12 +6360,16 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     const areaSpan = Math.max(1e-9, areaMax - areaMin);
     const colors: number[] = [];
     for (let idx = 0; idx < cells.length; idx++) {
+      const cell = cells[idx];
+      const masked = surfaceCellMaskedIds.has(cell.id);
       const t = surfaceCellValuesVisible
-        ? Math.min(1, Math.max(0, (cells[idx].area - areaMin) / areaSpan))
+        ? Math.min(1, Math.max(0, (cell.area - areaMin) / areaSpan))
         : 0;
-      const color = surfaceCellValuesVisible
-        ? new THREE.Color().setHSL(0.62 - 0.53 * t, 0.86, 0.54)
-        : new THREE.Color(0x4f8cff);
+      const color = masked
+        ? new THREE.Color(0x94a3b8)
+        : surfaceCellValuesVisible
+          ? new THREE.Color().setHSL(0.62 - 0.53 * t, 0.86, 0.54)
+          : new THREE.Color(0x4f8cff);
       for (let k = 0; k < 4; k++) {
         colors.push(color.r, color.g, color.b);
       }
@@ -6418,7 +6512,10 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     surfaceCellCentersVisible,
     surfaceCellNormalsVisible,
     surfaceCellValuesVisible,
+    surfaceCellSeamsVisible,
+    surfaceCellMaskedIds,
     selectedSurfaceCellIndex,
+    surfaceId,
     sceneEpoch,
   ]);
 
@@ -6702,6 +6799,11 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
     fontSize: 11,
     cursor: "pointer",
   });
+  const chartWrapFlags = wrapFlagsFor(surfaceId);
+  const chartSeamSupported = chartWrapFlags.wrapU || chartWrapFlags.wrapV;
+  const selectedSurfaceCellMasked = !!(
+    selectedSurfaceCellInfo && surfaceCellMaskedIds.has(selectedSurfaceCellInfo.id)
+  );
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
@@ -6941,6 +7043,24 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
                   />
                   <span>Per-cell area values</span>
                 </label>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    color: chartSeamSupported ? "#0f172a" : "#94a3b8",
+                  }}
+                  title={chartSeamSupported ? "" : "Seam overlay is available on wrapped parameter domains only."}
+                >
+                  <input
+                    type="checkbox"
+                    checked={surfaceCellSeamsVisible}
+                    onChange={(e) => setSurfaceCellSeamsVisible(e.target.checked)}
+                    disabled={!chartSeamSupported}
+                  />
+                  <span>Seam visualization</span>
+                </label>
                 {selectedSurfaceCellInfo && (
                   <div
                     style={{
@@ -6953,9 +7073,66 @@ export const ParamSurfaceViewer: React.FC<Props> = ({
                       padding: "6px 8px",
                     }}
                   >
-                    {`Cell [${selectedSurfaceCellInfo.i}, ${selectedSurfaceCellInfo.j}]  area=${selectedSurfaceCellInfo.area.toFixed(4)}`}
+                    {`Cell [${selectedSurfaceCellInfo.i}, ${selectedSurfaceCellInfo.j}]  area=${selectedSurfaceCellInfo.area.toFixed(4)}${
+                      selectedSurfaceCellInfo.seamU || selectedSurfaceCellInfo.seamV ? "  seam" : ""
+                    }${selectedSurfaceCellMasked ? "  masked" : ""}`}
+                    <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        style={{ padding: "2px 6px", fontSize: 10 }}
+                        onClick={() =>
+                          setSurfaceCellMaskedIds((prev) => {
+                            const next = new Set(prev);
+                            if (selectedSurfaceCellMasked) next.delete(selectedSurfaceCellInfo.id);
+                            else next.add(selectedSurfaceCellInfo.id);
+                            return next;
+                          })
+                        }
+                      >
+                        {selectedSurfaceCellMasked ? "Unmask cell" : "Mask cell"}
+                      </button>
+                      <button
+                        type="button"
+                        style={{ padding: "2px 6px", fontSize: 10 }}
+                        onClick={() => setSurfaceCellMaskedIds(new Set())}
+                        disabled={surfaceCellDiagnostics.maskedCells === 0}
+                      >
+                        Clear masks
+                      </button>
+                    </div>
                   </div>
                 )}
+                <div
+                  style={{
+                    fontSize: 10,
+                    lineHeight: 1.35,
+                    color: "#334155",
+                    background: "rgba(248,250,252,0.9)",
+                    border: "1px solid rgba(148,163,184,0.3)",
+                    borderRadius: 6,
+                    padding: "6px 8px",
+                  }}
+                >
+                  <div>Valid cells: {surfaceCellDiagnostics.validCells}</div>
+                  <div>
+                    Invalid cells: {surfaceCellDiagnostics.invalidCells}
+                    {" "}
+                    (non-finite {surfaceCellDiagnostics.skippedNonFinite}, degenerate {surfaceCellDiagnostics.skippedDegenerate}, masked {surfaceCellDiagnostics.maskedCells})
+                  </div>
+                  <div>
+                    Seams: U {surfaceCellDiagnostics.seamUCells}, V {surfaceCellDiagnostics.seamVCells}
+                  </div>
+                  <div>
+                    Area min/avg/max:{" "}
+                    {surfaceCellDiagnostics.minArea == null
+                      ? "—"
+                      : `${surfaceCellDiagnostics.minArea.toFixed(4)} / ${(
+                          surfaceCellDiagnostics.avgArea ?? 0
+                        ).toFixed(4)} / ${(
+                          surfaceCellDiagnostics.maxArea ?? 0
+                        ).toFixed(4)}`}
+                  </div>
+                </div>
               </div>
             )}
           </div>

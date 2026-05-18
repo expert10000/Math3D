@@ -23,7 +23,7 @@ type WorkbookPanelProps = {
   workbooks: Workbook[];
   activeWorkbookId: string | null;
   activeStageId: WorkbookStageId;
-  computeStatusById: Record<string, "ok" | "stale" | "failed">;
+  computeStatusById: Record<string, "ok" | "stale" | "failed" | "disabled">;
   workbookStatus: "ok" | "stale" | "failed";
   paramCatalog: WorkbookParamDef[];
   onSelectWorkbook: (id: string) => void;
@@ -38,6 +38,7 @@ type WorkbookPanelProps = {
   onUpdateBlock: (stageId: WorkbookStageId, blockId: string, patch: Partial<WorkbookBlock>) => void;
   onRemoveBlock: (stageId: WorkbookStageId, blockId: string) => void;
   onMoveBlock: (stageId: WorkbookStageId, blockId: string, dir: -1 | 1) => void;
+  onToggleBlockEnabled: (stageId: WorkbookStageId, blockId: string, enabled: boolean) => void;
   onCaptureVisualize: (stageId: WorkbookStageId, blockId: string, slot: WorkbookSnapshotSlot) => void;
   onApplyVisualize: (snapshot: WorkbookViewSnapshot, blockId?: string, slot?: WorkbookSnapshotSlot) => void;
   onToggleVisualizeLive: (stageId: WorkbookStageId, blockId: string, live: boolean) => void;
@@ -73,6 +74,9 @@ type WorkbookPanelProps = {
   onExportMarkdown: () => void;
   onExportPdf: () => void;
   onExportReplayHtml: () => void;
+  onExportAnalysisTables: () => void;
+  onExportScreenshot: () => void;
+  onExportAnimation: () => void;
   onImportJson: (raw: string) => void;
   onSaveWorkbook: () => void;
   onSaveWorkbookAs: () => void;
@@ -122,6 +126,7 @@ const STATUS_COLORS: Record<string, string> = {
   stale: "#92400e",
   fail: "#b91c1c",
   failed: "#b91c1c",
+  disabled: "#475569",
   pending: "#1f2937",
 };
 
@@ -460,6 +465,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onUpdateBlock,
   onRemoveBlock,
   onMoveBlock,
+  onToggleBlockEnabled,
   onCaptureVisualize,
   onApplyVisualize,
   onToggleVisualizeLive,
@@ -485,6 +491,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onExportMarkdown,
   onExportPdf,
   onExportReplayHtml,
+  onExportAnalysisTables,
+  onExportScreenshot,
+  onExportAnimation,
   onImportJson,
   onSaveWorkbook,
   onSaveWorkbookAs,
@@ -528,14 +537,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   const [libraryTags, setLibraryTags] = useState<string[]>([]);
   const [workspacePage, setWorkspacePage] = useState<"scene" | "datasets" | "analysis">("scene");
   const [snapshotName, setSnapshotName] = useState("");
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const issueCursorRef = useRef(0);
+  const isBlockEnabled = useCallback((block: WorkbookBlock) => block.enabled !== false, []);
 
-  const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending"; label: string } => {
+  const getBlockStatus = (block: WorkbookBlock): { state: "ok" | "stale" | "fail" | "pending" | "disabled"; label: string } => {
+    if (!isBlockEnabled(block)) {
+      return { state: "disabled", label: "disabled" };
+    }
     if (block.type === "compute") {
       const derived = computeStatusById[block.id];
       const status = derived ?? block.compute?.lastRun?.status ?? block.compute?.status ?? "idle";
       if (status === "failed") return { state: "fail", label: "failed" };
       if (status === "ok") return { state: "ok", label: "ok" };
+      if (status === "disabled") return { state: "disabled", label: "disabled" };
       return { state: "stale", label: status === "idle" ? "stale" : status };
     }
     if (block.type === "assert") {
@@ -553,7 +568,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       stageId: WorkbookStageId;
       stageTitle: string;
       block: WorkbookBlock;
-      status: { state: "ok" | "stale" | "fail" | "pending"; label: string };
+      status: { state: "ok" | "stale" | "fail" | "pending" | "disabled"; label: string };
     }> = [];
     for (const stage of activeWorkbook.stages) {
       for (const block of stage.blocks) {
@@ -566,7 +581,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
       }
     }
     return items;
-  }, [activeWorkbook, currentDatasetRef, computeStatusById]);
+  }, [activeWorkbook, currentDatasetRef, computeStatusById, isBlockEnabled]);
 
   const issueItems = useMemo(
     () =>
@@ -605,7 +620,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     [computeStatusById]
   );
   const hasComputeBlocks = useMemo(
-    () => Object.keys(computeStatusById).length > 0,
+    () => Object.values(computeStatusById).some((status) => status !== "disabled"),
     [computeStatusById]
   );
   const workspaceSceneItems = useMemo(() => {
@@ -679,6 +694,15 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     const raf = requestAnimationFrame(() => requestAnimationFrame(runScroll));
     return () => cancelAnimationFrame(raf);
   }, [pendingScrollId, activeStageId, activeWorkbookId]);
+
+  useEffect(() => {
+    if (!activeStage?.blocks.length) {
+      if (selectedBlockId) setSelectedBlockId(null);
+      return;
+    }
+    if (selectedBlockId && activeStage.blocks.some((block) => block.id === selectedBlockId)) return;
+    setSelectedBlockId(activeStage.blocks[0].id);
+  }, [activeStage, selectedBlockId]);
 
   const handleImport = async (file: File) => {
     try {
@@ -818,13 +842,22 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               </select>
             </label>
             <button type="button" onClick={onExportJson} style={{ padding: "4px 8px" }}>
-              Export...
+              Export session bundle...
             </button>
             <button type="button" onClick={onExportReplayHtml} style={{ padding: "4px 8px" }}>
               Share bundle...
             </button>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onExportScreenshot} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Screenshot
+            </button>
+            <button type="button" onClick={onExportAnimation} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Animation
+            </button>
+            <button type="button" onClick={onExportAnalysisTables} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Analysis tables
+            </button>
             <button type="button" onClick={onExportMarkdown} style={{ padding: "2px 8px", fontSize: 11 }}>
               Export Markdown
             </button>
@@ -1397,6 +1430,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 onClick={() => {
                   onSelectStage(item.stageId);
                   setPendingScrollId(item.block.id);
+                  setSelectedBlockId(item.block.id);
                 }}
                 style={{
                   display: "flex",
@@ -1404,8 +1438,13 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   gap: 6,
                   padding: "4px 6px",
                   borderRadius: 8,
-                  border: "1px solid #e5e7eb",
-                  background: item.stageId === activeStageId ? "#f8fafc" : "#fff",
+                  border: selectedBlockId === item.block.id ? "1px solid #93c5fd" : "1px solid #e5e7eb",
+                  background:
+                    item.stageId === activeStageId && selectedBlockId === item.block.id
+                      ? "#e6f0ff"
+                      : item.stageId === activeStageId
+                        ? "#f8fafc"
+                        : "#fff",
                   fontSize: 11,
                   textAlign: "left",
                 }}
@@ -1438,17 +1477,21 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {activeStage?.blocks.length ? (
-          activeStage.blocks.map((block, idx) => (
+          activeStage.blocks.map((block, idx) => {
+            const selected = selectedBlockId === block.id;
+            const enabled = isBlockEnabled(block);
+            return (
             <div
               key={block.id}
               id={`wb-block-${block.id}`}
               style={{
-                border: "1px solid #e0e0e0",
+                border: selected ? "1px solid #93c5fd" : "1px solid #e0e0e0",
                 borderRadius: 10,
                 padding: 10,
-                background: "#fff",
-                boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+                background: enabled ? (selected ? "#f8fbff" : "#fff") : "#f8fafc",
+                boxShadow: selected ? "0 0 0 1px rgba(59,130,246,0.22), 0 1px 4px rgba(0,0,0,0.04)" : "0 1px 4px rgba(0,0,0,0.04)",
                 borderLeft: `4px solid ${BLOCK_ACCENT[block.type]}`,
+                opacity: enabled ? 1 : 0.72,
                 cursor:
                   block.type === "visualize" &&
                   (resolveVisualizeSnapshot(block, "A") || resolveVisualizeSnapshot(block, "B"))
@@ -1456,6 +1499,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                     : "default",
               }}
               onClick={(e) => {
+                setSelectedBlockId(block.id);
                 if (block.type !== "visualize") return;
                 const snapA = resolveVisualizeSnapshot(block, "A");
                 const snapB = resolveVisualizeSnapshot(block, "B");
@@ -1470,6 +1514,21 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "#111827" }}>
                   {BLOCK_TYPE_LABELS[block.type]}
+                  {!enabled && (
+                    <span
+                      style={{
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        background: "#e2e8f0",
+                        color: "#334155",
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: 0.4,
+                      }}
+                    >
+                      DISABLED
+                    </span>
+                  )}
                   {block.type === "compute" && block.compute?.lastRun?.cacheHit && (
                     <span
                       style={{
@@ -1488,6 +1547,14 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                   )}
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => onToggleBlockEnabled(activeStageId, block.id, !enabled)}
+                    disabled={readOnly}
+                    style={{ padding: "2px 6px", fontSize: 11 }}
+                  >
+                    {enabled ? "Disable" : "Enable"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => onMoveBlock(activeStageId, block.id, -1)}
@@ -2232,7 +2299,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
                 )}
               </div>
             </div>
-          ))
+            );
+          })
         ) : (
           <div style={{ fontSize: 12, opacity: 0.7 }}>
             No blocks yet. Add a block below to start this stage.

@@ -168,6 +168,10 @@ The status bar is docked and persistent to provide passive context with low UI c
   - Param/Weierstrass surfaces: `(u,v)` chart
   - Mesh-like surfaces (`mesh`/`implicit`/`complex`): local tangent-plane chart `(xi,eta)` around the picked point
 - Added chart coordinate readout in probe theory view for the active chart kind.
+- Param chart tooling now includes:
+  - seam visualization toggle for wrapped domains (`wrapU`/`wrapV`)
+  - invalid-cell diagnostics (non-finite, degenerate, and masked cells)
+  - editable cell masking from selected chart cells (`Mask cell` / `Unmask cell` / `Clear masks`)
 - Chart grid now renders reliably on all surface types:
   - Graph: iso-x / iso-y curves on the surface
   - Param/Weierstrass: iso-u / iso-v curves on the surface
