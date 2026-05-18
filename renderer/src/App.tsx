@@ -18639,6 +18639,26 @@ case "mobius":
     }),
     [selectionCurvatures]
   );
+  const surfaceInspectorActiveVectorMagnitudeRange = useMemo(() => {
+    const field = surfaceVectorFields.get(calculusActiveVectorField) ?? null;
+    if (!field?.values?.length) return null;
+    const values = field.values;
+    const stride = Math.max(1, Math.floor(field.itemSize ?? 3));
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i + stride - 1 < values.length; i += stride) {
+      const x = Number(values[i] ?? 0);
+      const y = stride >= 2 ? Number(values[i + 1] ?? 0) : 0;
+      const z = stride >= 3 ? Number(values[i + 2] ?? 0) : 0;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      const magnitude = Math.hypot(x, y, z);
+      if (!Number.isFinite(magnitude)) continue;
+      if (magnitude < min) min = magnitude;
+      if (magnitude > max) max = magnitude;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return { min, max };
+  }, [calculusActiveVectorField, surfaceVectorFields]);
   const surfaceInspectorBadTriangleCount = meshQualityReport?.topology.degenerateFaceCount ?? null;
 
   const geodesicDiskPhiActive = useMemo(() => {
@@ -29573,6 +29593,20 @@ case "mobius":
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
                       curvatureRanges={surfaceInspectorCurvatureRanges}
+                      meshQualityReport={meshQualityReport}
+                      calculusScalarSource={calculusScalarSource}
+                      calculusVectorSource={calculusVectorSource}
+                      calculusActiveVectorField={calculusActiveVectorField}
+                      calculusVectorOverlayEnabled={calculusVectorOverlayEnabled}
+                      calculusStatus={calculusStatus}
+                      calculusError={calculusError}
+                      activeVectorMagnitudeRange={surfaceInspectorActiveVectorMagnitudeRange}
+                      curvatureLineField={curvatureLineField}
+                      curvatureSeedSource={curvatureSeedSource}
+                      curvatureSeedDensity={curvatureSeedDensity}
+                      curvatureMaxSteps={curvatureMaxSteps}
+                      curvatureMaxLines={curvatureMaxLines}
+                      onRebuildCurvatureLines={() => setCurvatureRebuildToken((t) => t + 1)}
                       probeInfo={probeInfo}
                       probeCurv={probeCurv}
                       paramProbeCurv={paramProbeCurv}
@@ -46312,6 +46346,20 @@ type SurfacesRightPanelProps = {
     k1: { min: number; max: number } | null;
     k2: { min: number; max: number } | null;
   };
+  meshQualityReport: MeshQualityReport | null;
+  calculusScalarSource: string;
+  calculusVectorSource: string;
+  calculusActiveVectorField: string;
+  calculusVectorOverlayEnabled: boolean;
+  calculusStatus: string | null;
+  calculusError: string | null;
+  activeVectorMagnitudeRange: { min: number; max: number } | null;
+  curvatureLineField: "d1" | "d2";
+  curvatureSeedSource: "global" | "selection";
+  curvatureSeedDensity: number;
+  curvatureMaxSteps: number;
+  curvatureMaxLines: number;
+  onRebuildCurvatureLines: () => void;
 
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
@@ -46443,6 +46491,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   badTriangleCount,
   geodesicPathLength,
   curvatureRanges,
+  meshQualityReport,
+  calculusScalarSource,
+  calculusVectorSource,
+  calculusActiveVectorField,
+  calculusVectorOverlayEnabled,
+  calculusStatus,
+  calculusError,
+  activeVectorMagnitudeRange,
+  curvatureLineField,
+  curvatureSeedSource,
+  curvatureSeedDensity,
+  curvatureMaxSteps,
+  curvatureMaxLines,
+  onRebuildCurvatureLines,
   probeInfo,
   probeCurv,
   paramProbeCurv,
@@ -46768,6 +46830,49 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     (meshQualityStatus === "ready" ? 0 : 1) +
     (chartAnalysisStatus === "ready" ? 0 : 1) +
     (topologyDiagnosticsStatus === "ready" ? 0 : 1);
+  const principalDirectionsStatus: "ready" | "stale" | "missing" =
+    showPrincipalDirections ? "ready" : probeEnabled || !!probeInfo ? "stale" : "missing";
+  const vectorCalculusDetailedStatus = calculusError
+    ? "stale"
+    : calculusStatus || calculusVectorOverlayEnabled
+      ? "ready"
+      : "not computed";
+  const calculusScalarSourceLabel = (() => {
+    if (calculusScalarSource === "height") return "Height (y)";
+    if (calculusScalarSource === "radius") return "Radius |p|";
+    if (calculusScalarSource === "temperature") return "Temperature";
+    if (calculusScalarSource === "K") return "K (Gaussian)";
+    if (calculusScalarSource === "H") return "H (mean)";
+    if (calculusScalarSource === "custom") return "Custom expression";
+    return calculusScalarSource;
+  })();
+  const vectorCalculusLastOperation = calculusError ?? calculusStatus ?? "none";
+  const activeVectorFieldLabel =
+    calculusVectorOverlayEnabled && calculusActiveVectorField ? calculusActiveVectorField : "none";
+  const curvatureLineCountLabel = showCurvatureLines ? `<= ${Math.max(0, Math.round(curvatureMaxLines))}` : "n/a";
+  const topologyBoundaryLoopsLabel = "n/a";
+  const topologyOrientabilityLabel = "unknown";
+  const topologyEulerCharacteristic = (() => {
+    const vertices = meshInspectorStats.vertexCount;
+    const faces = meshInspectorStats.faceCount;
+    const boundaryEdges = meshInspectorStats.boundaryEdgeCount;
+    const nonManifoldEdges = meshQualityReport?.topology.nonManifoldEdgeCount ?? null;
+    if (
+      vertices == null ||
+      faces == null ||
+      boundaryEdges == null ||
+      !Number.isFinite(vertices) ||
+      !Number.isFinite(faces) ||
+      !Number.isFinite(boundaryEdges)
+    ) {
+      return null;
+    }
+    if (nonManifoldEdges != null && nonManifoldEdges > 0) return null;
+    const estimatedEdges = (3 * faces - boundaryEdges) / 2;
+    if (!Number.isFinite(estimatedEdges)) return null;
+    return vertices - estimatedEdges + faces;
+  })();
+  const showDetailedResultsCards = showDomainPicker;
   const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
@@ -47393,9 +47498,86 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div><strong>bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
           <div><strong>boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
           <div><strong>geodesic length:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? fmt(geodesicPathLength) : "n/a"}</div>
-          <div><strong>vector field magnitude range:</strong> n/a</div>
+          <div><strong>vector field magnitude range:</strong> {formatRange(activeVectorMagnitudeRange)}</div>
         </div>
       </div>
+
+      {showDetailedResultsCards && (
+        <>
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Differential geometry</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {differentialGeometryStatus}</div>
+          <div><strong>Samples:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
+          <div><strong>k1 range:</strong> {formatRange(curvatureRanges.k1)}</div>
+          <div><strong>k2 range:</strong> {formatRange(curvatureRanges.k2)}</div>
+          <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
+          <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
+          <div><strong>Principal directions:</strong> {principalDirectionsStatus}</div>
+          <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
+          <div>
+            <button
+              type="button"
+              onClick={onRebuildCurvatureLines}
+              style={{ padding: "3px 7px", fontSize: 11 }}
+            >
+              Recompute
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Vector calculus</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {vectorCalculusDetailedStatus}</div>
+          <div><strong>Scalar source:</strong> {calculusScalarSourceLabel}</div>
+          <div><strong>Vector source:</strong> {calculusVectorSource || "none"}</div>
+          <div><strong>Last operation:</strong> {vectorCalculusLastOperation}</div>
+          <div><strong>Active vector field:</strong> {activeVectorFieldLabel}</div>
+          <div><strong>Magnitude range:</strong> {formatRange(activeVectorMagnitudeRange)}</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Curvature lines</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {curvatureLinesStatus}</div>
+          <div><strong>Field:</strong> {curvatureLineField}</div>
+          <div><strong>Seed source:</strong> {curvatureSeedSource}</div>
+          <div><strong>Seed density:</strong> {Math.max(1, Math.round(curvatureSeedDensity))}</div>
+          <div><strong>Lines:</strong> {curvatureLineCountLabel}</div>
+          <div><strong>Average length:</strong> n/a</div>
+          <div><strong>Stopped at boundary:</strong> n/a</div>
+          <div><strong>Stopped near singularity:</strong> n/a</div>
+          <div><strong>Max steps:</strong> {Math.max(1, Math.round(curvatureMaxSteps))}</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Mesh quality</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {meshQualityStatus}</div>
+          <div><strong>Bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
+          <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+          <div><strong>Non-manifold edges:</strong> {formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null)}</div>
+          <div><strong>Min angle:</strong> n/a</div>
+          <div><strong>Max aspect ratio:</strong> {meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a"}</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Topology diagnostics</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
+          <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+          <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
+          <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
+          <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
+        </div>
+      </div>
+        </>
+      )}
 
       <div style={workflowCardStyle("analyze")}>
         <div style={inspectorSectionTitle}>Analysis</div>
