@@ -1195,6 +1195,64 @@ const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   return next;
 };
 
+const buildMeshAdjacencyFromFaces = (mesh: Pick<SurfaceMeshData, "positions" | "indices">): number[][] => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  const neighborSets = Array.from({ length: vertexCount }, () => new Set<number>());
+  const indices = mesh.indices ?? null;
+  const faceCount = indices ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  const link = (a: number, b: number) => {
+    if (!Number.isInteger(a) || !Number.isInteger(b)) return;
+    if (a < 0 || b < 0 || a >= vertexCount || b >= vertexCount || a === b) return;
+    neighborSets[a].add(b);
+    neighborSets[b].add(a);
+  };
+  for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
+    let a = faceIndex * 3;
+    let b = a + 1;
+    let c = a + 2;
+    if (indices) {
+      const base = faceIndex * 3;
+      a = Number(indices[base] ?? -1);
+      b = Number(indices[base + 1] ?? -1);
+      c = Number(indices[base + 2] ?? -1);
+    }
+    link(a, b);
+    link(b, c);
+    link(c, a);
+  }
+  return neighborSets.map((neighbors) => Array.from(neighbors));
+};
+
+const countMeshConnectedComponents = (mesh: SurfaceMeshData | null): number | null => {
+  if (!mesh?.positions?.length) return null;
+  const vertexCount = Math.floor(mesh.positions.length / 3);
+  if (vertexCount <= 0) return 0;
+  const adjacency =
+    mesh.adjacency && mesh.adjacency.length === vertexCount
+      ? mesh.adjacency
+      : buildMeshAdjacencyFromFaces(mesh);
+  const visited = new Uint8Array(vertexCount);
+  const stack: number[] = [];
+  let components = 0;
+  for (let start = 0; start < vertexCount; start += 1) {
+    if (visited[start]) continue;
+    components += 1;
+    visited[start] = 1;
+    stack.push(start);
+    while (stack.length) {
+      const current = stack.pop() ?? -1;
+      if (current < 0 || current >= vertexCount) continue;
+      const row = adjacency[current] ?? [];
+      for (const next of row) {
+        if (next < 0 || next >= vertexCount || visited[next]) continue;
+        visited[next] = 1;
+        stack.push(next);
+      }
+    }
+  }
+  return components;
+};
+
 const toMeshDataset = (mesh: SurfaceMeshData | null): MeshDataset | null =>
   mesh ? { kind: "mesh", surfaceType: "mesh", mesh } : null;
 
@@ -11059,6 +11117,10 @@ const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const surfaceMeshConnectedComponentCount = useMemo(
+    () => countMeshConnectedComponents(surfaceMeshData),
+    [surfaceMeshData]
+  );
   const surfaceMeshSourceLabel = useMemo(
     () => (surfaceMeshData?.source ? formatSurfaceMeshSource(surfaceMeshData.source) : null),
     [surfaceMeshData]
@@ -18546,6 +18608,38 @@ case "mobius":
       triCount: Math.floor(activeCgalMesh.indices.length / 3),
     };
   }, [activeCgalMesh]);
+  const surfaceInspectorMeshStats = useMemo(
+    () => ({
+      vertexCount: meshQualityReport?.vertexCount ?? surfaceMeshStats?.vertCount ?? cgalMeshInfo?.vertexCount ?? null,
+      faceCount: meshQualityReport?.faceCount ?? surfaceMeshStats?.triCount ?? cgalMeshInfo?.triCount ?? null,
+      boundaryEdgeCount: meshQualityReport?.topology.boundaryEdgeCount ?? null,
+      connectedComponentCount: surfaceMeshConnectedComponentCount,
+    }),
+    [meshQualityReport, surfaceMeshStats, cgalMeshInfo, surfaceMeshConnectedComponentCount]
+  );
+  const readFiniteRange = (values: Float32Array | null | undefined): { min: number; max: number } | null => {
+    if (!values?.length) return null;
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < values.length; i += 1) {
+      const v = values[i];
+      if (!Number.isFinite(v)) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return { min, max };
+  };
+  const surfaceInspectorCurvatureRanges = useMemo(
+    () => ({
+      K: readFiniteRange(selectionCurvatures?.K),
+      H: readFiniteRange(selectionCurvatures?.H),
+      k1: readFiniteRange(selectionCurvatures?.k1),
+      k2: readFiniteRange(selectionCurvatures?.k2),
+    }),
+    [selectionCurvatures]
+  );
+  const surfaceInspectorBadTriangleCount = meshQualityReport?.topology.degenerateFaceCount ?? null;
 
   const geodesicDiskPhiActive = useMemo(() => {
     if (!geodesicDiskPhi || !geodesicDiskPhiMethod) return false;
@@ -29430,6 +29524,7 @@ case "mobius":
                       surfaceWorkflowStepStateById={surfaceWorkflowStepStateById}
                       onPickEqSurface={handlePickEqSurface}
                       onPickParamSurface={handlePickParamSurface}
+                      graphExpr={graphExpr}
                       implicitExpr={implicitExpr}
                       onChangeImplicitExpr={setImplicitExpr}
                       onLoadDeterministicImplicitSample={handleLoadDeterministicImplicitSample}
@@ -29474,7 +29569,14 @@ case "mobius":
                       onRunCgalMesh={handleRunCgalMesh}
                       onStopCgalWorker={handleStopCgalWorker}
                       cgalMeshInfo={cgalMeshInfo}
+                      meshInspectorStats={surfaceInspectorMeshStats}
+                      badTriangleCount={surfaceInspectorBadTriangleCount}
+                      geodesicPathLength={geodesicHeatLength}
+                      curvatureRanges={surfaceInspectorCurvatureRanges}
                       probeInfo={probeInfo}
+                      probeCurv={probeCurv}
+                      paramProbeCurv={paramProbeCurv}
+                      probeEnabled={probeEnabled}
                       onPickDomainUV={handlePickDomainUV}
                       onPickDomainXY={handlePickDomainXY}
                       onPickDomainXYZ={handlePickDomainXYZ}
@@ -46151,6 +46253,7 @@ type SurfacesRightPanelProps = {
   onPickEqSurface: (id: SurfaceId) => void;
   onPickParamSurface: (id: ParamSurfaceId) => void;
 
+  graphExpr: string;
   implicitExpr: string;
   onChangeImplicitExpr: (s: string) => void;
   onLoadDeterministicImplicitSample: () => void;
@@ -46195,8 +46298,25 @@ type SurfacesRightPanelProps = {
   onRunCgalMesh: () => void;
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
+  meshInspectorStats: {
+    vertexCount: number | null;
+    faceCount: number | null;
+    boundaryEdgeCount: number | null;
+    connectedComponentCount: number | null;
+  };
+  badTriangleCount: number | null;
+  geodesicPathLength: number | null;
+  curvatureRanges: {
+    K: { min: number; max: number } | null;
+    H: { min: number; max: number } | null;
+    k1: { min: number; max: number } | null;
+    k2: { min: number; max: number } | null;
+  };
 
   probeInfo: ProbeInfo | null;
+  probeCurv: CurvatureData | null;
+  paramProbeCurv: PrincipalCurvatureScalars | null;
+  probeEnabled: boolean;
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
@@ -46222,6 +46342,8 @@ type SurfacesRightPanelProps = {
   onRemoveParamDomainPreset: (id: string) => void;
   onRemoveImplicitDomainPreset: (id: string) => void;
 };
+
+type InspectorPanelTab = "object" | "selection" | "analysis" | "warnings";
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
@@ -46272,6 +46394,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   surfaceWorkflowStepStateById,
   onPickEqSurface,
   onPickParamSurface,
+  graphExpr,
   implicitExpr,
   onChangeImplicitExpr,
   onLoadDeterministicImplicitSample,
@@ -46316,7 +46439,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onRunCgalMesh,
   onStopCgalWorker,
   cgalMeshInfo,
+  meshInspectorStats,
+  badTriangleCount,
+  geodesicPathLength,
+  curvatureRanges,
   probeInfo,
+  probeCurv,
+  paramProbeCurv,
+  probeEnabled,
   onPickDomainUV,
   onPickDomainXY,
   onPickDomainXYZ,
@@ -46383,6 +46513,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const [graphDomainLabel, setGraphDomainLabel] = useState("");
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
   const [paramDomainLabel, setParamDomainLabel] = useState("");
+  const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("object");
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -46517,6 +46648,29 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         : isWeierstrass
           ? "Weierstrass minimal surface"
           : "Parametric surface";
+  const identitySourceKind = isMeshViewer
+    ? "mesh"
+    : isWeierstrass
+      ? "Weierstrass"
+      : isParamViewer
+        ? "parametric"
+        : "formula";
+  const sourceEquation = isMeshViewer
+    ? surfaceMeshSource
+      ? formatSurfaceMeshSource(surfaceMeshSource)
+      : "mesh dataset"
+    : isGraphViewer
+      ? graphExpr
+      : isImplicitViewer
+        ? (getEditableImplicitCustomExpr(surfaceId, implicitExpr) ?? implicitExpr)
+        : activeMeta.formula;
+  const definitionParameters = isMeshViewer
+    ? "n/a"
+    : isParamViewer
+      ? "u, v"
+      : isGraphViewer
+        ? "x, y"
+        : "x, y, z";
   const activeResolution = isGraphViewer
     ? graphResolution
     : isWeierstrass
@@ -46524,6 +46678,105 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       : isParamViewer
         ? paramResolution
         : implicitResolution;
+  const previewResolutionLabel = isImplicitViewer
+    ? `${vtkPreviewResolution}^3 (VTK grid)`
+    : `${Math.round(activeResolution)}`;
+  const formatInspectorCount = (value: number | null): string =>
+    value == null || !Number.isFinite(value) ? "n/a" : Math.round(value).toLocaleString();
+  const formatRange = (range: { min: number; max: number } | null) =>
+    range ? `[${fmt(range.min)}, ${fmt(range.max)}]` : "n/a";
+  const normalMagnitude = probeInfo?.normal
+    ? Math.hypot(probeInfo.normal.x, probeInfo.normal.y, probeInfo.normal.z)
+    : null;
+  const hasUnstableNormals =
+    normalMagnitude != null && (!Number.isFinite(normalMagnitude) || normalMagnitude < 0.7 || normalMagnitude > 1.3);
+  const warningContextText = `${generateStatusText} ${vtkPreviewError ?? ""} ${cgalError ?? ""}`.toLowerCase();
+  const hasSingularityRisk =
+    isImplicitViewer && (warningContextText.includes("nan") || warningContextText.includes("inf") || warningContextText.includes("singular"));
+  const hasFailedTraces = Boolean(vtkPreviewError || cgalError || (isImplicitViewer && !workerReady));
+  const hasStaleAnalysis =
+    !showGaussMap &&
+    !showContours &&
+    !showPrincipalDirections &&
+    !showPrincipalLines &&
+    !showCurvatureLines;
+  const hasHighCurvature = showCurvatureLines || showPrincipalLines;
+  const warningRows: Array<{ id: string; label: string; active: boolean; detail: string }> = [
+    {
+      id: "singularities",
+      label: "singularities",
+      active: hasSingularityRisk,
+      detail: hasSingularityRisk ? "Potential singular behavior detected in recent analysis output." : "No singularity flags from current analysis output.",
+    },
+    {
+      id: "unstable-normals",
+      label: "unstable normals",
+      active: hasUnstableNormals,
+      detail:
+        normalMagnitude == null
+          ? "No probe sample yet."
+          : hasUnstableNormals
+            ? `Probe normal magnitude=${fmt(normalMagnitude)} (expected near 1).`
+            : `Probe normal magnitude=${fmt(normalMagnitude)} (stable).`,
+    },
+    {
+      id: "high-curvature",
+      label: "high curvature",
+      active: hasHighCurvature,
+      detail: hasHighCurvature ? "Curvature overlays/lines are active; inspect highlighted regions." : "Curvature overlays are not active.",
+    },
+    {
+      id: "failed-traces",
+      label: "failed traces",
+      active: hasFailedTraces,
+      detail: hasFailedTraces
+        ? vtkPreviewError ?? cgalError ?? (isImplicitViewer && !workerReady ? "Worker unavailable." : "Trace failures detected.")
+        : "No failed preview/mesh traces.",
+    },
+    {
+      id: "stale-analysis",
+      label: "stale analysis",
+      active: hasStaleAnalysis,
+      detail: hasStaleAnalysis
+        ? "No analysis overlays are active."
+        : "At least one analysis overlay is active.",
+    },
+  ];
+  const diagnosticsWarningCount = warningRows.filter((row) => row.active).length;
+  const selectedProbeCurvature =
+    isGraphViewer && probeCurv
+      ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
+      : isParamViewer && paramProbeCurv
+        ? { K: paramProbeCurv.K, H: paramProbeCurv.H, k1: paramProbeCurv.k1, k2: paramProbeCurv.k2 }
+        : null;
+  const differentialGeometryStatus: "ready" | "stale" | "missing" =
+    selectedProbeCurvature || showPrincipalDirections || showPrincipalLines || showCurvatureLines
+      ? "ready"
+      : probeEnabled || !!probeInfo
+        ? "stale"
+        : "missing";
+  const curvatureLinesStatus: "ready" | "stale" | "missing" =
+    showCurvatureLines ? "ready" : probeEnabled ? "stale" : "missing";
+  const vectorCalculusStatus = showGaussMap || showContours || showPlanes ? "ready" : "not computed";
+  const meshQualityStatus = meshInspectorStats.faceCount != null ? "ready" : "not computed";
+  const chartAnalysisStatus = isImplicitViewer ? "unavailable for implicit surface" : "ready";
+  const topologyDiagnosticsStatus = meshInspectorStats.boundaryEdgeCount != null || badTriangleCount != null ? "ready" : "missing";
+  const resultsIssueCount =
+    (differentialGeometryStatus === "ready" ? 0 : 1) +
+    (curvatureLinesStatus === "ready" ? 0 : 1) +
+    (vectorCalculusStatus === "ready" ? 0 : 1) +
+    (meshQualityStatus === "ready" ? 0 : 1) +
+    (chartAnalysisStatus === "ready" ? 0 : 1) +
+    (topologyDiagnosticsStatus === "ready" ? 0 : 1);
+  const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
+    { id: "object", label: "Object" },
+    { id: "selection", label: "Selection" },
+    { id: "analysis", label: resultsIssueCount > 0 ? `Results ${resultsIssueCount}` : "Results" },
+    {
+      id: "warnings",
+      label: diagnosticsWarningCount > 0 ? `Warnings ⚠ ${diagnosticsWarningCount}` : "Warnings",
+    },
+  ];
   const pointPickSection = (
     <div style={workflowCardStyle("domain")}>
       <div style={inspectorSectionTitle}>Point pick</div>
@@ -46592,7 +46845,47 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
   return (
     <section>
-      <h2 style={styles.h2}>Inspector</h2>
+      <h2 style={styles.h2}>INSPECTOR</h2>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+        {inspectorTabs.map((tab) => (
+          <button
+            key={`inspector-tab-${tab.id}`}
+            type="button"
+            onClick={() => setInspectorPanelTab(tab.id)}
+            style={pill(inspectorPanelTab === tab.id)}
+            aria-pressed={inspectorPanelTab === tab.id}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {inspectorPanelTab === "object" && (
+        <>
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Object</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>name:</strong> {activeMeta.label}</div>
+          <div><strong>type:</strong> {viewSourceKind}</div>
+          <div><strong>formula:</strong> {sourceEquation || activeMeta.formula || "n/a"}</div>
+          <div>
+            <strong>domain:</strong>{" "}
+            {isGraphViewer
+              ? `x in ±${fmt(safeGraphDomain.xSpan)}, y in ±${fmt(safeGraphDomain.ySpan)}`
+              : isParamViewer
+                ? `u in [${fmt(safeParamDomain.uMin)}, ${fmt(safeParamDomain.uMax)}], v in [${fmt(safeParamDomain.vMin)}, ${fmt(safeParamDomain.vMax)}]`
+                : isImplicitViewer
+                  ? `x in ±${fmt(safeImplicitDomain.xSpan)}, y in ±${fmt(safeImplicitDomain.ySpan)}`
+                  : "mesh domain"}
+          </div>
+          <div><strong>resolution:</strong> {Math.round(activeResolution)}</div>
+          <div>
+            <strong>vertices / faces:</strong>{" "}
+            {formatInspectorCount(meshInspectorStats.vertexCount)} / {formatInspectorCount(meshInspectorStats.faceCount)}
+          </div>
+          <div><strong>source mode:</strong> {identitySourceKind}</div>
+        </div>
+      </div>
 
       {/* Identity */}
       <div style={inspectorSectionCard}>
@@ -46600,6 +46893,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={{ fontSize: 12, opacity: 0.82 }}>Active surface</div>
         <div style={{ fontWeight: 700, marginTop: 2 }}>{activeMeta.label}</div>
         <div style={{ fontSize: 11, opacity: 0.85, marginTop: 6 }}>Type: {viewSourceKind}</div>
+        <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>Source: {identitySourceKind}</div>
         {isMeshViewer && surfaceMeshStats && (
           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 6 }}>
             {surfaceMeshStats.vertCount.toLocaleString()} verts · {surfaceMeshStats.triCount.toLocaleString()} tris
@@ -46612,6 +46906,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <div style={inspectorSectionTitle}>Definition</div>
         <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Equation", "equation", "parse")}</div>
         <div style={{ fontSize: 12, opacity: 0.82 }}>{activeMeta.formula}</div>
+        <div style={{ fontSize: 11, opacity: 0.82, marginTop: 6 }}>
+          <strong>Parameters:</strong> {definitionParameters}
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.82, marginTop: 4, wordBreak: "break-word" }}>
+          <strong>Source equation:</strong> {sourceEquation || "n/a"}
+        </div>
         {!isImplicitViewer && (
           <div style={{ fontSize: 11, opacity: 0.78, marginTop: 6 }}>
             {activeMeta.note}
@@ -46645,6 +46945,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Domain", "domain")}</div>
           <div style={{ fontSize: 11, marginBottom: 6 }}>
             <strong>Resolution:</strong> {Math.round(activeResolution)}
+          </div>
+          <div style={{ fontSize: 11, marginBottom: 6 }}>
+            <strong>Preview resolution:</strong> {previewResolutionLabel}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <input
@@ -46983,6 +47286,51 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       )}
 
       <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Mesh stats</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
+          <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
+          <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+          <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Analysis status</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Differential geometry:</strong> {differentialGeometryStatus}</div>
+          <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
+          <div><strong>Vector calculus:</strong> {vectorCalculusStatus}</div>
+          <div><strong>Mesh quality:</strong> {meshQualityStatus}</div>
+          <div><strong>Chart analysis:</strong> {chartAnalysisStatus}</div>
+          <div><strong>Topology diagnostics:</strong> {topologyDiagnosticsStatus}</div>
+          <div><strong>Diagnostics:</strong> {diagnosticsWarningCount} warnings</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Selected surface point</div>
+        {!probeInfo ? (
+          <div style={{ fontSize: 11, color: "#475467", display: "grid", gap: 3 }}>
+            <div>No point selected.</div>
+            <div>Use Probe mode to inspect local values.</div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+            <div><strong>p =</strong> ({fmt(probeInfo.point.x)}, {fmt(probeInfo.point.y)}, {fmt(probeInfo.point.z)})</div>
+            <div><strong>n =</strong> ({fmt(probeInfo.normal.x)}, {fmt(probeInfo.normal.y)}, {fmt(probeInfo.normal.z)})</div>
+            <div><strong>K =</strong> {selectedProbeCurvature?.K != null && Number.isFinite(selectedProbeCurvature.K) ? fmt(selectedProbeCurvature.K) : "n/a"}</div>
+            <div><strong>H =</strong> {selectedProbeCurvature?.H != null && Number.isFinite(selectedProbeCurvature.H) ? fmt(selectedProbeCurvature.H) : "n/a"}</div>
+            <div><strong>k1 =</strong> {selectedProbeCurvature?.k1 != null && Number.isFinite(selectedProbeCurvature.k1) ? fmt(selectedProbeCurvature.k1) : "n/a"}</div>
+            <div><strong>k2 =</strong> {selectedProbeCurvature?.k2 != null && Number.isFinite(selectedProbeCurvature.k2) ? fmt(selectedProbeCurvature.k2) : "n/a"}</div>
+            {!probeEnabled && (
+              <div style={{ color: "#475467" }}>Probe mode is currently off.</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>View</div>
         <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
           <div><strong>Source kind:</strong> {viewSourceKind}</div>
@@ -47017,6 +47365,35 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             Opacity: {materialOpacity.toFixed(2)}
             <input type="range" min={0.1} max={1} step={0.01} value={materialOpacity} onChange={(e) => onSetMaterialOpacity(Number(e.target.value))} />
           </label>
+        </div>
+      </div>
+        </>
+      )}
+
+      {inspectorPanelTab === "analysis" && (
+        <>
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Results</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Differential geometry:</strong> {differentialGeometryStatus}</div>
+          <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
+          <div><strong>Vector calculus:</strong> {vectorCalculusStatus}</div>
+          <div><strong>Mesh quality:</strong> {meshQualityStatus}</div>
+          <div><strong>Chart analysis:</strong> {chartAnalysisStatus}</div>
+          <div><strong>Topology diagnostics:</strong> {topologyDiagnosticsStatus}</div>
+        </div>
+      </div>
+
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Numerical summaries</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
+          <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
+          <div><strong>k1 / k2 range:</strong> {formatRange(curvatureRanges.k1)} / {formatRange(curvatureRanges.k2)}</div>
+          <div><strong>bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
+          <div><strong>boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+          <div><strong>geodesic length:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? fmt(geodesicPathLength) : "n/a"}</div>
+          <div><strong>vector field magnitude range:</strong> n/a</div>
         </div>
       </div>
 
@@ -47429,8 +47806,76 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       )}
 
-      {pointPickSection}
+      <div style={workflowCardStyle("analyze")}>
+        <div style={inspectorSectionTitle}>Analysis results</div>
+        <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Analyze", "analyze")}</div>
+        <div style={{ display: "grid", gap: 7, fontSize: 11 }}>
+          <div>
+            <strong>Differential geometry results:</strong>{" "}
+            {showPrincipalDirections || showPrincipalLines || showCurvatureLines ? "active overlays" : "not enabled"}
+          </div>
+          <div>
+            <strong>Vector calculus results:</strong> {showGaussMap || showContours || showPlanes ? "active overlays" : "not enabled"}
+          </div>
+          <div>
+            <strong>Curvature-line results:</strong> {showCurvatureLines ? "visible" : "not visible"}
+          </div>
+          <div>
+            <strong>Mesh quality results:</strong>{" "}
+            {formatInspectorCount(meshInspectorStats.vertexCount)} verts, {formatInspectorCount(meshInspectorStats.faceCount)} faces
+          </div>
+          <div>
+            <strong>Geodesic results:</strong> use Selection/analysis tools to compute geodesic paths.
+          </div>
+        </div>
+      </div>
+        </>
+      )}
 
+      {inspectorPanelTab === "selection" && (
+        <>
+          {pointPickSection}
+          <div style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Selection</div>
+            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+              <div>
+                <strong>Selected point:</strong>{" "}
+                {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}
+              </div>
+              <div>
+                <strong>normal n:</strong>{" "}
+                {probeInfo?.normal ? `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` : "none"}
+              </div>
+              <div><strong>Selected face:</strong> n/a</div>
+              <div><strong>Selected cell:</strong> n/a</div>
+              <div><strong>Selected curve/path:</strong> n/a</div>
+              <div><strong>local K:</strong> {selectedProbeCurvature?.K != null && Number.isFinite(selectedProbeCurvature.K) ? fmt(selectedProbeCurvature.K) : "n/a"}</div>
+              <div><strong>local H:</strong> {selectedProbeCurvature?.H != null && Number.isFinite(selectedProbeCurvature.H) ? fmt(selectedProbeCurvature.H) : "n/a"}</div>
+              <div><strong>local k1:</strong> {selectedProbeCurvature?.k1 != null && Number.isFinite(selectedProbeCurvature.k1) ? fmt(selectedProbeCurvature.k1) : "n/a"}</div>
+              <div><strong>local k2:</strong> {selectedProbeCurvature?.k2 != null && Number.isFinite(selectedProbeCurvature.k2) ? fmt(selectedProbeCurvature.k2) : "n/a"}</div>
+              <div><strong>selected geodesic/path data:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {inspectorPanelTab === "warnings" && (
+        <div style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>Warnings</div>
+          <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+            {warningRows.map((row) => (
+              <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
+                <div style={{ fontWeight: 700, color: row.active ? "#b42318" : "#1f894f" }}>
+                  {row.label}: {row.active ? "warning" : "ok"}
+                </div>
+                <div style={{ color: "#475467" }}>{row.detail}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {inspectorPanelTab === "object" && (
       <div style={workflowCardStyle("promote")}>
         <div style={inspectorSectionTitle}>Actions</div>
         <div style={{ marginTop: -2, marginBottom: 7 }}>{renderWorkflowStatus("Promote", "promote")}</div>
@@ -47502,6 +47947,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
         </details>
       </div>
+      )}
     </section>
   );
 };
