@@ -34480,14 +34480,7 @@ case "mobius":
                   )}
                   {mobiusSubTab === "invariants" && <MobiusInvariantsCard params={mobiusParams} />}
                   {mobiusSubTab === "circles" && <MobiusCirclesCard params={mobiusParams} />}
-                  {mobiusSubTab === "riemann" && (
-                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
-                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Riemann sphere</div>
-                      <div style={{ fontSize: 12, opacity: 0.78 }}>
-                        Planned: stereographic lift of sample points and great-circle visualization for lines/circles.
-                      </div>
-                    </div>
-                  )}
+                  {mobiusSubTab === "riemann" && <MobiusRiemannCard params={mobiusParams} />}
                   {mobiusSubTab === "animation" && (
                     <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
                       <div style={{ fontWeight: 800, marginBottom: 6 }}>Animation</div>
@@ -49646,6 +49639,190 @@ const MobiusCirclesCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
           Rule summary: line → {isAffine ? "line" : "line or circle"}, circle → {isAffine ? "circle" : "circle (or line if through pole)"}.
         </div>
       </div>
+    </div>
+  );
+};
+
+const MobiusRiemannCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
+  const zRef = useRef<PlanePlotHandle | null>(null);
+  const wRef = useRef<PlanePlotHandle | null>(null);
+  const [layoutMode, setLayoutMode] = useState<"triptych" | "sphere">("triptych");
+  const [animating, setAnimating] = useState(true);
+  const [phase, setPhase] = useState(0);
+  const [animSpeed, setAnimSpeed] = useState(0.8);
+  const [sampleRadius, setSampleRadius] = useState(1.25);
+
+  const sampleZ = useMemo<C>(
+    () => ({ re: sampleRadius * Math.cos(phase), im: sampleRadius * Math.sin(phase) }),
+    [phase, sampleRadius]
+  );
+  const sampleW = useMemo(() => mobiusEval(sampleZ, params), [params, sampleZ]);
+
+  useEffect(() => {
+    if (!animating) return;
+    const id = window.setInterval(() => {
+      setPhase((p) => p + 0.04 * Math.max(0.2, animSpeed));
+    }, 30);
+    return () => window.clearInterval(id);
+  }, [animating, animSpeed]);
+
+  useEffect(() => {
+    if (layoutMode !== "triptych") return;
+    if (!zRef.current || !wRef.current) return;
+    renderMobius(zRef.current, wRef.current, params, 220);
+    zRef.current.drawPoints([[sampleZ.re, sampleZ.im]], {
+      color: "#111",
+      shape: "cross",
+      size: 5,
+      layer: "riemann-z-point",
+    });
+    if (sampleW && cFinite(sampleW)) {
+      wRef.current.drawPoints([[sampleW.re, sampleW.im]], {
+        color: "#0a66c2",
+        shape: "cross",
+        size: 5,
+        layer: "riemann-w-point",
+      });
+    } else {
+      wRef.current.drawPoints([], { layer: "riemann-w-point" });
+    }
+  }, [layoutMode, params, sampleW, sampleZ]);
+
+  const sphereLines = useMemo<RiemannSphereLine[]>(() => {
+    const lines: RiemannSphereLine[] = [];
+    const n = 220;
+    const equator: { x: number; y: number; z: number }[] = [];
+    const meridian: { x: number; y: number; z: number }[] = [];
+    const sampleZTrace: { x: number; y: number; z: number }[] = [];
+    const sampleWTrace: { x: number; y: number; z: number }[] = [];
+
+    for (let i = 0; i <= n; i++) {
+      const t = (2 * Math.PI * i) / n;
+      equator.push({ x: Math.cos(t), y: Math.sin(t), z: 0 });
+      meridian.push({ x: Math.cos(t), y: 0, z: Math.sin(t) });
+    }
+    lines.push({ points: equator, color: 0x8a8fa3, opacity: 0.65 });
+    lines.push({ points: meridian, color: 0xb2b7c8, opacity: 0.4 });
+
+    // Tangent plane z = -1 (stereographic domain plane) as wireframe/grid.
+    const half = 1.35;
+    lines.push({
+      points: [
+        { x: -half, y: -half, z: -1 },
+        { x: half, y: -half, z: -1 },
+        { x: half, y: half, z: -1 },
+        { x: -half, y: half, z: -1 },
+        { x: -half, y: -half, z: -1 },
+      ],
+      color: 0x96a0b5,
+      opacity: 0.45,
+    });
+    for (const v of [-0.9, -0.45, 0, 0.45, 0.9]) {
+      lines.push({ points: [{ x: -half, y: v, z: -1 }, { x: half, y: v, z: -1 }], color: 0xb9c0ce, opacity: 0.3 });
+      lines.push({ points: [{ x: v, y: -half, z: -1 }, { x: v, y: half, z: -1 }], color: 0xb9c0ce, opacity: 0.3 });
+    }
+
+    for (let i = 0; i <= n; i++) {
+      const t = phase - Math.PI + (2 * Math.PI * i) / n;
+      const z = { re: sampleRadius * Math.cos(t), im: sampleRadius * Math.sin(t) };
+      const zS = stereographicToSphere(z.re, z.im);
+      sampleZTrace.push({ x: zS.x, y: zS.y, z: zS.z });
+
+      const w = mobiusEval(z, params);
+      const wS = w && cFinite(w) ? stereographicToSphere(w.re, w.im) : { x: 0, y: 0, z: 1 };
+      sampleWTrace.push({ x: wS.x, y: wS.y, z: wS.z });
+    }
+    lines.push({ points: sampleZTrace, color: 0x222222, opacity: 0.88 });
+    lines.push({ points: sampleWTrace, color: 0x0a66c2, opacity: 0.9 });
+
+    return lines;
+  }, [params, phase, sampleRadius]);
+
+  const spherePoints = useMemo<RiemannSpherePoint[]>(() => {
+    const points: RiemannSpherePoint[] = [
+      { x: 0, y: 0, z: 1, color: 0xf57c00, size: 0.075 },   // infinity
+      { x: 0, y: 0, z: -1, color: 0x7c879f, size: 0.052 },  // tangent point
+    ];
+    const zS = stereographicToSphere(sampleZ.re, sampleZ.im);
+    points.push({ x: zS.x, y: zS.y, z: zS.z, color: 0x111111, size: 0.07 });
+    if (sampleW && cFinite(sampleW)) {
+      const wS = stereographicToSphere(sampleW.re, sampleW.im);
+      points.push({ x: wS.x, y: wS.y, z: wS.z, color: 0x0a66c2, size: 0.07 });
+    } else {
+      points.push({ x: 0, y: 0, z: 1, color: 0x0a66c2, size: 0.07 });
+    }
+    return points;
+  }, [sampleZ, sampleW]);
+
+  const sphereGuides = useMemo<RiemannSphereGuide[]>(
+    () => [{ center: { x: 0, y: 0, z: 0 }, radius: 1, color: 0x9ca3af, opacity: 0.2, wireframe: true }],
+    []
+  );
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 800 }}>Riemann sphere</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setLayoutMode("triptych")} style={pill(layoutMode === "triptych")}>Z | Sphere | W</button>
+            <button type="button" onClick={() => setLayoutMode("sphere")} style={pill(layoutMode === "sphere")}>Full 3D sphere</button>
+            <button type="button" onClick={() => setAnimating((v) => !v)}>{animating ? "Pause" : "Animate"}</button>
+          </div>
+        </div>
+        <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            speed
+            <input type="range" min={0.2} max={2.2} step={0.1} value={animSpeed} onChange={(e) => setAnimSpeed(Number(e.target.value))} />
+            <span style={{ fontFamily: "monospace" }}>{animSpeed.toFixed(1)}</span>
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            radius
+            <input type="range" min={0.3} max={2.1} step={0.1} value={sampleRadius} onChange={(e) => setSampleRadius(Number(e.target.value))} />
+            <span style={{ fontFamily: "monospace" }}>{sampleRadius.toFixed(1)}</span>
+          </label>
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.82, marginTop: 6, display: "grid", gap: 2 }}>
+          <div>Stereographic projection: sphere north pole is the point at infinity.</div>
+          <div>Gray plane at z = -1 is the domain plane tangent to the sphere; equator is highlighted.</div>
+          <div>Black trajectory = lifted z-point orbit; blue trajectory = lifted w = f(z) orbit.</div>
+        </div>
+      </div>
+
+      {layoutMode === "triptych" ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(260px, 1fr))", gap: 10, alignItems: "stretch" }}>
+          <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>Z-plane</div>
+            <div style={{ minHeight: 240, height: "100%" }}>
+              <PlanePlot id="svgZMobiusRiemann" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.75, fontFamily: "monospace" }}>
+              z = {cToStr(sampleZ)}
+            </div>
+          </div>
+          <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>Riemann sphere</div>
+            <RiemannSpherePlot lines={sphereLines} points={spherePoints} guideSpheres={sphereGuides} style={{ height: 260 }} />
+            <div style={{ fontSize: 11, opacity: 0.75 }}>Orange marker: ∞. Rotate to inspect the spherical action.</div>
+          </div>
+          <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>W-plane</div>
+            <div style={{ minHeight: 240, height: "100%" }}>
+              <PlanePlot id="svgWMobiusRiemann" extent={3} step={1} ref={wRef} style={{ height: "100%" }} />
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.75, fontFamily: "monospace" }}>
+              w = {sampleW && cFinite(sampleW) ? cToStr(sampleW) : "∞ (pole reached)"}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ ...cardStyle, marginTop: 0 }}>
+          <RiemannSpherePlot lines={sphereLines} points={spherePoints} guideSpheres={sphereGuides} style={{ height: 430 }} />
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.78 }}>
+            Full 3D scene mode: the sphere view shows stereographic geometry, infinity, and animated point transport under the Möbius map.
+          </div>
+        </div>
+      )}
     </div>
   );
 };
