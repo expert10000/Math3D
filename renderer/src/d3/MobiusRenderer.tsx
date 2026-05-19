@@ -51,33 +51,46 @@ import { type MobiusParams, mobiusSafe } from "../math/mobius";
 import { C } from "../math/complex";
 
 type Point = [number, number];
+type RenderMobiusOpts = {
+  gridStep?: number;
+  domainExtent?: number;
+  imageClip?: number;
+  drawGrid?: boolean;
+};
 
 export function renderMobius(
   zPlot: PlanePlotHandle,
   wPlot: PlanePlotHandle,
   p: MobiusParams,
-  samples = 400
+  samples = 400,
+  opts?: RenderMobiusOpts
 ) {
-  console.log("[MobiusRenderer] render", p);
+  const gridStep = opts?.gridStep ?? 0.5;
+  const domainExtent = Math.max(0.6, opts?.domainExtent ?? 3);
+  const imageClip = Number.isFinite(opts?.imageClip) ? Math.max(0.2, opts?.imageClip as number) : Infinity;
+  const drawGrid = opts?.drawGrid !== false;
 
   // reset both planes
   zPlot.clear();
   wPlot.clear();
 
   // base grids
-  zPlot.drawGrid(0.5);
-  wPlot.drawGrid(0.5);
+  if (drawGrid) {
+    zPlot.drawGrid(gridStep);
+    wPlot.drawGrid(gridStep);
+  }
 
   // ----- circles in Z-plane -----
   // we draw several concentric circles centred at 0 in the Z-plane
-  const Rmax = 2.5;       // max radius we draw
-  const NUM_CIRCLES = 6;  // how many radii
+  const Rmax = domainExtent * 0.84;
+  const NUM_CIRCLES = Math.max(4, Math.round(8 + domainExtent * 0.5));
 
   for (let k = 1; k <= NUM_CIRCLES; k++) {
     const r = (Rmax * k) / NUM_CIRCLES;
 
     const circleZ: Point[] = [];
-    const circleW: Point[] = [];
+    let segW: Point[] = [];
+    const mappedSegments: Point[][] = [];
 
     for (let i = 0; i <= samples; i++) {
       const theta = (2 * Math.PI * i) / samples;
@@ -87,11 +100,23 @@ export function renderMobius(
 
       // IMPORTANT: these are *math* coords; PlanePlot scales them
       circleZ.push([z.re, z.im]);
-      circleW.push([w.re, w.im]);
+      const finite = Number.isFinite(w.re) && Number.isFinite(w.im);
+      const clipped = finite && Math.hypot(w.re, w.im) <= imageClip;
+      if (clipped) {
+        segW.push([w.re, w.im]);
+      } else if (segW.length >= 2) {
+        mappedSegments.push(segW);
+        segW = [];
+      } else {
+        segW = [];
+      }
     }
+    if (segW.length >= 2) mappedSegments.push(segW);
 
     // draw one circle in each plane
     zPlot.drawCurve(circleZ, "#333");
-    wPlot.drawCurve(circleW, "#0a66c2");
+    for (const seg of mappedSegments) {
+      wPlot.drawCurve(seg, "#0a66c2");
+    }
   }
 }

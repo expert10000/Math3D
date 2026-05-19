@@ -7886,6 +7886,15 @@ const App: React.FC = () => {
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
   const [mobiusSubTab, setMobiusSubTab] = useState<MobiusSubTab>("map");
+  const [mobiusGridStep, setMobiusGridStep] = useState(0.5);
+  const [mobiusDomainExtent, setMobiusDomainExtent] = useState(3);
+  const [mobiusImageClip, setMobiusImageClip] = useState(8);
+  const [mobiusShowAxes, setMobiusShowAxes] = useState(true);
+  const [mobiusShowLabels, setMobiusShowLabels] = useState(true);
+  const [mobiusShowPole, setMobiusShowPole] = useState(true);
+  const [mobiusShowFixedPoints, setMobiusShowFixedPoints] = useState(true);
+  const [mobiusShowSelectedPoint, setMobiusShowSelectedPoint] = useState(true);
+  const [mobiusSelectedPoint, setMobiusSelectedPoint] = useState<C>({ re: 1, im: 0 });
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -7914,6 +7923,7 @@ const App: React.FC = () => {
       det,
       affine,
       pole,
+      fixed,
       fixedLabel,
       transformationType,
       singularity: pole ? `pole at z = ${cToStr(pole)}` : "none",
@@ -12319,6 +12329,11 @@ const mobiusEffectiveParams = useMemo(() => {
   return stepped ?? mobiusParams; // if affine / invalid, fall back
 }, [mode, mobiusParams, mobiusSubTab, mobiusDecompStep]);
 
+  const mobiusSelectedImage = useMemo(() => mobiusEval(mobiusSelectedPoint, mobiusEffectiveParams), [mobiusSelectedPoint, mobiusEffectiveParams]);
+  const handleMobiusZClick = useCallback((pt: { re: number; im: number }) => {
+    setMobiusSelectedPoint({ re: pt.re, im: pt.im });
+  }, []);
+
     
   const availableColorModes = useMemo(
     () => colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshData?.label),
@@ -12339,7 +12354,62 @@ const mobiusEffectiveParams = useMemo(() => {
 
     switch (mode) {
 case "mobius":
-  renderMobius(zRef.current, wRef.current, mobiusEffectiveParams, samples);
+  renderMobius(zRef.current, wRef.current, mobiusEffectiveParams, samples, {
+    gridStep: mobiusGridStep,
+    domainExtent: mobiusDomainExtent,
+    imageClip: mobiusImageClip,
+  });
+  if (mobiusShowPole && mobiusSummary.pole) {
+    zRef.current.drawPoints([[mobiusSummary.pole.re, mobiusSummary.pole.im]], {
+      color: "#f57c00",
+      shape: "triangle",
+      size: 5,
+      layer: "mobius-pole-z",
+    });
+  } else {
+    zRef.current.drawPoints([], { layer: "mobius-pole-z" });
+  }
+
+  if (mobiusShowFixedPoints && (mobiusSummary.fixed.kind === "pair" || mobiusSummary.fixed.kind === "single")) {
+    const fixedPts = mobiusSummary.fixed.values.map((z) => [z.re, z.im] as [number, number]);
+    zRef.current.drawPoints(fixedPts, {
+      color: "#7b1fa2",
+      shape: "diamond",
+      size: 4.8,
+      layer: "mobius-fixed-z",
+    });
+    wRef.current.drawPoints(fixedPts, {
+      color: "#7b1fa2",
+      shape: "diamond",
+      size: 4.8,
+      layer: "mobius-fixed-w",
+    });
+  } else {
+    zRef.current.drawPoints([], { layer: "mobius-fixed-z" });
+    wRef.current.drawPoints([], { layer: "mobius-fixed-w" });
+  }
+
+  if (mobiusShowSelectedPoint) {
+    zRef.current.drawPoints([[mobiusSelectedPoint.re, mobiusSelectedPoint.im]], {
+      color: "#111",
+      shape: "cross",
+      size: 5.2,
+      layer: "mobius-selected-z",
+    });
+    if (mobiusSelectedImage && cFinite(mobiusSelectedImage)) {
+      wRef.current.drawPoints([[mobiusSelectedImage.re, mobiusSelectedImage.im]], {
+        color: "#111",
+        shape: "cross",
+        size: 5.2,
+        layer: "mobius-selected-w",
+      });
+    } else {
+      wRef.current.drawPoints([], { layer: "mobius-selected-w" });
+    }
+  } else {
+    zRef.current.drawPoints([], { layer: "mobius-selected-z" });
+    wRef.current.drawPoints([], { layer: "mobius-selected-w" });
+  }
   break;
 
 
@@ -12362,7 +12432,28 @@ case "mobius":
         wRef.current.drawGrid(0.5);
         break;
     }
-  }, [mode, mobiusParams, chebN, primKind, primValue, mapId, samples, wPlaneDomainColor, wPlaneShowRings, wPlaneShowRays]);
+  }, [
+    mode,
+    mobiusParams,
+    mobiusEffectiveParams,
+    mobiusGridStep,
+    mobiusDomainExtent,
+    mobiusImageClip,
+    mobiusShowPole,
+    mobiusShowFixedPoints,
+    mobiusShowSelectedPoint,
+    mobiusSelectedPoint,
+    mobiusSelectedImage,
+    mobiusSummary,
+    chebN,
+    primKind,
+    primValue,
+    mapId,
+    samples,
+    wPlaneDomainColor,
+    wPlaneShowRings,
+    wPlaneShowRays,
+  ]);
 
   /* ---------- probe reset rules ---------- */
   useEffect(() => {
@@ -34421,7 +34512,16 @@ case "mobius":
                         <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                           <h3 style={styles.h3}>Z-plane (domain)</h3>
                           <div style={{ minHeight: 300, flex: 1 }}>
-                            <PlanePlot id="svgZ" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
+                            <PlanePlot
+                              id="svgZ"
+                              extent={mobiusDomainExtent}
+                              step={mobiusGridStep}
+                              ref={zRef}
+                              style={{ height: "100%" }}
+                              onClickPoint={handleMobiusZClick}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
+                            />
                           </div>
                         </div>
                         <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
@@ -34453,19 +34553,111 @@ case "mobius":
                               />
                               arg(w) rays
                             </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={mobiusShowAxes}
+                                onChange={(e) => setMobiusShowAxes(e.target.checked)}
+                              />
+                              Show axes
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={mobiusShowLabels}
+                                onChange={(e) => setMobiusShowLabels(e.target.checked)}
+                              />
+                              Show labels
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={mobiusShowPole}
+                                onChange={(e) => setMobiusShowPole(e.target.checked)}
+                              />
+                              Show pole
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={mobiusShowFixedPoints}
+                                onChange={(e) => setMobiusShowFixedPoints(e.target.checked)}
+                              />
+                              Show fixed points
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={mobiusShowSelectedPoint}
+                                onChange={(e) => setMobiusShowSelectedPoint(e.target.checked)}
+                              />
+                              Show selected point
+                            </label>
+                          </div>
+                          <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                            <label style={{ display: "grid", gap: 2 }}>
+                              <span>Grid density (step): {mobiusGridStep.toFixed(2)}</span>
+                              <input
+                                type="range"
+                                min={0.25}
+                                max={1.5}
+                                step={0.25}
+                                value={mobiusGridStep}
+                                onChange={(e) => setMobiusGridStep(Number(e.target.value))}
+                              />
+                            </label>
+                            <label style={{ display: "grid", gap: 2 }}>
+                              <span>Domain range (extent): ±{mobiusDomainExtent.toFixed(1)}</span>
+                              <input
+                                type="range"
+                                min={2}
+                                max={6}
+                                step={0.5}
+                                value={mobiusDomainExtent}
+                                onChange={(e) => setMobiusDomainExtent(Number(e.target.value))}
+                              />
+                            </label>
+                            <label style={{ display: "grid", gap: 2 }}>
+                              <span>Image clipping (|w| max): {mobiusImageClip.toFixed(1)}</span>
+                              <input
+                                type="range"
+                                min={2}
+                                max={20}
+                                step={0.5}
+                                value={mobiusImageClip}
+                                onChange={(e) => setMobiusImageClip(Number(e.target.value))}
+                              />
+                            </label>
                           </div>
                           <div style={{ minHeight: 300, flex: 1 }}>
                             <PlanePlot
                               id="svgW"
-                              extent={3}
-                              step={1}
+                              extent={mobiusDomainExtent}
+                              step={mobiusGridStep}
                               ref={wRef}
                               style={{ height: "100%" }}
                               domainColoring={wPlaneDomainColor}
                               domainRings={wPlaneShowRings}
                               domainRays={wPlaneShowRays}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
                             />
                           </div>
+                        </div>
+                      </div>
+                      <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 6 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>W-plane color legend</div>
+                        <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+                          <div><b>hue</b> = arg(w)</div>
+                          <div><b>brightness</b> = |w|</div>
+                          <div><b>rings</b> = constant |w|</div>
+                          <div><b>rays</b> = constant arg(w)</div>
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.8 }}>
+                          Click in Z-plane to choose a selected point. It is mapped to W-plane and drawn with a cross marker.
+                        </div>
+                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                          z* = {cToStr(mobiusSelectedPoint)} ; w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "∞ (clipped/pole)"}
                         </div>
                       </div>
                     </>

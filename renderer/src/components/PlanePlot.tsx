@@ -793,6 +793,8 @@ type PlanePlotProps = {
   domainColoring?: boolean;
   domainRings?: boolean;
   domainRays?: boolean;
+  showAxes?: boolean;
+  showLabels?: boolean;
 };
 
 const W = 900;
@@ -823,7 +825,21 @@ const hsvToRgb = (h: number, s: number, v: number) => {
 };
 
 export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
-  ({ id, extent = 3, step = 1, style, onClickPoint, domainColoring, domainRings, domainRays }, ref) => {
+  (
+    {
+      id,
+      extent = 3,
+      step = 1,
+      style,
+      onClickPoint,
+      domainColoring,
+      domainRings,
+      domainRays,
+      showAxes = true,
+      showLabels = true,
+    },
+    ref
+  ) => {
     const svgRef = useRef<SVGSVGElement | null>(null);
 
     const gContentRef =
@@ -1071,36 +1087,40 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         }
       }
 
-      // ----- AXES (color depends on plane) -----
-      const axisColor = isZ ? "#555" : "#0a66c2";
+      if (showAxes) {
+        // ----- AXES (color depends on plane) -----
+        const axisColor = isZ ? "#555" : "#0a66c2";
 
-      gContent
-        .append("line")
-        .attr("x1", x(-extent))
-        .attr("y1", y(0))
-        .attr("x2", x(extent))
-        .attr("y2", y(0))
-        .attr("stroke", axisColor)
-        .attr("stroke-width", 1.5);
+        gContent
+          .append("line")
+          .attr("x1", x(-extent))
+          .attr("y1", y(0))
+          .attr("x2", x(extent))
+          .attr("y2", y(0))
+          .attr("stroke", axisColor)
+          .attr("stroke-width", 1.5);
 
-      gContent
-        .append("line")
-        .attr("x1", x(0))
-        .attr("y1", y(-extent))
-        .attr("x2", x(0))
-        .attr("y2", y(extent))
-        .attr("stroke", axisColor)
-        .attr("stroke-width", 1.5);
+        gContent
+          .append("line")
+          .attr("x1", x(0))
+          .attr("y1", y(-extent))
+          .attr("x2", x(0))
+          .attr("y2", y(extent))
+          .attr("stroke", axisColor)
+          .attr("stroke-width", 1.5);
+      }
 
-      // ----- tiny caption -----
-      gContent
-        .append("text")
-        .attr("x", W - 6)
-        .attr("y", H - 6)
-        .attr("text-anchor", "end")
-        .attr("font-size", 10)
-        .attr("fill", isZ ? "#666" : "#0a66c2")
-        .text(isZ ? "Z-plane" : "W-plane");
+      if (showLabels) {
+        // ----- tiny caption -----
+        gContent
+          .append("text")
+          .attr("x", W - 6)
+          .attr("y", H - 6)
+          .attr("text-anchor", "end")
+          .attr("font-size", 10)
+          .attr("fill", isZ ? "#666" : "#0a66c2")
+          .text(isZ ? "Z-plane" : "W-plane");
+      }
     };
 
     useEffect(() => {
@@ -1169,7 +1189,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         svg.on(".zoom", null);
         svg.on("click", null);
       };
-    }, [id, extent, step, onClickPoint]);
+    }, [id, extent, step, onClickPoint, showAxes, showLabels]);
 
     useImperativeHandle(
       ref,
