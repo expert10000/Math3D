@@ -7401,6 +7401,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
+  const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
     if (IS_REPLAY_MODE) return "workspace";
@@ -25034,6 +25035,7 @@ case "mobius":
                   showInternalTabs={panelMode === "tools"}
                   hideViewControls={panelMode === "tools"}
                   initialLeftTab={panelMode === "analysis" ? "analysis" : "controls"}
+                  onChangeAnalysisFocusedSection={setAnalysisFocusedSection}
                   viewerKind={surfaceViewerKind}
                   surfaceId={activeEqSurfaceId}
                   paramId={paramSurfaceId}
@@ -29593,11 +29595,14 @@ case "mobius":
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
                       curvatureRanges={surfaceInspectorCurvatureRanges}
+                      analysisFocusedSection={analysisFocusedSection}
                       meshQualityReport={meshQualityReport}
                       calculusScalarSource={calculusScalarSource}
                       calculusVectorSource={calculusVectorSource}
                       calculusActiveVectorField={calculusActiveVectorField}
                       calculusVectorOverlayEnabled={calculusVectorOverlayEnabled}
+                      calculusVectorDensity={calculusVectorDensity}
+                      calculusVectorScale={calculusVectorScale}
                       calculusStatus={calculusStatus}
                       calculusError={calculusError}
                       activeVectorMagnitudeRange={surfaceInspectorActiveVectorMagnitudeRange}
@@ -40309,10 +40314,20 @@ type SurfacesLeftPanelProps = {
   meshQualityExportStatus: string | null;
   onExportMeshQualityReportJson: () => void;
   onExportMeshQualityReportCsv: () => void;
+  onChangeAnalysisFocusedSection?: (section: AnalysisFocusedSection) => void;
 
 };
 
 type SurfacesLeftTab = "controls" | "scene" | "object" | "view" | "analysis" | "theory";
+type AnalysisFocusedSection =
+  | "differential-geometry"
+  | "vector-calculus"
+  | "curvature-lines"
+  | "ridges-valleys"
+  | "chart-analysis"
+  | "mesh-quality"
+  | "geodesics"
+  | "diagnostics";
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showInternalTabs = true,
@@ -40843,6 +40858,7 @@ onChangeImplicitExpr,
   meshQualityExportStatus,
   onExportMeshQualityReportJson,
   onExportMeshQualityReportCsv,
+  onChangeAnalysisFocusedSection,
   weierstrassDiagnostics,
   weierstrassPathDisagreement,
   weierstrassDiagnosticError,
@@ -41010,6 +41026,14 @@ onChangeImplicitExpr,
     fontWeight: 700,
     fontSize: 12,
   };
+  const handleAnalysisSectionToggle = useCallback(
+    (section: AnalysisFocusedSection, event: React.SyntheticEvent<HTMLDetailsElement>) => {
+      if (event.currentTarget.open) {
+        onChangeAnalysisFocusedSection?.(section);
+      }
+    },
+    [onChangeAnalysisFocusedSection]
+  );
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -43420,7 +43444,11 @@ onChangeImplicitExpr,
             Run computation workflows here. Keep viewer interaction in the View tab.
           </div>
 
-          <details style={analysisAccordionStyle} open>
+          <details
+            style={analysisAccordionStyle}
+            open
+            onToggle={(event) => handleAnalysisSectionToggle("differential-geometry", event)}
+          >
             <summary style={analysisAccordionSummaryStyle}>Differential geometry</summary>
             <div style={{ marginTop: 8, marginBottom: 10, marginLeft: 4 }}>
             <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Compute principal curvatures</div>
@@ -43515,7 +43543,10 @@ onChangeImplicitExpr,
             </div>
           </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("vector-calculus", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Vector calculus</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -43660,7 +43691,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("curvature-lines", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Compute curvature lines</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             <label style={{ display: "block", cursor: "pointer" }}>
@@ -43808,7 +43842,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("ridges-valleys", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Compute ridges / valleys</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             {(() => {
@@ -44046,7 +44083,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("chart-analysis", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Surface chart (chart-cell analysis)</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, display: "grid", gap: 6, fontSize: 11 }}>
             <label style={{ display: "flex", alignItems: "center", cursor: "pointer" }}>
@@ -44096,7 +44136,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("mesh-quality", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Mesh quality analysis</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
           <label style={{ display: "block", cursor: "pointer" }}>
@@ -44398,7 +44441,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("geodesics", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Geodesics</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
           <details style={{ marginLeft: 20, marginTop: 10 }} open={geodesicDiskEnabled}>
@@ -44697,7 +44743,10 @@ onChangeImplicitExpr,
           </div>
         </details>
 
-        <details style={analysisAccordionStyle}>
+        <details
+          style={analysisAccordionStyle}
+          onToggle={(event) => handleAnalysisSectionToggle("diagnostics", event)}
+        >
           <summary style={analysisAccordionSummaryStyle}>Diagnostics</summary>
           <div style={{ marginTop: 8, marginBottom: 6, marginLeft: 4, fontSize: 12 }}>
             <div style={{ fontSize: 11, color: "#475467", marginBottom: 6 }}>
@@ -46346,11 +46395,14 @@ type SurfacesRightPanelProps = {
     k1: { min: number; max: number } | null;
     k2: { min: number; max: number } | null;
   };
+  analysisFocusedSection: AnalysisFocusedSection;
   meshQualityReport: MeshQualityReport | null;
   calculusScalarSource: string;
   calculusVectorSource: string;
   calculusActiveVectorField: string;
   calculusVectorOverlayEnabled: boolean;
+  calculusVectorDensity: number;
+  calculusVectorScale: number;
   calculusStatus: string | null;
   calculusError: string | null;
   activeVectorMagnitudeRange: { min: number; max: number } | null;
@@ -46392,6 +46444,7 @@ type SurfacesRightPanelProps = {
 };
 
 type InspectorPanelTab = "object" | "selection" | "analysis" | "warnings";
+type AnalysisResultsView = "show-all" | "current-screen";
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   viewerKind,
@@ -46491,11 +46544,14 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   badTriangleCount,
   geodesicPathLength,
   curvatureRanges,
+  analysisFocusedSection,
   meshQualityReport,
   calculusScalarSource,
   calculusVectorSource,
   calculusActiveVectorField,
   calculusVectorOverlayEnabled,
+  calculusVectorDensity,
+  calculusVectorScale,
   calculusStatus,
   calculusError,
   activeVectorMagnitudeRange,
@@ -46576,6 +46632,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const [implicitDomainLabel, setImplicitDomainLabel] = useState("");
   const [paramDomainLabel, setParamDomainLabel] = useState("");
   const [inspectorPanelTab, setInspectorPanelTab] = useState<InspectorPanelTab>("object");
+  const [analysisResultsView, setAnalysisResultsView] = useState<AnalysisResultsView>("current-screen");
 
   const paramDefaults = isWeierstrass ? WEIERSTRASS_DEFAULTS.domain : getParamDomainPreviewBounds(paramId);
   const safeGraphDomain = normalizeGraphDomain(graphDomain, getDefaultGraphSpan(surfaceId));
@@ -46873,6 +46930,111 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     return vertices - estimatedEdges + faces;
   })();
   const showDetailedResultsCards = showDomainPicker;
+  const showAllResultsCards = showDetailedResultsCards && analysisResultsView === "show-all";
+  const showFocusedResultCard = showDetailedResultsCards && analysisResultsView === "current-screen";
+  const calculusVectorScaleLabel = Number.isInteger(calculusVectorScale)
+    ? `${calculusVectorScale}`
+    : fmt(calculusVectorScale);
+  const focusedResult = (() => {
+    switch (analysisFocusedSection) {
+      case "differential-geometry":
+        return {
+          title: "Differential geometry",
+          status: differentialGeometryStatus,
+          rows: [
+            { label: "Samples", value: formatInspectorCount(meshInspectorStats.vertexCount) },
+            { label: "Principal directions", value: principalDirectionsStatus },
+            { label: "Curvature lines", value: curvatureLinesStatus },
+            { label: "K range", value: formatRange(curvatureRanges.K) },
+            { label: "H range", value: formatRange(curvatureRanges.H) },
+          ],
+          nextAction: "Enable principal directions or recompute curvature lines.",
+        };
+      case "curvature-lines":
+        return {
+          title: "Curvature lines",
+          status: curvatureLinesStatus,
+          rows: [
+            { label: "Field", value: curvatureLineField },
+            { label: "Seed source", value: curvatureSeedSource },
+            { label: "Seed density", value: `${Math.max(1, Math.round(curvatureSeedDensity))}` },
+            { label: "Max steps", value: `${Math.max(1, Math.round(curvatureMaxSteps))}` },
+            { label: "Lines", value: curvatureLineCountLabel },
+          ],
+          nextAction: "Recompute curvature lines.",
+        };
+      case "mesh-quality":
+        return {
+          title: "Mesh quality",
+          status: meshQualityStatus,
+          rows: [
+            { label: "Bad triangles", value: formatInspectorCount(badTriangleCount) },
+            { label: "Boundary edges", value: formatInspectorCount(meshInspectorStats.boundaryEdgeCount) },
+            { label: "Non-manifold edges", value: formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null) },
+            {
+              label: "Max aspect ratio",
+              value: meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a",
+            },
+          ],
+          nextAction: "Run mesh quality analysis to refresh the report.",
+        };
+      case "geodesics":
+        return {
+          title: "Geodesics",
+          status: geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? "ready" : "not computed",
+          rows: [
+            {
+              label: "Path length",
+              value: geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? fmt(geodesicPathLength) : "n/a",
+            },
+          ],
+          nextAction: "Pick points and run geodesic path or heat flow.",
+        };
+      case "chart-analysis":
+        return {
+          title: "Surface chart analysis",
+          status: chartAnalysisStatus,
+          rows: [
+            { label: "Topology diagnostics", value: topologyDiagnosticsStatus },
+          ],
+          nextAction: "Enable chart grid in the View tab if you need chart-cell coverage.",
+        };
+      case "diagnostics":
+        return {
+          title: "Diagnostics",
+          status: diagnosticsWarningCount > 0 ? "warning" : "ready",
+          rows: [
+            { label: "Warnings", value: `${diagnosticsWarningCount}` },
+            { label: "Stale analysis", value: hasStaleAnalysis ? "yes" : "no" },
+          ],
+          nextAction: "Review active warnings and enable missing analysis overlays.",
+        };
+      case "ridges-valleys":
+        return {
+          title: "Ridges / valleys",
+          status: "stale",
+          rows: [
+            { label: "Prerequisite", value: "principal curvatures + directions" },
+          ],
+          nextAction: "Compute principal directions, then enable ridge/valley tracing.",
+        };
+      case "vector-calculus":
+      default:
+        return {
+          title: "Vector calculus",
+          status: vectorCalculusDetailedStatus,
+          rows: [
+            { label: "Scalar source", value: calculusScalarSourceLabel },
+            { label: "Vector source", value: calculusVectorSource || "none" },
+            { label: "Active vector", value: activeVectorFieldLabel },
+            { label: "Density", value: `${Math.max(20, Math.round(calculusVectorDensity))}` },
+            { label: "Scale", value: calculusVectorScaleLabel },
+            { label: "Magnitude range", value: formatRange(activeVectorMagnitudeRange) },
+          ],
+          nextAction: "Compute grad, div, or curl.",
+        };
+    }
+  })();
   const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
@@ -47479,15 +47641,51 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         <>
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Results</div>
+        {showDetailedResultsCards && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            <button
+              type="button"
+              onClick={() => setAnalysisResultsView("show-all")}
+              style={pill(analysisResultsView === "show-all")}
+              aria-pressed={analysisResultsView === "show-all"}
+            >
+              Show all
+            </button>
+            <button
+              type="button"
+              onClick={() => setAnalysisResultsView("current-screen")}
+              style={pill(analysisResultsView === "current-screen")}
+              aria-pressed={analysisResultsView === "current-screen"}
+            >
+              For your current screen
+            </button>
+          </div>
+        )}
         <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Summary</strong></div>
           <div><strong>Differential geometry:</strong> {differentialGeometryStatus}</div>
           <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
           <div><strong>Vector calculus:</strong> {vectorCalculusStatus}</div>
           <div><strong>Mesh quality:</strong> {meshQualityStatus}</div>
-          <div><strong>Chart analysis:</strong> {chartAnalysisStatus}</div>
-          <div><strong>Topology diagnostics:</strong> {topologyDiagnosticsStatus}</div>
+          <div><strong>Warnings:</strong> {diagnosticsWarningCount}</div>
         </div>
       </div>
+
+      {showFocusedResultCard && (
+      <div style={inspectorSectionCard}>
+        <div style={inspectorSectionTitle}>Focused result: {focusedResult.title}</div>
+        <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+          <div><strong>Status:</strong> {focusedResult.status}</div>
+          {focusedResult.rows.map((row) => (
+            <div key={`focused-result-row-${row.label}`}>
+              <strong>{row.label}:</strong> {row.value}
+            </div>
+          ))}
+          <div><strong>Next action:</strong></div>
+          <div>{focusedResult.nextAction}</div>
+        </div>
+      </div>
+      )}
 
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Numerical summaries</div>
@@ -47502,7 +47700,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         </div>
       </div>
 
-      {showDetailedResultsCards && (
+      {showAllResultsCards && (
         <>
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Differential geometry</div>
