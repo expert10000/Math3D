@@ -1311,7 +1311,7 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 /* ---------------- constants ---------------- */
 
 
-type MobiusSubTab = "map" | "decompose" | "invariants" | "circles";
+type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 
 
 
@@ -1321,6 +1321,18 @@ const identityParams: MobiusParams = {
   c: { re: 0, im: 0 },
   d: { re: 1, im: 0 },
 };
+const mobiusCayleyParams: MobiusParams = {
+  a: { re: 1, im: 0 },
+  b: { re: 0, im: -1 },
+  c: { re: 1, im: 0 },
+  d: { re: 0, im: 1 },
+};
+const cloneMobiusParams = (p: MobiusParams): MobiusParams => ({
+  a: { ...p.a },
+  b: { ...p.b },
+  c: { ...p.c },
+  d: { ...p.d },
+});
 
 const splitterStyle: React.CSSProperties = {
   width: 6,
@@ -7873,10 +7885,41 @@ const App: React.FC = () => {
 
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
-
   const [mobiusSubTab, setMobiusSubTab] = useState<MobiusSubTab>("map");
-// 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
-const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
+  // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
+  const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
+  const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
+  const mobiusSummary = useMemo(() => {
+    const eps = 1e-12;
+    const A = mobiusParams.a;
+    const B = mobiusParams.b;
+    const Cc = mobiusParams.c;
+    const D = mobiusParams.d;
+    const det = cSub(cMul(A, D), cMul(B, Cc));
+    const affine = cAbs2(Cc) < eps;
+    const pole = affine ? null : cNeg(cDiv(D, Cc));
+    const fixed = mobiusFixedPoints(mobiusParams);
+    const fixedLabel =
+      fixed.kind === "all"
+        ? "all points"
+        : fixed.kind === "none"
+          ? "none"
+          : fixed.values.map(cToStr).join(" ; ");
+    const transformationType = affine
+      ? "affine"
+      : cAbs2(A) < eps && cAbs2(D) < eps
+        ? "inversion-like"
+        : "general Möbius";
+    return {
+      det,
+      affine,
+      pole,
+      fixedLabel,
+      transformationType,
+      singularity: pole ? `pole at z = ${cToStr(pole)}` : "none",
+      valid: cAbs2(det) >= eps,
+    };
+  }, [mobiusParams]);
 
   // Chebyshev degree
   const [chebN, setChebN] = useState(3);
@@ -24682,7 +24725,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
+    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_maps";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -24743,6 +24786,12 @@ case "mobius":
       label: "Geometry",
       active: mode === "geometry",
       onSelect: () => setMode("geometry"),
+    },
+    {
+      id: "complex_maps",
+      label: "Complex Maps",
+      active: mode === "mobius",
+      onSelect: () => setMode("mobius"),
     },
   ];
   const displayModeEntries = [
@@ -26316,6 +26365,68 @@ case "mobius":
         {!isSurfacePreviewMode && <div style={styles.controls}>
           {mode === "maps" ? (
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
+          ) : mode === "mobius" ? (
+            <div
+              style={{
+                gridColumn: "span 12",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setMobiusParams(cloneMobiusParams(mobiusCayleyParams))}
+                style={pill(false)}
+                title="Apply Cayley preset"
+              >
+                Preset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobiusSubTab("map");
+                  mobiusFormulaCardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                }}
+                style={pill(mobiusSubTab === "map")}
+              >
+                Formula
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMenuOpen(true);
+                  setShowScreenshotTools(true);
+                }}
+                style={pill(false)}
+              >
+                Screenshot
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = JSON.stringify(mobiusParams, null, 2);
+                  const blob = new Blob([payload], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const anchor = document.createElement("a");
+                  anchor.href = url;
+                  anchor.download = "mobius-params.json";
+                  anchor.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={pill(false)}
+              >
+                Export
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobiusParams(cloneMobiusParams(identityParams))}
+                style={pill(false)}
+              >
+                Reset
+              </button>
+            </div>
           ) : mode === "surfaces" ? (
             <>
               {surfacesLayoutVariant === "layout2" && (
@@ -34232,94 +34343,218 @@ case "mobius":
 
             {/* RIGHT (2D planes) */}
             <div style={styles.stack}>
+              {mode === "mobius" ? (
+                <>
+                  <div style={{ marginBottom: 2 }}>
+                    <div style={pillRow}>
+                      {([
+                        "map",
+                        "decompose",
+                        "invariants",
+                        "circles",
+                        "riemann",
+                        "animation",
+                      ] as MobiusSubTab[]).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => {
+                            setMobiusSubTab(t);
+                            if (t !== "decompose") setMobiusDecompStep(4);
+                          }}
+                          style={pill(mobiusSubTab === t)}
+                          aria-pressed={mobiusSubTab === t}
+                        >
+                          {t === "map"
+                            ? "Map"
+                            : t === "decompose"
+                              ? "Decomposition"
+                              : t === "invariants"
+                                ? "Invariants"
+                                : t === "circles"
+                                  ? "Circles / Lines"
+                                  : t === "riemann"
+                                    ? "Riemann Sphere"
+                                    : "Animation"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
+                  {mobiusSubTab === "map" && (
+                    <>
+                      <div
+                        ref={mobiusFormulaCardRef}
+                        style={{
+                          ...cardStyle,
+                          marginTop: 2,
+                          display: "grid",
+                          gridTemplateColumns: "minmax(260px, 1fr) minmax(260px, 1fr)",
+                          gap: 10,
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 800, marginBottom: 4 }}>Möbius map</div>
+                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 12 }}>
+                            w = (az + b) / (cz + d)
+                          </div>
+                          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                            Linked hover/click mapping between Z and W planes is active in the workspace.
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+                          <div><b>Transformation type:</b> {mobiusSummary.transformationType}</div>
+                          <div><b>Conformal:</b> {mobiusSummary.valid ? "yes" : "degenerate at all points"}</div>
+                          <div><b>Orientation:</b> preserving</div>
+                          <div><b>Singularities:</b> {mobiusSummary.singularity}</div>
+                          <div><b>Fixed points:</b> {mobiusSummary.fixedLabel}</div>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+                          gap: 12,
+                          alignItems: "stretch",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                          <h3 style={styles.h3}>Z-plane (domain)</h3>
+                          <div style={{ minHeight: 300, flex: 1 }}>
+                            <PlanePlot id="svgZ" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                          <h3 style={styles.h3}>W-plane (image)</h3>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={wPlaneDomainColor}
+                                onChange={(e) => setWPlaneDomainColor(e.target.checked)}
+                              />
+                              Domain coloring
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={wPlaneShowRings}
+                                onChange={(e) => setWPlaneShowRings(e.target.checked)}
+                                disabled={!wPlaneDomainColor}
+                              />
+                              |w| rings
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={wPlaneShowRays}
+                                onChange={(e) => setWPlaneShowRays(e.target.checked)}
+                                disabled={!wPlaneDomainColor}
+                              />
+                              arg(w) rays
+                            </label>
+                          </div>
+                          <div style={{ minHeight: 300, flex: 1 }}>
+                            <PlanePlot
+                              id="svgW"
+                              extent={3}
+                              step={1}
+                              ref={wRef}
+                              style={{ height: "100%" }}
+                              domainColoring={wPlaneDomainColor}
+                              domainRings={wPlaneShowRings}
+                              domainRays={wPlaneShowRays}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
 
-{mode === "mobius" && (
-  <div style={{ marginBottom: 10 }}>
-    <div style={pillRow}>
-      {(["map", "decompose", "invariants", "circles"] as MobiusSubTab[]).map((t) => (
-        <button
-          key={t}
-          type="button"
-          onClick={() => {
-            setMobiusSubTab(t);
-            if (t !== "decompose") setMobiusDecompStep(4);
-          }}
-          style={pill(mobiusSubTab === t)}
-          aria-pressed={mobiusSubTab === t}
-        >
-          {t === "map" ? "Map" : t === "decompose" ? "Decompose" : t === "invariants" ? "Invariants" : "Circles/Lines"}
-        </button>
-      ))}
-    </div>
+                  {mobiusSubTab === "decompose" && (
+                    <MobiusDecomposeCard
+                      params={mobiusParams}
+                      step={mobiusDecompStep}
+                      onStep={setMobiusDecompStep}
+                    />
+                  )}
+                  {mobiusSubTab === "invariants" && <MobiusInvariantsCard params={mobiusParams} />}
+                  {mobiusSubTab === "circles" && (
+                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Circles / Lines</div>
+                      <div style={{ fontSize: 12, opacity: 0.78 }}>
+                        Next step: pick a circle/line in Z-plane and display mapped geometry in W-plane with numeric
+                        equations.
+                      </div>
+                    </div>
+                  )}
+                  {mobiusSubTab === "riemann" && (
+                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Riemann sphere</div>
+                      <div style={{ fontSize: 12, opacity: 0.78 }}>
+                        Planned: stereographic lift of sample points and great-circle visualization for lines/circles.
+                      </div>
+                    </div>
+                  )}
+                  {mobiusSubTab === "animation" && (
+                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Animation</div>
+                      <div style={{ fontSize: 12, opacity: 0.78 }}>
+                        Planned: coefficient interpolation and orbit traces with frame export.
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h3 style={styles.h3}>Z-plane (domain)</h3>
+                  <div style={{ flex: 1, minHeight: 260 }}>
+                    <PlanePlot id="svgZ" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
+                  </div>
 
-    {mobiusSubTab === "decompose" && (
-      <MobiusDecomposeCard
-        params={mobiusParams}
-        step={mobiusDecompStep}
-        onStep={setMobiusDecompStep}
-      />
-    )}
-
-    {mobiusSubTab === "invariants" && <MobiusInvariantsCard params={mobiusParams} />}
-
-    {mobiusSubTab === "circles" && (
-    <div style={{ ...cardStyle, maxHeight: 140, overflow: "auto" }}>
-        <div style={{ fontWeight: 800, marginBottom: 6 }}>Circles/Lines</div>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          Coming next: pick a circle/line in Z-plane and show its image parameters in W-plane.
-        </div>
-      </div>
-    )}
-  </div>
-)}
-
-              <h3 style={styles.h3}>Z-plane (domain)</h3>
-              <div style={{ flex: 1, minHeight: 260 }}>
-                <PlanePlot id="svgZ" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
-              </div>
-
-              <h3 style={styles.h3}>W-plane (image)</h3>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={wPlaneDomainColor}
-                    onChange={(e) => setWPlaneDomainColor(e.target.checked)}
-                  />
-                  Domain coloring
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={wPlaneShowRings}
-                    onChange={(e) => setWPlaneShowRings(e.target.checked)}
-                    disabled={!wPlaneDomainColor}
-                  />
-                  |w| rings
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={wPlaneShowRays}
-                    onChange={(e) => setWPlaneShowRays(e.target.checked)}
-                    disabled={!wPlaneDomainColor}
-                  />
-                  arg(w) rays
-                </label>
-              </div>
-              <div style={{ flex: 1, minHeight: 260 }}>
-                <PlanePlot
-                  id="svgW"
-                  extent={3}
-                  step={1}
-                  ref={wRef}
-                  style={{ height: "100%" }}
-                  domainColoring={wPlaneDomainColor}
-                  domainRings={wPlaneShowRings}
-                  domainRays={wPlaneShowRays}
-                />
-              </div>
+                  <h3 style={styles.h3}>W-plane (image)</h3>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11, marginBottom: 6 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={wPlaneDomainColor}
+                        onChange={(e) => setWPlaneDomainColor(e.target.checked)}
+                      />
+                      Domain coloring
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={wPlaneShowRings}
+                        onChange={(e) => setWPlaneShowRings(e.target.checked)}
+                        disabled={!wPlaneDomainColor}
+                      />
+                      |w| rings
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={wPlaneShowRays}
+                        onChange={(e) => setWPlaneShowRays(e.target.checked)}
+                        disabled={!wPlaneDomainColor}
+                      />
+                      arg(w) rays
+                    </label>
+                  </div>
+                  <div style={{ flex: 1, minHeight: 260 }}>
+                    <PlanePlot
+                      id="svgW"
+                      extent={3}
+                      step={1}
+                      ref={wRef}
+                      style={{ height: "100%" }}
+                      domainColoring={wPlaneDomainColor}
+                      domainRings={wPlaneShowRings}
+                      domainRays={wPlaneShowRays}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </>
         )}
@@ -48772,8 +49007,40 @@ const cDiv = (a: C, b: C): C => {
   return { re: (a.re * b.re + a.im * b.im) / d, im: (a.im * b.re - a.re * b.im) / d };
 };
 const cNeg = (a: C): C => ({ re: -a.re, im: -a.im });
+const cSqrt = (z: C): C => {
+  const eps = 1e-12;
+  if (Math.abs(z.re) < eps && Math.abs(z.im) < eps) return { re: 0, im: 0 };
+  const r = Math.hypot(z.re, z.im);
+  const re = Math.sqrt((r + z.re) * 0.5);
+  const imSign = z.im < 0 ? -1 : 1;
+  const im = imSign * Math.sqrt(Math.max(0, (r - z.re) * 0.5));
+  return { re, im };
+};
 
 const cToStr = (z: C) => `${z.re.toFixed(4)}${z.im < 0 ? " − " : " + "}${Math.abs(z.im).toFixed(4)}i`;
+const mobiusFixedPoints = (p: MobiusParams): { kind: "none" | "single" | "pair" | "all"; values: C[] } => {
+  const eps = 1e-12;
+  const A = p.a;
+  const B = p.b;
+  const Cc = p.c;
+  const D = p.d;
+  if (cAbs2(Cc) < eps) {
+    const denom = cSub(A, D);
+    if (cAbs2(denom) < eps) {
+      if (cAbs2(B) < eps) return { kind: "all", values: [] };
+      return { kind: "none", values: [] };
+    }
+    return { kind: "single", values: [cDiv(cNeg(B), denom)] };
+  }
+  const linear = cSub(D, A);
+  const disc = cAdd(cMul(linear, linear), cMul({ re: 4, im: 0 }, cMul(Cc, B)));
+  const sqrtDisc = cSqrt(disc);
+  const twoC = cMul({ re: 2, im: 0 }, Cc);
+  return {
+    kind: "pair",
+    values: [cDiv(cAdd(cNeg(linear), sqrtDisc), twoC), cDiv(cSub(cNeg(linear), sqrtDisc), twoC)],
+  };
+};
 
 type M2 = { a: C; b: C; c: C; d: C };
 
@@ -48917,6 +49184,7 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
 
   const det = cSub(cMul(A, D), cMul(B, Cc)); // AD-BC
   const isAffine = cAbs2(Cc) < eps;
+  const fixed = mobiusFixedPoints(params);
 
   const pole = isAffine ? null : cNeg(cDiv(D, Cc));  // -D/C
   const fInf = isAffine ? null : cDiv(A, Cc);        // A/C
@@ -48940,8 +49208,13 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
             <div style={{ marginTop: 4 }}>
               <b>f(∞)</b> = A/C = <span style={{ fontFamily: "monospace" }}>{fInf ? cToStr(fInf) : ""}</span>
             </div>
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-              Next easy add: fixed points (solve Cz² + (D−A)z − B = 0).
+            <div style={{ marginTop: 4 }}>
+              <b>fixed points</b>{" "}
+              {fixed.kind === "all"
+                ? "all points"
+                : fixed.kind === "none"
+                  ? "none"
+                  : `= ${fixed.values.map(cToStr).join(" ; ")}`}
             </div>
           </>
         )}
