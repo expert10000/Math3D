@@ -25282,7 +25282,11 @@ case "mobius":
     {
       id: "surfaces",
       label: "Surfaces",
-      active: mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "mesh",
+      active:
+        mode === "surfaces" &&
+        isSurfaceDatasetKind(datasetKind) &&
+        surfaceViewerKind !== "mesh" &&
+        surfaceViewerKind !== "complex",
       onSelect: () => {
         setMode("surfaces");
         setDatasetKind("surface");
@@ -26584,7 +26588,7 @@ case "mobius":
                   )}
                 </div>
               </div>
-              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && (
+              {mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind !== "complex" && (
                 <div style={topNavContextBarStyle}>
                   {headerIsSurface && surfaceViewerKind === "mesh" ? (
                     <>
@@ -26750,7 +26754,7 @@ case "mobius":
                   )}
                 </div>
               )}
-              {mode === "surfaces" && (
+              {mode === "surfaces" && surfaceViewerKind !== "complex" && (
                 <div style={topNavContextBarStyle}>
                   <div style={surfacesModeStripWrapStyle}>
                     <div style={surfacesModeGroupStyle("panel")}>
