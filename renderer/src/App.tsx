@@ -34479,15 +34479,7 @@ case "mobius":
                     />
                   )}
                   {mobiusSubTab === "invariants" && <MobiusInvariantsCard params={mobiusParams} />}
-                  {mobiusSubTab === "circles" && (
-                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
-                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Circles / Lines</div>
-                      <div style={{ fontSize: 12, opacity: 0.78 }}>
-                        Next step: pick a circle/line in Z-plane and display mapped geometry in W-plane with numeric
-                        equations.
-                      </div>
-                    </div>
-                  )}
+                  {mobiusSubTab === "circles" && <MobiusCirclesCard params={mobiusParams} />}
                   {mobiusSubTab === "riemann" && (
                     <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
                       <div style={{ fontWeight: 800, marginBottom: 6 }}>Riemann sphere</div>
@@ -49018,6 +49010,61 @@ const cSqrt = (z: C): C => {
 };
 
 const cToStr = (z: C) => `${z.re.toFixed(4)}${z.im < 0 ? " − " : " + "}${Math.abs(z.im).toFixed(4)}i`;
+const cFinite = (z: C) => Number.isFinite(z.re) && Number.isFinite(z.im);
+const cAbs = (z: C) => Math.hypot(z.re, z.im);
+const cDot = (a: C, b: C) => a.re * b.re + a.im * b.im;
+const cCross = (a: C, b: C) => a.re * b.im - a.im * b.re;
+
+const mobiusEval = (z: C, p: MobiusParams, eps = 1e-12): C | null => {
+  const denom = cAdd(cMul(p.c, z), p.d);
+  if (cAbs2(denom) < eps) return null;
+  return cDiv(cAdd(cMul(p.a, z), p.b), denom);
+};
+
+const crossRatio = (z1: C, z2: C, z3: C, z4: C, eps = 1e-12): C | null => {
+  const n1 = cSub(z1, z3);
+  const n2 = cSub(z2, z4);
+  const d1 = cSub(z1, z4);
+  const d2 = cSub(z2, z3);
+  const den = cMul(d1, d2);
+  if (cAbs2(den) < eps) return null;
+  return cDiv(cMul(n1, n2), den);
+};
+
+const buildCirclePolyline = (center: C, radius: number, samples = 240): C[] => {
+  const pts: C[] = [];
+  for (let i = 0; i <= samples; i++) {
+    const t = (2 * Math.PI * i) / samples;
+    pts.push({ re: center.re + radius * Math.cos(t), im: center.im + radius * Math.sin(t) });
+  }
+  return pts;
+};
+
+const buildLinePolyline = (point: C, direction: C, tMin: number, tMax: number, samples = 240): C[] => {
+  const pts: C[] = [];
+  for (let i = 0; i <= samples; i++) {
+    const u = i / samples;
+    const t = tMin + (tMax - tMin) * u;
+    pts.push({ re: point.re + direction.re * t, im: point.im + direction.im * t });
+  }
+  return pts;
+};
+
+const mapPolylineSegments = (polyline: C[], params: MobiusParams, eps = 1e-12): [number, number][][] => {
+  const segments: [number, number][][] = [];
+  let current: [number, number][] = [];
+  for (const z of polyline) {
+    const w = mobiusEval(z, params, eps);
+    if (!w || !cFinite(w)) {
+      if (current.length >= 2) segments.push(current);
+      current = [];
+      continue;
+    }
+    current.push([w.re, w.im]);
+  }
+  if (current.length >= 2) segments.push(current);
+  return segments;
+};
 const mobiusFixedPoints = (p: MobiusParams): { kind: "none" | "single" | "pair" | "all"; values: C[] } => {
   const eps = 1e-12;
   const A = p.a;
@@ -49061,28 +49108,29 @@ const mToParams = (M: M2): MobiusParams => ({ a: M.a, b: M.b, c: M.c, d: M.d });
 
 function mobiusParamsAtDecomposeStep(p: MobiusParams, step: number, eps = 1e-12): MobiusParams | null {
   const A = p.a, B = p.b, Cc = p.c, D = p.d;
+  const det = cSub(cMul(A, D), cMul(B, Cc));
 
-  if (cAbs2(Cc) < eps) {
-    // affine case (no universal alpha/beta/delta decomposition)
+  if (cAbs2(Cc) < eps || cAbs2(det) < eps) {
+    // affine or singular case: no stable four-step decomposition
     return null;
   }
 
-  const alpha = cDiv(A, Cc);
+  const finalShift = cDiv(A, Cc);
   const delta = cDiv(D, Cc);
-  const beta = cDiv(cSub(cMul(B, Cc), cMul(A, D)), cMul(Cc, Cc)); // (BC-AD)/C^2
+  const lambda = cDiv(cMul(Cc, Cc), cSub(cMul(B, Cc), cMul(A, D))); // C^2/(BC-AD)
 
   // Build step matrix:
   // step0: id
   // step1: Tδ
-  // step2: J ∘ Tδ
-  // step3: Sβ ∘ J ∘ Tδ
-  // step4: Tα ∘ Sβ ∘ J ∘ Tδ
+  // step2: Sλ ∘ Tδ
+  // step3: J ∘ Sλ ∘ Tδ
+  // step4: Tβ ∘ J ∘ Sλ ∘ Tδ
   let M = mId();
 
   if (step >= 1) M = mMul(mT(delta), M);
-  if (step >= 2) M = mMul(mJ(), M);
-  if (step >= 3) M = mMul(mS(beta), M);
-  if (step >= 4) M = mMul(mT(alpha), M);
+  if (step >= 2) M = mMul(mS(lambda), M);
+  if (step >= 3) M = mMul(mJ(), M);
+  if (step >= 4) M = mMul(mT(finalShift), M);
 
   return mToParams(M);
 }
@@ -49093,32 +49141,36 @@ const MobiusDecomposeCard: React.FC<{
 }> = ({ params, step, onStep }) => {
   const eps = 1e-12;
   const A = params.a, B = params.b, Cc = params.c, D = params.d;
+  const det = cSub(cMul(A, D), cMul(B, Cc));
 
   const isAffine = cAbs2(Cc) < eps;
+  const isSingular = cAbs2(det) < eps;
 
-  let alpha: C | null = null;
-  let beta: C | null = null;
+  let finalShift: C | null = null;
+  let lambda: C | null = null;
   let delta: C | null = null;
 
-  if (!isAffine) {
-    alpha = cDiv(A, Cc);
+  if (!isAffine && !isSingular) {
+    finalShift = cDiv(A, Cc);
     delta = cDiv(D, Cc);
-    beta = cDiv(cSub(cMul(B, Cc), cMul(A, D)), cMul(Cc, Cc));
+    lambda = cDiv(cMul(Cc, Cc), cSub(cMul(B, Cc), cMul(A, D)));
   }
 
   const stepsLabel = [
     "0: z",
     "1: Tδ(z)=z+δ",
-    "2: J(z)=1/(z+δ)",
-    "3: Sβ(z)=β/(z+δ)",
-    "4: Tα(z)=α+β/(z+δ)",
+    "2: Sλ(z)=λ(z+δ)",
+    "3: J(z)=1/(λ(z+δ))",
+    "4: Tβ(z)=β+1/(λ(z+δ))",
   ];
 
   const copyLatex = async () => {
     const latex =
       isAffine
         ? `f(z)=\\frac{Az+B}{D}=\\left(\\frac{A}{D}\\right)z+\\frac{B}{D}`
-        : `\\alpha=\\frac{A}{C},\\ \\delta=\\frac{D}{C},\\ \\beta=\\frac{BC-AD}{C^2},\\quad f(z)=\\alpha+\\frac{\\beta}{z+\\delta}=T_\\alpha\\circ S_\\beta\\circ J\\circ T_\\delta`;
+        : isSingular
+          ? `\\det=AD-BC=0\\text{ (singular matrix): no Möbius decomposition}`
+          : `\\delta=\\frac{D}{C},\\ \\lambda=\\frac{C^2}{BC-AD},\\ \\beta=\\frac{A}{C},\\quad f(z)=\\beta+\\frac{1}{\\lambda(z+\\delta)}=T_\\beta\\circ J\\circ S_\\lambda\\circ T_\\delta`;
     await navigator.clipboard.writeText(latex);
   };
 
@@ -49146,12 +49198,26 @@ const MobiusDecomposeCard: React.FC<{
         <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
           Affine case (C≈0): f(z) = (A/D)z + (B/D). Stepper disabled.
         </div>
+      ) : isSingular ? (
+        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+          Singular case (AD-BC≈0): decomposition disabled because this is not an invertible Möbius map.
+        </div>
       ) : (
         <>
           <div style={{ marginTop: 8, fontSize: 12 }}>
-            <div style={{ fontFamily: "monospace" }}>α = A/C = {alpha ? cToStr(alpha) : ""}</div>
             <div style={{ fontFamily: "monospace" }}>δ = D/C = {delta ? cToStr(delta) : ""}</div>
-            <div style={{ fontFamily: "monospace" }}>β = (BC−AD)/C² = {beta ? cToStr(beta) : ""}</div>
+            <div style={{ fontFamily: "monospace" }}>λ = C²/(BC-AD) = {lambda ? cToStr(lambda) : ""}</div>
+            <div style={{ fontFamily: "monospace" }}>β = A/C = {finalShift ? cToStr(finalShift) : ""}</div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.5 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Pipeline</div>
+            <div style={{ fontFamily: "monospace" }}>Z-plane</div>
+            <div style={{ marginLeft: 10 }}>↓ translation: z → z + δ</div>
+            <div style={{ marginLeft: 10 }}>↓ scaling/rotation: z → λz</div>
+            <div style={{ marginLeft: 10 }}>↓ inversion: z → 1/z</div>
+            <div style={{ marginLeft: 10 }}>↓ final translation: z → z + β</div>
+            <div style={{ fontFamily: "monospace", marginTop: 2 }}>W-plane</div>
           </div>
 
           <div style={{ marginTop: 10 }}>
@@ -49184,40 +49250,401 @@ const MobiusInvariantsCard: React.FC<{ params: MobiusParams }> = ({ params }) =>
 
   const det = cSub(cMul(A, D), cMul(B, Cc)); // AD-BC
   const isAffine = cAbs2(Cc) < eps;
+  const isSingular = cAbs2(det) < eps;
   const fixed = mobiusFixedPoints(params);
+  const zRef = useRef<PlanePlotHandle | null>(null);
+  const wRef = useRef<PlanePlotHandle | null>(null);
+  const [replaceIndex, setReplaceIndex] = useState(0);
+  const [crossPoints, setCrossPoints] = useState<C[]>([
+    { re: -1.2, im: -0.9 },
+    { re: 1.1, im: -0.8 },
+    { re: 0.9, im: 1.0 },
+    { re: -0.8, im: 0.9 },
+  ]);
 
   const pole = isAffine ? null : cNeg(cDiv(D, Cc));  // -D/C
   const fInf = isAffine ? null : cDiv(A, Cc);        // A/C
+  const fixedLabel =
+    fixed.kind === "all"
+      ? "all points"
+      : fixed.kind === "none"
+        ? "none"
+        : fixed.values.map(cToStr).join(" ; ");
+  const crossZ = useMemo(() => crossRatio(crossPoints[0], crossPoints[1], crossPoints[2], crossPoints[3]), [crossPoints]);
+  const crossWPoints = useMemo(() => crossPoints.map((z) => mobiusEval(z, params)), [crossPoints, params]);
+  const crossWValid = crossWPoints.every((w) => !!w && cFinite(w));
+  const crossW = useMemo(() => {
+    if (!crossWValid) return null;
+    const p0 = crossWPoints[0] as C;
+    const p1 = crossWPoints[1] as C;
+    const p2 = crossWPoints[2] as C;
+    const p3 = crossWPoints[3] as C;
+    return crossRatio(p0, p1, p2, p3);
+  }, [crossWPoints, crossWValid]);
+  const crossDiff = useMemo(() => {
+    if (!crossZ || !crossW) return null;
+    return cAbs(cSub(crossZ, crossW));
+  }, [crossZ, crossW]);
+
+  const setPointFromClick = useCallback((pt: { re: number; im: number }) => {
+    setCrossPoints((prev) => prev.map((z, i) => (i === replaceIndex ? { re: pt.re, im: pt.im } : z)));
+    setReplaceIndex((i) => (i + 1) % 4);
+  }, [replaceIndex]);
+
+  useEffect(() => {
+    if (!zRef.current || !wRef.current) return;
+    zRef.current.clear();
+    wRef.current.clear();
+    zRef.current.drawGrid(0.5);
+    wRef.current.drawGrid(0.5);
+
+    const colors = ["#d32f2f", "#1976d2", "#2e7d32", "#7b1fa2"];
+    const zPairs = crossPoints.map((p) => [p.re, p.im] as [number, number]);
+    zRef.current.drawCurve([...zPairs, zPairs[0]], "#444", { layer: "cr-z-poly", width: 1.1, dash: "4 3", opacity: 0.72 });
+    for (let i = 0; i < crossPoints.length; i++) {
+      zRef.current.drawPoints([[crossPoints[i].re, crossPoints[i].im]], {
+        color: colors[i],
+        size: 4.8,
+        shape: "circle",
+        layer: `cr-z-${i}`,
+      });
+    }
+
+    const validW = crossWPoints
+      .map((p) => (p && cFinite(p) ? [p.re, p.im] as [number, number] : null))
+      .filter((p): p is [number, number] => !!p);
+    if (validW.length >= 2) {
+      wRef.current.drawCurve([...validW, validW[0]], "#0b66c3", { layer: "cr-w-poly", width: 1.1, dash: "4 3", opacity: 0.72 });
+    }
+    for (let i = 0; i < crossWPoints.length; i++) {
+      const w = crossWPoints[i];
+      if (!w || !cFinite(w)) continue;
+      wRef.current.drawPoints([[w.re, w.im]], {
+        color: colors[i],
+        size: 4.8,
+        shape: "circle",
+        layer: `cr-w-${i}`,
+      });
+    }
+  }, [crossPoints, crossWPoints]);
 
   return (
-    <div style={cardStyle}>
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>Invariants</div>
-
-      <div style={{ fontSize: 12 }}>
-        <div><b>det</b> = AD − BC = <span style={{ fontFamily: "monospace" }}>{cToStr(det)}</span></div>
-
-        {isAffine ? (
-          <div style={{ marginTop: 6, opacity: 0.8 }}>
-            C≈0 (affine). No pole; f(∞)=∞.
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Invariants</div>
+        <div style={{ fontSize: 12, display: "grid", gap: 4 }}>
+          <div><b>determinant:</b> ad - bc = <span style={{ fontFamily: "monospace" }}>{cToStr(det)}</span></div>
+          <div>
+            <b>pole:</b>{" "}
+            {pole ? <span style={{ fontFamily: "monospace" }}>z = {cToStr(pole)}</span> : "none (affine c = 0)"}
           </div>
+          <div>
+            <b>image of infinity:</b>{" "}
+            {fInf ? <span style={{ fontFamily: "monospace" }}>a/c = {cToStr(fInf)}</span> : "∞ (affine c = 0)"}
+          </div>
+          <div>
+            <b>preimage of infinity:</b>{" "}
+            {pole ? <span style={{ fontFamily: "monospace" }}>-d/c = {cToStr(pole)}</span> : "no finite preimage (affine c = 0)"}
+          </div>
+          <div><b>fixed points:</b> {fixedLabel}</div>
+          <div><b>derivative:</b> <span style={{ fontFamily: "monospace" }}>f'(z) = (ad - bc) / (cz + d)^2</span></div>
+          <div><b>local scale:</b> <span style={{ fontFamily: "monospace" }}>|f'(z)| = |ad - bc| / |cz + d|^2</span></div>
+          <div><b>angle preservation:</b> {isSingular ? "no (degenerate: ad - bc = 0)" : "yes, where defined (cz + d ≠ 0)"}</div>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>Preserved</div>
+          <div>• generalized circles</div>
+          <div>• angles</div>
+          <div>• cross-ratios</div>
+          <div>• orientation locally (where defined)</div>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 800 }}>Cross-ratio experiment</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setCrossPoints([
+                  { re: -1.2, im: -0.9 },
+                  { re: 1.1, im: -0.8 },
+                  { re: 0.9, im: 1.0 },
+                  { re: -0.8, im: 0.9 },
+                ]);
+                setReplaceIndex(0);
+              }}
+            >
+              Reset points
+            </button>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginTop: 4 }}>
+          Click the Z-plane to place z1..z4 (current target: z{replaceIndex + 1}).
+        </div>
+        <div style={{ marginTop: 8, display: "grid", gap: 4, fontSize: 12 }}>
+          <div>
+            <b>CR(z1,z2,z3,z4):</b>{" "}
+            <span style={{ fontFamily: "monospace" }}>{crossZ ? cToStr(crossZ) : "undefined"}</span>
+          </div>
+          <div>
+            <b>CR(w1,w2,w3,w4):</b>{" "}
+            <span style={{ fontFamily: "monospace" }}>{crossW ? cToStr(crossW) : "undefined (point at pole / infinity)"}</span>
+          </div>
+          <div>
+            <b>Difference:</b>{" "}
+            <span style={{ fontFamily: "monospace" }}>{crossDiff == null ? "undefined" : crossDiff.toExponential(3)}</span>
+            {crossDiff != null && crossDiff < 1e-7 ? "  ~0" : ""}
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, marginTop: 10 }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>Z-plane</div>
+            <div style={{ minHeight: 270 }}>
+              <PlanePlot id="svgZMobiusInv" extent={3} step={1} ref={zRef} style={{ height: "100%" }} onClickPoint={setPointFromClick} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontWeight: 700, fontSize: 12 }}>W-plane</div>
+            <div style={{ minHeight: 270 }}>
+              <PlanePlot id="svgWMobiusInv" extent={3} step={1} ref={wRef} style={{ height: "100%" }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type MobiusShapeEntry =
+  | { id: string; kind: "circle"; center: C; radius: number }
+  | { id: string; kind: "line"; point: C; direction: C }
+  | { id: string; kind: "ray"; origin: C; direction: C }
+  | { id: string; kind: "grid"; spacing: number; range: number }
+  | { id: string; kind: "samples"; points: C[] };
+
+const MobiusCirclesCard: React.FC<{ params: MobiusParams }> = ({ params }) => {
+  const zRef = useRef<PlanePlotHandle | null>(null);
+  const wRef = useRef<PlanePlotHandle | null>(null);
+  const nextIdRef = useRef(1);
+  const [entries, setEntries] = useState<MobiusShapeEntry[]>([]);
+
+  const pole = useMemo(() => (cAbs2(params.c) < 1e-12 ? null : cNeg(cDiv(params.d, params.c))), [params]);
+  const isAffine = pole === null;
+  const colors = ["#c62828", "#1565c0", "#2e7d32", "#6a1b9a", "#ef6c00", "#00897b", "#ad1457"];
+
+  const getNextId = useCallback((prefix: string) => `${prefix}-${nextIdRef.current++}`, []);
+
+  const addCircle = useCallback(() => {
+    const offset = entries.length * 0.2;
+    setEntries((prev) => [
+      ...prev,
+      { id: getNextId("circle"), kind: "circle", center: { re: -0.4 + offset, im: 0.3 - offset }, radius: 0.9 },
+    ]);
+  }, [entries.length, getNextId]);
+
+  const addLine = useCallback(() => {
+    const offset = entries.length * 0.18;
+    setEntries((prev) => [
+      ...prev,
+      { id: getNextId("line"), kind: "line", point: { re: -0.8 + offset, im: -0.4 + offset }, direction: { re: 1, im: 0.5 } },
+    ]);
+  }, [entries.length, getNextId]);
+
+  const addRay = useCallback(() => {
+    const offset = entries.length * 0.14;
+    setEntries((prev) => [
+      ...prev,
+      { id: getNextId("ray"), kind: "ray", origin: { re: -1.2 + offset, im: -0.9 + 0.08 * entries.length }, direction: { re: 1, im: 0.25 } },
+    ]);
+  }, [entries.length, getNextId]);
+
+  const addGrid = useCallback(() => {
+    setEntries((prev) => [
+      ...prev,
+      { id: getNextId("grid"), kind: "grid", spacing: 0.8, range: 2.4 },
+    ]);
+  }, [getNextId]);
+
+  const addSamples = useCallback(() => {
+    const pts: C[] = [];
+    for (let i = 0; i < 9; i++) {
+      const t = (2 * Math.PI * i) / 9;
+      pts.push({ re: 1.3 * Math.cos(t), im: 1.3 * Math.sin(t) });
+    }
+    setEntries((prev) => [...prev, { id: getNextId("samples"), kind: "samples", points: pts }]);
+  }, [getNextId]);
+
+  const analyses = useMemo(() => {
+    const tol = 0.045;
+    return entries.map((entry) => {
+      if (entry.kind === "samples") {
+        return { id: entry.id, input: "sample points", output: "sample points", note: "pointwise image under f" };
+      }
+      if (entry.kind === "grid") {
+        if (isAffine) return { id: entry.id, input: "grid (lines)", output: "grid (lines)", note: "affine map preserves lines" };
+        const kMax = Math.floor(entry.range / entry.spacing);
+        let throughPoleCount = 0;
+        if (pole) {
+          for (let k = -kMax; k <= kMax; k++) {
+            const x0 = k * entry.spacing;
+            if (Math.abs(pole.re - x0) < tol) throughPoleCount++;
+            if (Math.abs(pole.im - x0) < tol) throughPoleCount++;
+          }
+        }
+        return {
+          id: entry.id,
+          input: "grid (lines)",
+          output: throughPoleCount > 0 ? "mixed (line/circle)" : "circles",
+          note: throughPoleCount > 0 ? `${throughPoleCount} grid line(s) pass through pole` : "no grid line passes through pole",
+        };
+      }
+      if (entry.kind === "circle") {
+        const throughPole = pole ? Math.abs(cAbs(cSub(pole, entry.center)) - entry.radius) < tol : false;
+        return {
+          id: entry.id,
+          input: "circle",
+          output: throughPole ? "line" : "circle",
+          note: throughPole ? "circle through pole" : "circle not through pole",
+        };
+      }
+      if (entry.kind === "line") {
+        if (isAffine || !pole) return { id: entry.id, input: "line", output: "line", note: "affine case" };
+        const dirNorm = cAbs(entry.direction);
+        const d = dirNorm < 1e-9 ? 1e9 : Math.abs(cCross(cSub(pole, entry.point), entry.direction)) / dirNorm;
+        const throughPole = d < tol;
+        return { id: entry.id, input: "line", output: throughPole ? "line" : "circle", note: throughPole ? "line through pole" : "line misses pole" };
+      }
+      if (isAffine || !pole) return { id: entry.id, input: "ray", output: "ray on line", note: "affine case" };
+      const dirNorm = cAbs(entry.direction);
+      const d = dirNorm < 1e-9 ? 1e9 : Math.abs(cCross(cSub(pole, entry.origin), entry.direction)) / dirNorm;
+      const along = cDot(cSub(pole, entry.origin), entry.direction);
+      const throughPole = d < tol && along >= -tol;
+      return { id: entry.id, input: "ray", output: throughPole ? "ray on line" : "arc on circle", note: throughPole ? "ray reaches pole" : "ray misses pole" };
+    });
+  }, [entries, isAffine, pole]);
+
+  useEffect(() => {
+    if (!zRef.current || !wRef.current) return;
+    zRef.current.clear();
+    wRef.current.clear();
+    zRef.current.drawGrid(0.5);
+    wRef.current.drawGrid(0.5);
+
+    entries.forEach((entry, idx) => {
+      const color = colors[idx % colors.length];
+      if (entry.kind === "samples") {
+        const zPts = entry.points.map((p) => [p.re, p.im] as [number, number]);
+        zRef.current?.drawPoints(zPts, { color, shape: "diamond", size: 4, layer: `${entry.id}-z` });
+        const wPts = entry.points
+          .map((p) => mobiusEval(p, params))
+          .filter((p): p is C => !!p && cFinite(p))
+          .map((p) => [p.re, p.im] as [number, number]);
+        wRef.current?.drawPoints(wPts, { color, shape: "diamond", size: 4, layer: `${entry.id}-w` });
+        return;
+      }
+
+      const drawSourceAndImage = (poly: C[]) => {
+        const zPts = poly.map((p) => [p.re, p.im] as [number, number]);
+        zRef.current?.drawCurve(zPts, color, { width: 1.5, layer: `${entry.id}-z` });
+        const mappedSegments = mapPolylineSegments(poly, params);
+        mappedSegments.forEach((seg, segIndex) => {
+          wRef.current?.drawCurve(seg, color, { width: 1.5, layer: `${entry.id}-w-${segIndex}` });
+        });
+      };
+
+      if (entry.kind === "circle") {
+        drawSourceAndImage(buildCirclePolyline(entry.center, entry.radius, 240));
+      } else if (entry.kind === "line") {
+        drawSourceAndImage(buildLinePolyline(entry.point, entry.direction, -4.5, 4.5, 260));
+      } else if (entry.kind === "ray") {
+        drawSourceAndImage(buildLinePolyline(entry.origin, entry.direction, 0, 5.5, 220));
+      } else if (entry.kind === "grid") {
+        const kMax = Math.max(1, Math.floor(entry.range / entry.spacing));
+        for (let k = -kMax; k <= kMax; k++) {
+          const x0 = k * entry.spacing;
+          drawSourceAndImage(buildLinePolyline({ re: x0, im: 0 }, { re: 0, im: 1 }, -entry.range, entry.range, 180));
+          drawSourceAndImage(buildLinePolyline({ re: 0, im: x0 }, { re: 1, im: 0 }, -entry.range, entry.range, 180));
+        }
+      }
+    });
+
+    if (pole) {
+      zRef.current.drawPoints([[pole.re, pole.im]], {
+        color: "#f57c00",
+        shape: "triangle",
+        size: 4.8,
+        layer: "mobius-pole-z",
+      });
+    }
+  }, [colors, entries, params, pole]);
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Circles / Lines</div>
+        <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
+          Möbius maps send generalized circles to generalized circles. A circle through the pole maps to a line.
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <button type="button" onClick={addCircle}>Add circle</button>
+          <button type="button" onClick={addLine}>Add line</button>
+          <button type="button" onClick={addRay}>Add ray</button>
+          <button type="button" onClick={addGrid}>Add grid</button>
+          <button type="button" onClick={addSamples}>Add sample points</button>
+          <button type="button" onClick={() => setEntries([])}>Clear</button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontWeight: 700, fontSize: 12 }}>Z-plane (input objects)</div>
+          <div style={{ minHeight: 280 }}>
+            <PlanePlot id="svgZMobiusCircles" extent={3} step={1} ref={zRef} style={{ height: "100%" }} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontWeight: 700, fontSize: 12 }}>W-plane (transformed objects)</div>
+          <div style={{ minHeight: 280 }}>
+            <PlanePlot id="svgWMobiusCircles" extent={3} step={1} ref={wRef} style={{ height: "100%" }} />
+          </div>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Rule examples</div>
+        <div style={{ display: "grid", gap: 4, fontSize: 12, marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 140px", gap: 8 }}>
+            <span>line</span>
+            <span style={{ fontWeight: 700 }}>circle (or line through pole)</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 140px", gap: 8 }}>
+            <span>circle</span>
+            <span style={{ fontWeight: 700 }}>circle</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 140px", gap: 8 }}>
+            <span>circle through pole</span>
+            <span style={{ fontWeight: 700 }}>line</span>
+          </div>
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6 }}>Input object / Output object</div>
+        {entries.length === 0 ? (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>Add objects to see mapped classifications.</div>
         ) : (
-          <>
-            <div style={{ marginTop: 6 }}>
-              <b>pole</b> zₚ = −D/C = <span style={{ fontFamily: "monospace" }}>{pole ? cToStr(pole) : ""}</span>
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <b>f(∞)</b> = A/C = <span style={{ fontFamily: "monospace" }}>{fInf ? cToStr(fInf) : ""}</span>
-            </div>
-            <div style={{ marginTop: 4 }}>
-              <b>fixed points</b>{" "}
-              {fixed.kind === "all"
-                ? "all points"
-                : fixed.kind === "none"
-                  ? "none"
-                  : `= ${fixed.values.map(cToStr).join(" ; ")}`}
-            </div>
-          </>
+          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+            {analyses.map((row, i) => (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "120px 140px 1fr", gap: 8 }}>
+                <span>{i + 1}. {row.input}</span>
+                <span style={{ fontWeight: 700 }}>{row.output}</span>
+                <span style={{ opacity: 0.8 }}>{row.note}</span>
+              </div>
+            ))}
+          </div>
         )}
+        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.84 }}>
+          Rule summary: line → {isAffine ? "line" : "line or circle"}, circle → {isAffine ? "circle" : "circle (or line if through pole)"}.
+        </div>
       </div>
     </div>
   );

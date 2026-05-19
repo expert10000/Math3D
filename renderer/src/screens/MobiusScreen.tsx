@@ -10,6 +10,7 @@ type MobiusScreenProps = {
 };
 
 const EPS = 1e-12;
+const NEAR_SINGULAR_EPS = 1e-6;
 
 const cNeg = (z: Complex): Complex => ({ re: -z.re, im: -z.im });
 const cSqrt = (z: Complex): Complex => {
@@ -59,11 +60,38 @@ const MobiusScreen: React.FC<MobiusScreenProps> = ({ params, onChange }) => {
 
   const summary = useMemo(() => {
     const det = sub(mul(a, d), mul(b, c));
+    const detAbs = Math.sqrt(abs2(det));
     const valid = abs2(det) >= EPS;
+    const nearSingular = valid && detAbs < NEAR_SINGULAR_EPS;
     const pole = abs2(c) < EPS ? null : cNeg(div(d, c));
+    const infImage = abs2(c) < EPS ? null : div(a, c);
     const fixed = mobiusFixedPoints(params);
-    return { det, valid, pole, fixed };
+    return { det, detAbs, valid, nearSingular, pole, infImage, fixed };
   }, [a, b, c, d, params]);
+
+  const complexRow = (name: "a" | "b" | "c" | "d", z: Complex) => (
+    <div key={name} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 12 }}>
+      <span style={{ minWidth: 18, fontWeight: 700 }}>{name} =</span>
+      <input
+        type="number"
+        step={0.1}
+        value={z.re}
+        onChange={(e) => updateCoeff(name, "re", Number(e.target.value))}
+        style={{ width: 72 }}
+        aria-label={`${name} real`}
+      />
+      <span>+</span>
+      <input
+        type="number"
+        step={0.1}
+        value={z.im}
+        onChange={(e) => updateCoeff(name, "im", Number(e.target.value))}
+        style={{ width: 72 }}
+        aria-label={`${name} imaginary`}
+      />
+      <span>i</span>
+    </div>
+  );
 
   return (
     <section style={{ display: "grid", gap: 10 }}>
@@ -75,42 +103,47 @@ const MobiusScreen: React.FC<MobiusScreenProps> = ({ params, onChange }) => {
       </div>
 
       <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, padding: 10, background: "#f8fbff", display: "grid", gap: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 12 }}>Matrix</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-          {([
-            ["a", a],
-            ["b", b],
-            ["c", c],
-            ["d", d],
-          ] as Array<[keyof MobiusParams, Complex]>).map(([name, z]) => (
-            <div key={name} style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: 8, background: "#fff", display: "grid", gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>{name}</div>
-              <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                <span>re</span>
-                <input type="number" step={0.1} value={z.re} onChange={(e) => updateCoeff(name, "re", Number(e.target.value))} />
-              </label>
-              <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                <span>im</span>
-                <input type="number" step={0.1} value={z.im} onChange={(e) => updateCoeff(name, "im", Number(e.target.value))} />
-              </label>
-            </div>
-          ))}
+        <div style={{ fontWeight: 700, fontSize: 12 }}>Matrix coefficients</div>
+        <div style={{ display: "grid", gap: 6 }}>
+          {complexRow("a", a)}
+          {complexRow("b", b)}
+          {complexRow("c", c)}
+          {complexRow("d", d)}
         </div>
       </div>
 
       <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, padding: 10, background: "#fff", display: "grid", gap: 4, fontSize: 12 }}>
         <div>
-          <b>det(ad - bc):</b>{" "}
+          <b>det = ad - bc =</b>{" "}
           <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>{cToShort(summary.det)}</span>
         </div>
+        <div style={{ opacity: 0.78 }}>normalized matrix:</div>
+        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>[ a  b ]</div>
+        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>[ c  d ]</div>
+      </div>
+
+      <div style={{ border: "1px solid #dbe4f0", borderRadius: 10, padding: 10, background: "#fff", display: "grid", gap: 4, fontSize: 12 }}>
+        {!summary.valid && (
+          <div style={{ color: "#b91c1c" }}>
+            <b>Invalid:</b> ad - bc = 0
+          </div>
+        )}
+        {summary.nearSingular && (
+          <div style={{ color: "#b45309" }}>
+            <b>Near singular:</b> determinant very small (|ad - bc| = {summary.detAbs.toExponential(2)})
+          </div>
+        )}
         <div>
-          <b>status:</b> {summary.valid ? "valid" : "singular"}
-        </div>
-        <div>
-          <b>pole:</b>{" "}
+          <b>Pole: z = -d/c</b>{" "}
           {summary.pole
             ? <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>{cToShort(summary.pole)}</span>
             : "none"}
+        </div>
+        <div>
+          <b>Infinity maps to: a/c</b>{" "}
+          {summary.infImage
+            ? <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>{cToShort(summary.infImage)}</span>
+            : "∞ (affine case c = 0)"}
         </div>
         <div>
           <b>fixed points:</b>{" "}
