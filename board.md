@@ -166,6 +166,23 @@ Status: `done` (2026-05-18)
 - [x] Implement analysis-table export generator for workbook blocks/runs metadata.
 - [x] Expose new export actions through the command palette for keyboard-first workflows.
 
+### P1.6 Execution Board: Complex Analysis / Mobius Geometry Core
+
+Status: `planned`
+
+Best development path (Phase 1 - Mobius geometry core):
+
+- [ ] complex number utilities
+- [ ] Mobius transform evaluator
+- [ ] point mapping
+- [ ] circle/line mapping
+- [ ] grid mapping
+- [ ] fixed-point calculation
+- [ ] basic classification
+
+Rationale:
+- This phase gives immediate visual results and provides a stable base for animation, demos, and screenshot workflows.
+
 ## P2 (post-release or stretch)
 
 1. Plugin-style `analysis operators` API.

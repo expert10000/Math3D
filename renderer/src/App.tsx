@@ -159,7 +159,12 @@ import {
   type Curve3D as CoreCurve3D,
 } from "@math3d/core";
 
-import type { MobiusParams } from "./math/mobius";
+import {
+  mapMobiusPoint,
+  mapMobiusPolylineSegments,
+  mobiusFixedPoints as mobiusFixedPointsCore,
+  type MobiusParams,
+} from "./math/mobius";
 import { computeGraphInvariantsFromProbe, getGraphFunction, type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
@@ -49832,11 +49837,7 @@ const cAbs = (z: C) => Math.hypot(z.re, z.im);
 const cDot = (a: C, b: C) => a.re * b.re + a.im * b.im;
 const cCross = (a: C, b: C) => a.re * b.im - a.im * b.re;
 
-const mobiusEval = (z: C, p: MobiusParams, eps = 1e-12): C | null => {
-  const denom = cAdd(cMul(p.c, z), p.d);
-  if (cAbs2(denom) < eps) return null;
-  return cDiv(cAdd(cMul(p.a, z), p.b), denom);
-};
+const mobiusEval = (z: C, p: MobiusParams, eps = 1e-12): C | null => mapMobiusPoint(z, p, eps);
 
 const crossRatio = (z1: C, z2: C, z3: C, z4: C, eps = 1e-12): C | null => {
   const n1 = cSub(z1, z3);
@@ -49868,42 +49869,11 @@ const buildLinePolyline = (point: C, direction: C, tMin: number, tMax: number, s
 };
 
 const mapPolylineSegments = (polyline: C[], params: MobiusParams, eps = 1e-12): [number, number][][] => {
-  const segments: [number, number][][] = [];
-  let current: [number, number][] = [];
-  for (const z of polyline) {
-    const w = mobiusEval(z, params, eps);
-    if (!w || !cFinite(w)) {
-      if (current.length >= 2) segments.push(current);
-      current = [];
-      continue;
-    }
-    current.push([w.re, w.im]);
-  }
-  if (current.length >= 2) segments.push(current);
-  return segments;
+  return mapMobiusPolylineSegments(polyline, params, { eps })
+    .map((seg) => seg.map((w) => [w.re, w.im] as [number, number]));
 };
 const mobiusFixedPoints = (p: MobiusParams): { kind: "none" | "single" | "pair" | "all"; values: C[] } => {
-  const eps = 1e-12;
-  const A = p.a;
-  const B = p.b;
-  const Cc = p.c;
-  const D = p.d;
-  if (cAbs2(Cc) < eps) {
-    const denom = cSub(A, D);
-    if (cAbs2(denom) < eps) {
-      if (cAbs2(B) < eps) return { kind: "all", values: [] };
-      return { kind: "none", values: [] };
-    }
-    return { kind: "single", values: [cDiv(cNeg(B), denom)] };
-  }
-  const linear = cSub(D, A);
-  const disc = cAdd(cMul(linear, linear), cMul({ re: 4, im: 0 }, cMul(Cc, B)));
-  const sqrtDisc = cSqrt(disc);
-  const twoC = cMul({ re: 2, im: 0 }, Cc);
-  return {
-    kind: "pair",
-    values: [cDiv(cAdd(cNeg(linear), sqrtDisc), twoC), cDiv(cSub(cNeg(linear), sqrtDisc), twoC)],
-  };
+  return mobiusFixedPointsCore(p);
 };
 
 type M2 = { a: C; b: C; c: C; d: C };
