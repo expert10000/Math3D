@@ -56,12 +56,22 @@ jobs:
       - name: Build web frontend bundle for Pages
         run: npm run build:web:pages
 
+      - name: Build landing page bundle for Pages
+        run: npm run build:public-site
+
       - name: Stage web frontend under /app
         shell: bash
         run: |
           rm -rf site/app
           mkdir -p site/app
           cp -R apps/web/dist/. site/app/
+
+      - name: Stage landing page under /landing
+        shell: bash
+        run: |
+          rm -rf site/landing
+          mkdir -p site/landing
+          cp -R apps/public-site/dist/. site/landing/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
