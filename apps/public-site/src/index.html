@@ -64,27 +64,36 @@
               loading="eager"
             />
           </figure>
-          <div class="chip-row">
-            <span class="chip">Implicit</span>
-            <span class="chip">Parametric</span>
-            <span class="chip">Topology</span>
+          <div class="chip-row" role="tablist" aria-label="Math3D feature mode">
+            <button class="chip chip-btn is-active" type="button" data-mode="implicit" role="tab" aria-selected="true">
+              Implicit
+            </button>
+            <button class="chip chip-btn" type="button" data-mode="parametric" role="tab" aria-selected="false">
+              Parametric
+            </button>
+            <button class="chip chip-btn" type="button" data-mode="topology" role="tab" aria-selected="false">
+              Topology
+            </button>
           </div>
+          <p class="chip-mode-copy" data-mode-copy>
+            Implicit mode focuses on field-defined surfaces and mesh extraction for complex equation-driven geometry.
+          </p>
           <div class="panel-grid">
             <article>
-              <h3>200+</h3>
-              <p>preset scenes and geometry objects</p>
+              <h3 data-mode-title="1">200+</h3>
+              <p data-mode-text="1">preset scenes and geometry objects</p>
             </article>
             <article>
-              <h3>CGAL/VTK</h3>
-              <p>high-fidelity mesh and volume operations</p>
+              <h3 data-mode-title="2">CGAL/VTK</h3>
+              <p data-mode-text="2">high-fidelity mesh and volume operations</p>
             </article>
             <article>
-              <h3>Playwright</h3>
-              <p>tested workflows for release confidence</p>
+              <h3 data-mode-title="3">Playwright</h3>
+              <p data-mode-text="3">tested workflows for release confidence</p>
             </article>
             <article>
-              <h3>Desktop + Web</h3>
-              <p>same core app in both runtime modes</p>
+              <h3 data-mode-title="4">Desktop + Web</h3>
+              <p data-mode-text="4">same core app in both runtime modes</p>
             </article>
           </div>
         </div>
@@ -141,7 +150,7 @@
             <p>Grid views, domain/calculus panels, and analysis-ready layouts.</p>
             <div class="shot-grid">
               <figure><img src="./assets/showcase/analysis/math3d-analysis-grid-domain-workspace.png" alt="Analysis workspace with domain grid and controls" loading="lazy" /></figure>
-              <figure><img src="./assets/showcase/analysis/math3d-analysis-domain-coloring-panel.png" alt="Analysis workspace showing domain coloring and panel controls" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/analysis/math3d-analysis-height-coloring-workspace.png" alt="Analysis workspace showing advanced coloring controls and mapped visualization output" loading="lazy" /></figure>
             </div>
           </article>
 
@@ -149,7 +158,7 @@
             <h3>Inspector</h3>
             <p>Object properties, mesh stats, derived products, and scene overlays.</p>
             <div class="shot-grid">
-              <figure><img src="./assets/showcase/inspector/math3d-inspector-surface-metrics-panel.png" alt="Inspector panel with mesh and derived data details" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/inspector/math3d-inspector-implicit-roman-preview.png" alt="Inspector-oriented preview for an implicit Roman surface workflow" loading="lazy" /></figure>
               <figure><img src="./assets/showcase/inspector/math3d-inspector-scene-overlay-gizmo.png" alt="Scene overlay and view gizmo used during inspection" loading="lazy" /></figure>
             </div>
           </article>
@@ -159,9 +168,9 @@
             <p>Torus, Klein bottle, Mobius strip, and stage-based topology studies.</p>
             <div class="shot-grid shot-grid-4">
               <figure><img src="./assets/showcase/topology/math3d-topology-torus-view-preview.png" alt="Topology torus visualization" loading="lazy" /></figure>
-              <figure><img src="./assets/showcase/topology/math3d-topology-klein-bottle-view-preview.png" alt="Topology Klein bottle visualization" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/topology/math3d-topology-parametric-torus-preview.png" alt="Topology pseudosphere visualization" loading="lazy" /></figure>
               <figure><img src="./assets/showcase/topology/math3d-topology-mobius-strip-view-preview.png" alt="Topology Mobius strip visualization" loading="lazy" /></figure>
-              <figure><img src="./assets/showcase/topology/math3d-topology-knot-stage-preview.png" alt="Topology stage preview using knot geometry" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/topology/math3d-topology-mesh-wavy-torus-preview.png" alt="Topology stage preview with wavy torus geometry" loading="lazy" /></figure>
             </div>
           </article>
 
@@ -179,7 +188,7 @@
             <p>Narrow layout controls and touch-oriented inspector/view flow.</p>
             <div class="shot-grid shot-grid-mobile">
               <figure><img src="./assets/showcase/mobile/math3d-mobile-viewer-compact.png" alt="Mobile viewer compact layout" loading="lazy" /></figure>
-              <figure><img src="./assets/showcase/mobile/math3d-mobile-inspector-touch.png" alt="Mobile inspector and touch workflow layout" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/mobile/math3d-mobile-surface-wave-preview.png" alt="Companion surface preview for touch-oriented workflows" loading="lazy" /></figure>
             </div>
           </article>
 
@@ -189,7 +198,7 @@
             <div class="shot-grid shot-grid-3">
               <figure><img src="./assets/showcase/pipeline/math3d-pipeline-runtime-architecture-map.png" alt="Runtime architecture map for worker and IPC flows" loading="lazy" /></figure>
               <figure><img src="./assets/showcase/pipeline/math3d-pipeline-mesh-stage-preview.png" alt="Mesh stage preview in pipeline" loading="lazy" /></figure>
-              <figure><img src="./assets/showcase/pipeline/math3d-pipeline-scene-stage-preview.png" alt="Scene stage preview in pipeline" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/pipeline/math3d-pipeline-implicit-ellipsoid-scene-preview.png" alt="Scene stage preview in pipeline with explicit sinc surface geometry" loading="lazy" /></figure>
             </div>
           </article>
         </div>

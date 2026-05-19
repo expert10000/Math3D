@@ -35,7 +35,7 @@ Regenerate thumbnails with Playwright: `npm run test:app:e2e:thumbnails`
 Live links:
 - Web app: https://expert10000.github.io/Math3D/app/
 - Web app (app.math3dlab.com): https://app.math3dlab.com/
-- Landing page: https://math3dlab.com/
+- Landing page (hosted on GitHub Pages): https://expert10000.github.io/Math3D/landing/
 
 Requirements:
 - Node.js 24 or newer
@@ -159,7 +159,9 @@ Notes:
 
 ### Public frontend publish (GitHub Pages)
 
-- CI deploys docs plus a public browser frontend at `https://expert10000.github.io/Math3D/app/` via `.github/workflows/docs-pages.yml`.
+- CI deploys docs plus public frontends via `.github/workflows/docs-pages.yml`:
+  - browser app: `https://expert10000.github.io/Math3D/app/`
+  - landing page: `https://expert10000.github.io/Math3D/landing/`
 - Manual local build for that Pages frontend layout:
 
 ```bash

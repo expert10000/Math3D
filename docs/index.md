@@ -12,7 +12,8 @@ This site combines:
 ## Public frontend
 
 - Public browser frontend path: `https://expert10000.github.io/Math3D/app/`
-- This static deployment includes the full React UI.
+- Public landing page path: `https://expert10000.github.io/Math3D/landing/`
+- This static deployment includes the React app and the landing site.
 - Worker-backed API endpoints (`/api/worker`) are not hosted on GitHub Pages, so CGAL/VTK operations that require the backend are unavailable there unless you provide a separate backend service.
 
 ## Build locally
