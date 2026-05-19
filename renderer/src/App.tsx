@@ -1334,6 +1334,41 @@ const cloneMobiusParams = (p: MobiusParams): MobiusParams => ({
   d: { ...p.d },
 });
 
+const MOBIUS_WORKBOOK_DEMOS = [
+  "Demo 1: Lines become circles",
+  "Demo 2: Inversion and the pole",
+  "Demo 3: Cayley transform",
+  "Demo 4: Cross-ratio preservation",
+  "Demo 5: Riemann sphere and infinity",
+];
+
+const toMobiusLiteral = (n: number): string => {
+  const rounded = Number(n.toFixed(6));
+  return Number.isFinite(rounded) ? `${rounded}` : "0";
+};
+
+const mobiusParamsToComplexMapExpressions = (p: MobiusParams): { reExpr: string; imExpr: string } => {
+  const ar = toMobiusLiteral(p.a.re);
+  const ai = toMobiusLiteral(p.a.im);
+  const br = toMobiusLiteral(p.b.re);
+  const bi = toMobiusLiteral(p.b.im);
+  const cr = toMobiusLiteral(p.c.re);
+  const ci = toMobiusLiteral(p.c.im);
+  const dr = toMobiusLiteral(p.d.re);
+  const di = toMobiusLiteral(p.d.im);
+
+  const nRe = `((${ar})*u - (${ai})*v + (${br}))`;
+  const nIm = `((${ar})*v + (${ai})*u + (${bi}))`;
+  const dRe = `((${cr})*u - (${ci})*v + (${dr}))`;
+  const dIm = `((${cr})*v + (${ci})*u + (${di}))`;
+  const den = `((${dRe})^2 + (${dIm})^2 + 1e-9)`;
+
+  return {
+    reExpr: `((${nRe})*(${dRe}) + (${nIm})*(${dIm})) / ${den}`,
+    imExpr: `((${nIm})*(${dRe}) - (${nRe})*(${dIm})) / ${den}`,
+  };
+};
+
 const splitterStyle: React.CSSProperties = {
   width: 6,
   cursor: "col-resize",
@@ -7895,6 +7930,7 @@ const App: React.FC = () => {
   const [mobiusShowFixedPoints, setMobiusShowFixedPoints] = useState(true);
   const [mobiusShowSelectedPoint, setMobiusShowSelectedPoint] = useState(true);
   const [mobiusSelectedPoint, setMobiusSelectedPoint] = useState<C>({ re: 1, im: 0 });
+  const [mobiusIntegrationStatus, setMobiusIntegrationStatus] = useState<string | null>(null);
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -7930,6 +7966,206 @@ const App: React.FC = () => {
       valid: cAbs2(det) >= eps,
     };
   }, [mobiusParams]);
+
+  const handleMobiusSaveAsWorkbookDemo = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    const wb = createDefaultWorkbook(makeId);
+    wb.title = "Möbius maps demo";
+    wb.updatedAt = Date.now();
+    const defineStage = wb.stages.find((s) => s.id === "define");
+    const visualizeStage = wb.stages.find((s) => s.id === "visualize");
+    const explainStage = wb.stages.find((s) => s.id === "explain");
+    const computeStage = wb.stages.find((s) => s.id === "compute");
+    const coeffText =
+      `a=${cToStr(mobiusParams.a)}, b=${cToStr(mobiusParams.b)}, c=${cToStr(mobiusParams.c)}, d=${cToStr(mobiusParams.d)}`;
+    if (defineStage) {
+      defineStage.blocks = [
+        {
+          id: makeId(),
+          type: "text",
+          title: "Goal",
+          text: "Study Möbius maps: track how lines/circles transform, where poles appear, and how infinity behaves.",
+          outputs: [{ id: "text", label: "Text", type: "text" }],
+        },
+        {
+          id: makeId(),
+          type: "formula",
+          title: "Current map",
+          formula: `w = (az+b)/(cz+d)   with   ${coeffText}`,
+          outputs: [{ id: "formula", label: "Formula", type: "formula" }],
+        },
+      ];
+    }
+    if (computeStage) {
+      computeStage.blocks = [
+        {
+          id: makeId(),
+          type: "text",
+          title: "Demo set",
+          text: MOBIUS_WORKBOOK_DEMOS.join("\n"),
+          outputs: [{ id: "text", label: "Text", type: "text" }],
+        },
+      ];
+    }
+    if (visualizeStage) {
+      visualizeStage.blocks = [
+        {
+          id: makeId(),
+          type: "visualize",
+          title: "Möbius map view",
+          inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+          outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
+          visualize: { live: true, snapshotA: null, snapshotB: null, notes: "Use Z-plane/W-plane + Riemann tab for each demo." },
+        },
+      ];
+    }
+    if (explainStage) {
+      explainStage.blocks = [
+        {
+          id: makeId(),
+          type: "text",
+          title: "Lesson prompts",
+          text: "For each demo, write what is preserved (angles, circles/lines, cross-ratio) and what changes (location, scale, pole behavior).",
+          outputs: [{ id: "text", label: "Text", type: "text" }],
+        },
+      ];
+    }
+    setWorkbooks((prev) => [wb, ...prev]);
+    setActiveWorkbookId(wb.id);
+    setActiveStageId("define");
+    setGeometryMode("workbook");
+    setRightPanelTab("workbook");
+    setMode("geometry");
+    setMobiusIntegrationStatus(`Workbook demo created: ${wb.title}`);
+  }, [mobiusParams]);
+
+  const handleMobiusPromoteToSceneOverlay = useCallback(() => {
+    const expr = mobiusParamsToComplexMapExpressions(mobiusParams);
+    setMode("surfaces");
+    setDatasetKind("surface");
+    setSurfaceViewerKind("complex");
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
+    setComplexMapSpec((prev) => ({
+      ...prev,
+      reExpr: expr.reExpr,
+      imExpr: expr.imExpr,
+      mapMode: "standard",
+      outputMode: "both",
+      showIsolines: true,
+      clampAbs: prev.clampAbs ?? 8,
+    }));
+    setComplexMapError(null);
+    setMobiusIntegrationStatus("Loaded as complex-map scene overlay input in Surfaces → Complex.");
+  }, [mobiusParams]);
+
+  const handleMobiusExportZWPlaneImage = useCallback(() => {
+    const exportSvg = (id: string, fileName: string) => {
+      const node = document.getElementById(id);
+      if (!node || !(node instanceof SVGSVGElement)) return false;
+      const raw = new XMLSerializer().serializeToString(node);
+      const blob = new Blob([raw], { type: "image/svg+xml;charset=utf-8" });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(href);
+      return true;
+    };
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const okZ = exportSvg("svgZ", `mobius-z-plane-${stamp}.svg`);
+    const okW = exportSvg("svgW", `mobius-w-plane-${stamp}.svg`);
+    setMobiusIntegrationStatus(okZ && okW ? "Exported Z/W plane SVG images." : "Z/W export failed: open Map tab first.");
+  }, []);
+
+  const handleMobiusExportRiemannSphereScene = useCallback(() => {
+    const expr = mobiusParamsToComplexMapExpressions(mobiusParams);
+    setMode("surfaces");
+    setDatasetKind("surface");
+    setSurfaceViewerKind("complex");
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
+    setComplexMapSpec((prev) => ({
+      ...prev,
+      reExpr: expr.reExpr,
+      imExpr: expr.imExpr,
+      mapMode: "riemann",
+      outputMode: "both",
+      showIsolines: true,
+      clampAbs: prev.clampAbs ?? 8,
+    }));
+    setComplexMapShowSphere(true);
+    setComplexMapSphereStacked(true);
+    setViewMenuOpen(true);
+    setShowScreenshotTools(true);
+    setScreenshotStatus("Riemann sphere scene prepared in Surfaces → Complex. Use Screenshot or object export.");
+    setMobiusIntegrationStatus("Riemann sphere scene prepared for export in Surfaces → Complex.");
+  }, [mobiusParams]);
+
+  const handleMobiusCreateLessonCard = useCallback(() => {
+    const lesson = [
+      "Lesson card: Möbius map",
+      `Map: w = (az+b)/(cz+d) with a=${cToStr(mobiusParams.a)}, b=${cToStr(mobiusParams.b)}, c=${cToStr(mobiusParams.c)}, d=${cToStr(mobiusParams.d)}`,
+      "Focus: circle-line invariance, pole behavior, fixed points, and infinity on the Riemann sphere.",
+    ].join("\n");
+    if (activeWorkbookId) {
+      setWorkbooks((prev) =>
+        prev.map((w) =>
+          w.id !== activeWorkbookId
+            ? w
+            : {
+                ...w,
+                updatedAt: Date.now(),
+                stages: w.stages.map((s) =>
+                  s.id !== "explain"
+                    ? s
+                    : {
+                        ...s,
+                        blocks: [
+                          ...s.blocks,
+                          {
+                            id: makeId(),
+                            type: "text",
+                            title: "Möbius lesson card",
+                            text: lesson,
+                            outputs: [{ id: "text", label: "Text", type: "text" }],
+                          },
+                        ],
+                      }
+                ),
+              }
+        )
+      );
+      setActiveStageId("explain");
+      setGeometryMode("workbook");
+      setRightPanelTab("workbook");
+      setMode("geometry");
+      setMobiusIntegrationStatus("Lesson card added to current workbook (Explain stage).");
+      return;
+    }
+    if (IS_REPLAY_MODE) return;
+    const wb = createDefaultWorkbook(makeId);
+    wb.title = "Möbius lesson card";
+    wb.updatedAt = Date.now();
+    const explainStage = wb.stages.find((s) => s.id === "explain");
+    if (explainStage) {
+      explainStage.blocks = [
+        {
+          id: makeId(),
+          type: "text",
+          title: "Möbius lesson card",
+          text: lesson,
+          outputs: [{ id: "text", label: "Text", type: "text" }],
+        },
+      ];
+    }
+    setWorkbooks((prev) => [wb, ...prev]);
+    setActiveWorkbookId(wb.id);
+    setActiveStageId("explain");
+    setGeometryMode("workbook");
+    setRightPanelTab("workbook");
+    setMode("geometry");
+    setMobiusIntegrationStatus("No active workbook. Created a new workbook with the lesson card.");
+  }, [activeWorkbookId, mobiusParams]);
 
   // Chebyshev degree
   const [chebN, setChebN] = useState(3);
@@ -34432,7 +34668,20 @@ case "mobius":
           <>
             {/* LEFT (2D modes) */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
-              {mode === "mobius" && <MobiusScreen params={mobiusParams} onChange={setMobiusParams} />}
+              {mode === "mobius" && (
+                <MobiusScreen
+                  params={mobiusParams}
+                  onChange={setMobiusParams}
+                  integrationActions={{
+                    saveAsWorkbookDemo: handleMobiusSaveAsWorkbookDemo,
+                    promoteToSceneOverlay: handleMobiusPromoteToSceneOverlay,
+                    exportZWPlaneImage: handleMobiusExportZWPlaneImage,
+                    exportRiemannSphereScene: handleMobiusExportRiemannSphereScene,
+                    createLessonCard: handleMobiusCreateLessonCard,
+                  }}
+                  integrationStatus={mobiusIntegrationStatus}
+                />
+              )}
 
               {mode === "chebyshev" && <ChebyshevScreen n={chebN} onChangeN={setChebN} />}
 
