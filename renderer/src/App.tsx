@@ -24816,7 +24816,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_maps";
+    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_analysis" | "complex_maps";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -24879,8 +24879,21 @@ case "mobius":
       onSelect: () => setMode("geometry"),
     },
     {
+      id: "complex_analysis",
+      label: "Complex Analysis",
+      active: mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex",
+      onSelect: () => {
+        setMode("surfaces");
+        setDatasetKind("surface");
+        handleChangeViewerKind("complex");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
+        setSurfacesWorkGalleryOpen(false);
+      },
+    },
+    {
       id: "complex_maps",
-      label: "Complex Maps",
+      label: "Mobius",
       active: mode === "mobius",
       onSelect: () => setMode("mobius"),
     },
