@@ -199,6 +199,18 @@ h1 {
   padding: 1rem;
 }
 
+.hero-shot {
+  margin: 0 0 0.9rem;
+}
+
+.hero-shot img {
+  width: 100%;
+  display: block;
+  border-radius: 14px;
+  border: 1px solid #d7e5f5;
+  box-shadow: 0 10px 24px rgba(10, 46, 84, 0.16);
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -271,6 +283,79 @@ h1 {
 .feature-card p {
   margin: 0.6rem 0 0;
   color: var(--ink-soft);
+}
+
+.showcase-intro {
+  margin: 0.7rem 0 0;
+  color: var(--ink-soft);
+  max-width: 72ch;
+}
+
+.showcase-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.95rem;
+}
+
+.showcase-card {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 249, 255, 0.95));
+  box-shadow: 0 8px 24px rgba(14, 49, 84, 0.09);
+  padding: 0.95rem;
+}
+
+.showcase-card h3 {
+  font-size: 1.02rem;
+}
+
+.showcase-card p {
+  margin: 0.45rem 0 0.75rem;
+  color: #476383;
+  font-size: 0.93rem;
+}
+
+.showcase-card-wide {
+  grid-column: 1 / -1;
+}
+
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.shot-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.shot-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.shot-grid-mobile {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shot-grid figure {
+  margin: 0;
+  border: 1px solid #d5e2f0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f8fbff;
+}
+
+.shot-grid img {
+  width: 100%;
+  height: 160px;
+  display: block;
+  object-fit: cover;
+}
+
+.shot-grid-mobile img {
+  height: 230px;
+  object-position: top;
 }
 
 .flow-list {
@@ -400,7 +485,34 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .showcase-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .showcase-card-wide {
+    grid-column: auto;
+  }
+
+  .shot-grid-3,
+  .shot-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .footer-inner {
     min-height: 64px;
+  }
+}
+
+@media (max-width: 520px) {
+  .shot-grid,
+  .shot-grid-3,
+  .shot-grid-4,
+  .shot-grid-mobile {
+    grid-template-columns: 1fr;
+  }
+
+  .shot-grid img,
+  .shot-grid-mobile img {
+    height: auto;
   }
 }

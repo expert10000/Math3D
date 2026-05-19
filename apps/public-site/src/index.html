@@ -25,6 +25,7 @@
         <a class="brand" href="#top">Math3D Lab</a>
         <nav class="nav-links">
           <a href="#features">Features</a>
+          <a href="#showcase">Showcase</a>
           <a href="#workflow">Workflow</a>
           <a href="#download">Download</a>
         </nav>
@@ -56,6 +57,13 @@
         </div>
 
         <div class="hero-panel reveal reveal-delay-1" role="img" aria-label="Math3D summary panel">
+          <figure class="hero-shot">
+            <img
+              src="./assets/showcase/lead/math3d-desktop-workspace-lead.png"
+              alt="Math3D desktop workspace with surface scene, inspector, and workbook panels"
+              loading="eager"
+            />
+          </figure>
           <div class="chip-row">
             <span class="chip">Implicit</span>
             <span class="chip">Parametric</span>
@@ -103,6 +111,86 @@
           <article class="feature-card reveal">
             <h3>Worker-backed Compute</h3>
             <p>Use Python worker integrations for heavier CGAL/VTK operations when precision and throughput matter.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="showcase" class="container section">
+        <div class="section-head reveal">
+          <p class="eyebrow">Gallery / Showcase</p>
+          <h2>Real workflows, not mockups.</h2>
+        </div>
+        <p class="showcase-intro reveal reveal-delay-1">
+          The showcase is organized by working mode so visitors can quickly see where each feature lives in the product.
+        </p>
+
+        <div class="showcase-grid">
+          <article class="showcase-card reveal">
+            <h3>Surface Rendering</h3>
+            <p>Explicit, parametric, Weierstrass, and implicit presets.</p>
+            <div class="shot-grid shot-grid-4">
+              <figure><img src="./assets/showcase/surface/math3d-surface-explicit-monkey-preview.png" alt="Explicit surface rendering preview" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/surface/math3d-surface-parametric-klein-bottle-preview.png" alt="Parametric surface rendering preview" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/surface/math3d-surface-weierstrass-helicoid-preview.png" alt="Weierstrass surface rendering preview" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/surface/math3d-surface-implicit-gyroid-preview.png" alt="Implicit surface rendering preview" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card reveal reveal-delay-1">
+            <h3>Analysis Workspace</h3>
+            <p>Grid views, domain/calculus panels, and analysis-ready layouts.</p>
+            <div class="shot-grid">
+              <figure><img src="./assets/showcase/analysis/math3d-analysis-grid-domain-workspace.png" alt="Analysis workspace with domain grid and controls" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/analysis/math3d-analysis-domain-coloring-panel.png" alt="Analysis workspace showing domain coloring and panel controls" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card reveal reveal-delay-2">
+            <h3>Inspector</h3>
+            <p>Object properties, mesh stats, derived products, and scene overlays.</p>
+            <div class="shot-grid">
+              <figure><img src="./assets/showcase/inspector/math3d-inspector-surface-metrics-panel.png" alt="Inspector panel with mesh and derived data details" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/inspector/math3d-inspector-scene-overlay-gizmo.png" alt="Scene overlay and view gizmo used during inspection" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card reveal">
+            <h3>Topology Visualizations</h3>
+            <p>Torus, Klein bottle, Mobius strip, and stage-based topology studies.</p>
+            <div class="shot-grid shot-grid-4">
+              <figure><img src="./assets/showcase/topology/math3d-topology-torus-view-preview.png" alt="Topology torus visualization" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/topology/math3d-topology-klein-bottle-view-preview.png" alt="Topology Klein bottle visualization" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/topology/math3d-topology-mobius-strip-view-preview.png" alt="Topology Mobius strip visualization" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/topology/math3d-topology-knot-stage-preview.png" alt="Topology stage preview using knot geometry" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card reveal reveal-delay-1">
+            <h3>Workbook / Learning Mode</h3>
+            <p>Task-style sessions with snapshot state, export actions, and replay workflow.</p>
+            <div class="shot-grid">
+              <figure><img src="./assets/showcase/workbook/math3d-workbook-scene-script-session.png" alt="Workbook panel next to scene workspace" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/workbook/math3d-workbook-export-panel-session.png" alt="Workbook actions for save, export, and replay" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card reveal reveal-delay-2">
+            <h3>Mobile Companion</h3>
+            <p>Narrow layout controls and touch-oriented inspector/view flow.</p>
+            <div class="shot-grid shot-grid-mobile">
+              <figure><img src="./assets/showcase/mobile/math3d-mobile-viewer-compact.png" alt="Mobile viewer compact layout" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/mobile/math3d-mobile-inspector-touch.png" alt="Mobile inspector and touch workflow layout" loading="lazy" /></figure>
+            </div>
+          </article>
+
+          <article class="showcase-card showcase-card-wide reveal">
+            <h3>Architecture / Pipeline</h3>
+            <p>Equation → Mesh → Analysis → Scene, with worker-backed runtime links.</p>
+            <div class="shot-grid shot-grid-3">
+              <figure><img src="./assets/showcase/pipeline/math3d-pipeline-runtime-architecture-map.png" alt="Runtime architecture map for worker and IPC flows" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/pipeline/math3d-pipeline-mesh-stage-preview.png" alt="Mesh stage preview in pipeline" loading="lazy" /></figure>
+              <figure><img src="./assets/showcase/pipeline/math3d-pipeline-scene-stage-preview.png" alt="Scene stage preview in pipeline" loading="lazy" /></figure>
+            </div>
           </article>
         </div>
       </section>
