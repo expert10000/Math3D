@@ -916,6 +916,189 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
       },
     ],
   },
+  {
+    id: "mobius_lines_to_circles",
+    title: "Mobius: lines become circles",
+    description: "Track how grid lines in the z-plane map into circles/lines in the w-plane.",
+    tags: ["complex analysis", "mobius", "conformal", "circles"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          {
+            type: "text",
+            title: "Goal",
+            text: "Observe circle-line mapping under a non-affine Mobius transformation.",
+          },
+          {
+            type: "formula",
+            title: "Map formula",
+            formula: "w = (az+b)/(cz+d)\nExample: w = z/(z+1)",
+          },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Steps",
+            text: "Sample horizontal and vertical lines in z-plane and classify their images in w-plane.",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [{ type: "visualize", title: "Z/W mapping snapshots" }],
+      },
+      {
+        id: "explain",
+        blocks: [{ type: "text", title: "Observations", text: "Record what remains conformal and where curvature in image curves changes." }],
+      },
+    ],
+  },
+  {
+    id: "mobius_inversion_pole",
+    title: "Mobius: inversion and pole",
+    description: "Study singular behavior and clipping near the pole for inversion.",
+    tags: ["complex analysis", "mobius", "inversion", "pole"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Inspect how inversion behaves near the singularity and at large radius." },
+          { type: "formula", title: "Map formula", formula: "w = (az+b)/(cz+d)\nExample: w = 1/z" },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Steps",
+            text: "Move selected points toward z = 0 and compare growth of |w|, then test points far from the origin.",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [{ type: "visualize", title: "Pole behavior snapshots" }],
+      },
+      {
+        id: "explain",
+        blocks: [{ type: "text", title: "Observations", text: "Record the pole location and describe the infinity behavior." }],
+      },
+    ],
+  },
+  {
+    id: "mobius_cayley_transform",
+    title: "Mobius: Cayley transform",
+    description: "Verify upper half-plane to unit disk mapping.",
+    tags: ["complex analysis", "mobius", "cayley", "riemann mapping"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Verify that Im(z) > 0 is mapped to |w| < 1." },
+          { type: "formula", title: "Map formula", formula: "w = (az+b)/(cz+d)\nExample: w = (z-i)/(z+i)" },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Steps",
+            text: "Probe points above and below the real axis, then compare whether mapped points are inside or outside the unit disk.",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [{ type: "visualize", title: "Half-plane to disk snapshots" }],
+      },
+      {
+        id: "explain",
+        blocks: [{ type: "text", title: "Observations", text: "Summarize boundary mapping of the real axis and orientation." }],
+      },
+    ],
+  },
+  {
+    id: "mobius_cross_ratio_invariant",
+    title: "Mobius: cross-ratio invariant",
+    description: "Use one map and verify that cross-ratio is preserved for selected quadruples.",
+    tags: ["complex analysis", "mobius", "cross-ratio", "invariants"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Check invariance of cross-ratio under a Mobius map." },
+          { type: "formula", title: "Map formula", formula: "w = (az+b)/(cz+d)\nExample: w = (2z+1)/(z+3)" },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Steps",
+            text: "Pick four points z1,z2,z3,z4 and compare cross-ratio(z1,z2;z3,z4) with cross-ratio(w1,w2;w3,w4).",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [{ type: "visualize", title: "Invariant check snapshots" }],
+      },
+      {
+        id: "explain",
+        blocks: [{ type: "text", title: "Observations", text: "Record numerical tolerance and note when near-pole samples break stability." }],
+      },
+    ],
+  },
+  {
+    id: "mobius_riemann_infinity",
+    title: "Mobius: Riemann sphere and infinity",
+    description: "Connect finite mapping behavior to the point at infinity.",
+    tags: ["complex analysis", "mobius", "riemann sphere", "infinity"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    stages: [
+      {
+        id: "define",
+        blocks: [
+          { type: "text", title: "Goal", text: "Track pole and infinity under a Mobius map using sphere interpretation." },
+          { type: "formula", title: "Map formula", formula: "w = (az+b)/(cz+d)\nExample: w = (z-2)/(z+2)" },
+        ],
+      },
+      {
+        id: "compute",
+        blocks: [
+          {
+            type: "text",
+            title: "Steps",
+            text: "Identify z = -d/c as pole and w = a/c as image of infinity, then verify using sampled points.",
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        blocks: [{ type: "visualize", title: "Riemann sphere snapshots" }],
+      },
+      {
+        id: "explain",
+        blocks: [{ type: "text", title: "Observations", text: "Describe continuity away from the pole and behavior near the branch to infinity." }],
+      },
+    ],
+  },
 ];
 
 export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
@@ -978,6 +1161,24 @@ export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
     suggestedStages: ["define", "compute", "visualize", "explain"],
     tags: ["selection", "overlays", "curves"],
     templateIds: ["selection_stats", "curve_overlay_demo"],
+  },
+  {
+    id: "pack_complex_analysis_mobius",
+    title: "Complex Analysis -> Mobius maps",
+    description: "Demo workbooks for canonical Mobius mappings and invariants.",
+    topic: "Complex analysis -> Mobius maps",
+    difficulty: "intro",
+    prerequisites: ["Complex numbers", "Fractional linear maps", "Riemann sphere basics"],
+    requiredOperators: [],
+    suggestedStages: ["define", "compute", "visualize", "explain"],
+    tags: ["complex analysis", "mobius", "conformal maps", "invariants"],
+    templateIds: [
+      "mobius_lines_to_circles",
+      "mobius_inversion_pole",
+      "mobius_cayley_transform",
+      "mobius_cross_ratio_invariant",
+      "mobius_riemann_infinity",
+    ],
   },
   {
     id: "pack_geometry_olympiad_incircle_reflection",

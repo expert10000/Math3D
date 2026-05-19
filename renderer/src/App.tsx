@@ -1333,14 +1333,165 @@ const cloneMobiusParams = (p: MobiusParams): MobiusParams => ({
   c: { ...p.c },
   d: { ...p.d },
 });
+const lerpNumber = (a: number, b: number, t: number) => a + (b - a) * t;
+const lerpComplex = (a: C, b: C, t: number): C => ({ re: lerpNumber(a.re, b.re, t), im: lerpNumber(a.im, b.im, t) });
+const lerpMobiusParams = (from: MobiusParams, to: MobiusParams, t: number): MobiusParams => ({
+  a: lerpComplex(from.a, to.a, t),
+  b: lerpComplex(from.b, to.b, t),
+  c: lerpComplex(from.c, to.c, t),
+  d: lerpComplex(from.d, to.d, t),
+});
+const MOBIUS_ANIMATION_SPEED_OPTIONS = [0.25, 0.5, 1, 2] as const;
+type MobiusAnimationSpeed = (typeof MOBIUS_ANIMATION_SPEED_OPTIONS)[number];
 
-const MOBIUS_WORKBOOK_DEMOS = [
-  "Demo 1: Lines become circles",
-  "Demo 2: Inversion and the pole",
-  "Demo 3: Cayley transform",
-  "Demo 4: Cross-ratio preservation",
-  "Demo 5: Riemann sphere and infinity",
+type MobiusWorkbookDemoSpec = {
+  id: string;
+  title: string;
+  focus: string;
+  formula: string;
+  params: MobiusParams;
+  notes: string;
+};
+
+const MOBIUS_WORKBOOK_DEMOS: MobiusWorkbookDemoSpec[] = [
+  {
+    id: "mobius_lines_to_circles",
+    title: "Lines become circles",
+    focus: "Observe how lines map to circles/lines and how angle preservation appears.",
+    formula: "w = z/(z + 1)",
+    params: {
+      a: { re: 1, im: 0 },
+      b: { re: 0, im: 0 },
+      c: { re: 1, im: 0 },
+      d: { re: 1, im: 0 },
+    },
+    notes: "Track horizontal and vertical lines in Z-plane and record their W-plane images.",
+  },
+  {
+    id: "mobius_inversion_pole",
+    title: "Inversion and the pole",
+    focus: "Study singular behavior near the pole and far-field compression.",
+    formula: "w = 1/z",
+    params: {
+      a: { re: 0, im: 0 },
+      b: { re: 1, im: 0 },
+      c: { re: 1, im: 0 },
+      d: { re: 0, im: 0 },
+    },
+    notes: "Move selected points toward z = 0 and compare mapped magnitude |w|.",
+  },
+  {
+    id: "mobius_cayley",
+    title: "Cayley transform",
+    focus: "Verify upper half-plane to unit disk mapping.",
+    formula: "w = (z - i)/(z + i)",
+    params: {
+      a: { re: 1, im: 0 },
+      b: { re: 0, im: -1 },
+      c: { re: 1, im: 0 },
+      d: { re: 0, im: 1 },
+    },
+    notes: "Check that points with Im(z) > 0 map inside |w| < 1.",
+  },
+  {
+    id: "mobius_cross_ratio",
+    title: "Cross-ratio preservation",
+    focus: "Confirm Möbius invariance of cross-ratio on chosen quadruples.",
+    formula: "w = (2z + 1)/(z + 3)",
+    params: {
+      a: { re: 2, im: 0 },
+      b: { re: 1, im: 0 },
+      c: { re: 1, im: 0 },
+      d: { re: 3, im: 0 },
+    },
+    notes: "Pick four non-collinear points and compare cross-ratio before/after mapping.",
+  },
+  {
+    id: "mobius_riemann_infinity",
+    title: "Riemann sphere and infinity",
+    focus: "Connect finite-plane mapping with sphere behavior at infinity.",
+    formula: "w = (z - 2)/(z + 2)",
+    params: {
+      a: { re: 1, im: 0 },
+      b: { re: -2, im: 0 },
+      c: { re: 1, im: 0 },
+      d: { re: 2, im: 0 },
+    },
+    notes: "Open Riemann tab and identify image of infinity and the pole location.",
+  },
 ];
+
+const buildMobiusWorkbookFromDemo = (demo: MobiusWorkbookDemoSpec, makeId: () => string): Workbook => {
+  const wb = createDefaultWorkbook(makeId);
+  wb.title = `Möbius demo: ${demo.title}`;
+  wb.updatedAt = Date.now();
+  const defineStage = wb.stages.find((s) => s.id === "define");
+  const visualizeStage = wb.stages.find((s) => s.id === "visualize");
+  const explainStage = wb.stages.find((s) => s.id === "explain");
+  const computeStage = wb.stages.find((s) => s.id === "compute");
+  const coeffText =
+    `a=${cToStr(demo.params.a)}, b=${cToStr(demo.params.b)}, c=${cToStr(demo.params.c)}, d=${cToStr(demo.params.d)}`;
+
+  if (defineStage) {
+    defineStage.blocks = [
+      {
+        id: makeId(),
+        type: "text",
+        title: "Goal",
+        text: demo.focus,
+        outputs: [{ id: "text", label: "Text", type: "text" }],
+      },
+      {
+        id: makeId(),
+        type: "formula",
+        title: "Map formula",
+        formula: `w = (az+b)/(cz+d)\nExample map: ${demo.formula}\nCoefficients: ${coeffText}`,
+        outputs: [{ id: "formula", label: "Formula", type: "formula" }],
+      },
+    ];
+  }
+  if (computeStage) {
+    computeStage.blocks = [
+      {
+        id: makeId(),
+        type: "text",
+        title: "Demo steps",
+        text: [
+          `Preset: ${demo.title}`,
+          `Formula: ${demo.formula}`,
+          demo.notes,
+          "Use Z/W planes, then switch to Circles/Lines, Invariants, and Riemann tabs for verification.",
+        ].join("\n"),
+        outputs: [{ id: "text", label: "Text", type: "text" }],
+      },
+    ];
+  }
+  if (visualizeStage) {
+    visualizeStage.blocks = [
+      {
+        id: makeId(),
+        type: "visualize",
+        title: "Möbius map view",
+        inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+        outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
+        visualize: { live: true, snapshotA: null, snapshotB: null, notes: "Capture Z-plane/W-plane and Riemann sphere snapshots." },
+      },
+    ];
+  }
+  if (explainStage) {
+    explainStage.blocks = [
+      {
+        id: makeId(),
+        type: "text",
+        title: "Observations",
+        text:
+          "State what is preserved (angles, circle-line behavior, cross-ratio where applicable) and where poles/infinity appear.",
+        outputs: [{ id: "text", label: "Text", type: "text" }],
+      },
+    ];
+  }
+  return wb;
+};
 
 const toMobiusLiteral = (n: number): string => {
   const rounded = Number(n.toFixed(6));
@@ -7931,6 +8082,13 @@ const App: React.FC = () => {
   const [mobiusShowSelectedPoint, setMobiusShowSelectedPoint] = useState(true);
   const [mobiusSelectedPoint, setMobiusSelectedPoint] = useState<C>({ re: 1, im: 0 });
   const [mobiusIntegrationStatus, setMobiusIntegrationStatus] = useState<string | null>(null);
+  const [mobiusAnimationPlaying, setMobiusAnimationPlaying] = useState(false);
+  const [mobiusAnimationProgress, setMobiusAnimationProgress] = useState(0);
+  const [mobiusAnimationSpeed, setMobiusAnimationSpeed] = useState<MobiusAnimationSpeed>(1);
+  const [mobiusAnimationMapBlendEnabled, setMobiusAnimationMapBlendEnabled] = useState(true);
+  const [mobiusAnimationSelectedPointEnabled, setMobiusAnimationSelectedPointEnabled] = useState(true);
+  const [mobiusAnimationGridEnabled, setMobiusAnimationGridEnabled] = useState(true);
+  const [mobiusAnimationCircleEnabled, setMobiusAnimationCircleEnabled] = useState(true);
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -7967,78 +8125,36 @@ const App: React.FC = () => {
     };
   }, [mobiusParams]);
 
+  useEffect(() => {
+    if (mode !== "mobius" || mobiusSubTab !== "animation" || !mobiusAnimationPlaying) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.max(0, (now - last) / 1000);
+      last = now;
+      setMobiusAnimationProgress((prev) => {
+        const next = prev + dt * 0.22 * mobiusAnimationSpeed;
+        return next >= 1 ? next - Math.floor(next) : next;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [mode, mobiusSubTab, mobiusAnimationPlaying, mobiusAnimationSpeed]);
+
   const handleMobiusSaveAsWorkbookDemo = useCallback(() => {
     if (IS_REPLAY_MODE) return;
-    const wb = createDefaultWorkbook(makeId);
-    wb.title = "Möbius maps demo";
-    wb.updatedAt = Date.now();
-    const defineStage = wb.stages.find((s) => s.id === "define");
-    const visualizeStage = wb.stages.find((s) => s.id === "visualize");
-    const explainStage = wb.stages.find((s) => s.id === "explain");
-    const computeStage = wb.stages.find((s) => s.id === "compute");
-    const coeffText =
-      `a=${cToStr(mobiusParams.a)}, b=${cToStr(mobiusParams.b)}, c=${cToStr(mobiusParams.c)}, d=${cToStr(mobiusParams.d)}`;
-    if (defineStage) {
-      defineStage.blocks = [
-        {
-          id: makeId(),
-          type: "text",
-          title: "Goal",
-          text: "Study Möbius maps: track how lines/circles transform, where poles appear, and how infinity behaves.",
-          outputs: [{ id: "text", label: "Text", type: "text" }],
-        },
-        {
-          id: makeId(),
-          type: "formula",
-          title: "Current map",
-          formula: `w = (az+b)/(cz+d)   with   ${coeffText}`,
-          outputs: [{ id: "formula", label: "Formula", type: "formula" }],
-        },
-      ];
-    }
-    if (computeStage) {
-      computeStage.blocks = [
-        {
-          id: makeId(),
-          type: "text",
-          title: "Demo set",
-          text: MOBIUS_WORKBOOK_DEMOS.join("\n"),
-          outputs: [{ id: "text", label: "Text", type: "text" }],
-        },
-      ];
-    }
-    if (visualizeStage) {
-      visualizeStage.blocks = [
-        {
-          id: makeId(),
-          type: "visualize",
-          title: "Möbius map view",
-          inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
-          outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
-          visualize: { live: true, snapshotA: null, snapshotB: null, notes: "Use Z-plane/W-plane + Riemann tab for each demo." },
-        },
-      ];
-    }
-    if (explainStage) {
-      explainStage.blocks = [
-        {
-          id: makeId(),
-          type: "text",
-          title: "Lesson prompts",
-          text: "For each demo, write what is preserved (angles, circles/lines, cross-ratio) and what changes (location, scale, pole behavior).",
-          outputs: [{ id: "text", label: "Text", type: "text" }],
-        },
-      ];
-    }
-    setWorkbooks((prev) => [wb, ...prev]);
-    setActiveWorkbookId(wb.id);
+    const created = MOBIUS_WORKBOOK_DEMOS.map((demo) => buildMobiusWorkbookFromDemo(demo, makeId));
+    if (!created.length) return;
+    setWorkbooks((prev) => [...created, ...prev]);
+    setActiveWorkbookId(created[0].id);
     setActiveStageId("define");
     setGeometryMode("workbook");
     setGeometryWorkbookUiMode("full");
     setRightPanelTab("workbook");
     setMode("geometry");
-    setMobiusIntegrationStatus(`Workbook demo created: ${wb.title}`);
-  }, [mobiusParams]);
+    setMobiusIntegrationStatus(`Workbook demos created: ${created.length} (Complex Analysis → Mobius).`);
+  }, []);
 
   const handleMobiusPromoteToSceneOverlay = useCallback(() => {
     const expr = mobiusParamsToComplexMapExpressions(mobiusParams);
@@ -12580,17 +12696,54 @@ const App: React.FC = () => {
   const canLoadScreenshotFolder = typeof window.appCapture?.listScreenshots === "function";
 
 
-const mobiusEffectiveParams = useMemo(() => {
-  if (mode !== "mobius") return mobiusParams;
+  const mobiusAnimationT = useMemo(
+    () => 0.5 - 0.5 * Math.cos((mobiusAnimationProgress % 1) * Math.PI * 2),
+    [mobiusAnimationProgress]
+  );
+  const mobiusAnimationInterpolatedParams = useMemo(
+    () => lerpMobiusParams(identityParams, mobiusParams, mobiusAnimationT),
+    [mobiusAnimationT, mobiusParams]
+  );
+  const mobiusEffectiveParams = useMemo(() => {
+    if (mode !== "mobius") return mobiusParams;
+    if (mobiusSubTab === "animation" && mobiusAnimationMapBlendEnabled) {
+      return mobiusAnimationInterpolatedParams;
+    }
+    if (mobiusSubTab !== "decompose") return mobiusParams;
 
-  if (mobiusSubTab !== "decompose") return mobiusParams;
+    // In decompose tab: render intermediate composition steps
+    const stepped = mobiusParamsAtDecomposeStep(mobiusParams, mobiusDecompStep);
+    return stepped ?? mobiusParams; // if affine / invalid, fall back
+  }, [
+    mode,
+    mobiusParams,
+    mobiusSubTab,
+    mobiusDecompStep,
+    mobiusAnimationMapBlendEnabled,
+    mobiusAnimationInterpolatedParams,
+  ]);
+  const mobiusEffectiveSelectedPoint = useMemo(() => {
+    if (mode !== "mobius" || mobiusSubTab !== "animation" || !mobiusAnimationSelectedPointEnabled) {
+      return mobiusSelectedPoint;
+    }
+    const radius = Math.hypot(mobiusSelectedPoint.re, mobiusSelectedPoint.im);
+    const baseRadius = radius < 1e-6 ? Math.max(0.8, mobiusDomainExtent * 0.35) : radius;
+    const baseAngle = radius < 1e-6 ? 0 : Math.atan2(mobiusSelectedPoint.im, mobiusSelectedPoint.re);
+    const theta = baseAngle + (mobiusAnimationProgress % 1) * Math.PI * 2;
+    return { re: baseRadius * Math.cos(theta), im: baseRadius * Math.sin(theta) };
+  }, [
+    mode,
+    mobiusSubTab,
+    mobiusAnimationSelectedPointEnabled,
+    mobiusSelectedPoint,
+    mobiusDomainExtent,
+    mobiusAnimationProgress,
+  ]);
 
-  // In decompose tab: render intermediate composition steps
-  const stepped = mobiusParamsAtDecomposeStep(mobiusParams, mobiusDecompStep);
-  return stepped ?? mobiusParams; // if affine / invalid, fall back
-}, [mode, mobiusParams, mobiusSubTab, mobiusDecompStep]);
-
-  const mobiusSelectedImage = useMemo(() => mobiusEval(mobiusSelectedPoint, mobiusEffectiveParams), [mobiusSelectedPoint, mobiusEffectiveParams]);
+  const mobiusSelectedImage = useMemo(
+    () => mobiusEval(mobiusEffectiveSelectedPoint, mobiusEffectiveParams),
+    [mobiusEffectiveSelectedPoint, mobiusEffectiveParams]
+  );
   const handleMobiusZClick = useCallback((pt: { re: number; im: number }) => {
     setMobiusSelectedPoint({ re: pt.re, im: pt.im });
   }, []);
@@ -12620,8 +12773,33 @@ case "mobius":
     domainExtent: mobiusDomainExtent,
     imageClip: mobiusImageClip,
   });
-  if (mobiusShowPole && mobiusSummary.pole) {
-    zRef.current.drawPoints([[mobiusSummary.pole.re, mobiusSummary.pole.im]], {
+  if (mobiusSubTab === "animation" && mobiusAnimationGridEnabled) {
+    const gridExtent = Math.max(1, mobiusDomainExtent * 0.85);
+    const gridSamples = 180;
+    const positions = [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9].map((u) => u * gridExtent);
+    for (const p of positions) {
+      const horiz = buildLinePolyline({ re: 0, im: p }, { re: 1, im: 0 }, -gridExtent, gridExtent, gridSamples);
+      const vert = buildLinePolyline({ re: p, im: 0 }, { re: 0, im: 1 }, -gridExtent, gridExtent, gridSamples);
+      zRef.current.drawCurve(horiz.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
+      zRef.current.drawCurve(vert.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
+      const horizMapped = mapPolylineSegments(horiz, mobiusEffectiveParams);
+      const vertMapped = mapPolylineSegments(vert, mobiusEffectiveParams);
+      for (const seg of horizMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
+      for (const seg of vertMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
+    }
+  }
+  if (mobiusSubTab === "animation" && mobiusAnimationCircleEnabled) {
+    const r = Math.max(0.65, mobiusDomainExtent * 0.48);
+    const circleZ = buildCirclePolyline({ re: 0, im: 0 }, r, 260);
+    zRef.current.drawCurve(circleZ.map((z) => [z.re, z.im]), "#7c3aed", { width: 1.8, opacity: 0.92, dash: "5 3" });
+    const circleMapped = mapPolylineSegments(circleZ, mobiusEffectiveParams);
+    for (const seg of circleMapped) {
+      wRef.current.drawCurve(seg, "#7c3aed", { width: 1.8, opacity: 0.95, dash: "5 3" });
+    }
+  }
+  const activePole = cAbs2(mobiusEffectiveParams.c) < 1e-12 ? null : cNeg(cDiv(mobiusEffectiveParams.d, mobiusEffectiveParams.c));
+  if (mobiusShowPole && activePole) {
+    zRef.current.drawPoints([[activePole.re, activePole.im]], {
       color: "#f57c00",
       shape: "triangle",
       size: 5,
@@ -12631,8 +12809,9 @@ case "mobius":
     zRef.current.drawPoints([], { layer: "mobius-pole-z" });
   }
 
-  if (mobiusShowFixedPoints && (mobiusSummary.fixed.kind === "pair" || mobiusSummary.fixed.kind === "single")) {
-    const fixedPts = mobiusSummary.fixed.values.map((z) => [z.re, z.im] as [number, number]);
+  const fixed = mobiusFixedPoints(mobiusEffectiveParams);
+  if (mobiusShowFixedPoints && (fixed.kind === "pair" || fixed.kind === "single")) {
+    const fixedPts = fixed.values.map((z) => [z.re, z.im] as [number, number]);
     zRef.current.drawPoints(fixedPts, {
       color: "#7b1fa2",
       shape: "diamond",
@@ -12651,7 +12830,7 @@ case "mobius":
   }
 
   if (mobiusShowSelectedPoint) {
-    zRef.current.drawPoints([[mobiusSelectedPoint.re, mobiusSelectedPoint.im]], {
+    zRef.current.drawPoints([[mobiusEffectiveSelectedPoint.re, mobiusEffectiveSelectedPoint.im]], {
       color: "#111",
       shape: "cross",
       size: 5.2,
@@ -12695,7 +12874,6 @@ case "mobius":
     }
   }, [
     mode,
-    mobiusParams,
     mobiusEffectiveParams,
     mobiusGridStep,
     mobiusDomainExtent,
@@ -12704,8 +12882,11 @@ case "mobius":
     mobiusShowFixedPoints,
     mobiusShowSelectedPoint,
     mobiusSelectedPoint,
+    mobiusEffectiveSelectedPoint,
     mobiusSelectedImage,
-    mobiusSummary,
+    mobiusSubTab,
+    mobiusAnimationGridEnabled,
+    mobiusAnimationCircleEnabled,
     chebN,
     primKind,
     primValue,
@@ -25092,7 +25273,7 @@ case "mobius":
     SURFACE_MESH_PRESETS[1]?.id ??
     meshNewPresetId;
   const sectionNavEntries: Array<{
-    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_analysis" | "complex_maps";
+    id: "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "complex_analysis";
     label: string;
     active: boolean;
     disabled?: boolean;
@@ -25157,7 +25338,7 @@ case "mobius":
     {
       id: "complex_analysis",
       label: "Complex Analysis",
-      active: mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex",
+      active: (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex") || mode === "mobius",
       onSelect: () => {
         setMode("surfaces");
         setDatasetKind("surface");
@@ -25166,12 +25347,6 @@ case "mobius":
         setSurfacesLeftTab("scene");
         setSurfacesWorkGalleryOpen(false);
       },
-    },
-    {
-      id: "complex_maps",
-      label: "Mobius",
-      active: mode === "mobius",
-      onSelect: () => setMode("mobius"),
     },
   ];
   const displayModeEntries = [
@@ -26743,6 +26918,39 @@ case "mobius":
         </div>
 
         {!isSurfacePreviewMode && <div style={styles.controls}>
+          {(mode === "mobius" || (mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")) && (
+            <div
+              style={{
+                gridColumn: "span 12",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.78 }}>Complex Analysis:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("surfaces");
+                  setDatasetKind("surface");
+                  handleChangeViewerKind("complex");
+                  setSurfacesPanelState("work");
+                  setSurfacesLeftTab("scene");
+                }}
+                style={pill(mode === "surfaces" && isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "complex")}
+              >
+                Complex map
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("mobius")}
+                style={pill(mode === "mobius")}
+              >
+                Mobius
+              </button>
+            </div>
+          )}
           {mode === "maps" ? (
             <MapsButtons mapId={mapId} onChangeMapId={setMapId} />
           ) : mode === "mobius" ? (
@@ -34985,10 +35193,119 @@ case "mobius":
                   {mobiusSubTab === "circles" && <MobiusCirclesCard params={mobiusParams} />}
                   {mobiusSubTab === "riemann" && <MobiusRiemannCard params={mobiusParams} />}
                   {mobiusSubTab === "animation" && (
-                    <div style={{ ...cardStyle, maxHeight: 180, overflow: "auto" }}>
-                      <div style={{ fontWeight: 800, marginBottom: 6 }}>Animation</div>
-                      <div style={{ fontSize: 12, opacity: 0.78 }}>
-                        Planned: coefficient interpolation and orbit traces with frame export.
+                    <div style={{ display: "grid", gap: 10 }}>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ fontWeight: 800 }}>Animation</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => setMobiusAnimationPlaying(true)} disabled={mobiusAnimationPlaying}>Play</button>
+                            <button type="button" onClick={() => setMobiusAnimationPlaying(false)} disabled={!mobiusAnimationPlaying}>Pause</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMobiusAnimationPlaying(false);
+                                setMobiusAnimationProgress(0);
+                              }}
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
+                          <span>speed:</span>
+                          {MOBIUS_ANIMATION_SPEED_OPTIONS.map((value) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setMobiusAnimationSpeed(value)}
+                              style={pill(mobiusAnimationSpeed === value)}
+                              aria-pressed={mobiusAnimationSpeed === value}
+                            >
+                              {value}x
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={mobiusAnimationMapBlendEnabled}
+                              onChange={(e) => setMobiusAnimationMapBlendEnabled(e.target.checked)}
+                            />
+                            Animate from identity to current map
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={mobiusAnimationSelectedPointEnabled}
+                              onChange={(e) => setMobiusAnimationSelectedPointEnabled(e.target.checked)}
+                            />
+                            Animate selected point
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={mobiusAnimationGridEnabled}
+                              onChange={(e) => setMobiusAnimationGridEnabled(e.target.checked)}
+                            />
+                            Animate grid deformation
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={mobiusAnimationCircleEnabled}
+                              onChange={(e) => setMobiusAnimationCircleEnabled(e.target.checked)}
+                            />
+                            Animate circle deformation
+                          </label>
+                        </div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          f_t(z): coefficient interpolation between identity and target Möbius map (visual demo interpolation).
+                        </div>
+                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                          t = {mobiusAnimationT.toFixed(3)} | z* = {cToStr(mobiusEffectiveSelectedPoint)} | w* = {mobiusSelectedImage && cFinite(mobiusSelectedImage) ? cToStr(mobiusSelectedImage) : "∞ (clipped/pole)"}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+                          gap: 12,
+                          alignItems: "stretch",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                          <h3 style={styles.h3}>Z-plane (domain)</h3>
+                          <div style={{ minHeight: 320, flex: 1 }}>
+                            <PlanePlot
+                              id="svgZ"
+                              extent={mobiusDomainExtent}
+                              step={mobiusGridStep}
+                              ref={zRef}
+                              style={{ height: "100%" }}
+                              onClickPoint={handleMobiusZClick}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
+                            />
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                          <h3 style={styles.h3}>W-plane (image)</h3>
+                          <div style={{ minHeight: 320, flex: 1 }}>
+                            <PlanePlot
+                              id="svgW"
+                              extent={mobiusDomainExtent}
+                              step={mobiusGridStep}
+                              ref={wRef}
+                              style={{ height: "100%" }}
+                              domainColoring={wPlaneDomainColor}
+                              domainRings={wPlaneShowRings}
+                              domainRays={wPlaneShowRays}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
