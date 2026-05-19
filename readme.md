@@ -5,6 +5,33 @@
 
 Math3D is an interactive geometry app (Electron + React) with browser mode support.
 
+<p align="center">
+  <img src="docs/assets/screenshots/dev/math3d-dev-surface-wave-preview.png" width="86%" alt="Math3D development preview surface" />
+</p>
+
+## Highlights
+
+- Explicit, implicit, parametric, spline, and Weierstrass surface workflows
+- Interactive three.js viewport with geometry/object gallery
+- Python worker pipeline for CGAL/VTK-backed operations
+- Desktop (Electron) and browser deployment modes
+
+## Preview
+
+<p align="center">
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-explicit-monkey-preview.png" width="31%" alt="Explicit surface preview (monkey saddle)" />
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-implicit-gyroid-preview.png" width="31%" alt="Implicit surface preview (gyroid)" />
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-parametric-klein-bottle-preview.png" width="31%" alt="Parametric surface preview (Klein bottle)" />
+</p>
+<p align="center">
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-constructed-rotational-hyperboloid-preview.png" width="31%" alt="Constructed rotational surface preview (hyperboloid)" />
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-weierstrass-helicoid-preview.png" width="31%" alt="Weierstrass surface preview (helicoid)" />
+  <img src="docs/assets/screenshots/desktop/math3d-desktop-mesh-knot-preview.png" width="31%" alt="Mesh preview (knot)" />
+</p>
+
+Full gallery catalog: [GALLERY.md](GALLERY.md)  
+Regenerate thumbnails with Playwright: `npm run test:app:e2e:thumbnails`
+
 Live links:
 - Web app: https://expert10000.github.io/Math3D/app/
 - Web app (app.math3dlab.com): https://app.math3dlab.com/
