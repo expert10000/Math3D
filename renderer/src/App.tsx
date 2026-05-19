@@ -8034,6 +8034,7 @@ const App: React.FC = () => {
     setActiveWorkbookId(wb.id);
     setActiveStageId("define");
     setGeometryMode("workbook");
+    setGeometryWorkbookUiMode("full");
     setRightPanelTab("workbook");
     setMode("geometry");
     setMobiusIntegrationStatus(`Workbook demo created: ${wb.title}`);
@@ -8137,6 +8138,7 @@ const App: React.FC = () => {
       );
       setActiveStageId("explain");
       setGeometryMode("workbook");
+      setGeometryWorkbookUiMode("full");
       setRightPanelTab("workbook");
       setMode("geometry");
       setMobiusIntegrationStatus("Lesson card added to current workbook (Explain stage).");
@@ -8162,6 +8164,7 @@ const App: React.FC = () => {
     setActiveWorkbookId(wb.id);
     setActiveStageId("explain");
     setGeometryMode("workbook");
+    setGeometryWorkbookUiMode("full");
     setRightPanelTab("workbook");
     setMode("geometry");
     setMobiusIntegrationStatus("No active workbook. Created a new workbook with the lesson card.");
@@ -8637,6 +8640,28 @@ const App: React.FC = () => {
   const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
     setMeshDatasetState(toMeshDataset(mesh));
     setDatasetKind("surface");
+  }, []);
+  const focusSurfaceMeshViewport = useCallback((mesh: SurfaceMeshData | null) => {
+    if (!mesh?.positions?.length) return;
+    const focus = computeSurfaceMeshFocus(mesh);
+    if (!focus) return;
+    const dir = new THREE.Vector3(1, 0.68, 1.18).normalize();
+    const dist = Math.max(2.2, focus.radius * 3.2);
+    setCameraOverride({
+      position: {
+        x: focus.center.x + dir.x * dist,
+        y: focus.center.y + dir.y * dist,
+        z: focus.center.z + dir.z * dist,
+      },
+      target: { ...focus.center },
+      up: { x: 0, y: 1, z: 0 },
+    });
+    setCameraOverrideToken((t) => t + 1);
+    if (typeof window === "undefined") {
+      setWindowReframeToken((t) => t + 1);
+    } else {
+      window.requestAnimationFrame(() => setWindowReframeToken((t) => t + 1));
+    }
   }, []);
 
   const bakeGeometryObjectToDatasetById = useCallback((objectId: string) => {
@@ -16920,15 +16945,17 @@ case "mobius":
         { kind: "polyhedronPreset", id: preset.id, label: preset.label },
         { mergeVertices: true }
       );
-      setMeshDataset(applySurfaceMeshOps(base));
+      const meshReady = applySurfaceMeshOps(base);
+      setMeshDataset(meshReady);
       setSurfaceMeshImportError(null);
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
+      focusSurfaceMeshViewport(meshReady);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to build mesh preset.";
       setSurfaceMeshImportError(msg);
     }
-  }, []);
+  }, [focusSurfaceMeshViewport]);
 
   const handleGenerateSurfaceMeshAssetPreset = useCallback(
     async (presetId: string) => {
@@ -16942,9 +16969,11 @@ case "mobius":
         const blob = await resp.blob();
         const file = new File([blob], preset.fileName, { type: blob.type || "application/octet-stream" });
         const base = await loadSurfaceMeshFromFile([file], { mergeVertices: surfaceMeshMergeVertices });
-        setMeshDataset(applySurfaceMeshOps(base));
+        const meshReady = applySurfaceMeshOps(base);
+        setMeshDataset(meshReady);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
+        focusSurfaceMeshViewport(meshReady);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load bundled mesh preset.";
         setSurfaceMeshImportError(msg);
@@ -16952,7 +16981,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [surfaceMeshMergeVertices]
+    [focusSurfaceMeshViewport, surfaceMeshMergeVertices]
   );
 
   const handleLoadSurfaceMeshFile = useCallback(
@@ -16962,9 +16991,11 @@ case "mobius":
       setSurfaceMeshImportError(null);
       try {
         const base = await loadSurfaceMeshFromFile(files, { mergeVertices: surfaceMeshMergeVertices });
-        setMeshDataset(applySurfaceMeshOps(base));
+        const meshReady = applySurfaceMeshOps(base);
+        setMeshDataset(meshReady);
         setDatasetKind("mesh");
         setSurfaceViewerKind("mesh");
+        focusSurfaceMeshViewport(meshReady);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to load mesh file.";
         setSurfaceMeshImportError(msg);
@@ -16972,7 +17003,7 @@ case "mobius":
         setSurfaceMeshImportBusy(false);
       }
     },
-    [surfaceMeshMergeVertices]
+    [focusSurfaceMeshViewport, surfaceMeshMergeVertices]
   );
 
   const handleExportSurfaceMeshObj = useCallback(() => {
@@ -22302,9 +22333,18 @@ case "mobius":
         input.type = "file";
         input.accept = accept;
         input.multiple = multiple;
+        input.style.position = "fixed";
+        input.style.left = "-10000px";
+        input.style.top = "-10000px";
+        document.body.appendChild(input);
         input.onchange = () => {
-          if (input.files && input.files.length) onPick(input.files);
+          try {
+            if (input.files && input.files.length) onPick(input.files);
+          } finally {
+            input.remove();
+          }
         };
+        input.oncancel = () => input.remove();
         input.click();
       };
       const applyAxisView = (axis: "front" | "top" | "right") => {
@@ -30676,11 +30716,20 @@ case "mobius":
                         const input = document.createElement("input");
                         input.type = "file";
                         input.accept = ".math3d,.json,application/json";
+                        input.style.position = "fixed";
+                        input.style.left = "-10000px";
+                        input.style.top = "-10000px";
+                        document.body.appendChild(input);
                         input.onchange = () => {
-                          const file = input.files?.[0];
-                          if (!file) return;
-                          void file.text().then((raw) => handleImportWorkbooks(raw));
+                          try {
+                            const file = input.files?.[0];
+                            if (!file) return;
+                            void file.text().then((raw) => handleImportWorkbooks(raw));
+                          } finally {
+                            input.remove();
+                          }
                         };
+                        input.oncancel = () => input.remove();
                         input.click();
                       }}
                       style={{ fontSize: 11, textAlign: "left" }}
