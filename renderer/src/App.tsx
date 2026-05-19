@@ -137,6 +137,7 @@ import { buildCurveFromPreset } from "./math/curvePresetFactory";
 import {
   buildComplexMapSweep,
   compileComplexMapExpressions,
+  type ComplexMapInputMode,
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
 import { marchingSquares } from "./math/marchingSquares";
@@ -165,6 +166,7 @@ import {
   mobiusFixedPoints as mobiusFixedPointsCore,
   type MobiusParams,
 } from "./math/mobius";
+import { evalRiemannSheet, stereographicToSphere } from "./math/riemannSphere";
 import { computeGraphInvariantsFromProbe, getGraphFunction, type CurvatureData } from "./math/surfaceInvariants";
 import type { PrincipalCurvatureScalars } from "./math/principalCurvature";
 import { computeWeierstrassDrift, type WeierstrassDriftResult } from "./math/weierstrass";
@@ -1143,51 +1145,6 @@ const toCgalHealthState = (status: PythonWorkerDiagnosticsSnapshot): CgalHealthS
   error: status.lastError?.message,
   errorCategory: status.lastError?.category,
 });
-
-const stereographicToSphere = (re: number, im: number) => {
-  if (!Number.isFinite(re) || !Number.isFinite(im)) {
-    return { x: 0, y: 0, z: 1 };
-  }
-  const r2 = re * re + im * im;
-  if (!Number.isFinite(r2)) {
-    return { x: 0, y: 0, z: 1 };
-  }
-  const denom = 1 + r2;
-  if (!Number.isFinite(denom) || denom === 0) {
-    return { x: 0, y: 0, z: 1 };
-  }
-  return {
-    x: (2 * re) / denom,
-    y: (2 * im) / denom,
-    z: (r2 - 1) / denom,
-  };
-};
-
-const wrapAngle = (theta: number) => {
-  const twoPi = Math.PI * 2;
-  let t = theta;
-  if (!Number.isFinite(t)) return 0;
-  t = ((t + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
-  return t;
-};
-
-const evalRiemannSheet = (
-  re: number,
-  im: number,
-  sheetIndex: number,
-  sheetCount: number,
-  branchCutAngle: number
-) => {
-  const r = Math.hypot(re, im);
-  if (!Number.isFinite(r)) return null;
-  if (r === 0) return { re: 0, im: 0 };
-  const thetaRaw = Math.atan2(im, re);
-  const theta = wrapAngle(thetaRaw - branchCutAngle) + branchCutAngle;
-  const k = Math.max(1, sheetCount);
-  const angle = (theta + 2 * Math.PI * sheetIndex) / k;
-  const mag = Math.pow(r, 1 / k);
-  return { re: mag * Math.cos(angle), im: mag * Math.sin(angle) };
-};
 
 const applySurfaceMeshOps = (mesh: SurfaceMeshData): SurfaceMeshData => {
   let next = mesh;
@@ -2817,6 +2774,8 @@ const COMPLEX_MAP_PRESETS = [
 const COMPLEX_MAP_CUSTOM_ID = "custom";
 
 const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
+  inputMode: "reim",
+  fExpr: "z",
   reExpr: COMPLEX_MAP_PRESETS[0]?.reExpr ?? "u",
   imExpr: COMPLEX_MAP_PRESETS[0]?.imExpr ?? "v",
   uMin: -2,
@@ -8169,6 +8128,7 @@ const App: React.FC = () => {
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapSpec((prev) => ({
       ...prev,
+      inputMode: "reim",
       reExpr: expr.reExpr,
       imExpr: expr.imExpr,
       mapMode: "standard",
@@ -8208,6 +8168,7 @@ const App: React.FC = () => {
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapSpec((prev) => ({
       ...prev,
+      inputMode: "reim",
       reExpr: expr.reExpr,
       imExpr: expr.imExpr,
       mapMode: "riemann",
@@ -9306,15 +9267,23 @@ const App: React.FC = () => {
     }
     setComplexMapSpec((prev) => ({
       ...prev,
+      inputMode: "reim",
       reExpr: preset.reExpr,
       imExpr: preset.imExpr,
     }));
     setComplexMapError(null);
   }, []);
 
+  const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
+  const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
+
   const complexMapCompiled = useMemo(
-    () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr),
-    [complexMapSpec.reExpr, complexMapSpec.imExpr]
+    () =>
+      compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, {
+        inputMode: complexMapInputMode,
+        fExpr: complexMapFunctionExpr,
+      }),
+    [complexMapSpec.reExpr, complexMapSpec.imExpr, complexMapInputMode, complexMapFunctionExpr]
   );
   const complexMapFns = useMemo(() => {
     if (complexMapCompiled.error) return null;
@@ -9391,6 +9360,8 @@ const App: React.FC = () => {
   useEffect(() => {
     setComplexMapProbe(null);
   }, [
+    complexMapSpec.inputMode,
+    complexMapSpec.fExpr,
     complexMapSpec.reExpr,
     complexMapSpec.imExpr,
     complexMapSpec.uMin,
@@ -23111,11 +23082,15 @@ case "mobius":
         });
       } else if (surfaceViewerKind === "complex") {
         activeDefinitionNodeId = "def:complex-map";
+        const complexSourceDefinition =
+          complexMapInputMode === "fz"
+            ? `f(z)=${complexMapFunctionExpr || "z"}`
+            : `Re=${complexMapSpec.reExpr}, Im=${complexMapSpec.imExpr}`;
         addRaw({
           id: activeDefinitionNodeId,
           name: "Complex map sweep",
           type: "surface/complex-definition",
-          sourceDefinition: `Re=${complexMapSpec.reExpr}, Im=${complexMapSpec.imExpr}`,
+          sourceDefinition: complexSourceDefinition,
           displayState: "active",
           parentId: null,
           category: "surfaceDefinition",
@@ -23496,6 +23471,8 @@ case "mobius":
     activeWeierstrassDomain.vMin,
     activeWeierstrassDomain.vMax,
     weierstrassResolution,
+    complexMapSpec.inputMode,
+    complexMapSpec.fExpr,
     complexMapSpec.reExpr,
     complexMapSpec.imExpr,
     volumePresetId,
@@ -42027,6 +42004,8 @@ onChangeImplicitExpr,
   const rotationalPrincipalAxis = detectPrincipalAxisDirection(rotationalAxisDirection);
   const safeWeierstrassDomain = normalizeParamDomain(weierstrassDomain, WEIERSTRASS_DEFAULTS.domain);
   const complexMapIsRiemann = complexMapSpec.mapMode === "riemann";
+  const complexMapInputModeUi: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
+  const complexMapFunctionExprUi = complexMapSpec.fExpr ?? "";
   const complexMapSheetCount = complexMapIsRiemann ? Math.max(2, Math.round(complexMapSpec.sheetCount)) : 1;
   const complexMapSheetIndex = Math.min(
     Math.max(0, Math.round(complexMapSpec.sheetIndex)),
@@ -43036,8 +43015,8 @@ onChangeImplicitExpr,
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Complex Map Sweep (z→w)</div>
         <div style={{ fontSize: 11, opacity: 0.75 }}>
           {complexMapIsRiemann
-            ? "Define p(z) = Re + i Im and render the k-sheet surface w^k = p(z)."
-            : "Map z = u + iv to w(u,v) = Re + i Im, then sweep or graph Re/Im as surfaces."}
+            ? "Define p(z) and render the k-sheet surface w^k = p(z)."
+            : "Map z = u + iv to w = f(z), then sweep or graph Re/Im as surfaces."}
         </div>
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Tool mode</div>
         <div style={pillRow}>
@@ -43070,48 +43049,95 @@ onChangeImplicitExpr,
         <details style={{ marginTop: 10 }} open>
           <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: 12 }}>Map</summary>
           <div style={{ marginTop: 8 }}>
-        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 0 }}>Mapping definition</div>
-        <label style={{ fontSize: 12 }}>Re({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
-        <input
-          type="text"
-          value={complexMapSpec.reExpr}
-          onChange={(e) => {
-            onChangeComplexMapSpec({ reExpr: e.target.value });
-            if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
-          }}
-          style={{
-            width: "100%",
-            marginTop: 2,
-            marginBottom: 6,
-            padding: "4px 6px",
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            fontFamily: "monospace",
-            fontSize: 13,
-            boxSizing: "border-box",
-          }}
-        />
+        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Function parser</div>
+        <div style={pillRow}>
+          <button
+            type="button"
+            onClick={() => onChangeComplexMapSpec({ inputMode: "reim" })}
+            style={pill(complexMapInputModeUi === "reim")}
+            aria-pressed={complexMapInputModeUi === "reim"}
+          >
+            Re/Im components
+          </button>
+          <button
+            type="button"
+            onClick={() => onChangeComplexMapSpec({ inputMode: "fz" })}
+            style={pill(complexMapInputModeUi === "fz")}
+            aria-pressed={complexMapInputModeUi === "fz"}
+          >
+            Direct f(z)
+          </button>
+        </div>
 
-        <label style={{ fontSize: 12 }}>Im({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
-        <input
-          type="text"
-          value={complexMapSpec.imExpr}
-          onChange={(e) => {
-            onChangeComplexMapSpec({ imExpr: e.target.value });
-            if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
-          }}
-          style={{
-            width: "100%",
-            marginTop: 2,
-            marginBottom: 8,
-            padding: "4px 6px",
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            fontFamily: "monospace",
-            fontSize: 13,
-            boxSizing: "border-box",
-          }}
-        />
+        <div style={{ fontWeight: 600, fontSize: 12, marginTop: 0 }}>Mapping definition</div>
+        {complexMapInputModeUi === "fz" ? (
+          <>
+            <label style={{ fontSize: 12 }}>{complexMapIsRiemann ? "p(z) =" : "f(z) ="}</label>
+            <input
+              type="text"
+              value={complexMapFunctionExprUi}
+              onChange={(e) => {
+                onChangeComplexMapSpec({ fExpr: e.target.value, inputMode: "fz" });
+                if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
+              }}
+              style={{
+                width: "100%",
+                marginTop: 2,
+                marginBottom: 8,
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                fontFamily: "monospace",
+                fontSize: 13,
+                boxSizing: "border-box",
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <label style={{ fontSize: 12 }}>Re({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
+            <input
+              type="text"
+              value={complexMapSpec.reExpr}
+              onChange={(e) => {
+                onChangeComplexMapSpec({ reExpr: e.target.value, inputMode: "reim" });
+                if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
+              }}
+              style={{
+                width: "100%",
+                marginTop: 2,
+                marginBottom: 6,
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                fontFamily: "monospace",
+                fontSize: 13,
+                boxSizing: "border-box",
+              }}
+            />
+
+            <label style={{ fontSize: 12 }}>Im({complexMapIsRiemann ? "p" : "w"})(u,v) =</label>
+            <input
+              type="text"
+              value={complexMapSpec.imExpr}
+              onChange={(e) => {
+                onChangeComplexMapSpec({ imExpr: e.target.value, inputMode: "reim" });
+                if (complexMapPresetId !== COMPLEX_MAP_CUSTOM_ID) onChangeComplexMapPreset(COMPLEX_MAP_CUSTOM_ID);
+              }}
+              style={{
+                width: "100%",
+                marginTop: 2,
+                marginBottom: 8,
+                padding: "4px 6px",
+                borderRadius: 6,
+                border: "1px solid #ccc",
+                fontFamily: "monospace",
+                fontSize: 13,
+                boxSizing: "border-box",
+              }}
+            />
+          </>
+        )}
 
         <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 4 }}>Quick presets</div>
         <div style={{ ...pillRow, flexWrap: "wrap" }}>
@@ -43127,7 +43153,11 @@ onChangeImplicitExpr,
             </button>
           ))}
         </div>
-        <div style={{ ...styles.hint, marginTop: 6 }}>Use u, v and functions like sin, cos, exp. Constants: pi, e.</div>
+        <div style={{ ...styles.hint, marginTop: 6 }}>
+          {complexMapInputModeUi === "fz"
+            ? "Use z (plus optional u,v), i, and functions sin/cos/tan/exp/log/sqrt/abs. Constants: pi, e."
+            : "Use u, v and functions like sin, cos, exp. Constants: pi, e."}
+        </div>
 
         <div style={{ fontWeight: 600, fontSize: 12, marginTop: 10, marginBottom: 4 }}>Map mode</div>
         <div style={pillRow}>

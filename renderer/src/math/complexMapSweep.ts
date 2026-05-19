@@ -1,4 +1,7 @@
 import { compileExpression } from "./expression";
+import { C } from "./complex";
+import { compileComplexExpression } from "./complexExpr";
+import { evalRiemannSheet } from "./riemannSphere";
 import type { PolylineSet } from "../scene/renderPrimitives";
 import { mergeMeshData } from "../mesh/surfaceMesh";
 
@@ -8,8 +11,11 @@ export type ComplexMapSweepOutput = "sweep" | "re" | "im" | "both";
 
 export type ComplexMapMode = "standard" | "riemann";
 export type ComplexMapSheetMode = "single" | "all";
+export type ComplexMapInputMode = "reim" | "fz";
 
 export type ComplexMapSweepSpec = {
+  inputMode: ComplexMapInputMode;
+  fExpr: string;
   reExpr: string;
   imExpr: string;
   uMin: number;
@@ -73,7 +79,51 @@ const compileUv = (src: string, label: string) => {
   };
 };
 
-export const compileComplexMapExpressions = (reExpr: string, imExpr: string) => {
+const normalizeComplexFunctionExpr = (src: string) => {
+  let out = src.trim();
+  if (!out) return out;
+  out = out.replace(/^f\s*\(\s*z\s*\)\s*=\s*/i, "");
+  out = out.replace(/^w\s*=\s*/i, "");
+  out = out.replace(/Math\./g, "");
+  return out;
+};
+
+export const compileComplexMapExpressions = (
+  reExpr: string,
+  imExpr: string,
+  options?: { inputMode?: ComplexMapInputMode; fExpr?: string }
+) => {
+  const inputMode: ComplexMapInputMode = options?.inputMode === "fz" ? "fz" : "reim";
+  if (inputMode === "fz") {
+    const fExpr = normalizeComplexFunctionExpr(options?.fExpr ?? "");
+    if (!fExpr) return { error: "f(z) expression is empty." as string };
+    const compiled = compileComplexExpression(fExpr, ["z", "u", "v"]);
+    if (compiled.error || !compiled.fn) {
+      const err = compiled.error;
+      return {
+        error: `f(z): ${err?.message ?? "Parse error"}${err ? ` (col ${err.col})` : ""}`,
+      };
+    }
+    let hasCache = false;
+    let cacheU = NaN;
+    let cacheV = NaN;
+    let cacheRe = NaN;
+    let cacheIm = NaN;
+    const evalF = (u: number, v: number) => {
+      if (hasCache && u === cacheU && v === cacheV) return { re: cacheRe, im: cacheIm };
+      const w = compiled.fn!({ z: C(u, v), u, v });
+      cacheU = u;
+      cacheV = v;
+      cacheRe = Number.isFinite(w.re) ? w.re : NaN;
+      cacheIm = Number.isFinite(w.im) ? w.im : NaN;
+      hasCache = true;
+      return { re: cacheRe, im: cacheIm };
+    };
+    return {
+      reFn: (u: number, v: number) => evalF(u, v).re,
+      imFn: (u: number, v: number) => evalF(u, v).im,
+    };
+  }
   const reRes = compileUv(reExpr, "Re(w)");
   if (reRes.error) return { error: reRes.error as string };
   const imRes = compileUv(imExpr, "Im(w)");
@@ -88,38 +138,15 @@ const clampMag = (re: number, im: number, limit: number) => {
   return { re: re * s, im: im * s };
 };
 
-const wrapAngle = (theta: number) => {
-  const twoPi = Math.PI * 2;
-  let t = theta;
-  if (!Number.isFinite(t)) return 0;
-  t = ((t + Math.PI) % twoPi + twoPi) % twoPi - Math.PI;
-  return t;
-};
-
-const evalRiemannSheet = (
-  re: number,
-  im: number,
-  sheetIndex: number,
-  sheetCount: number,
-  branchCutAngle: number
-) => {
-  const r = Math.hypot(re, im);
-  if (!Number.isFinite(r)) return null;
-  if (r === 0) return { re: 0, im: 0 };
-  const thetaRaw = Math.atan2(im, re);
-  const theta = wrapAngle(thetaRaw - branchCutAngle) + branchCutAngle;
-  const k = Math.max(1, sheetCount);
-  const angle = (theta + 2 * Math.PI * sheetIndex) / k;
-  const mag = Math.pow(r, 1 / k);
-  return { re: mag * Math.cos(angle), im: mag * Math.sin(angle) };
-};
-
 export function buildComplexMapSweep(
   spec: ComplexMapSweepSpec
 ): { build?: ComplexMapSweepBuild; error?: string } {
   const outputMode: ComplexMapSweepOutput =
     spec.outputMode === "re" || spec.outputMode === "im" || spec.outputMode === "both" ? spec.outputMode : "sweep";
-  const compiled = compileComplexMapExpressions(spec.reExpr, spec.imExpr);
+  const compiled = compileComplexMapExpressions(spec.reExpr, spec.imExpr, {
+    inputMode: spec.inputMode,
+    fExpr: spec.fExpr,
+  });
   if (compiled.error) return { error: compiled.error };
   const { reFn, imFn } = compiled;
 
