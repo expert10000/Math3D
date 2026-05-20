@@ -85,6 +85,17 @@ const normalizeComplexFunctionExpr = (src: string) => {
   out = out.replace(/^f\s*\(\s*z\s*\)\s*=\s*/i, "");
   out = out.replace(/^w\s*=\s*/i, "");
   out = out.replace(/Math\./g, "");
+  out = out.replace(/\bPI\b/g, "pi").replace(/\bE\b/g, "e");
+  const complexFuncs = ["sin", "cos", "tan", "exp", "log", "sqrt", "abs"];
+  const funcRegex = new RegExp(`\\b(${complexFuncs.join("|")})\\b`, "gi");
+  out = out.replace(funcRegex, (m) => m.toLowerCase());
+  const funcNoParen = new RegExp(
+    `\\b(${complexFuncs.join("|")})\\s+(-?\\s*[A-Za-z_][A-Za-z0-9_]*|-?\\s*\\d*\\.?\\d+)`,
+    "g"
+  );
+  out = out.replace(funcNoParen, (_m, fn, arg) => `${fn}(${String(arg).replace(/\\s+/g, "")})`);
+  const funcCompactIdent = new RegExp(`\\b(${complexFuncs.join("|")})(z|u|v|pi|e|i)\\b`, "g");
+  out = out.replace(funcCompactIdent, "$1($2)");
   return out;
 };
 

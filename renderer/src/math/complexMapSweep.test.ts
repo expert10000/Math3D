@@ -45,6 +45,24 @@ describe("complexMapSweep f(z) parser", () => {
     expect(b.imFn?.(1, 2)).toBeCloseTo(3, 8);
   });
 
+  it("accepts compact shorthand sinz/logz", () => {
+    const compact = compileComplexMapExpressions("u", "v", { inputMode: "fz", fExpr: "sinz + logz" });
+    const explicit = compileComplexMapExpressions("u", "v", { inputMode: "fz", fExpr: "sin(z) + log(z)" });
+    expect(compact.error).toBeUndefined();
+    expect(explicit.error).toBeUndefined();
+    expect(compact.reFn?.(1, 0)).toBeCloseTo(explicit.reFn?.(1, 0) ?? NaN, 8);
+    expect(compact.imFn?.(1, 0)).toBeCloseTo(explicit.imFn?.(1, 0) ?? NaN, 8);
+  });
+
+  it("accepts no-parenthesis function calls with spaces", () => {
+    const spaced = compileComplexMapExpressions("u", "v", { inputMode: "fz", fExpr: "sin z + log z" });
+    const explicit = compileComplexMapExpressions("u", "v", { inputMode: "fz", fExpr: "sin(z) + log(z)" });
+    expect(spaced.error).toBeUndefined();
+    expect(explicit.error).toBeUndefined();
+    expect(spaced.reFn?.(1, 0)).toBeCloseTo(explicit.reFn?.(1, 0) ?? NaN, 8);
+    expect(spaced.imFn?.(1, 0)).toBeCloseTo(explicit.imFn?.(1, 0) ?? NaN, 8);
+  });
+
   it("builds surface geometry using f(z) mode", () => {
     const res = buildComplexMapSweep({
       ...baseSpec,

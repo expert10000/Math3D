@@ -31,6 +31,14 @@ describe("compileComplexExpression", () => {
     expectComplexNear(compiled.fn?.({ z: C(2, 0) }), C(2, 0), 6);
   });
 
+  it("applies sin/log function calls (not just grouping)", () => {
+    const compiled = compileComplexExpression("sin(z) + log(z)");
+    expect(compiled.error).toBeUndefined();
+    const out = compiled.fn?.({ z: C(1, 0) });
+    expect(out?.re).toBeCloseTo(Math.sin(1), 8);
+    expect(out?.im).toBeCloseTo(0, 8);
+  });
+
   it("returns NaN for non-real powers", () => {
     const compiled = compileComplexExpression("z^(1+i)");
     expect(compiled.error).toBeUndefined();

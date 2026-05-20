@@ -129,7 +129,7 @@ export function compileComplexExpression(
   const toks = insertImplicitMul(t0.toks);
 
   const output: Rpn[] = [];
-  const ops: Array<Tok | { k: "fn"; name: string; i: number } | { k: "uop"; op: string; i: number } | { k: "argc"; n: number }> = [];
+  const ops: Array<Tok | { k: "fn"; name: string; i: number } | { k: "uop"; op: string; i: number }> = [];
 
   let prev: Tok | null = null;
 
@@ -182,19 +182,8 @@ export function compileComplexExpression(
       pushOp(t.v, t.i);
     } else if (t.k === "lp") {
       ops.push(t);
-      const prevOp = ops[ops.length - 2];
-      if (prevOp && (prevOp as any).k === "fn") ops.push({ k: "argc", n: 0 });
     } else if (t.k === "comma") {
-      while (ops.length && (ops[ops.length - 1] as any).k !== "lp") {
-        const top = ops.pop()!;
-        const topOp = (top as any).op ?? (top as any).v;
-        if (topOp) output.push({ t: "op", op: topOp });
-      }
-      if (!ops.length) return { error: err("Comma outside of function call", t.i) };
-      for (let j = ops.length - 1; j >= 0; j--) {
-        if ((ops[j] as any).k === "argc") { (ops[j] as any).n++; break; }
-        if ((ops[j] as any).k === "lp") break;
-      }
+      return { error: err("Unexpected ','", t.i) };
     } else if (t.k === "rp") {
       while (ops.length && (ops[ops.length - 1] as any).k !== "lp") {
         const top = ops.pop()!;
@@ -203,16 +192,10 @@ export function compileComplexExpression(
       }
       if (!ops.length) return { error: err("Mismatched ')'", t.i) };
       ops.pop();
-
-      const argcIdx = ops.length - 1;
-      const maybeArgc = ops[argcIdx];
-      const maybeFn = ops[argcIdx - 1];
-
-      if (maybeArgc && (maybeArgc as any).k === "argc" && maybeFn && (maybeFn as any).k === "fn") {
-        const argc = (maybeArgc as any).n + 1;
-        ops.pop();
+      const maybeFn = ops[ops.length - 1];
+      if (maybeFn && (maybeFn as any).k === "fn") {
         const fn = ops.pop() as any;
-        output.push({ t: "call", fn: fn.name, argc });
+        output.push({ t: "call", fn: fn.name, argc: 1 });
       }
     }
 
