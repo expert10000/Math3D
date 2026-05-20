@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Math3D module overview for Surface, Mesh, Volume, Geometry, Topology, and Complex Analysis."
+    />
+    <title>Math3D Lab | Module Overview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow bg-glow-a" aria-hidden="true"></div>
+    <div class="bg-glow bg-glow-b" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <div class="container top-nav reveal">
+        <a class="brand" href="./index.html#top">Math3D Lab</a>
+        <nav class="nav-links">
+          <a href="./index.html#features">Features</a>
+          <a href="./index.html#showcase">Showcase</a>
+          <a href="./modules.html" aria-current="page">Modules</a>
+          <a href="./index.html#download">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top" class="modules-main">
+      <section class="container section modules-hero reveal">
+        <p class="eyebrow">Product Modules</p>
+        <h1>Top Math3D modules in one view.</h1>
+        <p class="lead">
+          Each module below includes a quick summary, a representative main-viewer scene screenshot, and key feature
+          highlights.
+        </p>
+      </section>
+
+      <section class="container section module-stack">
+        <article class="module-card reveal" id="surface">
+          <div class="module-copy">
+            <p class="module-label">Surface</p>
+            <h2>Surface Studio</h2>
+            <p>Work with explicit, implicit, and parametric equations for high-quality surface exploration.</p>
+            <ul class="module-features">
+              <li>Preset library for standard and advanced surfaces.</li>
+              <li>Live parameter controls with immediate mesh updates.</li>
+              <li>Curvature-aware visualization and overlays.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/surface/math3d-surface-weierstrass-helicoid-preview.png"
+              alt="Main viewer screenshot of Surface module using a Weierstrass helicoid scene"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+
+        <article class="module-card reveal reveal-delay-1" id="mesh">
+          <div class="module-copy">
+            <p class="module-label">Mesh</p>
+            <h2>Mesh Workbench</h2>
+            <p>Create and inspect triangle meshes for simulation, export, and topology-aware editing workflows.</p>
+            <ul class="module-features">
+              <li>Mesh preview stages for rapid quality checks.</li>
+              <li>Pipeline-ready outputs for downstream tools.</li>
+              <li>Selection and inspection tooling in the same workspace.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/pipeline/math3d-pipeline-mesh-stage-preview.png"
+              alt="Main viewer screenshot of Mesh module showing mesh stage preview"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+
+        <article class="module-card reveal reveal-delay-2" id="volume">
+          <div class="module-copy">
+            <p class="module-label">Volume</p>
+            <h2>Volume Viewer</h2>
+            <p>Visualize scalar fields as volume-oriented scenes and navigate structures with scene-based controls.</p>
+            <ul class="module-features">
+              <li>Field-to-scene workflows integrated with viewer controls.</li>
+              <li>Volume-compatible rendering in desktop and web modes.</li>
+              <li>Smooth camera navigation for dense 3D data exploration.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/pipeline/math3d-pipeline-implicit-ellipsoid-scene-preview.png"
+              alt="Main viewer screenshot of Volume module with an implicit field scene"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+
+        <article class="module-card reveal" id="geometry">
+          <div class="module-copy">
+            <p class="module-label">Geometry</p>
+            <h2>Geometry Builder</h2>
+            <p>Build procedural solids and object compositions with inspector feedback and scene-level controls.</p>
+            <ul class="module-features">
+              <li>Procedural object construction with reusable presets.</li>
+              <li>Constraint and measurement-aware scene inspection.</li>
+              <li>Fast iteration for educational and design prototypes.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/inspector/math3d-inspector-scene-overlay-gizmo.png"
+              alt="Main viewer screenshot of Geometry module with object inspector overlays"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+
+        <article class="module-card reveal reveal-delay-1" id="topology">
+          <div class="module-copy">
+            <p class="module-label">Topology</p>
+            <h2>Topology Lab</h2>
+            <p>Study manifold realizations and shape transitions through stage-driven topology visualizations.</p>
+            <ul class="module-features">
+              <li>Preset studies for torus, Mobius strip, and Klein bottle.</li>
+              <li>Stage-based realization transitions for teaching flow.</li>
+              <li>Side-by-side structural exploration with inspector context.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/topology/math3d-topology-mobius-strip-view-preview.png"
+              alt="Main viewer screenshot of Topology module with Mobius strip realization"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+
+        <article class="module-card reveal reveal-delay-2" id="complex-analysis">
+          <div class="module-copy">
+            <p class="module-label">Complex Analysis</p>
+            <h2>Complex Mapping Workspace</h2>
+            <p>Inspect complex-domain mappings and color-coded structures for function behavior analysis.</p>
+            <ul class="module-features">
+              <li>Domain-coloring style visual diagnostics.</li>
+              <li>Function behavior checks through interactive panels.</li>
+              <li>Map-oriented views for instructional and exploratory use.</li>
+            </ul>
+          </div>
+          <figure class="module-shot">
+            <img
+              src="./assets/showcase/analysis/math3d-analysis-domain-coloring-panel.png"
+              alt="Main viewer screenshot of Complex Analysis module with domain-coloring controls"
+              loading="lazy"
+            />
+          </figure>
+        </article>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <p>&copy; <span id="year"></span> Math3D</p>
+        <a href="https://github.com/expert10000/Math3D" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </footer>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
