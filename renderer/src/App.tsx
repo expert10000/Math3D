@@ -141,6 +141,7 @@ import {
   type ComplexMapSweepSpec,
 } from "./math/complexMapSweep";
 import { marchingSquares } from "./math/marchingSquares";
+import { formatRoot, inspectRationalFunction, type RationalInspection } from "./math/rationalInspector";
 import { buildVertexAdjacency } from "./math/curvatureLines";
 import {
   solveContinuousParamGeodesic,
@@ -1274,6 +1275,8 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 
 
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
+type FunctionExplorerScene = "mobius" | "other_complex";
+type OtherComplexPathMode = "circle" | "segment";
 
 
 
@@ -2772,6 +2775,17 @@ const COMPLEX_MAP_PRESETS = [
   { id: "exp", label: "w = exp(z)", reExpr: "exp(u) * cos(v)", imExpr: "exp(u) * sin(v)" },
 ];
 const COMPLEX_MAP_CUSTOM_ID = "custom";
+const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: string; note: string }> = [
+  { id: "z2", label: "z^2", expr: "z^2", note: "Double winding of argument around 0." },
+  { id: "z3", label: "z^3", expr: "z^3", note: "Triple winding and stronger local stretch." },
+  { id: "exp", label: "exp(z)", expr: "exp(z)", note: "Periodic in imaginary direction." },
+  { id: "log", label: "log(z)", expr: "log(z)", note: "Branch behavior around the origin." },
+  { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
+  { id: "inv", label: "1/z", expr: "1/z", note: "Pole at the origin." },
+  { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
+  { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
+  { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
+];
 
 const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
   inputMode: "reim",
@@ -8036,6 +8050,7 @@ const App: React.FC = () => {
   // Möbius params
   const [mobiusParams, setMobiusParams] = useState<MobiusParams>(identityParams);
   const [mobiusSubTab, setMobiusSubTab] = useState<MobiusSubTab>("map");
+  const [functionExplorerScene, setFunctionExplorerScene] = useState<FunctionExplorerScene>("mobius");
   const [mobiusGridStep, setMobiusGridStep] = useState(0.5);
   const [mobiusDomainExtent, setMobiusDomainExtent] = useState(3);
   const [mobiusImageClip, setMobiusImageClip] = useState(8);
@@ -8053,6 +8068,20 @@ const App: React.FC = () => {
   const [mobiusAnimationSelectedPointEnabled, setMobiusAnimationSelectedPointEnabled] = useState(true);
   const [mobiusAnimationGridEnabled, setMobiusAnimationGridEnabled] = useState(true);
   const [mobiusAnimationCircleEnabled, setMobiusAnimationCircleEnabled] = useState(true);
+  const [otherComplexShowDomainColoring, setOtherComplexShowDomainColoring] = useState(true);
+  const [otherComplexShowGridDeformation, setOtherComplexShowGridDeformation] = useState(true);
+  const [otherComplexShowPathMapping, setOtherComplexShowPathMapping] = useState(true);
+  const [otherComplexShowSingularityInspector, setOtherComplexShowSingularityInspector] = useState(true);
+  const [otherComplexShowCritical, setOtherComplexShowCritical] = useState(true);
+  const [otherComplexShowZeros, setOtherComplexShowZeros] = useState(true);
+  const [otherComplexShowPoles, setOtherComplexShowPoles] = useState(true);
+  const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
+  const [otherComplexPathCenter, setOtherComplexPathCenter] = useState<C>({ re: 0, im: 0 });
+  const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
+  const [otherComplexSegmentStart, setOtherComplexSegmentStart] = useState<C>({ re: -1.4, im: -0.6 });
+  const [otherComplexSegmentEnd, setOtherComplexSegmentEnd] = useState<C>({ re: 1.4, im: 0.8 });
+  const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
+  const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -8105,6 +8134,29 @@ const App: React.FC = () => {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [mode, mobiusSubTab, mobiusAnimationPlaying, mobiusAnimationSpeed]);
+
+  useEffect(() => {
+    if (mode !== "mobius" || functionExplorerScene !== "other_complex") return;
+    setComplexMapSpec((prev) => {
+      const nextInputMode: ComplexMapInputMode = "fz";
+      const nextExpr = (prev.fExpr ?? "").trim() || "z";
+      const patchNeeded =
+        prev.inputMode !== nextInputMode ||
+        prev.fExpr !== nextExpr ||
+        !prev.showIsolines ||
+        prev.outputMode !== "sweep" ||
+        prev.mapMode !== "standard";
+      if (!patchNeeded) return prev;
+      return {
+        ...prev,
+        inputMode: nextInputMode,
+        fExpr: nextExpr,
+        showIsolines: true,
+        outputMode: "sweep",
+        mapMode: "standard",
+      };
+    });
+  }, [mode, functionExplorerScene]);
 
   const handleMobiusSaveAsWorkbookDemo = useCallback(() => {
     if (IS_REPLAY_MODE) return;
@@ -9274,8 +9326,41 @@ const App: React.FC = () => {
     setComplexMapError(null);
   }, []);
 
+  const applyOtherComplexPreset = useCallback((id: string) => {
+    const preset = FUNCTION_EXPLORER_OTHER_PRESETS.find((entry) => entry.id === id);
+    if (!preset) return;
+    setComplexMapSpec((prev) => ({
+      ...prev,
+      inputMode: "fz",
+      fExpr: preset.expr,
+      mapMode: "standard",
+      showIsolines: true,
+      outputMode: "sweep",
+    }));
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
+    setComplexMapError(null);
+  }, []);
+
+  const updateOtherComplexFunctionExpr = useCallback((expr: string) => {
+    setComplexMapSpec((prev) => ({
+      ...prev,
+      inputMode: "fz",
+      fExpr: expr,
+      mapMode: "standard",
+    }));
+    setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
+    setComplexMapError(null);
+  }, []);
+
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
+  const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
+  const otherComplexRationalInspection = useMemo<RationalInspection | null>(() => {
+    if (complexMapInputMode !== "fz") return null;
+    const trimmed = (complexMapFunctionExpr ?? "").trim();
+    if (!trimmed) return null;
+    return inspectRationalFunction(trimmed);
+  }, [complexMapInputMode, complexMapFunctionExpr]);
 
   const complexMapCompiled = useMemo(
     () =>
@@ -12724,6 +12809,73 @@ const App: React.FC = () => {
     setMobiusSelectedPoint({ re: pt.re, im: pt.im });
   }, []);
 
+  const handleOtherComplexZClick = useCallback((pt: { re: number; im: number }) => {
+    if (otherComplexPathMode === "circle") {
+      setOtherComplexPathCenter({ re: pt.re, im: pt.im });
+      return;
+    }
+    if (otherComplexPathPickTarget === "start") {
+      setOtherComplexSegmentStart({ re: pt.re, im: pt.im });
+      return;
+    }
+    if (otherComplexPathPickTarget === "end") {
+      setOtherComplexSegmentEnd({ re: pt.re, im: pt.im });
+      return;
+    }
+    setOtherComplexPathCenter({ re: pt.re, im: pt.im });
+  }, [otherComplexPathMode, otherComplexPathPickTarget]);
+
+  const otherComplexPathZPoints = useMemo(() => {
+    if (!otherComplexShowPathMapping) return [] as [number, number][];
+    if (otherComplexPathMode === "circle") {
+      const r = Math.max(1e-3, otherComplexPathRadius);
+      const samples = 320;
+      const points: [number, number][] = [];
+      for (let i = 0; i <= samples; i++) {
+        const t = (i / samples) * Math.PI * 2;
+        points.push([
+          otherComplexPathCenter.re + r * Math.cos(t),
+          otherComplexPathCenter.im + r * Math.sin(t),
+        ]);
+      }
+      return points;
+    }
+    const samples = 240;
+    const points: [number, number][] = [];
+    for (let i = 0; i <= samples; i++) {
+      const t = i / samples;
+      points.push([
+        otherComplexSegmentStart.re + (otherComplexSegmentEnd.re - otherComplexSegmentStart.re) * t,
+        otherComplexSegmentStart.im + (otherComplexSegmentEnd.im - otherComplexSegmentStart.im) * t,
+      ]);
+    }
+    return points;
+  }, [
+    otherComplexShowPathMapping,
+    otherComplexPathMode,
+    otherComplexPathRadius,
+    otherComplexPathCenter,
+    otherComplexSegmentStart,
+    otherComplexSegmentEnd,
+  ]);
+
+  const otherComplexPathWMappedSegments = useMemo(() => {
+    if (!otherComplexPathZPoints.length) return [] as [number, number][][];
+    const segs: [number, number][][] = [];
+    let current: [number, number][] = [];
+    for (const [u, v] of otherComplexPathZPoints) {
+      const w = evalComplexMapW(u, v);
+      if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) {
+        if (current.length >= 2) segs.push(current);
+        current = [];
+        continue;
+      }
+      current.push([w.re, w.im]);
+    }
+    if (current.length >= 2) segs.push(current);
+    return segs;
+  }, [otherComplexPathZPoints, evalComplexMapW]);
+
     
   const availableColorModes = useMemo(
     () => colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshData?.label),
@@ -12744,87 +12896,241 @@ const App: React.FC = () => {
 
     switch (mode) {
 case "mobius":
-  renderMobius(zRef.current, wRef.current, mobiusEffectiveParams, samples, {
-    gridStep: mobiusGridStep,
-    domainExtent: mobiusDomainExtent,
-    imageClip: mobiusImageClip,
-  });
-  if (mobiusSubTab === "animation" && mobiusAnimationGridEnabled) {
-    const gridExtent = Math.max(1, mobiusDomainExtent * 0.85);
-    const gridSamples = 180;
-    const positions = [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9].map((u) => u * gridExtent);
-    for (const p of positions) {
-      const horiz = buildLinePolyline({ re: 0, im: p }, { re: 1, im: 0 }, -gridExtent, gridExtent, gridSamples);
-      const vert = buildLinePolyline({ re: p, im: 0 }, { re: 0, im: 1 }, -gridExtent, gridExtent, gridSamples);
-      zRef.current.drawCurve(horiz.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
-      zRef.current.drawCurve(vert.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
-      const horizMapped = mapPolylineSegments(horiz, mobiusEffectiveParams);
-      const vertMapped = mapPolylineSegments(vert, mobiusEffectiveParams);
-      for (const seg of horizMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
-      for (const seg of vertMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
+  if (functionExplorerScene === "mobius") {
+    renderMobius(zRef.current, wRef.current, mobiusEffectiveParams, samples, {
+      gridStep: mobiusGridStep,
+      domainExtent: mobiusDomainExtent,
+      imageClip: mobiusImageClip,
+    });
+    if (mobiusSubTab === "animation" && mobiusAnimationGridEnabled) {
+      const gridExtent = Math.max(1, mobiusDomainExtent * 0.85);
+      const gridSamples = 180;
+      const positions = [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9].map((u) => u * gridExtent);
+      for (const p of positions) {
+        const horiz = buildLinePolyline({ re: 0, im: p }, { re: 1, im: 0 }, -gridExtent, gridExtent, gridSamples);
+        const vert = buildLinePolyline({ re: p, im: 0 }, { re: 0, im: 1 }, -gridExtent, gridExtent, gridSamples);
+        zRef.current.drawCurve(horiz.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
+        zRef.current.drawCurve(vert.map((z) => [z.re, z.im]), "#6b7280", { width: 1, opacity: 0.55 });
+        const horizMapped = mapPolylineSegments(horiz, mobiusEffectiveParams);
+        const vertMapped = mapPolylineSegments(vert, mobiusEffectiveParams);
+        for (const seg of horizMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
+        for (const seg of vertMapped) wRef.current.drawCurve(seg, "#0f766e", { width: 1.35, opacity: 0.9 });
+      }
     }
-  }
-  if (mobiusSubTab === "animation" && mobiusAnimationCircleEnabled) {
-    const r = Math.max(0.65, mobiusDomainExtent * 0.48);
-    const circleZ = buildCirclePolyline({ re: 0, im: 0 }, r, 260);
-    zRef.current.drawCurve(circleZ.map((z) => [z.re, z.im]), "#7c3aed", { width: 1.8, opacity: 0.92, dash: "5 3" });
-    const circleMapped = mapPolylineSegments(circleZ, mobiusEffectiveParams);
-    for (const seg of circleMapped) {
-      wRef.current.drawCurve(seg, "#7c3aed", { width: 1.8, opacity: 0.95, dash: "5 3" });
+    if (mobiusSubTab === "animation" && mobiusAnimationCircleEnabled) {
+      const r = Math.max(0.65, mobiusDomainExtent * 0.48);
+      const circleZ = buildCirclePolyline({ re: 0, im: 0 }, r, 260);
+      zRef.current.drawCurve(circleZ.map((z) => [z.re, z.im]), "#7c3aed", { width: 1.8, opacity: 0.92, dash: "5 3" });
+      const circleMapped = mapPolylineSegments(circleZ, mobiusEffectiveParams);
+      for (const seg of circleMapped) {
+        wRef.current.drawCurve(seg, "#7c3aed", { width: 1.8, opacity: 0.95, dash: "5 3" });
+      }
     }
-  }
-  const activePole = cAbs2(mobiusEffectiveParams.c) < 1e-12 ? null : cNeg(cDiv(mobiusEffectiveParams.d, mobiusEffectiveParams.c));
-  if (mobiusShowPole && activePole) {
-    zRef.current.drawPoints([[activePole.re, activePole.im]], {
-      color: "#f57c00",
-      shape: "triangle",
-      size: 5,
-      layer: "mobius-pole-z",
-    });
-  } else {
-    zRef.current.drawPoints([], { layer: "mobius-pole-z" });
-  }
+    const activePole = cAbs2(mobiusEffectiveParams.c) < 1e-12 ? null : cNeg(cDiv(mobiusEffectiveParams.d, mobiusEffectiveParams.c));
+    if (mobiusShowPole && activePole) {
+      zRef.current.drawPoints([[activePole.re, activePole.im]], {
+        color: "#f57c00",
+        shape: "triangle",
+        size: 5,
+        layer: "mobius-pole-z",
+      });
+    } else {
+      zRef.current.drawPoints([], { layer: "mobius-pole-z" });
+    }
 
-  const fixed = mobiusFixedPoints(mobiusEffectiveParams);
-  if (mobiusShowFixedPoints && (fixed.kind === "pair" || fixed.kind === "single")) {
-    const fixedPts = fixed.values.map((z) => [z.re, z.im] as [number, number]);
-    zRef.current.drawPoints(fixedPts, {
-      color: "#7b1fa2",
-      shape: "diamond",
-      size: 4.8,
-      layer: "mobius-fixed-z",
-    });
-    wRef.current.drawPoints(fixedPts, {
-      color: "#7b1fa2",
-      shape: "diamond",
-      size: 4.8,
-      layer: "mobius-fixed-w",
-    });
-  } else {
-    zRef.current.drawPoints([], { layer: "mobius-fixed-z" });
-    wRef.current.drawPoints([], { layer: "mobius-fixed-w" });
-  }
+    const fixed = mobiusFixedPoints(mobiusEffectiveParams);
+    if (mobiusShowFixedPoints && (fixed.kind === "pair" || fixed.kind === "single")) {
+      const fixedPts = fixed.values.map((z) => [z.re, z.im] as [number, number]);
+      zRef.current.drawPoints(fixedPts, {
+        color: "#7b1fa2",
+        shape: "diamond",
+        size: 4.8,
+        layer: "mobius-fixed-z",
+      });
+      wRef.current.drawPoints(fixedPts, {
+        color: "#7b1fa2",
+        shape: "diamond",
+        size: 4.8,
+        layer: "mobius-fixed-w",
+      });
+    } else {
+      zRef.current.drawPoints([], { layer: "mobius-fixed-z" });
+      wRef.current.drawPoints([], { layer: "mobius-fixed-w" });
+    }
 
-  if (mobiusShowSelectedPoint) {
-    zRef.current.drawPoints([[mobiusEffectiveSelectedPoint.re, mobiusEffectiveSelectedPoint.im]], {
-      color: "#111",
-      shape: "cross",
-      size: 5.2,
-      layer: "mobius-selected-z",
-    });
-    if (mobiusSelectedImage && cFinite(mobiusSelectedImage)) {
-      wRef.current.drawPoints([[mobiusSelectedImage.re, mobiusSelectedImage.im]], {
+    if (mobiusShowSelectedPoint) {
+      zRef.current.drawPoints([[mobiusEffectiveSelectedPoint.re, mobiusEffectiveSelectedPoint.im]], {
         color: "#111",
         shape: "cross",
         size: 5.2,
-        layer: "mobius-selected-w",
+        layer: "mobius-selected-z",
       });
+      if (mobiusSelectedImage && cFinite(mobiusSelectedImage)) {
+        wRef.current.drawPoints([[mobiusSelectedImage.re, mobiusSelectedImage.im]], {
+          color: "#111",
+          shape: "cross",
+          size: 5.2,
+          layer: "mobius-selected-w",
+        });
+      } else {
+        wRef.current.drawPoints([], { layer: "mobius-selected-w" });
+      }
     } else {
+      zRef.current.drawPoints([], { layer: "mobius-selected-z" });
       wRef.current.drawPoints([], { layer: "mobius-selected-w" });
     }
   } else {
-    zRef.current.drawPoints([], { layer: "mobius-selected-z" });
-    wRef.current.drawPoints([], { layer: "mobius-selected-w" });
+    const gridStep = Math.max(0.2, Math.min(2, mobiusGridStep));
+    zRef.current.clear();
+    wRef.current.clear();
+    zRef.current.drawGrid(gridStep);
+    wRef.current.drawGrid(gridStep);
+
+    if (otherComplexShowDomainColoring && complexMapGrid) {
+      zRef.current.drawComplexDomainColoring({
+        re: complexMapGrid.reClamped,
+        im: complexMapGrid.imClamped,
+        nx: complexMapGrid.nu,
+        ny: complexMapGrid.nv,
+        xMin: complexMapGrid.uMin,
+        xMax: complexMapGrid.uMax,
+        yMin: complexMapGrid.vMin,
+        yMax: complexMapGrid.vMax,
+        valueMode: otherComplexDomainValueMode,
+        opacity: 0.97,
+      });
+    }
+
+    if (otherComplexShowGridDeformation) {
+      const gridStyle = { width: 1.15, opacity: 0.9 };
+      if (complexMapIsolineZLinesU?.length) {
+        for (const line of complexMapIsolineZLinesU) {
+          zRef.current.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
+        }
+      }
+      if (complexMapIsolineZLinesV?.length) {
+        for (const line of complexMapIsolineZLinesV) {
+          zRef.current.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
+        }
+      }
+      if (complexMapIsolineWPolylinesU?.length) {
+        for (const line of complexMapIsolineWPolylinesU) {
+          wRef.current.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
+        }
+      }
+      if (complexMapIsolineWPolylinesV?.length) {
+        for (const line of complexMapIsolineWPolylinesV) {
+          wRef.current.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
+        }
+      }
+    }
+
+    if (otherComplexShowPathMapping && otherComplexPathZPoints.length >= 2) {
+      zRef.current.drawCurve(otherComplexPathZPoints, "#111827", {
+        width: 2,
+        opacity: 0.92,
+        dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
+        layer: "other-path-z",
+      });
+      for (const segment of otherComplexPathWMappedSegments) {
+        wRef.current.drawCurve(segment, "#111827", {
+          width: 2,
+          opacity: 0.95,
+          dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
+          layer: "other-path-w",
+        });
+      }
+    } else {
+      zRef.current.drawPoints([], { layer: "other-path-z" });
+      wRef.current.drawPoints([], { layer: "other-path-w" });
+    }
+
+    if (otherComplexShowSingularityInspector && complexMapMarkerData) {
+      if (otherComplexShowCritical && complexMapMarkerData.critical.z.length) {
+        zRef.current.drawPoints(complexMapMarkerData.critical.z, {
+          color: "#d81b60",
+          shape: "diamond",
+          size: 4.2,
+          layer: "other-crit-z",
+        });
+        wRef.current.drawPoints(complexMapMarkerData.critical.w, {
+          color: "#d81b60",
+          shape: "diamond",
+          size: 4.2,
+          layer: "other-crit-w",
+        });
+      } else {
+        zRef.current.drawPoints([], { layer: "other-crit-z" });
+        wRef.current.drawPoints([], { layer: "other-crit-w" });
+      }
+      if (otherComplexShowZeros && complexMapMarkerData.zero.z.length) {
+        zRef.current.drawPoints(complexMapMarkerData.zero.z, {
+          color: "#2e7d32",
+          shape: "circle",
+          size: 4,
+          layer: "other-zero-z",
+        });
+        wRef.current.drawPoints(complexMapMarkerData.zero.w, {
+          color: "#2e7d32",
+          shape: "circle",
+          size: 4,
+          layer: "other-zero-w",
+        });
+      } else {
+        zRef.current.drawPoints([], { layer: "other-zero-z" });
+        wRef.current.drawPoints([], { layer: "other-zero-w" });
+      }
+      if (otherComplexShowPoles && complexMapMarkerData.pole.z.length) {
+        zRef.current.drawPoints(complexMapMarkerData.pole.z, {
+          color: "#f57c00",
+          shape: "triangle",
+          size: 4.6,
+          layer: "other-pole-z",
+        });
+        wRef.current.drawPoints(complexMapMarkerData.pole.w, {
+          color: "#f57c00",
+          shape: "triangle",
+          size: 4.6,
+          layer: "other-pole-w",
+        });
+      } else {
+        zRef.current.drawPoints([], { layer: "other-pole-z" });
+        wRef.current.drawPoints([], { layer: "other-pole-w" });
+      }
+    }
+
+    if (otherComplexShowSingularityInspector && otherComplexRationalInspection) {
+      const toPointArray = (entries: RationalInspection["zeros"]) =>
+        entries
+          .filter((entry) => Number.isFinite(entry.point.re) && Number.isFinite(entry.point.im))
+          .map((entry) => [entry.point.re, entry.point.im] as [number, number]);
+      const removableZ = toPointArray(otherComplexRationalInspection.removable);
+      const zeroZ = toPointArray(otherComplexRationalInspection.zeros);
+      const poleZ = toPointArray(otherComplexRationalInspection.poles);
+
+      zRef.current.drawPoints(removableZ, {
+        color: "#0f766e",
+        shape: "square",
+        size: 4.8,
+        layer: "other-removable-z",
+      });
+      zRef.current.drawPoints(zeroZ, {
+        color: "#2e7d32",
+        shape: "circle",
+        size: 4.3,
+        layer: "other-exact-zero-z",
+      });
+      zRef.current.drawPoints(poleZ, {
+        color: "#b45309",
+        shape: "triangle",
+        size: 5,
+        layer: "other-exact-pole-z",
+      });
+    } else {
+      zRef.current.drawPoints([], { layer: "other-removable-z" });
+      zRef.current.drawPoints([], { layer: "other-exact-zero-z" });
+      zRef.current.drawPoints([], { layer: "other-exact-pole-z" });
+    }
   }
   break;
 
@@ -12850,6 +13156,7 @@ case "mobius":
     }
   }, [
     mode,
+    functionExplorerScene,
     mobiusEffectiveParams,
     mobiusGridStep,
     mobiusDomainExtent,
@@ -12863,6 +13170,24 @@ case "mobius":
     mobiusSubTab,
     mobiusAnimationGridEnabled,
     mobiusAnimationCircleEnabled,
+    complexMapGrid,
+    complexMapIsolineZLinesU,
+    complexMapIsolineZLinesV,
+    complexMapIsolineWPolylinesU,
+    complexMapIsolineWPolylinesV,
+    complexMapMarkerData,
+    otherComplexShowDomainColoring,
+    otherComplexShowGridDeformation,
+    otherComplexShowPathMapping,
+    otherComplexShowSingularityInspector,
+    otherComplexShowCritical,
+    otherComplexShowZeros,
+    otherComplexShowPoles,
+    otherComplexDomainValueMode,
+    otherComplexPathMode,
+    otherComplexPathZPoints,
+    otherComplexPathWMappedSegments,
+    otherComplexRationalInspection,
     chebN,
     primKind,
     primValue,
@@ -24173,12 +24498,16 @@ case "mobius":
     if (mode === "curves") return "Curve core presets";
     if (mode === "topology") return "Topology quotient module";
     if (mode === "geometry") return `Geometry viewer (${geometryMode})`;
-    if (mode === "mobius") return "Mobius viewer";
+    if (mode === "mobius") {
+      return functionExplorerScene === "mobius"
+        ? "Mobius viewer"
+        : "Complex Function Explorer";
+    }
     if (mode === "chebyshev") return "Chebyshev viewer";
     if (mode === "transform") return "Transform viewer";
     if (mode === "maps") return "Maps viewer";
     return mode;
-  }, [datasetKind, geometryMode, mode, surfaceViewerKind, volumeViewMode]);
+  }, [datasetKind, functionExplorerScene, geometryMode, mode, surfaceViewerKind, volumeViewMode]);
   const statusMeshLabel = useMemo(() => {
     if (unifiedSelectedSceneMeshStats) {
       return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
@@ -26917,6 +27246,13 @@ case "mobius":
               <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.78 }}>Complex Analysis:</span>
               <button
                 type="button"
+                onClick={() => setMode("mobius")}
+                style={pill(mode === "mobius")}
+              >
+                Function explorer
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setMode("surfaces");
                   setDatasetKind("surface");
@@ -26928,13 +27264,25 @@ case "mobius":
               >
                 Complex map
               </button>
-              <button
-                type="button"
-                onClick={() => setMode("mobius")}
-                style={pill(mode === "mobius")}
-              >
-                Mobius
-              </button>
+              {mode === "mobius" && (
+                <>
+                  <span style={{ fontSize: 11, opacity: 0.64 }}>scene:</span>
+                  <button
+                    type="button"
+                    onClick={() => setFunctionExplorerScene("mobius")}
+                    style={pill(functionExplorerScene === "mobius")}
+                  >
+                    Mobius
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFunctionExplorerScene("other_complex")}
+                    style={pill(functionExplorerScene === "other_complex")}
+                  >
+                    Other Complex Scene
+                  </button>
+                </>
+              )}
             </div>
           )}
           {mode === "maps" ? (
@@ -26951,21 +27299,29 @@ case "mobius":
             >
               <button
                 type="button"
-                onClick={() => setMobiusParams(cloneMobiusParams(mobiusCayleyParams))}
+                onClick={() => {
+                  if (functionExplorerScene === "mobius") {
+                    setMobiusParams(cloneMobiusParams(mobiusCayleyParams));
+                    return;
+                  }
+                  applyOtherComplexPreset("frac");
+                }}
                 style={pill(false)}
-                title="Apply Cayley preset"
+                title={functionExplorerScene === "mobius" ? "Apply Cayley preset" : "Apply rational preset"}
               >
                 Preset
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setMobiusSubTab("map");
+                  if (functionExplorerScene === "mobius") {
+                    setMobiusSubTab("map");
+                  }
                   mobiusFormulaCardRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
                 }}
-                style={pill(mobiusSubTab === "map")}
+                style={pill(functionExplorerScene === "mobius" ? mobiusSubTab === "map" : false)}
               >
-                Formula
+                {functionExplorerScene === "mobius" ? "Formula" : "Function"}
               </button>
               <button
                 type="button"
@@ -26980,12 +27336,31 @@ case "mobius":
               <button
                 type="button"
                 onClick={() => {
-                  const payload = JSON.stringify(mobiusParams, null, 2);
+                  const payload =
+                    functionExplorerScene === "mobius"
+                      ? JSON.stringify(mobiusParams, null, 2)
+                      : JSON.stringify(
+                          {
+                            fz: complexMapSpec.fExpr,
+                            domain: {
+                              uMin: complexMapSpec.uMin,
+                              uMax: complexMapSpec.uMax,
+                              vMin: complexMapSpec.vMin,
+                              vMax: complexMapSpec.vMax,
+                            },
+                            resolution: { nu: complexMapSpec.nu, nv: complexMapSpec.nv },
+                          },
+                          null,
+                          2
+                        );
                   const blob = new Blob([payload], { type: "application/json" });
                   const url = URL.createObjectURL(blob);
                   const anchor = document.createElement("a");
                   anchor.href = url;
-                  anchor.download = "mobius-params.json";
+                  anchor.download =
+                    functionExplorerScene === "mobius"
+                      ? "mobius-params.json"
+                      : "complex-function-scene.json";
                   anchor.click();
                   URL.revokeObjectURL(url);
                 }}
@@ -26995,7 +27370,29 @@ case "mobius":
               </button>
               <button
                 type="button"
-                onClick={() => setMobiusParams(cloneMobiusParams(identityParams))}
+                onClick={() => {
+                  if (functionExplorerScene === "mobius") {
+                    setMobiusParams(cloneMobiusParams(identityParams));
+                    return;
+                  }
+                  setComplexMapSpec((prev) => ({
+                    ...prev,
+                    inputMode: "fz",
+                    fExpr: "z",
+                    uMin: -2,
+                    uMax: 2,
+                    vMin: -2,
+                    vMax: 2,
+                    nu: 160,
+                    nv: 120,
+                    showIsolines: true,
+                    isolinesCountU: 8,
+                    isolinesCountV: 8,
+                  }));
+                  setOtherComplexPathMode("circle");
+                  setOtherComplexPathCenter({ re: 0, im: 0 });
+                  setOtherComplexPathRadius(1.2);
+                }}
                 style={pill(false)}
               >
                 Reset
@@ -34912,18 +35309,228 @@ case "mobius":
             {/* LEFT (2D modes) */}
             <div style={{ ...styles.panelLeft, width: leftWidth }}>
               {mode === "mobius" && (
-                <MobiusScreen
-                  params={mobiusParams}
-                  onChange={setMobiusParams}
-                  integrationActions={{
-                    saveAsWorkbookDemo: handleMobiusSaveAsWorkbookDemo,
-                    promoteToSceneOverlay: handleMobiusPromoteToSceneOverlay,
-                    exportZWPlaneImage: handleMobiusExportZWPlaneImage,
-                    exportRiemannSphereScene: handleMobiusExportRiemannSphereScene,
-                    createLessonCard: handleMobiusCreateLessonCard,
-                  }}
-                  integrationStatus={mobiusIntegrationStatus}
-                />
+                functionExplorerScene === "mobius" ? (
+                  <MobiusScreen
+                    params={mobiusParams}
+                    onChange={setMobiusParams}
+                    integrationActions={{
+                      saveAsWorkbookDemo: handleMobiusSaveAsWorkbookDemo,
+                      promoteToSceneOverlay: handleMobiusPromoteToSceneOverlay,
+                      exportZWPlaneImage: handleMobiusExportZWPlaneImage,
+                      exportRiemannSphereScene: handleMobiusExportRiemannSphereScene,
+                      createLessonCard: handleMobiusCreateLessonCard,
+                    }}
+                    integrationStatus={mobiusIntegrationStatus}
+                  />
+                ) : (
+                  <section style={{ display: "grid", gap: 10 }}>
+                    <div>
+                      <h2 style={{ ...styles.h2, marginTop: 0, marginBottom: 6 }}>Function Explorer</h2>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                          opacity: 0.88,
+                        }}
+                      >
+                        f: C -&gt; C
+                      </div>
+                    </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>Examples</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {FUNCTION_EXPLORER_OTHER_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => applyOtherComplexPreset(preset.id)}
+                            style={pill(otherComplexFunctionExpr.trim() === preset.expr)}
+                            title={preset.note}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      <label style={{ display: "grid", gap: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
+                        <input
+                          type="text"
+                          value={otherComplexFunctionExpr}
+                          onChange={(e) => updateOtherComplexFunctionExpr(e.target.value)}
+                          spellCheck={false}
+                        />
+                      </label>
+                      <div style={{ fontSize: 11, opacity: 0.75 }}>
+                        Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
+                      </div>
+                    </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                        <label style={{ fontSize: 12 }}>
+                          u min
+                          <input
+                            type="number"
+                            value={complexMapSpec.uMin}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, uMin: Number(e.target.value) }))
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          u max
+                          <input
+                            type="number"
+                            value={complexMapSpec.uMax}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, uMax: Number(e.target.value) }))
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          v min
+                          <input
+                            type="number"
+                            value={complexMapSpec.vMin}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, vMin: Number(e.target.value) }))
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          v max
+                          <input
+                            type="number"
+                            value={complexMapSpec.vMax}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, vMax: Number(e.target.value) }))
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          nu
+                          <input
+                            type="number"
+                            min={20}
+                            max={600}
+                            value={complexMapSpec.nu}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, nu: Math.max(20, Math.round(Number(e.target.value))) }))
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          nv
+                          <input
+                            type="number"
+                            min={20}
+                            max={600}
+                            value={complexMapSpec.nv}
+                            onChange={(e) =>
+                              setComplexMapSpec((prev) => ({ ...prev, nv: Math.max(20, Math.round(Number(e.target.value))) }))
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 700, fontSize: 12 }}>Path Mapping</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexPathMode("circle")}
+                          style={pill(otherComplexPathMode === "circle")}
+                        >
+                          Circle
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexPathMode("segment")}
+                          style={pill(otherComplexPathMode === "segment")}
+                        >
+                          Segment
+                        </button>
+                      </div>
+                      {otherComplexPathMode === "circle" ? (
+                        <label style={{ fontSize: 12 }}>
+                          radius
+                          <input
+                            type="number"
+                            min={0.05}
+                            step={0.05}
+                            value={otherComplexPathRadius}
+                            onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
+                          />
+                        </label>
+                      ) : (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexPathPickTarget("start")}
+                              style={pill(otherComplexPathPickTarget === "start")}
+                            >
+                              Pick start
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexPathPickTarget("end")}
+                              style={pill(otherComplexPathPickTarget === "end")}
+                            >
+                              Pick end
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 11, opacity: 0.72 }}>
+                            Click the Z-plane to place selected endpoint.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}>
+                      <div style={{ fontWeight: 700 }}>Singularities inspector (rational)</div>
+                      {otherComplexRationalInspection?.error ? (
+                        <div style={{ color: "#b42318" }}>{otherComplexRationalInspection.error}</div>
+                      ) : otherComplexRationalInspection ? (
+                        <>
+                          <div>
+                            <b>Reduced:</b>{" "}
+                            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                              {otherComplexRationalInspection.reducedExpression}
+                            </span>
+                          </div>
+                          <div>
+                            <b>Removable:</b>{" "}
+                            {otherComplexRationalInspection.removable.length
+                              ? otherComplexRationalInspection.removable
+                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                  .join("; ")
+                              : "none"}
+                          </div>
+                          <div>
+                            <b>Poles:</b>{" "}
+                            {otherComplexRationalInspection.poles.length
+                              ? otherComplexRationalInspection.poles
+                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                  .join("; ")
+                              : "none"}
+                          </div>
+                          <div>
+                            <b>Zeros:</b>{" "}
+                            {otherComplexRationalInspection.zeros.length
+                              ? otherComplexRationalInspection.zeros
+                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                  .join("; ")
+                              : "none"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ opacity: 0.75 }}>
+                          Type a rational function (like (z-1)/(z^2-1) or 1/(z-2)^3).
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )
               )}
 
               {mode === "chebyshev" && <ChebyshevScreen n={chebN} onChangeN={setChebN} />}
@@ -34940,6 +35547,7 @@ case "mobius":
             {/* RIGHT (2D planes) */}
             <div style={styles.stack}>
               {mode === "mobius" ? (
+                functionExplorerScene === "mobius" ? (
                 <>
                   <div style={{ marginBottom: 2 }}>
                     <div style={pillRow}>
@@ -35296,6 +35904,148 @@ case "mobius":
                     </div>
                   )}
                 </>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 8 }}>
+                      <div style={{ fontWeight: 800 }}>Other Complex Scene — general complex functions</div>
+                      <div style={{ fontSize: 12, opacity: 0.8 }}>
+                        Domain coloring, grid deformation, contour/path mapping, and singularity diagnostics for{" "}
+                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                          f(z) = {otherComplexFunctionExpr || "z"}
+                        </span>
+                        .
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowDomainColoring}
+                            onChange={(e) => setOtherComplexShowDomainColoring(e.target.checked)}
+                          />
+                          Domain coloring on Z-plane
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowGridDeformation}
+                            onChange={(e) => setOtherComplexShowGridDeformation(e.target.checked)}
+                          />
+                          Grid deformation
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowPathMapping}
+                            onChange={(e) => setOtherComplexShowPathMapping(e.target.checked)}
+                          />
+                          Path mapping
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowSingularityInspector}
+                            onChange={(e) => setOtherComplexShowSingularityInspector(e.target.checked)}
+                          />
+                          Singularities overlay
+                        </label>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                        <span>Value scale:</span>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexDomainValueMode("log")}
+                          style={pill(otherComplexDomainValueMode === "log")}
+                        >
+                          log |f|
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexDomainValueMode("linear")}
+                          style={pill(otherComplexDomainValueMode === "linear")}
+                        >
+                          linear |f|
+                        </button>
+                        <span style={{ opacity: 0.72 }}>Hue = arg(f(z))</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowCritical}
+                            onChange={(e) => setOtherComplexShowCritical(e.target.checked)}
+                            disabled={!otherComplexShowSingularityInspector}
+                          />
+                          critical
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowZeros}
+                            onChange={(e) => setOtherComplexShowZeros(e.target.checked)}
+                            disabled={!otherComplexShowSingularityInspector}
+                          />
+                          zeros
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowPoles}
+                            onChange={(e) => setOtherComplexShowPoles(e.target.checked)}
+                            disabled={!otherComplexShowSingularityInspector}
+                          />
+                          poles
+                        </label>
+                      </div>
+                      {otherComplexPathMode === "circle" ? (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Click Z-plane with {otherComplexPathPickTarget} pick mode to define the segment.
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+                        gap: 12,
+                        alignItems: "stretch",
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                        <h3 style={styles.h3}>Z-plane (domain)</h3>
+                        <div style={{ minHeight: 320, flex: 1 }}>
+                          <PlanePlot
+                            id="svgZ"
+                            extent={complexMapZExtent}
+                            step={mobiusGridStep}
+                            ref={zRef}
+                            style={{ height: "100%" }}
+                            onClickPoint={handleOtherComplexZClick}
+                            showAxes={mobiusShowAxes}
+                            showLabels={mobiusShowLabels}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                        <h3 style={styles.h3}>W-plane (image)</h3>
+                        <div style={{ minHeight: 320, flex: 1 }}>
+                          <PlanePlot
+                            id="svgW"
+                            extent={complexMapWExtent}
+                            step={mobiusGridStep}
+                            ref={wRef}
+                            style={{ height: "100%" }}
+                            showAxes={mobiusShowAxes}
+                            showLabels={mobiusShowLabels}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
               ) : (
                 <>
                   <h3 style={styles.h3}>Z-plane (domain)</h3>

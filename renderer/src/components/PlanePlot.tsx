@@ -782,6 +782,18 @@ export type PlanePlotHandle = {
     max?: number;
     opacity?: number;
   }): void;
+  drawComplexDomainColoring(opts: {
+    re: ArrayLike<number>;
+    im: ArrayLike<number>;
+    nx: number;
+    ny: number;
+    xMin: number;
+    xMax: number;
+    yMin: number;
+    yMax: number;
+    opacity?: number;
+    valueMode?: "log" | "linear";
+  }): void;
 };
 
 type PlanePlotProps = {
@@ -961,6 +973,74 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
           if (t < 0) t = 0;
           else if (t > 1) t = 1;
           const rgb = scalarToColor01(t, palette);
+          data[idx++] = Math.round(rgb.r * 255);
+          data[idx++] = Math.round(rgb.g * 255);
+          data[idx++] = Math.round(rgb.b * 255);
+          data[idx++] = 255;
+        }
+      }
+
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL();
+    };
+
+    const buildComplexDomainImage = (opts: {
+      re: ArrayLike<number>;
+      im: ArrayLike<number>;
+      nx: number;
+      ny: number;
+      valueMode?: "log" | "linear";
+    }) => {
+      if (typeof document === "undefined") return null;
+      const nx = Math.max(1, Math.floor(opts.nx));
+      const ny = Math.max(1, Math.floor(opts.ny));
+      if (!opts.re || !opts.im || opts.re.length < nx * ny || opts.im.length < nx * ny) return null;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = nx;
+      canvas.height = ny;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      const img = ctx.createImageData(nx, ny);
+      const data = img.data;
+
+      const mags: number[] = [];
+      for (let i = 0; i < nx * ny; i++) {
+        const rr = Number(opts.re[i]);
+        const ii = Number(opts.im[i]);
+        if (!Number.isFinite(rr) || !Number.isFinite(ii)) continue;
+        const mag = Math.hypot(rr, ii);
+        if (Number.isFinite(mag)) mags.push(mag);
+      }
+      if (!mags.length) return null;
+
+      const maxMag = Math.max(...mags, 1e-9);
+      const logMax = Math.log(1 + maxMag);
+      const valueMode = opts.valueMode ?? "log";
+      let idx = 0;
+
+      for (let j = 0; j < ny; j++) {
+        const srcRow = ny - 1 - j;
+        const rowOffset = srcRow * nx;
+        for (let i = 0; i < nx; i++) {
+          const rr = Number(opts.re[rowOffset + i]);
+          const ii = Number(opts.im[rowOffset + i]);
+          if (!Number.isFinite(rr) || !Number.isFinite(ii)) {
+            data[idx++] = 0;
+            data[idx++] = 0;
+            data[idx++] = 0;
+            data[idx++] = 0;
+            continue;
+          }
+          const mag = Math.hypot(rr, ii);
+          const hue = ((Math.atan2(ii, rr) / TAU) + 1) % 1;
+          const rawValue =
+            valueMode === "linear"
+              ? mag / Math.max(1e-9, maxMag)
+              : Math.log(1 + mag) / Math.max(1e-9, logMax);
+          const value = clamp01(0.12 + 0.88 * rawValue);
+          const rgb = hsvToRgb(hue, 1, value);
           data[idx++] = Math.round(rgb.r * 255);
           data[idx++] = Math.round(rgb.g * 255);
           data[idx++] = Math.round(rgb.b * 255);
@@ -1356,6 +1436,65 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
 
           g.append("image")
             .attr("data-layer", "heatmap")
+            .attr("x", x0)
+            .attr("y", y0)
+            .attr("width", width)
+            .attr("height", height)
+            .attr("href", dataUrl)
+            .attr("opacity", opacity)
+            .style("pointer-events", "none");
+        },
+        drawComplexDomainColoring(opts: {
+          re: ArrayLike<number>;
+          im: ArrayLike<number>;
+          nx: number;
+          ny: number;
+          xMin: number;
+          xMax: number;
+          yMin: number;
+          yMax: number;
+          opacity?: number;
+          valueMode?: "log" | "linear";
+        }) {
+          const g = gContentRef.current;
+          const x = xScaleRef.current;
+          const y = yScaleRef.current;
+          if (!g || !x || !y) return;
+
+          g.selectAll(`image[data-layer="complex-domain"]`).remove();
+          const dataUrl = buildComplexDomainImage({
+            re: opts.re,
+            im: opts.im,
+            nx: opts.nx,
+            ny: opts.ny,
+            valueMode: opts.valueMode,
+          });
+          if (!dataUrl) return;
+
+          const x0 = x(opts.xMin);
+          const x1 = x(opts.xMax);
+          const y0 = y(opts.yMax);
+          const y1 = y(opts.yMin);
+          const width = Math.max(1, x1 - x0);
+          const height = Math.max(1, y1 - y0);
+          const opacity = opts.opacity ?? 0.96;
+
+          const ref = g.select(`g[data-layer="grid"]`);
+          if (!ref.empty()) {
+            g.insert("image", 'g[data-layer="grid"]')
+              .attr("data-layer", "complex-domain")
+              .attr("x", x0)
+              .attr("y", y0)
+              .attr("width", width)
+              .attr("height", height)
+              .attr("href", dataUrl)
+              .attr("opacity", opacity)
+              .style("pointer-events", "none");
+            return;
+          }
+
+          g.append("image")
+            .attr("data-layer", "complex-domain")
             .attr("x", x0)
             .attr("y", y0)
             .attr("width", width)
