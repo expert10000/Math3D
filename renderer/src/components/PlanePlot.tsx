@@ -802,6 +802,12 @@ type PlanePlotProps = {
   step?: number;
   style?: React.CSSProperties;
   onClickPoint?: (pt: { re: number; im: number }, ev: MouseEvent) => void;
+  onDragPoint?: (
+    pt: { re: number; im: number },
+    phase: "start" | "move" | "end",
+    ev: MouseEvent
+  ) => void;
+  dragDrawEnabled?: boolean;
   domainColoring?: boolean;
   domainRings?: boolean;
   domainRays?: boolean;
@@ -844,6 +850,8 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       step = 1,
       style,
       onClickPoint,
+      onDragPoint,
+      dragDrawEnabled = false,
       domainColoring,
       domainRings,
       domainRays,
@@ -1237,6 +1245,12 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       const zoom = d3
         .zoom<SVGSVGElement, unknown>()
         .scaleExtent([0.5, 20])
+        .filter((ev: any) => {
+          if (dragDrawEnabled && ev?.type === "mousedown") {
+            return false;
+          }
+          return (!ev.ctrlKey || ev.type === "wheel") && !ev.button;
+        })
         .on("zoom", (ev: any) => {
           gContent.attr("transform", ev.transform);
         });
@@ -1265,11 +1279,64 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
         svg.on("click", null);
       }
 
+      let dragActive = false;
+      const toComplexPoint = (ev: MouseEvent) => {
+        const x = xScaleRef.current;
+        const y = yScaleRef.current;
+        const svgNode = svgRef.current;
+        if (!x || !y || !svgNode) return null;
+        const [sx, sy] = d3.pointer(ev, svgNode);
+        const t = d3.zoomTransform(svgNode as any);
+        const [cx, cy] = t.invert([sx, sy]);
+        const re = x.invert(cx);
+        const im = y.invert(cy);
+        return { re, im };
+      };
+
+      const handleWindowMouseUp = (ev: MouseEvent) => {
+        if (!dragActive || !onDragPoint) return;
+        dragActive = false;
+        const pt = toComplexPoint(ev);
+        if (!pt) return;
+        onDragPoint(pt, "end", ev);
+      };
+
+      if (onDragPoint) {
+        svg.on("mousedown.dragdraw", (ev: MouseEvent) => {
+          if (ev.button !== 0) return;
+          const pt = toComplexPoint(ev);
+          if (!pt) return;
+          dragActive = true;
+          onDragPoint(pt, "start", ev);
+          if (dragDrawEnabled) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        });
+        svg.on("mousemove.dragdraw", (ev: MouseEvent) => {
+          if (!dragActive) return;
+          const pt = toComplexPoint(ev);
+          if (!pt) return;
+          onDragPoint(pt, "move", ev);
+          if (dragDrawEnabled) {
+            ev.preventDefault();
+            ev.stopPropagation();
+          }
+        });
+        window.addEventListener("mouseup", handleWindowMouseUp);
+      } else {
+        svg.on("mousedown.dragdraw", null);
+        svg.on("mousemove.dragdraw", null);
+      }
+
       return () => {
         svg.on(".zoom", null);
         svg.on("click", null);
+        svg.on("mousedown.dragdraw", null);
+        svg.on("mousemove.dragdraw", null);
+        window.removeEventListener("mouseup", handleWindowMouseUp);
       };
-    }, [id, extent, step, onClickPoint, showAxes, showLabels]);
+    }, [id, extent, step, onClickPoint, onDragPoint, dragDrawEnabled, showAxes, showLabels]);
 
     useImperativeHandle(
       ref,

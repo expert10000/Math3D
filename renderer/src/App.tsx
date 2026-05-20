@@ -1276,7 +1276,7 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 type FunctionExplorerScene = "mobius" | "other_complex";
-type OtherComplexPathMode = "circle" | "segment";
+type OtherComplexPathMode = "circle" | "segment" | "freehand";
 
 
 
@@ -8080,6 +8080,7 @@ const App: React.FC = () => {
   const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
   const [otherComplexSegmentStart, setOtherComplexSegmentStart] = useState<C>({ re: -1.4, im: -0.6 });
   const [otherComplexSegmentEnd, setOtherComplexSegmentEnd] = useState<C>({ re: 1.4, im: 0.8 });
+  const [otherComplexFreehandPath, setOtherComplexFreehandPath] = useState<[number, number][]>([]);
   const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
@@ -12810,6 +12811,9 @@ const App: React.FC = () => {
   }, []);
 
   const handleOtherComplexZClick = useCallback((pt: { re: number; im: number }) => {
+    if (otherComplexPathMode === "freehand") {
+      return;
+    }
     if (otherComplexPathMode === "circle") {
       setOtherComplexPathCenter({ re: pt.re, im: pt.im });
       return;
@@ -12825,8 +12829,37 @@ const App: React.FC = () => {
     setOtherComplexPathCenter({ re: pt.re, im: pt.im });
   }, [otherComplexPathMode, otherComplexPathPickTarget]);
 
+  const handleOtherComplexZDragPoint = useCallback(
+    (pt: { re: number; im: number }, phase: "start" | "move" | "end") => {
+      if (otherComplexPathMode !== "freehand") return;
+      const p: [number, number] = [pt.re, pt.im];
+      const minStep = Math.max(0.01, complexMapZExtent * 0.01);
+      setOtherComplexFreehandPath((prev) => {
+        if (phase === "start") return [p];
+        if (!prev.length) return [p];
+        const last = prev[prev.length - 1];
+        const d = Math.hypot(last[0] - p[0], last[1] - p[1]);
+        if (d < minStep) {
+          if (phase === "end") {
+            const first = prev[0];
+            const closeDist = Math.hypot(first[0] - p[0], first[1] - p[1]);
+            if (closeDist <= minStep * 1.6 && prev.length > 8) {
+              return [...prev, first];
+            }
+          }
+          return prev;
+        }
+        return [...prev, p];
+      });
+    },
+    [complexMapZExtent, otherComplexPathMode]
+  );
+
   const otherComplexPathZPoints = useMemo(() => {
     if (!otherComplexShowPathMapping) return [] as [number, number][];
+    if (otherComplexPathMode === "freehand") {
+      return otherComplexFreehandPath.length >= 2 ? otherComplexFreehandPath : [];
+    }
     if (otherComplexPathMode === "circle") {
       const r = Math.max(1e-3, otherComplexPathRadius);
       const samples = 320;
@@ -12853,6 +12886,7 @@ const App: React.FC = () => {
   }, [
     otherComplexShowPathMapping,
     otherComplexPathMode,
+    otherComplexFreehandPath,
     otherComplexPathRadius,
     otherComplexPathCenter,
     otherComplexSegmentStart,
@@ -27392,6 +27426,7 @@ case "mobius":
                   setOtherComplexPathMode("circle");
                   setOtherComplexPathCenter({ re: 0, im: 0 });
                   setOtherComplexPathRadius(1.2);
+                  setOtherComplexFreehandPath([]);
                 }}
                 style={pill(false)}
               >
@@ -35450,6 +35485,13 @@ case "mobius":
                         >
                           Segment
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexPathMode("freehand")}
+                          style={pill(otherComplexPathMode === "freehand")}
+                        >
+                          Freehand
+                        </button>
                       </div>
                       {otherComplexPathMode === "circle" ? (
                         <label style={{ fontSize: 12 }}>
@@ -35482,6 +35524,20 @@ case "mobius":
                           </div>
                           <div style={{ fontSize: 11, opacity: 0.72 }}>
                             Click the Z-plane to place selected endpoint.
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 11, opacity: 0.72 }}>
+                            Drag with mouse in Z-plane to draw γ(t). Release to finish stroke.
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => setOtherComplexFreehandPath([])}>
+                              Clear path
+                            </button>
+                            <div style={{ fontSize: 11, opacity: 0.72, display: "flex", alignItems: "center" }}>
+                              points: {otherComplexFreehandPath.length}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -36000,9 +36056,13 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
                         </div>
-                      ) : (
+                      ) : otherComplexPathMode === "segment" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane with {otherComplexPathPickTarget} pick mode to define the segment.
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Drag in Z-plane to draw freehand γ(t). Current points: {otherComplexFreehandPath.length}.
                         </div>
                       )}
                     </div>
@@ -36024,6 +36084,8 @@ case "mobius":
                             ref={zRef}
                             style={{ height: "100%" }}
                             onClickPoint={handleOtherComplexZClick}
+                            onDragPoint={handleOtherComplexZDragPoint}
+                            dragDrawEnabled={otherComplexPathMode === "freehand"}
                             showAxes={mobiusShowAxes}
                             showLabels={mobiusShowLabels}
                           />
