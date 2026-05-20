@@ -347,6 +347,24 @@ h1 {
   min-height: 220px;
   display: block;
   object-fit: cover;
+  object-position: center center;
+  transform: scale(var(--module-shot-scale, 1));
+  transform-origin: var(--module-shot-origin, 50% 50%);
+}
+
+.module-shot-volume {
+  --module-shot-scale: 1.38;
+  --module-shot-origin: 50% 63%;
+}
+
+.module-shot-geometry {
+  --module-shot-scale: 1.24;
+  --module-shot-origin: 60% 38%;
+}
+
+.module-shot-complex {
+  --module-shot-scale: 1.26;
+  --module-shot-origin: 36% 44%;
 }
 
 .section-head h2 {
