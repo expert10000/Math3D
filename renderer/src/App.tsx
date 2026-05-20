@@ -9356,12 +9356,212 @@ const App: React.FC = () => {
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
+  const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
+  const otherComplexHasNonRationalFns = /\b(sin|cos|tan|exp|log|sqrt|abs)\b/i.test(otherComplexFunctionExprSafe);
+  const otherComplexCompiled2d = useMemo(
+    () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, { inputMode: "fz", fExpr: otherComplexFunctionExprSafe }),
+    [complexMapSpec.reExpr, complexMapSpec.imExpr, otherComplexFunctionExprSafe]
+  );
+  const evalOtherComplexW = useCallback((u: number, v: number) => {
+    const reFn = otherComplexCompiled2d.reFn;
+    const imFn = otherComplexCompiled2d.imFn;
+    if (!reFn || !imFn) return null;
+    const re = reFn(u, v);
+    const im = imFn(u, v);
+    if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
+    return { re, im };
+  }, [otherComplexCompiled2d]);
+  const otherComplexGrid2d = useMemo(() => {
+    const reFn = otherComplexCompiled2d.reFn;
+    const imFn = otherComplexCompiled2d.imFn;
+    if (!reFn || !imFn) return null;
+    const nu = Math.max(16, Math.round(complexMapSpec.nu));
+    const nv = Math.max(16, Math.round(complexMapSpec.nv));
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const uStep = nu > 1 ? (uMax - uMin) / (nu - 1) : 0;
+    const vStep = nv > 1 ? (vMax - vMin) / (nv - 1) : 0;
+    const total = nu * nv;
+    const re = new Float32Array(total);
+    const im = new Float32Array(total);
+    const valid = new Uint8Array(total);
+    const wMag = new Float32Array(total);
+    let wMagMax = 0;
+    for (let j = 0; j < nv; j++) {
+      const v = vMin + j * vStep;
+      for (let i = 0; i < nu; i++) {
+        const u = uMin + i * uStep;
+        const idx = j * nu + i;
+        const rv = reFn(u, v);
+        const iv = imFn(u, v);
+        if (!Number.isFinite(rv) || !Number.isFinite(iv)) {
+          re[idx] = NaN;
+          im[idx] = NaN;
+          wMag[idx] = NaN;
+          continue;
+        }
+        re[idx] = rv;
+        im[idx] = iv;
+        valid[idx] = 1;
+        const mag = Math.hypot(rv, iv);
+        wMag[idx] = mag;
+        if (Number.isFinite(mag) && mag > wMagMax) wMagMax = mag;
+      }
+    }
+    return { nu, nv, uMin, uMax, vMin, vMax, uStep, vStep, re, im, valid, wMag, wMagMax: Math.max(wMagMax, 1e-6) };
+  }, [otherComplexCompiled2d, complexMapSpec.nu, complexMapSpec.nv, complexMapSpec.uMin, complexMapSpec.uMax, complexMapSpec.vMin, complexMapSpec.vMax]);
+  const otherComplexWExtent = useMemo(() => {
+    if (!otherComplexGrid2d) return 3;
+    return Math.max(2, otherComplexGrid2d.wMagMax * 1.15);
+  }, [otherComplexGrid2d]);
+  const otherComplexGridLines2d = useMemo(() => {
+    if (!otherComplexGrid2d) return { zU: [] as [number, number][][], zV: [] as [number, number][][], wU: [] as [number, number][][], wV: [] as [number, number][][] };
+    const uCount = Math.max(2, Math.round(complexMapSpec.isolinesCountU));
+    const vCount = Math.max(2, Math.round(complexMapSpec.isolinesCountV));
+    const samplesU = Math.max(60, Math.round(complexMapSpec.nv));
+    const samplesV = Math.max(60, Math.round(complexMapSpec.nu));
+    const zU: [number, number][][] = [];
+    const zV: [number, number][][] = [];
+    const wU: [number, number][][] = [];
+    const wV: [number, number][][] = [];
+    const addFamily = (axis: "u" | "v", count: number, sampleCount: number) => {
+      const minLine = axis === "u" ? otherComplexGrid2d.uMin : otherComplexGrid2d.vMin;
+      const maxLine = axis === "u" ? otherComplexGrid2d.uMax : otherComplexGrid2d.vMax;
+      const lineStep = count > 1 ? (maxLine - minLine) / (count - 1) : 0;
+      const sampleMin = axis === "u" ? otherComplexGrid2d.vMin : otherComplexGrid2d.uMin;
+      const sampleMax = axis === "u" ? otherComplexGrid2d.vMax : otherComplexGrid2d.uMax;
+      const sampleStep = sampleCount > 1 ? (sampleMax - sampleMin) / (sampleCount - 1) : 0;
+      for (let k = 0; k < count; k++) {
+        const lineValue = minLine + k * lineStep;
+        const zLine: [number, number][] = [];
+        let currentW: [number, number][] = [];
+        for (let s = 0; s < sampleCount; s++) {
+          const t = sampleMin + s * sampleStep;
+          const u = axis === "u" ? lineValue : t;
+          const v = axis === "u" ? t : lineValue;
+          zLine.push([u, v]);
+          const w = evalOtherComplexW(u, v);
+          if (!w) {
+            if (currentW.length >= 2) {
+              if (axis === "u") wU.push(currentW);
+              else wV.push(currentW);
+            }
+            currentW = [];
+            continue;
+          }
+          currentW.push([w.re, w.im]);
+        }
+        if (currentW.length >= 2) {
+          if (axis === "u") wU.push(currentW);
+          else wV.push(currentW);
+        }
+        if (axis === "u") zU.push(zLine);
+        else zV.push(zLine);
+      }
+    };
+    addFamily("u", uCount, samplesU);
+    addFamily("v", vCount, samplesV);
+    return { zU, zV, wU, wV };
+  }, [otherComplexGrid2d, complexMapSpec.isolinesCountU, complexMapSpec.isolinesCountV, complexMapSpec.nu, complexMapSpec.nv, evalOtherComplexW]);
+  const otherComplexMarkers2d = useMemo(() => {
+    if (!otherComplexGrid2d) return null;
+    const { nu, nv, uMin, vMin, uStep, vStep, re, im, valid, wMag, wMagMax } = otherComplexGrid2d;
+    const idx = (i: number, j: number) => j * nu + i;
+    const deriv = (arr: Float32Array, i: number, j: number, axis: "u" | "v") => {
+      const c = arr[idx(i, j)];
+      if (!Number.isFinite(c)) return NaN;
+      if (axis === "u") {
+        const l = i > 0 ? arr[idx(i - 1, j)] : NaN;
+        const r = i < nu - 1 ? arr[idx(i + 1, j)] : NaN;
+        if (Number.isFinite(l) && Number.isFinite(r)) return (r - l) / (2 * Math.max(1e-9, uStep));
+        if (Number.isFinite(r)) return (r - c) / Math.max(1e-9, uStep);
+        if (Number.isFinite(l)) return (c - l) / Math.max(1e-9, uStep);
+        return NaN;
+      }
+      const d = j > 0 ? arr[idx(i, j - 1)] : NaN;
+      const u = j < nv - 1 ? arr[idx(i, j + 1)] : NaN;
+      if (Number.isFinite(d) && Number.isFinite(u)) return (u - d) / (2 * Math.max(1e-9, vStep));
+      if (Number.isFinite(u)) return (u - c) / Math.max(1e-9, vStep);
+      if (Number.isFinite(d)) return (c - d) / Math.max(1e-9, vStep);
+      return NaN;
+    };
+    const detVals: number[] = [];
+    const detArr = new Float32Array(nu * nv);
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const k = idx(i, j);
+        if (!valid[k]) {
+          detArr[k] = NaN;
+          continue;
+        }
+        const a = deriv(re, i, j, "u");
+        const b = deriv(re, i, j, "v");
+        const c = deriv(im, i, j, "u");
+        const d = deriv(im, i, j, "v");
+        if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(c) || !Number.isFinite(d)) {
+          detArr[k] = NaN;
+          continue;
+        }
+        const detAbs = Math.abs(a * d - b * c);
+        detArr[k] = detAbs;
+        detVals.push(detAbs);
+      }
+    }
+    detVals.sort((a, b) => a - b);
+    const detMedian = detVals.length ? detVals[Math.floor(detVals.length / 2)] : 1e-6;
+    const critThresh = Math.max(1e-9, detMedian * 0.08);
+    const zeroThresh = wMagMax * 0.03;
+    const poleThresh = wMagMax * 0.85;
+    const criticalZ: [number, number][] = [];
+    const criticalW: [number, number][] = [];
+    const zeroZ: [number, number][] = [];
+    const zeroW: [number, number][] = [];
+    const poleZ: [number, number][] = [];
+    const poleW: [number, number][] = [];
+    for (let j = 0; j < nv; j++) {
+      const v = vMin + j * vStep;
+      for (let i = 0; i < nu; i++) {
+        const u = uMin + i * uStep;
+        const k = idx(i, j);
+        if (!valid[k]) continue;
+        const rr = re[k];
+        const ii = im[k];
+        const mag = wMag[k];
+        const detAbs = detArr[k];
+        if (Number.isFinite(detAbs) && detAbs <= critThresh) {
+          criticalZ.push([u, v]);
+          criticalW.push([rr, ii]);
+        }
+        if (Number.isFinite(mag) && mag <= zeroThresh) {
+          zeroZ.push([u, v]);
+          zeroW.push([rr, ii]);
+        }
+        if (!Number.isFinite(mag) || mag >= poleThresh) {
+          poleZ.push([u, v]);
+          poleW.push([rr, ii]);
+        }
+      }
+    }
+    const thin = <T,>(arr: T[], max = 400) => {
+      if (arr.length <= max) return arr;
+      const stride = Math.ceil(arr.length / max);
+      return arr.filter((_entry, index) => index % stride === 0);
+    };
+    return {
+      critical: { z: thin(criticalZ), w: thin(criticalW) },
+      zero: { z: thin(zeroZ), w: thin(zeroW) },
+      pole: { z: thin(poleZ), w: thin(poleW) },
+    };
+  }, [otherComplexGrid2d]);
   const otherComplexRationalInspection = useMemo<RationalInspection | null>(() => {
     if (complexMapInputMode !== "fz") return null;
+    if (otherComplexHasNonRationalFns) return null;
     const trimmed = (complexMapFunctionExpr ?? "").trim();
     if (!trimmed) return null;
     return inspectRationalFunction(trimmed);
-  }, [complexMapInputMode, complexMapFunctionExpr]);
+  }, [complexMapInputMode, complexMapFunctionExpr, otherComplexHasNonRationalFns]);
 
   const complexMapCompiled = useMemo(
     () =>
@@ -12898,7 +13098,7 @@ const App: React.FC = () => {
     const segs: [number, number][][] = [];
     let current: [number, number][] = [];
     for (const [u, v] of otherComplexPathZPoints) {
-      const w = evalComplexMapW(u, v);
+      const w = evalOtherComplexW(u, v);
       if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) {
         if (current.length >= 2) segs.push(current);
         current = [];
@@ -12908,7 +13108,7 @@ const App: React.FC = () => {
     }
     if (current.length >= 2) segs.push(current);
     return segs;
-  }, [otherComplexPathZPoints, evalComplexMapW]);
+  }, [otherComplexPathZPoints, evalOtherComplexW]);
 
     
   const availableColorModes = useMemo(
@@ -13020,16 +13220,16 @@ case "mobius":
     zRef.current.drawGrid(gridStep);
     wRef.current.drawGrid(gridStep);
 
-    if (otherComplexShowDomainColoring && complexMapGrid) {
+    if (otherComplexShowDomainColoring && otherComplexGrid2d) {
       zRef.current.drawComplexDomainColoring({
-        re: complexMapGrid.reClamped,
-        im: complexMapGrid.imClamped,
-        nx: complexMapGrid.nu,
-        ny: complexMapGrid.nv,
-        xMin: complexMapGrid.uMin,
-        xMax: complexMapGrid.uMax,
-        yMin: complexMapGrid.vMin,
-        yMax: complexMapGrid.vMax,
+        re: otherComplexGrid2d.re,
+        im: otherComplexGrid2d.im,
+        nx: otherComplexGrid2d.nu,
+        ny: otherComplexGrid2d.nv,
+        xMin: otherComplexGrid2d.uMin,
+        xMax: otherComplexGrid2d.uMax,
+        yMin: otherComplexGrid2d.vMin,
+        yMax: otherComplexGrid2d.vMax,
         valueMode: otherComplexDomainValueMode,
         opacity: 0.97,
       });
@@ -13037,23 +13237,23 @@ case "mobius":
 
     if (otherComplexShowGridDeformation) {
       const gridStyle = { width: 1.15, opacity: 0.9 };
-      if (complexMapIsolineZLinesU?.length) {
-        for (const line of complexMapIsolineZLinesU) {
+      if (otherComplexGridLines2d.zU.length) {
+        for (const line of otherComplexGridLines2d.zU) {
           zRef.current.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
         }
       }
-      if (complexMapIsolineZLinesV?.length) {
-        for (const line of complexMapIsolineZLinesV) {
+      if (otherComplexGridLines2d.zV.length) {
+        for (const line of otherComplexGridLines2d.zV) {
           zRef.current.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
         }
       }
-      if (complexMapIsolineWPolylinesU?.length) {
-        for (const line of complexMapIsolineWPolylinesU) {
+      if (otherComplexGridLines2d.wU.length) {
+        for (const line of otherComplexGridLines2d.wU) {
           wRef.current.drawCurve(line, COMPLEX_GRID_COLORS.u, gridStyle);
         }
       }
-      if (complexMapIsolineWPolylinesV?.length) {
-        for (const line of complexMapIsolineWPolylinesV) {
+      if (otherComplexGridLines2d.wV.length) {
+        for (const line of otherComplexGridLines2d.wV) {
           wRef.current.drawCurve(line, COMPLEX_GRID_COLORS.v, gridStyle);
         }
       }
@@ -13079,15 +13279,15 @@ case "mobius":
       wRef.current.drawPoints([], { layer: "other-path-w" });
     }
 
-    if (otherComplexShowSingularityInspector && complexMapMarkerData) {
-      if (otherComplexShowCritical && complexMapMarkerData.critical.z.length) {
-        zRef.current.drawPoints(complexMapMarkerData.critical.z, {
+    if (otherComplexShowSingularityInspector && otherComplexMarkers2d) {
+      if (otherComplexShowCritical && otherComplexMarkers2d.critical.z.length) {
+        zRef.current.drawPoints(otherComplexMarkers2d.critical.z, {
           color: "#d81b60",
           shape: "diamond",
           size: 4.2,
           layer: "other-crit-z",
         });
-        wRef.current.drawPoints(complexMapMarkerData.critical.w, {
+        wRef.current.drawPoints(otherComplexMarkers2d.critical.w, {
           color: "#d81b60",
           shape: "diamond",
           size: 4.2,
@@ -13097,14 +13297,14 @@ case "mobius":
         zRef.current.drawPoints([], { layer: "other-crit-z" });
         wRef.current.drawPoints([], { layer: "other-crit-w" });
       }
-      if (otherComplexShowZeros && complexMapMarkerData.zero.z.length) {
-        zRef.current.drawPoints(complexMapMarkerData.zero.z, {
+      if (otherComplexShowZeros && otherComplexMarkers2d.zero.z.length) {
+        zRef.current.drawPoints(otherComplexMarkers2d.zero.z, {
           color: "#2e7d32",
           shape: "circle",
           size: 4,
           layer: "other-zero-z",
         });
-        wRef.current.drawPoints(complexMapMarkerData.zero.w, {
+        wRef.current.drawPoints(otherComplexMarkers2d.zero.w, {
           color: "#2e7d32",
           shape: "circle",
           size: 4,
@@ -13114,14 +13314,14 @@ case "mobius":
         zRef.current.drawPoints([], { layer: "other-zero-z" });
         wRef.current.drawPoints([], { layer: "other-zero-w" });
       }
-      if (otherComplexShowPoles && complexMapMarkerData.pole.z.length) {
-        zRef.current.drawPoints(complexMapMarkerData.pole.z, {
+      if (otherComplexShowPoles && otherComplexMarkers2d.pole.z.length) {
+        zRef.current.drawPoints(otherComplexMarkers2d.pole.z, {
           color: "#f57c00",
           shape: "triangle",
           size: 4.6,
           layer: "other-pole-z",
         });
-        wRef.current.drawPoints(complexMapMarkerData.pole.w, {
+        wRef.current.drawPoints(otherComplexMarkers2d.pole.w, {
           color: "#f57c00",
           shape: "triangle",
           size: 4.6,
@@ -13204,12 +13404,9 @@ case "mobius":
     mobiusSubTab,
     mobiusAnimationGridEnabled,
     mobiusAnimationCircleEnabled,
-    complexMapGrid,
-    complexMapIsolineZLinesU,
-    complexMapIsolineZLinesV,
-    complexMapIsolineWPolylinesU,
-    complexMapIsolineWPolylinesV,
-    complexMapMarkerData,
+    otherComplexGrid2d,
+    otherComplexGridLines2d,
+    otherComplexMarkers2d,
     otherComplexShowDomainColoring,
     otherComplexShowGridDeformation,
     otherComplexShowPathMapping,
@@ -35398,6 +35595,9 @@ case "mobius":
                       <div style={{ fontSize: 11, opacity: 0.75 }}>
                         Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
                       </div>
+                      {otherComplexCompiled2d.error && (
+                        <div style={{ fontSize: 11, color: "#b42318" }}>{otherComplexCompiled2d.error}</div>
+                      )}
                     </div>
                     <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                       <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
@@ -35544,7 +35744,12 @@ case "mobius":
                     </div>
                     <div style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}>
                       <div style={{ fontWeight: 700 }}>Singularities inspector (rational)</div>
-                      {otherComplexRationalInspection?.error ? (
+                      {otherComplexHasNonRationalFns ? (
+                        <div style={{ opacity: 0.75 }}>
+                          Current function is non-rational; algebraic zero/pole cancellation is shown only for rational
+                          expressions.
+                        </div>
+                      ) : otherComplexRationalInspection?.error ? (
                         <div style={{ color: "#b42318" }}>{otherComplexRationalInspection.error}</div>
                       ) : otherComplexRationalInspection ? (
                         <>
@@ -36096,7 +36301,7 @@ case "mobius":
                         <div style={{ minHeight: 320, flex: 1 }}>
                           <PlanePlot
                             id="svgW"
-                            extent={complexMapWExtent}
+                            extent={otherComplexWExtent}
                             step={mobiusGridStep}
                             ref={wRef}
                             style={{ height: "100%" }}
