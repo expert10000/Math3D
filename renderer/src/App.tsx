@@ -1136,6 +1136,16 @@ type GenerateSurfaceStatus = {
   message: string;
   at: number;
 };
+type VtkResultSummary = {
+  operation: string;
+  beforeFaces: number;
+  afterFaces: number;
+  requestedFaces: number | null;
+  normalsRecomputed: boolean;
+  warnings: string[];
+  outputMode: "replace" | "derived";
+  timestamp: number;
+};
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
 
@@ -8777,6 +8787,8 @@ const App: React.FC = () => {
   const [vtkUseTargetFaces, setVtkUseTargetFaces] = useState(false);
   const [vtkSmoothIterations, setVtkSmoothIterations] = useState(20);
   const [vtkSmoothPassband, setVtkSmoothPassband] = useState(0.1);
+  const [vtkOutputMode, setVtkOutputMode] = useState<"replace" | "derived">("derived");
+  const [vtkLastResult, setVtkLastResult] = useState<VtkResultSummary | null>(null);
   const [vtkPreviewBusy, setVtkPreviewBusy] = useState(false);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
@@ -18545,8 +18557,19 @@ case "mobius":
   }, [surfaceSampleSet, buildActiveMeshLabel]);
 
   const applyVtkResultToSurfaceMesh = useCallback(
-    (labelSuffix: string, res: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array }) => {
-      const label = `${buildActiveMeshLabel()} (${labelSuffix})`;
+    (
+      labelSuffix: string,
+      res: { positions: Float32Array; indices: Uint32Array; normals?: Float32Array },
+      meta: {
+        operation: string;
+        beforeFaces: number;
+        requestedFaces?: number | null;
+        normalsRecomputed?: boolean;
+        warnings?: string[];
+      }
+    ) => {
+      const baseLabel = buildActiveMeshLabel();
+      const label = vtkOutputMode === "replace" ? baseLabel : `${baseLabel} (${labelSuffix})`;
       const source = surfaceMeshData?.source ?? { kind: "bakedFromImplicit" };
       const next: SurfaceMeshData = {
         label,
@@ -18559,8 +18582,21 @@ case "mobius":
       setDatasetKind("mesh");
       setSurfaceViewerKind("mesh");
       setSurfaceMeshImportError(null);
+      setVtkLastResult({
+        operation: meta.operation,
+        beforeFaces: Math.max(0, Math.round(meta.beforeFaces)),
+        afterFaces: Math.max(0, Math.round(res.indices.length / 3)),
+        requestedFaces:
+          meta.requestedFaces == null || !Number.isFinite(meta.requestedFaces)
+            ? null
+            : Math.max(0, Math.round(meta.requestedFaces)),
+        normalsRecomputed: meta.normalsRecomputed !== false,
+        warnings: meta.warnings ?? [],
+        outputMode: vtkOutputMode,
+        timestamp: Date.now(),
+      });
     },
-    [buildActiveMeshLabel, surfaceMeshData?.source]
+    [buildActiveMeshLabel, surfaceMeshData?.source, vtkOutputMode]
   );
 
   const getImplicitBakeWorker = useCallback(() => {
@@ -18668,7 +18704,12 @@ case "mobius":
         setVtkError(res.error);
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK clean", res);
+      applyVtkResultToSurfaceMesh("VTK clean", res, {
+        operation: "Clean mesh",
+        beforeFaces: Math.round(mesh.indices.length / 3),
+        requestedFaces: null,
+        normalsRecomputed: true,
+      });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK clean failed.");
     } finally {
@@ -18691,6 +18732,7 @@ case "mobius":
     setVtkBusy(true);
     setVtkError(null);
     try {
+      const beforeFaces = Math.round(mesh.indices.length / 3);
       const options = vtkUseTargetFaces
         ? { targetFaces: vtkDecimateTargetFaces, computeNormals: true }
         : { targetReduction: vtkDecimateReduction, computeNormals: true };
@@ -18699,7 +18741,15 @@ case "mobius":
         setVtkError(res.error);
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK decimate", res);
+      const requestedFaces = vtkUseTargetFaces
+        ? Math.max(100, Math.round(vtkDecimateTargetFaces))
+        : Math.max(1, Math.round(beforeFaces * (1 - vtkDecimateReduction)));
+      applyVtkResultToSurfaceMesh("VTK decimate", res, {
+        operation: "Decimate",
+        beforeFaces,
+        requestedFaces,
+        normalsRecomputed: true,
+      });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK decimate failed.");
     } finally {
@@ -18731,6 +18781,7 @@ case "mobius":
     setVtkBusy(true);
     setVtkError(null);
     try {
+      const beforeFaces = Math.round(mesh.indices.length / 3);
       const res = await vtkSmooth(mesh.positions, mesh.indices, {
         iterations: vtkSmoothIterations,
         passband: vtkSmoothPassband,
@@ -18740,7 +18791,12 @@ case "mobius":
         setVtkError(res.error);
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK smooth", res);
+      applyVtkResultToSurfaceMesh("VTK smooth", res, {
+        operation: "Smooth",
+        beforeFaces,
+        requestedFaces: null,
+        normalsRecomputed: true,
+      });
     } catch (err: any) {
       setVtkError(err?.message ?? "VTK smooth failed.");
     } finally {
@@ -22652,7 +22708,12 @@ case "mobius":
         setGenerateSurfaceStatus({ state: "error", message: res.error, at: Date.now() });
         return;
       }
-      applyVtkResultToSurfaceMesh("VTK preview", res);
+      applyVtkResultToSurfaceMesh("VTK preview", res, {
+        operation: "VTK preview",
+        beforeFaces: surfaceMeshStats?.triCount ?? 0,
+        requestedFaces: vtkPreviewUseDecimate ? targetFaces : null,
+        normalsRecomputed: true,
+      });
       setGenerateSurfaceStatus({
         state: "success",
         message: `Generated mesh (${res.vertexCount.toLocaleString()} verts, ${res.triCount.toLocaleString()} tris).`,
@@ -22675,6 +22736,7 @@ case "mobius":
     implicitResolution,
     vtkPreviewTargetFaces,
     vtkPreviewUseDecimate,
+    surfaceMeshStats?.triCount,
     cgalDomainPreview,
     applyVtkResultToSurfaceMesh,
     refreshCgalHealthAfterWorkerAction,
@@ -26773,6 +26835,8 @@ case "mobius":
                   onVtkCleanNormals={handleVtkCleanNormals}
                   onVtkDecimate={handleVtkDecimate}
                   onVtkSmooth={handleVtkSmooth}
+                  vtkOutputMode={vtkOutputMode}
+                  onChangeVtkOutputMode={setVtkOutputMode}
                   graphExpr={graphExpr}
                   implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
@@ -31312,6 +31376,8 @@ case "mobius":
                       generateSurfaceStatus={generateSurfaceStatus}
                       vtkPreviewTargetFaces={vtkPreviewTargetFaces}
                       vtkPreviewUseDecimate={vtkPreviewUseDecimate}
+                      vtkLastResult={vtkLastResult}
+                      vtkError={vtkError}
                       onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
                       onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
                       onRunVtkPreview={handleVtkPreviewImplicit}
@@ -42594,6 +42660,8 @@ type SurfacesLeftPanelProps = {
   onVtkCleanNormals: () => void;
   onVtkDecimate: () => void;
   onVtkSmooth: () => void;
+  vtkOutputMode: "replace" | "derived";
+  onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
 
   graphExpr: string;
   implicitExpr: string;
@@ -43165,6 +43233,8 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onVtkCleanNormals,
   onVtkDecimate,
   onVtkSmooth,
+  vtkOutputMode,
+  onChangeVtkOutputMode,
   graphExpr,
   implicitExpr,
 onChangeGraphExpr,
@@ -46071,102 +46141,144 @@ onChangeImplicitExpr,
       {meshToolsTab === "vtk" && (
       <div style={{ ...cardStyle, marginTop: 0 }}>
         <div style={{ marginTop: 0 }}>
-        {!vtkAvailable ? (
-          <div style={{ fontSize: 11, color: "#666" }}>Mesh data not ready yet.</div>
-        ) : (
-          <>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-              <button type="button" onClick={onVtkCleanNormals} disabled={vtkOpsDisabled}>
-                {vtkBusy ? "Working..." : "Clean + normals"}
-              </button>
-              <button type="button" onClick={onVtkDecimate} disabled={vtkOpsDisabled}>
-                {vtkBusy ? "Working..." : "Decimate"}
-              </button>
-              <button type="button" onClick={onVtkSmooth} disabled={vtkOpsDisabled}>
-                {vtkBusy ? "Working..." : "Smooth"}
-              </button>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>VTK Mesh Operations</div>
+          <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
+            <div>
+              <strong>Input:</strong> Current SurfaceMesh: {meshReady && vtkAvailable ? "ready" : "missing"}
             </div>
             {!pythonWorkerAvailable && (
-              <div style={{ fontSize: 11, color: "#b42318", marginBottom: 8 }}>
+              <div style={{ color: "#b42318" }}>
                 {pythonWorkerStatusMessage ?? "Python worker unavailable."}
               </div>
             )}
             {!pythonWorkerAvailable && pythonWorkerLogPath && (
-              <div style={{ fontSize: 10, color: "#667085", marginBottom: 8, wordBreak: "break-all" }}>
+              <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>
                 log: {pythonWorkerLogPath}
               </div>
             )}
+          </div>
 
-            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>Decimate</div>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-              <input
-                type="checkbox"
-                checked={vtkUseTargetFaces}
-                onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
-                disabled={vtkOpsDisabled}
-              />
-              Use target faces
-            </label>
-            <div style={{ marginTop: 6 }}>
-              <div style={{ fontSize: 10, color: "#555" }}>
-                Reduction {vtkDecimateReduction.toFixed(2)}
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={0.95}
-                step={0.01}
-                value={vtkDecimateReduction}
-                onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
-                disabled={vtkUseTargetFaces || vtkOpsDisabled}
-                style={{ width: 180 }}
-              />
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Operations</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+            <button type="button" onClick={onVtkCleanNormals} disabled={!meshReady || vtkOpsDisabled}>
+              {vtkBusy ? "Working..." : "Clean mesh"}
+            </button>
+            <button type="button" onClick={onRecomputeSurfaceMeshNormals} disabled={!meshReady || vtkBusy}>
+              Recompute normals
+            </button>
+            <button type="button" onClick={onTriangulateSurfaceMesh} disabled={!meshReady || vtkBusy}>
+              Triangulate
+            </button>
+            <button type="button" onClick={onVtkSmooth} disabled={!meshReady || vtkOpsDisabled}>
+              {vtkBusy ? "Working..." : "Smooth"}
+            </button>
+            <button type="button" onClick={onVtkDecimate} disabled={!meshReady || vtkOpsDisabled}>
+              {vtkBusy ? "Working..." : "Decimate"}
+            </button>
+            <button type="button" disabled title="Clip op is not wired yet.">
+              Clip
+            </button>
+            <button type="button" disabled title="Slice op is not wired yet.">
+              Slice
+            </button>
+            <button type="button" disabled title="Contour extraction is not wired yet.">
+              Extract contours
+            </button>
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Decimate</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            <input
+              type="checkbox"
+              checked={vtkUseTargetFaces}
+              onChange={(e) => onToggleVtkUseTargetFaces(e.target.checked)}
+              disabled={vtkOpsDisabled}
+            />
+            Use target faces
+          </label>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 10, color: "#555" }}>
+              Reduction {vtkDecimateReduction.toFixed(2)}
             </div>
-            <div style={{ marginTop: 6 }}>
-              <div style={{ fontSize: 10, color: "#555" }}>Target faces</div>
+            <input
+              type="range"
+              min={0}
+              max={0.95}
+              step={0.01}
+              value={vtkDecimateReduction}
+              onChange={(e) => onChangeVtkDecimateReduction(Number(e.target.value))}
+              disabled={vtkUseTargetFaces || vtkOpsDisabled}
+              style={{ width: 180 }}
+            />
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <div style={{ fontSize: 10, color: "#555" }}>Target faces</div>
+            <input
+              type="number"
+              min={100}
+              max={1000000}
+              step={100}
+              value={vtkDecimateTargetFaces}
+              onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
+              disabled={!vtkUseTargetFaces || vtkOpsDisabled}
+              style={{ width: 120 }}
+            />
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Smooth</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Iterations
               <input
                 type="number"
-                min={100}
-                max={1000000}
-                step={100}
-                value={vtkDecimateTargetFaces}
-                onChange={(e) => onChangeVtkDecimateTargetFaces(Number(e.target.value))}
-                disabled={!vtkUseTargetFaces || vtkOpsDisabled}
-                style={{ width: 120 }}
+                min={1}
+                max={200}
+                step={1}
+                value={vtkSmoothIterations}
+                onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
+                disabled={vtkOpsDisabled}
+                style={{ width: 60 }}
               />
-            </div>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Passband
+              <input
+                type="number"
+                min={0.001}
+                max={1}
+                step={0.01}
+                value={vtkSmoothPassband}
+                onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
+                disabled={vtkOpsDisabled}
+                style={{ width: 70 }}
+              />
+            </label>
+          </div>
 
-            <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Smooth</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                Iterations
-                <input
-                  type="number"
-                  min={1}
-                  max={200}
-                  step={1}
-                  value={vtkSmoothIterations}
-                  onChange={(e) => onChangeVtkSmoothIterations(Number(e.target.value))}
-                  disabled={vtkOpsDisabled}
-                  style={{ width: 60 }}
-                />
-              </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                Passband
-                <input
-                  type="number"
-                  min={0.001}
-                  max={1}
-                  step={0.01}
-                  value={vtkSmoothPassband}
-                  onChange={(e) => onChangeVtkSmoothPassband(Number(e.target.value))}
-                  disabled={vtkOpsDisabled}
-                  style={{ width: 70 }}
-                />
-              </label>
-            </div>
-          </>
-        )}
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Output</div>
+          <div style={{ display: "grid", gap: 4, marginTop: 6, fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="radio"
+                name="vtk-output-mode"
+                checked={vtkOutputMode === "replace"}
+                onChange={() => onChangeVtkOutputMode("replace")}
+              />
+              Replace current mesh
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="radio"
+                name="vtk-output-mode"
+                checked={vtkOutputMode === "derived"}
+                onChange={() => onChangeVtkOutputMode("derived")}
+              />
+              Create derived mesh
+            </label>
+          </div>
+          <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
+            Result details appear in the right Inspector under VTK result.
+          </div>
         {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
       </div>
@@ -49086,6 +49198,8 @@ type SurfacesRightPanelProps = {
   generateSurfaceStatus: GenerateSurfaceStatus;
   vtkPreviewTargetFaces: number;
   vtkPreviewUseDecimate: boolean;
+  vtkLastResult: VtkResultSummary | null;
+  vtkError: string | null;
   onChangeVtkPreviewTargetFaces: (v: number) => void;
   onChangeVtkPreviewUseDecimate: (v: boolean) => void;
   onRunVtkPreview: () => void;
@@ -49245,6 +49359,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   generateSurfaceStatus,
   vtkPreviewTargetFaces,
   vtkPreviewUseDecimate,
+  vtkLastResult,
+  vtkError,
   onChangeVtkPreviewTargetFaces,
   onChangeVtkPreviewUseDecimate,
   onRunVtkPreview,
@@ -49908,6 +50024,40 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </div>
         )}
       </div>
+
+      {(vtkLastResult || vtkError) && (
+        <div style={inspectorSectionCard}>
+          <div style={inspectorSectionTitle}>VTK result</div>
+          {vtkLastResult ? (
+            <div style={{ fontSize: 11, display: "grid", gap: 5 }}>
+              <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
+              <div><strong>Before:</strong> {vtkLastResult.beforeFaces.toLocaleString()} faces</div>
+              <div>
+                <strong>After:</strong>{" "}
+                {vtkLastResult.requestedFaces != null
+                  ? `${vtkLastResult.requestedFaces.toLocaleString()} target / ${vtkLastResult.afterFaces.toLocaleString()} actual`
+                  : `${vtkLastResult.afterFaces.toLocaleString()} faces`}
+              </div>
+              <div><strong>Normals:</strong> {vtkLastResult.normalsRecomputed ? "recomputed" : "unchanged"}</div>
+              <div>
+                <strong>Output:</strong>{" "}
+                {vtkLastResult.outputMode === "replace" ? "replace current mesh" : "create derived mesh"}
+              </div>
+              <div>
+                <strong>Warnings:</strong>{" "}
+                {vtkLastResult.warnings.length > 0 ? vtkLastResult.warnings.join("; ") : "none"}
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.75 }}>No VTK operation has completed yet.</div>
+          )}
+          {vtkError && (
+            <div style={{ marginTop: 7, fontSize: 11, color: "#b42318" }}>
+              Last VTK error: {vtkError}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={workflowCardStyle("equation", "parse")}>
         <div style={inspectorSectionTitle}>Definition</div>
