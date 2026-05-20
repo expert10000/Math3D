@@ -35704,7 +35704,7 @@ case "mobius":
                             onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
                           />
                         </label>
-                      ) : (
+                      ) : otherComplexPathMode === "segment" ? (
                         <div style={{ display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button
