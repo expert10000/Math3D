@@ -358,7 +358,7 @@ type AppTheme = "light" | "dark" | "dot";
 type DisplayMode = "workspace" | "present" | "inspect";
 type ViewportPreset = "minimal" | "study" | "analysis" | "debug";
 type AccentPresetId = "blue" | "teal" | "amber" | "rose";
-type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry";
+type WorkspaceModule = "surfaces" | "mesh" | "volume" | "curves" | "topology" | "geometry" | "mobius";
 type WorkspaceViewMode = "threeD" | "planar" | "claim" | "stage";
 type WorkspaceCameraPreset =
   | "fit_scene"
@@ -394,6 +394,7 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "inspect", "view", "analysis"] as const;
+const MOBIUS_SUB_TAB_VALUES: MobiusSubTab[] = ["map", "decompose", "invariants", "circles", "riemann", "animation"];
 const PLANIMETRY_PRESET_VALUES: PlanimetryPresetId[] = ["task", "euler", "tangent", "incircle_reflection"];
 const isGeometryModeValue = (value: string | undefined): value is GeometryMode =>
   !!value && GEOMETRY_MODE_VALUES.includes(value as GeometryMode);
@@ -405,6 +406,8 @@ const isConstructionWorkspaceTabValue = (value: string | undefined): value is Co
   !!value && GEOMETRY_WORKSPACE_TAB_VALUES.includes(value as ConstructionWorkspaceTab);
 const isSurfacesLeftTabValue = (value: string | undefined): value is (typeof SURFACES_LEFT_TAB_VALUES)[number] =>
   !!value && SURFACES_LEFT_TAB_VALUES.includes(value as (typeof SURFACES_LEFT_TAB_VALUES)[number]);
+const isMobiusSubTabValue = (value: string | undefined): value is MobiusSubTab =>
+  !!value && MOBIUS_SUB_TAB_VALUES.includes(value as MobiusSubTab);
 const isPlanimetryPresetValue = (value: string | undefined): value is PlanimetryPresetId =>
   !!value && PLANIMETRY_PRESET_VALUES.includes(value as PlanimetryPresetId);
 const isWorkspaceModuleValue = (value: string | undefined): value is WorkspaceModule =>
@@ -413,7 +416,8 @@ const isWorkspaceModuleValue = (value: string | undefined): value is WorkspaceMo
   value === "volume" ||
   value === "curves" ||
   value === "topology" ||
-  value === "geometry";
+  value === "geometry" ||
+  value === "mobius";
 const areWorkspaceLocationsEqual = (a: WorkspaceLocationEntry, b: WorkspaceLocationEntry) =>
   a.module === b.module &&
   a.workspaceMode === b.workspaceMode &&
@@ -8081,6 +8085,8 @@ const App: React.FC = () => {
   const [otherComplexShowBranchCuts, setOtherComplexShowBranchCuts] = useState(true);
   const [otherComplexShowSelectedContour, setOtherComplexShowSelectedContour] = useState(false);
   const [otherComplexSelectedContourLevel, setOtherComplexSelectedContourLevel] = useState(0.5);
+  const [otherComplexSummaryOpen, setOtherComplexSummaryOpen] = useState(false);
+  const [otherComplexFunctionSummaryOpen, setOtherComplexFunctionSummaryOpen] = useState(true);
   const [otherComplexActionStatus, setOtherComplexActionStatus] = useState<string | null>(null);
   const [otherComplexSelectedPoint, setOtherComplexSelectedPoint] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
@@ -25959,7 +25965,9 @@ case "mobius":
     unifiedSelectedNode,
     workbookDirty,
   ]);
+  const showOtherComplexBottomActions = mode === "mobius" && functionExplorerScene === "other_complex";
   const workspaceModule = useMemo<WorkspaceModule>(() => {
+    if (mode === "mobius") return "mobius";
     if (mode === "geometry") return "geometry";
     if (mode === "topology") return "topology";
     if (mode === "curves") return "curves";
@@ -26020,6 +26028,10 @@ case "mobius":
       panel = surfacesPanelState === "browse" ? "browse" : surfacesLeftTab;
       viewMode = volumeViewMode === "3d" ? "threeD" : "planar";
       sceneId = String(volumePresetId);
+    } else if (workspaceModule === "mobius") {
+      workspaceMode = functionExplorerScene;
+      panel = functionExplorerScene === "mobius" ? mobiusSubTab : "other_complex";
+      sceneId = functionExplorerScene;
     }
 
     return {
@@ -26048,6 +26060,8 @@ case "mobius":
     geometryViewPreset,
     workspaceCameraPreset,
     surfaceViewerKind,
+    functionExplorerScene,
+    mobiusSubTab,
     surfacesPanelState,
     surfacesLeftTab,
     unifiedSelectedNode,
@@ -26063,6 +26077,7 @@ case "mobius":
     forwardStack: [],
   }));
   const workspaceNavigationRestoringRef = useRef(false);
+  const workspaceNavigationRestoreTargetRef = useRef<WorkspaceLocationEntry | null>(null);
   useEffect(() => {
     setWorkspaceNavigation((previous) => {
       if (areWorkspaceLocationsEqual(previous.current, currentWorkspaceLocation)) return previous;
@@ -26079,6 +26094,14 @@ case "mobius":
         forwardStack: [],
       };
     });
+  }, [currentWorkspaceLocation]);
+  useEffect(() => {
+    if (!workspaceNavigationRestoringRef.current) return;
+    const target = workspaceNavigationRestoreTargetRef.current;
+    if (!target) return;
+    if (!areWorkspaceLocationsEqual(currentWorkspaceLocation, target)) return;
+    workspaceNavigationRestoringRef.current = false;
+    workspaceNavigationRestoreTargetRef.current = null;
   }, [currentWorkspaceLocation]);
   const restoreWorkspaceLocation = useCallback(
     (entry: WorkspaceLocationEntry) => {
@@ -26104,6 +26127,14 @@ case "mobius":
         setMode("topology");
       } else if (entry.module === "geometry") {
         setMode("geometry");
+      } else if (entry.module === "mobius") {
+        setMode("mobius");
+        if (entry.workspaceMode === "mobius" || entry.workspaceMode === "other_complex") {
+          setFunctionExplorerScene(entry.workspaceMode);
+          if (entry.workspaceMode === "mobius" && isMobiusSubTabValue(entry.panel)) {
+            setMobiusSubTab(entry.panel);
+          }
+        }
       }
 
       if (entry.module === "surfaces" || entry.module === "mesh" || entry.module === "volume") {
@@ -26201,15 +26232,9 @@ case "mobius":
       forwardStack: [workspaceNavigation.current, ...workspaceNavigation.forwardStack],
     };
     workspaceNavigationRestoringRef.current = true;
+    workspaceNavigationRestoreTargetRef.current = previous;
     setWorkspaceNavigation(nextState);
     restoreWorkspaceLocation(previous);
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => {
-        workspaceNavigationRestoringRef.current = false;
-      }, 0);
-    } else {
-      workspaceNavigationRestoringRef.current = false;
-    }
   }, [restoreWorkspaceLocation, workspaceNavigation]);
   const goWorkspaceForward = useCallback(() => {
     if (!workspaceNavigation.forwardStack.length) return;
@@ -26220,15 +26245,9 @@ case "mobius":
       forwardStack: workspaceNavigation.forwardStack.slice(1),
     };
     workspaceNavigationRestoringRef.current = true;
+    workspaceNavigationRestoreTargetRef.current = next;
     setWorkspaceNavigation(nextState);
     restoreWorkspaceLocation(next);
-    if (typeof window !== "undefined") {
-      window.setTimeout(() => {
-        workspaceNavigationRestoringRef.current = false;
-      }, 0);
-    } else {
-      workspaceNavigationRestoringRef.current = false;
-    }
   }, [restoreWorkspaceLocation, workspaceNavigation]);
   const canGoWorkspaceBack = workspaceNavigation.backStack.length > 0;
   const canGoWorkspaceForward = workspaceNavigation.forwardStack.length > 0;
@@ -35991,252 +36010,240 @@ case "mobius":
                         f: C -&gt; C
                       </div>
                     </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12 }}>Examples</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {FUNCTION_EXPLORER_OTHER_PRESETS.map((preset) => (
-                          <button
-                            key={preset.id}
-                            type="button"
-                            onClick={() => applyOtherComplexPreset(preset.id)}
-                            style={pill(otherComplexFunctionExpr.trim() === preset.expr)}
-                            title={preset.note}
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-                      <label style={{ display: "grid", gap: 4 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
-                        <input
-                          type="text"
-                          value={otherComplexFunctionExpr}
-                          onChange={(e) => updateOtherComplexFunctionExpr(e.target.value)}
-                          spellCheck={false}
-                        />
-                      </label>
-                      <div style={{ fontSize: 11, opacity: 0.75 }}>
-                        Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
-                      </div>
-                      {otherComplexCompiled2d.error && (
-                        <div style={{ fontSize: 11, color: "#b42318" }}>{otherComplexCompiled2d.error}</div>
-                      )}
-                    </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                        <label style={{ fontSize: 12 }}>
-                          u min
-                          <input
-                            type="number"
-                            value={complexMapSpec.uMin}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, uMin: Number(e.target.value) }))
-                            }
-                          />
-                        </label>
-                        <label style={{ fontSize: 12 }}>
-                          u max
-                          <input
-                            type="number"
-                            value={complexMapSpec.uMax}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, uMax: Number(e.target.value) }))
-                            }
-                          />
-                        </label>
-                        <label style={{ fontSize: 12 }}>
-                          v min
-                          <input
-                            type="number"
-                            value={complexMapSpec.vMin}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, vMin: Number(e.target.value) }))
-                            }
-                          />
-                        </label>
-                        <label style={{ fontSize: 12 }}>
-                          v max
-                          <input
-                            type="number"
-                            value={complexMapSpec.vMax}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, vMax: Number(e.target.value) }))
-                            }
-                          />
-                        </label>
-                        <label style={{ fontSize: 12 }}>
-                          nu
-                          <input
-                            type="number"
-                            min={20}
-                            max={600}
-                            value={complexMapSpec.nu}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, nu: Math.max(20, Math.round(Number(e.target.value))) }))
-                            }
-                          />
-                        </label>
-                        <label style={{ fontSize: 12 }}>
-                          nv
-                          <input
-                            type="number"
-                            min={20}
-                            max={600}
-                            value={complexMapSpec.nv}
-                            onChange={(e) =>
-                              setComplexMapSpec((prev) => ({ ...prev, nv: Math.max(20, Math.round(Number(e.target.value))) }))
-                            }
-                          />
-                        </label>
-                      </div>
-                    </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 700, fontSize: 12 }}>Path Mapping</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          onClick={() => setOtherComplexPathMode("circle")}
-                          style={pill(otherComplexPathMode === "circle")}
-                        >
-                          Circle
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOtherComplexPathMode("segment")}
-                          style={pill(otherComplexPathMode === "segment")}
-                        >
-                          Segment
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOtherComplexPathMode("freehand")}
-                          style={pill(otherComplexPathMode === "freehand")}
-                        >
-                          Freehand
-                        </button>
-                      </div>
-                      {otherComplexPathMode === "circle" ? (
-                        <label style={{ fontSize: 12 }}>
-                          radius
-                          <input
-                            type="number"
-                            min={0.05}
-                            step={0.05}
-                            value={otherComplexPathRadius}
-                            onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
-                          />
-                        </label>
-                      ) : otherComplexPathMode === "segment" ? (
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: 10,
+                        alignItems: "start",
+                      }}
+                    >
+                      <div style={{ ...cardStyle, display: "grid", gap: 8, gridColumn: "1 / -1" }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Examples</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {FUNCTION_EXPLORER_OTHER_PRESETS.map((preset) => (
                             <button
+                              key={preset.id}
                               type="button"
-                              onClick={() => setOtherComplexPathPickTarget("start")}
-                              style={pill(otherComplexPathPickTarget === "start")}
+                              onClick={() => applyOtherComplexPreset(preset.id)}
+                              style={pill(otherComplexFunctionExpr.trim() === preset.expr)}
+                              title={preset.note}
                             >
-                              Pick start
+                              {preset.label}
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => setOtherComplexPathPickTarget("end")}
-                              style={pill(otherComplexPathPickTarget === "end")}
-                            >
-                              Pick end
-                            </button>
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.72 }}>
-                            Click the Z-plane to place selected endpoint.
-                          </div>
+                          ))}
                         </div>
-                      ) : (
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ fontSize: 11, opacity: 0.72 }}>
-                            Drag with mouse in Z-plane to draw γ(t). Release to finish stroke.
-                          </div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button type="button" onClick={() => setOtherComplexFreehandPath([])}>
-                              Clear path
-                            </button>
-                            <div style={{ fontSize: 11, opacity: 0.72, display: "flex", alignItems: "center" }}>
-                              points: {otherComplexFreehandPath.length}
+                        <label style={{ display: "grid", gap: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
+                          <input
+                            type="text"
+                            value={otherComplexFunctionExpr}
+                            onChange={(e) => updateOtherComplexFunctionExpr(e.target.value)}
+                            spellCheck={false}
+                          />
+                        </label>
+                        <div style={{ fontSize: 11, opacity: 0.75 }}>
+                          Supports z, +, -, *, /, ^, sin, cos, tan, exp, log, sqrt, abs.
+                        </div>
+                        {otherComplexCompiled2d.error && (
+                          <div style={{ fontSize: 11, color: "#b42318" }}>{otherComplexCompiled2d.error}</div>
+                        )}
+                      </div>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Domain / Resolution</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                          <label style={{ fontSize: 12 }}>
+                            u min
+                            <input
+                              type="number"
+                              value={complexMapSpec.uMin}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, uMin: Number(e.target.value) }))
+                              }
+                            />
+                          </label>
+                          <label style={{ fontSize: 12 }}>
+                            u max
+                            <input
+                              type="number"
+                              value={complexMapSpec.uMax}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, uMax: Number(e.target.value) }))
+                              }
+                            />
+                          </label>
+                          <label style={{ fontSize: 12 }}>
+                            v min
+                            <input
+                              type="number"
+                              value={complexMapSpec.vMin}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, vMin: Number(e.target.value) }))
+                              }
+                            />
+                          </label>
+                          <label style={{ fontSize: 12 }}>
+                            v max
+                            <input
+                              type="number"
+                              value={complexMapSpec.vMax}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, vMax: Number(e.target.value) }))
+                              }
+                            />
+                          </label>
+                          <label style={{ fontSize: 12 }}>
+                            nu
+                            <input
+                              type="number"
+                              min={20}
+                              max={600}
+                              value={complexMapSpec.nu}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, nu: Math.max(20, Math.round(Number(e.target.value))) }))
+                              }
+                            />
+                          </label>
+                          <label style={{ fontSize: 12 }}>
+                            nv
+                            <input
+                              type="number"
+                              min={20}
+                              max={600}
+                              value={complexMapSpec.nv}
+                              onChange={(e) =>
+                                setComplexMapSpec((prev) => ({ ...prev, nv: Math.max(20, Math.round(Number(e.target.value))) }))
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Path Mapping</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexPathMode("circle")}
+                            style={pill(otherComplexPathMode === "circle")}
+                          >
+                            Circle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexPathMode("segment")}
+                            style={pill(otherComplexPathMode === "segment")}
+                          >
+                            Segment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexPathMode("freehand")}
+                            style={pill(otherComplexPathMode === "freehand")}
+                          >
+                            Freehand
+                          </button>
+                        </div>
+                        {otherComplexPathMode === "circle" ? (
+                          <label style={{ fontSize: 12 }}>
+                            radius
+                            <input
+                              type="number"
+                              min={0.05}
+                              step={0.05}
+                              value={otherComplexPathRadius}
+                              onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
+                            />
+                          </label>
+                        ) : otherComplexPathMode === "segment" ? (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexPathPickTarget("start")}
+                                style={pill(otherComplexPathPickTarget === "start")}
+                              >
+                                Pick start
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexPathPickTarget("end")}
+                                style={pill(otherComplexPathPickTarget === "end")}
+                              >
+                                Pick end
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.72 }}>
+                              Click the Z-plane to place selected endpoint.
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}>
-                      <div style={{ fontWeight: 700 }}>Singularities inspector (rational)</div>
-                      {otherComplexHasNonRationalFns ? (
-                        <div style={{ opacity: 0.75 }}>
-                          Current function is non-rational; algebraic zero/pole cancellation is shown only for rational
-                          expressions.
-                        </div>
-                      ) : otherComplexRationalInspection?.error ? (
-                        <div style={{ color: "#b42318" }}>{otherComplexRationalInspection.error}</div>
-                      ) : otherComplexRationalInspection ? (
-                        <>
-                          <div>
-                            <b>Reduced:</b>{" "}
-                            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                              {otherComplexRationalInspection.reducedExpression}
-                            </span>
+                        ) : (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 11, opacity: 0.72 }}>
+                              Drag with mouse in Z-plane to draw γ(t). Release to finish stroke.
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => setOtherComplexFreehandPath([])}>
+                                Clear path
+                              </button>
+                              <div style={{ fontSize: 11, opacity: 0.72, display: "flex", alignItems: "center" }}>
+                                points: {otherComplexFreehandPath.length}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <b>Removable:</b>{" "}
-                            {otherComplexRationalInspection.removable.length
-                              ? otherComplexRationalInspection.removable
-                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
-                                  .join("; ")
-                              : "none"}
-                          </div>
-                          <div>
-                            <b>Poles:</b>{" "}
-                            {otherComplexRationalInspection.poles.length
-                              ? otherComplexRationalInspection.poles
-                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
-                                  .join("; ")
-                              : "none"}
-                          </div>
-                          <div>
-                            <b>Zeros:</b>{" "}
-                            {otherComplexRationalInspection.zeros.length
-                              ? otherComplexRationalInspection.zeros
-                                  .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
-                                  .join("; ")
-                              : "none"}
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ opacity: 0.75 }}>
-                          Type a rational function (like (z-1)/(z^2-1) or 1/(z-2)^3).
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}>
-                      <div style={{ fontWeight: 700 }}>Actions</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button type="button" onClick={handleOtherComplexAnalyzeFunction}>
-                          Analyze function
-                        </button>
-                        <button type="button" onClick={handleOtherComplexMapPathAction}>
-                          Map path
-                        </button>
-                        <button type="button" onClick={handleOtherComplexComputeIntegralAction}>
-                          Compute integral
-                        </button>
-                        <button type="button" onClick={handleOtherComplexPromoteResultToScene}>
-                          Promote result to scene
-                        </button>
+                        )}
                       </div>
-                      {otherComplexIntegralEstimate && (
-                        <div style={{ fontSize: 11, opacity: 0.76 }}>
-                          Current contour estimate: {otherComplexIntegralEstimate.re.toFixed(4)}{" "}
-                          {otherComplexIntegralEstimate.im >= 0 ? "+" : "-"}{" "}
-                          {Math.abs(otherComplexIntegralEstimate.im).toFixed(4)}i
-                        </div>
-                      )}
-                      {otherComplexActionStatus && <div style={{ fontSize: 11, opacity: 0.82 }}>{otherComplexActionStatus}</div>}
+                      <details
+                        style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}
+                        open={otherComplexSummaryOpen}
+                        onToggle={(event) => setOtherComplexSummaryOpen(event.currentTarget.open)}
+                      >
+                        <summary style={{ fontWeight: 700, cursor: "pointer" }}>Function summary (rational)</summary>
+                        {otherComplexHasNonRationalFns ? (
+                          <div style={{ opacity: 0.75 }}>
+                            Current function is non-rational; algebraic zero/pole cancellation is shown only for rational
+                            expressions.
+                          </div>
+                        ) : otherComplexRationalInspection?.error ? (
+                          <div style={{ color: "#b42318" }}>{otherComplexRationalInspection.error}</div>
+                        ) : otherComplexRationalInspection ? (
+                          <>
+                            <div>
+                              <b>Reduced:</b>{" "}
+                              <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                                {otherComplexRationalInspection.reducedExpression}
+                              </span>
+                            </div>
+                            <div>
+                              <b>Removable:</b>{" "}
+                              {otherComplexRationalInspection.removable.length
+                                ? otherComplexRationalInspection.removable
+                                    .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                    .join("; ")
+                                : "none"}
+                            </div>
+                            <div>
+                              <b>Poles:</b>{" "}
+                              {otherComplexRationalInspection.poles.length
+                                ? otherComplexRationalInspection.poles
+                                    .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                    .join("; ")
+                                : "none"}
+                            </div>
+                            <div>
+                              <b>Zeros:</b>{" "}
+                              {otherComplexRationalInspection.zeros.length
+                                ? otherComplexRationalInspection.zeros
+                                    .map((entry) => `z=${formatRoot(entry.point)} (order ${entry.order})`)
+                                    .join("; ")
+                                : "none"}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ opacity: 0.75 }}>
+                            Type a rational function (like (z-1)/(z^2-1) or 1/(z-2)^3).
+                          </div>
+                        )}
+                      </details>
                     </div>
                   </section>
                 )
@@ -36782,67 +36789,92 @@ case "mobius":
                         </div>
                       )}
                     </div>
-                    <div style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}>
-                      <div style={{ fontWeight: 800 }}>Function Summary</div>
-                      <div>
-                        <b>f(z)</b> ={" "}
-                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                          {otherComplexFunctionExpr || "z"}
-                        </span>
+                    <details
+                      style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}
+                      open={otherComplexFunctionSummaryOpen}
+                      onToggle={(event) => setOtherComplexFunctionSummaryOpen(event.currentTarget.open)}
+                    >
+                      <summary style={{ fontWeight: 800, cursor: "pointer" }}>Function Summary</summary>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                          gap: 10,
+                          alignItems: "start",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div>
+                            <b>f(z)</b> ={" "}
+                            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                              {otherComplexFunctionExpr || "z"}
+                            </span>
+                          </div>
+                          <div style={{ fontWeight: 700, marginTop: 2 }}>Selected Point</div>
+                          <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
+                          <div>
+                            f(z) ={" "}
+                            {otherComplexSelectedPointInfo.w &&
+                            Number.isFinite(otherComplexSelectedPointInfo.w.re) &&
+                            Number.isFinite(otherComplexSelectedPointInfo.w.im)
+                              ? cToStr(otherComplexSelectedPointInfo.w)
+                              : "n/a"}
+                          </div>
+                          <div>
+                            |f(z)| ={" "}
+                            {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}
+                          </div>
+                          <div>
+                            arg(f(z)) ={" "}
+                            {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}
+                          </div>
+                          <div>
+                            f'(z) ={" "}
+                            {otherComplexSelectedPointInfo.derivative
+                              ? cToStr(otherComplexSelectedPointInfo.derivative)
+                              : "n/a"}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div style={{ fontWeight: 700 }}>Detected Features</div>
+                          <div>zeros: {otherComplexDetectedFeatures.zeros}</div>
+                          <div>poles: {otherComplexDetectedFeatures.poles}</div>
+                          <div>critical points: {otherComplexDetectedFeatures.critical}</div>
+                          <div>branch points: {otherComplexDetectedFeatures.branchPoints}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div style={{ fontWeight: 700 }}>Contour Analysis</div>
+                          <div>
+                            winding number:{" "}
+                            {otherComplexContourAnalysis.windingNumber == null
+                              ? "n/a (use closed contour)"
+                              : otherComplexContourAnalysis.windingNumber.toFixed(4)}
+                          </div>
+                          <div>
+                            singularities inside:{" "}
+                            {otherComplexContourAnalysis.singularitiesInside == null
+                              ? "n/a (rational + closed contour required)"
+                              : otherComplexContourAnalysis.singularitiesInside}
+                          </div>
+                          <div>
+                            integral approximation:{" "}
+                            {otherComplexContourAnalysis.integral
+                              ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
+                                  otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
+                                } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
+                              : "n/a"}
+                          </div>
+                          <div>
+                            residue estimate:{" "}
+                            {otherComplexContourAnalysis.residueEstimate
+                              ? `${otherComplexContourAnalysis.residueEstimate.re.toFixed(6)} ${
+                                  otherComplexContourAnalysis.residueEstimate.im >= 0 ? "+" : "-"
+                                } ${Math.abs(otherComplexContourAnalysis.residueEstimate.im).toFixed(6)}i`
+                              : "n/a"}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontWeight: 700, marginTop: 2 }}>Selected Point</div>
-                      <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
-                      <div>
-                        f(z) ={" "}
-                        {otherComplexSelectedPointInfo.w &&
-                        Number.isFinite(otherComplexSelectedPointInfo.w.re) &&
-                        Number.isFinite(otherComplexSelectedPointInfo.w.im)
-                          ? cToStr(otherComplexSelectedPointInfo.w)
-                          : "n/a"}
-                      </div>
-                      <div>|f(z)| = {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}</div>
-                      <div>arg(f(z)) = {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}</div>
-                      <div>
-                        f'(z) ={" "}
-                        {otherComplexSelectedPointInfo.derivative
-                          ? cToStr(otherComplexSelectedPointInfo.derivative)
-                          : "n/a"}
-                      </div>
-                      <div style={{ fontWeight: 700, marginTop: 4 }}>Detected Features</div>
-                      <div>zeros: {otherComplexDetectedFeatures.zeros}</div>
-                      <div>poles: {otherComplexDetectedFeatures.poles}</div>
-                      <div>critical points: {otherComplexDetectedFeatures.critical}</div>
-                      <div>branch points: {otherComplexDetectedFeatures.branchPoints}</div>
-                      <div style={{ fontWeight: 700, marginTop: 4 }}>Contour Analysis</div>
-                      <div>
-                        winding number:{" "}
-                        {otherComplexContourAnalysis.windingNumber == null
-                          ? "n/a (use closed contour)"
-                          : otherComplexContourAnalysis.windingNumber.toFixed(4)}
-                      </div>
-                      <div>
-                        singularities inside:{" "}
-                        {otherComplexContourAnalysis.singularitiesInside == null
-                          ? "n/a (rational + closed contour required)"
-                          : otherComplexContourAnalysis.singularitiesInside}
-                      </div>
-                      <div>
-                        integral approximation:{" "}
-                        {otherComplexContourAnalysis.integral
-                          ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
-                              otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
-                            } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
-                          : "n/a"}
-                      </div>
-                      <div>
-                        residue estimate:{" "}
-                        {otherComplexContourAnalysis.residueEstimate
-                          ? `${otherComplexContourAnalysis.residueEstimate.re.toFixed(6)} ${
-                              otherComplexContourAnalysis.residueEstimate.im >= 0 ? "+" : "-"
-                            } ${Math.abs(otherComplexContourAnalysis.residueEstimate.im).toFixed(6)}i`
-                          : "n/a"}
-                      </div>
-                    </div>
+                    </details>
                     <div
                       style={{
                         display: "grid",
@@ -37129,6 +37161,46 @@ case "mobius":
               </span>
             </React.Fragment>
           ))}
+          {showOtherComplexBottomActions && (
+            <>
+              <span style={{ opacity: 0.5 }}>|</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleOtherComplexAnalyzeFunction}
+                  style={{ padding: "2px 8px", fontSize: 11, borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff" }}
+                >
+                  Analyze
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOtherComplexMapPathAction}
+                  style={{ padding: "2px 8px", fontSize: 11, borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff" }}
+                >
+                  Map path
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOtherComplexComputeIntegralAction}
+                  style={{ padding: "2px 8px", fontSize: 11, borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff" }}
+                >
+                  Integral
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOtherComplexPromoteResultToScene}
+                  style={{ padding: "2px 8px", fontSize: 11, borderRadius: 999, border: "1px solid #cbd5e1", background: "#fff" }}
+                >
+                  Promote
+                </button>
+                {otherComplexActionStatus && (
+                  <span style={{ fontSize: 11, opacity: 0.82, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {otherComplexActionStatus}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
