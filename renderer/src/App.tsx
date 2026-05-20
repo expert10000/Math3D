@@ -8075,6 +8075,14 @@ const App: React.FC = () => {
   const [otherComplexShowCritical, setOtherComplexShowCritical] = useState(true);
   const [otherComplexShowZeros, setOtherComplexShowZeros] = useState(true);
   const [otherComplexShowPoles, setOtherComplexShowPoles] = useState(true);
+  const [otherComplexShowVectorField, setOtherComplexShowVectorField] = useState(false);
+  const [otherComplexShowContourBands, setOtherComplexShowContourBands] = useState(false);
+  const [otherComplexContourBandCount, setOtherComplexContourBandCount] = useState(10);
+  const [otherComplexShowBranchCuts, setOtherComplexShowBranchCuts] = useState(true);
+  const [otherComplexShowSelectedContour, setOtherComplexShowSelectedContour] = useState(false);
+  const [otherComplexSelectedContourLevel, setOtherComplexSelectedContourLevel] = useState(0.5);
+  const [otherComplexActionStatus, setOtherComplexActionStatus] = useState<string | null>(null);
+  const [otherComplexSelectedPoint, setOtherComplexSelectedPoint] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
   const [otherComplexPathCenter, setOtherComplexPathCenter] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
@@ -9351,6 +9359,20 @@ const App: React.FC = () => {
     }));
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapError(null);
+  }, []);
+
+  const handleOtherComplexAnalyzeFunction = useCallback(() => {
+    setOtherComplexShowSingularityInspector(true);
+    setOtherComplexShowCritical(true);
+    setOtherComplexShowZeros(true);
+    setOtherComplexShowPoles(true);
+    setOtherComplexShowBranchCuts(true);
+    setOtherComplexActionStatus("Function analysis overlays enabled (critical / zeros / poles / branch cuts).");
+  }, []);
+
+  const handleOtherComplexMapPathAction = useCallback(() => {
+    setOtherComplexShowPathMapping(true);
+    setOtherComplexActionStatus("Path mapping enabled. Draw or adjust contour in the Z-plane.");
   }, []);
 
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
@@ -13011,6 +13033,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleOtherComplexZClick = useCallback((pt: { re: number; im: number }) => {
+    setOtherComplexSelectedPoint({ re: pt.re, im: pt.im });
     if (otherComplexPathMode === "freehand") {
       return;
     }
@@ -13110,7 +13133,331 @@ const App: React.FC = () => {
     return segs;
   }, [otherComplexPathZPoints, evalOtherComplexW]);
 
-    
+  const otherComplexContourBandField = useMemo(() => {
+    if (!otherComplexGrid2d) return null;
+    const bands = Math.max(3, Math.round(otherComplexContourBandCount));
+    const values = new Float32Array(otherComplexGrid2d.wMag.length);
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < otherComplexGrid2d.wMag.length; i++) {
+      if (!otherComplexGrid2d.valid[i]) {
+        values[i] = Number.NaN;
+        continue;
+      }
+      const v = Math.log1p(Math.max(0, otherComplexGrid2d.wMag[i]));
+      values[i] = v;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    const span = Math.max(1e-9, max - min);
+    for (let i = 0; i < values.length; i++) {
+      const raw = values[i];
+      if (!Number.isFinite(raw)) continue;
+      const t = Math.min(1, Math.max(0, (raw - min) / span));
+      const q = Math.floor(t * bands) / bands;
+      values[i] = q;
+    }
+    return { values, min: 0, max: 1 };
+  }, [otherComplexGrid2d, otherComplexContourBandCount]);
+
+  const otherComplexSelectedContourPolylines = useMemo(() => {
+    if (!otherComplexGrid2d || !otherComplexShowSelectedContour) return null;
+    const { nu, nv, uMin, uMax, vMin, vMax, wMag, valid } = otherComplexGrid2d;
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < wMag.length; i++) {
+      if (!valid[i]) continue;
+      const v = Math.log1p(Math.max(0, wMag[i]));
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min + 1e-9) return null;
+    const level = min + Math.min(1, Math.max(0, otherComplexSelectedContourLevel)) * (max - min);
+    const idx = (i: number, j: number) => j * nu + i;
+    const lines = marchingSquares({
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      sample: (i, j) => {
+        const k = idx(i, j);
+        if (!valid[k]) return Number.NaN;
+        return Math.log1p(Math.max(0, wMag[k]));
+      },
+      level,
+    });
+    if (!lines.length) return null;
+    const zLines = lines.map((line) => line.map((p) => [p.x, p.y] as [number, number]));
+    const wLines: [number, number][][] = [];
+    for (const line of zLines) {
+      let seg: [number, number][] = [];
+      for (const [u, v] of line) {
+        const w = evalOtherComplexW(u, v);
+        if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) {
+          if (seg.length >= 2) wLines.push(seg);
+          seg = [];
+          continue;
+        }
+        seg.push([w.re, w.im]);
+      }
+      if (seg.length >= 2) wLines.push(seg);
+    }
+    return { zLines, wLines };
+  }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, evalOtherComplexW]);
+
+  const otherComplexBranchCutSegments = useMemo(() => {
+    if (!otherComplexGrid2d || !/\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe)) return null;
+    const { nu, nv, uMin, vMin, uStep, vStep, re, im, valid } = otherComplexGrid2d;
+    const idx = (i: number, j: number) => j * nu + i;
+    const wrapDelta = (a: number, b: number) => {
+      let d = Math.abs(a - b);
+      if (d > Math.PI) d = Math.abs(d - Math.PI * 2);
+      return d;
+    };
+    const out: [number, number][][] = [];
+    const threshold = Math.PI * 0.85;
+    for (let j = 0; j < nv; j++) {
+      const v = vMin + j * vStep;
+      for (let i = 0; i < nu; i++) {
+        const k = idx(i, j);
+        if (!valid[k]) continue;
+        const a0 = Math.atan2(im[k], re[k]);
+        if (i + 1 < nu) {
+          const kr = idx(i + 1, j);
+          if (valid[kr]) {
+            const ar = Math.atan2(im[kr], re[kr]);
+            if (wrapDelta(a0, ar) >= threshold) {
+              const u0 = uMin + i * uStep;
+              out.push([
+                [u0, v],
+                [u0 + uStep, v],
+              ]);
+            }
+          }
+        }
+        if (j + 1 < nv) {
+          const ku = idx(i, j + 1);
+          if (valid[ku]) {
+            const au = Math.atan2(im[ku], re[ku]);
+            if (wrapDelta(a0, au) >= threshold) {
+              const u = uMin + i * uStep;
+              out.push([
+                [u, v],
+                [u, v + vStep],
+              ]);
+            }
+          }
+        }
+      }
+    }
+    if (!out.length) return null;
+    if (out.length > 800) {
+      const stride = Math.ceil(out.length / 800);
+      return out.filter((_s, i) => i % stride === 0);
+    }
+    return out;
+  }, [otherComplexGrid2d, otherComplexFunctionExprSafe]);
+
+  const otherComplexVectorFieldSegments = useMemo(() => {
+    if (!otherComplexGrid2d || !otherComplexShowVectorField) return null;
+    const { uMin, uMax, vMin, vMax } = otherComplexGrid2d;
+    const sampleU = 18;
+    const sampleV = 12;
+    const du = sampleU > 1 ? (uMax - uMin) / (sampleU - 1) : 0;
+    const dv = sampleV > 1 ? (vMax - vMin) / (sampleV - 1) : 0;
+    const span = Math.max(1e-6, Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin)));
+    const probe: Array<{ u: number; v: number; re: number; im: number }> = [];
+    let maxMag = 0;
+    for (let j = 0; j < sampleV; j++) {
+      const v = vMin + j * dv;
+      for (let i = 0; i < sampleU; i++) {
+        const u = uMin + i * du;
+        const w = evalOtherComplexW(u, v);
+        if (!w) continue;
+        const mag = Math.hypot(w.re, w.im);
+        if (!Number.isFinite(mag) || mag <= 1e-8) continue;
+        if (mag > maxMag) maxMag = mag;
+        probe.push({ u, v, re: w.re, im: w.im });
+      }
+    }
+    if (!probe.length || maxMag <= 1e-9) return null;
+    const scale = (0.25 * span) / maxMag;
+    const body: [number, number][][] = [];
+    const head: [number, number][][] = [];
+    for (const p of probe) {
+      const ex = p.u + p.re * scale;
+      const ey = p.v + p.im * scale;
+      body.push([
+        [p.u, p.v],
+        [ex, ey],
+      ]);
+      const vx = ex - p.u;
+      const vy = ey - p.v;
+      const len = Math.hypot(vx, vy);
+      if (len <= 1e-9) continue;
+      const ux = vx / len;
+      const uy = vy / len;
+      const headLen = 0.22 * len;
+      const wing = 0.5;
+      const lx = ex - headLen * (ux + wing * -uy);
+      const ly = ey - headLen * (uy + wing * ux);
+      const rx = ex - headLen * (ux - wing * -uy);
+      const ry = ey - headLen * (uy - wing * ux);
+      head.push([
+        [ex, ey],
+        [lx, ly],
+      ]);
+      head.push([
+        [ex, ey],
+        [rx, ry],
+      ]);
+    }
+    return { body, head };
+  }, [otherComplexGrid2d, otherComplexShowVectorField, evalOtherComplexW]);
+
+  const otherComplexIntegralEstimate = useMemo(() => {
+    if (otherComplexPathZPoints.length < 2) return null;
+    let re = 0;
+    let im = 0;
+    let used = 0;
+    for (let i = 1; i < otherComplexPathZPoints.length; i++) {
+      const [u0, v0] = otherComplexPathZPoints[i - 1];
+      const [u1, v1] = otherComplexPathZPoints[i];
+      const w0 = evalOtherComplexW(u0, v0);
+      const w1 = evalOtherComplexW(u1, v1);
+      if (!w0 || !w1) continue;
+      const wr = 0.5 * (w0.re + w1.re);
+      const wi = 0.5 * (w0.im + w1.im);
+      const dzr = u1 - u0;
+      const dzi = v1 - v0;
+      re += wr * dzr - wi * dzi;
+      im += wr * dzi + wi * dzr;
+      used++;
+    }
+    if (!used) return null;
+    return { re, im, used, total: Math.max(0, otherComplexPathZPoints.length - 1) };
+  }, [otherComplexPathZPoints, evalOtherComplexW]);
+
+  const otherComplexSelectedPointInfo = useMemo(() => {
+    const z = otherComplexSelectedPoint;
+    const w = evalOtherComplexW(z.re, z.im);
+    const h = Math.max(1e-4, complexMapZExtent * 1e-3);
+    const fxh = evalOtherComplexW(z.re + h, z.im);
+    const fxmh = evalOtherComplexW(z.re - h, z.im);
+    const fyh = evalOtherComplexW(z.re, z.im + h);
+    const fymh = evalOtherComplexW(z.re, z.im - h);
+    let derivative: C | null = null;
+    if (fxh && fxmh && fyh && fymh) {
+      const du = { re: (fxh.re - fxmh.re) / (2 * h), im: (fxh.im - fxmh.im) / (2 * h) };
+      const dv = { re: (fyh.re - fymh.re) / (2 * h), im: (fyh.im - fymh.im) / (2 * h) };
+      const crEqIm = Math.hypot(du.re - dv.im, du.im + dv.re);
+      derivative = crEqIm < 0.2 * Math.max(1e-6, Math.hypot(du.re, du.im) + Math.hypot(dv.re, dv.im))
+        ? { re: du.re, im: du.im }
+        : null;
+    }
+    const absW = w ? Math.hypot(w.re, w.im) : Number.NaN;
+    const argW = w ? Math.atan2(w.im, w.re) : Number.NaN;
+    return { z, w, absW, argW, derivative };
+  }, [otherComplexSelectedPoint, evalOtherComplexW, complexMapZExtent]);
+
+  const otherComplexDetectedFeatures = useMemo(() => {
+    const zeros = otherComplexRationalInspection
+      ? otherComplexRationalInspection.zeros.length + otherComplexRationalInspection.removable.length
+      : otherComplexMarkers2d?.zero.z.length ?? 0;
+    const poles = otherComplexRationalInspection
+      ? otherComplexRationalInspection.poles.length
+      : otherComplexMarkers2d?.pole.z.length ?? 0;
+    const critical = otherComplexMarkers2d?.critical.z.length ?? 0;
+    const branchPoints = /\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe)
+      ? "possible (log/sqrt present)"
+      : "none detected";
+    return { zeros, poles, critical, branchPoints };
+  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexFunctionExprSafe]);
+
+  const otherComplexContourAnalysis = useMemo(() => {
+    const points = otherComplexPathZPoints;
+    const closed =
+      points.length >= 3 &&
+      Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) <=
+        Math.max(1e-3, complexMapZExtent * 0.03);
+
+    let windingNumber: number | null = null;
+    if (closed && otherComplexPathWMappedSegments.length) {
+      let angleSum = 0;
+      for (const seg of otherComplexPathWMappedSegments) {
+        for (let i = 1; i < seg.length; i++) {
+          const a0 = Math.atan2(seg[i - 1][1], seg[i - 1][0]);
+          const a1 = Math.atan2(seg[i][1], seg[i][0]);
+          let d = a1 - a0;
+          if (d > Math.PI) d -= Math.PI * 2;
+          if (d < -Math.PI) d += Math.PI * 2;
+          angleSum += d;
+        }
+      }
+      windingNumber = angleSum / (Math.PI * 2);
+    }
+
+    const polygon = closed ? points : null;
+    const pointInPolygon = (x: number, y: number) => {
+      if (!polygon) return false;
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i][0];
+        const yi = polygon[i][1];
+        const xj = polygon[j][0];
+        const yj = polygon[j][1];
+        const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi;
+        if (intersects) inside = !inside;
+      }
+      return inside;
+    };
+
+    const singularitiesInside = otherComplexRationalInspection
+      ? otherComplexRationalInspection.poles.filter((entry) => pointInPolygon(entry.point.re, entry.point.im)).length
+      : null;
+
+    let residueEstimate: C | null = null;
+    if (otherComplexIntegralEstimate) {
+      const invTwoPi = 1 / (Math.PI * 2);
+      residueEstimate = {
+        re: otherComplexIntegralEstimate.im * invTwoPi,
+        im: -otherComplexIntegralEstimate.re * invTwoPi,
+      };
+    }
+
+    return {
+      closed,
+      windingNumber,
+      singularitiesInside,
+      integral: otherComplexIntegralEstimate,
+      residueEstimate,
+    };
+  }, [
+    otherComplexPathZPoints,
+    otherComplexPathWMappedSegments,
+    complexMapZExtent,
+    otherComplexRationalInspection,
+    otherComplexIntegralEstimate,
+  ]);
+
+  const handleOtherComplexComputeIntegralAction = useCallback(() => {
+    if (!otherComplexIntegralEstimate) {
+      setOtherComplexActionStatus("Integral unavailable. Draw a valid path and ensure f(z) is finite along it.");
+      return;
+    }
+    const fmt = (value: number) => (Math.abs(value) < 1e-9 ? "0" : value.toFixed(5));
+    const sign = otherComplexIntegralEstimate.im >= 0 ? "+" : "-";
+    setOtherComplexActionStatus(
+      `Integral estimate: ${fmt(otherComplexIntegralEstimate.re)} ${sign} ${fmt(
+        Math.abs(otherComplexIntegralEstimate.im)
+      )}i (segments ${otherComplexIntegralEstimate.used}/${otherComplexIntegralEstimate.total}).`
+    );
+  }, [otherComplexIntegralEstimate]);
+
+  
   const availableColorModes = useMemo(
     () => colorModesForSurfaceViewer(surfaceViewerKind, surfaceMeshData?.label),
     [surfaceViewerKind, surfaceMeshData?.label]
@@ -13235,6 +13582,22 @@ case "mobius":
       });
     }
 
+    if (otherComplexShowContourBands && otherComplexGrid2d && otherComplexContourBandField) {
+      zRef.current.drawHeatmap({
+        values: otherComplexContourBandField.values,
+        nx: otherComplexGrid2d.nu,
+        ny: otherComplexGrid2d.nv,
+        xMin: otherComplexGrid2d.uMin,
+        xMax: otherComplexGrid2d.uMax,
+        yMin: otherComplexGrid2d.vMin,
+        yMax: otherComplexGrid2d.vMax,
+        min: otherComplexContourBandField.min,
+        max: otherComplexContourBandField.max,
+        palette: "rainbow",
+        opacity: 0.5,
+      });
+    }
+
     if (otherComplexShowGridDeformation) {
       const gridStyle = { width: 1.15, opacity: 0.9 };
       if (otherComplexGridLines2d.zU.length) {
@@ -13277,6 +13640,51 @@ case "mobius":
     } else {
       zRef.current.drawPoints([], { layer: "other-path-z" });
       wRef.current.drawPoints([], { layer: "other-path-w" });
+    }
+
+    if (otherComplexShowVectorField && otherComplexVectorFieldSegments) {
+      for (const line of otherComplexVectorFieldSegments.body) {
+        zRef.current.drawCurve(line, "#0f766e", {
+          width: 1.2,
+          opacity: 0.82,
+          layer: "other-vector-z",
+        });
+      }
+      for (const line of otherComplexVectorFieldSegments.head) {
+        zRef.current.drawCurve(line, "#0f766e", {
+          width: 1.2,
+          opacity: 0.82,
+          layer: "other-vector-z-head",
+        });
+      }
+    }
+
+    if (otherComplexShowBranchCuts && otherComplexBranchCutSegments?.length) {
+      for (const seg of otherComplexBranchCutSegments) {
+        zRef.current.drawCurve(seg, "#b42318", {
+          width: 1.45,
+          opacity: 0.86,
+          dash: "4 3",
+          layer: "other-branch-cuts",
+        });
+      }
+    }
+
+    if (otherComplexShowSelectedContour && otherComplexSelectedContourPolylines) {
+      for (const line of otherComplexSelectedContourPolylines.zLines) {
+        zRef.current.drawCurve(line, "#1d4ed8", {
+          width: 2.1,
+          opacity: 0.93,
+          layer: "other-selected-contour-z",
+        });
+      }
+      for (const line of otherComplexSelectedContourPolylines.wLines) {
+        wRef.current.drawCurve(line, "#1d4ed8", {
+          width: 2.1,
+          opacity: 0.93,
+          layer: "other-selected-contour-w",
+        });
+      }
     }
 
     if (otherComplexShowSingularityInspector && otherComplexMarkers2d) {
@@ -13407,10 +13815,18 @@ case "mobius":
     otherComplexGrid2d,
     otherComplexGridLines2d,
     otherComplexMarkers2d,
+    otherComplexContourBandField,
+    otherComplexVectorFieldSegments,
+    otherComplexBranchCutSegments,
+    otherComplexSelectedContourPolylines,
     otherComplexShowDomainColoring,
+    otherComplexShowContourBands,
     otherComplexShowGridDeformation,
+    otherComplexShowVectorField,
     otherComplexShowPathMapping,
     otherComplexShowSingularityInspector,
+    otherComplexShowBranchCuts,
+    otherComplexShowSelectedContour,
     otherComplexShowCritical,
     otherComplexShowZeros,
     otherComplexShowPoles,
@@ -17365,6 +17781,13 @@ case "mobius":
     complexMapSheetIndex,
     setMeshDataset,
   ]);
+
+  const handleOtherComplexPromoteResultToScene = useCallback(() => {
+    handleBuildComplexMapSweep();
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+  }, [handleBuildComplexMapSweep]);
 
   useEffect(() => {
     if (!complexMapLive) return;
@@ -35790,6 +36213,31 @@ case "mobius":
                         </div>
                       )}
                     </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}>
+                      <div style={{ fontWeight: 700 }}>Actions</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button type="button" onClick={handleOtherComplexAnalyzeFunction}>
+                          Analyze function
+                        </button>
+                        <button type="button" onClick={handleOtherComplexMapPathAction}>
+                          Map path
+                        </button>
+                        <button type="button" onClick={handleOtherComplexComputeIntegralAction}>
+                          Compute integral
+                        </button>
+                        <button type="button" onClick={handleOtherComplexPromoteResultToScene}>
+                          Promote result to scene
+                        </button>
+                      </div>
+                      {otherComplexIntegralEstimate && (
+                        <div style={{ fontSize: 11, opacity: 0.76 }}>
+                          Current contour estimate: {otherComplexIntegralEstimate.re.toFixed(4)}{" "}
+                          {otherComplexIntegralEstimate.im >= 0 ? "+" : "-"}{" "}
+                          {Math.abs(otherComplexIntegralEstimate.im).toFixed(4)}i
+                        </div>
+                      )}
+                      {otherComplexActionStatus && <div style={{ fontSize: 11, opacity: 0.82 }}>{otherComplexActionStatus}</div>}
+                    </div>
                   </section>
                 )
               )}
@@ -36196,6 +36644,22 @@ case "mobius":
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
                             type="checkbox"
+                            checked={otherComplexShowVectorField}
+                            onChange={(e) => setOtherComplexShowVectorField(e.target.checked)}
+                          />
+                          Vector field
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowContourBands}
+                            onChange={(e) => setOtherComplexShowContourBands(e.target.checked)}
+                          />
+                          Contour bands
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
                             checked={otherComplexShowPathMapping}
                             onChange={(e) => setOtherComplexShowPathMapping(e.target.checked)}
                           />
@@ -36210,6 +36674,19 @@ case "mobius":
                           Singularities overlay
                         </label>
                       </div>
+                      {otherComplexShowContourBands && (
+                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                          <span>Bands: {Math.max(3, Math.round(otherComplexContourBandCount))}</span>
+                          <input
+                            type="range"
+                            min={3}
+                            max={24}
+                            step={1}
+                            value={otherComplexContourBandCount}
+                            onChange={(e) => setOtherComplexContourBandCount(Math.max(3, Math.round(Number(e.target.value))))}
+                          />
+                        </label>
+                      )}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                         <span>Value scale:</span>
                         <button
@@ -36256,7 +36733,41 @@ case "mobius":
                           />
                           poles
                         </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowBranchCuts}
+                            onChange={(e) => setOtherComplexShowBranchCuts(e.target.checked)}
+                          />
+                          branch cuts
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={otherComplexShowSelectedContour}
+                            onChange={(e) => setOtherComplexShowSelectedContour(e.target.checked)}
+                          />
+                          selected contour
+                        </label>
                       </div>
+                      {otherComplexShowSelectedContour && (
+                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                          <span>Selected contour level: {(otherComplexSelectedContourLevel * 100).toFixed(0)}%</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={otherComplexSelectedContourLevel}
+                            onChange={(e) => setOtherComplexSelectedContourLevel(Math.min(1, Math.max(0, Number(e.target.value))))}
+                          />
+                        </label>
+                      )}
+                      {/\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe) && (
+                        <div style={{ fontSize: 11, opacity: 0.72 }}>
+                          Branch-cut overlay is inferred from argument jumps of f(z) on the sampled grid.
+                        </div>
+                      )}
                       {otherComplexPathMode === "circle" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
@@ -36270,6 +36781,67 @@ case "mobius":
                           Drag in Z-plane to draw freehand γ(t). Current points: {otherComplexFreehandPath.length}.
                         </div>
                       )}
+                    </div>
+                    <div style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}>
+                      <div style={{ fontWeight: 800 }}>Function Summary</div>
+                      <div>
+                        <b>f(z)</b> ={" "}
+                        <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                          {otherComplexFunctionExpr || "z"}
+                        </span>
+                      </div>
+                      <div style={{ fontWeight: 700, marginTop: 2 }}>Selected Point</div>
+                      <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
+                      <div>
+                        f(z) ={" "}
+                        {otherComplexSelectedPointInfo.w &&
+                        Number.isFinite(otherComplexSelectedPointInfo.w.re) &&
+                        Number.isFinite(otherComplexSelectedPointInfo.w.im)
+                          ? cToStr(otherComplexSelectedPointInfo.w)
+                          : "n/a"}
+                      </div>
+                      <div>|f(z)| = {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}</div>
+                      <div>arg(f(z)) = {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}</div>
+                      <div>
+                        f'(z) ={" "}
+                        {otherComplexSelectedPointInfo.derivative
+                          ? cToStr(otherComplexSelectedPointInfo.derivative)
+                          : "n/a"}
+                      </div>
+                      <div style={{ fontWeight: 700, marginTop: 4 }}>Detected Features</div>
+                      <div>zeros: {otherComplexDetectedFeatures.zeros}</div>
+                      <div>poles: {otherComplexDetectedFeatures.poles}</div>
+                      <div>critical points: {otherComplexDetectedFeatures.critical}</div>
+                      <div>branch points: {otherComplexDetectedFeatures.branchPoints}</div>
+                      <div style={{ fontWeight: 700, marginTop: 4 }}>Contour Analysis</div>
+                      <div>
+                        winding number:{" "}
+                        {otherComplexContourAnalysis.windingNumber == null
+                          ? "n/a (use closed contour)"
+                          : otherComplexContourAnalysis.windingNumber.toFixed(4)}
+                      </div>
+                      <div>
+                        singularities inside:{" "}
+                        {otherComplexContourAnalysis.singularitiesInside == null
+                          ? "n/a (rational + closed contour required)"
+                          : otherComplexContourAnalysis.singularitiesInside}
+                      </div>
+                      <div>
+                        integral approximation:{" "}
+                        {otherComplexContourAnalysis.integral
+                          ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
+                              otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
+                            } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
+                          : "n/a"}
+                      </div>
+                      <div>
+                        residue estimate:{" "}
+                        {otherComplexContourAnalysis.residueEstimate
+                          ? `${otherComplexContourAnalysis.residueEstimate.re.toFixed(6)} ${
+                              otherComplexContourAnalysis.residueEstimate.im >= 0 ? "+" : "-"
+                            } ${Math.abs(otherComplexContourAnalysis.residueEstimate.im).toFixed(6)}i`
+                          : "n/a"}
+                      </div>
                     </div>
                     <div
                       style={{
