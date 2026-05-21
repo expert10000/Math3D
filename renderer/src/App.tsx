@@ -1292,6 +1292,7 @@ type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" |
 type FunctionExplorerScene = "mobius" | "other_complex";
 type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "annulus" | "polyline" | "freehand";
 type OtherComplexSphereColorMode = "f" | "z";
+type OtherComplexWScaleMode = "linear" | "log" | "auto";
 type OtherComplexLeftPanelView = "setup" | "gallery";
 type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
 type OtherComplexInspectorTab = "point" | "features" | "contour" | "residue" | "laurent" | "warnings";
@@ -8230,6 +8231,7 @@ const App: React.FC = () => {
   const [otherComplexLeftPanelView, setOtherComplexLeftPanelView] = useState<OtherComplexLeftPanelView>("setup");
   const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("point");
   const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
+  const [otherComplexWScaleMode, setOtherComplexWScaleMode] = useState<OtherComplexWScaleMode>("auto");
   const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
@@ -9520,6 +9522,8 @@ const App: React.FC = () => {
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
+  const otherComplexPathMappingActive =
+    otherComplexShowPathMapping || otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
   const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
   const otherComplexCorePresets = useMemo(
@@ -13293,7 +13297,7 @@ const App: React.FC = () => {
   );
 
   const otherComplexPathZLoops = useMemo(() => {
-    if (!otherComplexShowPathMapping) return [] as [number, number][][];
+    if (!otherComplexPathMappingActive) return [] as [number, number][][];
     const buildCircleLoop = (radius: number, clockwise = false) => {
       const r = Math.max(1e-3, radius);
       const samples = 320;
@@ -13361,7 +13365,7 @@ const App: React.FC = () => {
     }
     return [points];
   }, [
-    otherComplexShowPathMapping,
+    otherComplexPathMappingActive,
     otherComplexPathMode,
     otherComplexFreehandPath,
     otherComplexPolylinePath,
@@ -13727,6 +13731,18 @@ const App: React.FC = () => {
           Math.hypot(loop[0]![0] - loop[loop.length - 1]![0], loop[0]![1] - loop[loop.length - 1]![1]) <=
             Math.max(1e-3, complexMapZExtent * 0.03)
       );
+    const signedArea = closed
+      ? loops.reduce((acc, loop) => {
+          let sum = 0;
+          for (let i = 1; i < loop.length; i++) {
+            const [x0, y0] = loop[i - 1]!;
+            const [x1, y1] = loop[i]!;
+            sum += x0 * y1 - x1 * y0;
+          }
+          return acc + 0.5 * sum;
+        }, 0)
+      : 0;
+    const orientation = closed ? (signedArea >= 0 ? "counterclockwise" : "clockwise") : null;
     const twoPi = Math.PI * 2;
     const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
       const abx = bx - ax;
@@ -13801,6 +13817,56 @@ const App: React.FC = () => {
           };
         })
       : [];
+    const nearSingularityWarning = otherComplexRationalInspection && closed
+      ? (() => {
+          const nearTol = Math.max(0.03, complexMapZExtent * 0.03);
+          for (const entry of otherComplexRationalInspection.poles) {
+            const p = entry.point;
+            for (const loop of loops) {
+              for (let i = 1; i < loop.length; i++) {
+                const [ax, ay] = loop[i - 1]!;
+                const [bx, by] = loop[i]!;
+                if (pointToSegmentDistance(p.re, p.im, ax, ay, bx, by) <= nearTol) return true;
+              }
+            }
+          }
+          return false;
+        })()
+      : false;
+    const branchCutCrossingWarning = otherComplexEffectiveBranchCutSegments?.length && loops.length
+      ? (() => {
+          const eps = 1e-9;
+          const orient = (ax: number, ay: number, bx: number, by: number, cx: number, cy: number) =>
+            (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+          const intersects = (
+            a1x: number,
+            a1y: number,
+            a2x: number,
+            a2y: number,
+            b1x: number,
+            b1y: number,
+            b2x: number,
+            b2y: number
+          ) => {
+            const o1 = orient(a1x, a1y, a2x, a2y, b1x, b1y);
+            const o2 = orient(a1x, a1y, a2x, a2y, b2x, b2y);
+            const o3 = orient(b1x, b1y, b2x, b2y, a1x, a1y);
+            const o4 = orient(b1x, b1y, b2x, b2y, a2x, a2y);
+            return o1 * o2 < -eps && o3 * o4 < -eps;
+          };
+          for (const loop of loops) {
+            for (let i = 1; i < loop.length; i++) {
+              const [ax, ay] = loop[i - 1]!;
+              const [bx, by] = loop[i]!;
+              for (const seg of otherComplexEffectiveBranchCutSegments) {
+                const [p0, p1] = seg;
+                if (intersects(ax, ay, bx, by, p0[0], p0[1], p1[0], p1[1])) return true;
+              }
+            }
+          }
+          return false;
+        })()
+      : false;
 
     let residueFromIntegral: C | null = null;
     if (otherComplexIntegralEstimate) {
@@ -13812,15 +13878,24 @@ const App: React.FC = () => {
     }
 
     let residueSum: C | null = null;
-    if (closed && polesInside.length) {
+    if (closed && otherComplexRationalInspection) {
       let acc: C = { re: 0, im: 0 };
       let used = 0;
-      for (let i = 0; i < polesInside.length; i++) {
-        const pole = polesInside[i]!.point;
+      for (let i = 0; i < otherComplexRationalInspection.poles.length; i++) {
+        const entry = otherComplexRationalInspection.poles[i]!;
+        const windingRaw = singularityWinding[i]?.winding ?? 0;
+        const winding =
+          Math.abs(windingRaw) < 5e-4
+            ? 0
+            : Math.abs(windingRaw - Math.round(windingRaw)) < 2e-3
+              ? Math.round(windingRaw)
+              : windingRaw;
+        if (!Number.isFinite(winding) || Math.abs(winding) < 1e-9) continue;
+        const pole = entry.point;
         let minOtherPole = Infinity;
-        for (let j = 0; j < otherComplexRationalInspection!.poles.length; j++) {
+        for (let j = 0; j < otherComplexRationalInspection.poles.length; j++) {
           if (i === j) continue;
-          const otherPole = otherComplexRationalInspection!.poles[j]!.point;
+          const otherPole = otherComplexRationalInspection.poles[j]!.point;
           const d = Math.hypot(pole.re - otherPole.re, pole.im - otherPole.im);
           if (d > 1e-9 && d < minOtherPole) minOtherPole = d;
         }
@@ -13868,10 +13943,13 @@ const App: React.FC = () => {
           re: integralIm / twoPi,
           im: -integralRe / twoPi,
         };
-        acc = cAdd(acc, residueAtPole);
+        acc = {
+          re: acc.re + residueAtPole.re * winding,
+          im: acc.im + residueAtPole.im * winding,
+        };
         used++;
       }
-      residueSum = used ? acc : null;
+      residueSum = used ? acc : { re: 0, im: 0 };
     }
 
     const residueIntegral = residueSum
@@ -13891,19 +13969,36 @@ const App: React.FC = () => {
             ),
           }
         : null;
+    const numericIntegralOk =
+      otherComplexIntegralEstimate && residueIntegral && residueTheoremError
+        ? residueTheoremError.abs <=
+          Math.max(
+            1e-3,
+            1e-3 *
+              Math.max(
+                1,
+                Math.hypot(otherComplexIntegralEstimate.re, otherComplexIntegralEstimate.im),
+                Math.hypot(residueIntegral.re, residueIntegral.im)
+              )
+          )
+        : null;
 
     return {
       closed,
+      orientation,
       windingNumber,
       singularitiesInside,
       singularityPoints: polesInside.map((entry) => entry.point),
       singularityWinding,
+      nearSingularityWarning,
+      branchCutCrossingWarning: !!branchCutCrossingWarning,
       loopCount: loops.length,
       integral: otherComplexIntegralEstimate,
       residueFromIntegral,
       residueSum,
       residueIntegral,
       residueTheoremError,
+      numericIntegralOk,
     };
   }, [
     otherComplexPathZLoops,
@@ -13912,6 +14007,7 @@ const App: React.FC = () => {
     otherComplexRationalInspection,
     otherComplexIntegralEstimate,
     evalOtherComplexW,
+    otherComplexEffectiveBranchCutSegments,
   ]);
 
   const otherComplexPathMetrics = useMemo(() => {
@@ -13945,6 +14041,52 @@ const App: React.FC = () => {
     if (ratio >= 0.2) return null;
     return "Image path concentrated near 0. Use auto-fit or switch to log |f| scale.";
   }, [otherComplexPathMetrics.wLength, otherComplexPathMetrics.zLength]);
+  const otherComplexWPathBounds = useMemo(() => {
+    const sourcePointCount = otherComplexPathZLoops.reduce((acc, loop) => acc + loop.length, 0);
+    const mappedPointCount = otherComplexPathWMappedSegments.reduce((acc, seg) => acc + seg.length, 0);
+    const points: [number, number][] = [];
+    for (const seg of otherComplexPathWMappedSegments) {
+      for (const pt of seg) points.push(pt);
+    }
+    const selectedW = otherComplexSelectedPointInfo.w;
+    if (selectedW && Number.isFinite(selectedW.re) && Number.isFinite(selectedW.im)) {
+      points.push([selectedW.re, selectedW.im]);
+    }
+    if (!points.length) return null;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let maxAbs = 0;
+    for (const [x, y] of points) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      maxAbs = Math.max(maxAbs, Math.hypot(x, y));
+    }
+    if (!Number.isFinite(maxAbs)) return null;
+    return { minX, maxX, minY, maxY, maxAbs, count: points.length, dropped: Math.max(0, sourcePointCount - mappedPointCount) };
+  }, [otherComplexPathWMappedSegments, otherComplexPathZLoops, otherComplexSelectedPointInfo.w]);
+  const otherComplexWDisplayExtent = useMemo(() => {
+    const base = Math.max(2, otherComplexWExtent);
+    if (otherComplexWScaleMode === "linear") return base;
+    if (otherComplexWScaleMode === "log") return Math.max(2, Math.min(80, Math.log1p(base) * 2.8));
+    const fitted = otherComplexWPathBounds ? Math.max(1.6, Math.min(160, otherComplexWPathBounds.maxAbs * 1.25)) : base;
+    return fitted;
+  }, [otherComplexWExtent, otherComplexWScaleMode, otherComplexWPathBounds]);
+  const otherComplexWVisibilityNote = useMemo(() => {
+    if (!otherComplexWPathBounds) return null;
+    const overflow = otherComplexWPathBounds.maxAbs > otherComplexWDisplayExtent * 0.98;
+    const droppedSamples = otherComplexWPathBounds.dropped > 0;
+    const compressedByAuto =
+      otherComplexWScaleMode === "auto" && otherComplexWExtent > otherComplexWDisplayExtent * 1.45;
+    if (compressedByAuto && (overflow || droppedSamples)) return "Image path is compressed by auto-scale. Some values exceed visible range.";
+    if (compressedByAuto) return "Image path is compressed by auto-scale.";
+    if (overflow || droppedSamples) return "Some values exceed visible range.";
+    return null;
+  }, [otherComplexWPathBounds, otherComplexWDisplayExtent, otherComplexWScaleMode, otherComplexWExtent]);
 
   const otherComplexSelectedPointStatus = useMemo(() => {
     const z = otherComplexSelectedPointInfo.z;
@@ -14448,7 +14590,7 @@ const App: React.FC = () => {
       points.push({ x: 0, y: 0, z: 1, color: 0x0a66c2, size: 0.07 });
     }
 
-    if (otherComplexShowPathMapping && otherComplexPathZLoops.length) {
+    if (otherComplexPathMappingActive && otherComplexPathZLoops.length) {
       for (const loop of otherComplexPathZLoops) {
         if (loop.length < 2) continue;
         const zPath = loop.map(([x, y]) => toSphere(x, y));
@@ -14547,7 +14689,7 @@ const App: React.FC = () => {
     otherComplexSelectedPointInfo,
     otherComplexShowBranchCuts,
     otherComplexShowCritical,
-    otherComplexShowPathMapping,
+    otherComplexPathMappingActive,
     otherComplexShowPoles,
     otherComplexShowSelectedContour,
     otherComplexShowSingularityInspector,
@@ -14736,7 +14878,7 @@ case "mobius":
       }
     }
 
-    if (otherComplexShowPathMapping && otherComplexPathZLoops.length) {
+    if (otherComplexPathMappingActive && otherComplexPathZLoops.length) {
       for (const loop of otherComplexPathZLoops) {
         if (loop.length < 2) continue;
         zRef.current.drawCurve(loop, "#111827", {
@@ -14931,6 +15073,23 @@ case "mobius":
       zRef.current.drawPoints([], { layer: "other-poles-inside-z" });
       zRef.current.drawPoints([], { layer: "other-poles-outside-z" });
     }
+
+    zRef.current.drawPoints([[otherComplexSelectedPointInfo.z.re, otherComplexSelectedPointInfo.z.im]], {
+      color: "#111111",
+      shape: "cross",
+      size: 5.1,
+      layer: "other-selected-z",
+    });
+    if (otherComplexSelectedPointInfo.w && Number.isFinite(otherComplexSelectedPointInfo.w.re) && Number.isFinite(otherComplexSelectedPointInfo.w.im)) {
+      wRef.current.drawPoints([[otherComplexSelectedPointInfo.w.re, otherComplexSelectedPointInfo.w.im]], {
+        color: "#111111",
+        shape: "cross",
+        size: 5.1,
+        layer: "other-selected-w",
+      });
+    } else {
+      wRef.current.drawPoints([], { layer: "other-selected-w" });
+    }
   }
   break;
 
@@ -14982,7 +15141,7 @@ case "mobius":
     otherComplexShowContourBands,
     otherComplexShowGridDeformation,
     otherComplexShowVectorField,
-    otherComplexShowPathMapping,
+    otherComplexPathMappingActive,
     otherComplexShowSingularityInspector,
     otherComplexShowBranchCuts,
     otherComplexShowSelectedContour,
@@ -14990,6 +15149,7 @@ case "mobius":
     otherComplexShowZeros,
     otherComplexShowPoles,
     otherComplexDomainValueMode,
+    otherComplexSelectedPointInfo,
     otherComplexPathMode,
     otherComplexPathZLoops,
     otherComplexPathWMappedSegments,
@@ -38322,10 +38482,38 @@ case "mobius":
                             </div>
                             <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                               <h3 style={styles.h3}>W-plane (image)</h3>
+                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOtherComplexWScaleMode("auto");
+                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                      }}
+                                      style={pill(false)}
+                                    >
+                                      Auto-fit
+                                    </button>
+                                    <span>Scale:</span>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                      linear
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                      log
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                      auto
+                                    </button>
+                                  </div>
+                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                </div>
+                              )}
                               <div style={{ minHeight: 320, flex: 1 }}>
                                 <PlanePlot
                                   id="svgW"
-                                  extent={otherComplexWExtent}
+                                  extent={otherComplexWDisplayExtent}
                                   step={mobiusGridStep}
                                   ref={wRef}
                                   style={{ height: "100%" }}
@@ -38364,10 +38552,38 @@ case "mobius":
                             </div>
                             <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                               <h3 style={styles.h3}>W preview</h3>
+                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOtherComplexWScaleMode("auto");
+                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                      }}
+                                      style={pill(false)}
+                                    >
+                                      Auto-fit
+                                    </button>
+                                    <span>Scale:</span>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                      linear
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                      log
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                      auto
+                                    </button>
+                                  </div>
+                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                </div>
+                              )}
                               <div style={{ minHeight: 260, flex: 1 }}>
                                 <PlanePlot
                                   id="svgW"
-                                  extent={otherComplexWExtent}
+                                  extent={otherComplexWDisplayExtent}
                                   step={mobiusGridStep}
                                   ref={wRef}
                                   style={{ height: "100%" }}
@@ -38405,10 +38621,38 @@ case "mobius":
                             </div>
                             <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                               <h3 style={styles.h3}>W-plane (image)</h3>
+                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOtherComplexWScaleMode("auto");
+                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                      }}
+                                      style={pill(false)}
+                                    >
+                                      Auto-fit
+                                    </button>
+                                    <span>Scale:</span>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                      linear
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                      log
+                                    </button>
+                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                      auto
+                                    </button>
+                                  </div>
+                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                </div>
+                              )}
                               <div style={{ minHeight: 320, flex: 1 }}>
                                 <PlanePlot
                                   id="svgW"
-                                  extent={otherComplexWExtent}
+                                  extent={otherComplexWDisplayExtent}
                                   step={mobiusGridStep}
                                   ref={wRef}
                                   style={{ height: "100%" }}
@@ -38466,18 +38710,42 @@ case "mobius":
                           </div>
                         )}
                         {otherComplexInspectorTab === "contour" && (
-                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                          <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
                             <div>type: {otherComplexPathMode}</div>
                             <div>path length (z): {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}</div>
                             <div>path length (w): {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}</div>
                             <div>winding number: {otherComplexContourAnalysis.windingNumber == null ? "n/a" : otherComplexContourAnalysis.windingNumber.toFixed(6)}</div>
-                            <div>singularities inside: {otherComplexContourAnalysis.singularitiesInside == null ? "n/a" : otherComplexContourAnalysis.singularitiesInside}</div>
+                            <div style={{ fontWeight: 700, marginTop: 2 }}>Contour status</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: otherComplexContourAnalysis.closed ? "#ecfdf3" : "#fff7ed", color: otherComplexContourAnalysis.closed ? "#166534" : "#9a3412" }}>
+                                {otherComplexContourAnalysis.closed ? "OK closed" : "open contour"}
+                              </span>
+                              <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: otherComplexContourAnalysis.orientation === "counterclockwise" ? "#ecfdf3" : "#f8fafc", color: otherComplexContourAnalysis.orientation === "counterclockwise" ? "#166534" : "#334155" }}>
+                                {otherComplexContourAnalysis.orientation ? otherComplexContourAnalysis.orientation : "orientation n/a"}
+                              </span>
+                              <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: otherComplexContourAnalysis.singularitiesInside === 0 ? "#ecfdf3" : "#fef2f2", color: otherComplexContourAnalysis.singularitiesInside === 0 ? "#166534" : "#991b1b" }}>
+                                inside poles: {otherComplexContourAnalysis.singularitiesInside == null ? "n/a" : otherComplexContourAnalysis.singularitiesInside}
+                              </span>
+                              <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#f8fafc", color: "#334155" }}>
+                                theorem prediction: {otherComplexContourAnalysis.residueIntegral ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(4)} ${otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(4)}i` : "n/a"}
+                              </span>
+                              <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: otherComplexContourAnalysis.numericIntegralOk == null ? "#f8fafc" : otherComplexContourAnalysis.numericIntegralOk ? "#ecfdf3" : "#fef2f2", color: otherComplexContourAnalysis.numericIntegralOk == null ? "#334155" : otherComplexContourAnalysis.numericIntegralOk ? "#166534" : "#991b1b" }}>
+                                numeric integral: {otherComplexContourAnalysis.numericIntegralOk == null ? "n/a" : otherComplexContourAnalysis.numericIntegralOk ? "OK" : "unstable"}
+                              </span>
+                            </div>
+                            {(otherComplexContourAnalysis.nearSingularityWarning || otherComplexContourAnalysis.branchCutCrossingWarning) && (
+                              <div style={{ marginTop: 2, padding: "6px 8px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff1f2", color: "#991b1b", fontSize: 11 }}>
+                                <div style={{ fontWeight: 700 }}>Warning</div>
+                                {otherComplexContourAnalysis.nearSingularityWarning && <div>Contour passes near singularity. Integral may be unstable.</div>}
+                                {otherComplexContourAnalysis.branchCutCrossingWarning && <div>Contour crosses a branch cut. Integral may be branch-dependent.</div>}
+                              </div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "residue" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                              ∮γ f(z)dz = 2πi Σ Res(f, ak)
+                              ∮γ f(z)dz = 2πi Σ n(γ, ak) Res(f, ak)
                             </div>
                             <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
                             <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
@@ -38505,6 +38773,11 @@ case "mobius":
                                 </div>
                               </>
                             )}
+                            {otherComplexRationalInspection && otherComplexContourAnalysis.closed && otherComplexContourAnalysis.singularitiesInside === 0 && (
+                              <div style={{ fontSize: 11, opacity: 0.82 }}>
+                                No poles inside contour. Residue theorem predicts integral = 0.
+                              </div>
+                            )}
                             {otherComplexContourAnalysis.singularityWinding.length > 0 && (
                               <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
                                 {otherComplexContourAnalysis.singularityWinding.map((entry, idx) => (
@@ -38521,18 +38794,18 @@ case "mobius":
                                 : "n/a"}
                             </div>
                             <div>
-                              2πi · residue sum:{" "}
+                              2πi · Σ n(γ,ak)Res(f,ak):{" "}
                               {otherComplexContourAnalysis.residueIntegral
                                 ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
-                                : "n/a (closed contour with poles inside required)"}
+                                : "n/a (closed contour + rational form required)"}
                             </div>
                             <div>
-                              residue sum ΣRes:{" "}
+                              residue sum Σ n(γ,ak)Res(f,ak):{" "}
                               {otherComplexContourAnalysis.residueSum
                                 ? `${otherComplexContourAnalysis.residueSum.re.toFixed(6)} ${otherComplexContourAnalysis.residueSum.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueSum.im).toFixed(6)}i`
                                 : "n/a"}
                             </div>
-                            <div>error |∮f dz − 2πiΣRes|: {otherComplexContourAnalysis.residueTheoremError ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6) : "n/a"}</div>
+                            <div>error |∮f dz − 2πiΣnRes|: {otherComplexContourAnalysis.residueTheoremError ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6) : "n/a"}</div>
                           </div>
                         )}
                         {otherComplexInspectorTab === "laurent" && (
