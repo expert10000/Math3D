@@ -9529,6 +9529,7 @@ const App: React.FC = () => {
   const applyOtherComplexPreset = useCallback((id: string) => {
     const preset = FUNCTION_EXPLORER_OTHER_PRESETS.find((entry) => entry.id === id);
     if (!preset) return;
+    const profile = detectBranchLabProfile(preset.expr);
     setComplexMapSpec((prev) => ({
       ...prev,
       inputMode: "fz",
@@ -9537,9 +9538,19 @@ const App: React.FC = () => {
       showIsolines: true,
       outputMode: "sweep",
     }));
+    const branchPoint = profile.branchPoints[0] ?? { re: 0, im: 0 };
+    setOtherComplexPathMode("circle");
+    setOtherComplexPathCenter({ re: branchPoint.re, im: branchPoint.im });
+    setOtherComplexPathRadius(profile.id === "sqrt_z2m1" ? 0.38 : 0.28);
+    setOtherComplexPathLoopCount(1);
+    setOtherComplexPathAnimationPlaying(false);
+    setOtherComplexPathAnimationProgress(0);
+    setOtherComplexShowPathMapping(true);
+    setOtherComplexMainViewMode("plane");
+    setOtherComplexInspectorTab("branch");
     setOtherComplexBranchCutMode("principal");
     setOtherComplexSelectedBranchPointIndex(0);
-    setOtherComplexPathLoopCount(1);
+    setOtherComplexActionStatus(`Preset loaded: ${preset.label} (${Date.now()}).`);
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapError(null);
   }, []);
@@ -14819,6 +14830,125 @@ const App: React.FC = () => {
     otherComplexContourAnalysis.closed,
     otherComplexSelectedBranchPointIndex,
   ]);
+
+  const otherComplexMonodromyTable = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return null;
+    const profile = otherComplexBranchProfile.id;
+    const loopsMax = Math.max(3, Math.min(12, Math.round(otherComplexPathLoopCount) + 2));
+    const perPathKRaw = otherComplexBranchAnalysis.monodromyKRaw ?? 0;
+    const perPathKInt = Number.isFinite(perPathKRaw) && Math.abs(perPathKRaw - Math.round(perPathKRaw)) <= 2e-3
+      ? Math.round(perPathKRaw)
+      : null;
+    const sheetCount = otherComplexBranchAnalysis.monodromySheetCount;
+    const pointLabel = otherComplexBranchAnalysis.selectedBranchPoint
+      ? cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)
+      : "selected branch point";
+    const pathLabel = `around ${pointLabel}`;
+    const modSheet = (k: number, n: number) => ((k % n) + n) % n;
+    const rows: Array<{
+      loopCount: number;
+      pathLabel: string;
+      kRaw: number;
+      kInt: number | null;
+      sheetIndex: number | null;
+      sheetShift: number | null;
+      multiplierText: string;
+      endValueText: string;
+      valueShiftText: string;
+    }> = [];
+
+    for (let loopCount = 0; loopCount <= loopsMax; loopCount++) {
+      const kRaw = perPathKRaw * loopCount;
+      const kInt =
+        perPathKInt == null
+          ? (Math.abs(kRaw - Math.round(kRaw)) <= 2e-3 ? Math.round(kRaw) : null)
+          : perPathKInt * loopCount;
+      let sheetIndex: number | null = null;
+      let sheetShift: number | null = null;
+      if (sheetCount && kInt != null) {
+        sheetIndex = modSheet(kInt, sheetCount);
+        sheetShift = sheetIndex;
+      }
+      let multiplierText = "n/a";
+      let endValueText = "n/a";
+      let valueShiftText = "n/a";
+      if (profile === "log") {
+        const shift = 2 * Math.PI * kRaw;
+        const sign = shift >= 0 ? "+" : "-";
+        multiplierText = "n/a";
+        endValueText = "log(z) + shift";
+        valueShiftText = `${sign}${Math.abs(shift).toFixed(6)}i`;
+      } else if (sheetCount && kInt != null) {
+        const idx = modSheet(kInt, sheetCount);
+        if (sheetCount === 2) {
+          multiplierText = idx === 0 ? "1" : "-1";
+          const base =
+            profile === "sqrt_z2m1"
+              ? "sqrt(z^2-1)"
+              : profile === "pow_half"
+                ? "z^(1/2)"
+                : "sqrt(z)";
+          endValueText = idx === 0 ? `${base}` : `-${base}`;
+        } else {
+          multiplierText = idx === 0 ? "1" : `exp(2πi·${idx}/${sheetCount})`;
+          endValueText = `exp(2πi·${idx}/${sheetCount}) · ${otherComplexBranchProfile.label}`;
+        }
+        valueShiftText = "0";
+      } else {
+        multiplierText = "requires closed loop";
+        endValueText = "requires integer winding";
+        valueShiftText = profile === "log" ? "requires closed loop" : "n/a";
+      }
+      rows.push({
+        loopCount,
+        pathLabel,
+        kRaw,
+        kInt,
+        sheetIndex,
+        sheetShift,
+        multiplierText,
+        endValueText,
+        valueShiftText,
+      });
+    }
+    return {
+      profile,
+      pathLabel,
+      rows,
+      sheetCount,
+      perPathKRaw,
+      perPathKInt,
+    };
+  }, [otherComplexBranchProfile, otherComplexBranchAnalysis, otherComplexPathLoopCount]);
+
+  const otherComplexSheetTracker = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return null;
+    const progress = otherComplexPathPlayback?.progress ?? 0;
+    const kTotal = otherComplexBranchAnalysis.monodromyKRaw ?? 0;
+    const kCurrent = kTotal * progress;
+    const kCurrentRounded = Math.abs(kCurrent - Math.round(kCurrent)) <= 2e-3 ? Math.round(kCurrent) : null;
+    const sheetCount = otherComplexBranchAnalysis.monodromySheetCount;
+    const modSheet = (k: number, n: number) => ((k % n) + n) % n;
+    const currentSheetIndex =
+      sheetCount && kCurrentRounded != null ? modSheet(kCurrentRounded, sheetCount) : null;
+    let multiplierText = "n/a";
+    if (sheetCount && currentSheetIndex != null) {
+      if (sheetCount === 2) multiplierText = currentSheetIndex === 0 ? "1" : "-1";
+      else multiplierText = currentSheetIndex === 0 ? "1" : `exp(2πi/${sheetCount}·${currentSheetIndex})`;
+    }
+    const logShift = otherComplexBranchProfile.id === "log" ? 2 * Math.PI * kCurrent : null;
+    return {
+      progress,
+      kCurrent,
+      kCurrentRounded,
+      currentSheetIndex,
+      sheetCount,
+      multiplierText,
+      logShift,
+      returnPeriodLoops: otherComplexBranchAnalysis.returnPeriodLoops,
+      finalSheetShift: otherComplexBranchAnalysis.monodromySheetShiftMod,
+    };
+  }, [otherComplexBranchProfile.id, otherComplexPathPlayback?.progress, otherComplexBranchAnalysis]);
 
   const otherComplexPreferredPole = useMemo(() => {
     const poles: C[] = [];
@@ -29790,7 +29920,12 @@ case "mobius":
                   setOtherComplexMainViewMode("plane");
                   setOtherComplexInspectorTab("branch");
                 }}
-                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode !== "residue")}
+                style={pill(
+                  mode === "mobius" &&
+                    functionExplorerScene === "other_complex" &&
+                    otherComplexMainViewMode !== "residue" &&
+                    otherComplexMainViewMode !== "path"
+                )}
               >
                 Function Explorer
               </button>
@@ -29839,7 +29974,7 @@ case "mobius":
                   setOtherComplexShowBranchCuts(true);
                   setOtherComplexShowPathMapping(true);
                 }}
-                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexInspectorTab === "branch")}
+                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "path")}
               >
                 Branch Lab
               </button>
@@ -39385,6 +39520,46 @@ case "mobius":
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 800, fontSize: 12 }}>Inspector</div>
+                        {otherComplexSheetTracker && otherComplexBranchProfile.id !== "none" && (
+                          <div style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "6px 8px", background: "#f8fafc", display: "grid", gap: 2, fontSize: 11 }}>
+                            <div style={{ fontWeight: 700 }}>Sheet Tracker</div>
+                            {otherComplexBranchProfile.id === "log" ? (
+                              <>
+                                <div>current sheet: k = {otherComplexSheetTracker.kCurrent.toFixed(4)}</div>
+                                <div>
+                                  value shift:{" "}
+                                  {otherComplexSheetTracker.logShift == null
+                                    ? "n/a"
+                                    : `${otherComplexSheetTracker.logShift >= 0 ? "+" : "-"}${Math.abs(otherComplexSheetTracker.logShift).toFixed(6)}i`}
+                                </div>
+                                <div>return period: infinite</div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  current sheet:{" "}
+                                  {otherComplexSheetTracker.currentSheetIndex == null || !otherComplexSheetTracker.sheetCount
+                                    ? "n/a"
+                                    : `${otherComplexSheetTracker.currentSheetIndex} / ${otherComplexSheetTracker.sheetCount}`}
+                                </div>
+                                <div>
+                                  sheet shift:{" "}
+                                  {otherComplexSheetTracker.finalSheetShift == null || !otherComplexSheetTracker.sheetCount
+                                    ? "n/a"
+                                    : `+${otherComplexSheetTracker.finalSheetShift} mod ${otherComplexSheetTracker.sheetCount}`}
+                                </div>
+                                <div>
+                                  return period:{" "}
+                                  {otherComplexSheetTracker.returnPeriodLoops == null
+                                    ? "n/a"
+                                    : otherComplexSheetTracker.returnPeriodLoops === "infinite"
+                                      ? "infinite"
+                                      : `${otherComplexSheetTracker.returnPeriodLoops} loops`}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
@@ -39447,10 +39622,70 @@ case "mobius":
                               {otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "changes sheet" : "no sheet change"}
                             </div>
                             <div>{otherComplexBranchProfile.monodromyNote}</div>
+                            {otherComplexMonodromyTable && (
+                              <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>Monodromy table</div>
+                                <div style={{ overflowX: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>
+                                          {otherComplexMonodromyTable.profile === "log" ? "Loop count" : "Path / Loop"}
+                                        </th>
+                                        {otherComplexMonodromyTable.profile === "log" ? (
+                                          <>
+                                            <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Sheet index</th>
+                                            <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Value shift</th>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Sheet</th>
+                                            <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Multiplier</th>
+                                            <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>End value</th>
+                                          </>
+                                        )}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {otherComplexMonodromyTable.rows.map((row) => (
+                                        <tr key={`mono-row:${row.loopCount}`}>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                            {otherComplexMonodromyTable.profile === "log"
+                                              ? row.loopCount
+                                              : row.loopCount === 0
+                                                ? "start (0 loops)"
+                                                : `${row.pathLabel} × ${row.loopCount}`}
+                                          </td>
+                                          {otherComplexMonodromyTable.profile === "log" ? (
+                                            <>
+                                              <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                                {row.kInt == null ? "n/a" : row.kInt}
+                                              </td>
+                                              <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>{row.valueShiftText}</td>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                                {row.sheetIndex == null || !otherComplexMonodromyTable.sheetCount
+                                                  ? "n/a"
+                                                  : `${row.sheetIndex} / ${otherComplexMonodromyTable.sheetCount}`}
+                                              </td>
+                                              <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>{row.multiplierText}</td>
+                                              <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>{row.endValueText}</td>
+                                            </>
+                                          )}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "sheet" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div style={{ fontWeight: 700 }}>Sheet tracker</div>
                             <div>start sheet: 0</div>
                             <div>
                               end sheet:{" "}
@@ -39472,6 +39707,47 @@ case "mobius":
                                   ? "does not return (log)"
                                   : `${otherComplexBranchAnalysis.returnPeriodLoops} loop(s)`}
                             </div>
+                            {otherComplexSheetTracker && (
+                              <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6, display: "grid", gap: 3 }}>
+                                <div>current path progress: {(otherComplexSheetTracker.progress * 100).toFixed(1)}%</div>
+                                {otherComplexBranchProfile.id === "log" ? (
+                                  <>
+                                    <div>current sheet: k = {otherComplexSheetTracker.kCurrent.toFixed(4)}</div>
+                                    <div>
+                                      value shift:{" "}
+                                      {otherComplexSheetTracker.logShift == null
+                                        ? "n/a"
+                                        : `${otherComplexSheetTracker.logShift >= 0 ? "+" : "-"}${Math.abs(otherComplexSheetTracker.logShift).toFixed(6)}i`}
+                                    </div>
+                                    <div>return period: infinite</div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div>
+                                      current sheet:{" "}
+                                      {otherComplexSheetTracker.currentSheetIndex == null || !otherComplexSheetTracker.sheetCount
+                                        ? "n/a"
+                                        : `${otherComplexSheetTracker.currentSheetIndex} / ${otherComplexSheetTracker.sheetCount}`}
+                                    </div>
+                                    <div>
+                                      sheet shift:{" "}
+                                      {otherComplexSheetTracker.finalSheetShift == null || !otherComplexSheetTracker.sheetCount
+                                        ? "n/a"
+                                        : `+${otherComplexSheetTracker.finalSheetShift} mod ${otherComplexSheetTracker.sheetCount}`}
+                                    </div>
+                                    <div>multiplier: {otherComplexSheetTracker.multiplierText}</div>
+                                    <div>
+                                      return period:{" "}
+                                      {otherComplexSheetTracker.returnPeriodLoops == null
+                                        ? "n/a"
+                                        : otherComplexSheetTracker.returnPeriodLoops === "infinite"
+                                          ? "infinite"
+                                          : `${otherComplexSheetTracker.returnPeriodLoops} loops`}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "point" && (
@@ -39687,6 +39963,12 @@ case "mobius":
                                     ? `Path crosses branch cut ${otherComplexBranchAnalysis.crossingCount} time(s).`
                                     : "No branch-cut crossing detected on current path."}
                                 </div>
+                                {otherComplexBranchAnalysis.hasCrossingWarning && (
+                                  <>
+                                    <div>Principal branch value jumps here.</div>
+                                    <div>Analytic continuation can continue, but single-branch evaluation is discontinuous.</div>
+                                  </>
+                                )}
                                 <div>
                                   analytic continuation around branch point:{" "}
                                   <span style={{ color: otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "#b42318" : undefined }}>
@@ -39695,6 +39977,17 @@ case "mobius":
                                       : "no sheet change detected"}
                                   </span>
                                 </div>
+                                {otherComplexBranchAnalysis.analyticContinuationChangesSheet && (
+                                  <>
+                                    <div>
+                                      Path encloses branch point{" "}
+                                      {otherComplexBranchAnalysis.selectedBranchPoint
+                                        ? cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)
+                                        : "(selected)"}.
+                                    </div>
+                                    <div>Continuation changes sheet (monodromy event).</div>
+                                  </>
+                                )}
                                 <div>
                                   winding number around branch point (k):{" "}
                                   {otherComplexBranchAnalysis.monodromyKRaw == null ? "n/a" : otherComplexBranchAnalysis.monodromyKRaw.toFixed(6)}
