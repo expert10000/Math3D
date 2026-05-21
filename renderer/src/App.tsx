@@ -1291,6 +1291,21 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 type FunctionExplorerScene = "mobius" | "other_complex";
 type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "freehand";
+type OtherComplexContourPresetId =
+  | "circle_selected"
+  | "circle_pole"
+  | "rectangle"
+  | "freehand"
+  | "segment"
+  | "branch_cut_crossing";
+type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1";
+type BranchLabProfile = {
+  id: BranchLabProfileId;
+  label: string;
+  branchPoints: C[];
+  cutLabel: string;
+  monodromyNote: string;
+};
 
 
 
@@ -2800,6 +2815,79 @@ const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: 
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
   { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
 ];
+const BRANCH_LAB_PROFILES: Record<Exclude<BranchLabProfileId, "none">, BranchLabProfile> = {
+  log: {
+    id: "log",
+    label: "log(z)",
+    branchPoints: [{ re: 0, im: 0 }],
+    cutLabel: "negative real axis",
+    monodromyNote: "Looping once around z=0 adds 2πi to log(z).",
+  },
+  sqrt: {
+    id: "sqrt",
+    label: "sqrt(z)",
+    branchPoints: [{ re: 0, im: 0 }],
+    cutLabel: "negative real axis",
+    monodromyNote: "Looping once around z=0 flips the sign (sheet swap).",
+  },
+  pow_half: {
+    id: "pow_half",
+    label: "z^(1/2)",
+    branchPoints: [{ re: 0, im: 0 }],
+    cutLabel: "negative real axis",
+    monodromyNote: "Looping once around z=0 flips the sign (sheet swap).",
+  },
+  pow_third: {
+    id: "pow_third",
+    label: "z^(1/3)",
+    branchPoints: [{ re: 0, im: 0 }],
+    cutLabel: "negative real axis",
+    monodromyNote: "Each loop around z=0 rotates value by 2π/3 in argument (next sheet).",
+  },
+  sqrt_z2m1: {
+    id: "sqrt_z2m1",
+    label: "sqrt(z^2 - 1)",
+    branchPoints: [{ re: -1, im: 0 }, { re: 1, im: 0 }],
+    cutLabel: "segment [-1, 1] on real axis",
+    monodromyNote: "Crossing the cut or looping around one branch point swaps sheets.",
+  },
+};
+
+const sanitizeBranchLabExpr = (src: string) =>
+  src
+    .trim()
+    .toLowerCase()
+    .replace(/^f\s*\(\s*z\s*\)\s*=\s*/, "")
+    .replace(/^w\s*=\s*/, "")
+    .replace(/\s+/g, "");
+
+const detectBranchLabProfile = (src: string): BranchLabProfile => {
+  const normalized = sanitizeBranchLabExpr(src);
+  if (normalized === "logz" || normalized === "log(z)") return BRANCH_LAB_PROFILES.log;
+  if (
+    normalized === "sqrtz" ||
+    normalized === "sqrt(z)" ||
+    /^z\^\(?((1\/2)|(0?\.5))\)?$/.test(normalized)
+  ) {
+    return normalized.startsWith("z^") ? BRANCH_LAB_PROFILES.pow_half : BRANCH_LAB_PROFILES.sqrt;
+  }
+  if (/^z\^\(?((1\/3)|(0?\.(3|33+)))\)?$/.test(normalized)) return BRANCH_LAB_PROFILES.pow_third;
+  if (
+    normalized === "sqrt(z^2-1)" ||
+    normalized === "sqrt((z^2)-1)" ||
+    normalized === "sqrt(z*z-1)" ||
+    normalized === "sqrt((z*z)-1)"
+  ) {
+    return BRANCH_LAB_PROFILES.sqrt_z2m1;
+  }
+  return {
+    id: "none",
+    label: "none",
+    branchPoints: [],
+    cutLabel: "none",
+    monodromyNote: "No branch profile detected for this expression.",
+  };
+};
 
 const COMPLEX_MAP_DEFAULT_SPEC: ComplexMapSweepSpec = {
   inputMode: "reim",
@@ -8096,6 +8184,8 @@ const App: React.FC = () => {
   const [otherComplexShowSelectedContour, setOtherComplexShowSelectedContour] = useState(false);
   const [otherComplexSelectedContourLevel, setOtherComplexSelectedContourLevel] = useState(0.5);
   const [otherComplexSummaryOpen, setOtherComplexSummaryOpen] = useState(false);
+  const [otherComplexContourLabOpen, setOtherComplexContourLabOpen] = useState(true);
+  const [otherComplexBranchLabOpen, setOtherComplexBranchLabOpen] = useState(true);
   const [otherComplexFunctionSummaryOpen, setOtherComplexFunctionSummaryOpen] = useState(true);
   const [otherComplexActionStatus, setOtherComplexActionStatus] = useState<string | null>(null);
   const [otherComplexSelectedPoint, setOtherComplexSelectedPoint] = useState<C>({ re: 0, im: 0 });
@@ -9402,6 +9492,10 @@ const App: React.FC = () => {
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
   const otherComplexHasNonRationalFns = /\b(sin|cos|tan|exp|log|sqrt|abs)\b/i.test(otherComplexFunctionExprSafe);
+  const otherComplexBranchProfile = useMemo(
+    () => detectBranchLabProfile(otherComplexFunctionExprSafe),
+    [otherComplexFunctionExprSafe]
+  );
   const otherComplexCompiled2d = useMemo(
     () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, { inputMode: "fz", fExpr: otherComplexFunctionExprSafe }),
     [complexMapSpec.reExpr, complexMapSpec.imExpr, otherComplexFunctionExprSafe]
@@ -9718,6 +9812,42 @@ const App: React.FC = () => {
     );
     return m;
   }, [complexMapSpec.uMin, complexMapSpec.uMax, complexMapSpec.vMin, complexMapSpec.vMax]);
+
+  const otherComplexBranchGuideSegments = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return null;
+    const segments: [number, number][][] = [];
+    if (
+      otherComplexBranchProfile.id === "log" ||
+      otherComplexBranchProfile.id === "sqrt" ||
+      otherComplexBranchProfile.id === "pow_half" ||
+      otherComplexBranchProfile.id === "pow_third"
+    ) {
+      const xMin = -Math.max(0.5, complexMapZExtent) * 1.1;
+      const parts = 64;
+      for (let i = 0; i < parts; i++) {
+        const t0 = i / parts;
+        const t1 = (i + 1) / parts;
+        segments.push([
+          [xMin * (1 - t0), 0],
+          [xMin * (1 - t1), 0],
+        ]);
+      }
+      return segments;
+    }
+    if (otherComplexBranchProfile.id === "sqrt_z2m1") {
+      const parts = 96;
+      for (let i = 0; i < parts; i++) {
+        const t0 = i / parts;
+        const t1 = (i + 1) / parts;
+        segments.push([
+          [-1 + 2 * t0, 0],
+          [-1 + 2 * t1, 0],
+        ]);
+      }
+      return segments;
+    }
+    return null;
+  }, [otherComplexBranchProfile, complexMapZExtent]);
 
   const complexMapWExtent = useMemo(() => {
     const clampAbs = complexMapSpec.clampAbs;
@@ -13274,7 +13404,7 @@ const App: React.FC = () => {
   }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, otherComplexContourBandMode, evalOtherComplexW]);
 
   const otherComplexBranchCutSegments = useMemo(() => {
-    if (!otherComplexGrid2d || !/\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe)) return null;
+    if (!otherComplexGrid2d || otherComplexBranchProfile.id === "none") return null;
     const { nu, nv, uMin, vMin, uStep, vStep, re, im, valid } = otherComplexGrid2d;
     const idx = (i: number, j: number) => j * nu + i;
     const wrapDelta = (a: number, b: number) => {
@@ -13324,7 +13454,12 @@ const App: React.FC = () => {
       return out.filter((_s, i) => i % stride === 0);
     }
     return out;
-  }, [otherComplexGrid2d, otherComplexFunctionExprSafe]);
+  }, [otherComplexGrid2d, otherComplexBranchProfile.id]);
+
+  const otherComplexEffectiveBranchCutSegments = useMemo(() => {
+    if (otherComplexBranchGuideSegments?.length) return otherComplexBranchGuideSegments;
+    return otherComplexBranchCutSegments;
+  }, [otherComplexBranchGuideSegments, otherComplexBranchCutSegments]);
 
   const otherComplexVectorFieldSegments = useMemo(() => {
     if (!otherComplexGrid2d || !otherComplexShowVectorField) return null;
@@ -13436,11 +13571,11 @@ const App: React.FC = () => {
       ? otherComplexRationalInspection.poles.length
       : otherComplexMarkers2d?.pole.z.length ?? 0;
     const critical = otherComplexMarkers2d?.critical.z.length ?? 0;
-    const branchPoints = /\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe)
-      ? "possible (log/sqrt present)"
+    const branchPoints = otherComplexBranchProfile.branchPoints.length
+      ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(", ")
       : "none detected";
     return { zeros, poles, critical, branchPoints };
-  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexFunctionExprSafe]);
+  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile]);
 
   const otherComplexContourAnalysis = useMemo(() => {
     const points = otherComplexPathZPoints;
@@ -13448,6 +13583,16 @@ const App: React.FC = () => {
       points.length >= 3 &&
       Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) <=
         Math.max(1e-3, complexMapZExtent * 0.03);
+    const twoPi = Math.PI * 2;
+    const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+      const abx = bx - ax;
+      const aby = by - ay;
+      const denom = abx * abx + aby * aby;
+      const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / denom));
+      const qx = ax + t * abx;
+      const qy = ay + t * aby;
+      return Math.hypot(px - qx, py - qy);
+    };
 
     let windingNumber: number | null = null;
     if (closed && otherComplexPathWMappedSegments.length) {
@@ -13480,25 +13625,109 @@ const App: React.FC = () => {
       return inside;
     };
 
-    const singularitiesInside = otherComplexRationalInspection
-      ? otherComplexRationalInspection.poles.filter((entry) => pointInPolygon(entry.point.re, entry.point.im)).length
-      : null;
+    const polesInside = otherComplexRationalInspection
+      ? otherComplexRationalInspection.poles.filter((entry) => pointInPolygon(entry.point.re, entry.point.im))
+      : [];
+    const singularitiesInside = otherComplexRationalInspection ? polesInside.length : null;
 
-    let residueEstimate: C | null = null;
+    let residueFromIntegral: C | null = null;
     if (otherComplexIntegralEstimate) {
-      const invTwoPi = 1 / (Math.PI * 2);
-      residueEstimate = {
+      const invTwoPi = 1 / twoPi;
+      residueFromIntegral = {
         re: otherComplexIntegralEstimate.im * invTwoPi,
         im: -otherComplexIntegralEstimate.re * invTwoPi,
       };
     }
 
+    let residueSum: C | null = null;
+    if (closed && polesInside.length) {
+      let acc: C = { re: 0, im: 0 };
+      let used = 0;
+      for (let i = 0; i < polesInside.length; i++) {
+        const pole = polesInside[i]!.point;
+        let minOtherPole = Infinity;
+        for (let j = 0; j < otherComplexRationalInspection!.poles.length; j++) {
+          if (i === j) continue;
+          const otherPole = otherComplexRationalInspection!.poles[j]!.point;
+          const d = Math.hypot(pole.re - otherPole.re, pole.im - otherPole.im);
+          if (d > 1e-9 && d < minOtherPole) minOtherPole = d;
+        }
+        let minPathDist = Infinity;
+        for (let j = 1; j < points.length; j++) {
+          const [ax, ay] = points[j - 1]!;
+          const [bx, by] = points[j]!;
+          const d = pointToSegmentDistance(pole.re, pole.im, ax, ay, bx, by);
+          if (d < minPathDist) minPathDist = d;
+        }
+        const maxRadius = Math.max(1e-3, complexMapZExtent * 0.12);
+        let radius = Math.min(
+          maxRadius,
+          Number.isFinite(minOtherPole) ? minOtherPole * 0.3 : maxRadius,
+          Number.isFinite(minPathDist) ? minPathDist * 0.3 : maxRadius
+        );
+        if (!Number.isFinite(radius) || radius <= 1e-5) radius = Math.max(1e-3, complexMapZExtent * 0.02);
+        const ringSamples = 196;
+        const ring: [number, number][] = [];
+        for (let k = 0; k <= ringSamples; k++) {
+          const t = (k / ringSamples) * twoPi;
+          ring.push([pole.re + radius * Math.cos(t), pole.im + radius * Math.sin(t)]);
+        }
+        let integralRe = 0;
+        let integralIm = 0;
+        let validSteps = 0;
+        for (let k = 1; k < ring.length; k++) {
+          const [u0, v0] = ring[k - 1]!;
+          const [u1, v1] = ring[k]!;
+          const w0 = evalOtherComplexW(u0, v0);
+          const w1 = evalOtherComplexW(u1, v1);
+          if (!w0 || !w1) continue;
+          const wr = 0.5 * (w0.re + w1.re);
+          const wi = 0.5 * (w0.im + w1.im);
+          const dzr = u1 - u0;
+          const dzi = v1 - v0;
+          integralRe += wr * dzr - wi * dzi;
+          integralIm += wr * dzi + wi * dzr;
+          validSteps++;
+        }
+        if (!validSteps) continue;
+        const residueAtPole = {
+          re: integralIm / twoPi,
+          im: -integralRe / twoPi,
+        };
+        acc = cAdd(acc, residueAtPole);
+        used++;
+      }
+      residueSum = used ? acc : null;
+    }
+
+    const residueIntegral = residueSum
+      ? {
+          re: -twoPi * residueSum.im,
+          im: twoPi * residueSum.re,
+        }
+      : null;
+    const residueTheoremError =
+      otherComplexIntegralEstimate && residueIntegral
+        ? {
+            re: otherComplexIntegralEstimate.re - residueIntegral.re,
+            im: otherComplexIntegralEstimate.im - residueIntegral.im,
+            abs: Math.hypot(
+              otherComplexIntegralEstimate.re - residueIntegral.re,
+              otherComplexIntegralEstimate.im - residueIntegral.im
+            ),
+          }
+        : null;
+
     return {
       closed,
       windingNumber,
       singularitiesInside,
+      singularityPoints: polesInside.map((entry) => entry.point),
       integral: otherComplexIntegralEstimate,
-      residueEstimate,
+      residueFromIntegral,
+      residueSum,
+      residueIntegral,
+      residueTheoremError,
     };
   }, [
     otherComplexPathZPoints,
@@ -13506,6 +13735,7 @@ const App: React.FC = () => {
     complexMapZExtent,
     otherComplexRationalInspection,
     otherComplexIntegralEstimate,
+    evalOtherComplexW,
   ]);
 
   const otherComplexPathMetrics = useMemo(() => {
@@ -13551,7 +13781,7 @@ const App: React.FC = () => {
       : Number.isFinite(absW) && absW <= Math.max(1e-5, otherComplexWExtent * 1e-3);
     const onCritical = jacobianScale != null && jacobianScale <= 1e-3 * Math.max(1, otherComplexSelectedPointInfo.absW);
     let onBranchCut = false;
-    if (otherComplexBranchCutSegments?.length) {
+    if (otherComplexEffectiveBranchCutSegments?.length) {
       const segTol = rootTol * 1.8;
       const distPointSeg = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
         const abx = bx - ax;
@@ -13562,7 +13792,7 @@ const App: React.FC = () => {
         const qy = ay + t * aby;
         return Math.hypot(px - qx, py - qy);
       };
-      for (const seg of otherComplexBranchCutSegments) {
+      for (const seg of otherComplexEffectiveBranchCutSegments) {
         const [a, b] = seg;
         if (distPointSeg(z.re, z.im, a[0], a[1], b[0], b[1]) <= segTol) {
           onBranchCut = true;
@@ -13585,12 +13815,188 @@ const App: React.FC = () => {
   }, [
     otherComplexSelectedPointInfo,
     otherComplexRationalInspection,
-    otherComplexBranchCutSegments,
+    otherComplexEffectiveBranchCutSegments,
     otherComplexWExtent,
     complexMapZExtent,
     complexMapSpec.nu,
     complexMapSpec.nv,
   ]);
+
+  const otherComplexBranchAnalysis = useMemo(() => {
+    const profile = otherComplexBranchProfile;
+    const cutSegments = otherComplexEffectiveBranchCutSegments ?? [];
+    const path = otherComplexPathZPoints;
+    const crossings: Array<{ x: number; y: number; jumpAbs: number | null; jumpArg: number | null }> = [];
+    const crossEps = Math.max(1e-4, complexMapZExtent * 1e-3);
+    const intersectSegments = (
+      a0: [number, number],
+      a1: [number, number],
+      b0: [number, number],
+      b1: [number, number]
+    ) => {
+      const r = [a1[0] - a0[0], a1[1] - a0[1]] as const;
+      const s = [b1[0] - b0[0], b1[1] - b0[1]] as const;
+      const denom = r[0] * s[1] - r[1] * s[0];
+      if (Math.abs(denom) <= 1e-12) return null;
+      const qp = [b0[0] - a0[0], b0[1] - a0[1]] as const;
+      const t = (qp[0] * s[1] - qp[1] * s[0]) / denom;
+      const u = (qp[0] * r[1] - qp[1] * r[0]) / denom;
+      if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+      return { x: a0[0] + t * r[0], y: a0[1] + t * r[1], t };
+    };
+    const pushCrossing = (cross: { x: number; y: number }, dir: [number, number]) => {
+      for (const existing of crossings) {
+        if (Math.hypot(existing.x - cross.x, existing.y - cross.y) <= crossEps) return;
+      }
+      const len = Math.hypot(dir[0], dir[1]);
+      const ux = len <= 1e-9 ? 1 : dir[0] / len;
+      const uy = len <= 1e-9 ? 0 : dir[1] / len;
+      const nx = -uy;
+      const ny = ux;
+      const sampleEps = Math.max(1e-4, complexMapZExtent * 0.0035);
+      const wa = evalOtherComplexW(cross.x + nx * sampleEps, cross.y + ny * sampleEps);
+      const wb = evalOtherComplexW(cross.x - nx * sampleEps, cross.y - ny * sampleEps);
+      let jumpAbs: number | null = null;
+      let jumpArg: number | null = null;
+      if (wa && wb) {
+        jumpAbs = Math.hypot(wa.re - wb.re, wa.im - wb.im);
+        let dArg = Math.atan2(wa.im, wa.re) - Math.atan2(wb.im, wb.re);
+        if (dArg > Math.PI) dArg -= Math.PI * 2;
+        if (dArg < -Math.PI) dArg += Math.PI * 2;
+        jumpArg = dArg;
+      }
+      crossings.push({ x: cross.x, y: cross.y, jumpAbs, jumpArg });
+    };
+
+    if (path.length >= 2 && cutSegments.length) {
+      for (let i = 1; i < path.length; i++) {
+        const a0 = path[i - 1]!;
+        const a1 = path[i]!;
+        for (const cut of cutSegments) {
+          if (cut.length < 2) continue;
+          const b0 = cut[0]!;
+          const b1 = cut[cut.length - 1]!;
+          const cross = intersectSegments(a0, a1, b0, b1);
+          if (!cross) continue;
+          pushCrossing(cross, [a1[0] - a0[0], a1[1] - a0[1]]);
+        }
+      }
+    }
+
+    const jumpValues = crossings.map((entry) => entry.jumpAbs).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    const avgJump = jumpValues.length ? jumpValues.reduce((sum, v) => sum + v, 0) / jumpValues.length : null;
+    const maxJump = jumpValues.length ? jumpValues.reduce((max, v) => Math.max(max, v), 0) : null;
+
+    const branchPointWinding = profile.branchPoints.map((pt) => {
+      if (!otherComplexContourAnalysis.closed || path.length < 2) return { point: pt, winding: null as number | null };
+      let angleSum = 0;
+      for (let i = 1; i < path.length; i++) {
+        const a0 = Math.atan2(path[i - 1]![1] - pt.im, path[i - 1]![0] - pt.re);
+        const a1 = Math.atan2(path[i]![1] - pt.im, path[i]![0] - pt.re);
+        let d = a1 - a0;
+        if (d > Math.PI) d -= Math.PI * 2;
+        if (d < -Math.PI) d += Math.PI * 2;
+        angleSum += d;
+      }
+      return { point: pt, winding: angleSum / (Math.PI * 2) };
+    });
+
+    return {
+      profile,
+      cutSegments,
+      crossings,
+      crossingCount: crossings.length,
+      avgJump,
+      maxJump,
+      branchPointWinding,
+      hasCrossingWarning: crossings.length > 0,
+    };
+  }, [
+    otherComplexBranchProfile,
+    otherComplexEffectiveBranchCutSegments,
+    otherComplexPathZPoints,
+    complexMapZExtent,
+    evalOtherComplexW,
+    otherComplexContourAnalysis.closed,
+  ]);
+
+  const otherComplexPreferredPole = useMemo(() => {
+    const poles: C[] = [];
+    if (otherComplexRationalInspection?.poles.length) {
+      for (const pole of otherComplexRationalInspection.poles) poles.push(pole.point);
+    } else if (otherComplexMarkers2d?.pole.z.length) {
+      for (const [re, im] of otherComplexMarkers2d.pole.z) poles.push({ re, im });
+    }
+    if (!poles.length) return null;
+    let best = poles[0]!;
+    let bestDist = Math.hypot(best.re - otherComplexSelectedPoint.re, best.im - otherComplexSelectedPoint.im);
+    for (let i = 1; i < poles.length; i++) {
+      const pole = poles[i]!;
+      const d = Math.hypot(pole.re - otherComplexSelectedPoint.re, pole.im - otherComplexSelectedPoint.im);
+      if (d < bestDist) {
+        best = pole;
+        bestDist = d;
+      }
+    }
+    return best;
+  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexSelectedPoint]);
+
+  const applyOtherComplexContourPreset = useCallback(
+    (preset: OtherComplexContourPresetId) => {
+      setOtherComplexShowPathMapping(true);
+      if (preset === "circle_selected") {
+        setOtherComplexPathMode("circle");
+        setOtherComplexPathCenter(otherComplexSelectedPoint);
+        return;
+      }
+      if (preset === "circle_pole") {
+        if (!otherComplexPreferredPole) {
+          setOtherComplexActionStatus("No pole candidate detected in current viewport.");
+          return;
+        }
+        setOtherComplexPathMode("circle");
+        setOtherComplexPathCenter(otherComplexPreferredPole);
+        setOtherComplexPathRadius(Math.max(0.12, complexMapZExtent * 0.18));
+        setOtherComplexActionStatus(`Circle contour centered at pole z=${cToStr(otherComplexPreferredPole)}.`);
+        return;
+      }
+      if (preset === "rectangle") {
+        setOtherComplexPathMode("rectangle");
+        setOtherComplexPathCenter(otherComplexSelectedPoint);
+        setOtherComplexPathRectWidth(Math.max(0.3, complexMapZExtent * 0.85));
+        setOtherComplexPathRectHeight(Math.max(0.3, complexMapZExtent * 0.6));
+        return;
+      }
+      if (preset === "freehand") {
+        setOtherComplexPathMode("freehand");
+        setOtherComplexFreehandPath([]);
+        return;
+      }
+      if (preset === "segment") {
+        const span = Math.max(0.25, complexMapZExtent * 0.42);
+        setOtherComplexPathMode("segment");
+        setOtherComplexPathPickTarget("start");
+        setOtherComplexSegmentStart({ re: otherComplexSelectedPoint.re - span, im: otherComplexSelectedPoint.im });
+        setOtherComplexSegmentEnd({ re: otherComplexSelectedPoint.re + span, im: otherComplexSelectedPoint.im });
+        return;
+      }
+      if (preset === "branch_cut_crossing") {
+        const h = Math.max(0.22, complexMapZExtent * 0.2);
+        setOtherComplexPathMode("segment");
+        setOtherComplexPathPickTarget("start");
+        if (otherComplexBranchProfile.id === "sqrt_z2m1") {
+          setOtherComplexSegmentStart({ re: 0, im: -h });
+          setOtherComplexSegmentEnd({ re: 0, im: h });
+        } else {
+          const x = -Math.max(0.4, complexMapZExtent * 0.55);
+          setOtherComplexSegmentStart({ re: x, im: -h });
+          setOtherComplexSegmentEnd({ re: x, im: h });
+        }
+        return;
+      }
+    },
+    [otherComplexSelectedPoint, otherComplexPreferredPole, complexMapZExtent, otherComplexBranchProfile.id]
+  );
 
   const otherComplexSphereView = useMemo(() => {
     const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
@@ -13679,10 +14085,16 @@ const App: React.FC = () => {
       }
     }
 
-    if (otherComplexShowBranchCuts && otherComplexBranchCutSegments) {
-      for (const seg of otherComplexBranchCutSegments) {
+    if (otherComplexShowBranchCuts && otherComplexEffectiveBranchCutSegments) {
+      for (const seg of otherComplexEffectiveBranchCutSegments) {
         if (seg.length < 2) continue;
         lines.push({ points: seg.map(([x, y]) => toSphere(x, y)), color: 0x8b5cf6, opacity: 0.88 });
+      }
+    }
+    if (otherComplexBranchProfile.branchPoints.length) {
+      for (const pt of otherComplexBranchProfile.branchPoints) {
+        const s = toSphere(pt.re, pt.im);
+        points.push({ x: s.x, y: s.y, z: s.z, color: 0x7c3aed, size: 0.062 });
       }
     }
 
@@ -13728,7 +14140,8 @@ const App: React.FC = () => {
 
     return { lines, points, guideSpheres };
   }, [
-    otherComplexBranchCutSegments,
+    otherComplexBranchProfile,
+    otherComplexEffectiveBranchCutSegments,
     otherComplexDomainValueMode,
     otherComplexGrid2d,
     otherComplexMarkers2d,
@@ -13754,12 +14167,15 @@ const App: React.FC = () => {
     }
     const fmt = (value: number) => (Math.abs(value) < 1e-9 ? "0" : value.toFixed(5));
     const sign = otherComplexIntegralEstimate.im >= 0 ? "+" : "-";
+    const residueErr = otherComplexContourAnalysis.residueTheoremError;
     setOtherComplexActionStatus(
       `Integral estimate: ${fmt(otherComplexIntegralEstimate.re)} ${sign} ${fmt(
         Math.abs(otherComplexIntegralEstimate.im)
-      )}i (segments ${otherComplexIntegralEstimate.used}/${otherComplexIntegralEstimate.total}).`
+      )}i (segments ${otherComplexIntegralEstimate.used}/${otherComplexIntegralEstimate.total})${
+        residueErr ? `; residue theorem error |Δ|=${fmt(residueErr.abs)}.` : "."
+      }`
     );
-  }, [otherComplexIntegralEstimate]);
+  }, [otherComplexIntegralEstimate, otherComplexContourAnalysis.residueTheoremError]);
 
   
   const availableColorModes = useMemo(
@@ -13963,8 +14379,8 @@ case "mobius":
       }
     }
 
-    if (otherComplexShowBranchCuts && otherComplexBranchCutSegments?.length) {
-      for (const seg of otherComplexBranchCutSegments) {
+    if (otherComplexShowBranchCuts && otherComplexEffectiveBranchCutSegments?.length) {
+      for (const seg of otherComplexEffectiveBranchCutSegments) {
         zRef.current.drawCurve(seg, "#b42318", {
           width: 1.45,
           opacity: 0.86,
@@ -13972,6 +14388,19 @@ case "mobius":
           layer: "other-branch-cuts",
         });
       }
+    }
+    if (otherComplexBranchProfile.branchPoints.length) {
+      zRef.current.drawPoints(
+        otherComplexBranchProfile.branchPoints.map((pt) => [pt.re, pt.im] as [number, number]),
+        {
+          color: "#7c3aed",
+          shape: "diamond",
+          size: 5.1,
+          layer: "other-branch-point-z",
+        }
+      );
+    } else {
+      zRef.current.drawPoints([], { layer: "other-branch-point-z" });
     }
 
     if (otherComplexShowSelectedContour && otherComplexSelectedContourPolylines) {
@@ -14121,7 +14550,8 @@ case "mobius":
     otherComplexMarkers2d,
     otherComplexContourBandField,
     otherComplexVectorFieldSegments,
-    otherComplexBranchCutSegments,
+    otherComplexBranchProfile,
+    otherComplexEffectiveBranchCutSegments,
     otherComplexSelectedContourPolylines,
     otherComplexShowDomainColoring,
     otherComplexShowContourBands,
@@ -36485,7 +36915,7 @@ case "mobius":
                             onClick={() => setOtherComplexPathMode("segment")}
                             style={pill(otherComplexPathMode === "segment")}
                           >
-                            Segment
+                            Line segment
                           </button>
                           <button
                             type="button"
@@ -36502,15 +36932,36 @@ case "mobius":
                             Freehand
                           </button>
                         </div>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Contour presets</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setOtherComplexPathMode("circle");
-                              setOtherComplexPathCenter(otherComplexSelectedPoint);
-                            }}
+                            onClick={() => applyOtherComplexContourPreset("circle_selected")}
                           >
                             Circle around selected point
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyOtherComplexContourPreset("circle_pole")}
+                            disabled={!otherComplexPreferredPole}
+                          >
+                            Circle around pole
+                          </button>
+                          <button type="button" onClick={() => applyOtherComplexContourPreset("rectangle")}>
+                            Rectangle contour
+                          </button>
+                          <button type="button" onClick={() => applyOtherComplexContourPreset("freehand")}>
+                            Freehand contour
+                          </button>
+                          <button type="button" onClick={() => applyOtherComplexContourPreset("segment")}>
+                            Line segment
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyOtherComplexContourPreset("branch_cut_crossing")}
+                            disabled={otherComplexBranchProfile.id === "none"}
+                          >
+                            Branch-cut crossing path
                           </button>
                         </div>
                         {otherComplexPathMode === "circle" ? (
@@ -36585,6 +37036,64 @@ case "mobius":
                           </div>
                         )}
                       </div>
+                      <details
+                        style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}
+                        open={otherComplexContourLabOpen}
+                        onToggle={(event) => setOtherComplexContourLabOpen(event.currentTarget.open)}
+                      >
+                        <summary style={{ fontWeight: 700, cursor: "pointer" }}>Contour / Residue Lab (advanced)</summary>
+                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                          ∮γ f(z)dz = 2πi Σ Res(f, ak)
+                        </div>
+                        <div>
+                          singularities inside contour:{" "}
+                          {otherComplexContourAnalysis.singularitiesInside == null
+                            ? "n/a (closed contour + rational form required)"
+                            : otherComplexContourAnalysis.singularitiesInside}
+                        </div>
+                        {otherComplexContourAnalysis.singularityPoints.length > 0 && (
+                          <div style={{ fontSize: 11, opacity: 0.78 }}>
+                            inside poles:{" "}
+                            {otherComplexContourAnalysis.singularityPoints.map((pt) => cToStr(pt)).join(" ; ")}
+                          </div>
+                        )}
+                        <div>
+                          winding number:{" "}
+                          {otherComplexContourAnalysis.windingNumber == null
+                            ? "n/a (use closed contour)"
+                            : otherComplexContourAnalysis.windingNumber.toFixed(6)}
+                        </div>
+                        <div>
+                          ∮ f(z) dz (numerical):{" "}
+                          {otherComplexContourAnalysis.integral
+                            ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
+                                otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
+                              } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
+                            : "n/a"}
+                        </div>
+                        <div>
+                          2πi · residue sum:{" "}
+                          {otherComplexContourAnalysis.residueIntegral
+                            ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${
+                                otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"
+                              } ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
+                            : "n/a (closed contour with poles inside required)"}
+                        </div>
+                        <div>
+                          residue sum ΣRes:{" "}
+                          {otherComplexContourAnalysis.residueSum
+                            ? `${otherComplexContourAnalysis.residueSum.re.toFixed(6)} ${
+                                otherComplexContourAnalysis.residueSum.im >= 0 ? "+" : "-"
+                              } ${Math.abs(otherComplexContourAnalysis.residueSum.im).toFixed(6)}i`
+                            : "n/a"}
+                        </div>
+                        <div>
+                          error |∮f dz − 2πiΣRes|:{" "}
+                          {otherComplexContourAnalysis.residueTheoremError
+                            ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
+                            : "n/a"}
+                        </div>
+                      </details>
                       <details
                         style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}
                         open={otherComplexSummaryOpen}
@@ -37196,10 +37705,43 @@ case "mobius":
                           />
                         </label>
                       )}
-                      {/\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe) && (
-                        <div style={{ fontSize: 11, opacity: 0.72 }}>
-                          Branch-cut overlay is inferred from argument jumps of f(z) on the sampled grid.
-                        </div>
+                      {otherComplexBranchProfile.id !== "none" && (
+                        <details
+                          style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 6, fontSize: 11 }}
+                          open={otherComplexBranchLabOpen}
+                          onToggle={(event) => setOtherComplexBranchLabOpen(event.currentTarget.open)}
+                        >
+                          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Branch Cut / Monodromy mode</summary>
+                          <div>branch function: {otherComplexBranchProfile.label}</div>
+                          <div>
+                            branch points:{" "}
+                            {otherComplexBranchProfile.branchPoints.length
+                              ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
+                              : "none"}
+                          </div>
+                          <div>branch cut: {otherComplexBranchProfile.cutLabel}</div>
+                          <div style={{ color: otherComplexBranchAnalysis.hasCrossingWarning ? "#b42318" : undefined }}>
+                            path crossing warning:{" "}
+                            {otherComplexBranchAnalysis.hasCrossingWarning
+                              ? `crosses cut ${otherComplexBranchAnalysis.crossingCount} time(s)`
+                              : "no cut crossing detected on current path"}
+                          </div>
+                          <div>
+                            value jump indicator:{" "}
+                            {otherComplexBranchAnalysis.avgJump == null
+                              ? "n/a"
+                              : `avg ${otherComplexBranchAnalysis.avgJump.toFixed(6)}, max ${(
+                                  otherComplexBranchAnalysis.maxJump ?? 0
+                                ).toFixed(6)}`}
+                          </div>
+                          {otherComplexBranchAnalysis.branchPointWinding.map((entry, idx) => (
+                            <div key={`${entry.point.re}:${entry.point.im}:${idx}`}>
+                              winding around branch point {cToStr(entry.point)}:{" "}
+                              {entry.winding == null ? "n/a (open path)" : entry.winding.toFixed(4)}
+                            </div>
+                          ))}
+                          <div>{otherComplexBranchProfile.monodromyNote}</div>
+                        </details>
                       )}
                       {otherComplexPathMode === "circle" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
@@ -37318,7 +37860,7 @@ case "mobius":
                               : otherComplexContourAnalysis.singularitiesInside}
                           </div>
                           <div>
-                            integral approximation:{" "}
+                            ∮ f(z) dz:{" "}
                             {otherComplexContourAnalysis.integral
                               ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
                                   otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
@@ -37326,11 +37868,17 @@ case "mobius":
                               : "n/a"}
                           </div>
                           <div>
-                            residue estimate:{" "}
-                            {otherComplexContourAnalysis.residueEstimate
-                              ? `${otherComplexContourAnalysis.residueEstimate.re.toFixed(6)} ${
-                                  otherComplexContourAnalysis.residueEstimate.im >= 0 ? "+" : "-"
-                                } ${Math.abs(otherComplexContourAnalysis.residueEstimate.im).toFixed(6)}i`
+                            2πi · residue sum:{" "}
+                            {otherComplexContourAnalysis.residueIntegral
+                              ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${
+                                  otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"
+                                } ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
+                              : "n/a"}
+                          </div>
+                          <div>
+                            residue theorem error:{" "}
+                            {otherComplexContourAnalysis.residueTheoremError
+                              ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
                               : "n/a"}
                           </div>
                         </div>
