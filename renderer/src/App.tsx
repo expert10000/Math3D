@@ -1290,12 +1290,37 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 type FunctionExplorerScene = "mobius" | "other_complex";
-type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "annulus" | "polyline" | "freehand";
+type OtherComplexPathMode =
+  | "circle"
+  | "segment"
+  | "rectangle"
+  | "annulus"
+  | "polyline"
+  | "freehand"
+  | "loop_all"
+  | "figure_eight";
 type OtherComplexSphereColorMode = "f" | "z";
 type OtherComplexWScaleMode = "linear" | "log" | "auto";
 type OtherComplexLeftPanelView = "setup" | "gallery";
 type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
-type OtherComplexInspectorTab = "point" | "features" | "contour" | "residue" | "laurent" | "warnings";
+type OtherComplexInspectorTab =
+  | "branch"
+  | "path"
+  | "monodromy"
+  | "sheet"
+  | "warnings"
+  | "point"
+  | "features"
+  | "contour"
+  | "residue"
+  | "laurent";
+type OtherComplexBranchCutMode =
+  | "principal"
+  | "negative_real_axis"
+  | "positive_real_axis"
+  | "radial_from_point"
+  | "between_branch_points"
+  | "custom_polyline";
 type OtherComplexContourPresetId =
   | "circle_selected"
   | "circle_pole"
@@ -1304,7 +1329,12 @@ type OtherComplexContourPresetId =
   | "polyline"
   | "freehand"
   | "segment"
-  | "branch_cut_crossing";
+  | "branch_cut_crossing"
+  | "loop_branch_point"
+  | "loop_all_branch_points"
+  | "figure_eight";
+const OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS = [0.5, 1, 2, 4] as const;
+type OtherComplexPathAnimationSpeed = (typeof OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS)[number];
 type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1";
 type BranchLabProfile = {
   id: BranchLabProfileId;
@@ -2821,6 +2851,11 @@ const FUNCTION_EXPLORER_CORE_PRESET_IDS = [
   "z2_plus_1_over_z_minus_2",
   "exp_over_z",
   "sin_over_z",
+  "log",
+  "sqrt",
+  "pow_half",
+  "pow_third",
+  "sqrt_z2m1",
 ] as const;
 
 const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: string; note: string }> = [
@@ -2836,6 +2871,10 @@ const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: 
   { id: "z3", label: "z^3", expr: "z^3", note: "Triple winding and stronger local stretch." },
   { id: "exp", label: "exp(z)", expr: "exp(z)", note: "Periodic in imaginary direction." },
   { id: "log", label: "log(z)", expr: "log(z)", note: "Branch behavior around the origin." },
+  { id: "sqrt", label: "sqrt(z)", expr: "sqrt(z)", note: "Branch point at 0 with two sheets." },
+  { id: "pow_half", label: "z^(1/2)", expr: "z^(1/2)", note: "Equivalent square-root branch with sheet swap after one loop." },
+  { id: "pow_third", label: "z^(1/3)", expr: "z^(1/3)", note: "Three-sheet branch: each loop advances one sheet." },
+  { id: "sqrt_z2m1", label: "sqrt(z^2-1)", expr: "sqrt(z^2-1)", note: "Branch points at -1 and 1 with cut on [-1,1]." },
   { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
   { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
@@ -8215,6 +8254,7 @@ const App: React.FC = () => {
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
   const [otherComplexPathCenter, setOtherComplexPathCenter] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
+  const [otherComplexPathLoopCount, setOtherComplexPathLoopCount] = useState(1);
   const [otherComplexAnnulusOuterRadius, setOtherComplexAnnulusOuterRadius] = useState(1.5);
   const [otherComplexAnnulusInnerRadius, setOtherComplexAnnulusInnerRadius] = useState(0.7);
   const [otherComplexPathRectWidth, setOtherComplexPathRectWidth] = useState(2.0);
@@ -8225,11 +8265,18 @@ const App: React.FC = () => {
   const [otherComplexPolylineClosed, setOtherComplexPolylineClosed] = useState(true);
   const [otherComplexFreehandPath, setOtherComplexFreehandPath] = useState<[number, number][]>([]);
   const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
+  const [otherComplexSelectedBranchPointIndex, setOtherComplexSelectedBranchPointIndex] = useState(0);
+  const [otherComplexPathAnimationPlaying, setOtherComplexPathAnimationPlaying] = useState(false);
+  const [otherComplexPathAnimationProgress, setOtherComplexPathAnimationProgress] = useState(0);
+  const [otherComplexPathAnimationSpeed, setOtherComplexPathAnimationSpeed] = useState<OtherComplexPathAnimationSpeed>(1);
+  const [otherComplexIncludeInfinityBranchPoint, setOtherComplexIncludeInfinityBranchPoint] = useState(false);
+  const [otherComplexBranchCutMode, setOtherComplexBranchCutMode] = useState<OtherComplexBranchCutMode>("principal");
+  const [otherComplexBranchCutRadialAngleDeg, setOtherComplexBranchCutRadialAngleDeg] = useState(180);
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
   const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere" | "residue">("plane");
   const [otherComplexLayoutMode, setOtherComplexLayoutMode] = useState<OtherComplexLayoutMode>("two_pane");
   const [otherComplexLeftPanelView, setOtherComplexLeftPanelView] = useState<OtherComplexLeftPanelView>("setup");
-  const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("point");
+  const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("branch");
   const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
   const [otherComplexWScaleMode, setOtherComplexWScaleMode] = useState<OtherComplexWScaleMode>("auto");
   const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
@@ -9490,6 +9537,9 @@ const App: React.FC = () => {
       showIsolines: true,
       outputMode: "sweep",
     }));
+    setOtherComplexBranchCutMode("principal");
+    setOtherComplexSelectedBranchPointIndex(0);
+    setOtherComplexPathLoopCount(1);
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapError(null);
   }, []);
@@ -9501,6 +9551,8 @@ const App: React.FC = () => {
       fExpr: expr,
       mapMode: "standard",
     }));
+    setOtherComplexBranchCutMode("principal");
+    setOtherComplexSelectedBranchPointIndex(0);
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapError(null);
   }, []);
@@ -9866,38 +9918,126 @@ const App: React.FC = () => {
   const otherComplexBranchGuideSegments = useMemo(() => {
     if (otherComplexBranchProfile.id === "none") return null;
     const segments: [number, number][][] = [];
+    const parts = 96;
+    const extent = Math.max(0.6, complexMapZExtent) * 1.1;
+    const branchPoints = otherComplexBranchProfile.branchPoints;
+    const selectedIndex = branchPoints.length
+      ? Math.min(Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)), branchPoints.length - 1)
+      : -1;
+    const selectedPoint = selectedIndex >= 0 ? branchPoints[selectedIndex]! : null;
+    const pushSegment = (x0: number, y0: number, x1: number, y1: number) => {
+      segments.push([
+        [x0, y0],
+        [x1, y1],
+      ]);
+    };
+    const pushRay = (from: C, angleRad: number, length = extent) => {
+      for (let i = 0; i < parts; i++) {
+        const t0 = i / parts;
+        const t1 = (i + 1) / parts;
+        pushSegment(
+          from.re + Math.cos(angleRad) * length * t0,
+          from.im + Math.sin(angleRad) * length * t0,
+          from.re + Math.cos(angleRad) * length * t1,
+          from.im + Math.sin(angleRad) * length * t1
+        );
+      }
+    };
+    const pushPolyline = (polyline: [number, number][]) => {
+      if (polyline.length < 2) return;
+      for (let i = 1; i < polyline.length; i++) {
+        const a = polyline[i - 1]!;
+        const b = polyline[i]!;
+        pushSegment(a[0], a[1], b[0], b[1]);
+      }
+    };
+
+    if (otherComplexBranchCutMode === "custom_polyline") {
+      pushPolyline(otherComplexPolylinePath);
+      return segments.length ? segments : null;
+    }
+
+    if (otherComplexBranchCutMode === "between_branch_points") {
+      if (otherComplexBranchProfile.id === "sqrt_z2m1" && branchPoints.length >= 2) {
+        for (let i = 0; i < parts; i++) {
+          const t0 = i / parts;
+          const t1 = (i + 1) / parts;
+          pushSegment(-1 + 2 * t0, 0, -1 + 2 * t1, 0);
+        }
+        return segments;
+      }
+      if (branchPoints.length >= 2) {
+        const sorted = [...branchPoints].sort((a, b) => a.re - b.re || a.im - b.im);
+        for (let i = 1; i < sorted.length; i++) {
+          const a = sorted[i - 1]!;
+          const b = sorted[i]!;
+          for (let k = 0; k < parts; k++) {
+            const t0 = k / parts;
+            const t1 = (k + 1) / parts;
+            pushSegment(
+              a.re + (b.re - a.re) * t0,
+              a.im + (b.im - a.im) * t0,
+              a.re + (b.re - a.re) * t1,
+              a.im + (b.im - a.im) * t1
+            );
+          }
+        }
+        return segments;
+      }
+    }
+
+    if (otherComplexBranchCutMode === "positive_real_axis") {
+      const from = selectedPoint ?? { re: 0, im: 0 };
+      pushRay(from, 0);
+      return segments.length ? segments : null;
+    }
+    if (otherComplexBranchCutMode === "radial_from_point") {
+      const from = selectedPoint ?? { re: 0, im: 0 };
+      const angle = (otherComplexBranchCutRadialAngleDeg * Math.PI) / 180;
+      pushRay(from, angle);
+      return segments.length ? segments : null;
+    }
+
+    // principal / negative_real_axis fallback
     if (
       otherComplexBranchProfile.id === "log" ||
       otherComplexBranchProfile.id === "sqrt" ||
       otherComplexBranchProfile.id === "pow_half" ||
       otherComplexBranchProfile.id === "pow_third"
     ) {
-      const xMin = -Math.max(0.5, complexMapZExtent) * 1.1;
-      const parts = 64;
-      for (let i = 0; i < parts; i++) {
-        const t0 = i / parts;
-        const t1 = (i + 1) / parts;
-        segments.push([
-          [xMin * (1 - t0), 0],
-          [xMin * (1 - t1), 0],
-        ]);
-      }
+      const from = selectedPoint ?? { re: 0, im: 0 };
+      pushRay(from, Math.PI);
       return segments;
     }
     if (otherComplexBranchProfile.id === "sqrt_z2m1") {
-      const parts = 96;
       for (let i = 0; i < parts; i++) {
         const t0 = i / parts;
         const t1 = (i + 1) / parts;
-        segments.push([
-          [-1 + 2 * t0, 0],
-          [-1 + 2 * t1, 0],
-        ]);
+        pushSegment(-1 + 2 * t0, 0, -1 + 2 * t1, 0);
       }
       return segments;
     }
     return null;
-  }, [otherComplexBranchProfile, complexMapZExtent]);
+  }, [
+    otherComplexBranchProfile,
+    complexMapZExtent,
+    otherComplexSelectedBranchPointIndex,
+    otherComplexBranchCutMode,
+    otherComplexPolylinePath,
+    otherComplexBranchCutRadialAngleDeg,
+  ]);
+
+  const otherComplexBranchCutLabel = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return "none";
+    if (otherComplexBranchCutMode === "principal") return `principal (${otherComplexBranchProfile.cutLabel})`;
+    if (otherComplexBranchCutMode === "negative_real_axis") return "negative real axis";
+    if (otherComplexBranchCutMode === "positive_real_axis") return "positive real axis";
+    if (otherComplexBranchCutMode === "radial_from_point") {
+      return `radial from selected point, angle ${otherComplexBranchCutRadialAngleDeg.toFixed(0)}°`;
+    }
+    if (otherComplexBranchCutMode === "between_branch_points") return "between branch points";
+    return "custom polyline";
+  }, [otherComplexBranchProfile.id, otherComplexBranchProfile.cutLabel, otherComplexBranchCutMode, otherComplexBranchCutRadialAngleDeg]);
 
   const complexMapWExtent = useMemo(() => {
     const clampAbs = complexMapSpec.clampAbs;
@@ -13255,7 +13395,12 @@ const App: React.FC = () => {
       });
       return;
     }
-    if (otherComplexPathMode === "circle" || otherComplexPathMode === "rectangle" || otherComplexPathMode === "annulus") {
+    if (
+      otherComplexPathMode === "circle" ||
+      otherComplexPathMode === "rectangle" ||
+      otherComplexPathMode === "annulus" ||
+      otherComplexPathMode === "figure_eight"
+    ) {
       setOtherComplexPathCenter({ re: pt.re, im: pt.im });
       return;
     }
@@ -13298,15 +13443,23 @@ const App: React.FC = () => {
 
   const otherComplexPathZLoops = useMemo(() => {
     if (!otherComplexPathMappingActive) return [] as [number, number][][];
-    const buildCircleLoop = (radius: number, clockwise = false) => {
+    const branchPoints = otherComplexBranchProfile.branchPoints;
+    const selectedBranchPointIndex =
+      branchPoints.length > 0
+        ? Math.min(Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)), branchPoints.length - 1)
+        : -1;
+    const selectedBranchPoint = selectedBranchPointIndex >= 0 ? branchPoints[selectedBranchPointIndex]! : null;
+    const loopTurns = Math.max(1, Math.min(24, Math.round(otherComplexPathLoopCount)));
+    const buildCircleLoop = (radius: number, clockwise = false, centerOverride?: C, turns = loopTurns) => {
       const r = Math.max(1e-3, radius);
-      const samples = 320;
+      const samples = 320 * Math.max(1, turns);
+      const center = centerOverride ?? otherComplexPathCenter;
       const points: [number, number][] = [];
       for (let i = 0; i <= samples; i++) {
-        const t = (i / samples) * Math.PI * 2 * (clockwise ? -1 : 1);
+        const t = (i / samples) * Math.PI * 2 * turns * (clockwise ? -1 : 1);
         points.push([
-          otherComplexPathCenter.re + r * Math.cos(t),
-          otherComplexPathCenter.im + r * Math.sin(t),
+          center.re + r * Math.cos(t),
+          center.im + r * Math.sin(t),
         ]);
       }
       return points;
@@ -13323,6 +13476,34 @@ const App: React.FC = () => {
       return [closed ? otherComplexPolylinePath : [...otherComplexPolylinePath, first]];
     }
     if (otherComplexPathMode === "circle") return [buildCircleLoop(otherComplexPathRadius)];
+    if (otherComplexPathMode === "loop_all") {
+      if (!branchPoints.length) return [buildCircleLoop(otherComplexPathRadius)];
+      const center = branchPoints.reduce(
+        (acc, pt) => ({ re: acc.re + pt.re, im: acc.im + pt.im }),
+        { re: 0, im: 0 }
+      );
+      center.re /= branchPoints.length;
+      center.im /= branchPoints.length;
+      let maxDist = 0;
+      for (const pt of branchPoints) {
+        maxDist = Math.max(maxDist, Math.hypot(pt.re - center.re, pt.im - center.im));
+      }
+      const radius = Math.max(otherComplexPathRadius, maxDist + Math.max(0.18, complexMapZExtent * 0.08));
+      return [buildCircleLoop(radius, false, center)];
+    }
+    if (otherComplexPathMode === "figure_eight") {
+      const center = selectedBranchPoint ?? otherComplexPathCenter;
+      const rx = Math.max(0.08, otherComplexPathRadius);
+      const ry = Math.max(0.06, otherComplexPathRadius * 0.72);
+      const turns = loopTurns;
+      const samples = 360 * Math.max(1, turns);
+      const points: [number, number][] = [];
+      for (let i = 0; i <= samples; i++) {
+        const t = (i / samples) * Math.PI * 2 * turns;
+        points.push([center.re + rx * Math.sin(t), center.im + ry * Math.sin(2 * t)]);
+      }
+      return [points];
+    }
     if (otherComplexPathMode === "annulus") {
       const outer = Math.max(0.06, otherComplexAnnulusOuterRadius);
       const inner = Math.max(0.04, Math.min(otherComplexAnnulusInnerRadius, outer * 0.95));
@@ -13370,6 +13551,9 @@ const App: React.FC = () => {
     otherComplexFreehandPath,
     otherComplexPolylinePath,
     otherComplexPolylineClosed,
+    otherComplexPathLoopCount,
+    otherComplexSelectedBranchPointIndex,
+    otherComplexBranchProfile.branchPoints,
     otherComplexAnnulusOuterRadius,
     otherComplexAnnulusInnerRadius,
     otherComplexPathRadius,
@@ -13379,6 +13563,31 @@ const App: React.FC = () => {
     otherComplexSegmentStart,
     otherComplexSegmentEnd,
     complexMapZExtent,
+  ]);
+
+  useEffect(() => {
+    if (mode !== "mobius" || functionExplorerScene !== "other_complex" || !otherComplexPathAnimationPlaying) return;
+    if (!otherComplexPathMappingActive || !otherComplexPathZLoops.some((loop) => loop.length >= 2)) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.max(0, (now - last) / 1000);
+      last = now;
+      setOtherComplexPathAnimationProgress((prev) => {
+        const next = prev + dt * 0.18 * otherComplexPathAnimationSpeed;
+        return next >= 1 ? next - Math.floor(next) : next;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [
+    mode,
+    functionExplorerScene,
+    otherComplexPathAnimationPlaying,
+    otherComplexPathAnimationSpeed,
+    otherComplexPathMappingActive,
+    otherComplexPathZLoops,
   ]);
 
   const otherComplexPathWMappedSegments = useMemo(() => {
@@ -13399,6 +13608,60 @@ const App: React.FC = () => {
     }
     return segs;
   }, [otherComplexPathZLoops, evalOtherComplexW]);
+
+  const otherComplexPathPlayback = useMemo(() => {
+    const loop = otherComplexPathZLoops.find((entry) => entry.length >= 2) ?? null;
+    if (!loop) return null;
+    const progress = Math.max(0, Math.min(1, otherComplexPathAnimationProgress));
+    const segLens: number[] = [];
+    let total = 0;
+    for (let i = 1; i < loop.length; i++) {
+      const prev = loop[i - 1]!;
+      const curr = loop[i]!;
+      const len = Math.hypot(curr[0] - prev[0], curr[1] - prev[1]);
+      segLens.push(len);
+      total += len;
+    }
+    const start: C = { re: loop[0]![0], im: loop[0]![1] };
+    const closed =
+      loop.length >= 3 &&
+      Math.hypot(loop[0]![0] - loop[loop.length - 1]![0], loop[0]![1] - loop[loop.length - 1]![1]) <=
+        Math.max(1e-3, complexMapZExtent * 0.03);
+    const endIndex = closed && loop.length >= 3 ? loop.length - 2 : loop.length - 1;
+    const endPoint = loop[endIndex]!;
+    const end: C = { re: endPoint[0], im: endPoint[1] };
+    let current: C = { ...start };
+    if (total > 1e-9) {
+      const target = total * progress;
+      let acc = 0;
+      for (let i = 1; i < loop.length; i++) {
+        const segLen = segLens[i - 1]!;
+        const p0 = loop[i - 1]!;
+        const p1 = loop[i]!;
+        if (target <= acc + segLen || i === loop.length - 1) {
+          const t = segLen <= 1e-9 ? 0 : Math.max(0, Math.min(1, (target - acc) / segLen));
+          current = {
+            re: p0[0] + (p1[0] - p0[0]) * t,
+            im: p0[1] + (p1[1] - p0[1]) * t,
+          };
+          break;
+        }
+        acc += segLen;
+      }
+    }
+    const startW = evalOtherComplexW(start.re, start.im);
+    const currentW = evalOtherComplexW(current.re, current.im);
+    const endW = evalOtherComplexW(end.re, end.im);
+    const sheetJumpVisible =
+      !!startW &&
+      !!endW &&
+      Number.isFinite(startW.re) &&
+      Number.isFinite(startW.im) &&
+      Number.isFinite(endW.re) &&
+      Number.isFinite(endW.im) &&
+      Math.hypot(startW.re - endW.re, startW.im - endW.im) > Math.max(1e-4, 2e-3 * complexMapZExtent);
+    return { start, current, end, startW, currentW, endW, closed, progress, sheetJumpVisible };
+  }, [otherComplexPathZLoops, otherComplexPathAnimationProgress, complexMapZExtent, evalOtherComplexW]);
 
   const otherComplexPathDirectionArrows = useMemo(() => {
     const buildArrows = (lines: [number, number][][], countPerLine = 3) => {
@@ -13715,10 +13978,14 @@ const App: React.FC = () => {
       : otherComplexMarkers2d?.pole.z.length ?? 0;
     const critical = otherComplexMarkers2d?.critical.z.length ?? 0;
     const branchPoints = otherComplexBranchProfile.branchPoints.length
-      ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(", ")
+      ? `${otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(", ")}${
+          otherComplexIncludeInfinityBranchPoint ? ", ∞" : ""
+        }`
+      : otherComplexIncludeInfinityBranchPoint
+        ? "∞"
       : "none detected";
     return { zeros, poles, critical, branchPoints };
-  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile]);
+  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile, otherComplexIncludeInfinityBranchPoint]);
 
   const otherComplexContourAnalysis = useMemo(() => {
     const loops = otherComplexPathZLoops;
@@ -14371,7 +14638,19 @@ const App: React.FC = () => {
     const cutSegments = otherComplexEffectiveBranchCutSegments ?? [];
     const loops = otherComplexPathZLoops;
     const crossings: Array<{ x: number; y: number; jumpAbs: number | null; jumpArg: number | null }> = [];
+    const twoPi = Math.PI * 2;
     const crossEps = Math.max(1e-4, complexMapZExtent * 1e-3);
+    const wrapArgDelta = (a0: number, a1: number) => {
+      let d = a1 - a0;
+      if (d > Math.PI) d -= twoPi;
+      if (d < -Math.PI) d += twoPi;
+      return d;
+    };
+    const roundedWinding = (w: number | null) => {
+      if (w == null || !Number.isFinite(w)) return null;
+      const nearest = Math.round(w);
+      return Math.abs(w - nearest) <= 2e-3 ? nearest : null;
+    };
     const intersectSegments = (
       a0: [number, number],
       a1: [number, number],
@@ -14433,21 +14712,83 @@ const App: React.FC = () => {
     const avgJump = jumpValues.length ? jumpValues.reduce((sum, v) => sum + v, 0) / jumpValues.length : null;
     const maxJump = jumpValues.length ? jumpValues.reduce((max, v) => Math.max(max, v), 0) : null;
 
-    const branchPointWinding = profile.branchPoints.map((pt) => {
-      if (!otherComplexContourAnalysis.closed || !loops.length) return { point: pt, winding: null as number | null };
+    const branchPointTracking = profile.branchPoints.map((pt) => {
+      if (!loops.length) {
+        return { point: pt, totalArgChange: null as number | null, windingRaw: null as number | null, windingRounded: null as number | null };
+      }
       let angleSum = 0;
+      let steps = 0;
       for (const loop of loops) {
         for (let i = 1; i < loop.length; i++) {
           const a0 = Math.atan2(loop[i - 1]![1] - pt.im, loop[i - 1]![0] - pt.re);
           const a1 = Math.atan2(loop[i]![1] - pt.im, loop[i]![0] - pt.re);
-          let d = a1 - a0;
-          if (d > Math.PI) d -= Math.PI * 2;
-          if (d < -Math.PI) d += Math.PI * 2;
-          angleSum += d;
+          const r0 = Math.hypot(loop[i - 1]![0] - pt.re, loop[i - 1]![1] - pt.im);
+          const r1 = Math.hypot(loop[i]![0] - pt.re, loop[i]![1] - pt.im);
+          if (r0 <= 1e-12 || r1 <= 1e-12) continue;
+          angleSum += wrapArgDelta(a0, a1);
+          steps++;
         }
       }
-      return { point: pt, winding: angleSum / (Math.PI * 2) };
+      if (!steps) {
+        return { point: pt, totalArgChange: null as number | null, windingRaw: null as number | null, windingRounded: null as number | null };
+      }
+      const windingRaw = angleSum / twoPi;
+      return { point: pt, totalArgChange: angleSum, windingRaw, windingRounded: roundedWinding(windingRaw) };
     });
+
+    const branchPointWinding = branchPointTracking.map((entry) => ({
+      point: entry.point,
+      winding: otherComplexContourAnalysis.closed ? entry.windingRaw : null,
+    }));
+    const selectedBranchPointIndex =
+      branchPointTracking.length > 0
+        ? Math.min(Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)), branchPointTracking.length - 1)
+        : -1;
+    const selectedBranchPoint =
+      selectedBranchPointIndex >= 0 ? branchPointTracking[selectedBranchPointIndex] : null;
+    const monodromySheetCount =
+      profile.id === "pow_third"
+        ? 3
+        : profile.id === "sqrt" || profile.id === "pow_half" || profile.id === "sqrt_z2m1"
+          ? 2
+          : null;
+    let monodromyKRaw: number | null = selectedBranchPoint?.windingRaw ?? null;
+    let monodromyKRounded: number | null = selectedBranchPoint?.windingRounded ?? null;
+    if (profile.id === "sqrt_z2m1" && branchPointTracking.length) {
+      const rawSum = branchPointTracking.reduce((sum, entry) => sum + (entry.windingRaw ?? 0), 0);
+      const allRounded = branchPointTracking.every((entry) => entry.windingRounded != null);
+      monodromyKRaw = rawSum;
+      monodromyKRounded = allRounded
+        ? branchPointTracking.reduce((sum, entry) => sum + (entry.windingRounded ?? 0), 0)
+        : null;
+    }
+    let monodromySheetShiftMod: number | null = null;
+    if (monodromySheetCount && monodromyKRounded != null) {
+      monodromySheetShiftMod = ((monodromyKRounded % monodromySheetCount) + monodromySheetCount) % monodromySheetCount;
+    }
+    const analyticContinuationChangesSheet =
+      monodromySheetCount && monodromySheetShiftMod != null
+        ? monodromySheetShiftMod !== 0
+        : monodromyKRaw != null && Math.abs(monodromyKRaw) > 1e-3;
+    const logImagShift = profile.id === "log" && monodromyKRaw != null ? twoPi * monodromyKRaw : null;
+    const gcdInt = (a: number, b: number) => {
+      let x = Math.abs(Math.trunc(a));
+      let y = Math.abs(Math.trunc(b));
+      while (y !== 0) {
+        const t = x % y;
+        x = y;
+        y = t;
+      }
+      return x || 1;
+    };
+    let returnPeriodLoops: number | "infinite" | null = null;
+    if (profile.id === "log") {
+      if (monodromyKRounded != null && monodromyKRounded !== 0) returnPeriodLoops = "infinite";
+      else returnPeriodLoops = 1;
+    } else if (monodromySheetCount && monodromyKRounded != null) {
+      if (monodromyKRounded === 0) returnPeriodLoops = 1;
+      else returnPeriodLoops = monodromySheetCount / gcdInt(monodromySheetCount, monodromyKRounded);
+    }
 
     return {
       profile,
@@ -14456,7 +14797,17 @@ const App: React.FC = () => {
       crossingCount: crossings.length,
       avgJump,
       maxJump,
+      branchPointTracking,
       branchPointWinding,
+      selectedBranchPointIndex,
+      selectedBranchPoint,
+      monodromyKRaw,
+      monodromyKRounded,
+      monodromySheetCount,
+      monodromySheetShiftMod,
+      logImagShift,
+      returnPeriodLoops,
+      analyticContinuationChangesSheet: !!analyticContinuationChangesSheet,
       hasCrossingWarning: crossings.length > 0,
     };
   }, [
@@ -14466,6 +14817,7 @@ const App: React.FC = () => {
     complexMapZExtent,
     evalOtherComplexW,
     otherComplexContourAnalysis.closed,
+    otherComplexSelectedBranchPointIndex,
   ]);
 
   const otherComplexPreferredPole = useMemo(() => {
@@ -14556,9 +14908,66 @@ const App: React.FC = () => {
         }
         return;
       }
+      if (preset === "loop_branch_point") {
+        if (!otherComplexBranchProfile.branchPoints.length) {
+          setOtherComplexActionStatus("No branch points detected for this function.");
+          return;
+        }
+        const idx = Math.min(
+          Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)),
+          otherComplexBranchProfile.branchPoints.length - 1
+        );
+        const pt = otherComplexBranchProfile.branchPoints[idx]!;
+        setOtherComplexPathMode("circle");
+        setOtherComplexPathLoopCount(1);
+        setOtherComplexPathCenter({ re: pt.re, im: pt.im });
+        setOtherComplexPathRadius(Math.max(0.14, complexMapZExtent * 0.16));
+        setOtherComplexActionStatus(`Loop path around branch point z=${cToStr(pt)}.`);
+        return;
+      }
+      if (preset === "loop_all_branch_points") {
+        setOtherComplexPathMode("loop_all");
+        setOtherComplexActionStatus("Loop path around all detected finite branch points.");
+        return;
+      }
+      if (preset === "figure_eight") {
+        setOtherComplexPathMode("figure_eight");
+        setOtherComplexPathLoopCount(Math.max(1, Math.round(otherComplexPathLoopCount)));
+        setOtherComplexActionStatus("Figure-eight path enabled.");
+        return;
+      }
     },
-    [otherComplexSelectedPoint, otherComplexPreferredPole, complexMapZExtent, otherComplexBranchProfile.id]
+    [
+      otherComplexSelectedPoint,
+      otherComplexPreferredPole,
+      complexMapZExtent,
+      otherComplexBranchProfile,
+      otherComplexSelectedBranchPointIndex,
+      otherComplexPathLoopCount,
+    ]
   );
+
+  const handleOtherComplexLoopAroundBranchPoint = useCallback(() => {
+    if (!otherComplexBranchProfile.branchPoints.length) {
+      setOtherComplexActionStatus("No branch point available for this expression.");
+      return;
+    }
+    const idx = Math.min(
+      Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)),
+      otherComplexBranchProfile.branchPoints.length - 1
+    );
+    const branchPoint = otherComplexBranchProfile.branchPoints[idx]!;
+    const baseRadius =
+      otherComplexBranchProfile.id === "sqrt_z2m1"
+        ? 0.38
+        : Math.max(0.16, Math.min(0.65, complexMapZExtent * 0.18));
+    setOtherComplexPathMode("circle");
+    setOtherComplexPathCenter({ re: branchPoint.re, im: branchPoint.im });
+    setOtherComplexPathRadius(baseRadius);
+    setOtherComplexPathLoopCount(1);
+    setOtherComplexShowPathMapping(true);
+    setOtherComplexActionStatus(`Loop contour centered at branch point z=${cToStr(branchPoint)}.`);
+  }, [otherComplexBranchProfile, otherComplexSelectedBranchPointIndex, complexMapZExtent]);
 
   const otherComplexSphereView = useMemo(() => {
     const toSphere = (x: number, y: number) => stereographicToSphere(x, y);
@@ -14884,7 +15293,7 @@ case "mobius":
         zRef.current.drawCurve(loop, "#111827", {
           width: 2,
           opacity: 0.92,
-          dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
+          dash: otherComplexPathMode === "circle" || otherComplexPathMode === "loop_all" ? "6 4" : undefined,
           layer: "other-path-z",
         });
       }
@@ -14892,7 +15301,7 @@ case "mobius":
         wRef.current.drawCurve(segment, "#111827", {
           width: 2,
           opacity: 0.95,
-          dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
+          dash: otherComplexPathMode === "circle" || otherComplexPathMode === "loop_all" ? "6 4" : undefined,
           layer: "other-path-w",
         });
       }
@@ -14902,11 +15311,99 @@ case "mobius":
       for (const arrow of otherComplexPathDirectionArrows.w) {
         wRef.current.drawCurve(arrow, "#111827", { width: 1.5, opacity: 0.92, layer: "other-path-arrow-w" });
       }
+      if (otherComplexPathPlayback) {
+        zRef.current.drawPoints([[otherComplexPathPlayback.start.re, otherComplexPathPlayback.start.im]], {
+          color: "#16a34a",
+          shape: "circle",
+          size: 5.1,
+          layer: "other-path-start-z",
+        });
+        zRef.current.drawPoints([[otherComplexPathPlayback.end.re, otherComplexPathPlayback.end.im]], {
+          color: "#dc2626",
+          shape: "square",
+          size: 5.1,
+          layer: "other-path-end-z",
+        });
+        zRef.current.drawPoints([[otherComplexPathPlayback.current.re, otherComplexPathPlayback.current.im]], {
+          color: "#0ea5e9",
+          shape: "cross",
+          size: 5.6,
+          layer: "other-path-current-z",
+        });
+        if (otherComplexPathPlayback.startW && cFinite(otherComplexPathPlayback.startW)) {
+          wRef.current.drawPoints([[otherComplexPathPlayback.startW.re, otherComplexPathPlayback.startW.im]], {
+            color: "#16a34a",
+            shape: "circle",
+            size: 5.1,
+            layer: "other-path-start-w",
+          });
+        } else {
+          wRef.current.drawPoints([], { layer: "other-path-start-w" });
+        }
+        if (otherComplexPathPlayback.endW && cFinite(otherComplexPathPlayback.endW)) {
+          wRef.current.drawPoints([[otherComplexPathPlayback.endW.re, otherComplexPathPlayback.endW.im]], {
+            color: "#dc2626",
+            shape: "square",
+            size: 5.1,
+            layer: "other-path-end-w",
+          });
+        } else {
+          wRef.current.drawPoints([], { layer: "other-path-end-w" });
+        }
+        if (otherComplexPathPlayback.currentW && cFinite(otherComplexPathPlayback.currentW)) {
+          wRef.current.drawPoints([[otherComplexPathPlayback.currentW.re, otherComplexPathPlayback.currentW.im]], {
+            color: "#0ea5e9",
+            shape: "cross",
+            size: 5.6,
+            layer: "other-path-current-w",
+          });
+        } else {
+          wRef.current.drawPoints([], { layer: "other-path-current-w" });
+        }
+        if (
+          otherComplexPathPlayback.sheetJumpVisible &&
+          otherComplexPathPlayback.startW &&
+          otherComplexPathPlayback.endW &&
+          cFinite(otherComplexPathPlayback.startW) &&
+          cFinite(otherComplexPathPlayback.endW)
+        ) {
+          wRef.current.drawCurve(
+            [
+              [otherComplexPathPlayback.startW.re, otherComplexPathPlayback.startW.im],
+              [otherComplexPathPlayback.endW.re, otherComplexPathPlayback.endW.im],
+            ],
+            "#7c3aed",
+            {
+              width: 1.8,
+              opacity: 0.92,
+              dash: "4 3",
+              layer: "other-path-sheet-jump-w",
+            }
+          );
+        } else {
+          wRef.current.drawCurve([], "#7c3aed", { layer: "other-path-sheet-jump-w" });
+        }
+      } else {
+        zRef.current.drawPoints([], { layer: "other-path-start-z" });
+        zRef.current.drawPoints([], { layer: "other-path-end-z" });
+        zRef.current.drawPoints([], { layer: "other-path-current-z" });
+        wRef.current.drawPoints([], { layer: "other-path-start-w" });
+        wRef.current.drawPoints([], { layer: "other-path-end-w" });
+        wRef.current.drawPoints([], { layer: "other-path-current-w" });
+        wRef.current.drawCurve([], "#7c3aed", { layer: "other-path-sheet-jump-w" });
+      }
     } else {
       zRef.current.drawPoints([], { layer: "other-path-z" });
       wRef.current.drawPoints([], { layer: "other-path-w" });
       zRef.current.drawPoints([], { layer: "other-path-arrow-z" });
       wRef.current.drawPoints([], { layer: "other-path-arrow-w" });
+      zRef.current.drawPoints([], { layer: "other-path-start-z" });
+      zRef.current.drawPoints([], { layer: "other-path-end-z" });
+      zRef.current.drawPoints([], { layer: "other-path-current-z" });
+      wRef.current.drawPoints([], { layer: "other-path-start-w" });
+      wRef.current.drawPoints([], { layer: "other-path-end-w" });
+      wRef.current.drawPoints([], { layer: "other-path-current-w" });
+      wRef.current.drawCurve([], "#7c3aed", { layer: "other-path-sheet-jump-w" });
     }
 
     if (otherComplexShowVectorField && otherComplexVectorFieldSegments) {
@@ -15154,6 +15651,7 @@ case "mobius":
     otherComplexPathZLoops,
     otherComplexPathWMappedSegments,
     otherComplexPathDirectionArrows,
+    otherComplexPathPlayback,
     otherComplexContourAnalysis.singularityWinding,
     otherComplexRationalInspection,
     chebN,
@@ -29286,10 +29784,64 @@ case "mobius":
               <span style={{ fontSize: 12, fontWeight: 700, opacity: 0.78 }}>Complex Analysis:</span>
               <button
                 type="button"
-                onClick={() => setMode("mobius")}
-                style={pill(mode === "mobius")}
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("other_complex");
+                  setOtherComplexMainViewMode("plane");
+                  setOtherComplexInspectorTab("branch");
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode !== "residue")}
               >
-                Function explorer
+                Function Explorer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("mobius");
+                  setMobiusSubTab("map");
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "mobius" && mobiusSubTab !== "riemann")}
+              >
+                Möbius Lab
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("mobius");
+                  setMobiusSubTab("riemann");
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "mobius" && mobiusSubTab === "riemann")}
+              >
+                Riemann Sphere
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("other_complex");
+                  setOtherComplexMainViewMode("residue");
+                  setOtherComplexInspectorTab("monodromy");
+                  setOtherComplexShowPathMapping(true);
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "residue")}
+              >
+                Residue Lab
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("other_complex");
+                  setOtherComplexMainViewMode("path");
+                  setOtherComplexInspectorTab("branch");
+                  setOtherComplexShowBranchCuts(true);
+                  setOtherComplexShowPathMapping(true);
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexInspectorTab === "branch")}
+              >
+                Branch Lab
               </button>
               <button
                 type="button"
@@ -29304,25 +29856,6 @@ case "mobius":
               >
                 Complex map
               </button>
-              {mode === "mobius" && (
-                <>
-                  <span style={{ fontSize: 11, opacity: 0.64 }}>scene:</span>
-                  <button
-                    type="button"
-                    onClick={() => setFunctionExplorerScene("mobius")}
-                    style={pill(functionExplorerScene === "mobius")}
-                  >
-                    Mobius
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFunctionExplorerScene("other_complex")}
-                    style={pill(functionExplorerScene === "other_complex")}
-                  >
-                    Function Explorer
-                  </button>
-                </>
-              )}
             </div>
           )}
           {mode === "maps" ? (
@@ -37691,7 +38224,67 @@ case "mobius":
                         </div>
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
-                        <div style={{ fontWeight: 700, fontSize: 12 }}>Path Mapping</div>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>BRANCH / MONODROMY LAB</div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Workflow: function → branch points → branch cut → path → continuation → monodromy inspector.
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Branch points</div>
+                        <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
+                          <div>
+                            auto-detected:{" "}
+                            {otherComplexBranchProfile.branchPoints.length
+                              ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
+                              : "none"}
+                          </div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexIncludeInfinityBranchPoint}
+                              onChange={(e) => setOtherComplexIncludeInfinityBranchPoint(e.target.checked)}
+                            />
+                            include infinity
+                          </label>
+                        </div>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Branch cut</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("principal")} style={pill(otherComplexBranchCutMode === "principal")}>
+                            principal
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("negative_real_axis")} style={pill(otherComplexBranchCutMode === "negative_real_axis")}>
+                            negative real axis
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("positive_real_axis")} style={pill(otherComplexBranchCutMode === "positive_real_axis")}>
+                            positive real axis
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("radial_from_point")} style={pill(otherComplexBranchCutMode === "radial_from_point")}>
+                            radial from point
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("between_branch_points")} style={pill(otherComplexBranchCutMode === "between_branch_points")}>
+                            between branch points
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexBranchCutMode("custom_polyline")} style={pill(otherComplexBranchCutMode === "custom_polyline")}>
+                            custom cut
+                          </button>
+                        </div>
+                        {otherComplexBranchCutMode === "radial_from_point" && (
+                          <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                            <span>radial angle: {otherComplexBranchCutRadialAngleDeg.toFixed(0)}°</span>
+                            <input
+                              type="range"
+                              min={-180}
+                              max={180}
+                              step={1}
+                              value={otherComplexBranchCutRadialAngleDeg}
+                              onChange={(e) => setOtherComplexBranchCutRadialAngleDeg(Number(e.target.value))}
+                            />
+                          </label>
+                        )}
+                        {otherComplexBranchCutMode === "custom_polyline" && (
+                          <div style={{ fontSize: 11, opacity: 0.78 }}>
+                            Custom cut uses the current polyline points (switch to path mode: custom polyline and click in Z-plane).
+                          </div>
+                        )}
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Path</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button
                             type="button"
@@ -37723,6 +38316,20 @@ case "mobius":
                           </button>
                           <button
                             type="button"
+                            onClick={() => setOtherComplexPathMode("loop_all")}
+                            style={pill(otherComplexPathMode === "loop_all")}
+                          >
+                            Loop all points
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexPathMode("figure_eight")}
+                            style={pill(otherComplexPathMode === "figure_eight")}
+                          >
+                            Figure-eight
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setOtherComplexPathMode("polyline")}
                             style={pill(otherComplexPathMode === "polyline")}
                           >
@@ -37735,6 +38342,97 @@ case "mobius":
                           >
                             Freehand
                           </button>
+                        </div>
+                        <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                          <span>loops: {Math.max(1, Math.round(otherComplexPathLoopCount))}</span>
+                          <input
+                            type="range"
+                            min={1}
+                            max={12}
+                            step={1}
+                            value={otherComplexPathLoopCount}
+                            onChange={(e) => setOtherComplexPathLoopCount(Math.max(1, Math.round(Number(e.target.value))))}
+                          />
+                        </label>
+                        {otherComplexBranchProfile.branchPoints.length > 0 && (
+                          <div style={{ display: "grid", gap: 6, borderTop: "1px dashed #dbe2ea", paddingTop: 6 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12 }}>Branch-point loop</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              {otherComplexBranchProfile.branchPoints.map((pt, idx) => (
+                                <button
+                                  key={`bp-select:${idx}:${pt.re}:${pt.im}`}
+                                  type="button"
+                                  onClick={() => setOtherComplexSelectedBranchPointIndex(idx)}
+                                  style={pill(
+                                    Math.min(
+                                      Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)),
+                                      Math.max(0, otherComplexBranchProfile.branchPoints.length - 1)
+                                    ) === idx
+                                  )}
+                                >
+                                  a{idx + 1}: {cToStr(pt)}
+                                </button>
+                              ))}
+                              <button type="button" onClick={handleOtherComplexLoopAroundBranchPoint}>
+                                Loop around selected branch point
+                              </button>
+                              <button type="button" onClick={() => applyOtherComplexContourPreset("loop_all_branch_points")}>
+                                Loop around all branch points
+                              </button>
+                              <button type="button" onClick={() => applyOtherComplexContourPreset("figure_eight")}>
+                                Figure-eight path
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ display: "grid", gap: 6, borderTop: "1px dashed #dbe2ea", paddingTop: 6 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12 }}>W-path animation</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexPathAnimationPlaying(true)}
+                              disabled={otherComplexPathAnimationPlaying}
+                            >
+                              Play
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexPathAnimationPlaying(false)}
+                              disabled={!otherComplexPathAnimationPlaying}
+                            >
+                              Pause
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOtherComplexPathAnimationPlaying(false);
+                                setOtherComplexPathAnimationProgress(0);
+                              }}
+                            >
+                              Reset
+                            </button>
+                            {OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS.map((speed) => (
+                              <button
+                                key={`path-anim-speed:${speed}`}
+                                type="button"
+                                onClick={() => setOtherComplexPathAnimationSpeed(speed)}
+                                style={pill(otherComplexPathAnimationSpeed === speed)}
+                              >
+                                {speed}x
+                              </button>
+                            ))}
+                          </div>
+                          <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                            <span>progress: {(otherComplexPathAnimationProgress * 100).toFixed(0)}%</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.001}
+                              value={otherComplexPathAnimationProgress}
+                              onChange={(e) => setOtherComplexPathAnimationProgress(Math.max(0, Math.min(1, Number(e.target.value))))}
+                            />
+                          </label>
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Contour presets</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -37768,13 +38466,34 @@ case "mobius":
                           </button>
                           <button
                             type="button"
+                            onClick={() => applyOtherComplexContourPreset("loop_branch_point")}
+                            disabled={!otherComplexBranchProfile.branchPoints.length}
+                          >
+                            Loop selected branch point
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyOtherComplexContourPreset("loop_all_branch_points")}
+                            disabled={!otherComplexBranchProfile.branchPoints.length}
+                          >
+                            Loop all branch points
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyOtherComplexContourPreset("figure_eight")}
+                            disabled={!otherComplexBranchProfile.branchPoints.length}
+                          >
+                            Figure-eight
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => applyOtherComplexContourPreset("branch_cut_crossing")}
                             disabled={otherComplexBranchProfile.id === "none"}
                           >
                             Branch-cut crossing path
                           </button>
                         </div>
-                        {otherComplexPathMode === "circle" ? (
+                        {otherComplexPathMode === "circle" || otherComplexPathMode === "loop_all" || otherComplexPathMode === "figure_eight" ? (
                           <label style={{ fontSize: 12 }}>
                             radius
                             <input
@@ -38667,13 +39386,94 @@ case "mobius":
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 800, fontSize: 12 }}>Inspector</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("point")} style={pill(otherComplexInspectorTab === "point")}>Point</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("features")} style={pill(otherComplexInspectorTab === "features")}>Features</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("contour")} style={pill(otherComplexInspectorTab === "contour")}>Contour</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("residue")} style={pill(otherComplexInspectorTab === "residue")}>Residue</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("laurent")} style={pill(otherComplexInspectorTab === "laurent")}>Laurent</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
                         </div>
+                        {otherComplexInspectorTab === "branch" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>function: {otherComplexBranchProfile.label}</div>
+                            <div>cut mode: {otherComplexBranchCutMode.replace(/_/g, " ")}</div>
+                            <div>branch cut: {otherComplexBranchCutLabel}</div>
+                            <div>
+                              branch points:{" "}
+                              {otherComplexBranchProfile.branchPoints.length
+                                ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
+                                : "none detected"}
+                            </div>
+                            {otherComplexIncludeInfinityBranchPoint && <div>includes branch point at ∞ (for conceptual tracking).</div>}
+                            {otherComplexBranchAnalysis.selectedBranchPoint && (
+                              <div>selected branch point: {cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)}</div>
+                            )}
+                          </div>
+                        )}
+                        {otherComplexInspectorTab === "path" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>path type: {otherComplexPathMode}</div>
+                            <div>loops: {Math.max(1, Math.round(otherComplexPathLoopCount))}</div>
+                            <div>path length (z): {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}</div>
+                            <div>path length (w): {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}</div>
+                            <div>
+                              winding number:{" "}
+                              {otherComplexContourAnalysis.windingNumber == null
+                                ? "n/a"
+                                : otherComplexContourAnalysis.windingNumber.toFixed(6)}
+                            </div>
+                            <div>
+                              contour: {otherComplexContourAnalysis.closed ? "closed" : "open"}{" "}
+                              {otherComplexContourAnalysis.orientation ? `(${otherComplexContourAnalysis.orientation})` : ""}
+                            </div>
+                          </div>
+                        )}
+                        {otherComplexInspectorTab === "monodromy" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>winding number around branch point k: {otherComplexBranchAnalysis.monodromyKRaw == null ? "n/a" : otherComplexBranchAnalysis.monodromyKRaw.toFixed(6)}</div>
+                            <div>
+                              start value:{" "}
+                              {otherComplexPathPlayback?.startW && cFinite(otherComplexPathPlayback.startW)
+                                ? cToStr(otherComplexPathPlayback.startW)
+                                : "n/a"}
+                            </div>
+                            <div>
+                              end value:{" "}
+                              {otherComplexPathPlayback?.endW && cFinite(otherComplexPathPlayback.endW)
+                                ? cToStr(otherComplexPathPlayback.endW)
+                                : "n/a"}
+                            </div>
+                            <div>
+                              analytic continuation around branch point:{" "}
+                              {otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "changes sheet" : "no sheet change"}
+                            </div>
+                            <div>{otherComplexBranchProfile.monodromyNote}</div>
+                          </div>
+                        )}
+                        {otherComplexInspectorTab === "sheet" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>start sheet: 0</div>
+                            <div>
+                              end sheet:{" "}
+                              {otherComplexBranchAnalysis.monodromySheetShiftMod == null
+                                ? "n/a"
+                                : otherComplexBranchAnalysis.monodromySheetShiftMod}
+                            </div>
+                            <div>
+                              sheet shift:{" "}
+                              {otherComplexBranchAnalysis.monodromySheetCount && otherComplexBranchAnalysis.monodromyKRounded != null
+                                ? `${otherComplexBranchAnalysis.monodromyKRounded} mod ${otherComplexBranchAnalysis.monodromySheetCount} = ${otherComplexBranchAnalysis.monodromySheetShiftMod ?? "n/a"}`
+                                : "n/a"}
+                            </div>
+                            <div>
+                              returns after:{" "}
+                              {otherComplexBranchAnalysis.returnPeriodLoops == null
+                                ? "n/a"
+                                : otherComplexBranchAnalysis.returnPeriodLoops === "infinite"
+                                  ? "does not return (log)"
+                                  : `${otherComplexBranchAnalysis.returnPeriodLoops} loop(s)`}
+                            </div>
+                          </div>
+                        )}
                         {otherComplexInspectorTab === "point" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
@@ -38715,6 +39515,49 @@ case "mobius":
                             <div>path length (z): {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}</div>
                             <div>path length (w): {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}</div>
                             <div>winding number: {otherComplexContourAnalysis.windingNumber == null ? "n/a" : otherComplexContourAnalysis.windingNumber.toFixed(6)}</div>
+                            {otherComplexBranchProfile.id !== "none" && (
+                              <>
+                                <div style={{ fontWeight: 700, marginTop: 2 }}>Monodromy inspector</div>
+                                <div>
+                                  branch point focus:{" "}
+                                  {otherComplexBranchAnalysis.selectedBranchPoint
+                                    ? cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)
+                                    : "n/a"}
+                                </div>
+                                <div>
+                                  Δarg(γ(t)-a), unwrapped:{" "}
+                                  {otherComplexBranchAnalysis.selectedBranchPoint?.totalArgChange == null
+                                    ? "n/a"
+                                    : otherComplexBranchAnalysis.selectedBranchPoint.totalArgChange.toFixed(6)}
+                                </div>
+                                <div>
+                                  winding number around branch point:{" "}
+                                  {otherComplexBranchAnalysis.monodromyKRaw == null
+                                    ? "n/a"
+                                    : otherComplexBranchAnalysis.monodromyKRaw.toFixed(6)}
+                                </div>
+                                {otherComplexBranchAnalysis.monodromySheetCount ? (
+                                  <div>
+                                    sheet shift:{" "}
+                                    {otherComplexBranchAnalysis.monodromyKRounded == null
+                                      ? "n/a (contour not closed to integer winding)"
+                                      : `${otherComplexBranchAnalysis.monodromyKRounded} mod ${otherComplexBranchAnalysis.monodromySheetCount} = ${otherComplexBranchAnalysis.monodromySheetShiftMod ?? "n/a"}`}
+                                  </div>
+                                ) : otherComplexBranchProfile.id === "log" ? (
+                                  <div>
+                                    continuation shift for log:{" "}
+                                    {otherComplexBranchAnalysis.logImagShift == null
+                                      ? "n/a"
+                                      : `${otherComplexBranchAnalysis.logImagShift.toFixed(6)}i`}
+                                  </div>
+                                ) : null}
+                                <div style={{ color: otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "#b42318" : "#166534" }}>
+                                  {otherComplexBranchAnalysis.analyticContinuationChangesSheet
+                                    ? "analytic continuation around branch point changes sheet"
+                                    : "no sheet change detected from analytic continuation around branch point"}
+                                </div>
+                              </>
+                            )}
                             <div style={{ fontWeight: 700, marginTop: 2 }}>Contour status</div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid #cbd5e1", background: otherComplexContourAnalysis.closed ? "#ecfdf3" : "#fff7ed", color: otherComplexContourAnalysis.closed ? "#166534" : "#9a3412" }}>
@@ -38737,7 +39580,7 @@ case "mobius":
                               <div style={{ marginTop: 2, padding: "6px 8px", border: "1px solid #fca5a5", borderRadius: 8, background: "#fff1f2", color: "#991b1b", fontSize: 11 }}>
                                 <div style={{ fontWeight: 700 }}>Warning</div>
                                 {otherComplexContourAnalysis.nearSingularityWarning && <div>Contour passes near singularity. Integral may be unstable.</div>}
-                                {otherComplexContourAnalysis.branchCutCrossingWarning && <div>Contour crosses a branch cut. Integral may be branch-dependent.</div>}
+                                {otherComplexContourAnalysis.branchCutCrossingWarning && <div>Path crosses branch cut (branch-choice event). This is distinct from monodromy around branch points.</div>}
                               </div>
                             )}
                           </div>
@@ -38838,12 +39681,39 @@ case "mobius":
                             {otherComplexBranchProfile.id !== "none" && (
                               <>
                                 <div>branch function: {otherComplexBranchProfile.label}</div>
-                                <div>branch cut: {otherComplexBranchProfile.cutLabel}</div>
+                                <div>branch cut: {otherComplexBranchCutLabel}</div>
                                 <div style={{ color: otherComplexBranchAnalysis.hasCrossingWarning ? "#b42318" : undefined }}>
                                   {otherComplexBranchAnalysis.hasCrossingWarning
                                     ? `Path crosses branch cut ${otherComplexBranchAnalysis.crossingCount} time(s).`
                                     : "No branch-cut crossing detected on current path."}
                                 </div>
+                                <div>
+                                  analytic continuation around branch point:{" "}
+                                  <span style={{ color: otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "#b42318" : undefined }}>
+                                    {otherComplexBranchAnalysis.analyticContinuationChangesSheet
+                                      ? "changes sheet"
+                                      : "no sheet change detected"}
+                                  </span>
+                                </div>
+                                <div>
+                                  winding number around branch point (k):{" "}
+                                  {otherComplexBranchAnalysis.monodromyKRaw == null ? "n/a" : otherComplexBranchAnalysis.monodromyKRaw.toFixed(6)}
+                                </div>
+                                {otherComplexBranchAnalysis.monodromySheetCount ? (
+                                  <div>
+                                    sheet shift:{" "}
+                                    {otherComplexBranchAnalysis.monodromyKRounded == null
+                                      ? "n/a"
+                                      : `${otherComplexBranchAnalysis.monodromyKRounded} mod ${otherComplexBranchAnalysis.monodromySheetCount} = ${otherComplexBranchAnalysis.monodromySheetShiftMod ?? "n/a"}`}
+                                  </div>
+                                ) : otherComplexBranchProfile.id === "log" ? (
+                                  <div>
+                                    log shift in value:{" "}
+                                    {otherComplexBranchAnalysis.logImagShift == null
+                                      ? "n/a"
+                                      : `${otherComplexBranchAnalysis.logImagShift.toFixed(6)}i`}
+                                  </div>
+                                ) : null}
                                 <div>{otherComplexBranchProfile.monodromyNote}</div>
                               </>
                             )}
