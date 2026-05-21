@@ -9546,7 +9546,6 @@ const App: React.FC = () => {
     setOtherComplexPathAnimationPlaying(false);
     setOtherComplexPathAnimationProgress(0);
     setOtherComplexShowPathMapping(true);
-    setOtherComplexMainViewMode("plane");
     setOtherComplexInspectorTab("branch");
     setOtherComplexBranchCutMode("principal");
     setOtherComplexSelectedBranchPointIndex(0);
@@ -9587,6 +9586,18 @@ const App: React.FC = () => {
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
   const otherComplexPathMappingActive =
     otherComplexShowPathMapping || otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue";
+  const otherComplexLabTitle =
+    otherComplexMainViewMode === "path"
+      ? "Branch Lab"
+      : otherComplexMainViewMode === "residue"
+        ? "Residue Lab"
+        : "Function Explorer";
+  const otherComplexLabHeader =
+    otherComplexMainViewMode === "path"
+      ? "Branch Lab - branch cuts and monodromy"
+      : otherComplexMainViewMode === "residue"
+        ? "Residue Lab - contour and singularities"
+        : "Function Explorer - general complex functions";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
   const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
   const otherComplexCorePresets = useMemo(
@@ -27154,13 +27165,17 @@ case "mobius":
     if (mode === "mobius") {
       return functionExplorerScene === "mobius"
         ? "Mobius viewer"
-        : "Complex Function Explorer";
+        : otherComplexMainViewMode === "path"
+          ? "Branch Lab"
+          : otherComplexMainViewMode === "residue"
+            ? "Residue Lab"
+            : "Complex Function Explorer";
     }
     if (mode === "chebyshev") return "Chebyshev viewer";
     if (mode === "transform") return "Transform viewer";
     if (mode === "maps") return "Maps viewer";
     return mode;
-  }, [datasetKind, functionExplorerScene, geometryMode, mode, surfaceViewerKind, volumeViewMode]);
+  }, [datasetKind, functionExplorerScene, geometryMode, mode, otherComplexMainViewMode, surfaceViewerKind, volumeViewMode]);
   const statusMeshLabel = useMemo(() => {
     if (unifiedSelectedSceneMeshStats) {
       return `${unifiedSelectedSceneMeshStats.vertCount.toLocaleString()} vertices / ${unifiedSelectedSceneMeshStats.triCount.toLocaleString()} faces`;
@@ -38036,7 +38051,7 @@ case "mobius":
                 ) : (
                   <section style={{ display: "grid", gap: 10 }}>
                     <div>
-                      <h2 style={{ ...styles.h2, marginTop: 0, marginBottom: 6 }}>Function Explorer</h2>
+                      <h2 style={{ ...styles.h2, marginTop: 0, marginBottom: 6 }}>{otherComplexLabTitle}</h2>
                       <div
                         style={{
                           fontSize: 12,
@@ -39232,7 +39247,7 @@ case "mobius":
                 ) : (
                   <div style={{ display: "grid", gap: 10, minHeight: 0 }}>
                     <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 800 }}>Function Explorer — general complex functions</div>
+                      <div style={{ fontWeight: 800 }}>{otherComplexLabHeader}</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>
                         f(z) ={" "}
                         <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
