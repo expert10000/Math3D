@@ -1290,11 +1290,14 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 type FunctionExplorerScene = "mobius" | "other_complex";
-type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "freehand";
+type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "annulus" | "polyline" | "freehand";
+type OtherComplexSphereColorMode = "f" | "z";
 type OtherComplexContourPresetId =
   | "circle_selected"
   | "circle_pole"
   | "rectangle"
+  | "annulus"
+  | "polyline"
   | "freehand"
   | "segment"
   | "branch_cut_crossing";
@@ -2805,12 +2808,20 @@ const COMPLEX_MAP_PRESETS = [
 ];
 const COMPLEX_MAP_CUSTOM_ID = "custom";
 const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: string; note: string }> = [
+  { id: "one_over_z", label: "1/z", expr: "1/z", note: "Simple pole at 0; classic residue demo." },
+  { id: "one_over_z_minus_a", label: "1/(z-a)", expr: "1/(z-1)", note: "Simple pole at z=1 (a can be edited)." },
+  { id: "one_over_z2_plus_1", label: "1/(z^2+1)", expr: "1/(z^2+1)", note: "Poles at ±i; residues can cancel by contour choice." },
+  { id: "z_over_z2_plus_1", label: "z/(z^2+1)", expr: "z/(z^2+1)", note: "Odd residues around ±i." },
+  { id: "one_over_z_minus_1_sq", label: "1/(z-1)^2", expr: "1/(z-1)^2", note: "Higher-order pole at z=1." },
+  { id: "z2_plus_1_over_z_minus_2", label: "(z^2+1)/(z-2)", expr: "(z^2+1)/(z-2)", note: "Simple pole at z=2 with polynomial numerator." },
+  { id: "exp_over_z", label: "exp(z)/z", expr: "exp(z)/z", note: "Essential numerator + simple pole at 0." },
+  { id: "sin_over_z", label: "sin(z)/z", expr: "sin(z)/z", note: "Removable singularity at z=0." },
   { id: "z2", label: "z^2", expr: "z^2", note: "Double winding of argument around 0." },
   { id: "z3", label: "z^3", expr: "z^3", note: "Triple winding and stronger local stretch." },
   { id: "exp", label: "exp(z)", expr: "exp(z)", note: "Periodic in imaginary direction." },
   { id: "log", label: "log(z)", expr: "log(z)", note: "Branch behavior around the origin." },
   { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
-  { id: "inv", label: "1/z", expr: "1/z", note: "Pole at the origin." },
+  { id: "inv", label: "1/z (classic)", expr: "1/z", note: "Pole at the origin." },
   { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
   { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
@@ -8192,14 +8203,19 @@ const App: React.FC = () => {
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
   const [otherComplexPathCenter, setOtherComplexPathCenter] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
+  const [otherComplexAnnulusOuterRadius, setOtherComplexAnnulusOuterRadius] = useState(1.5);
+  const [otherComplexAnnulusInnerRadius, setOtherComplexAnnulusInnerRadius] = useState(0.7);
   const [otherComplexPathRectWidth, setOtherComplexPathRectWidth] = useState(2.0);
   const [otherComplexPathRectHeight, setOtherComplexPathRectHeight] = useState(1.4);
   const [otherComplexSegmentStart, setOtherComplexSegmentStart] = useState<C>({ re: -1.4, im: -0.6 });
   const [otherComplexSegmentEnd, setOtherComplexSegmentEnd] = useState<C>({ re: 1.4, im: 0.8 });
+  const [otherComplexPolylinePath, setOtherComplexPolylinePath] = useState<[number, number][]>([]);
+  const [otherComplexPolylineClosed, setOtherComplexPolylineClosed] = useState(true);
   const [otherComplexFreehandPath, setOtherComplexFreehandPath] = useState<[number, number][]>([]);
   const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
   const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere">("plane");
+  const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
   const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
@@ -13189,7 +13205,23 @@ const App: React.FC = () => {
     if (otherComplexPathMode === "freehand") {
       return;
     }
-    if (otherComplexPathMode === "circle" || otherComplexPathMode === "rectangle") {
+    if (otherComplexPathMode === "polyline") {
+      setOtherComplexPolylinePath((prev) => {
+        if (!prev.length) return [[pt.re, pt.im]];
+        const first = prev[0]!;
+        const closeTol = Math.max(0.03, complexMapZExtent * 0.025);
+        if (
+          otherComplexPolylineClosed &&
+          prev.length >= 3 &&
+          Math.hypot(pt.re - first[0], pt.im - first[1]) <= closeTol
+        ) {
+          return [...prev, first];
+        }
+        return [...prev, [pt.re, pt.im]];
+      });
+      return;
+    }
+    if (otherComplexPathMode === "circle" || otherComplexPathMode === "rectangle" || otherComplexPathMode === "annulus") {
       setOtherComplexPathCenter({ re: pt.re, im: pt.im });
       return;
     }
@@ -13202,7 +13234,7 @@ const App: React.FC = () => {
       return;
     }
     setOtherComplexPathCenter({ re: pt.re, im: pt.im });
-  }, [otherComplexPathMode, otherComplexPathPickTarget]);
+  }, [otherComplexPathMode, otherComplexPathPickTarget, otherComplexPolylineClosed, complexMapZExtent]);
 
   const handleOtherComplexZDragPoint = useCallback(
     (pt: { re: number; im: number }, phase: "start" | "move" | "end") => {
@@ -13230,23 +13262,37 @@ const App: React.FC = () => {
     [complexMapZExtent, otherComplexPathMode]
   );
 
-  const otherComplexPathZPoints = useMemo(() => {
-    if (!otherComplexShowPathMapping) return [] as [number, number][];
-    if (otherComplexPathMode === "freehand") {
-      return otherComplexFreehandPath.length >= 2 ? otherComplexFreehandPath : [];
-    }
-    if (otherComplexPathMode === "circle") {
-      const r = Math.max(1e-3, otherComplexPathRadius);
+  const otherComplexPathZLoops = useMemo(() => {
+    if (!otherComplexShowPathMapping) return [] as [number, number][][];
+    const buildCircleLoop = (radius: number, clockwise = false) => {
+      const r = Math.max(1e-3, radius);
       const samples = 320;
       const points: [number, number][] = [];
       for (let i = 0; i <= samples; i++) {
-        const t = (i / samples) * Math.PI * 2;
+        const t = (i / samples) * Math.PI * 2 * (clockwise ? -1 : 1);
         points.push([
           otherComplexPathCenter.re + r * Math.cos(t),
           otherComplexPathCenter.im + r * Math.sin(t),
         ]);
       }
       return points;
+    };
+    if (otherComplexPathMode === "freehand") {
+      return otherComplexFreehandPath.length >= 2 ? [otherComplexFreehandPath] : [];
+    }
+    if (otherComplexPathMode === "polyline") {
+      if (otherComplexPolylinePath.length < 2) return [];
+      if (!otherComplexPolylineClosed) return [otherComplexPolylinePath];
+      const first = otherComplexPolylinePath[0]!;
+      const last = otherComplexPolylinePath[otherComplexPolylinePath.length - 1]!;
+      const closed = Math.hypot(first[0] - last[0], first[1] - last[1]) <= Math.max(1e-4, complexMapZExtent * 1e-3);
+      return [closed ? otherComplexPolylinePath : [...otherComplexPolylinePath, first]];
+    }
+    if (otherComplexPathMode === "circle") return [buildCircleLoop(otherComplexPathRadius)];
+    if (otherComplexPathMode === "annulus") {
+      const outer = Math.max(0.06, otherComplexAnnulusOuterRadius);
+      const inner = Math.max(0.04, Math.min(otherComplexAnnulusInnerRadius, outer * 0.95));
+      return [buildCircleLoop(outer, false), buildCircleLoop(inner, true)];
     }
     if (otherComplexPathMode === "rectangle") {
       const halfW = Math.max(0.05, otherComplexPathRectWidth * 0.5);
@@ -13272,7 +13318,7 @@ const App: React.FC = () => {
         points.push([cx - halfW, cy + halfH - t * (2 * halfH)]);
       }
       points.push([cx - halfW, cy - halfH]);
-      return points;
+      return [points];
     }
     const samples = 240;
     const points: [number, number][] = [];
@@ -13283,35 +13329,94 @@ const App: React.FC = () => {
         otherComplexSegmentStart.im + (otherComplexSegmentEnd.im - otherComplexSegmentStart.im) * t,
       ]);
     }
-    return points;
+    return [points];
   }, [
     otherComplexShowPathMapping,
     otherComplexPathMode,
     otherComplexFreehandPath,
+    otherComplexPolylinePath,
+    otherComplexPolylineClosed,
+    otherComplexAnnulusOuterRadius,
+    otherComplexAnnulusInnerRadius,
     otherComplexPathRadius,
     otherComplexPathRectWidth,
     otherComplexPathRectHeight,
     otherComplexPathCenter,
     otherComplexSegmentStart,
     otherComplexSegmentEnd,
+    complexMapZExtent,
   ]);
 
   const otherComplexPathWMappedSegments = useMemo(() => {
-    if (!otherComplexPathZPoints.length) return [] as [number, number][][];
+    if (!otherComplexPathZLoops.length) return [] as [number, number][][];
     const segs: [number, number][][] = [];
-    let current: [number, number][] = [];
-    for (const [u, v] of otherComplexPathZPoints) {
-      const w = evalOtherComplexW(u, v);
-      if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) {
-        if (current.length >= 2) segs.push(current);
-        current = [];
-        continue;
+    for (const loop of otherComplexPathZLoops) {
+      let current: [number, number][] = [];
+      for (const [u, v] of loop) {
+        const w = evalOtherComplexW(u, v);
+        if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) {
+          if (current.length >= 2) segs.push(current);
+          current = [];
+          continue;
+        }
+        current.push([w.re, w.im]);
       }
-      current.push([w.re, w.im]);
+      if (current.length >= 2) segs.push(current);
     }
-    if (current.length >= 2) segs.push(current);
     return segs;
-  }, [otherComplexPathZPoints, evalOtherComplexW]);
+  }, [otherComplexPathZLoops, evalOtherComplexW]);
+
+  const otherComplexPathDirectionArrows = useMemo(() => {
+    const buildArrows = (lines: [number, number][][], countPerLine = 3) => {
+      const arrows: [number, number][][] = [];
+      for (const line of lines) {
+        if (line.length < 2) continue;
+        let length = 0;
+        const segLen: number[] = [];
+        for (let i = 1; i < line.length; i++) {
+          const d = Math.hypot(line[i]![0] - line[i - 1]![0], line[i]![1] - line[i - 1]![1]);
+          segLen.push(d);
+          length += d;
+        }
+        if (length <= 1e-6) continue;
+        const arrowCount = Math.max(1, Math.min(countPerLine, Math.floor(line.length / 45) || 1));
+        for (let k = 0; k < arrowCount; k++) {
+          const target = ((k + 0.5) / arrowCount) * length;
+          let acc = 0;
+          let picked = -1;
+          for (let i = 0; i < segLen.length; i++) {
+            acc += segLen[i]!;
+            if (acc >= target) {
+              picked = i + 1;
+              break;
+            }
+          }
+          if (picked <= 0 || picked >= line.length) continue;
+          const prev = line[picked - 1]!;
+          const curr = line[picked]!;
+          const dx = curr[0] - prev[0];
+          const dy = curr[1] - prev[1];
+          const len = Math.hypot(dx, dy);
+          if (len <= 1e-9) continue;
+          const ux = dx / len;
+          const uy = dy / len;
+          const headLen = 0.09 * len;
+          const wing = 0.55;
+          const lx = curr[0] - headLen * (ux + wing * -uy);
+          const ly = curr[1] - headLen * (uy + wing * ux);
+          const rx = curr[0] - headLen * (ux - wing * -uy);
+          const ry = curr[1] - headLen * (uy - wing * ux);
+          arrows.push([curr, [lx, ly]]);
+          arrows.push([curr, [rx, ry]]);
+        }
+      }
+      return arrows;
+    };
+    return {
+      z: buildArrows(otherComplexPathZLoops, 3),
+      w: buildArrows(otherComplexPathWMappedSegments, 3),
+    };
+  }, [otherComplexPathZLoops, otherComplexPathWMappedSegments]);
 
   const otherComplexContourBandField = useMemo(() => {
     if (!otherComplexGrid2d) return null;
@@ -13519,27 +13624,31 @@ const App: React.FC = () => {
   }, [otherComplexGrid2d, otherComplexShowVectorField, evalOtherComplexW]);
 
   const otherComplexIntegralEstimate = useMemo(() => {
-    if (otherComplexPathZPoints.length < 2) return null;
+    if (!otherComplexPathZLoops.length) return null;
     let re = 0;
     let im = 0;
     let used = 0;
-    for (let i = 1; i < otherComplexPathZPoints.length; i++) {
-      const [u0, v0] = otherComplexPathZPoints[i - 1];
-      const [u1, v1] = otherComplexPathZPoints[i];
-      const w0 = evalOtherComplexW(u0, v0);
-      const w1 = evalOtherComplexW(u1, v1);
-      if (!w0 || !w1) continue;
-      const wr = 0.5 * (w0.re + w1.re);
-      const wi = 0.5 * (w0.im + w1.im);
-      const dzr = u1 - u0;
-      const dzi = v1 - v0;
-      re += wr * dzr - wi * dzi;
-      im += wr * dzi + wi * dzr;
-      used++;
+    let total = 0;
+    for (const loop of otherComplexPathZLoops) {
+      for (let i = 1; i < loop.length; i++) {
+        const [u0, v0] = loop[i - 1]!;
+        const [u1, v1] = loop[i]!;
+        const w0 = evalOtherComplexW(u0, v0);
+        const w1 = evalOtherComplexW(u1, v1);
+        total++;
+        if (!w0 || !w1) continue;
+        const wr = 0.5 * (w0.re + w1.re);
+        const wi = 0.5 * (w0.im + w1.im);
+        const dzr = u1 - u0;
+        const dzi = v1 - v0;
+        re += wr * dzr - wi * dzi;
+        im += wr * dzi + wi * dzr;
+        used++;
+      }
     }
     if (!used) return null;
-    return { re, im, used, total: Math.max(0, otherComplexPathZPoints.length - 1) };
-  }, [otherComplexPathZPoints, evalOtherComplexW]);
+    return { re, im, used, total };
+  }, [otherComplexPathZLoops, evalOtherComplexW]);
 
   const otherComplexSelectedPointInfo = useMemo(() => {
     const z = otherComplexSelectedPoint;
@@ -13578,11 +13687,16 @@ const App: React.FC = () => {
   }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile]);
 
   const otherComplexContourAnalysis = useMemo(() => {
-    const points = otherComplexPathZPoints;
+    const loops = otherComplexPathZLoops;
+    const points = loops.length ? loops[0]! : [];
     const closed =
-      points.length >= 3 &&
-      Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) <=
-        Math.max(1e-3, complexMapZExtent * 0.03);
+      loops.length > 0 &&
+      loops.every(
+        (loop) =>
+          loop.length >= 3 &&
+          Math.hypot(loop[0]![0] - loop[loop.length - 1]![0], loop[0]![1] - loop[loop.length - 1]![1]) <=
+            Math.max(1e-3, complexMapZExtent * 0.03)
+      );
     const twoPi = Math.PI * 2;
     const pointToSegmentDistance = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
       const abx = bx - ax;
@@ -13610,25 +13724,53 @@ const App: React.FC = () => {
       windingNumber = angleSum / (Math.PI * 2);
     }
 
-    const polygon = closed ? points : null;
-    const pointInPolygon = (x: number, y: number) => {
-      if (!polygon) return false;
+    const polygonContains = (polygon: [number, number][], x: number, y: number) => {
       let inside = false;
       for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i][0];
-        const yi = polygon[i][1];
-        const xj = polygon[j][0];
-        const yj = polygon[j][1];
+        const xi = polygon[i]![0];
+        const yi = polygon[i]![1];
+        const xj = polygon[j]![0];
+        const yj = polygon[j]![1];
         const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi;
         if (intersects) inside = !inside;
       }
       return inside;
     };
+    const pointInDomain = (x: number, y: number) => {
+      if (!closed || !loops.length) return false;
+      if (loops.length === 1) return polygonContains(loops[0]!, x, y);
+      const outerInside = polygonContains(loops[0]!, x, y);
+      if (!outerInside) return false;
+      for (let i = 1; i < loops.length; i++) {
+        if (polygonContains(loops[i]!, x, y)) return false;
+      }
+      return true;
+    };
 
     const polesInside = otherComplexRationalInspection
-      ? otherComplexRationalInspection.poles.filter((entry) => pointInPolygon(entry.point.re, entry.point.im))
+      ? otherComplexRationalInspection.poles.filter((entry) => pointInDomain(entry.point.re, entry.point.im))
       : [];
     const singularitiesInside = otherComplexRationalInspection ? polesInside.length : null;
+    const singularityWinding = otherComplexRationalInspection && closed
+      ? otherComplexRationalInspection.poles.map((entry) => {
+          let angleSum = 0;
+          for (const loop of loops) {
+            for (let i = 1; i < loop.length; i++) {
+              const a0 = Math.atan2(loop[i - 1]![1] - entry.point.im, loop[i - 1]![0] - entry.point.re);
+              const a1 = Math.atan2(loop[i]![1] - entry.point.im, loop[i]![0] - entry.point.re);
+              let d = a1 - a0;
+              if (d > Math.PI) d -= Math.PI * 2;
+              if (d < -Math.PI) d += Math.PI * 2;
+              angleSum += d;
+            }
+          }
+          return {
+            point: entry.point,
+            winding: angleSum / twoPi,
+            inside: pointInDomain(entry.point.re, entry.point.im),
+          };
+        })
+      : [];
 
     let residueFromIntegral: C | null = null;
     if (otherComplexIntegralEstimate) {
@@ -13653,11 +13795,13 @@ const App: React.FC = () => {
           if (d > 1e-9 && d < minOtherPole) minOtherPole = d;
         }
         let minPathDist = Infinity;
-        for (let j = 1; j < points.length; j++) {
-          const [ax, ay] = points[j - 1]!;
-          const [bx, by] = points[j]!;
-          const d = pointToSegmentDistance(pole.re, pole.im, ax, ay, bx, by);
-          if (d < minPathDist) minPathDist = d;
+        for (const loop of loops) {
+          for (let j = 1; j < loop.length; j++) {
+            const [ax, ay] = loop[j - 1]!;
+            const [bx, by] = loop[j]!;
+            const d = pointToSegmentDistance(pole.re, pole.im, ax, ay, bx, by);
+            if (d < minPathDist) minPathDist = d;
+          }
         }
         const maxRadius = Math.max(1e-3, complexMapZExtent * 0.12);
         let radius = Math.min(
@@ -13723,6 +13867,8 @@ const App: React.FC = () => {
       windingNumber,
       singularitiesInside,
       singularityPoints: polesInside.map((entry) => entry.point),
+      singularityWinding,
+      loopCount: loops.length,
       integral: otherComplexIntegralEstimate,
       residueFromIntegral,
       residueSum,
@@ -13730,7 +13876,7 @@ const App: React.FC = () => {
       residueTheoremError,
     };
   }, [
-    otherComplexPathZPoints,
+    otherComplexPathZLoops,
     otherComplexPathWMappedSegments,
     complexMapZExtent,
     otherComplexRationalInspection,
@@ -13740,10 +13886,14 @@ const App: React.FC = () => {
 
   const otherComplexPathMetrics = useMemo(() => {
     let zLength = 0;
-    for (let i = 1; i < otherComplexPathZPoints.length; i++) {
-      const [x0, y0] = otherComplexPathZPoints[i - 1];
-      const [x1, y1] = otherComplexPathZPoints[i];
-      zLength += Math.hypot(x1 - x0, y1 - y0);
+    let zSegCount = 0;
+    for (const loop of otherComplexPathZLoops) {
+      for (let i = 1; i < loop.length; i++) {
+        const [x0, y0] = loop[i - 1]!;
+        const [x1, y1] = loop[i]!;
+        zLength += Math.hypot(x1 - x0, y1 - y0);
+        zSegCount++;
+      }
     }
     let wLength = 0;
     for (const seg of otherComplexPathWMappedSegments) {
@@ -13751,13 +13901,13 @@ const App: React.FC = () => {
         wLength += Math.hypot(seg[i][0] - seg[i - 1][0], seg[i][1] - seg[i - 1][1]);
       }
     }
-    const hasZ = otherComplexPathZPoints.length >= 2 && Number.isFinite(zLength) && zLength > 0;
+    const hasZ = zSegCount > 0 && Number.isFinite(zLength) && zLength > 0;
     const hasW = otherComplexPathWMappedSegments.some((seg) => seg.length >= 2) && Number.isFinite(wLength) && wLength > 0;
     return {
       zLength: hasZ ? zLength : null,
       wLength: hasW ? wLength : null,
     };
-  }, [otherComplexPathZPoints, otherComplexPathWMappedSegments]);
+  }, [otherComplexPathZLoops, otherComplexPathWMappedSegments]);
 
   const otherComplexSelectedPointStatus = useMemo(() => {
     const z = otherComplexSelectedPointInfo.z;
@@ -13822,10 +13972,65 @@ const App: React.FC = () => {
     complexMapSpec.nv,
   ]);
 
+  const otherComplexColorizeComplexHex = useCallback(
+    (re: number, im: number, mag: number, maxMag: number) => {
+      const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+      const h01 = ((Math.atan2(im, re) / (Math.PI * 2)) + 1) % 1;
+      const raw =
+        otherComplexDomainValueMode === "linear"
+          ? mag / Math.max(1e-6, maxMag)
+          : Math.log1p(Math.max(0, mag)) / Math.log1p(Math.max(1e-6, maxMag));
+      const v = 0.14 + 0.86 * clamp01(raw);
+      const c = v;
+      const x = c * (1 - Math.abs(((h01 * 6) % 2) - 1));
+      let rr = 0;
+      let gg = 0;
+      let bb = 0;
+      const seg = Math.floor(h01 * 6);
+      switch (seg) {
+        case 0: rr = c; gg = x; bb = 0; break;
+        case 1: rr = x; gg = c; bb = 0; break;
+        case 2: rr = 0; gg = c; bb = x; break;
+        case 3: rr = 0; gg = x; bb = c; break;
+        case 4: rr = x; gg = 0; bb = c; break;
+        default: rr = c; gg = 0; bb = x; break;
+      }
+      return ((Math.round(clamp01(rr) * 255) << 16) | (Math.round(clamp01(gg) * 255) << 8) | Math.round(clamp01(bb) * 255));
+    },
+    [otherComplexDomainValueMode]
+  );
+
+  const otherComplexSphereSurfaceColoring = useMemo(() => {
+    const maxZMag = Math.max(1, complexMapZExtent * 1.7);
+    const maxFMag = Math.max(1, otherComplexGrid2d?.wMagMax ?? otherComplexWExtent);
+    return {
+      enabled: true,
+      opacity: 0.97,
+      colorFor: (_sphere: { x: number; y: number; z: number }, z: { re: number; im: number } | null) => {
+        if (!z) return 0xe2e8f0;
+        if (otherComplexSphereColorMode === "z") {
+          const mag = Math.hypot(z.re, z.im);
+          return otherComplexColorizeComplexHex(z.re, z.im, mag, maxZMag);
+        }
+        const w = evalOtherComplexW(z.re, z.im);
+        if (!w) return 0xf1f5f9;
+        const mag = Math.hypot(w.re, w.im);
+        return otherComplexColorizeComplexHex(w.re, w.im, mag, maxFMag);
+      },
+    };
+  }, [
+    complexMapZExtent,
+    otherComplexGrid2d,
+    otherComplexWExtent,
+    otherComplexSphereColorMode,
+    evalOtherComplexW,
+    otherComplexColorizeComplexHex,
+  ]);
+
   const otherComplexBranchAnalysis = useMemo(() => {
     const profile = otherComplexBranchProfile;
     const cutSegments = otherComplexEffectiveBranchCutSegments ?? [];
-    const path = otherComplexPathZPoints;
+    const loops = otherComplexPathZLoops;
     const crossings: Array<{ x: number; y: number; jumpAbs: number | null; jumpArg: number | null }> = [];
     const crossEps = Math.max(1e-4, complexMapZExtent * 1e-3);
     const intersectSegments = (
@@ -13868,17 +14073,19 @@ const App: React.FC = () => {
       crossings.push({ x: cross.x, y: cross.y, jumpAbs, jumpArg });
     };
 
-    if (path.length >= 2 && cutSegments.length) {
-      for (let i = 1; i < path.length; i++) {
-        const a0 = path[i - 1]!;
-        const a1 = path[i]!;
-        for (const cut of cutSegments) {
-          if (cut.length < 2) continue;
-          const b0 = cut[0]!;
-          const b1 = cut[cut.length - 1]!;
-          const cross = intersectSegments(a0, a1, b0, b1);
-          if (!cross) continue;
-          pushCrossing(cross, [a1[0] - a0[0], a1[1] - a0[1]]);
+    if (loops.length && cutSegments.length) {
+      for (const loop of loops) {
+        for (let i = 1; i < loop.length; i++) {
+          const a0 = loop[i - 1]!;
+          const a1 = loop[i]!;
+          for (const cut of cutSegments) {
+            if (cut.length < 2) continue;
+            const b0 = cut[0]!;
+            const b1 = cut[cut.length - 1]!;
+            const cross = intersectSegments(a0, a1, b0, b1);
+            if (!cross) continue;
+            pushCrossing(cross, [a1[0] - a0[0], a1[1] - a0[1]]);
+          }
         }
       }
     }
@@ -13888,15 +14095,17 @@ const App: React.FC = () => {
     const maxJump = jumpValues.length ? jumpValues.reduce((max, v) => Math.max(max, v), 0) : null;
 
     const branchPointWinding = profile.branchPoints.map((pt) => {
-      if (!otherComplexContourAnalysis.closed || path.length < 2) return { point: pt, winding: null as number | null };
+      if (!otherComplexContourAnalysis.closed || !loops.length) return { point: pt, winding: null as number | null };
       let angleSum = 0;
-      for (let i = 1; i < path.length; i++) {
-        const a0 = Math.atan2(path[i - 1]![1] - pt.im, path[i - 1]![0] - pt.re);
-        const a1 = Math.atan2(path[i]![1] - pt.im, path[i]![0] - pt.re);
-        let d = a1 - a0;
-        if (d > Math.PI) d -= Math.PI * 2;
-        if (d < -Math.PI) d += Math.PI * 2;
-        angleSum += d;
+      for (const loop of loops) {
+        for (let i = 1; i < loop.length; i++) {
+          const a0 = Math.atan2(loop[i - 1]![1] - pt.im, loop[i - 1]![0] - pt.re);
+          const a1 = Math.atan2(loop[i]![1] - pt.im, loop[i]![0] - pt.re);
+          let d = a1 - a0;
+          if (d > Math.PI) d -= Math.PI * 2;
+          if (d < -Math.PI) d += Math.PI * 2;
+          angleSum += d;
+        }
       }
       return { point: pt, winding: angleSum / (Math.PI * 2) };
     });
@@ -13914,7 +14123,7 @@ const App: React.FC = () => {
   }, [
     otherComplexBranchProfile,
     otherComplexEffectiveBranchCutSegments,
-    otherComplexPathZPoints,
+    otherComplexPathZLoops,
     complexMapZExtent,
     evalOtherComplexW,
     otherComplexContourAnalysis.closed,
@@ -13967,6 +14176,20 @@ const App: React.FC = () => {
         setOtherComplexPathRectHeight(Math.max(0.3, complexMapZExtent * 0.6));
         return;
       }
+      if (preset === "annulus") {
+        setOtherComplexPathMode("annulus");
+        setOtherComplexPathCenter(otherComplexSelectedPoint);
+        setOtherComplexAnnulusOuterRadius(Math.max(0.2, complexMapZExtent * 0.35));
+        setOtherComplexAnnulusInnerRadius(Math.max(0.08, complexMapZExtent * 0.2));
+        return;
+      }
+      if (preset === "polyline") {
+        setOtherComplexPathMode("polyline");
+        setOtherComplexPolylineClosed(true);
+        setOtherComplexPolylinePath([]);
+        setOtherComplexActionStatus("Polyline mode: click points on Z-plane; click near first point to close.");
+        return;
+      }
       if (preset === "freehand") {
         setOtherComplexPathMode("freehand");
         setOtherComplexFreehandPath([]);
@@ -13999,37 +14222,6 @@ const App: React.FC = () => {
   );
 
   const otherComplexSphereView = useMemo(() => {
-    const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-    const hsvToRgb = (h: number, s: number, v: number) => {
-      const hh = ((h % 1) + 1) % 1;
-      const c = v * s;
-      const x = c * (1 - Math.abs((hh * 6) % 2 - 1));
-      const m = v - c;
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      const seg = Math.floor(hh * 6);
-      switch (seg) {
-        case 0: r = c; g = x; b = 0; break;
-        case 1: r = x; g = c; b = 0; break;
-        case 2: r = 0; g = c; b = x; break;
-        case 3: r = 0; g = x; b = c; break;
-        case 4: r = x; g = 0; b = c; break;
-        default: r = c; g = 0; b = x; break;
-      }
-      return { r: r + m, g: g + m, b: b + m };
-    };
-    const rgbToHex = (r: number, g: number, b: number) =>
-      ((Math.round(clamp01(r) * 255) << 16) | (Math.round(clamp01(g) * 255) << 8) | Math.round(clamp01(b) * 255));
-    const complexColorToHex = (re: number, im: number, mag: number, maxMag: number) => {
-      const h01 = ((Math.atan2(im, re) / (Math.PI * 2)) + 1) % 1;
-      const raw = otherComplexDomainValueMode === "linear"
-        ? mag / Math.max(1e-6, maxMag)
-        : Math.log1p(Math.max(0, mag)) / Math.log1p(Math.max(1e-6, maxMag));
-      const v = 0.16 + 0.84 * clamp01(raw);
-      const rgb = hsvToRgb(h01, 1, v);
-      return rgbToHex(rgb.r, rgb.g, rgb.b);
-    };
     const toSphere = (x: number, y: number) => stereographicToSphere(x, y);
 
     const lines: RiemannSphereLine[] = [];
@@ -14049,23 +14241,6 @@ const App: React.FC = () => {
     points.push({ x: 0, y: 0, z: 1, color: 0xf57c00, size: 0.072 });
     points.push({ x: 0, y: 0, z: -1, color: 0x7c879f, size: 0.055 });
 
-    if (otherComplexShowDomainColoring && otherComplexGrid2d) {
-      const { nu, nv, uMin, vMin, uStep, vStep, re, im, wMag, valid, wMagMax } = otherComplexGrid2d;
-      const maxPoints = 1800;
-      const stride = Math.max(1, Math.floor(Math.sqrt((nu * nv) / maxPoints)));
-      for (let j = 0; j < nv; j += stride) {
-        for (let i = 0; i < nu; i += stride) {
-          const k = j * nu + i;
-          if (!valid[k]) continue;
-          const x = uMin + i * uStep;
-          const y = vMin + j * vStep;
-          const s = toSphere(x, y);
-          const hex = complexColorToHex(re[k], im[k], wMag[k], wMagMax);
-          points.push({ x: s.x, y: s.y, z: s.z, color: hex, size: 0.018 });
-        }
-      }
-    }
-
     const selectedZ = otherComplexSelectedPointInfo.z;
     const zS = toSphere(selectedZ.re, selectedZ.im);
     points.push({ x: zS.x, y: zS.y, z: zS.z, color: 0x111111, size: 0.07 });
@@ -14076,12 +14251,23 @@ const App: React.FC = () => {
       points.push({ x: 0, y: 0, z: 1, color: 0x0a66c2, size: 0.07 });
     }
 
-    if (otherComplexShowPathMapping && otherComplexPathZPoints.length >= 2) {
-      const zPath = otherComplexPathZPoints.map(([x, y]) => toSphere(x, y));
-      lines.push({ points: zPath, color: 0x111827, opacity: 0.92 });
+    if (otherComplexShowPathMapping && otherComplexPathZLoops.length) {
+      for (const loop of otherComplexPathZLoops) {
+        if (loop.length < 2) continue;
+        const zPath = loop.map(([x, y]) => toSphere(x, y));
+        lines.push({ points: zPath, color: 0x111827, opacity: 0.92 });
+      }
       for (const seg of otherComplexPathWMappedSegments) {
         if (seg.length < 2) continue;
         lines.push({ points: seg.map(([x, y]) => toSphere(x, y)), color: 0x0a66c2, opacity: 0.92 });
+      }
+      for (const arrow of otherComplexPathDirectionArrows.z) {
+        if (arrow.length < 2) continue;
+        lines.push({ points: arrow.map(([x, y]) => toSphere(x, y)), color: 0x111827, opacity: 0.95 });
+      }
+      for (const arrow of otherComplexPathDirectionArrows.w) {
+        if (arrow.length < 2) continue;
+        lines.push({ points: arrow.map(([x, y]) => toSphere(x, y)), color: 0x0a66c2, opacity: 0.95 });
       }
     }
 
@@ -14116,6 +14302,18 @@ const App: React.FC = () => {
         if (otherComplexShowZeros) pushRootMarkers(otherComplexRationalInspection.zeros, 0x22c55e, 0.053);
         if (otherComplexShowPoles) pushRootMarkers(otherComplexRationalInspection.poles, 0xef4444, 0.056);
         if (otherComplexShowZeros) pushRootMarkers(otherComplexRationalInspection.removable, 0x14b8a6, 0.05);
+        if (otherComplexShowPoles && otherComplexContourAnalysis.singularityWinding.length) {
+          for (const entry of otherComplexContourAnalysis.singularityWinding) {
+            const s = toSphere(entry.point.re, entry.point.im);
+            points.push({
+              x: s.x,
+              y: s.y,
+              z: s.z,
+              color: entry.inside ? 0xdc2626 : 0xf59e0b,
+              size: entry.inside ? 0.065 : 0.05,
+            });
+          }
+        }
       } else if (otherComplexMarkers2d) {
         if (otherComplexShowZeros) {
           for (const [x, y] of otherComplexMarkers2d.zero.z) {
@@ -14142,17 +14340,16 @@ const App: React.FC = () => {
   }, [
     otherComplexBranchProfile,
     otherComplexEffectiveBranchCutSegments,
-    otherComplexDomainValueMode,
-    otherComplexGrid2d,
     otherComplexMarkers2d,
     otherComplexPathWMappedSegments,
-    otherComplexPathZPoints,
+    otherComplexPathZLoops,
+    otherComplexPathDirectionArrows,
+    otherComplexContourAnalysis.singularityWinding,
     otherComplexRationalInspection,
     otherComplexSelectedContourPolylines,
     otherComplexSelectedPointInfo,
     otherComplexShowBranchCuts,
     otherComplexShowCritical,
-    otherComplexShowDomainColoring,
     otherComplexShowPathMapping,
     otherComplexShowPoles,
     otherComplexShowSelectedContour,
@@ -14342,13 +14539,16 @@ case "mobius":
       }
     }
 
-    if (otherComplexShowPathMapping && otherComplexPathZPoints.length >= 2) {
-      zRef.current.drawCurve(otherComplexPathZPoints, "#111827", {
-        width: 2,
-        opacity: 0.92,
-        dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
-        layer: "other-path-z",
-      });
+    if (otherComplexShowPathMapping && otherComplexPathZLoops.length) {
+      for (const loop of otherComplexPathZLoops) {
+        if (loop.length < 2) continue;
+        zRef.current.drawCurve(loop, "#111827", {
+          width: 2,
+          opacity: 0.92,
+          dash: otherComplexPathMode === "circle" ? "6 4" : undefined,
+          layer: "other-path-z",
+        });
+      }
       for (const segment of otherComplexPathWMappedSegments) {
         wRef.current.drawCurve(segment, "#111827", {
           width: 2,
@@ -14357,9 +14557,17 @@ case "mobius":
           layer: "other-path-w",
         });
       }
+      for (const arrow of otherComplexPathDirectionArrows.z) {
+        zRef.current.drawCurve(arrow, "#111827", { width: 1.5, opacity: 0.92, layer: "other-path-arrow-z" });
+      }
+      for (const arrow of otherComplexPathDirectionArrows.w) {
+        wRef.current.drawCurve(arrow, "#111827", { width: 1.5, opacity: 0.92, layer: "other-path-arrow-w" });
+      }
     } else {
       zRef.current.drawPoints([], { layer: "other-path-z" });
       wRef.current.drawPoints([], { layer: "other-path-w" });
+      zRef.current.drawPoints([], { layer: "other-path-arrow-z" });
+      wRef.current.drawPoints([], { layer: "other-path-arrow-w" });
     }
 
     if (otherComplexShowVectorField && otherComplexVectorFieldSegments) {
@@ -14501,10 +14709,30 @@ case "mobius":
         size: 5,
         layer: "other-exact-pole-z",
       });
+      const insidePoles = otherComplexContourAnalysis.singularityWinding
+        .filter((entry) => entry.inside)
+        .map((entry) => [entry.point.re, entry.point.im] as [number, number]);
+      const outsidePoles = otherComplexContourAnalysis.singularityWinding
+        .filter((entry) => !entry.inside)
+        .map((entry) => [entry.point.re, entry.point.im] as [number, number]);
+      zRef.current.drawPoints(insidePoles, {
+        color: "#dc2626",
+        shape: "triangle",
+        size: 6.4,
+        layer: "other-poles-inside-z",
+      });
+      zRef.current.drawPoints(outsidePoles, {
+        color: "#f59e0b",
+        shape: "triangle",
+        size: 4.1,
+        layer: "other-poles-outside-z",
+      });
     } else {
       zRef.current.drawPoints([], { layer: "other-removable-z" });
       zRef.current.drawPoints([], { layer: "other-exact-zero-z" });
       zRef.current.drawPoints([], { layer: "other-exact-pole-z" });
+      zRef.current.drawPoints([], { layer: "other-poles-inside-z" });
+      zRef.current.drawPoints([], { layer: "other-poles-outside-z" });
     }
   }
   break;
@@ -14566,8 +14794,10 @@ case "mobius":
     otherComplexShowPoles,
     otherComplexDomainValueMode,
     otherComplexPathMode,
-    otherComplexPathZPoints,
+    otherComplexPathZLoops,
     otherComplexPathWMappedSegments,
+    otherComplexPathDirectionArrows,
+    otherComplexContourAnalysis.singularityWinding,
     otherComplexRationalInspection,
     chebN,
     primKind,
@@ -36926,6 +37156,20 @@ case "mobius":
                           </button>
                           <button
                             type="button"
+                            onClick={() => setOtherComplexPathMode("annulus")}
+                            style={pill(otherComplexPathMode === "annulus")}
+                          >
+                            Annulus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexPathMode("polyline")}
+                            style={pill(otherComplexPathMode === "polyline")}
+                          >
+                            Custom polyline
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setOtherComplexPathMode("freehand")}
                             style={pill(otherComplexPathMode === "freehand")}
                           >
@@ -36949,6 +37193,12 @@ case "mobius":
                           </button>
                           <button type="button" onClick={() => applyOtherComplexContourPreset("rectangle")}>
                             Rectangle contour
+                          </button>
+                          <button type="button" onClick={() => applyOtherComplexContourPreset("annulus")}>
+                            Annulus contour
+                          </button>
+                          <button type="button" onClick={() => applyOtherComplexContourPreset("polyline")}>
+                            Custom polyline
                           </button>
                           <button type="button" onClick={() => applyOtherComplexContourPreset("freehand")}>
                             Freehand contour
@@ -36975,6 +37225,37 @@ case "mobius":
                               onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
                             />
                           </label>
+                        ) : otherComplexPathMode === "annulus" ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                            <label style={{ fontSize: 12 }}>
+                              outer radius
+                              <input
+                                type="number"
+                                min={0.08}
+                                step={0.05}
+                                value={otherComplexAnnulusOuterRadius}
+                                onChange={(e) => {
+                                  const outer = Math.max(0.08, Number(e.target.value));
+                                  setOtherComplexAnnulusOuterRadius(outer);
+                                  setOtherComplexAnnulusInnerRadius((prev) => Math.min(prev, outer * 0.95));
+                                }}
+                              />
+                            </label>
+                            <label style={{ fontSize: 12 }}>
+                              inner radius
+                              <input
+                                type="number"
+                                min={0.04}
+                                step={0.05}
+                                value={otherComplexAnnulusInnerRadius}
+                                onChange={(e) =>
+                                  setOtherComplexAnnulusInnerRadius(
+                                    Math.max(0.04, Math.min(Number(e.target.value), otherComplexAnnulusOuterRadius * 0.95))
+                                  )
+                                }
+                              />
+                            </label>
+                          </div>
                         ) : otherComplexPathMode === "rectangle" ? (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
                             <label style={{ fontSize: 12 }}>
@@ -37020,6 +37301,42 @@ case "mobius":
                               Click the Z-plane to place selected endpoint.
                             </div>
                           </div>
+                        ) : otherComplexPathMode === "polyline" ? (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 11, opacity: 0.72 }}>
+                              Click Z-plane to append vertices; click near the first vertex to close.
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => setOtherComplexPolylinePath([])}>
+                                Clear polyline
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (otherComplexPolylinePath.length < 2) return;
+                                  const first = otherComplexPolylinePath[0]!;
+                                  const last = otherComplexPolylinePath[otherComplexPolylinePath.length - 1]!;
+                                  const closed = Math.hypot(first[0] - last[0], first[1] - last[1]) <= Math.max(1e-4, complexMapZExtent * 1e-3);
+                                  if (!closed) setOtherComplexPolylinePath((prev) => [...prev, prev[0]!]);
+                                  setOtherComplexPolylineClosed(true);
+                                }}
+                                disabled={otherComplexPolylinePath.length < 2}
+                              >
+                                Close polyline
+                              </button>
+                              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={otherComplexPolylineClosed}
+                                  onChange={(e) => setOtherComplexPolylineClosed(e.target.checked)}
+                                />
+                                treat as closed
+                              </label>
+                              <div style={{ fontSize: 11, opacity: 0.72, display: "flex", alignItems: "center" }}>
+                                points: {otherComplexPolylinePath.length}
+                              </div>
+                            </div>
+                          </div>
                         ) : (
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 11, opacity: 0.72 }}>
@@ -37045,12 +37362,32 @@ case "mobius":
                         <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
                           ∮γ f(z)dz = 2πi Σ Res(f, ak)
                         </div>
+                        <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
+                        <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
                         <div>
                           singularities inside contour:{" "}
                           {otherComplexContourAnalysis.singularitiesInside == null
                             ? "n/a (closed contour + rational form required)"
                             : otherComplexContourAnalysis.singularitiesInside}
                         </div>
+                        {otherComplexContourAnalysis.singularityWinding.length > 0 && (
+                          <>
+                            <div style={{ fontWeight: 700, marginTop: 2 }}>inside poles</div>
+                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                              {otherComplexContourAnalysis.singularityWinding
+                                .filter((entry) => entry.inside)
+                                .map((entry) => `z=${cToStr(entry.point)}`)
+                                .join(" ; ") || "none"}
+                            </div>
+                            <div style={{ fontWeight: 700, marginTop: 2 }}>outside poles</div>
+                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                              {otherComplexContourAnalysis.singularityWinding
+                                .filter((entry) => !entry.inside)
+                                .map((entry) => `z=${cToStr(entry.point)}`)
+                                .join(" ; ") || "none"}
+                            </div>
+                          </>
+                        )}
                         {otherComplexContourAnalysis.singularityPoints.length > 0 && (
                           <div style={{ fontSize: 11, opacity: 0.78 }}>
                             inside poles:{" "}
@@ -37063,6 +37400,15 @@ case "mobius":
                             ? "n/a (use closed contour)"
                             : otherComplexContourAnalysis.windingNumber.toFixed(6)}
                         </div>
+                        {otherComplexContourAnalysis.singularityWinding.length > 0 && (
+                          <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                            {otherComplexContourAnalysis.singularityWinding.map((entry, idx) => (
+                              <div key={`wind:${entry.point.re}:${entry.point.im}:${idx}`}>
+                                n(γ, {cToStr(entry.point)}) = {entry.winding.toFixed(6)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <div>
                           ∮ f(z) dz (numerical):{" "}
                           {otherComplexContourAnalysis.integral
@@ -37548,6 +37894,52 @@ case "mobius":
                           Riemann sphere
                         </button>
                       </div>
+                      <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span>Sphere mode:</span>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexSphereColorMode("z")}
+                            style={pill(otherComplexSphereColorMode === "z")}
+                          >
+                            color by z
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setOtherComplexSphereColorMode("f")}
+                            style={pill(otherComplexSphereColorMode === "f")}
+                          >
+                            color by f(z)
+                          </button>
+                          <span style={{ opacity: 0.72 }}>Hue = arg(·), value = |·|</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowSingularityInspector}
+                              onChange={(e) => setOtherComplexShowSingularityInspector(e.target.checked)}
+                            />
+                            show zeros/poles/critical points
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowBranchCuts}
+                              onChange={(e) => setOtherComplexShowBranchCuts(e.target.checked)}
+                            />
+                            show branch cuts
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowSelectedContour}
+                              onChange={(e) => setOtherComplexShowSelectedContour(e.target.checked)}
+                            />
+                            show selected contour
+                          </label>
+                        </div>
+                      </div>
                       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
                         <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <input
@@ -37747,6 +38139,10 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
                         </div>
+                      ) : otherComplexPathMode === "annulus" ? (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Click Z-plane to move annulus center. Outer/inner radii = {otherComplexAnnulusOuterRadius.toFixed(2)} / {otherComplexAnnulusInnerRadius.toFixed(2)}.
+                        </div>
                       ) : otherComplexPathMode === "rectangle" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane to move rectangle center. Size = {otherComplexPathRectWidth.toFixed(2)} x {otherComplexPathRectHeight.toFixed(2)}.
@@ -37754,6 +38150,10 @@ case "mobius":
                       ) : otherComplexPathMode === "segment" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane with {otherComplexPathPickTarget} pick mode to define the segment.
+                        </div>
+                      ) : otherComplexPathMode === "polyline" ? (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Click Z-plane to add polyline vertices. Current points: {otherComplexPolylinePath.length}.
                         </div>
                       ) : (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
@@ -37916,10 +38316,11 @@ case "mobius":
                             lines={otherComplexSphereView.lines}
                             points={otherComplexSphereView.points}
                             guideSpheres={otherComplexSphereView.guideSpheres}
+                            sphereSurfaceColoring={otherComplexSphereSurfaceColoring}
                             style={{ height: 320 }}
                           />
                           <div style={{ fontSize: 11, opacity: 0.75 }}>
-                            Sphere coloring follows arg(f(z)) and |f(z)| from the Function Explorer sampling grid.
+                            Sphere coloring uses stereographic mapping (X,Y,Z)→z and colors by arg and magnitude of the selected mode.
                           </div>
                         </div>
                         <div style={{ display: "grid", gap: 8, minHeight: 0 }}>

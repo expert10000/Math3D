@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { sphereToStereographic } from "../math/riemannSphere";
 
 export type SphereLine = {
   points: { x: number; y: number; z: number }[];
@@ -29,6 +30,15 @@ type RiemannSpherePlotProps = {
   lines?: SphereLine[] | null;
   points?: SpherePoint[] | null;
   guideSpheres?: SphereGuide[] | null;
+  sphereSurfaceColoring?: {
+    enabled: boolean;
+    opacity?: number;
+    // Returns hex RGB (0xRRGGBB) for a sphere point and its stereographic z (null at north pole/infinity).
+    colorFor?: (
+      spherePoint: { x: number; y: number; z: number },
+      z: { re: number; im: number } | null
+    ) => number | null;
+  } | null;
   style?: React.CSSProperties;
 };
 
@@ -56,7 +66,13 @@ const clearGroup = (group: THREE.Group | null) => {
   });
 };
 
-const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({ lines, points, guideSpheres, style }) => {
+const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({
+  lines,
+  points,
+  guideSpheres,
+  sphereSurfaceColoring,
+  style,
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -65,6 +81,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({ lines, points, gu
   const linesGroupRef = useRef<THREE.Group | null>(null);
   const pointsGroupRef = useRef<THREE.Group | null>(null);
   const guidesGroupRef = useRef<THREE.Group | null>(null);
+  const baseSphereRef = useRef<THREE.Mesh<THREE.SphereGeometry, THREE.MeshPhongMaterial> | null>(null);
   const frameRef = useRef<number | null>(null);
 
   const pointBuckets = useMemo(() => {
@@ -111,6 +128,7 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({ lines, points, gu
     });
     const sphere = new THREE.Mesh(sphereGeom, sphereMat);
     scene.add(sphere);
+    baseSphereRef.current = sphere;
 
     const guidesGroup = new THREE.Group();
     const linesGroup = new THREE.Group();
@@ -161,8 +179,57 @@ const RiemannSpherePlot: React.FC<RiemannSpherePlotProps> = ({ lines, points, gu
       guidesGroupRef.current = null;
       linesGroupRef.current = null;
       pointsGroupRef.current = null;
+      baseSphereRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const sphere = baseSphereRef.current;
+    if (!sphere) return;
+    const geometry = sphere.geometry;
+    const material = sphere.material;
+    const positions = geometry.getAttribute("position");
+    const colorFn = sphereSurfaceColoring?.colorFor;
+    const enabled = !!sphereSurfaceColoring?.enabled && typeof colorFn === "function";
+
+    if (!enabled || !positions) {
+      material.vertexColors = false;
+      material.color.setHex(0xf3f4f8);
+      material.opacity = 0.35;
+      material.needsUpdate = true;
+      return;
+    }
+
+    const count = positions.count;
+    let colorsAttr = geometry.getAttribute("color") as THREE.BufferAttribute | null;
+    if (!colorsAttr || colorsAttr.count !== count) {
+      colorsAttr = new THREE.BufferAttribute(new Float32Array(count * 3), 3);
+      geometry.setAttribute("color", colorsAttr);
+    }
+    const colors = colorsAttr.array as Float32Array;
+    const tmpColor = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      const z = positions.getZ(i);
+      const stereographic = sphereToStereographic({ x, y, z });
+      const hex = colorFn(
+        { x, y, z },
+        stereographic ? { re: stereographic.re, im: stereographic.im } : null
+      );
+      tmpColor.setHex(hex ?? 0xe5e7eb);
+      colors[3 * i] = tmpColor.r;
+      colors[3 * i + 1] = tmpColor.g;
+      colors[3 * i + 2] = tmpColor.b;
+    }
+    colorsAttr.needsUpdate = true;
+    material.vertexColors = true;
+    material.color.setHex(0xffffff);
+    material.opacity = Number.isFinite(sphereSurfaceColoring?.opacity)
+      ? (sphereSurfaceColoring?.opacity as number)
+      : 0.95;
+    material.needsUpdate = true;
+  }, [sphereSurfaceColoring]);
 
   useEffect(() => {
     const group = linesGroupRef.current;
