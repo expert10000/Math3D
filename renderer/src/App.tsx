@@ -2807,9 +2807,21 @@ const COMPLEX_MAP_PRESETS = [
   { id: "exp", label: "w = exp(z)", reExpr: "exp(u) * cos(v)", imExpr: "exp(u) * sin(v)" },
 ];
 const COMPLEX_MAP_CUSTOM_ID = "custom";
+
+const FUNCTION_EXPLORER_CORE_PRESET_IDS = [
+  "one_over_z",
+  "one_over_z_minus_a",
+  "one_over_z2_plus_1",
+  "z_over_z2_plus_1",
+  "one_over_z_minus_1_sq",
+  "z2_plus_1_over_z_minus_2",
+  "exp_over_z",
+  "sin_over_z",
+] as const;
+
 const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: string; note: string }> = [
   { id: "one_over_z", label: "1/z", expr: "1/z", note: "Simple pole at 0; classic residue demo." },
-  { id: "one_over_z_minus_a", label: "1/(z-a)", expr: "1/(z-1)", note: "Simple pole at z=1 (a can be edited)." },
+  { id: "one_over_z_minus_a", label: "1/(z-a)", expr: "1/(z-1)", note: "Simple pole at z=a (edit '1' to any real or complex a)." },
   { id: "one_over_z2_plus_1", label: "1/(z^2+1)", expr: "1/(z^2+1)", note: "Poles at ±i; residues can cancel by contour choice." },
   { id: "z_over_z2_plus_1", label: "z/(z^2+1)", expr: "z/(z^2+1)", note: "Odd residues around ±i." },
   { id: "one_over_z_minus_1_sq", label: "1/(z-1)^2", expr: "1/(z-1)^2", note: "Higher-order pole at z=1." },
@@ -2821,7 +2833,6 @@ const FUNCTION_EXPLORER_OTHER_PRESETS: Array<{ id: string; label: string; expr: 
   { id: "exp", label: "exp(z)", expr: "exp(z)", note: "Periodic in imaginary direction." },
   { id: "log", label: "log(z)", expr: "log(z)", note: "Branch behavior around the origin." },
   { id: "sin", label: "sin(z)", expr: "sin(z)", note: "Entire function with periodic stripes." },
-  { id: "inv", label: "1/z (classic)", expr: "1/z", note: "Pole at the origin." },
   { id: "frac", label: "(z-1)/(z^2+1)", expr: "(z-1)/(z^2+1)", note: "Rational map with poles at ±i." },
   { id: "removable", label: "(z-1)/(z^2-1)", expr: "(z-1)/(z^2-1)", note: "Removable singularity at z=1." },
   { id: "pole3", label: "1/(z-2)^3", expr: "1/(z-2)^3", note: "Pole at z=2 of order 3." },
@@ -9507,6 +9518,22 @@ const App: React.FC = () => {
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
+  const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
+  const otherComplexCorePresets = useMemo(
+    () =>
+      FUNCTION_EXPLORER_CORE_PRESET_IDS.map((id) => FUNCTION_EXPLORER_OTHER_PRESETS.find((preset) => preset.id === id)).filter(
+        (entry): entry is (typeof FUNCTION_EXPLORER_OTHER_PRESETS)[number] => !!entry
+      ),
+    []
+  );
+  const otherComplexExtraPresets = useMemo(
+    () => FUNCTION_EXPLORER_OTHER_PRESETS.filter((preset) => !FUNCTION_EXPLORER_CORE_PRESET_IDS.includes(preset.id as (typeof FUNCTION_EXPLORER_CORE_PRESET_IDS)[number])),
+    []
+  );
+  const otherComplexActivePreset = useMemo(
+    () => FUNCTION_EXPLORER_OTHER_PRESETS.find((preset) => preset.expr.replace(/\s+/g, "") === otherComplexExprNormalized) ?? null,
+    [otherComplexExprNormalized]
+  );
   const otherComplexHasNonRationalFns = /\b(sin|cos|tan|exp|log|sqrt|abs)\b/i.test(otherComplexFunctionExprSafe);
   const otherComplexBranchProfile = useMemo(
     () => detectBranchLabProfile(otherComplexFunctionExprSafe),
@@ -13971,6 +13998,166 @@ const App: React.FC = () => {
     complexMapSpec.nu,
     complexMapSpec.nv,
   ]);
+
+  const otherComplexLocalExpansion = useMemo(() => {
+    const a = otherComplexSelectedPoint;
+    const twoPi = Math.PI * 2;
+    const pointTol = Math.max(
+      5e-3,
+      complexMapZExtent / Math.max(40, Math.min(600, Math.max(complexMapSpec.nu, complexMapSpec.nv)))
+    );
+    const nearEntry = (entries: RationalInspection["poles"] | RationalInspection["zeros"] | RationalInspection["removable"]) =>
+      entries.find((entry) => Math.hypot(entry.point.re - a.re, entry.point.im - a.im) <= pointTol) ?? null;
+    const poleAtA = otherComplexRationalInspection ? nearEntry(otherComplexRationalInspection.poles) : null;
+    const zeroAtA = otherComplexRationalInspection ? nearEntry(otherComplexRationalInspection.zeros) : null;
+    const removableAtA = otherComplexRationalInspection ? nearEntry(otherComplexRationalInspection.removable) : null;
+
+    const nearestOtherPoleDistance = (() => {
+      if (!otherComplexRationalInspection?.poles.length) return Infinity;
+      let minD = Infinity;
+      for (const pole of otherComplexRationalInspection.poles) {
+        const d = Math.hypot(pole.point.re - a.re, pole.point.im - a.im);
+        if (d > pointTol && d < minD) minD = d;
+      }
+      return minD;
+    })();
+
+    const minRadius = Math.max(0.02, complexMapZExtent * 0.015);
+    const maxRadius = Math.max(minRadius * 1.4, complexMapZExtent * 0.16);
+    let radius = Math.max(minRadius, Math.min(maxRadius, complexMapZExtent * 0.07));
+    if (Number.isFinite(nearestOtherPoleDistance)) {
+      radius = Math.min(radius, Math.max(minRadius, nearestOtherPoleDistance * 0.28));
+    }
+
+    const cPowInt = (z: C, exp: number): C => {
+      if (exp === 0) return { re: 1, im: 0 };
+      if (exp < 0) return cDiv({ re: 1, im: 0 }, cPowInt(z, -exp));
+      let acc: C = { re: 1, im: 0 };
+      for (let i = 0; i < exp; i++) acc = cMul(acc, z);
+      return acc;
+    };
+    const weightedValue = (fz: C, delta: C, denomPow: number): C => {
+      if (denomPow === 0) return fz;
+      if (denomPow > 0) return cDiv(fz, cPowInt(delta, denomPow));
+      return cMul(fz, cPowInt(delta, -denomPow));
+    };
+    const coeffAt = (n: number) => {
+      const steps = 288;
+      let integral: C = { re: 0, im: 0 };
+      let validSteps = 0;
+      for (let k = 1; k <= steps; k++) {
+        const t0 = ((k - 1) / steps) * twoPi;
+        const t1 = (k / steps) * twoPi;
+        const z0 = { re: a.re + radius * Math.cos(t0), im: a.im + radius * Math.sin(t0) };
+        const z1 = { re: a.re + radius * Math.cos(t1), im: a.im + radius * Math.sin(t1) };
+        const f0 = evalOtherComplexW(z0.re, z0.im);
+        const f1 = evalOtherComplexW(z1.re, z1.im);
+        if (!f0 || !f1) continue;
+        const d0 = { re: z0.re - a.re, im: z0.im - a.im };
+        const d1 = { re: z1.re - a.re, im: z1.im - a.im };
+        const g0 = weightedValue(f0, d0, n + 1);
+        const g1 = weightedValue(f1, d1, n + 1);
+        const gMid = { re: 0.5 * (g0.re + g1.re), im: 0.5 * (g0.im + g1.im) };
+        const dz = { re: z1.re - z0.re, im: z1.im - z0.im };
+        integral = cAdd(integral, cMul(gMid, dz));
+        validSteps++;
+      }
+      if (!validSteps) return { value: null as C | null, validSteps, steps };
+      return {
+        value: { re: integral.im / twoPi, im: -integral.re / twoPi } as C,
+        validSteps,
+        steps,
+      };
+    };
+
+    const coeffN2 = coeffAt(-2);
+    const coeffN1 = coeffAt(-1);
+    const coeff0 = coeffAt(0);
+    const coeff1 = coeffAt(1);
+    const fAtA = evalOtherComplexW(a.re, a.im);
+    const centerFinite = !!fAtA && Number.isFinite(fAtA.re) && Number.isFinite(fAtA.im);
+    const validFraction = Math.min(coeffN2.validSteps, coeffN1.validSteps, coeff0.validSteps, coeff1.validSteps) / 288;
+    const reliable = validFraction > 0.72;
+
+    const coeffAbs = (value: C | null) => (value ? Math.hypot(value.re, value.im) : 0);
+    const scale = Math.max(
+      1,
+      coeffAbs(coeffN2.value),
+      coeffAbs(coeffN1.value),
+      coeffAbs(coeff0.value),
+      coeffAbs(coeff1.value),
+      centerFinite && fAtA ? Math.hypot(fAtA.re, fAtA.im) : 0
+    );
+    const coeffTol = Math.max(1e-6, scale * 6e-3);
+    const n2NonZero = coeffAbs(coeffN2.value) > coeffTol;
+    const n1NonZero = coeffAbs(coeffN1.value) > coeffTol;
+    const c0Small = coeffAbs(coeff0.value) <= coeffTol;
+
+    let type = "regular";
+    let typeDetail = "analytic at a";
+    let source: "symbolic" | "numeric" = "numeric";
+    if (removableAtA) {
+      type = "removable";
+      typeDetail = `removable singularity (order ${removableAtA.order})`;
+      source = "symbolic";
+    } else if (poleAtA) {
+      type = "pole";
+      typeDetail = `pole of order ${poleAtA.order}`;
+      source = "symbolic";
+    } else if (zeroAtA) {
+      type = "zero";
+      typeDetail = `zero of order ${zeroAtA.order}`;
+      source = "symbolic";
+    } else if (!centerFinite) {
+      if (!n2NonZero && !n1NonZero && coeffAbs(coeff0.value) > coeffTol) {
+        type = "removable";
+        typeDetail = "finite principal value inferred from local contour average";
+      } else if (n2NonZero) {
+        type = "pole";
+        typeDetail = "principal part includes c_-2/(z-a)^2 term";
+      } else if (n1NonZero) {
+        type = "pole";
+        typeDetail = "simple pole (nonzero c_-1)";
+      } else {
+        type = "essential";
+        typeDetail = "non-finite at a, no stable low-order principal part detected";
+      }
+    } else if (c0Small) {
+      type = "zero";
+      typeDetail = "function value and c0 are near zero";
+    }
+
+    return {
+      point: a,
+      radius,
+      reliable,
+      validFraction,
+      type,
+      typeDetail,
+      source,
+      coeffN2: coeffN2.value,
+      coeffN1: coeffN1.value,
+      coeff0: coeff0.value,
+      coeff1: coeff1.value,
+      residue: coeffN1.value,
+      coefficientTolerance: coeffTol,
+      centerFinite,
+    };
+  }, [
+    otherComplexSelectedPoint,
+    complexMapZExtent,
+    complexMapSpec.nu,
+    complexMapSpec.nv,
+    otherComplexRationalInspection,
+    evalOtherComplexW,
+  ]);
+
+  const formatLocalComplex = useCallback((value: C | null) => {
+    if (!value || !Number.isFinite(value.re) || !Number.isFinite(value.im)) return "n/a";
+    const re = Math.abs(value.re) < 1e-10 ? 0 : value.re;
+    const im = Math.abs(value.im) < 1e-10 ? 0 : value.im;
+    return `${re.toFixed(6)} ${im >= 0 ? "+" : "-"} ${Math.abs(im).toFixed(6)}i`;
+  }, []);
 
   const otherComplexColorizeComplexHex = useCallback(
     (re: number, im: number, mag: number, maxMag: number) => {
@@ -37031,20 +37218,45 @@ case "mobius":
                       }}
                     >
                       <div style={{ ...cardStyle, display: "grid", gap: 8, gridColumn: "1 / -1" }}>
-                        <div style={{ fontWeight: 700, fontSize: 12 }}>Examples</div>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Examples (starter residues)</div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {FUNCTION_EXPLORER_OTHER_PRESETS.map((preset) => (
+                          {otherComplexCorePresets.map((preset) => (
                             <button
                               key={preset.id}
                               type="button"
                               onClick={() => applyOtherComplexPreset(preset.id)}
-                              style={pill(otherComplexFunctionExpr.trim() === preset.expr)}
+                              style={pill(otherComplexExprNormalized === preset.expr.replace(/\s+/g, ""))}
                               title={preset.note}
                             >
                               {preset.label}
                             </button>
                           ))}
                         </div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          These cover simple poles, higher-order poles, removable singularities, and residue cancellation.
+                          Try <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>1/(z^2+1)</span> and move the contour around <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>i</span>, <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>-i</span>, both, or none.
+                        </div>
+                        <details style={{ display: "grid", gap: 6 }}>
+                          <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 700 }}>More examples</summary>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {otherComplexExtraPresets.map((preset) => (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => applyOtherComplexPreset(preset.id)}
+                                style={pill(otherComplexExprNormalized === preset.expr.replace(/\s+/g, ""))}
+                                title={preset.note}
+                              >
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </details>
+                        {otherComplexActivePreset && (
+                          <div style={{ fontSize: 11, opacity: 0.76 }}>
+                            active preset note: {otherComplexActivePreset.note}
+                          </div>
+                        )}
                         <label style={{ display: "grid", gap: 4 }}>
                           <span style={{ fontSize: 12, fontWeight: 700 }}>f(z)</span>
                           <input
@@ -37438,6 +37650,29 @@ case "mobius":
                           {otherComplexContourAnalysis.residueTheoremError
                             ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
                             : "n/a"}
+                        </div>
+                        <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", display: "grid", gap: 4 }}>
+                          <div style={{ fontWeight: 700 }}>Local expansion at a</div>
+                          <div>a = {cToStr(otherComplexLocalExpansion.point)}</div>
+                          <div>
+                            type: {otherComplexLocalExpansion.type} ({otherComplexLocalExpansion.typeDetail})
+                            {otherComplexLocalExpansion.source === "symbolic" ? " [symbolic]" : ""}
+                          </div>
+                          <div style={{ fontSize: 11, opacity: 0.8 }}>
+                            local sampling radius: {otherComplexLocalExpansion.radius.toFixed(4)}, valid contour fraction:{" "}
+                            {(otherComplexLocalExpansion.validFraction * 100).toFixed(1)}%
+                            {!otherComplexLocalExpansion.reliable ? " (low confidence)" : ""}
+                          </div>
+                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                            f(z) ≈ c_-2/(z-a)^2 + c_-1/(z-a) + c_0 + c_1(z-a)
+                          </div>
+                          <div>c_-2 = {formatLocalComplex(otherComplexLocalExpansion.coeffN2)}</div>
+                          <div>c_-1 = {formatLocalComplex(otherComplexLocalExpansion.coeffN1)}</div>
+                          <div>c_0 = {formatLocalComplex(otherComplexLocalExpansion.coeff0)}</div>
+                          <div>c_1 = {formatLocalComplex(otherComplexLocalExpansion.coeff1)}</div>
+                          <div>
+                            Res(f,a) = c_-1 = {formatLocalComplex(otherComplexLocalExpansion.residue)}
+                          </div>
                         </div>
                       </details>
                       <details
@@ -38280,6 +38515,19 @@ case "mobius":
                             {otherComplexContourAnalysis.residueTheoremError
                               ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
                               : "n/a"}
+                          </div>
+                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", fontSize: 11 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 2 }}>Local expansion at a</div>
+                            <div>a = {cToStr(otherComplexLocalExpansion.point)}</div>
+                            <div>
+                              type: {otherComplexLocalExpansion.type}
+                              {otherComplexLocalExpansion.source === "symbolic" ? " [symbolic]" : ""}
+                            </div>
+                            <div>c_-2 = {formatLocalComplex(otherComplexLocalExpansion.coeffN2)}</div>
+                            <div>c_-1 = {formatLocalComplex(otherComplexLocalExpansion.coeffN1)}</div>
+                            <div>c_0 = {formatLocalComplex(otherComplexLocalExpansion.coeff0)}</div>
+                            <div>c_1 = {formatLocalComplex(otherComplexLocalExpansion.coeff1)}</div>
+                            <div>Res(f,a) = {formatLocalComplex(otherComplexLocalExpansion.residue)}</div>
                           </div>
                         </div>
                       </div>

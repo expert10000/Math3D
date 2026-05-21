@@ -821,6 +821,37 @@ const m = { top: 18, right: 18, bottom: 28, left: 36 };
 const TAU = Math.PI * 2;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const snapNearInteger = (v: number) => (Math.abs(v - Math.round(v)) <= 1e-9 ? Math.round(v) : v);
+const formatAxisValue = (v: number) => {
+  const a = Math.abs(v);
+  if (a >= 1000) return snapNearInteger(v).toFixed(0);
+  if (a >= 100) return snapNearInteger(v).toFixed(1).replace(/\.0$/, "");
+  if (a >= 10) return snapNearInteger(v).toFixed(2).replace(/\.?0+$/, "");
+  if (a >= 1) return snapNearInteger(v).toFixed(3).replace(/\.?0+$/, "");
+  return snapNearInteger(v).toFixed(4).replace(/\.?0+$/, "");
+};
+const chooseMajorTickStep = (extent: number) => {
+  const safeExtent = Math.max(1e-9, Math.abs(extent));
+  const desired = safeExtent / 4; // ~4 labels each side
+  const exp = Math.floor(Math.log10(desired));
+  const base = Math.pow(10, exp);
+  const candidates = [1, 2, 5, 10];
+  for (const c of candidates) {
+    const step = c * base;
+    if (step >= desired - 1e-12) return step;
+  }
+  return 10 * base;
+};
+const buildSymmetricTicks = (extent: number, step: number) => {
+  const eps = Math.max(1e-9, step * 1e-6);
+  const ticks = [0];
+  for (let k = 1; k < 200; k++) {
+    const v = k * step;
+    if (v > extent + eps) break;
+    ticks.push(v, -v);
+  }
+  return ticks.sort((a, b) => a - b);
+};
 
 const hsvToRgb = (h: number, s: number, v: number) => {
   const hh = ((h % 1) + 1) % 1;
@@ -1199,6 +1230,60 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       }
 
       if (showLabels) {
+        if (showAxes) {
+          const axisColor = isZ ? "#4b5563" : "#075985";
+          const majorStep = chooseMajorTickStep(extent);
+          const ticks = buildSymmetricTicks(extent, majorStep);
+          const gTicks = gContent.append("g").attr("data-layer", "axis-ticks");
+          for (const t of ticks) {
+            const tx = x(t);
+            const ty = y(t);
+            const label = formatAxisValue(t);
+
+            // tick marks on horizontal axis (imag=0), labels below axis
+            gTicks
+              .append("line")
+              .attr("x1", tx)
+              .attr("y1", y(0) - 3)
+              .attr("x2", tx)
+              .attr("y2", y(0) + 3)
+              .attr("stroke", axisColor)
+              .attr("stroke-opacity", 0.85)
+              .attr("stroke-width", 1);
+            gTicks
+              .append("text")
+              .attr("x", tx)
+              .attr("y", y(0) + 14)
+              .attr("text-anchor", "middle")
+              .attr("font-size", 10)
+              .attr("fill", axisColor)
+              .attr("opacity", 0.9)
+              .text(label);
+
+            // tick marks on vertical axis (real=0), labels to the left (skip origin duplicate)
+            gTicks
+              .append("line")
+              .attr("x1", x(0) - 3)
+              .attr("y1", ty)
+              .attr("x2", x(0) + 3)
+              .attr("y2", ty)
+              .attr("stroke", axisColor)
+              .attr("stroke-opacity", 0.85)
+              .attr("stroke-width", 1);
+            if (Math.abs(t) > 1e-12) {
+              gTicks
+                .append("text")
+                .attr("x", x(0) - 6)
+                .attr("y", ty + 3)
+                .attr("text-anchor", "end")
+                .attr("font-size", 10)
+                .attr("fill", axisColor)
+                .attr("opacity", 0.9)
+                .text(label);
+            }
+          }
+        }
+
         // ----- tiny caption -----
         gContent
           .append("text")
