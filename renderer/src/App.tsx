@@ -1292,6 +1292,9 @@ type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" |
 type FunctionExplorerScene = "mobius" | "other_complex";
 type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "annulus" | "polyline" | "freehand";
 type OtherComplexSphereColorMode = "f" | "z";
+type OtherComplexLeftPanelView = "setup" | "gallery";
+type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
+type OtherComplexInspectorTab = "point" | "features" | "contour" | "residue" | "laurent" | "warnings";
 type OtherComplexContourPresetId =
   | "circle_selected"
   | "circle_pole"
@@ -8206,9 +8209,6 @@ const App: React.FC = () => {
   const [otherComplexShowSelectedContour, setOtherComplexShowSelectedContour] = useState(false);
   const [otherComplexSelectedContourLevel, setOtherComplexSelectedContourLevel] = useState(0.5);
   const [otherComplexSummaryOpen, setOtherComplexSummaryOpen] = useState(false);
-  const [otherComplexContourLabOpen, setOtherComplexContourLabOpen] = useState(true);
-  const [otherComplexBranchLabOpen, setOtherComplexBranchLabOpen] = useState(true);
-  const [otherComplexFunctionSummaryOpen, setOtherComplexFunctionSummaryOpen] = useState(true);
   const [otherComplexActionStatus, setOtherComplexActionStatus] = useState<string | null>(null);
   const [otherComplexSelectedPoint, setOtherComplexSelectedPoint] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
@@ -8225,7 +8225,10 @@ const App: React.FC = () => {
   const [otherComplexFreehandPath, setOtherComplexFreehandPath] = useState<[number, number][]>([]);
   const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
-  const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere">("plane");
+  const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere" | "residue">("plane");
+  const [otherComplexLayoutMode, setOtherComplexLayoutMode] = useState<OtherComplexLayoutMode>("two_pane");
+  const [otherComplexLeftPanelView, setOtherComplexLeftPanelView] = useState<OtherComplexLeftPanelView>("setup");
+  const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("point");
   const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
   const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
@@ -13935,6 +13938,13 @@ const App: React.FC = () => {
       wLength: hasW ? wLength : null,
     };
   }, [otherComplexPathZLoops, otherComplexPathWMappedSegments]);
+  const otherComplexPathCompressionWarning = useMemo(() => {
+    if (otherComplexPathMetrics.zLength == null || otherComplexPathMetrics.wLength == null) return null;
+    if (otherComplexPathMetrics.zLength <= 0 || otherComplexPathMetrics.wLength <= 0) return null;
+    const ratio = otherComplexPathMetrics.wLength / Math.max(1e-9, otherComplexPathMetrics.zLength);
+    if (ratio >= 0.2) return null;
+    return "Image path concentrated near 0. Use auto-fit or switch to log |f| scale.";
+  }, [otherComplexPathMetrics.wLength, otherComplexPathMetrics.zLength]);
 
   const otherComplexSelectedPointStatus = useMemo(() => {
     const z = otherComplexSelectedPointInfo.z;
@@ -29149,7 +29159,7 @@ case "mobius":
                     onClick={() => setFunctionExplorerScene("other_complex")}
                     style={pill(functionExplorerScene === "other_complex")}
                   >
-                    Other Complex Scene
+                    Function Explorer
                   </button>
                 </>
               )}
@@ -37209,6 +37219,26 @@ case "mobius":
                         f: C -&gt; C
                       </div>
                     </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 11, opacity: 0.72 }}>Left panel: setup / gallery</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexLeftPanelView("setup")}
+                          style={pill(otherComplexLeftPanelView === "setup")}
+                        >
+                          Setup
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOtherComplexLeftPanelView("gallery")}
+                          style={pill(otherComplexLeftPanelView === "gallery")}
+                        >
+                          Gallery
+                        </button>
+                      </div>
+                    </div>
+                    {otherComplexLeftPanelView === "setup" ? (
                     <div
                       style={{
                         display: "grid",
@@ -37340,6 +37370,164 @@ case "mobius":
                               }
                             />
                           </label>
+                        </div>
+                      </div>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Visualization / Overlays</div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowDomainColoring}
+                              onChange={(e) => setOtherComplexShowDomainColoring(e.target.checked)}
+                            />
+                            Domain coloring
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowGridDeformation}
+                              onChange={(e) => setOtherComplexShowGridDeformation(e.target.checked)}
+                            />
+                            Grid deformation
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowPathMapping}
+                              onChange={(e) => setOtherComplexShowPathMapping(e.target.checked)}
+                            />
+                            Path mapping
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowContourBands}
+                              onChange={(e) => setOtherComplexShowContourBands(e.target.checked)}
+                            />
+                            Contour bands
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowVectorField}
+                              onChange={(e) => setOtherComplexShowVectorField(e.target.checked)}
+                            />
+                            Vector field
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowSingularityInspector}
+                              onChange={(e) => setOtherComplexShowSingularityInspector(e.target.checked)}
+                            />
+                            Singularities
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowCritical}
+                              onChange={(e) => setOtherComplexShowCritical(e.target.checked)}
+                              disabled={!otherComplexShowSingularityInspector}
+                            />
+                            Critical
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowZeros}
+                              onChange={(e) => setOtherComplexShowZeros(e.target.checked)}
+                              disabled={!otherComplexShowSingularityInspector}
+                            />
+                            Zeros
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowPoles}
+                              onChange={(e) => setOtherComplexShowPoles(e.target.checked)}
+                              disabled={!otherComplexShowSingularityInspector}
+                            />
+                            Poles
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowBranchCuts}
+                              onChange={(e) => setOtherComplexShowBranchCuts(e.target.checked)}
+                            />
+                            Branch cuts
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowSelectedContour}
+                              onChange={(e) => setOtherComplexShowSelectedContour(e.target.checked)}
+                            />
+                            Selected contour
+                          </label>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                          <span>Value scale:</span>
+                          <button type="button" onClick={() => setOtherComplexDomainValueMode("log")} style={pill(otherComplexDomainValueMode === "log")}>
+                            log |f|
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexDomainValueMode("linear")} style={pill(otherComplexDomainValueMode === "linear")}>
+                            linear |f|
+                          </button>
+                        </div>
+                        {otherComplexShowContourBands && (
+                          <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                            <label style={{ display: "grid", gap: 2 }}>
+                              <span>Bands: {Math.max(3, Math.round(otherComplexContourBandCount))}</span>
+                              <input
+                                type="range"
+                                min={3}
+                                max={24}
+                                step={1}
+                                value={otherComplexContourBandCount}
+                                onChange={(e) => setOtherComplexContourBandCount(Math.max(3, Math.round(Number(e.target.value))))}
+                              />
+                            </label>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("modulus")}
+                                style={pill(otherComplexContourBandMode === "modulus")}
+                              >
+                                bands of |f|
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("argument")}
+                                style={pill(otherComplexContourBandMode === "argument")}
+                              >
+                                bands of arg(f)
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {otherComplexShowSelectedContour && (
+                          <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                            <span>Selected contour level: {(otherComplexSelectedContourLevel * 100).toFixed(0)}%</span>
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={otherComplexSelectedContourLevel}
+                              onChange={(e) => setOtherComplexSelectedContourLevel(Math.min(1, Math.max(0, Number(e.target.value))))}
+                            />
+                          </label>
+                        )}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                          <span>Sphere color:</span>
+                          <button type="button" onClick={() => setOtherComplexSphereColorMode("z")} style={pill(otherComplexSphereColorMode === "z")}>
+                            by z
+                          </button>
+                          <button type="button" onClick={() => setOtherComplexSphereColorMode("f")} style={pill(otherComplexSphereColorMode === "f")}>
+                            by f(z)
+                          </button>
                         </div>
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
@@ -37566,116 +37754,6 @@ case "mobius":
                         )}
                       </div>
                       <details
-                        style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}
-                        open={otherComplexContourLabOpen}
-                        onToggle={(event) => setOtherComplexContourLabOpen(event.currentTarget.open)}
-                      >
-                        <summary style={{ fontWeight: 700, cursor: "pointer" }}>Contour / Residue Lab (advanced)</summary>
-                        <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                          ∮γ f(z)dz = 2πi Σ Res(f, ak)
-                        </div>
-                        <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
-                        <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
-                        <div>
-                          singularities inside contour:{" "}
-                          {otherComplexContourAnalysis.singularitiesInside == null
-                            ? "n/a (closed contour + rational form required)"
-                            : otherComplexContourAnalysis.singularitiesInside}
-                        </div>
-                        {otherComplexContourAnalysis.singularityWinding.length > 0 && (
-                          <>
-                            <div style={{ fontWeight: 700, marginTop: 2 }}>inside poles</div>
-                            <div style={{ fontSize: 11, opacity: 0.8 }}>
-                              {otherComplexContourAnalysis.singularityWinding
-                                .filter((entry) => entry.inside)
-                                .map((entry) => `z=${cToStr(entry.point)}`)
-                                .join(" ; ") || "none"}
-                            </div>
-                            <div style={{ fontWeight: 700, marginTop: 2 }}>outside poles</div>
-                            <div style={{ fontSize: 11, opacity: 0.8 }}>
-                              {otherComplexContourAnalysis.singularityWinding
-                                .filter((entry) => !entry.inside)
-                                .map((entry) => `z=${cToStr(entry.point)}`)
-                                .join(" ; ") || "none"}
-                            </div>
-                          </>
-                        )}
-                        {otherComplexContourAnalysis.singularityPoints.length > 0 && (
-                          <div style={{ fontSize: 11, opacity: 0.78 }}>
-                            inside poles:{" "}
-                            {otherComplexContourAnalysis.singularityPoints.map((pt) => cToStr(pt)).join(" ; ")}
-                          </div>
-                        )}
-                        <div>
-                          winding number:{" "}
-                          {otherComplexContourAnalysis.windingNumber == null
-                            ? "n/a (use closed contour)"
-                            : otherComplexContourAnalysis.windingNumber.toFixed(6)}
-                        </div>
-                        {otherComplexContourAnalysis.singularityWinding.length > 0 && (
-                          <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                            {otherComplexContourAnalysis.singularityWinding.map((entry, idx) => (
-                              <div key={`wind:${entry.point.re}:${entry.point.im}:${idx}`}>
-                                n(γ, {cToStr(entry.point)}) = {entry.winding.toFixed(6)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div>
-                          ∮ f(z) dz (numerical):{" "}
-                          {otherComplexContourAnalysis.integral
-                            ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
-                                otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
-                              } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
-                            : "n/a"}
-                        </div>
-                        <div>
-                          2πi · residue sum:{" "}
-                          {otherComplexContourAnalysis.residueIntegral
-                            ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${
-                                otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"
-                              } ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
-                            : "n/a (closed contour with poles inside required)"}
-                        </div>
-                        <div>
-                          residue sum ΣRes:{" "}
-                          {otherComplexContourAnalysis.residueSum
-                            ? `${otherComplexContourAnalysis.residueSum.re.toFixed(6)} ${
-                                otherComplexContourAnalysis.residueSum.im >= 0 ? "+" : "-"
-                              } ${Math.abs(otherComplexContourAnalysis.residueSum.im).toFixed(6)}i`
-                            : "n/a"}
-                        </div>
-                        <div>
-                          error |∮f dz − 2πiΣRes|:{" "}
-                          {otherComplexContourAnalysis.residueTheoremError
-                            ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
-                            : "n/a"}
-                        </div>
-                        <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", display: "grid", gap: 4 }}>
-                          <div style={{ fontWeight: 700 }}>Local expansion at a</div>
-                          <div>a = {cToStr(otherComplexLocalExpansion.point)}</div>
-                          <div>
-                            type: {otherComplexLocalExpansion.type} ({otherComplexLocalExpansion.typeDetail})
-                            {otherComplexLocalExpansion.source === "symbolic" ? " [symbolic]" : ""}
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.8 }}>
-                            local sampling radius: {otherComplexLocalExpansion.radius.toFixed(4)}, valid contour fraction:{" "}
-                            {(otherComplexLocalExpansion.validFraction * 100).toFixed(1)}%
-                            {!otherComplexLocalExpansion.reliable ? " (low confidence)" : ""}
-                          </div>
-                          <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
-                            f(z) ≈ c_-2/(z-a)^2 + c_-1/(z-a) + c_0 + c_1(z-a)
-                          </div>
-                          <div>c_-2 = {formatLocalComplex(otherComplexLocalExpansion.coeffN2)}</div>
-                          <div>c_-1 = {formatLocalComplex(otherComplexLocalExpansion.coeffN1)}</div>
-                          <div>c_0 = {formatLocalComplex(otherComplexLocalExpansion.coeff0)}</div>
-                          <div>c_1 = {formatLocalComplex(otherComplexLocalExpansion.coeff1)}</div>
-                          <div>
-                            Res(f,a) = c_-1 = {formatLocalComplex(otherComplexLocalExpansion.residue)}
-                          </div>
-                        </div>
-                      </details>
-                      <details
                         style={{ ...cardStyle, display: "grid", gap: 6, fontSize: 12 }}
                         open={otherComplexSummaryOpen}
                         onToggle={(event) => setOtherComplexSummaryOpen(event.currentTarget.open)}
@@ -37728,6 +37806,40 @@ case "mobius":
                         )}
                       </details>
                     </div>
+                    ) : (
+                      <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Preset gallery</div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Select a function card and apply it to the workspace.
+                        </div>
+                        <div style={{ display: "grid", gap: 8 }}>
+                          {FUNCTION_EXPLORER_OTHER_PRESETS.map((preset) => (
+                            <button
+                              key={`gallery:${preset.id}`}
+                              type="button"
+                              onClick={() => applyOtherComplexPreset(preset.id)}
+                              style={{
+                                display: "grid",
+                                gap: 3,
+                                justifyItems: "start",
+                                textAlign: "left",
+                                borderRadius: 8,
+                                border: "1px solid #dbe2ea",
+                                background: otherComplexExprNormalized === preset.expr.replace(/\s+/g, "") ? "#eef2ff" : "#fff",
+                                padding: "8px 10px",
+                              }}
+                              title={preset.note}
+                            >
+                              <span style={{ fontWeight: 700, fontSize: 12 }}>{preset.label}</span>
+                              <span style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                                f(z) = {preset.expr}
+                              </span>
+                              <span style={{ fontSize: 10, opacity: 0.75 }}>{preset.note}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </section>
                 )
               )}
@@ -38104,530 +38216,371 @@ case "mobius":
                   )}
                 </>
                 ) : (
-                  <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "grid", gap: 10, minHeight: 0 }}>
                     <div style={{ ...cardStyle, marginTop: 2, display: "grid", gap: 8 }}>
-                      <div style={{ fontWeight: 800 }}>Other Complex Scene — general complex functions</div>
+                      <div style={{ fontWeight: 800 }}>Function Explorer — general complex functions</div>
                       <div style={{ fontSize: 12, opacity: 0.8 }}>
-                        Domain coloring, grid deformation, contour/path mapping, and singularity diagnostics for{" "}
+                        f(z) ={" "}
                         <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                          f(z) = {otherComplexFunctionExpr || "z"}
+                          {otherComplexFunctionExpr || "z"}
                         </span>
-                        .
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
-                        <span>View mode:</span>
+                        <span>View:</span>
                         <button type="button" onClick={() => setOtherComplexMainViewMode("plane")} style={pill(otherComplexMainViewMode === "plane")}>
-                          Plane domain coloring
+                          Domain
                         </button>
                         <button type="button" onClick={() => setOtherComplexMainViewMode("grid")} style={pill(otherComplexMainViewMode === "grid")}>
-                          Grid deformation
+                          Grid
                         </button>
-                        <button type="button" onClick={() => setOtherComplexMainViewMode("path")} style={pill(otherComplexMainViewMode === "path")}>
-                          Path mapping
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOtherComplexMainViewMode("path");
+                            setOtherComplexShowPathMapping(true);
+                          }}
+                          style={pill(otherComplexMainViewMode === "path")}
+                        >
+                          Path
                         </button>
                         <button type="button" onClick={() => setOtherComplexMainViewMode("sphere")} style={pill(otherComplexMainViewMode === "sphere")}>
-                          Riemann sphere
+                          Sphere
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOtherComplexMainViewMode("residue");
+                            setOtherComplexShowPathMapping(true);
+                            setOtherComplexLayoutMode("focus");
+                          }}
+                          style={pill(otherComplexMainViewMode === "residue")}
+                        >
+                          Residue
                         </button>
                       </div>
-                      <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span>Sphere mode:</span>
-                          <button
-                            type="button"
-                            onClick={() => setOtherComplexSphereColorMode("z")}
-                            style={pill(otherComplexSphereColorMode === "z")}
-                          >
-                            color by z
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setOtherComplexSphereColorMode("f")}
-                            style={pill(otherComplexSphereColorMode === "f")}
-                          >
-                            color by f(z)
-                          </button>
-                          <span style={{ opacity: 0.72 }}>Hue = arg(·), value = |·|</span>
-                        </div>
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={otherComplexShowSingularityInspector}
-                              onChange={(e) => setOtherComplexShowSingularityInspector(e.target.checked)}
-                            />
-                            show zeros/poles/critical points
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={otherComplexShowBranchCuts}
-                              onChange={(e) => setOtherComplexShowBranchCuts(e.target.checked)}
-                            />
-                            show branch cuts
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={otherComplexShowSelectedContour}
-                              onChange={(e) => setOtherComplexShowSelectedContour(e.target.checked)}
-                            />
-                            show selected contour
-                          </label>
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowDomainColoring}
-                            onChange={(e) => setOtherComplexShowDomainColoring(e.target.checked)}
-                          />
-                          Domain coloring on Z-plane
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowGridDeformation}
-                            onChange={(e) => setOtherComplexShowGridDeformation(e.target.checked)}
-                          />
-                          Grid deformation
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowVectorField}
-                            onChange={(e) => setOtherComplexShowVectorField(e.target.checked)}
-                          />
-                          Vector field
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowContourBands}
-                            onChange={(e) => setOtherComplexShowContourBands(e.target.checked)}
-                          />
-                          Contour bands
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowPathMapping}
-                            onChange={(e) => setOtherComplexShowPathMapping(e.target.checked)}
-                          />
-                          Path mapping
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowSingularityInspector}
-                            onChange={(e) => setOtherComplexShowSingularityInspector(e.target.checked)}
-                          />
-                          Singularities overlay
-                        </label>
-                      </div>
-                      {otherComplexShowContourBands && (
-                        <div style={{ display: "grid", gap: 6, fontSize: 11, maxWidth: 420 }}>
-                          <label style={{ display: "grid", gap: 2 }}>
-                            <span>Bands: {Math.max(3, Math.round(otherComplexContourBandCount))}</span>
-                            <input
-                              type="range"
-                              min={3}
-                              max={24}
-                              step={1}
-                              value={otherComplexContourBandCount}
-                              onChange={(e) => setOtherComplexContourBandCount(Math.max(3, Math.round(Number(e.target.value))))}
-                            />
-                          </label>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() => setOtherComplexContourBandMode("modulus")}
-                              style={pill(otherComplexContourBandMode === "modulus")}
-                            >
-                              bands of |f|
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setOtherComplexContourBandMode("argument")}
-                              style={pill(otherComplexContourBandMode === "argument")}
-                            >
-                              bands of arg(f)
-                            </button>
-                          </div>
-                        </div>
-                      )}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
-                        <span>Value scale:</span>
-                        <button
-                          type="button"
-                          onClick={() => setOtherComplexDomainValueMode("log")}
-                          style={pill(otherComplexDomainValueMode === "log")}
-                        >
-                          log |f|
+                        <span>Layout:</span>
+                        <button type="button" onClick={() => setOtherComplexLayoutMode("two_pane")} style={pill(otherComplexLayoutMode === "two_pane")}>
+                          2-pane
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setOtherComplexDomainValueMode("linear")}
-                          style={pill(otherComplexDomainValueMode === "linear")}
-                        >
-                          linear |f|
+                        <button type="button" onClick={() => setOtherComplexLayoutMode("three_pane")} style={pill(otherComplexLayoutMode === "three_pane")}>
+                          3-pane
                         </button>
-                        <span style={{ opacity: 0.72 }}>Hue = arg(f(z))</span>
+                        <button type="button" onClick={() => setOtherComplexLayoutMode("focus")} style={pill(otherComplexLayoutMode === "focus")}>
+                          Focus Z
+                        </button>
                       </div>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 11 }}>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowCritical}
-                            onChange={(e) => setOtherComplexShowCritical(e.target.checked)}
-                            disabled={!otherComplexShowSingularityInspector}
-                          />
-                          critical
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowZeros}
-                            onChange={(e) => setOtherComplexShowZeros(e.target.checked)}
-                            disabled={!otherComplexShowSingularityInspector}
-                          />
-                          zeros
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowPoles}
-                            onChange={(e) => setOtherComplexShowPoles(e.target.checked)}
-                            disabled={!otherComplexShowSingularityInspector}
-                          />
-                          poles
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowBranchCuts}
-                            onChange={(e) => setOtherComplexShowBranchCuts(e.target.checked)}
-                          />
-                          branch cuts
-                        </label>
-                        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <input
-                            type="checkbox"
-                            checked={otherComplexShowSelectedContour}
-                            onChange={(e) => setOtherComplexShowSelectedContour(e.target.checked)}
-                          />
-                          selected contour
-                        </label>
-                      </div>
-                      {otherComplexShowSelectedContour && (
-                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
-                          <span>Selected contour level: {(otherComplexSelectedContourLevel * 100).toFixed(0)}%</span>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.01}
-                            value={otherComplexSelectedContourLevel}
-                            onChange={(e) => setOtherComplexSelectedContourLevel(Math.min(1, Math.max(0, Number(e.target.value))))}
-                          />
-                        </label>
-                      )}
-                      {otherComplexBranchProfile.id !== "none" && (
-                        <details
-                          style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 6, fontSize: 11 }}
-                          open={otherComplexBranchLabOpen}
-                          onToggle={(event) => setOtherComplexBranchLabOpen(event.currentTarget.open)}
-                        >
-                          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Branch Cut / Monodromy mode</summary>
-                          <div>branch function: {otherComplexBranchProfile.label}</div>
-                          <div>
-                            branch points:{" "}
-                            {otherComplexBranchProfile.branchPoints.length
-                              ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
-                              : "none"}
-                          </div>
-                          <div>branch cut: {otherComplexBranchProfile.cutLabel}</div>
-                          <div style={{ color: otherComplexBranchAnalysis.hasCrossingWarning ? "#b42318" : undefined }}>
-                            path crossing warning:{" "}
-                            {otherComplexBranchAnalysis.hasCrossingWarning
-                              ? `crosses cut ${otherComplexBranchAnalysis.crossingCount} time(s)`
-                              : "no cut crossing detected on current path"}
-                          </div>
-                          <div>
-                            value jump indicator:{" "}
-                            {otherComplexBranchAnalysis.avgJump == null
-                              ? "n/a"
-                              : `avg ${otherComplexBranchAnalysis.avgJump.toFixed(6)}, max ${(
-                                  otherComplexBranchAnalysis.maxJump ?? 0
-                                ).toFixed(6)}`}
-                          </div>
-                          {otherComplexBranchAnalysis.branchPointWinding.map((entry, idx) => (
-                            <div key={`${entry.point.re}:${entry.point.im}:${idx}`}>
-                              winding around branch point {cToStr(entry.point)}:{" "}
-                              {entry.winding == null ? "n/a (open path)" : entry.winding.toFixed(4)}
-                            </div>
-                          ))}
-                          <div>{otherComplexBranchProfile.monodromyNote}</div>
-                        </details>
-                      )}
-                      {otherComplexPathMode === "circle" ? (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
-                        </div>
-                      ) : otherComplexPathMode === "annulus" ? (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Click Z-plane to move annulus center. Outer/inner radii = {otherComplexAnnulusOuterRadius.toFixed(2)} / {otherComplexAnnulusInnerRadius.toFixed(2)}.
-                        </div>
-                      ) : otherComplexPathMode === "rectangle" ? (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Click Z-plane to move rectangle center. Size = {otherComplexPathRectWidth.toFixed(2)} x {otherComplexPathRectHeight.toFixed(2)}.
-                        </div>
-                      ) : otherComplexPathMode === "segment" ? (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Click Z-plane with {otherComplexPathPickTarget} pick mode to define the segment.
-                        </div>
-                      ) : otherComplexPathMode === "polyline" ? (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Click Z-plane to add polyline vertices. Current points: {otherComplexPolylinePath.length}.
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 11, opacity: 0.78 }}>
-                          Drag in Z-plane to draw freehand γ(t). Current points: {otherComplexFreehandPath.length}.
-                        </div>
-                      )}
                     </div>
-                    <details
-                      style={{ ...cardStyle, display: "grid", gap: 8, fontSize: 12 }}
-                      open={otherComplexFunctionSummaryOpen}
-                      onToggle={(event) => setOtherComplexFunctionSummaryOpen(event.currentTarget.open)}
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 360px)",
+                        gap: 12,
+                        alignItems: "start",
+                        minHeight: 0,
+                      }}
                     >
-                      <summary style={{ fontWeight: 800, cursor: "pointer" }}>Function Summary</summary>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                          gap: 10,
-                          alignItems: "start",
-                        }}
-                      >
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <div>
-                            <b>f(z)</b> ={" "}
-                            <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
-                              {otherComplexFunctionExpr || "z"}
-                            </span>
+                      <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+                        {otherComplexMainViewMode === "sphere" || (otherComplexLayoutMode === "three_pane" && (otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue")) ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(3, minmax(240px, 1fr))",
+                              gap: 12,
+                              alignItems: "stretch",
+                            }}
+                          >
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>Z-plane (domain)</h3>
+                              <div style={{ minHeight: 320, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgZ"
+                                  extent={complexMapZExtent}
+                                  step={mobiusGridStep}
+                                  ref={zRef}
+                                  style={{ height: "100%" }}
+                                  onClickPoint={handleOtherComplexZClick}
+                                  onDragPoint={handleOtherComplexZDragPoint}
+                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>Riemann sphere</h3>
+                              <RiemannSpherePlot
+                                lines={otherComplexSphereView.lines}
+                                points={otherComplexSphereView.points}
+                                guideSpheres={otherComplexSphereView.guideSpheres}
+                                sphereSurfaceColoring={otherComplexSphereSurfaceColoring}
+                                style={{ height: 320 }}
+                              />
+                              <div style={{ fontSize: 11, opacity: 0.74 }}>
+                                Sphere coloring: hue = arg(·), value = |·|.
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>W-plane (image)</h3>
+                              <div style={{ minHeight: 320, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgW"
+                                  extent={otherComplexWExtent}
+                                  step={mobiusGridStep}
+                                  ref={wRef}
+                                  style={{ height: "100%" }}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div style={{ fontWeight: 700, marginTop: 2 }}>Selected Point</div>
-                          <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
-                          <div>
-                            f(z) ={" "}
-                            {otherComplexSelectedPointInfo.w &&
-                            Number.isFinite(otherComplexSelectedPointInfo.w.re) &&
-                            Number.isFinite(otherComplexSelectedPointInfo.w.im)
-                              ? cToStr(otherComplexSelectedPointInfo.w)
-                              : "n/a"}
+                        ) : otherComplexMainViewMode === "plane" && otherComplexLayoutMode === "focus" ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "minmax(0, 1.7fr) minmax(240px, 0.9fr)",
+                              gap: 12,
+                              alignItems: "stretch",
+                            }}
+                          >
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>Z-plane (domain coloring)</h3>
+                              <div style={{ minHeight: 360, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgZ"
+                                  extent={complexMapZExtent}
+                                  step={mobiusGridStep}
+                                  ref={zRef}
+                                  style={{ height: "100%" }}
+                                  onClickPoint={handleOtherComplexZClick}
+                                  onDragPoint={handleOtherComplexZDragPoint}
+                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                              <div style={{ fontSize: 11, opacity: 0.74 }}>Hue = arg(f), value = {otherComplexDomainValueMode === "log" ? "log |f|" : "linear |f|"}.</div>
+                            </div>
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>W preview</h3>
+                              <div style={{ minHeight: 260, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgW"
+                                  extent={otherComplexWExtent}
+                                  step={mobiusGridStep}
+                                  ref={wRef}
+                                  style={{ height: "100%" }}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            |f(z)| ={" "}
-                            {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}
+                        ) : (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
+                              gap: 12,
+                              alignItems: "stretch",
+                            }}
+                          >
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>Z-plane (domain)</h3>
+                              <div style={{ minHeight: 320, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgZ"
+                                  extent={complexMapZExtent}
+                                  step={mobiusGridStep}
+                                  ref={zRef}
+                                  style={{ height: "100%" }}
+                                  onClickPoint={handleOtherComplexZClick}
+                                  onDragPoint={handleOtherComplexZDragPoint}
+                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                            </div>
+                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                              <h3 style={styles.h3}>W-plane (image)</h3>
+                              <div style={{ minHeight: 320, flex: 1 }}>
+                                <PlanePlot
+                                  id="svgW"
+                                  extent={otherComplexWExtent}
+                                  step={mobiusGridStep}
+                                  ref={wRef}
+                                  style={{ height: "100%" }}
+                                  showAxes={mobiusShowAxes}
+                                  showLabels={mobiusShowLabels}
+                                />
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            arg(f(z)) ={" "}
-                            {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}
-                          </div>
-                          <div>
-                            f'(z) ={" "}
-                            {otherComplexSelectedPointInfo.derivative
-                              ? cToStr(otherComplexSelectedPointInfo.derivative)
-                              : "n/a"}
-                          </div>
-                          <div>
-                            Jacobian scale ≈ |f'(z)| ={" "}
-                            {otherComplexSelectedPointStatus.jacobianScale == null
-                              ? "n/a"
-                              : otherComplexSelectedPointStatus.jacobianScale.toFixed(6)}
-                          </div>
-                          <div>
-                            local rotation ={" "}
-                            {otherComplexSelectedPointStatus.localRotation == null
-                              ? "n/a"
-                              : otherComplexSelectedPointStatus.localRotation.toFixed(6)}
-                          </div>
-                          <div>
-                            conformal:{" "}
-                            {otherComplexSelectedPointStatus.conformal == null
-                              ? "n/a"
-                              : otherComplexSelectedPointStatus.conformal
-                                ? "yes"
-                                : "no (critical)"}
-                          </div>
-                          <div>
-                            status: {otherComplexSelectedPointStatus.finiteW ? otherComplexSelectedPointStatus.status : "pole"}
-                          </div>
+                        )}
+                      </div>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 800, fontSize: 12 }}>Inspector</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("point")} style={pill(otherComplexInspectorTab === "point")}>Point</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("features")} style={pill(otherComplexInspectorTab === "features")}>Features</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("contour")} style={pill(otherComplexInspectorTab === "contour")}>Contour</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("residue")} style={pill(otherComplexInspectorTab === "residue")}>Residue</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("laurent")} style={pill(otherComplexInspectorTab === "laurent")}>Laurent</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
                         </div>
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <div style={{ fontWeight: 700 }}>Detected Features</div>
-                          <div>zeros: {otherComplexDetectedFeatures.zeros}</div>
-                          <div>poles: {otherComplexDetectedFeatures.poles}</div>
-                          <div>critical points: {otherComplexDetectedFeatures.critical}</div>
-                          <div>branch points: {otherComplexDetectedFeatures.branchPoints}</div>
-                        </div>
-                        <div style={{ display: "grid", gap: 4 }}>
-                          <div style={{ fontWeight: 700 }}>Contour Analysis</div>
-                          <div>
-                            path length (z-plane):{" "}
-                            {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}
+                        {otherComplexInspectorTab === "point" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>z = {cToStr(otherComplexSelectedPointInfo.z)}</div>
+                            <div>
+                              f(z) ={" "}
+                              {otherComplexSelectedPointInfo.w &&
+                              Number.isFinite(otherComplexSelectedPointInfo.w.re) &&
+                              Number.isFinite(otherComplexSelectedPointInfo.w.im)
+                                ? cToStr(otherComplexSelectedPointInfo.w)
+                                : "n/a"}
+                            </div>
+                            <div>|f(z)| = {Number.isFinite(otherComplexSelectedPointInfo.absW) ? otherComplexSelectedPointInfo.absW.toFixed(6) : "n/a"}</div>
+                            <div>arg(f(z)) = {Number.isFinite(otherComplexSelectedPointInfo.argW) ? otherComplexSelectedPointInfo.argW.toFixed(6) : "n/a"}</div>
+                            <div>f'(z) = {otherComplexSelectedPointInfo.derivative ? cToStr(otherComplexSelectedPointInfo.derivative) : "n/a"}</div>
+                            <div>Jacobian scale ≈ {otherComplexSelectedPointStatus.jacobianScale == null ? "n/a" : otherComplexSelectedPointStatus.jacobianScale.toFixed(6)}</div>
+                            <div>local rotation = {otherComplexSelectedPointStatus.localRotation == null ? "n/a" : otherComplexSelectedPointStatus.localRotation.toFixed(6)}</div>
+                            <div>status: {otherComplexSelectedPointStatus.finiteW ? otherComplexSelectedPointStatus.status : "pole"}</div>
                           </div>
-                          <div>
-                            image path length (w-plane):{" "}
-                            {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}
+                        )}
+                        {otherComplexInspectorTab === "features" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>zeros: {otherComplexDetectedFeatures.zeros}</div>
+                            <div>poles: {otherComplexDetectedFeatures.poles}</div>
+                            <div>critical points: {otherComplexDetectedFeatures.critical}</div>
+                            <div>branch points: {otherComplexDetectedFeatures.branchPoints}</div>
+                            {otherComplexRationalInspection && !otherComplexRationalInspection.error && (
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", fontSize: 11 }}>
+                                reduced rational form:{" "}
+                                <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                                  {otherComplexRationalInspection.reducedExpression}
+                                </span>
+                              </div>
+                            )}
                           </div>
-                          <div>
-                            winding number:{" "}
-                            {otherComplexContourAnalysis.windingNumber == null
-                              ? "n/a (use closed contour)"
-                              : otherComplexContourAnalysis.windingNumber.toFixed(4)}
+                        )}
+                        {otherComplexInspectorTab === "contour" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div>type: {otherComplexPathMode}</div>
+                            <div>path length (z): {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}</div>
+                            <div>path length (w): {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}</div>
+                            <div>winding number: {otherComplexContourAnalysis.windingNumber == null ? "n/a" : otherComplexContourAnalysis.windingNumber.toFixed(6)}</div>
+                            <div>singularities inside: {otherComplexContourAnalysis.singularitiesInside == null ? "n/a" : otherComplexContourAnalysis.singularitiesInside}</div>
                           </div>
-                          <div>
-                            singularities inside:{" "}
-                            {otherComplexContourAnalysis.singularitiesInside == null
-                              ? "n/a (rational + closed contour required)"
-                              : otherComplexContourAnalysis.singularitiesInside}
+                        )}
+                        {otherComplexInspectorTab === "residue" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                              ∮γ f(z)dz = 2πi Σ Res(f, ak)
+                            </div>
+                            <div>function: f(z) = {otherComplexFunctionExpr || "z"}</div>
+                            <div>contour: {otherComplexPathMode}{otherComplexContourAnalysis.loopCount > 1 ? ` (${otherComplexContourAnalysis.loopCount} loops)` : ""}</div>
+                            <div>
+                              singularities inside contour:{" "}
+                              {otherComplexContourAnalysis.singularitiesInside == null
+                                ? "n/a (closed contour + rational form required)"
+                                : otherComplexContourAnalysis.singularitiesInside}
+                            </div>
+                            {otherComplexContourAnalysis.singularityWinding.length > 0 && (
+                              <>
+                                <div style={{ fontWeight: 700, marginTop: 2 }}>inside poles</div>
+                                <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                  {otherComplexContourAnalysis.singularityWinding
+                                    .filter((entry) => entry.inside)
+                                    .map((entry) => `z=${cToStr(entry.point)}`)
+                                    .join(" ; ") || "none"}
+                                </div>
+                                <div style={{ fontWeight: 700, marginTop: 2 }}>outside poles</div>
+                                <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                  {otherComplexContourAnalysis.singularityWinding
+                                    .filter((entry) => !entry.inside)
+                                    .map((entry) => `z=${cToStr(entry.point)}`)
+                                    .join(" ; ") || "none"}
+                                </div>
+                              </>
+                            )}
+                            {otherComplexContourAnalysis.singularityWinding.length > 0 && (
+                              <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                                {otherComplexContourAnalysis.singularityWinding.map((entry, idx) => (
+                                  <div key={`wind:${entry.point.re}:${entry.point.im}:${idx}`}>
+                                    n(γ, {cToStr(entry.point)}) = {entry.winding.toFixed(6)}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div>
+                              ∮ f(z) dz (numerical):{" "}
+                              {otherComplexContourAnalysis.integral
+                                ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
+                                : "n/a"}
+                            </div>
+                            <div>
+                              2πi · residue sum:{" "}
+                              {otherComplexContourAnalysis.residueIntegral
+                                ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
+                                : "n/a (closed contour with poles inside required)"}
+                            </div>
+                            <div>
+                              residue sum ΣRes:{" "}
+                              {otherComplexContourAnalysis.residueSum
+                                ? `${otherComplexContourAnalysis.residueSum.re.toFixed(6)} ${otherComplexContourAnalysis.residueSum.im >= 0 ? "+" : "-"} ${Math.abs(otherComplexContourAnalysis.residueSum.im).toFixed(6)}i`
+                                : "n/a"}
+                            </div>
+                            <div>error |∮f dz − 2πiΣRes|: {otherComplexContourAnalysis.residueTheoremError ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6) : "n/a"}</div>
                           </div>
-                          <div>
-                            ∮ f(z) dz:{" "}
-                            {otherComplexContourAnalysis.integral
-                              ? `${otherComplexContourAnalysis.integral.re.toFixed(6)} ${
-                                  otherComplexContourAnalysis.integral.im >= 0 ? "+" : "-"
-                                } ${Math.abs(otherComplexContourAnalysis.integral.im).toFixed(6)}i`
-                              : "n/a"}
-                          </div>
-                          <div>
-                            2πi · residue sum:{" "}
-                            {otherComplexContourAnalysis.residueIntegral
-                              ? `${otherComplexContourAnalysis.residueIntegral.re.toFixed(6)} ${
-                                  otherComplexContourAnalysis.residueIntegral.im >= 0 ? "+" : "-"
-                                } ${Math.abs(otherComplexContourAnalysis.residueIntegral.im).toFixed(6)}i`
-                              : "n/a"}
-                          </div>
-                          <div>
-                            residue theorem error:{" "}
-                            {otherComplexContourAnalysis.residueTheoremError
-                              ? otherComplexContourAnalysis.residueTheoremError.abs.toFixed(6)
-                              : "n/a"}
-                          </div>
-                          <div style={{ marginTop: 6, paddingTop: 6, borderTop: "1px dashed #cbd5e1", fontSize: 11 }}>
-                            <div style={{ fontWeight: 700, marginBottom: 2 }}>Local expansion at a</div>
+                        )}
+                        {otherComplexInspectorTab === "laurent" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div style={{ fontWeight: 700 }}>Local expansion at a</div>
                             <div>a = {cToStr(otherComplexLocalExpansion.point)}</div>
                             <div>
-                              type: {otherComplexLocalExpansion.type}
+                              type: {otherComplexLocalExpansion.type} ({otherComplexLocalExpansion.typeDetail})
                               {otherComplexLocalExpansion.source === "symbolic" ? " [symbolic]" : ""}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.8 }}>
+                              local sampling radius: {otherComplexLocalExpansion.radius.toFixed(4)}, valid contour fraction:{" "}
+                              {(otherComplexLocalExpansion.validFraction * 100).toFixed(1)}%
+                              {!otherComplexLocalExpansion.reliable ? " (low confidence)" : ""}
+                            </div>
+                            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", fontSize: 11 }}>
+                              f(z) ≈ c_-2/(z-a)^2 + c_-1/(z-a) + c_0 + c_1(z-a)
                             </div>
                             <div>c_-2 = {formatLocalComplex(otherComplexLocalExpansion.coeffN2)}</div>
                             <div>c_-1 = {formatLocalComplex(otherComplexLocalExpansion.coeffN1)}</div>
                             <div>c_0 = {formatLocalComplex(otherComplexLocalExpansion.coeff0)}</div>
                             <div>c_1 = {formatLocalComplex(otherComplexLocalExpansion.coeff1)}</div>
-                            <div>Res(f,a) = {formatLocalComplex(otherComplexLocalExpansion.residue)}</div>
+                            <div>Res(f,a) = c_-1 = {formatLocalComplex(otherComplexLocalExpansion.residue)}</div>
                           </div>
-                        </div>
+                        )}
+                        {otherComplexInspectorTab === "warnings" && (
+                          <div style={{ display: "grid", gap: 5, fontSize: 11 }}>
+                            {otherComplexCompiled2d.error && <div style={{ color: "#b42318" }}>{otherComplexCompiled2d.error}</div>}
+                            {otherComplexPathCompressionWarning && <div style={{ color: "#b42318" }}>{otherComplexPathCompressionWarning}</div>}
+                            {otherComplexBranchProfile.id !== "none" && (
+                              <>
+                                <div>branch function: {otherComplexBranchProfile.label}</div>
+                                <div>branch cut: {otherComplexBranchProfile.cutLabel}</div>
+                                <div style={{ color: otherComplexBranchAnalysis.hasCrossingWarning ? "#b42318" : undefined }}>
+                                  {otherComplexBranchAnalysis.hasCrossingWarning
+                                    ? `Path crosses branch cut ${otherComplexBranchAnalysis.crossingCount} time(s).`
+                                    : "No branch-cut crossing detected on current path."}
+                                </div>
+                                <div>{otherComplexBranchProfile.monodromyNote}</div>
+                              </>
+                            )}
+                            {!otherComplexCompiled2d.error && !otherComplexPathCompressionWarning && otherComplexBranchProfile.id === "none" && (
+                              <div>No active warnings.</div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    </details>
-                    {otherComplexMainViewMode === "sphere" ? (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(3, minmax(280px, 1fr))",
-                          gap: 12,
-                          alignItems: "stretch",
-                        }}
-                      >
-                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                          <h3 style={styles.h3}>Z-plane (domain)</h3>
-                          <div style={{ minHeight: 320, flex: 1 }}>
-                            <PlanePlot
-                              id="svgZ"
-                              extent={complexMapZExtent}
-                              step={mobiusGridStep}
-                              ref={zRef}
-                              style={{ height: "100%" }}
-                              onClickPoint={handleOtherComplexZClick}
-                              onDragPoint={handleOtherComplexZDragPoint}
-                              dragDrawEnabled={otherComplexPathMode === "freehand"}
-                              showAxes={mobiusShowAxes}
-                              showLabels={mobiusShowLabels}
-                            />
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                          <h3 style={styles.h3}>Riemann sphere (preview)</h3>
-                          <RiemannSpherePlot
-                            lines={otherComplexSphereView.lines}
-                            points={otherComplexSphereView.points}
-                            guideSpheres={otherComplexSphereView.guideSpheres}
-                            sphereSurfaceColoring={otherComplexSphereSurfaceColoring}
-                            style={{ height: 320 }}
-                          />
-                          <div style={{ fontSize: 11, opacity: 0.75 }}>
-                            Sphere coloring uses stereographic mapping (X,Y,Z)→z and colors by arg and magnitude of the selected mode.
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                          <h3 style={styles.h3}>W-plane (image)</h3>
-                          <div style={{ minHeight: 320, flex: 1 }}>
-                            <PlanePlot
-                              id="svgW"
-                              extent={otherComplexWExtent}
-                              step={mobiusGridStep}
-                              ref={wRef}
-                              style={{ height: "100%" }}
-                              showAxes={mobiusShowAxes}
-                              showLabels={mobiusShowLabels}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-                          gap: 12,
-                          alignItems: "stretch",
-                        }}
-                      >
-                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                          <h3 style={styles.h3}>Z-plane (domain)</h3>
-                          <div style={{ minHeight: 320, flex: 1 }}>
-                            <PlanePlot
-                              id="svgZ"
-                              extent={complexMapZExtent}
-                              step={mobiusGridStep}
-                              ref={zRef}
-                              style={{ height: "100%" }}
-                              onClickPoint={handleOtherComplexZClick}
-                              onDragPoint={handleOtherComplexZDragPoint}
-                              dragDrawEnabled={otherComplexPathMode === "freehand"}
-                              showAxes={mobiusShowAxes}
-                              showLabels={mobiusShowLabels}
-                            />
-                          </div>
-                        </div>
-                        <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                          <h3 style={styles.h3}>W-plane (image)</h3>
-                          <div style={{ minHeight: 320, flex: 1 }}>
-                            <PlanePlot
-                              id="svgW"
-                              extent={otherComplexWExtent}
-                              step={mobiusGridStep}
-                              ref={wRef}
-                              style={{ height: "100%" }}
-                              showAxes={mobiusShowAxes}
-                              showLabels={mobiusShowLabels}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 )
               ) : (
