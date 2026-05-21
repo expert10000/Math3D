@@ -1290,7 +1290,7 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
 
 type MobiusSubTab = "map" | "decompose" | "invariants" | "circles" | "riemann" | "animation";
 type FunctionExplorerScene = "mobius" | "other_complex";
-type OtherComplexPathMode = "circle" | "segment" | "freehand";
+type OtherComplexPathMode = "circle" | "segment" | "rectangle" | "freehand";
 
 
 
@@ -8102,11 +8102,14 @@ const App: React.FC = () => {
   const [otherComplexPathMode, setOtherComplexPathMode] = useState<OtherComplexPathMode>("circle");
   const [otherComplexPathCenter, setOtherComplexPathCenter] = useState<C>({ re: 0, im: 0 });
   const [otherComplexPathRadius, setOtherComplexPathRadius] = useState(1.2);
+  const [otherComplexPathRectWidth, setOtherComplexPathRectWidth] = useState(2.0);
+  const [otherComplexPathRectHeight, setOtherComplexPathRectHeight] = useState(1.4);
   const [otherComplexSegmentStart, setOtherComplexSegmentStart] = useState<C>({ re: -1.4, im: -0.6 });
   const [otherComplexSegmentEnd, setOtherComplexSegmentEnd] = useState<C>({ re: 1.4, im: 0.8 });
   const [otherComplexFreehandPath, setOtherComplexFreehandPath] = useState<[number, number][]>([]);
   const [otherComplexPathPickTarget, setOtherComplexPathPickTarget] = useState<"center" | "start" | "end">("center");
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
+  const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -13055,7 +13058,7 @@ const App: React.FC = () => {
     if (otherComplexPathMode === "freehand") {
       return;
     }
-    if (otherComplexPathMode === "circle") {
+    if (otherComplexPathMode === "circle" || otherComplexPathMode === "rectangle") {
       setOtherComplexPathCenter({ re: pt.re, im: pt.im });
       return;
     }
@@ -13114,6 +13117,32 @@ const App: React.FC = () => {
       }
       return points;
     }
+    if (otherComplexPathMode === "rectangle") {
+      const halfW = Math.max(0.05, otherComplexPathRectWidth * 0.5);
+      const halfH = Math.max(0.05, otherComplexPathRectHeight * 0.5);
+      const cx = otherComplexPathCenter.re;
+      const cy = otherComplexPathCenter.im;
+      const edges = 80;
+      const points: [number, number][] = [];
+      for (let i = 0; i <= edges; i++) {
+        const t = i / edges;
+        points.push([cx - halfW + t * (2 * halfW), cy - halfH]);
+      }
+      for (let i = 1; i <= edges; i++) {
+        const t = i / edges;
+        points.push([cx + halfW, cy - halfH + t * (2 * halfH)]);
+      }
+      for (let i = 1; i <= edges; i++) {
+        const t = i / edges;
+        points.push([cx + halfW - t * (2 * halfW), cy + halfH]);
+      }
+      for (let i = 1; i <= edges; i++) {
+        const t = i / edges;
+        points.push([cx - halfW, cy + halfH - t * (2 * halfH)]);
+      }
+      points.push([cx - halfW, cy - halfH]);
+      return points;
+    }
     const samples = 240;
     const points: [number, number][] = [];
     for (let i = 0; i <= samples; i++) {
@@ -13129,6 +13158,8 @@ const App: React.FC = () => {
     otherComplexPathMode,
     otherComplexFreehandPath,
     otherComplexPathRadius,
+    otherComplexPathRectWidth,
+    otherComplexPathRectHeight,
     otherComplexPathCenter,
     otherComplexSegmentStart,
     otherComplexSegmentEnd,
@@ -13155,14 +13186,22 @@ const App: React.FC = () => {
     if (!otherComplexGrid2d) return null;
     const bands = Math.max(3, Math.round(otherComplexContourBandCount));
     const values = new Float32Array(otherComplexGrid2d.wMag.length);
+    const rawValueAt = (index: number) => {
+      if (!otherComplexGrid2d.valid[index]) return Number.NaN;
+      if (otherComplexContourBandMode === "argument") {
+        const angle = Math.atan2(otherComplexGrid2d.im[index], otherComplexGrid2d.re[index]);
+        return (angle + Math.PI) / (Math.PI * 2);
+      }
+      return Math.log1p(Math.max(0, otherComplexGrid2d.wMag[index]));
+    };
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < otherComplexGrid2d.wMag.length; i++) {
-      if (!otherComplexGrid2d.valid[i]) {
+      const v = rawValueAt(i);
+      if (!Number.isFinite(v)) {
         values[i] = Number.NaN;
         continue;
       }
-      const v = Math.log1p(Math.max(0, otherComplexGrid2d.wMag[i]));
       values[i] = v;
       if (v < min) min = v;
       if (v > max) max = v;
@@ -13177,16 +13216,24 @@ const App: React.FC = () => {
       values[i] = q;
     }
     return { values, min: 0, max: 1 };
-  }, [otherComplexGrid2d, otherComplexContourBandCount]);
+  }, [otherComplexGrid2d, otherComplexContourBandCount, otherComplexContourBandMode]);
 
   const otherComplexSelectedContourPolylines = useMemo(() => {
     if (!otherComplexGrid2d || !otherComplexShowSelectedContour) return null;
-    const { nu, nv, uMin, uMax, vMin, vMax, wMag, valid } = otherComplexGrid2d;
+    const { nu, nv, uMin, uMax, vMin, vMax, wMag, valid, re, im } = otherComplexGrid2d;
+    const rawValueAt = (index: number) => {
+      if (!valid[index]) return Number.NaN;
+      if (otherComplexContourBandMode === "argument") {
+        const angle = Math.atan2(im[index], re[index]);
+        return (angle + Math.PI) / (Math.PI * 2);
+      }
+      return Math.log1p(Math.max(0, wMag[index]));
+    };
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < wMag.length; i++) {
-      if (!valid[i]) continue;
-      const v = Math.log1p(Math.max(0, wMag[i]));
+      const v = rawValueAt(i);
+      if (!Number.isFinite(v)) continue;
       if (v < min) min = v;
       if (v > max) max = v;
     }
@@ -13202,8 +13249,7 @@ const App: React.FC = () => {
       yMax: vMax,
       sample: (i, j) => {
         const k = idx(i, j);
-        if (!valid[k]) return Number.NaN;
-        return Math.log1p(Math.max(0, wMag[k]));
+        return rawValueAt(k);
       },
       level,
     });
@@ -13224,7 +13270,7 @@ const App: React.FC = () => {
       if (seg.length >= 2) wLines.push(seg);
     }
     return { zLines, wLines };
-  }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, evalOtherComplexW]);
+  }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, otherComplexContourBandMode, evalOtherComplexW]);
 
   const otherComplexBranchCutSegments = useMemo(() => {
     if (!otherComplexGrid2d || !/\b(log|sqrt)\b/i.test(otherComplexFunctionExprSafe)) return null;
@@ -13459,6 +13505,90 @@ const App: React.FC = () => {
     complexMapZExtent,
     otherComplexRationalInspection,
     otherComplexIntegralEstimate,
+  ]);
+
+  const otherComplexPathMetrics = useMemo(() => {
+    let zLength = 0;
+    for (let i = 1; i < otherComplexPathZPoints.length; i++) {
+      const [x0, y0] = otherComplexPathZPoints[i - 1];
+      const [x1, y1] = otherComplexPathZPoints[i];
+      zLength += Math.hypot(x1 - x0, y1 - y0);
+    }
+    let wLength = 0;
+    for (const seg of otherComplexPathWMappedSegments) {
+      for (let i = 1; i < seg.length; i++) {
+        wLength += Math.hypot(seg[i][0] - seg[i - 1][0], seg[i][1] - seg[i - 1][1]);
+      }
+    }
+    const hasZ = otherComplexPathZPoints.length >= 2 && Number.isFinite(zLength) && zLength > 0;
+    const hasW = otherComplexPathWMappedSegments.some((seg) => seg.length >= 2) && Number.isFinite(wLength) && wLength > 0;
+    return {
+      zLength: hasZ ? zLength : null,
+      wLength: hasW ? wLength : null,
+    };
+  }, [otherComplexPathZPoints, otherComplexPathWMappedSegments]);
+
+  const otherComplexSelectedPointStatus = useMemo(() => {
+    const z = otherComplexSelectedPointInfo.z;
+    const w = otherComplexSelectedPointInfo.w;
+    const derivative = otherComplexSelectedPointInfo.derivative;
+    const jacobianScale = derivative ? Math.hypot(derivative.re, derivative.im) : null;
+    const localRotation = derivative ? Math.atan2(derivative.im, derivative.re) : null;
+    const finiteW = !!w && Number.isFinite(w.re) && Number.isFinite(w.im);
+    const absW = finiteW ? Math.hypot(w.re, w.im) : Number.NaN;
+    const rootTol = Math.max(
+      5e-3,
+      complexMapZExtent / Math.max(40, Math.min(600, Math.max(complexMapSpec.nu, complexMapSpec.nv)))
+    );
+    const nearRoot = (entries: RationalInspection["zeros"]) =>
+      entries.some((entry) => Math.hypot(entry.point.re - z.re, entry.point.im - z.im) <= rootTol);
+    const onPole = otherComplexRationalInspection
+      ? nearRoot(otherComplexRationalInspection.poles)
+      : !finiteW || (Number.isFinite(absW) && absW >= Math.max(4, otherComplexWExtent * 0.95));
+    const onZero = otherComplexRationalInspection
+      ? nearRoot(otherComplexRationalInspection.zeros)
+      : Number.isFinite(absW) && absW <= Math.max(1e-5, otherComplexWExtent * 1e-3);
+    const onCritical = jacobianScale != null && jacobianScale <= 1e-3 * Math.max(1, otherComplexSelectedPointInfo.absW);
+    let onBranchCut = false;
+    if (otherComplexBranchCutSegments?.length) {
+      const segTol = rootTol * 1.8;
+      const distPointSeg = (px: number, py: number, ax: number, ay: number, bx: number, by: number) => {
+        const abx = bx - ax;
+        const aby = by - ay;
+        const denom = abx * abx + aby * aby;
+        const t = denom <= 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - ax) * abx + (py - ay) * aby) / denom));
+        const qx = ax + t * abx;
+        const qy = ay + t * aby;
+        return Math.hypot(px - qx, py - qy);
+      };
+      for (const seg of otherComplexBranchCutSegments) {
+        const [a, b] = seg;
+        if (distPointSeg(z.re, z.im, a[0], a[1], b[0], b[1]) <= segTol) {
+          onBranchCut = true;
+          break;
+        }
+      }
+    }
+    const status =
+      onPole
+        ? "pole"
+        : onZero
+          ? "zero"
+          : onCritical
+            ? "critical"
+            : onBranchCut
+              ? "branch cut"
+              : "regular";
+    const conformal = jacobianScale == null ? null : jacobianScale > 1e-6;
+    return { status, jacobianScale, localRotation, conformal, finiteW };
+  }, [
+    otherComplexSelectedPointInfo,
+    otherComplexRationalInspection,
+    otherComplexBranchCutSegments,
+    otherComplexWExtent,
+    complexMapZExtent,
+    complexMapSpec.nu,
+    complexMapSpec.nv,
   ]);
 
   const handleOtherComplexComputeIntegralAction = useCallback(() => {
@@ -36203,10 +36333,28 @@ case "mobius":
                           </button>
                           <button
                             type="button"
+                            onClick={() => setOtherComplexPathMode("rectangle")}
+                            style={pill(otherComplexPathMode === "rectangle")}
+                          >
+                            Rectangle
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setOtherComplexPathMode("freehand")}
                             style={pill(otherComplexPathMode === "freehand")}
                           >
                             Freehand
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOtherComplexPathMode("circle");
+                              setOtherComplexPathCenter(otherComplexSelectedPoint);
+                            }}
+                          >
+                            Circle around selected point
                           </button>
                         </div>
                         {otherComplexPathMode === "circle" ? (
@@ -36220,6 +36368,29 @@ case "mobius":
                               onChange={(e) => setOtherComplexPathRadius(Math.max(0.05, Number(e.target.value)))}
                             />
                           </label>
+                        ) : otherComplexPathMode === "rectangle" ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                            <label style={{ fontSize: 12 }}>
+                              width
+                              <input
+                                type="number"
+                                min={0.1}
+                                step={0.1}
+                                value={otherComplexPathRectWidth}
+                                onChange={(e) => setOtherComplexPathRectWidth(Math.max(0.1, Number(e.target.value)))}
+                              />
+                            </label>
+                            <label style={{ fontSize: 12 }}>
+                              height
+                              <input
+                                type="number"
+                                min={0.1}
+                                step={0.1}
+                                value={otherComplexPathRectHeight}
+                                onChange={(e) => setOtherComplexPathRectHeight(Math.max(0.1, Number(e.target.value)))}
+                              />
+                            </label>
+                          </div>
                         ) : otherComplexPathMode === "segment" ? (
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -36748,17 +36919,35 @@ case "mobius":
                         </label>
                       </div>
                       {otherComplexShowContourBands && (
-                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
-                          <span>Bands: {Math.max(3, Math.round(otherComplexContourBandCount))}</span>
-                          <input
-                            type="range"
-                            min={3}
-                            max={24}
-                            step={1}
-                            value={otherComplexContourBandCount}
-                            onChange={(e) => setOtherComplexContourBandCount(Math.max(3, Math.round(Number(e.target.value))))}
-                          />
-                        </label>
+                        <div style={{ display: "grid", gap: 6, fontSize: 11, maxWidth: 420 }}>
+                          <label style={{ display: "grid", gap: 2 }}>
+                            <span>Bands: {Math.max(3, Math.round(otherComplexContourBandCount))}</span>
+                            <input
+                              type="range"
+                              min={3}
+                              max={24}
+                              step={1}
+                              value={otherComplexContourBandCount}
+                              onChange={(e) => setOtherComplexContourBandCount(Math.max(3, Math.round(Number(e.target.value))))}
+                            />
+                          </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexContourBandMode("modulus")}
+                              style={pill(otherComplexContourBandMode === "modulus")}
+                            >
+                              bands of |f|
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setOtherComplexContourBandMode("argument")}
+                              style={pill(otherComplexContourBandMode === "argument")}
+                            >
+                              bands of arg(f)
+                            </button>
+                          </div>
+                        </div>
                       )}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                         <span>Value scale:</span>
@@ -36845,6 +37034,10 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane to move circle center. Radius = {otherComplexPathRadius.toFixed(2)}.
                         </div>
+                      ) : otherComplexPathMode === "rectangle" ? (
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Click Z-plane to move rectangle center. Size = {otherComplexPathRectWidth.toFixed(2)} x {otherComplexPathRectHeight.toFixed(2)}.
+                        </div>
                       ) : otherComplexPathMode === "segment" ? (
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Click Z-plane with {otherComplexPathPickTarget} pick mode to define the segment.
@@ -36900,6 +37093,29 @@ case "mobius":
                               ? cToStr(otherComplexSelectedPointInfo.derivative)
                               : "n/a"}
                           </div>
+                          <div>
+                            Jacobian scale ≈ |f'(z)| ={" "}
+                            {otherComplexSelectedPointStatus.jacobianScale == null
+                              ? "n/a"
+                              : otherComplexSelectedPointStatus.jacobianScale.toFixed(6)}
+                          </div>
+                          <div>
+                            local rotation ={" "}
+                            {otherComplexSelectedPointStatus.localRotation == null
+                              ? "n/a"
+                              : otherComplexSelectedPointStatus.localRotation.toFixed(6)}
+                          </div>
+                          <div>
+                            conformal:{" "}
+                            {otherComplexSelectedPointStatus.conformal == null
+                              ? "n/a"
+                              : otherComplexSelectedPointStatus.conformal
+                                ? "yes"
+                                : "no (critical)"}
+                          </div>
+                          <div>
+                            status: {otherComplexSelectedPointStatus.finiteW ? otherComplexSelectedPointStatus.status : "pole"}
+                          </div>
                         </div>
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 700 }}>Detected Features</div>
@@ -36910,6 +37126,14 @@ case "mobius":
                         </div>
                         <div style={{ display: "grid", gap: 4 }}>
                           <div style={{ fontWeight: 700 }}>Contour Analysis</div>
+                          <div>
+                            path length (z-plane):{" "}
+                            {otherComplexPathMetrics.zLength == null ? "n/a" : otherComplexPathMetrics.zLength.toFixed(6)}
+                          </div>
+                          <div>
+                            image path length (w-plane):{" "}
+                            {otherComplexPathMetrics.wLength == null ? "n/a" : otherComplexPathMetrics.wLength.toFixed(6)}
+                          </div>
                           <div>
                             winding number:{" "}
                             {otherComplexContourAnalysis.windingNumber == null
