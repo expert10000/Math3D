@@ -39699,6 +39699,65 @@ case "mobius":
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Workflow: function → branch points → branch cut → path → continuation → monodromy inspector.
                         </div>
+                        <div style={{ display: "grid", gap: 6, borderTop: "1px dashed #dbe2ea", paddingTop: 6 }}>
+                          <div style={{ fontWeight: 700, fontSize: 12 }}>3D Surface Preview</div>
+                          <div style={{ fontSize: 11, opacity: 0.78 }}>
+                            Complex Analysis → Branches → 3D Surface Preview
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {(
+                              [
+                                { id: "re", label: "height = Re(f)" },
+                                { id: "im", label: "height = Im(f)" },
+                                { id: "abs", label: "height = |f|" },
+                                { id: "arg", label: "height = arg(f)" },
+                                { id: "sheet_index", label: "height = sheet index" },
+                              ] as const
+                            ).map((entry) => (
+                              <button
+                                key={`branch-value-surface:${entry.id}`}
+                                type="button"
+                                onClick={() => setOtherComplexValueSurfaceQuantity(entry.id)}
+                                style={pill(otherComplexValueSurfaceQuantity === entry.id)}
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                          {otherComplexBranchProfile.id === "log" && (
+                            <label style={{ fontSize: 11 }}>
+                              log sheet count
+                              <input
+                                type="number"
+                                min={2}
+                                max={24}
+                                step={1}
+                                value={otherComplexValueSurfaceLogSheetCount}
+                                onChange={(e) =>
+                                  setOtherComplexValueSurfaceLogSheetCount(
+                                    Math.max(2, Math.min(24, Math.round(Number(e.target.value) || 2)))
+                                  )
+                                }
+                                style={{ width: 90, marginLeft: 8 }}
+                              />
+                            </label>
+                          )}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={buildOtherComplexValueSurface}>
+                              Build 3D value surface
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOtherComplexInspectorTab("sheet");
+                                setOtherComplexMainViewMode("path");
+                                setOtherComplexShowPathMapping(true);
+                              }}
+                            >
+                              Open Sheet Preview Inspector
+                            </button>
+                          </div>
+                        </div>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Branch points</div>
                         <div style={{ display: "grid", gap: 4, fontSize: 11 }}>
                           <div>
