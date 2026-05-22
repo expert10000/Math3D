@@ -1306,6 +1306,7 @@ type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
 type OtherComplexInspectorTab =
   | "branch"
   | "path"
+  | "surface"
   | "monodromy"
   | "sheet"
   | "warnings"
@@ -1342,6 +1343,7 @@ type BranchLabProfile = {
   branchPoints: C[];
   cutLabel: string;
   monodromyNote: string;
+  includesInfinityByDefault?: boolean;
 };
 
 
@@ -2887,6 +2889,7 @@ const BRANCH_LAB_PROFILES: Record<Exclude<BranchLabProfileId, "none">, BranchLab
     branchPoints: [{ re: 0, im: 0 }],
     cutLabel: "negative real axis",
     monodromyNote: "Looping once around z=0 adds 2πi to log(z).",
+    includesInfinityByDefault: true,
   },
   sqrt: {
     id: "sqrt",
@@ -9620,6 +9623,8 @@ const App: React.FC = () => {
     () => detectBranchLabProfile(otherComplexFunctionExprSafe),
     [otherComplexFunctionExprSafe]
   );
+  const otherComplexIncludeInfinityBranchPointEffective =
+    otherComplexIncludeInfinityBranchPoint || !!otherComplexBranchProfile.includesInfinityByDefault;
   const otherComplexCompiled2d = useMemo(
     () => compileComplexMapExpressions(complexMapSpec.reExpr, complexMapSpec.imExpr, { inputMode: "fz", fExpr: otherComplexFunctionExprSafe }),
     [complexMapSpec.reExpr, complexMapSpec.imExpr, otherComplexFunctionExprSafe]
@@ -14001,13 +14006,13 @@ const App: React.FC = () => {
     const critical = otherComplexMarkers2d?.critical.z.length ?? 0;
     const branchPoints = otherComplexBranchProfile.branchPoints.length
       ? `${otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(", ")}${
-          otherComplexIncludeInfinityBranchPoint ? ", ∞" : ""
+          otherComplexIncludeInfinityBranchPointEffective ? ", ∞" : ""
         }`
-      : otherComplexIncludeInfinityBranchPoint
+      : otherComplexIncludeInfinityBranchPointEffective
         ? "∞"
       : "none detected";
     return { zeros, poles, critical, branchPoints };
-  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile, otherComplexIncludeInfinityBranchPoint]);
+  }, [otherComplexRationalInspection, otherComplexMarkers2d, otherComplexBranchProfile, otherComplexIncludeInfinityBranchPointEffective]);
 
   const otherComplexContourAnalysis = useMemo(() => {
     const loops = otherComplexPathZLoops;
@@ -14961,6 +14966,72 @@ const App: React.FC = () => {
     };
   }, [otherComplexBranchProfile.id, otherComplexPathPlayback?.progress, otherComplexBranchAnalysis]);
 
+  const otherComplexRiemannSurfacePreview = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return null;
+    const previewRows =
+      otherComplexMonodromyTable?.rows
+        .slice(0, 6)
+        .map((row) => ({
+          loopCount: row.loopCount,
+          sheetLabel:
+            otherComplexBranchProfile.id === "log"
+              ? row.kInt == null
+                ? "k: n/a"
+                : `k = ${row.kInt}`
+              : row.sheetIndex == null || !otherComplexMonodromyTable.sheetCount
+                ? "sheet: n/a"
+                : `${row.sheetIndex} / ${otherComplexMonodromyTable.sheetCount}`,
+          continuationLabel:
+            otherComplexBranchProfile.id === "log"
+              ? `value shift ${row.valueShiftText}`
+              : `multiplier ${row.multiplierText}`,
+        })) ?? [];
+    const returnPeriodLabel =
+      otherComplexBranchAnalysis.returnPeriodLoops == null
+        ? "n/a"
+        : otherComplexBranchAnalysis.returnPeriodLoops === "infinite"
+          ? "infinite (non-periodic sheet index)"
+          : `${otherComplexBranchAnalysis.returnPeriodLoops} loop(s)`;
+    if (otherComplexBranchProfile.id === "log") {
+      return {
+        title: "log(z): symbolic infinite-sheet preview",
+        sheetModel: "Sheets indexed by k ∈ Z (helicoid-like covering).",
+        cutModel: "Principal cut is a ray from 0 to ∞ (default negative real axis).",
+        continuationRule: "One positive loop around z=0 sends k → k+1 and adds +2πi to log(z).",
+        returnPeriodLabel,
+        previewRows,
+      };
+    }
+    if (otherComplexBranchProfile.id === "pow_third") {
+      return {
+        title: "z^(1/3): symbolic 3-sheet preview",
+        sheetModel: "Three sheets cyclically glued along the branch cut.",
+        cutModel: "Default cut is a ray from 0 to ∞; crossing/looping changes branch selection.",
+        continuationRule: "One loop around z=0 advances sheet by +1 mod 3.",
+        returnPeriodLabel,
+        previewRows,
+      };
+    }
+    if (otherComplexBranchProfile.id === "sqrt_z2m1") {
+      return {
+        title: "sqrt(z^2-1): symbolic 2-sheet preview",
+        sheetModel: "Two sheets glued along the cut segment between branch points.",
+        cutModel: "Default cut is [-1, 1] on the real axis.",
+        continuationRule: "Looping around either branch point swaps sheets (shift +1 mod 2).",
+        returnPeriodLabel,
+        previewRows,
+      };
+    }
+    return {
+      title: `${otherComplexBranchProfile.label}: symbolic 2-sheet preview`,
+      sheetModel: "Two sheets glued along the branch cut.",
+      cutModel: "Default cut is a ray from 0 to ∞ (negative real axis).",
+      continuationRule: "One loop around z=0 swaps sheets (shift +1 mod 2).",
+      returnPeriodLabel,
+      previewRows,
+    };
+  }, [otherComplexBranchProfile, otherComplexBranchAnalysis.returnPeriodLoops, otherComplexMonodromyTable]);
+
   const otherComplexPreferredPole = useMemo(() => {
     const poles: C[] = [];
     if (otherComplexRationalInspection?.poles.length) {
@@ -15112,6 +15183,7 @@ const App: React.FC = () => {
 
   const otherComplexSphereView = useMemo(() => {
     const toSphere = (x: number, y: number) => stereographicToSphere(x, y);
+    const northPole = { x: 0, y: 0, z: 1 } as const;
 
     const lines: RiemannSphereLine[] = [];
     const points: RiemannSpherePoint[] = [];
@@ -15127,7 +15199,7 @@ const App: React.FC = () => {
     }
     lines.push({ points: equator, color: 0x8a8fa3, opacity: 0.62 });
 
-    points.push({ x: 0, y: 0, z: 1, color: 0xf57c00, size: 0.072 });
+    points.push({ x: northPole.x, y: northPole.y, z: northPole.z, color: 0xf57c00, size: 0.072 });
     points.push({ x: 0, y: 0, z: -1, color: 0x7c879f, size: 0.055 });
 
     const selectedZ = otherComplexSelectedPointInfo.z;
@@ -15137,7 +15209,7 @@ const App: React.FC = () => {
       const wS = toSphere(otherComplexSelectedPointInfo.w.re, otherComplexSelectedPointInfo.w.im);
       points.push({ x: wS.x, y: wS.y, z: wS.z, color: 0x0a66c2, size: 0.07 });
     } else {
-      points.push({ x: 0, y: 0, z: 1, color: 0x0a66c2, size: 0.07 });
+      points.push({ x: northPole.x, y: northPole.y, z: northPole.z, color: 0x0a66c2, size: 0.07 });
     }
 
     if (otherComplexPathMappingActive && otherComplexPathZLoops.length) {
@@ -15165,12 +15237,42 @@ const App: React.FC = () => {
         if (seg.length < 2) continue;
         lines.push({ points: seg.map(([x, y]) => toSphere(x, y)), color: 0x8b5cf6, opacity: 0.88 });
       }
+      if (
+        otherComplexBranchProfile.id === "log" &&
+        (otherComplexBranchCutMode === "principal" ||
+          otherComplexBranchCutMode === "negative_real_axis" ||
+          otherComplexBranchCutMode === "positive_real_axis" ||
+          otherComplexBranchCutMode === "radial_from_point")
+      ) {
+        const branchPoint =
+          otherComplexBranchProfile.branchPoints[
+            Math.min(Math.max(0, Math.round(otherComplexSelectedBranchPointIndex)), Math.max(0, otherComplexBranchProfile.branchPoints.length - 1))
+          ] ?? { re: 0, im: 0 };
+        let rayAngle = Math.PI;
+        if (otherComplexBranchCutMode === "positive_real_axis") rayAngle = 0;
+        else if (otherComplexBranchCutMode === "radial_from_point") rayAngle = (otherComplexBranchCutRadialAngleDeg * Math.PI) / 180;
+        const rayPoints: { x: number; y: number; z: number }[] = [];
+        const rayScale = Math.max(1, complexMapZExtent);
+        const raySamples = 96;
+        for (let i = 0; i <= raySamples; i++) {
+          const t = i / raySamples;
+          const radial = Math.tan((t * Math.PI * 0.995) / 2) * rayScale;
+          const x = branchPoint.re + Math.cos(rayAngle) * radial;
+          const y = branchPoint.im + Math.sin(rayAngle) * radial;
+          rayPoints.push(toSphere(x, y));
+        }
+        rayPoints.push({ x: northPole.x, y: northPole.y, z: northPole.z });
+        lines.push({ points: rayPoints, color: 0x8b5cf6, opacity: 0.94 });
+      }
     }
     if (otherComplexBranchProfile.branchPoints.length) {
       for (const pt of otherComplexBranchProfile.branchPoints) {
         const s = toSphere(pt.re, pt.im);
         points.push({ x: s.x, y: s.y, z: s.z, color: 0x7c3aed, size: 0.062 });
       }
+    }
+    if (otherComplexIncludeInfinityBranchPointEffective) {
+      points.push({ x: northPole.x, y: northPole.y, z: northPole.z, color: 0x7c3aed, size: 0.064 });
     }
 
     if (otherComplexShowSelectedContour && otherComplexSelectedContourPolylines?.zLines) {
@@ -15227,8 +15329,12 @@ const App: React.FC = () => {
 
     return { lines, points, guideSpheres };
   }, [
+    complexMapZExtent,
+    otherComplexBranchCutMode,
+    otherComplexBranchCutRadialAngleDeg,
     otherComplexBranchProfile,
     otherComplexEffectiveBranchCutSegments,
+    otherComplexIncludeInfinityBranchPointEffective,
     otherComplexMarkers2d,
     otherComplexPathWMappedSegments,
     otherComplexPathZLoops,
@@ -15244,6 +15350,7 @@ const App: React.FC = () => {
     otherComplexShowSelectedContour,
     otherComplexShowSingularityInspector,
     otherComplexShowZeros,
+    otherComplexSelectedBranchPointIndex,
   ]);
 
   const handleOtherComplexComputeIntegralAction = useCallback(() => {
@@ -38383,16 +38490,21 @@ case "mobius":
                           <div>
                             auto-detected:{" "}
                             {otherComplexBranchProfile.branchPoints.length
-                              ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
+                              ? `${otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")}${
+                                  otherComplexIncludeInfinityBranchPointEffective ? " ; ∞" : ""
+                                }`
+                              : otherComplexIncludeInfinityBranchPointEffective
+                                ? "∞"
                               : "none"}
                           </div>
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
                               type="checkbox"
-                              checked={otherComplexIncludeInfinityBranchPoint}
+                              checked={otherComplexIncludeInfinityBranchPointEffective}
+                              disabled={!!otherComplexBranchProfile.includesInfinityByDefault}
                               onChange={(e) => setOtherComplexIncludeInfinityBranchPoint(e.target.checked)}
                             />
-                            include infinity
+                            include infinity{otherComplexBranchProfile.includesInfinityByDefault ? " (required by function profile)" : ""}
                           </label>
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Branch cut</div>
@@ -39578,6 +39690,7 @@ case "mobius":
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("surface")} style={pill(otherComplexInspectorTab === "surface")}>Surface</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
@@ -39593,7 +39706,7 @@ case "mobius":
                                 ? otherComplexBranchProfile.branchPoints.map((pt) => cToStr(pt)).join(" ; ")
                                 : "none detected"}
                             </div>
-                            {otherComplexIncludeInfinityBranchPoint && <div>includes branch point at ∞ (for conceptual tracking).</div>}
+                            {otherComplexIncludeInfinityBranchPointEffective && <div>includes branch point at ∞ (for conceptual tracking).</div>}
                             {otherComplexBranchAnalysis.selectedBranchPoint && (
                               <div>selected branch point: {cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)}</div>
                             )}
@@ -39615,6 +39728,34 @@ case "mobius":
                               contour: {otherComplexContourAnalysis.closed ? "closed" : "open"}{" "}
                               {otherComplexContourAnalysis.orientation ? `(${otherComplexContourAnalysis.orientation})` : ""}
                             </div>
+                          </div>
+                        )}
+                        {otherComplexInspectorTab === "surface" && (
+                          <div style={{ display: "grid", gap: 5, fontSize: 12 }}>
+                            {otherComplexRiemannSurfacePreview ? (
+                              <>
+                                <div style={{ fontWeight: 700 }}>{otherComplexRiemannSurfacePreview.title}</div>
+                                <div>{otherComplexRiemannSurfacePreview.sheetModel}</div>
+                                <div>{otherComplexRiemannSurfacePreview.cutModel}</div>
+                                <div>{otherComplexRiemannSurfacePreview.continuationRule}</div>
+                                <div>return period: {otherComplexRiemannSurfacePreview.returnPeriodLabel}</div>
+                                <div style={{ marginTop: 4, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>W-plane continuation preview</div>
+                                  <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                                    {otherComplexRiemannSurfacePreview.previewRows.map((row) => (
+                                      <div key={`surface-preview-row:${row.loopCount}`}>
+                                        loops {row.loopCount}: {row.sheetLabel}; {row.continuationLabel}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div style={{ marginTop: 2, fontSize: 11, opacity: 0.8 }}>
+                                  3D sheet surfaces are not included in this version; this preview is symbolic and continuation-based.
+                                </div>
+                              </>
+                            ) : (
+                              <div>No branch profile detected for symbolic sheet preview.</div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "monodromy" && (
