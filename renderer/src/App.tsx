@@ -12254,10 +12254,10 @@ const App: React.FC = () => {
   const [showProbeNormal, setShowProbeNormal] = useState(true);
   const [showProbeTangentPlane, setShowProbeTangentPlane] = useState(true);
   const [showProbeTangents, setShowProbeTangents] = useState(true);
-  const [showPrincipalDirections, setShowPrincipalDirections] = useState(false);
+  const [showPrincipalDirections, setShowPrincipalDirections] = useState(true);
   const [showPrincipalNormalPlanes, setShowPrincipalNormalPlanes] = useState(false);
-  const [showPrincipalLines, setShowPrincipalLines] = useState(false);
-  const [showPrincipalGlyphs, setShowPrincipalGlyphs] = useState(false);
+  const [showPrincipalLines, setShowPrincipalLines] = useState(true);
+  const [showPrincipalGlyphs, setShowPrincipalGlyphs] = useState(true);
   const [principalGlyphDensity, setPrincipalGlyphDensity] = useState(100);
   const [principalGlyphLength, setPrincipalGlyphLength] = useState(0.4);
   const [principalGlyphMode, setPrincipalGlyphMode] = useState<"both" | "d1">("both");
@@ -29423,7 +29423,9 @@ case "mobius":
         setDatasetKind("surface");
         setSurfacesPanelState("work");
         setSurfacesLeftTab("scene");
-        if (surfaceViewerKind === "mesh") handleChangeViewerKind("implicit");
+        if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") {
+          handleChangeViewerKind("implicit");
+        }
       },
     },
     {
@@ -47962,6 +47964,10 @@ type AnalysisFocusedSection =
   | "mesh-quality"
   | "geodesics"
   | "diagnostics";
+type DifferentialGeometryAnalysisMode = "auto" | "fast-preview" | "robust-mesh" | "analytic";
+type DifferentialGeometryPrecheckMode = "run" | "auto";
+type DifferentialGeometrySmoothing = "none" | "light" | "medium";
+type DifferentialGeometryBinaryToggle = "off" | "on";
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showInternalTabs = true,
@@ -48604,6 +48610,33 @@ onChangeImplicitExpr,
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
   const [complexToolMode, setComplexToolMode] = useState<"line" | "probe" | "preimage">("line");
+  const [differentialMode, setDifferentialMode] = useState<DifferentialGeometryAnalysisMode>("auto");
+  const [differentialUiMode, setDifferentialUiMode] = useState<"basic" | "advanced">("basic");
+  const [differentialPrecheck, setDifferentialPrecheck] = useState<DifferentialGeometryPrecheckMode>("auto");
+  const [differentialMeanCurvature, setDifferentialMeanCurvature] = useState(true);
+  const [differentialGaussianCurvature, setDifferentialGaussianCurvature] = useState(true);
+  const [differentialPrincipalCurvatureK1, setDifferentialPrincipalCurvatureK1] = useState(false);
+  const [differentialPrincipalCurvatureK2, setDifferentialPrincipalCurvatureK2] = useState(false);
+  const [differentialShapeIndex, setDifferentialShapeIndex] = useState(false);
+  const [differentialCurvedness, setDifferentialCurvedness] = useState(false);
+  const [differentialNormals, setDifferentialNormals] = useState(true);
+  const [differentialDirectionD1, setDifferentialDirectionD1] = useState(true);
+  const [differentialDirectionD2, setDifferentialDirectionD2] = useState(true);
+  const [differentialAsymptoticDirections, setDifferentialAsymptoticDirections] = useState(false);
+  const [differentialParabolicLines, setDifferentialParabolicLines] = useState(false);
+  const [differentialRidgesCrests, setDifferentialRidgesCrests] = useState(false);
+  const [differentialUmbilicPoints, setDifferentialUmbilicPoints] = useState(false);
+  const [differentialHighCurvatureZones, setDifferentialHighCurvatureZones] = useState(false);
+  const [differentialFlatZones, setDifferentialFlatZones] = useState(false);
+  const [differentialSaddleZones, setDifferentialSaddleZones] = useState(false);
+  const [differentialSmoothing, setDifferentialSmoothing] = useState<DifferentialGeometrySmoothing>("none");
+  const [differentialRemeshBeforeAnalysis, setDifferentialRemeshBeforeAnalysis] =
+    useState<DifferentialGeometryBinaryToggle>("off");
+  const [differentialNormalizeScale, setDifferentialNormalizeScale] = useState<DifferentialGeometryBinaryToggle>("off");
+  const [differentialClampOutliers, setDifferentialClampOutliers] = useState<DifferentialGeometryBinaryToggle>("off");
+  const [differentialShowAsOverlay, setDifferentialShowAsOverlay] = useState(true);
+  const [differentialSaveDerivedResult, setDifferentialSaveDerivedResult] = useState(false);
+  const [differentialExportScalarFields, setDifferentialExportScalarFields] = useState(false);
   const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
   const clampInt = (v: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(v)));
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
@@ -48672,6 +48705,20 @@ onChangeImplicitExpr,
     },
     [onChangeAnalysisFocusedSection]
   );
+  const differentialObjectTypeLabel = isMeshViewer
+    ? "mesh"
+    : viewerKind === "implicit"
+      ? "implicit surface"
+      : "parametric surface";
+  const differentialInputLabel = isMeshViewer
+    ? "detached mesh"
+    : viewerKind === "implicit"
+      ? "VTK preview mesh / CGAL robust mesh"
+      : "analytic surface";
+  const handleComputeDifferentialGeometry = useCallback(() => {
+    onChangeAnalysisFocusedSection?.("differential-geometry");
+    onRebuildCurvatureLines();
+  }, [onChangeAnalysisFocusedSection, onRebuildCurvatureLines]);
   useEffect(() => {
     if (volumePresetId !== "custom") {
       lastVolumePresetIdRef.current = volumePresetId;
@@ -51182,95 +51229,246 @@ onChangeImplicitExpr,
           >
             <summary style={analysisAccordionSummaryStyle}>Differential geometry</summary>
             <div style={{ marginTop: 8, marginBottom: 10, marginLeft: 4 }}>
-            <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Compute principal curvatures</div>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showPrincipalDirections}
-                onChange={onTogglePrincipalDirections}
-                style={{ marginRight: 6 }}
-              />
-              Show principal directions
-            </label>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showPrincipalNormalPlanes}
-                onChange={onTogglePrincipalNormalPlanes}
-                style={{ marginRight: 6 }}
-              />
-              Show principal normal planes
-            </label>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showPrincipalLines}
-                onChange={onTogglePrincipalLines}
-                style={{ marginRight: 6 }}
-              />
-              Trace principal curvature lines
-            </label>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={showPrincipalGlyphs}
-                onChange={onTogglePrincipalGlyphs}
-                style={{ marginRight: 6 }}
-              />
-              Show principal direction glyphs
-            </label>
-            {showPrincipalGlyphs && (
-              <div
-                style={{
-                  marginLeft: 20,
-                  marginTop: 6,
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  alignItems: "center",
-                  fontSize: 11,
-                }}
-              >
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>Density</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setDifferentialUiMode("basic")}
+                  style={pill(differentialUiMode === "basic")}
+                  aria-pressed={differentialUiMode === "basic"}
+                >
+                  Basic
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDifferentialUiMode("advanced")}
+                  style={pill(differentialUiMode === "advanced")}
+                  aria-pressed={differentialUiMode === "advanced"}
+                >
+                  Advanced
+                </button>
+              </div>
+              <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Source</div>
+              <div style={{ display: "grid", gap: 6, fontSize: 11, marginBottom: 10 }}>
+                <div><strong>Object:</strong> current selected surface</div>
+                <div><strong>Object type:</strong> {differentialObjectTypeLabel}</div>
+                <div><strong>Input:</strong> {differentialInputLabel}</div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ minWidth: 70 }}>Mode</span>
                   <select
-                    value={principalGlyphDensity}
-                    onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
-                    style={{ fontSize: 11, padding: "2px 4px" }}
+                    value={differentialMode}
+                    onChange={(e) => setDifferentialMode(e.target.value as DifferentialGeometryAnalysisMode)}
+                    style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
                   >
-                    <option value={50}>1/50</option>
-                    <option value={100}>1/100</option>
-                    <option value={200}>1/200</option>
-                    <option value={400}>1/400</option>
+                    <option value="auto">Auto</option>
+                    <option value="fast-preview">Fast Preview</option>
+                    <option value="robust-mesh">Robust Mesh</option>
+                    <option value="analytic">Analytic</option>
                   </select>
                 </label>
-                <div style={{ minWidth: 160 }}>
-                  <div style={{ fontSize: 10, color: "#555" }}>
-                    Length {principalGlyphLength.toFixed(2)}
-                  </div>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={1.2}
-                    step={0.05}
-                    value={principalGlyphLength}
-                    onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
-                    style={{ width: 160 }}
-                  />
-                </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span>Mode</span>
+                <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ minWidth: 70 }}>Precheck</span>
                   <select
-                    value={principalGlyphMode}
-                    onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
-                    style={{ fontSize: 11, padding: "2px 4px" }}
+                    value={differentialPrecheck}
+                    onChange={(e) => setDifferentialPrecheck(e.target.value as DifferentialGeometryPrecheckMode)}
+                    style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
                   >
-                    <option value="both">d1 + d2</option>
-                    <option value="d1">d1 only</option>
+                    <option value="auto">Auto</option>
+                    <option value="run">Run</option>
                   </select>
                 </label>
               </div>
-            )}
+
+              {differentialUiMode === "basic" ? (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Quick operations</div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
+                    <label><input type="checkbox" checked={differentialMeanCurvature} onChange={(e) => setDifferentialMeanCurvature(e.target.checked)} style={{ marginRight: 6 }} />Mean curvature H</label>
+                    <label><input type="checkbox" checked={differentialGaussianCurvature} onChange={(e) => setDifferentialGaussianCurvature(e.target.checked)} style={{ marginRight: 6 }} />Gaussian curvature K</label>
+                    <label><input type="checkbox" checked={showPrincipalDirections} onChange={onTogglePrincipalDirections} style={{ marginRight: 6 }} />Show principal directions</label>
+                    <label><input type="checkbox" checked={showPrincipalLines} onChange={onTogglePrincipalLines} style={{ marginRight: 6 }} />Trace principal curvature lines</label>
+                    <label><input type="checkbox" checked={showPrincipalGlyphs} onChange={onTogglePrincipalGlyphs} style={{ marginRight: 6 }} />Show direction glyphs</label>
+                    <label><input type="checkbox" checked={differentialShowAsOverlay} onChange={(e) => setDifferentialShowAsOverlay(e.target.checked)} style={{ marginRight: 6 }} />Show as overlay</label>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Quantities to compute</div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
+                    <label><input type="checkbox" checked={differentialMeanCurvature} onChange={(e) => setDifferentialMeanCurvature(e.target.checked)} style={{ marginRight: 6 }} />Mean curvature H</label>
+                    <label><input type="checkbox" checked={differentialGaussianCurvature} onChange={(e) => setDifferentialGaussianCurvature(e.target.checked)} style={{ marginRight: 6 }} />Gaussian curvature K</label>
+                    <label><input type="checkbox" checked={differentialPrincipalCurvatureK1} onChange={(e) => setDifferentialPrincipalCurvatureK1(e.target.checked)} style={{ marginRight: 6 }} />Principal curvature k1</label>
+                    <label><input type="checkbox" checked={differentialPrincipalCurvatureK2} onChange={(e) => setDifferentialPrincipalCurvatureK2(e.target.checked)} style={{ marginRight: 6 }} />Principal curvature k2</label>
+                    <label><input type="checkbox" checked={differentialShapeIndex} onChange={(e) => setDifferentialShapeIndex(e.target.checked)} style={{ marginRight: 6 }} />Shape index</label>
+                    <label><input type="checkbox" checked={differentialCurvedness} onChange={(e) => setDifferentialCurvedness(e.target.checked)} style={{ marginRight: 6 }} />Curvedness</label>
+                  </div>
+
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Direction fields</div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
+                    <label><input type="checkbox" checked={differentialNormals} onChange={(e) => setDifferentialNormals(e.target.checked)} style={{ marginRight: 6 }} />Normals</label>
+                    <label><input type="checkbox" checked={differentialDirectionD1} onChange={(e) => setDifferentialDirectionD1(e.target.checked)} style={{ marginRight: 6 }} />Principal direction d1</label>
+                    <label><input type="checkbox" checked={differentialDirectionD2} onChange={(e) => setDifferentialDirectionD2(e.target.checked)} style={{ marginRight: 6 }} />Principal direction d2</label>
+                    <label><input type="checkbox" checked={differentialAsymptoticDirections} onChange={(e) => setDifferentialAsymptoticDirections(e.target.checked)} style={{ marginRight: 6 }} />Asymptotic directions</label>
+                  </div>
+
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Feature detection</div>
+                  <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
+                    <label><input type="checkbox" checked={differentialParabolicLines} onChange={(e) => setDifferentialParabolicLines(e.target.checked)} style={{ marginRight: 6 }} />Parabolic lines K = 0</label>
+                    <label><input type="checkbox" checked={differentialRidgesCrests} onChange={(e) => setDifferentialRidgesCrests(e.target.checked)} style={{ marginRight: 6 }} />Ridges / crests</label>
+                    <label><input type="checkbox" checked={differentialUmbilicPoints} onChange={(e) => setDifferentialUmbilicPoints(e.target.checked)} style={{ marginRight: 6 }} />Umbilic points</label>
+                    <label><input type="checkbox" checked={differentialHighCurvatureZones} onChange={(e) => setDifferentialHighCurvatureZones(e.target.checked)} style={{ marginRight: 6 }} />High-curvature zones</label>
+                    <label><input type="checkbox" checked={differentialFlatZones} onChange={(e) => setDifferentialFlatZones(e.target.checked)} style={{ marginRight: 6 }} />Flat zones</label>
+                    <label><input type="checkbox" checked={differentialSaddleZones} onChange={(e) => setDifferentialSaddleZones(e.target.checked)} style={{ marginRight: 6 }} />Saddle zones</label>
+                  </div>
+                </>
+              )}
+
+              <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Display after compute</div>
+              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalDirections}
+                  onChange={onTogglePrincipalDirections}
+                  style={{ marginRight: 6 }}
+                />
+                Show principal directions
+              </label>
+              {differentialUiMode === "advanced" && (
+                <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+                  <input
+                    type="checkbox"
+                    checked={showPrincipalNormalPlanes}
+                    onChange={onTogglePrincipalNormalPlanes}
+                    style={{ marginRight: 6 }}
+                  />
+                  Show principal normal planes
+                </label>
+              )}
+              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalLines}
+                  onChange={onTogglePrincipalLines}
+                  style={{ marginRight: 6 }}
+                />
+                Trace principal curvature lines
+              </label>
+              <label style={{ display: "block", cursor: "pointer", fontSize: 11 }}>
+                <input
+                  type="checkbox"
+                  checked={showPrincipalGlyphs}
+                  onChange={onTogglePrincipalGlyphs}
+                  style={{ marginRight: 6 }}
+                />
+                Show direction glyphs
+              </label>
+              {showPrincipalGlyphs && (
+                <div style={{ marginLeft: 20, marginTop: 6, display: "grid", gap: 8, fontSize: 11, marginBottom: 10 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ minWidth: 52 }}>Density</span>
+                    <select
+                      value={principalGlyphDensity}
+                      onChange={(e) => onChangePrincipalGlyphDensity(Number(e.target.value))}
+                      style={{ fontSize: 11, padding: "2px 4px", minWidth: 100 }}
+                    >
+                      <option value={50}>1/50</option>
+                      <option value={100}>1/100</option>
+                      <option value={200}>1/200</option>
+                      <option value={400}>1/400</option>
+                    </select>
+                  </label>
+                  <div style={{ minWidth: 180 }}>
+                    <div style={{ fontSize: 10, color: "#555" }}>Length {principalGlyphLength.toFixed(2)}</div>
+                    <input
+                      type="range"
+                      min={0.05}
+                      max={1.2}
+                      step={0.05}
+                      value={principalGlyphLength}
+                      onChange={(e) => onChangePrincipalGlyphLength(Number(e.target.value))}
+                      style={{ width: 180 }}
+                    />
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ minWidth: 52 }}>Mode</span>
+                    <select
+                      value={principalGlyphMode}
+                      onChange={(e) => onChangePrincipalGlyphMode(e.target.value as "both" | "d1")}
+                      style={{ fontSize: 11, padding: "2px 4px", minWidth: 100 }}
+                    >
+                      <option value="both">d1 + d2</option>
+                      <option value="d1">d1 only</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {differentialUiMode === "advanced" && (
+                <>
+                  <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Post-processing</div>
+                  <div style={{ display: "grid", gap: 6, fontSize: 11, marginBottom: 10 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ minWidth: 138 }}>Smoothing</span>
+                      <select
+                        value={differentialSmoothing}
+                        onChange={(e) => setDifferentialSmoothing(e.target.value as DifferentialGeometrySmoothing)}
+                        style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
+                      >
+                        <option value="none">none</option>
+                        <option value="light">light</option>
+                        <option value="medium">medium</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ minWidth: 138 }}>Remesh before analysis</span>
+                      <select
+                        value={differentialRemeshBeforeAnalysis}
+                        onChange={(e) => setDifferentialRemeshBeforeAnalysis(e.target.value as DifferentialGeometryBinaryToggle)}
+                        style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
+                      >
+                        <option value="off">off</option>
+                        <option value="on">on</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ minWidth: 138 }}>Normalize scale</span>
+                      <select
+                        value={differentialNormalizeScale}
+                        onChange={(e) => setDifferentialNormalizeScale(e.target.value as DifferentialGeometryBinaryToggle)}
+                        style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
+                      >
+                        <option value="off">off</option>
+                        <option value="on">on</option>
+                      </select>
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ minWidth: 138 }}>Clamp outliers</span>
+                      <select
+                        value={differentialClampOutliers}
+                        onChange={(e) => setDifferentialClampOutliers(e.target.value as DifferentialGeometryBinaryToggle)}
+                        style={{ fontSize: 11, padding: "2px 4px", minWidth: 120 }}
+                      >
+                        <option value="off">off</option>
+                        <option value="on">on</option>
+                      </select>
+                    </label>
+                  </div>
+                </>
+              )}
+
+              <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 6 }}>Output</div>
+              <div style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 10 }}>
+                <label><input type="checkbox" checked={differentialShowAsOverlay} onChange={(e) => setDifferentialShowAsOverlay(e.target.checked)} style={{ marginRight: 6 }} />Show as overlay</label>
+                {differentialUiMode === "advanced" && (
+                  <>
+                    <label><input type="checkbox" checked={differentialSaveDerivedResult} onChange={(e) => setDifferentialSaveDerivedResult(e.target.checked)} style={{ marginRight: 6 }} />Save as derived result</label>
+                    <label><input type="checkbox" checked={differentialExportScalarFields} onChange={(e) => setDifferentialExportScalarFields(e.target.checked)} style={{ marginRight: 6 }} />Export scalar fields</label>
+                  </>
+                )}
+              </div>
+
+              <button type="button" onClick={handleComputeDifferentialGeometry} style={{ padding: "4px 10px", fontSize: 11 }}>
+                Compute / Recompute
+              </button>
             </div>
           </details>
 
@@ -54555,7 +54753,16 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     !showPrincipalLines &&
     !showCurvatureLines;
   const hasHighCurvature = showCurvatureLines || showPrincipalLines;
+  const hasUnsupportedAnalysis = isImplicitViewer;
   const warningRows: Array<{ id: string; label: string; active: boolean; detail: string }> = [
+    {
+      id: "stale-analysis",
+      label: "stale analysis",
+      active: hasStaleAnalysis,
+      detail: hasStaleAnalysis
+        ? "No analysis overlays are active."
+        : "At least one analysis overlay is active.",
+    },
     {
       id: "singularities",
       label: "singularities",
@@ -54575,7 +54782,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
     },
     {
       id: "high-curvature",
-      label: "high curvature",
+      label: "high curvature zones",
       active: hasHighCurvature,
       detail: hasHighCurvature ? "Curvature overlays/lines are active; inspect highlighted regions." : "Curvature overlays are not active.",
     },
@@ -54588,15 +54795,16 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         : "No failed preview/mesh traces.",
     },
     {
-      id: "stale-analysis",
-      label: "stale analysis",
-      active: hasStaleAnalysis,
-      detail: hasStaleAnalysis
-        ? "No analysis overlays are active."
-        : "At least one analysis overlay is active.",
+      id: "unsupported-analysis",
+      label: "unsupported analysis",
+      active: hasUnsupportedAnalysis,
+      detail: hasUnsupportedAnalysis
+        ? "At least one analysis mode is unavailable for the current object type."
+        : "All current analysis modes are supported.",
     },
   ];
   const diagnosticsWarningCount = warningRows.filter((row) => row.active).length;
+  const activeWarningRows = warningRows.filter((row) => row.active);
   const selectedProbeCurvature =
     isGraphViewer && probeCurv
       ? { K: probeCurv.K, H: probeCurv.H, k1: probeCurv.k1, k2: probeCurv.k2 }
@@ -54773,11 +54981,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const inspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
     { id: "object", label: "Object" },
     { id: "selection", label: "Selection" },
-    { id: "analysis", label: resultsIssueCount > 0 ? `Results ${resultsIssueCount}` : "Results" },
-    {
-      id: "warnings",
-      label: diagnosticsWarningCount > 0 ? `Warnings ⚠ ${diagnosticsWarningCount}` : "Warnings",
-    },
+    { id: "analysis", label: "Results" },
+    { id: "warnings", label: "Warnings" },
   ];
   const pointPickSection = (
     <div style={workflowCardStyle("domain")}>
@@ -54867,11 +55072,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       <div style={inspectorSectionCard}>
         <div style={inspectorSectionTitle}>Object</div>
         <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-          <div><strong>name:</strong> {activeMeta.label}</div>
-          <div><strong>type:</strong> {viewSourceKind}</div>
-          <div><strong>formula:</strong> {sourceEquation || activeMeta.formula || "n/a"}</div>
+          <div><strong>Name:</strong> {activeMeta.label}</div>
+          <div><strong>Type:</strong> {viewSourceKind}</div>
+          <div><strong>Formula/source:</strong> {sourceEquation || activeMeta.formula || "n/a"}</div>
           <div>
-            <strong>domain:</strong>{" "}
+            <strong>Domain:</strong>{" "}
             {isGraphViewer
               ? `x in ±${fmt(safeGraphDomain.xSpan)}, y in ±${fmt(safeGraphDomain.ySpan)}`
               : isParamViewer
@@ -54880,12 +55085,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   ? `x in ±${fmt(safeImplicitDomain.xSpan)}, y in ±${fmt(safeImplicitDomain.ySpan)}`
                   : "mesh domain"}
           </div>
-          <div><strong>resolution:</strong> {Math.round(activeResolution)}</div>
+          <div><strong>Resolution:</strong> {Math.round(activeResolution)}</div>
           <div>
-            <strong>vertices / faces:</strong>{" "}
+            <strong>Vertices / Faces:</strong>{" "}
             {formatInspectorCount(meshInspectorStats.vertexCount)} / {formatInspectorCount(meshInspectorStats.faceCount)}
           </div>
-          <div><strong>source mode:</strong> {identitySourceKind}</div>
+          <div><strong>Source mode:</strong> {identitySourceKind}</div>
         </div>
       </div>
 
@@ -55431,11 +55636,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
           </div>
         )}
         <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-          <div><strong>Summary</strong></div>
-          <div><strong>Differential geometry:</strong> {differentialGeometryStatus}</div>
-          <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
-          <div><strong>Vector calculus:</strong> {vectorCalculusStatus}</div>
-          <div><strong>Mesh quality:</strong> {meshQualityStatus}</div>
+          <div><strong>Global computed analysis</strong></div>
+          <div><strong>Differential geometry summary:</strong> {differentialGeometryStatus}</div>
+          <div><strong>Vector calculus summary:</strong> {vectorCalculusStatus}</div>
+          <div><strong>Mesh quality summary:</strong> {meshQualityStatus}</div>
+          <div><strong>Chart analysis summary:</strong> {chartAnalysisStatus}</div>
+          <div><strong>Topology diagnostics summary:</strong> {topologyDiagnosticsStatus}</div>
           <div><strong>Warnings:</strong> {diagnosticsWarningCount}</div>
         </div>
       </div>
@@ -55988,21 +56194,27 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             <div style={inspectorSectionTitle}>Selection</div>
             <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
               <div>
-                <strong>Selected point:</strong>{" "}
+                <strong>Selected point p:</strong>{" "}
                 {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}
               </div>
               <div>
-                <strong>normal n:</strong>{" "}
+                <strong>Normal n:</strong>{" "}
                 {probeInfo?.normal ? `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` : "none"}
               </div>
-              <div><strong>Selected face:</strong> n/a</div>
-              <div><strong>Selected cell:</strong> n/a</div>
-              <div><strong>Selected curve/path:</strong> n/a</div>
-              <div><strong>local K:</strong> {selectedProbeCurvature?.K != null && Number.isFinite(selectedProbeCurvature.K) ? fmt(selectedProbeCurvature.K) : "n/a"}</div>
-              <div><strong>local H:</strong> {selectedProbeCurvature?.H != null && Number.isFinite(selectedProbeCurvature.H) ? fmt(selectedProbeCurvature.H) : "n/a"}</div>
-              <div><strong>local k1:</strong> {selectedProbeCurvature?.k1 != null && Number.isFinite(selectedProbeCurvature.k1) ? fmt(selectedProbeCurvature.k1) : "n/a"}</div>
-              <div><strong>local k2:</strong> {selectedProbeCurvature?.k2 != null && Number.isFinite(selectedProbeCurvature.k2) ? fmt(selectedProbeCurvature.k2) : "n/a"}</div>
-              <div><strong>selected geodesic/path data:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
+              <div><strong>Face id:</strong> n/a</div>
+              <div>
+                <strong>Chart coordinates u,v:</strong>{" "}
+                {probeInfo?.uv ? `(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})` : "n/a"}
+              </div>
+              <div><strong>Local K:</strong> {selectedProbeCurvature?.K != null && Number.isFinite(selectedProbeCurvature.K) ? fmt(selectedProbeCurvature.K) : "n/a"}</div>
+              <div><strong>Local H:</strong> {selectedProbeCurvature?.H != null && Number.isFinite(selectedProbeCurvature.H) ? fmt(selectedProbeCurvature.H) : "n/a"}</div>
+              <div><strong>Local k1:</strong> {selectedProbeCurvature?.k1 != null && Number.isFinite(selectedProbeCurvature.k1) ? fmt(selectedProbeCurvature.k1) : "n/a"}</div>
+              <div><strong>Local k2:</strong> {selectedProbeCurvature?.k2 != null && Number.isFinite(selectedProbeCurvature.k2) ? fmt(selectedProbeCurvature.k2) : "n/a"}</div>
+              <div>
+                <strong>Local vector values:</strong>{" "}
+                {calculusVectorOverlayEnabled && calculusActiveVectorField ? `${calculusActiveVectorField} (point sampling TBA)` : "n/a"}
+              </div>
+              <div><strong>Selected geodesic/path data:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
             </div>
           </div>
         </>
@@ -56011,16 +56223,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       {inspectorPanelTab === "warnings" && (
         <div style={inspectorSectionCard}>
           <div style={inspectorSectionTitle}>Warnings</div>
-          <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
-            {warningRows.map((row) => (
-              <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
-                <div style={{ fontWeight: 700, color: row.active ? "#b42318" : "#1f894f" }}>
-                  {row.label}: {row.active ? "warning" : "ok"}
+          {activeWarningRows.length === 0 ? (
+            <div style={{ fontSize: 11, color: "#1f894f" }}>No active warnings.</div>
+          ) : (
+            <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+              {activeWarningRows.map((row) => (
+                <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
+                  <div style={{ fontWeight: 700, color: "#b42318" }}>
+                    {row.label}
+                  </div>
+                  <div style={{ color: "#475467" }}>{row.detail}</div>
                 </div>
-                <div style={{ color: "#475467" }}>{row.detail}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

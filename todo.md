@@ -82,3 +82,194 @@ You want imported/edited meshes to be first-class (selection/history/ops/export)
 You plan non-surface mesh types or broader geometry pipelines.
 Recommendation for this codebase now: keep current model unless you’re committing to mesh-first UX.
 If yes, I can draft a clean refactor to DatasetKind = "surface" | "mesh" | "volume" with minimal breakage
+
+
+
+Analysis
+
+1. Source
+   - Surface definition
+   - Current generated mesh
+   - Mesh source: VTK preview / CGAL robust / imported / detached
+
+2. Mesh quality
+   - vertex count
+   - triangle count
+   - boundary edges
+   - non-manifold edges
+   - connected components
+   - normal status
+   - degenerate triangles
+
+3. Differential geometry
+   - mean curvature H
+   - Gaussian curvature K
+   - principal curvatures k1, k2
+   - principal direction overlay
+   - curvature heatmap
+
+4. Geodesics
+   - pick source point
+   - pick target point
+   - compute shortest path
+   - distance field
+   - geodesic isolines
+
+5. Topology
+   - Euler characteristic
+   - orientability estimate
+   - genus estimate
+   - boundary loops
+   - component count
+
+6. Mesh operations
+   - clean
+   - smooth
+   - decimate
+   - recompute normals
+   - detach mesh
+   - export
+
+
+
+   22222222222222222222222
+
+
+   Differential Geometry Analysis
+
+[Source]
+  Object: current selected object
+  Object type: implicit surface / parametric surface / mesh
+  Analysis input: VTK preview mesh / CGAL robust mesh / detached mesh / analytic surface
+  Mode: Auto / Fast Preview / Robust Mesh / Analytic
+  Precheck: Run / Auto
+
+[Scalar Curvatures]
+  [x] Mean curvature H
+  [x] Gaussian curvature K
+  [ ] Principal curvature k1
+  [ ] Principal curvature k2
+  [ ] Shape index
+  [ ] Curvedness
+
+[Direction Fields]
+  [x] Normals
+  [ ] Principal direction 1
+  [ ] Principal direction 2
+  [ ] Asymptotic directions
+
+[Feature Detection]
+  [ ] Parabolic lines K = 0
+  [ ] Ridges / crests
+  [ ] Umbilic points
+  [ ] High-curvature zones
+  [ ] Flat zones
+  [ ] Saddle zones
+
+[Post-processing]
+  Smoothing: none / light / medium
+  Remesh before analysis: off / on
+  Normalize scale: off / on
+  Clamp outliers: off / on
+
+[Output]
+  Overlay: none / heatmap / isolines / glyphs
+  Store result: temporary / save to scene
+  Export: CSV / JSON / vertex attributes
+
+[Run]
+  Preview
+  Accurate
+  Save to scene
+
+
+----- left panel
+
+ifferential geometry
+
+Computation
+[x] Principal curvatures k1, k2
+[x] Mean curvature H
+[x] Gaussian curvature K
+[x] Principal directions d1, d2
+[ ] Umbilic / parabolic points
+[ ] Shape operator
+[ ] Normal variation
+
+Display after compute
+[x] Principal direction glyphs
+[ ] Principal normal planes
+[ ] Curvature heatmap
+[ ] Curvature labels
+[ ] Curvature line seeds
+
+Sampling
+Density: 1/100
+Length: 0.40
+Mode: d1 + d2
+
+Quality
+[Fast] [Balanced] [Accurate]
+
+Actions
+[Compute differential geometry]
+[Clear overlay]
+[Save as analysis result]
+
+
+  ---- left panel
+
+  Vector calculus
+
+Scalar source
+[ Height y ▼ ]
+
+Options:
+- Height x
+- Height y
+- Height z
+- Radius r
+- Distance from point
+- Gaussian curvature K
+- Mean curvature H
+- Custom scalar field
+- Texture / sampled value
+- Signed distance / implicit f
+- Geodesic distance
+
+Operation
+[Compute grad]
+[Compute div]
+[Compute curl]
+[Compute Laplacian]
+
+Vector source
+[ None ▼ ]
+
+Options:
+- Surface gradient field
+- Principal direction d1
+- Principal direction d2
+- Projected world vector
+- Normal field
+- Custom vector field
+- Previous result
+
+Display
+[x] Show vector field overlay
+[ ] Show magnitude heatmap
+[ ] Show critical points
+[ ] Show flow lines
+[ ] Normalize arrows
+[ ] Project vectors to tangent plane
+
+Sampling
+Density: 800
+Scale: 1.0
+Smoothing: 0.0
+
+Actions
+[Compute]
+[Trace flow]
+[Clear]
+[Save vector field]
