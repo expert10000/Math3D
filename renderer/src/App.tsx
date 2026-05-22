@@ -1306,7 +1306,6 @@ type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
 type OtherComplexInspectorTab =
   | "branch"
   | "path"
-  | "surface"
   | "monodromy"
   | "sheet"
   | "warnings"
@@ -1336,7 +1335,7 @@ type OtherComplexContourPresetId =
   | "figure_eight";
 const OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS = [0.5, 1, 2, 4] as const;
 type OtherComplexPathAnimationSpeed = (typeof OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS)[number];
-type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1";
+type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1" | "sqrt_zab";
 type BranchLabProfile = {
   id: BranchLabProfileId;
   label: string;
@@ -1344,6 +1343,14 @@ type BranchLabProfile = {
   cutLabel: string;
   monodromyNote: string;
   includesInfinityByDefault?: boolean;
+};
+type RiemannSurfaceGalleryCard = {
+  id: "sqrt" | "pow_third" | "log" | "sqrt_z2m1" | "sqrt_zab";
+  label: string;
+  expr: string;
+  preview: string;
+  theory: string;
+  configurable?: boolean;
 };
 
 
@@ -2929,6 +2936,19 @@ const sanitizeBranchLabExpr = (src: string) =>
     .replace(/^w\s*=\s*/, "")
     .replace(/\s+/g, "");
 
+const formatCompactReal = (value: number) => {
+  if (!Number.isFinite(value)) return "0";
+  if (Math.abs(value) < 1e-10) return "0";
+  const rounded = Math.round(value);
+  if (Math.abs(value - rounded) <= 1e-10) return `${rounded}`;
+  return value.toFixed(6).replace(/\.?0+$/, "");
+};
+
+const formatLinearFactor = (root: number) =>
+  root >= 0 ? `(z-${formatCompactReal(root)})` : `(z+${formatCompactReal(Math.abs(root))})`;
+
+const buildSqrtZabExpr = (a: number, b: number) => `sqrt(${formatLinearFactor(a)}*${formatLinearFactor(b)})`;
+
 const detectBranchLabProfile = (src: string): BranchLabProfile => {
   const normalized = sanitizeBranchLabExpr(src);
   if (normalized === "logz" || normalized === "log(z)") return BRANCH_LAB_PROFILES.log;
@@ -2947,6 +2967,28 @@ const detectBranchLabProfile = (src: string): BranchLabProfile => {
     normalized === "sqrt((z*z)-1)"
   ) {
     return BRANCH_LAB_PROFILES.sqrt_z2m1;
+  }
+  const sqrtZabMatch = normalized.match(
+    /^sqrt\(\(z([+-]\d+(?:\.\d+)?)\)\*\(z([+-]\d+(?:\.\d+)?)\)\)$/
+  );
+  if (sqrtZabMatch) {
+    const tokenA = Number(sqrtZabMatch[1]);
+    const tokenB = Number(sqrtZabMatch[2]);
+    if (Number.isFinite(tokenA) && Number.isFinite(tokenB)) {
+      const a = -tokenA;
+      const b = -tokenB;
+      const aLabel = formatCompactReal(a);
+      const bLabel = formatCompactReal(b);
+      const minLabel = formatCompactReal(Math.min(a, b));
+      const maxLabel = formatCompactReal(Math.max(a, b));
+      return {
+        id: "sqrt_zab",
+        label: `sqrt((z-${aLabel})(z-${bLabel}))`,
+        branchPoints: [{ re: a, im: 0 }, { re: b, im: 0 }],
+        cutLabel: `segment [${minLabel}, ${maxLabel}] on real axis`,
+        monodromyNote: "Crossing the cut or looping around one branch point swaps sheets.",
+      };
+    }
   }
   return {
     id: "none",
@@ -8272,6 +8314,8 @@ const App: React.FC = () => {
   const [otherComplexPathAnimationPlaying, setOtherComplexPathAnimationPlaying] = useState(false);
   const [otherComplexPathAnimationProgress, setOtherComplexPathAnimationProgress] = useState(0);
   const [otherComplexPathAnimationSpeed, setOtherComplexPathAnimationSpeed] = useState<OtherComplexPathAnimationSpeed>(1);
+  const [riemannGalleryAInput, setRiemannGalleryAInput] = useState("-1");
+  const [riemannGalleryBInput, setRiemannGalleryBInput] = useState("1");
   const [otherComplexIncludeInfinityBranchPoint, setOtherComplexIncludeInfinityBranchPoint] = useState(false);
   const [otherComplexBranchCutMode, setOtherComplexBranchCutMode] = useState<OtherComplexBranchCutMode>("principal");
   const [otherComplexBranchCutRadialAngleDeg, setOtherComplexBranchCutRadialAngleDeg] = useState(180);
@@ -9529,14 +9573,19 @@ const App: React.FC = () => {
     setComplexMapError(null);
   }, []);
 
-  const applyOtherComplexPreset = useCallback((id: string) => {
-    const preset = FUNCTION_EXPLORER_OTHER_PRESETS.find((entry) => entry.id === id);
-    if (!preset) return;
-    const profile = detectBranchLabProfile(preset.expr);
+  const applyOtherComplexFunctionPreset = useCallback((expr: string, label: string) => {
+    const profile = detectBranchLabProfile(expr);
+    const branchDiameter =
+      profile.branchPoints.length >= 2
+        ? Math.hypot(
+            profile.branchPoints[1]!.re - profile.branchPoints[0]!.re,
+            profile.branchPoints[1]!.im - profile.branchPoints[0]!.im
+          )
+        : 0;
     setComplexMapSpec((prev) => ({
       ...prev,
       inputMode: "fz",
-      fExpr: preset.expr,
+      fExpr: expr,
       mapMode: "standard",
       showIsolines: true,
       outputMode: "sweep",
@@ -9544,7 +9593,11 @@ const App: React.FC = () => {
     const branchPoint = profile.branchPoints[0] ?? { re: 0, im: 0 };
     setOtherComplexPathMode("circle");
     setOtherComplexPathCenter({ re: branchPoint.re, im: branchPoint.im });
-    setOtherComplexPathRadius(profile.id === "sqrt_z2m1" ? 0.38 : 0.28);
+    setOtherComplexPathRadius(
+      profile.id === "sqrt_z2m1" || profile.id === "sqrt_zab"
+        ? Math.max(0.22, Math.min(0.75, branchDiameter > 0 ? branchDiameter * 0.3 : 0.38))
+        : 0.28
+    );
     setOtherComplexPathLoopCount(1);
     setOtherComplexPathAnimationPlaying(false);
     setOtherComplexPathAnimationProgress(0);
@@ -9552,10 +9605,54 @@ const App: React.FC = () => {
     setOtherComplexInspectorTab("branch");
     setOtherComplexBranchCutMode("principal");
     setOtherComplexSelectedBranchPointIndex(0);
-    setOtherComplexActionStatus(`Preset loaded: ${preset.label} (${Date.now()}).`);
+    setOtherComplexActionStatus(`Preset loaded: ${label} (${Date.now()}).`);
     setComplexMapPresetId(COMPLEX_MAP_CUSTOM_ID);
     setComplexMapError(null);
   }, []);
+
+  const applyOtherComplexPreset = useCallback((id: string) => {
+    const preset = FUNCTION_EXPLORER_OTHER_PRESETS.find((entry) => entry.id === id);
+    if (!preset) return;
+    applyOtherComplexFunctionPreset(preset.expr, preset.label);
+  }, [applyOtherComplexFunctionPreset]);
+
+  const openRiemannSurfaceGalleryCard = useCallback(
+    (card: RiemannSurfaceGalleryCard) => {
+      applyOtherComplexFunctionPreset(card.expr, card.label);
+      setOtherComplexLeftPanelView("gallery");
+      setOtherComplexActionStatus(`Gallery card opened: ${card.label}.`);
+    },
+    [applyOtherComplexFunctionPreset]
+  );
+  const previewRiemannSurfaceGalleryCard = useCallback(
+    (card: RiemannSurfaceGalleryCard) => {
+      applyOtherComplexFunctionPreset(card.expr, card.label);
+      setOtherComplexMainViewMode("sphere");
+      setOtherComplexLayoutMode("three_pane");
+      setOtherComplexInspectorTab("sheet");
+      setOtherComplexActionStatus(`Preview: ${card.label}. Sphere + Sheet preview activated.`);
+    },
+    [applyOtherComplexFunctionPreset]
+  );
+  const theoryRiemannSurfaceGalleryCard = useCallback(
+    (card: RiemannSurfaceGalleryCard) => {
+      applyOtherComplexFunctionPreset(card.expr, card.label);
+      setOtherComplexMainViewMode("path");
+      setOtherComplexInspectorTab("monodromy");
+      setOtherComplexActionStatus(`Theory: ${card.theory}`);
+    },
+    [applyOtherComplexFunctionPreset]
+  );
+  const sendRiemannSurfaceGalleryCardToBranchLab = useCallback(
+    (card: RiemannSurfaceGalleryCard) => {
+      applyOtherComplexFunctionPreset(card.expr, card.label);
+      setOtherComplexMainViewMode("path");
+      setOtherComplexLeftPanelView("setup");
+      setOtherComplexInspectorTab("branch");
+      setOtherComplexActionStatus(`Sent to Branch Lab: ${card.label}.`);
+    },
+    [applyOtherComplexFunctionPreset]
+  );
 
   const updateOtherComplexFunctionExpr = useCallback((expr: string) => {
     setComplexMapSpec((prev) => ({
@@ -9582,6 +9679,11 @@ const App: React.FC = () => {
   const handleOtherComplexMapPathAction = useCallback(() => {
     setOtherComplexShowPathMapping(true);
     setOtherComplexActionStatus("Path mapping enabled. Draw or adjust contour in the Z-plane.");
+  }, []);
+  const handleOtherComplexSendPathToSheetPreview = useCallback(() => {
+    setOtherComplexShowPathMapping(true);
+    setOtherComplexInspectorTab("sheet");
+    setOtherComplexActionStatus("Path sent to Sheet Preview. Open Inspector -> Sheet for continuation and sheet transitions.");
   }, []);
 
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
@@ -9617,6 +9719,56 @@ const App: React.FC = () => {
   const otherComplexActivePreset = useMemo(
     () => FUNCTION_EXPLORER_OTHER_PRESETS.find((preset) => preset.expr.replace(/\s+/g, "") === otherComplexExprNormalized) ?? null,
     [otherComplexExprNormalized]
+  );
+  const riemannGalleryA = useMemo(() => {
+    const parsed = Number(riemannGalleryAInput);
+    return Number.isFinite(parsed) ? parsed : -1;
+  }, [riemannGalleryAInput]);
+  const riemannGalleryB = useMemo(() => {
+    const parsed = Number(riemannGalleryBInput);
+    return Number.isFinite(parsed) ? parsed : 1;
+  }, [riemannGalleryBInput]);
+  const riemannGalleryZabExpr = useMemo(() => buildSqrtZabExpr(riemannGalleryA, riemannGalleryB), [riemannGalleryA, riemannGalleryB]);
+  const riemannSurfaceGalleryCards = useMemo<RiemannSurfaceGalleryCard[]>(
+    () => [
+      {
+        id: "sqrt",
+        label: "sqrt(z)",
+        expr: "sqrt(z)",
+        preview: "Two sheets, branch points 0 and ∞.",
+        theory: "One loop around z=0 swaps sheets (order 2 monodromy).",
+      },
+      {
+        id: "pow_third",
+        label: "z^(1/3)",
+        expr: "z^(1/3)",
+        preview: "Three sheets with cyclic continuation.",
+        theory: "Each loop around z=0 advances sheet by +1 mod 3.",
+      },
+      {
+        id: "log",
+        label: "log(z)",
+        expr: "log(z)",
+        preview: "Infinite sheet stack / helicoid-style continuation.",
+        theory: "Each loop adds +2πi; sheet index k is unbounded.",
+      },
+      {
+        id: "sqrt_z2m1",
+        label: "sqrt(z^2-1)",
+        expr: "sqrt(z^2-1)",
+        preview: "Two branch points at -1 and 1, cut between them.",
+        theory: "Looping around either branch point swaps sheets.",
+      },
+      {
+        id: "sqrt_zab",
+        label: "sqrt((z-a)(z-b))",
+        expr: riemannGalleryZabExpr,
+        preview: `Configurable branch points a=${formatCompactReal(riemannGalleryA)}, b=${formatCompactReal(riemannGalleryB)}.`,
+        theory: "Generalized two-sheet square-root branch with adjustable branch points.",
+        configurable: true,
+      },
+    ],
+    [riemannGalleryA, riemannGalleryB, riemannGalleryZabExpr]
   );
   const otherComplexHasNonRationalFns = /\b(sin|cos|tan|exp|log|sqrt|abs)\b/i.test(otherComplexFunctionExprSafe);
   const otherComplexBranchProfile = useMemo(
@@ -10036,13 +10188,31 @@ const App: React.FC = () => {
       pushRay(from, Math.PI);
       return segments;
     }
-    if (otherComplexBranchProfile.id === "sqrt_z2m1") {
-      for (let i = 0; i < parts; i++) {
-        const t0 = i / parts;
-        const t1 = (i + 1) / parts;
-        pushSegment(-1 + 2 * t0, 0, -1 + 2 * t1, 0);
+    if (otherComplexBranchProfile.id === "sqrt_z2m1" || otherComplexBranchProfile.id === "sqrt_zab") {
+      if (otherComplexBranchProfile.id === "sqrt_z2m1") {
+        for (let i = 0; i < parts; i++) {
+          const t0 = i / parts;
+          const t1 = (i + 1) / parts;
+          pushSegment(-1 + 2 * t0, 0, -1 + 2 * t1, 0);
+        }
+        return segments;
       }
-      return segments;
+      if (branchPoints.length >= 2) {
+        const sorted = [...branchPoints].sort((a, b) => a.re - b.re || a.im - b.im);
+        const a = sorted[0]!;
+        const b = sorted[sorted.length - 1]!;
+        for (let i = 0; i < parts; i++) {
+          const t0 = i / parts;
+          const t1 = (i + 1) / parts;
+          pushSegment(
+            a.re + (b.re - a.re) * t0,
+            a.im + (b.im - a.im) * t0,
+            a.re + (b.re - a.re) * t1,
+            a.im + (b.im - a.im) * t1
+          );
+        }
+        return segments;
+      }
     }
     return null;
   }, [
@@ -14776,12 +14946,12 @@ const App: React.FC = () => {
     const monodromySheetCount =
       profile.id === "pow_third"
         ? 3
-        : profile.id === "sqrt" || profile.id === "pow_half" || profile.id === "sqrt_z2m1"
+        : profile.id === "sqrt" || profile.id === "pow_half" || profile.id === "sqrt_z2m1" || profile.id === "sqrt_zab"
           ? 2
           : null;
     let monodromyKRaw: number | null = selectedBranchPoint?.windingRaw ?? null;
     let monodromyKRounded: number | null = selectedBranchPoint?.windingRounded ?? null;
-    if (profile.id === "sqrt_z2m1" && branchPointTracking.length) {
+    if ((profile.id === "sqrt_z2m1" || profile.id === "sqrt_zab") && branchPointTracking.length) {
       const rawSum = branchPointTracking.reduce((sum, entry) => sum + (entry.windingRaw ?? 0), 0);
       const allRounded = branchPointTracking.every((entry) => entry.windingRounded != null);
       monodromyKRaw = rawSum;
@@ -14901,6 +15071,8 @@ const App: React.FC = () => {
           const base =
             profile === "sqrt_z2m1"
               ? "sqrt(z^2-1)"
+              : profile === "sqrt_zab"
+                ? otherComplexBranchProfile.label
               : profile === "pow_half"
                 ? "z^(1/2)"
                 : "sqrt(z)";
@@ -15022,6 +15194,19 @@ const App: React.FC = () => {
         previewRows,
       };
     }
+    if (otherComplexBranchProfile.id === "sqrt_zab") {
+      const pts = otherComplexBranchProfile.branchPoints;
+      const a = pts[0] ? cToStr(pts[0]) : "a";
+      const b = pts[1] ? cToStr(pts[1]) : "b";
+      return {
+        title: `${otherComplexBranchProfile.label}: symbolic 2-sheet preview`,
+        sheetModel: "Two sheets glued along the segment cut between configurable branch points.",
+        cutModel: `Default cut is between ${a} and ${b}.`,
+        continuationRule: "Looping around either selected branch point swaps sheets (shift +1 mod 2).",
+        returnPeriodLabel,
+        previewRows,
+      };
+    }
     return {
       title: `${otherComplexBranchProfile.label}: symbolic 2-sheet preview`,
       sheetModel: "Two sheets glued along the branch cut.",
@@ -15031,6 +15216,40 @@ const App: React.FC = () => {
       previewRows,
     };
   }, [otherComplexBranchProfile, otherComplexBranchAnalysis.returnPeriodLoops, otherComplexMonodromyTable]);
+
+  const otherComplexSheetTrackerBadges = useMemo(() => {
+    if (!otherComplexSheetTracker || otherComplexBranchProfile.id === "none") return [] as Array<{ label: string; value: string; tone: "neutral" | "good" | "warn" }>;
+    const formatReturn = () => {
+      if (otherComplexSheetTracker.returnPeriodLoops == null) return "n/a";
+      if (otherComplexSheetTracker.returnPeriodLoops === "infinite") return "infinite";
+      return `${otherComplexSheetTracker.returnPeriodLoops} loops`;
+    };
+    if (otherComplexBranchProfile.id === "log") {
+      const shift =
+        otherComplexSheetTracker.logShift == null
+          ? "n/a"
+          : `${otherComplexSheetTracker.logShift >= 0 ? "+" : "-"}${Math.abs(otherComplexSheetTracker.logShift).toFixed(4)}i`;
+      return [
+        { label: "k", value: otherComplexSheetTracker.kCurrent.toFixed(3), tone: "neutral" as const },
+        { label: "shift", value: shift, tone: "warn" as const },
+        { label: "return", value: formatReturn(), tone: "warn" as const },
+      ];
+    }
+    const sheetValue =
+      otherComplexSheetTracker.currentSheetIndex == null || !otherComplexSheetTracker.sheetCount
+        ? "n/a"
+        : `${otherComplexSheetTracker.currentSheetIndex} / ${otherComplexSheetTracker.sheetCount}`;
+    const shiftValue =
+      otherComplexSheetTracker.finalSheetShift == null || !otherComplexSheetTracker.sheetCount
+        ? "n/a"
+        : `+${otherComplexSheetTracker.finalSheetShift} mod ${otherComplexSheetTracker.sheetCount}`;
+    return [
+      { label: "sheet", value: sheetValue, tone: "good" as const },
+      { label: "shift", value: shiftValue, tone: "neutral" as const },
+      { label: "mult", value: otherComplexSheetTracker.multiplierText, tone: "neutral" as const },
+      { label: "return", value: formatReturn(), tone: "good" as const },
+    ];
+  }, [otherComplexSheetTracker, otherComplexBranchProfile.id]);
 
   const otherComplexPreferredPole = useMemo(() => {
     const poles: C[] = [];
@@ -15110,7 +15329,7 @@ const App: React.FC = () => {
         const h = Math.max(0.22, complexMapZExtent * 0.2);
         setOtherComplexPathMode("segment");
         setOtherComplexPathPickTarget("start");
-        if (otherComplexBranchProfile.id === "sqrt_z2m1") {
+        if (otherComplexBranchProfile.id === "sqrt_z2m1" || otherComplexBranchProfile.id === "sqrt_zab") {
           setOtherComplexSegmentStart({ re: 0, im: -h });
           setOtherComplexSegmentEnd({ re: 0, im: h });
         } else {
@@ -15170,7 +15389,7 @@ const App: React.FC = () => {
     );
     const branchPoint = otherComplexBranchProfile.branchPoints[idx]!;
     const baseRadius =
-      otherComplexBranchProfile.id === "sqrt_z2m1"
+      otherComplexBranchProfile.id === "sqrt_z2m1" || otherComplexBranchProfile.id === "sqrt_zab"
         ? 0.38
         : Math.max(0.16, Math.min(0.65, complexMapZExtent * 0.18));
     setOtherComplexPathMode("circle");
@@ -38695,6 +38914,11 @@ case "mobius":
                               onChange={(e) => setOtherComplexPathAnimationProgress(Math.max(0, Math.min(1, Number(e.target.value))))}
                             />
                           </label>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={handleOtherComplexSendPathToSheetPreview}>
+                              Send path to Sheet Preview
+                            </button>
+                          </div>
                         </div>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Contour presets</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -38949,6 +39173,61 @@ case "mobius":
                     </div>
                     ) : (
                       <div style={{ ...cardStyle, display: "grid", gap: 10 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>Riemann Surface Gallery</div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Gallery {"->"} lab workflow for multi-valued functions.
+                        </div>
+                        <div style={{ display: "grid", gap: 8 }}>
+                          {riemannSurfaceGalleryCards.map((card) => (
+                            <div
+                              key={`riemann-gallery:${card.id}`}
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                borderRadius: 8,
+                                border: "1px solid #dbe2ea",
+                                background: otherComplexExprNormalized === card.expr.replace(/\s+/g, "") ? "#eef2ff" : "#fff",
+                                padding: "8px 10px",
+                              }}
+                            >
+                              <div style={{ fontWeight: 700, fontSize: 12 }}>{card.label}</div>
+                              <div style={{ fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" }}>
+                                f(z) = {card.expr}
+                              </div>
+                              <div style={{ fontSize: 11, opacity: 0.78 }}>{card.preview}</div>
+                              <div style={{ fontSize: 11, opacity: 0.78 }}>{card.theory}</div>
+                              {card.configurable && (
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                                  <label style={{ fontSize: 11 }}>
+                                    a
+                                    <input
+                                      type="number"
+                                      step={0.1}
+                                      value={riemannGalleryAInput}
+                                      onChange={(e) => setRiemannGalleryAInput(e.target.value)}
+                                    />
+                                  </label>
+                                  <label style={{ fontSize: 11 }}>
+                                    b
+                                    <input
+                                      type="number"
+                                      step={0.1}
+                                      value={riemannGalleryBInput}
+                                      onChange={(e) => setRiemannGalleryBInput(e.target.value)}
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => openRiemannSurfaceGalleryCard(card)}>Open</button>
+                                <button type="button" onClick={() => previewRiemannSurfaceGalleryCard(card)}>Preview</button>
+                                <button type="button" onClick={() => theoryRiemannSurfaceGalleryCard(card)}>Theory</button>
+                                <button type="button" onClick={() => sendRiemannSurfaceGalleryCardToBranchLab(card)}>Send to Branch Lab</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ borderTop: "1px dashed #dbe2ea", paddingTop: 8 }} />
                         <div style={{ fontWeight: 700, fontSize: 12 }}>Preset gallery</div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Select a function card and apply it to the workspace.
@@ -39685,12 +39964,41 @@ case "mobius":
                                 </div>
                               </>
                             )}
+                            {otherComplexSheetTrackerBadges.length > 0 && (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                {otherComplexSheetTrackerBadges.map((badge) => (
+                                  <span
+                                    key={`sheet-badge:${badge.label}`}
+                                    style={{
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                      border: "1px solid #dbe2ea",
+                                      background:
+                                        badge.tone === "warn"
+                                          ? "#fff7ed"
+                                          : badge.tone === "good"
+                                            ? "#ecfdf3"
+                                            : "#f8fafc",
+                                      color:
+                                        badge.tone === "warn"
+                                          ? "#9a3412"
+                                          : badge.tone === "good"
+                                            ? "#166534"
+                                            : "#334155",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {badge.label}: {badge.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
-                          <button type="button" onClick={() => setOtherComplexInspectorTab("surface")} style={pill(otherComplexInspectorTab === "surface")}>Surface</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
@@ -39710,6 +40018,47 @@ case "mobius":
                             {otherComplexBranchAnalysis.selectedBranchPoint && (
                               <div>selected branch point: {cToStr(otherComplexBranchAnalysis.selectedBranchPoint.point)}</div>
                             )}
+                            {otherComplexBranchAnalysis.branchPointTracking.length > 0 && (
+                              <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>Branch point table</div>
+                                <div style={{ overflowX: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                                    <thead>
+                                      <tr>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>#</th>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Branch point</th>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>k (raw)</th>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>k (int)</th>
+                                        <th style={{ textAlign: "left", borderBottom: "1px solid #e2e8f0", padding: "2px 4px" }}>Focus</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {otherComplexBranchAnalysis.branchPointTracking.map((entry, idx) => (
+                                        <tr key={`branch-point-row:${idx}:${entry.point.re}:${entry.point.im}`}>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>a{idx + 1}</td>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>{cToStr(entry.point)}</td>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                            {entry.windingRaw == null ? "n/a" : entry.windingRaw.toFixed(6)}
+                                          </td>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                            {entry.windingRounded == null ? "n/a" : entry.windingRounded}
+                                          </td>
+                                          <td style={{ borderBottom: "1px solid #f1f5f9", padding: "2px 4px" }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => setOtherComplexSelectedBranchPointIndex(idx)}
+                                              style={pill(otherComplexBranchAnalysis.selectedBranchPointIndex === idx)}
+                                            >
+                                              select
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "path" && (
@@ -39728,34 +40077,6 @@ case "mobius":
                               contour: {otherComplexContourAnalysis.closed ? "closed" : "open"}{" "}
                               {otherComplexContourAnalysis.orientation ? `(${otherComplexContourAnalysis.orientation})` : ""}
                             </div>
-                          </div>
-                        )}
-                        {otherComplexInspectorTab === "surface" && (
-                          <div style={{ display: "grid", gap: 5, fontSize: 12 }}>
-                            {otherComplexRiemannSurfacePreview ? (
-                              <>
-                                <div style={{ fontWeight: 700 }}>{otherComplexRiemannSurfacePreview.title}</div>
-                                <div>{otherComplexRiemannSurfacePreview.sheetModel}</div>
-                                <div>{otherComplexRiemannSurfacePreview.cutModel}</div>
-                                <div>{otherComplexRiemannSurfacePreview.continuationRule}</div>
-                                <div>return period: {otherComplexRiemannSurfacePreview.returnPeriodLabel}</div>
-                                <div style={{ marginTop: 4, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
-                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>W-plane continuation preview</div>
-                                  <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                                    {otherComplexRiemannSurfacePreview.previewRows.map((row) => (
-                                      <div key={`surface-preview-row:${row.loopCount}`}>
-                                        loops {row.loopCount}: {row.sheetLabel}; {row.continuationLabel}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                                <div style={{ marginTop: 2, fontSize: 11, opacity: 0.8 }}>
-                                  3D sheet surfaces are not included in this version; this preview is symbolic and continuation-based.
-                                </div>
-                              </>
-                            ) : (
-                              <div>No branch profile detected for symbolic sheet preview.</div>
-                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "monodromy" && (
@@ -39842,6 +40163,36 @@ case "mobius":
                         {otherComplexInspectorTab === "sheet" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             <div style={{ fontWeight: 700 }}>Sheet tracker</div>
+                            {otherComplexSheetTrackerBadges.length > 0 && (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {otherComplexSheetTrackerBadges.map((badge) => (
+                                  <span
+                                    key={`sheet-tab-badge:${badge.label}`}
+                                    style={{
+                                      padding: "2px 8px",
+                                      borderRadius: 999,
+                                      border: "1px solid #dbe2ea",
+                                      background:
+                                        badge.tone === "warn"
+                                          ? "#fff7ed"
+                                          : badge.tone === "good"
+                                            ? "#ecfdf3"
+                                            : "#f8fafc",
+                                      color:
+                                        badge.tone === "warn"
+                                          ? "#9a3412"
+                                          : badge.tone === "good"
+                                            ? "#166534"
+                                            : "#334155",
+                                      fontSize: 11,
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {badge.label}: {badge.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             <div>start sheet: 0</div>
                             <div>
                               end sheet:{" "}
@@ -39904,6 +40255,30 @@ case "mobius":
                                 )}
                               </div>
                             )}
+                            <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6, display: "grid", gap: 4 }}>
+                              <div style={{ fontWeight: 700 }}>Sheet Preview</div>
+                              {otherComplexRiemannSurfacePreview ? (
+                                <>
+                                  <div style={{ fontSize: 11 }}>{otherComplexRiemannSurfacePreview.title}</div>
+                                  <div style={{ fontSize: 11 }}>{otherComplexRiemannSurfacePreview.sheetModel}</div>
+                                  <div style={{ fontSize: 11 }}>{otherComplexRiemannSurfacePreview.cutModel}</div>
+                                  <div style={{ fontSize: 11 }}>{otherComplexRiemannSurfacePreview.continuationRule}</div>
+                                  <div style={{ fontSize: 11 }}>return period: {otherComplexRiemannSurfacePreview.returnPeriodLabel}</div>
+                                  <div style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                                    {otherComplexRiemannSurfacePreview.previewRows.map((row) => (
+                                      <div key={`sheet-preview-row:${row.loopCount}`}>
+                                        loops {row.loopCount}: {row.sheetLabel}; {row.continuationLabel}
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                    3D sheet surfaces are not included in this version; this preview is symbolic and continuation-based.
+                                  </div>
+                                </>
+                              ) : (
+                                <div style={{ fontSize: 11 }}>No branch profile detected for sheet preview.</div>
+                              )}
+                            </div>
                           </div>
                         )}
                         {otherComplexInspectorTab === "point" && (
