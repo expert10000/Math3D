@@ -42,6 +42,22 @@ Use one of these:
 1. Deploy from a branch that does not include LFS `data/` assets.
 2. Prepare and push a `pages-deploy` branch, then switch Cloudflare Production branch to it.
 
+## CGAL / VTK usage map
+
+### CGAL is used in:
+1. Implicit surface robust meshing pipeline (run/stop/health/version UI + job execution) in `renderer/src/App.tsx` (`runCgalMesh`, `handleRunCgalMesh`, `cgalHealthState` flow).
+2. CGAL client wrapper in `renderer/src/services/cgalMeshClient.ts`.
+3. Window bridge wiring for CGAL worker calls in `renderer/src/services/webWorkerProxyBridge.ts` (`window.cgalMesh`).
+4. Implicit-surface downstream analysis that consumes CGAL mesh output in `renderer/src/App.tsx` (active CGAL mesh state, sampling/neighborhood, geodesic-related mesh token invalidation, mesh stats).
+
+### VTK is used in:
+1. Surface mesh ops in `renderer/src/App.tsx` via `vtkCleanNormals`, `vtkDecimate`, `vtkSmooth`, `vtkPreviewImplicit`.
+2. VTK mesh client wrapper in `renderer/src/services/vtkMeshClient.ts`.
+3. VTK volume ops (slice, isosurface, distance field, streamlines) in `renderer/src/services/vtkVolumeClient.ts`.
+4. Volume viewer execution path in `renderer/src/components/VolumeViewer.tsx` (`vtkVolumeSlice`, `vtkVolumeIsosurface`, `vtkVolumeStreamlines`, optional `vtkSmooth` post-process).
+5. Window bridge wiring for VTK worker calls in `renderer/src/services/webWorkerProxyBridge.ts` (`window.vtkMesh`, `window.vtkVolume`).
+6. UI controls/status for VTK operations and last-result inspector in `renderer/src/App.tsx`.
+
 
 
 Shared pipeline: surface tools (curvature, geodesics, chart/pick) run on triangle meshes anyway.
