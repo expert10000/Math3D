@@ -50,6 +50,19 @@ Use one of these:
 3. Window bridge wiring for CGAL worker calls in `renderer/src/services/webWorkerProxyBridge.ts` (`window.cgalMesh`).
 4. Implicit-surface downstream analysis that consumes CGAL mesh output in `renderer/src/App.tsx` (active CGAL mesh state, sampling/neighborhood, geodesic-related mesh token invalidation, mesh stats).
 
+### Where CGAL appears in UI
+1. `Surfaces` mode when viewer is `Implicit`, inside the left-panel workflow cards under `Analysis tools`.
+2. The subsection titled `Robust meshing (CGAL)` with controls such as:
+   `run mesh (CGAL)`, `stop worker`, target edge, auto edge, tri budget, radius bound, min tris, verbose, preflight samples.
+3. Worker health/status badges and errors in the same implicit-analysis card (`available`, backend/protocol/log path, worker unavailable reasons).
+4. The generated mesh then feeds downstream mesh inspection/geodesic tools and mesh stats in the inspector.
+
+### What this means in Implicit viewer
+1. `run preview (VTK)` = fast draft mesh for quick iteration while editing the implicit equation.
+2. `run mesh (CGAL)` = robust/final mesh generation pass for stability and higher-confidence downstream analysis.
+3. CGAL controls tune mesh quality/cost tradeoffs (`target edge`, `auto`, `tri budget`, `radius bound`, `min tris`, `verbose`, `preflight samples`).
+4. After CGAL mesh generation, downstream mesh-dependent tools use that result (inspection stats, geodesic-related workflows, and exports).
+
 ### VTK is used in:
 1. Surface mesh ops in `renderer/src/App.tsx` via `vtkCleanNormals`, `vtkDecimate`, `vtkSmooth`, `vtkPreviewImplicit`.
 2. VTK mesh client wrapper in `renderer/src/services/vtkMeshClient.ts`.
