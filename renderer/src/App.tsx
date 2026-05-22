@@ -1303,11 +1303,14 @@ type OtherComplexSphereColorMode = "f" | "z";
 type OtherComplexWScaleMode = "linear" | "log" | "auto";
 type OtherComplexLeftPanelView = "setup" | "gallery";
 type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
+type OtherComplexValueSurfaceQuantity = "re" | "im" | "abs" | "arg";
+type OtherComplexVectorFieldMode = "image" | "grad_u" | "grad_v" | "grad_both";
 type OtherComplexInspectorTab =
   | "branch"
   | "path"
   | "monodromy"
   | "sheet"
+  | "analysis"
   | "warnings"
   | "point"
   | "features"
@@ -8288,8 +8291,13 @@ const App: React.FC = () => {
   const [otherComplexShowZeros, setOtherComplexShowZeros] = useState(true);
   const [otherComplexShowPoles, setOtherComplexShowPoles] = useState(true);
   const [otherComplexShowVectorField, setOtherComplexShowVectorField] = useState(false);
+  const [otherComplexVectorFieldMode, setOtherComplexVectorFieldMode] = useState<OtherComplexVectorFieldMode>("image");
   const [otherComplexShowContourBands, setOtherComplexShowContourBands] = useState(false);
   const [otherComplexContourBandCount, setOtherComplexContourBandCount] = useState(10);
+  const [otherComplexShowULevelCurves, setOtherComplexShowULevelCurves] = useState(false);
+  const [otherComplexShowVLevelCurves, setOtherComplexShowVLevelCurves] = useState(false);
+  const [otherComplexShowOrthogonality, setOtherComplexShowOrthogonality] = useState(false);
+  const [otherComplexLevelCurveCount, setOtherComplexLevelCurveCount] = useState(8);
   const [otherComplexShowBranchCuts, setOtherComplexShowBranchCuts] = useState(true);
   const [otherComplexShowSelectedContour, setOtherComplexShowSelectedContour] = useState(false);
   const [otherComplexSelectedContourLevel, setOtherComplexSelectedContourLevel] = useState(0.5);
@@ -8326,7 +8334,12 @@ const App: React.FC = () => {
   const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("branch");
   const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
   const [otherComplexWScaleMode, setOtherComplexWScaleMode] = useState<OtherComplexWScaleMode>("auto");
-  const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<"modulus" | "argument">("modulus");
+  const [otherComplexValueSurfaceQuantity, setOtherComplexValueSurfaceQuantity] =
+    useState<OtherComplexValueSurfaceQuantity>("im");
+  const [otherComplexValueSurfaceLogSheetCount, setOtherComplexValueSurfaceLogSheetCount] = useState(7);
+  const [otherComplexContourBandMode, setOtherComplexContourBandMode] = useState<
+    "modulus" | "argument" | "u" | "v" | "cr_residual" | "conformal_scale" | "local_rotation"
+  >("modulus");
   // 0..4 steps: z -> Tδ -> J -> Sβ -> Tα
   const [mobiusDecompStep, setMobiusDecompStep] = useState(4);
   const mobiusFormulaCardRef = useRef<HTMLDivElement | null>(null);
@@ -8557,7 +8570,7 @@ const App: React.FC = () => {
   const [primValue, setPrimValue] = useState(1);
 
   // Standard maps selector
-  const [mapId, setMapId] = useState<MapId>("stripToDisk");
+  const [mapId, setMapId] = useState<MapId>("upperHalfToDisk");
 
   // Surfaces viewer kind
   const [surfaceViewerKind, setSurfaceViewerKind] = useState<SurfaceViewerKind>("implicit");
@@ -9790,6 +9803,172 @@ const App: React.FC = () => {
     if (!Number.isFinite(re) || !Number.isFinite(im)) return null;
     return { re, im };
   }, [otherComplexCompiled2d]);
+  const buildOtherComplexValueSurface = useCallback(() => {
+    const nu = Math.max(24, Math.round(complexMapSpec.nu));
+    const nv = Math.max(24, Math.round(complexMapSpec.nv));
+    const uMin = complexMapSpec.uMin;
+    const uMax = complexMapSpec.uMax;
+    const vMin = complexMapSpec.vMin;
+    const vMax = complexMapSpec.vMax;
+    const uStep = nu > 1 ? (uMax - uMin) / (nu - 1) : 0;
+    const vStep = nv > 1 ? (vMax - vMin) / (nv - 1) : 0;
+    const wScale = Number.isFinite(complexMapSpec.wScale) ? complexMapSpec.wScale : 1;
+    const clampAbs =
+      complexMapSpec.clampAbs != null && Number.isFinite(complexMapSpec.clampAbs) && complexMapSpec.clampAbs > 0
+        ? complexMapSpec.clampAbs
+        : null;
+
+    const sheetCount =
+      otherComplexBranchProfile.id === "pow_third"
+        ? 3
+        : otherComplexBranchProfile.id === "log"
+          ? Math.max(2, Math.min(24, Math.round(otherComplexValueSurfaceLogSheetCount)))
+          : otherComplexBranchProfile.id === "sqrt" ||
+              otherComplexBranchProfile.id === "pow_half" ||
+              otherComplexBranchProfile.id === "sqrt_z2m1" ||
+              otherComplexBranchProfile.id === "sqrt_zab"
+            ? 2
+            : 1;
+
+    const total = nu * nv;
+    const fullTotal = total * sheetCount;
+    const positions = new Float32Array(fullTotal * 3);
+    const uvs = new Float32Array(fullTotal * 2);
+    const valid = new Uint8Array(fullTotal);
+    const heights = new Float32Array(fullTotal);
+    const sheetKOffset = -Math.floor(sheetCount / 2);
+    const clampW = (re: number, im: number) => {
+      if (!clampAbs) return { re, im };
+      const mag = Math.hypot(re, im);
+      if (!Number.isFinite(mag) || mag <= clampAbs) return { re, im };
+      const s = clampAbs / Math.max(1e-12, mag);
+      return { re: re * s, im: im * s };
+    };
+    const evalSheetW = (u: number, v: number, sheetIdx: number) => {
+      const base = evalOtherComplexW(u, v);
+      if (!base) return null;
+      let re = base.re * wScale;
+      let im = base.im * wScale;
+      if (otherComplexBranchProfile.id === "log") {
+        const k = sheetKOffset + sheetIdx;
+        im += 2 * Math.PI * k;
+      } else if (otherComplexBranchProfile.id === "pow_third") {
+        const theta = (2 * Math.PI * sheetIdx) / 3;
+        const c = Math.cos(theta);
+        const s = Math.sin(theta);
+        const nr = re * c - im * s;
+        const ni = re * s + im * c;
+        re = nr;
+        im = ni;
+      } else if (
+        otherComplexBranchProfile.id === "sqrt" ||
+        otherComplexBranchProfile.id === "pow_half" ||
+        otherComplexBranchProfile.id === "sqrt_z2m1" ||
+        otherComplexBranchProfile.id === "sqrt_zab"
+      ) {
+        if (sheetIdx % 2 === 1) {
+          re = -re;
+          im = -im;
+        }
+      }
+      const clamped = clampW(re, im);
+      return clamped;
+    };
+    const getHeight = (re: number, im: number) => {
+      if (otherComplexValueSurfaceQuantity === "re") return re;
+      if (otherComplexValueSurfaceQuantity === "im") return im;
+      if (otherComplexValueSurfaceQuantity === "abs") return Math.hypot(re, im);
+      return Math.atan2(im, re);
+    };
+
+    for (let s = 0; s < sheetCount; s++) {
+      const sheetOffset = s * total;
+      for (let j = 0; j < nv; j++) {
+        const v = vMin + j * vStep;
+        for (let i = 0; i < nu; i++) {
+          const u = uMin + i * uStep;
+          const idx = j * nu + i;
+          const outIdx = sheetOffset + idx;
+          const w = evalSheetW(u, v, s);
+          if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) continue;
+          const h = getHeight(w.re, w.im);
+          if (!Number.isFinite(h)) continue;
+          positions[3 * outIdx] = u;
+          positions[3 * outIdx + 1] = h;
+          positions[3 * outIdx + 2] = v;
+          heights[outIdx] = h;
+          uvs[2 * outIdx] = u;
+          uvs[2 * outIdx + 1] = v;
+          valid[outIdx] = 1;
+        }
+      }
+    }
+
+    const indices: number[] = [];
+    for (let s = 0; s < sheetCount; s++) {
+      const sheetOffset = s * total;
+      for (let j = 0; j < nv - 1; j++) {
+        for (let i = 0; i < nu - 1; i++) {
+          const a = sheetOffset + j * nu + i;
+          const b = a + 1;
+          const c = a + nu;
+          const d = c + 1;
+          if (!valid[a] || !valid[b] || !valid[c] || !valid[d]) continue;
+          if (otherComplexValueSurfaceQuantity === "arg") {
+            const hMin = Math.min(heights[a], heights[b], heights[c], heights[d]);
+            const hMax = Math.max(heights[a], heights[b], heights[c], heights[d]);
+            if (hMax - hMin > Math.PI * 1.6) continue;
+          }
+          indices.push(a, c, b);
+          indices.push(b, c, d);
+        }
+      }
+    }
+
+    if (!indices.length) {
+      setComplexMapError("No valid triangles produced for value-surface preview.");
+      setOtherComplexActionStatus("3D preview failed: no valid triangles.");
+      return;
+    }
+
+    const quantityLabel =
+      otherComplexValueSurfaceQuantity === "re"
+        ? "Re(f)"
+        : otherComplexValueSurfaceQuantity === "im"
+          ? "Im(f)"
+          : otherComplexValueSurfaceQuantity === "abs"
+            ? "|f|"
+            : "arg(f)";
+    const label = `Riemann value surface (${quantityLabel}, ${sheetCount} sheet${sheetCount === 1 ? "" : "s"})`;
+    const mesh: SurfaceMeshData = {
+      label,
+      positions,
+      indices: Uint32Array.from(indices),
+      uvs,
+      source: { kind: "bakedFromParam" },
+    };
+
+    setMeshDataset(applySurfaceMeshOps(mesh));
+    setSurfaceMeshImportError(null);
+    setComplexMapError(null);
+    setDatasetKind("mesh");
+    setSurfaceViewerKind("mesh");
+    setMode("surfaces");
+    setOtherComplexActionStatus(`3D value-surface preview built: ${quantityLabel} (${sheetCount} sheet${sheetCount === 1 ? "" : "s"}).`);
+  }, [
+    complexMapSpec.nu,
+    complexMapSpec.nv,
+    complexMapSpec.uMin,
+    complexMapSpec.uMax,
+    complexMapSpec.vMin,
+    complexMapSpec.vMax,
+    complexMapSpec.wScale,
+    complexMapSpec.clampAbs,
+    evalOtherComplexW,
+    otherComplexBranchProfile.id,
+    otherComplexValueSurfaceLogSheetCount,
+    otherComplexValueSurfaceQuantity,
+  ]);
   const otherComplexGrid2d = useMemo(() => {
     const reFn = otherComplexCompiled2d.reFn;
     const imFn = otherComplexCompiled2d.imFn;
@@ -13912,22 +14091,216 @@ const App: React.FC = () => {
     };
   }, [otherComplexPathZLoops, otherComplexPathWMappedSegments]);
 
-  const otherComplexContourBandField = useMemo(() => {
+  const otherComplexDerivativeField = useMemo(() => {
     if (!otherComplexGrid2d) return null;
-    const bands = Math.max(3, Math.round(otherComplexContourBandCount));
-    const values = new Float32Array(otherComplexGrid2d.wMag.length);
-    const rawValueAt = (index: number) => {
-      if (!otherComplexGrid2d.valid[index]) return Number.NaN;
+    const { nu, nv, uStep, vStep, re, im, valid } = otherComplexGrid2d;
+    const total = nu * nv;
+    const ux = new Float32Array(total);
+    const uy = new Float32Array(total);
+    const vx = new Float32Array(total);
+    const vy = new Float32Array(total);
+    const crA = new Float32Array(total);
+    const crB = new Float32Array(total);
+    const crResidual = new Float32Array(total);
+    const conformalScale = new Float32Array(total);
+    const localRotation = new Float32Array(total);
+    const finite = new Uint8Array(total);
+    const idx = (i: number, j: number) => j * nu + i;
+    const safeUStep = Math.abs(uStep) > 1e-12 ? uStep : 1;
+    const safeVStep = Math.abs(vStep) > 1e-12 ? vStep : 1;
+    const deriv = (arr: Float32Array, i: number, j: number, axis: "u" | "v") => {
+      const center = arr[idx(i, j)];
+      if (!Number.isFinite(center)) return Number.NaN;
+      if (axis === "u") {
+        const left = i > 0 ? arr[idx(i - 1, j)] : Number.NaN;
+        const right = i < nu - 1 ? arr[idx(i + 1, j)] : Number.NaN;
+        if (Number.isFinite(left) && Number.isFinite(right)) return (right - left) / (2 * safeUStep);
+        if (Number.isFinite(right)) return (right - center) / safeUStep;
+        if (Number.isFinite(left)) return (center - left) / safeUStep;
+        return Number.NaN;
+      }
+      const down = j > 0 ? arr[idx(i, j - 1)] : Number.NaN;
+      const up = j < nv - 1 ? arr[idx(i, j + 1)] : Number.NaN;
+      if (Number.isFinite(down) && Number.isFinite(up)) return (up - down) / (2 * safeVStep);
+      if (Number.isFinite(up)) return (up - center) / safeVStep;
+      if (Number.isFinite(down)) return (center - down) / safeVStep;
+      return Number.NaN;
+    };
+    let crMedian = 0;
+    const crSamples: number[] = [];
+    for (let j = 0; j < nv; j++) {
+      for (let i = 0; i < nu; i++) {
+        const k = idx(i, j);
+        if (!valid[k]) {
+          ux[k] = Number.NaN;
+          uy[k] = Number.NaN;
+          vx[k] = Number.NaN;
+          vy[k] = Number.NaN;
+          crA[k] = Number.NaN;
+          crB[k] = Number.NaN;
+          crResidual[k] = Number.NaN;
+          conformalScale[k] = Number.NaN;
+          localRotation[k] = Number.NaN;
+          continue;
+        }
+        const uxv = deriv(re, i, j, "u");
+        const uyv = deriv(re, i, j, "v");
+        const vxv = deriv(im, i, j, "u");
+        const vyv = deriv(im, i, j, "v");
+        ux[k] = uxv;
+        uy[k] = uyv;
+        vx[k] = vxv;
+        vy[k] = vyv;
+        if (!Number.isFinite(uxv) || !Number.isFinite(uyv) || !Number.isFinite(vxv) || !Number.isFinite(vyv)) {
+          crA[k] = Number.NaN;
+          crB[k] = Number.NaN;
+          crResidual[k] = Number.NaN;
+          conformalScale[k] = Number.NaN;
+          localRotation[k] = Number.NaN;
+          continue;
+        }
+        const a = uxv - vyv;
+        const b = uyv + vxv;
+        const residual = Math.hypot(a, b);
+        const fPrimeMag = Math.hypot(uxv, vxv);
+        crA[k] = a;
+        crB[k] = b;
+        crResidual[k] = residual;
+        conformalScale[k] = fPrimeMag;
+        localRotation[k] = fPrimeMag > 1e-12 ? Math.atan2(vxv, uxv) : Number.NaN;
+        finite[k] = 1;
+        if (Number.isFinite(residual)) crSamples.push(residual);
+      }
+    }
+    if (crSamples.length) {
+      crSamples.sort((a, b) => a - b);
+      crMedian = crSamples[Math.floor(crSamples.length * 0.5)] ?? 0;
+    }
+    return {
+      ux,
+      uy,
+      vx,
+      vy,
+      crA,
+      crB,
+      crResidual,
+      conformalScale,
+      localRotation,
+      finite,
+      crMedian,
+    };
+  }, [otherComplexGrid2d]);
+
+  const otherComplexScalarFieldValueAt = useCallback(
+    (index: number) => {
+      if (!otherComplexGrid2d || !otherComplexGrid2d.valid[index]) return Number.NaN;
       if (otherComplexContourBandMode === "argument") {
         const angle = Math.atan2(otherComplexGrid2d.im[index], otherComplexGrid2d.re[index]);
         return (angle + Math.PI) / (Math.PI * 2);
       }
+      if (otherComplexContourBandMode === "u") return otherComplexGrid2d.re[index];
+      if (otherComplexContourBandMode === "v") return otherComplexGrid2d.im[index];
+      if (otherComplexContourBandMode === "cr_residual") {
+        return otherComplexDerivativeField?.crResidual[index] ?? Number.NaN;
+      }
+      if (otherComplexContourBandMode === "conformal_scale") {
+        return otherComplexDerivativeField?.conformalScale[index] ?? Number.NaN;
+      }
+      if (otherComplexContourBandMode === "local_rotation") {
+        const angle = otherComplexDerivativeField?.localRotation[index] ?? Number.NaN;
+        return Number.isFinite(angle) ? (angle + Math.PI) / (Math.PI * 2) : Number.NaN;
+      }
       return Math.log1p(Math.max(0, otherComplexGrid2d.wMag[index]));
+    },
+    [otherComplexContourBandMode, otherComplexDerivativeField, otherComplexGrid2d]
+  );
+
+  const otherComplexLevelCurveOverlays = useMemo(() => {
+    if (!otherComplexGrid2d || (!otherComplexShowULevelCurves && !otherComplexShowVLevelCurves)) return null;
+    const { nu, nv, uMin, uMax, vMin, vMax, re, im, valid } = otherComplexGrid2d;
+    const idx = (i: number, j: number) => j * nu + i;
+    const buildLevels = (values: Float32Array, count: number): [number, number][][] => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (let i = 0; i < values.length; i++) {
+        if (!valid[i]) continue;
+        const v = values[i];
+        if (!Number.isFinite(v)) continue;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min + 1e-9) return [];
+      const lines: [number, number][][] = [];
+      const safeCount = Math.max(3, Math.round(count));
+      for (let k = 1; k < safeCount; k++) {
+        const level = min + (k / safeCount) * (max - min);
+        const segs = marchingSquares({
+          nx: nu,
+          ny: nv,
+          xMin: uMin,
+          xMax: uMax,
+          yMin: vMin,
+          yMax: vMax,
+          sample: (i, j) => {
+            const id = idx(i, j);
+            return valid[id] ? values[id] : Number.NaN;
+          },
+          level,
+        });
+        if (!segs.length) continue;
+        for (const seg of segs) {
+          lines.push(seg.map((p) => [p.x, p.y] as [number, number]));
+        }
+      }
+      return lines;
     };
+    return {
+      u: otherComplexShowULevelCurves ? buildLevels(re, otherComplexLevelCurveCount) : [],
+      v: otherComplexShowVLevelCurves ? buildLevels(im, otherComplexLevelCurveCount) : [],
+    };
+  }, [
+    otherComplexGrid2d,
+    otherComplexShowULevelCurves,
+    otherComplexShowVLevelCurves,
+    otherComplexLevelCurveCount,
+  ]);
+
+  const otherComplexOrthogonalityPoints = useMemo(() => {
+    if (!otherComplexShowOrthogonality || !otherComplexGrid2d || !otherComplexDerivativeField) return null;
+    const { nu, nv, uMin, vMin, uStep, vStep, valid } = otherComplexGrid2d;
+    const { ux, uy, vx, vy } = otherComplexDerivativeField;
+    const orthogonal: [number, number][] = [];
+    const nonOrthogonal: [number, number][] = [];
+    const stride = Math.max(2, Math.round(Math.max(nu, nv) / 28));
+    for (let j = 0; j < nv; j += stride) {
+      for (let i = 0; i < nu; i += stride) {
+        const k = j * nu + i;
+        if (!valid[k]) continue;
+        const uxr = ux[k];
+        const uyr = uy[k];
+        const vxr = vx[k];
+        const vyr = vy[k];
+        if (!Number.isFinite(uxr) || !Number.isFinite(uyr) || !Number.isFinite(vxr) || !Number.isFinite(vyr)) continue;
+        const gU = Math.hypot(uxr, uyr);
+        const gV = Math.hypot(vxr, vyr);
+        if (gU <= 1e-8 || gV <= 1e-8) continue;
+        const cosAbs = Math.abs((uxr * vxr + uyr * vyr) / (gU * gV));
+        const pt: [number, number] = [uMin + i * uStep, vMin + j * vStep];
+        if (cosAbs <= 0.2) orthogonal.push(pt);
+        else nonOrthogonal.push(pt);
+      }
+    }
+    return { orthogonal, nonOrthogonal };
+  }, [otherComplexShowOrthogonality, otherComplexGrid2d, otherComplexDerivativeField]);
+
+  const otherComplexContourBandField = useMemo(() => {
+    if (!otherComplexGrid2d) return null;
+    const bands = Math.max(3, Math.round(otherComplexContourBandCount));
+    const values = new Float32Array(otherComplexGrid2d.wMag.length);
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < otherComplexGrid2d.wMag.length; i++) {
-      const v = rawValueAt(i);
+      const v = otherComplexScalarFieldValueAt(i);
       if (!Number.isFinite(v)) {
         values[i] = Number.NaN;
         continue;
@@ -13946,23 +14319,15 @@ const App: React.FC = () => {
       values[i] = q;
     }
     return { values, min: 0, max: 1 };
-  }, [otherComplexGrid2d, otherComplexContourBandCount, otherComplexContourBandMode]);
+  }, [otherComplexGrid2d, otherComplexContourBandCount, otherComplexScalarFieldValueAt]);
 
   const otherComplexSelectedContourPolylines = useMemo(() => {
     if (!otherComplexGrid2d || !otherComplexShowSelectedContour) return null;
-    const { nu, nv, uMin, uMax, vMin, vMax, wMag, valid, re, im } = otherComplexGrid2d;
-    const rawValueAt = (index: number) => {
-      if (!valid[index]) return Number.NaN;
-      if (otherComplexContourBandMode === "argument") {
-        const angle = Math.atan2(im[index], re[index]);
-        return (angle + Math.PI) / (Math.PI * 2);
-      }
-      return Math.log1p(Math.max(0, wMag[index]));
-    };
+    const { nu, nv, uMin, uMax, vMin, vMax, wMag } = otherComplexGrid2d;
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < wMag.length; i++) {
-      const v = rawValueAt(i);
+      const v = otherComplexScalarFieldValueAt(i);
       if (!Number.isFinite(v)) continue;
       if (v < min) min = v;
       if (v > max) max = v;
@@ -13979,7 +14344,7 @@ const App: React.FC = () => {
       yMax: vMax,
       sample: (i, j) => {
         const k = idx(i, j);
-        return rawValueAt(k);
+        return otherComplexScalarFieldValueAt(k);
       },
       level,
     });
@@ -14000,7 +14365,7 @@ const App: React.FC = () => {
       if (seg.length >= 2) wLines.push(seg);
     }
     return { zLines, wLines };
-  }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, otherComplexContourBandMode, evalOtherComplexW]);
+  }, [otherComplexGrid2d, otherComplexShowSelectedContour, otherComplexSelectedContourLevel, otherComplexScalarFieldValueAt, evalOtherComplexW]);
 
   const otherComplexBranchCutSegments = useMemo(() => {
     if (!otherComplexGrid2d || otherComplexBranchProfile.id === "none") return null;
@@ -14068,28 +14433,56 @@ const App: React.FC = () => {
     const du = sampleU > 1 ? (uMax - uMin) / (sampleU - 1) : 0;
     const dv = sampleV > 1 ? (vMax - vMin) / (sampleV - 1) : 0;
     const span = Math.max(1e-6, Math.min(Math.abs(uMax - uMin), Math.abs(vMax - vMin)));
-    const probe: Array<{ u: number; v: number; re: number; im: number }> = [];
+    const probe: Array<{ u: number; v: number; re: number; im: number; branch: "u" | "v" | "image" }> = [];
     let maxMag = 0;
     for (let j = 0; j < sampleV; j++) {
       const v = vMin + j * dv;
       for (let i = 0; i < sampleU; i++) {
         const u = uMin + i * du;
-        const w = evalOtherComplexW(u, v);
-        if (!w) continue;
-        const mag = Math.hypot(w.re, w.im);
-        if (!Number.isFinite(mag) || mag <= 1e-8) continue;
-        if (mag > maxMag) maxMag = mag;
-        probe.push({ u, v, re: w.re, im: w.im });
+        const pushProbe = (re: number, im: number, branch: "u" | "v" | "image") => {
+          const mag = Math.hypot(re, im);
+          if (!Number.isFinite(mag) || mag <= 1e-8) return;
+          if (mag > maxMag) maxMag = mag;
+          probe.push({ u, v, re, im, branch });
+        };
+        if (otherComplexVectorFieldMode === "grad_u" || otherComplexVectorFieldMode === "grad_v" || otherComplexVectorFieldMode === "grad_both") {
+          const h = Math.max(1e-4, complexMapZExtent * 1e-3);
+          const fxh = evalOtherComplexW(u + h, v);
+          const fxmh = evalOtherComplexW(u - h, v);
+          const fyh = evalOtherComplexW(u, v + h);
+          const fymh = evalOtherComplexW(u, v - h);
+          if (fxh && fxmh && fyh && fymh) {
+            const ux = (fxh.re - fxmh.re) / (2 * h);
+            const uy = (fyh.re - fymh.re) / (2 * h);
+            const vx = (fxh.im - fxmh.im) / (2 * h);
+            const vy = (fyh.im - fymh.im) / (2 * h);
+            if (otherComplexVectorFieldMode === "grad_u" || otherComplexVectorFieldMode === "grad_both") {
+              pushProbe(ux, uy, "u");
+            }
+            if (otherComplexVectorFieldMode === "grad_v" || otherComplexVectorFieldMode === "grad_both") {
+              pushProbe(vx, vy, "v");
+            }
+          }
+        } else {
+          const w = evalOtherComplexW(u, v);
+          if (!w) continue;
+          pushProbe(w.re, w.im, "image");
+        }
       }
     }
     if (!probe.length || maxMag <= 1e-9) return null;
     const scale = (0.25 * span) / maxMag;
-    const body: [number, number][][] = [];
-    const head: [number, number][][] = [];
+    const bodyU: [number, number][][] = [];
+    const bodyV: [number, number][][] = [];
+    const bodyImage: [number, number][][] = [];
+    const headU: [number, number][][] = [];
+    const headV: [number, number][][] = [];
+    const headImage: [number, number][][] = [];
     for (const p of probe) {
       const ex = p.u + p.re * scale;
       const ey = p.v + p.im * scale;
-      body.push([
+      const targetBody = p.branch === "u" ? bodyU : p.branch === "v" ? bodyV : bodyImage;
+      targetBody.push([
         [p.u, p.v],
         [ex, ey],
       ]);
@@ -14105,17 +14498,26 @@ const App: React.FC = () => {
       const ly = ey - headLen * (uy + wing * ux);
       const rx = ex - headLen * (ux - wing * -uy);
       const ry = ey - headLen * (uy - wing * ux);
-      head.push([
+      const target = p.branch === "u" ? headU : p.branch === "v" ? headV : headImage;
+      target.push([
         [ex, ey],
         [lx, ly],
       ]);
-      head.push([
+      target.push([
         [ex, ey],
         [rx, ry],
       ]);
     }
-    return { body, head };
-  }, [otherComplexGrid2d, otherComplexShowVectorField, evalOtherComplexW]);
+    return {
+      bodyU,
+      bodyV,
+      bodyImage,
+      headU,
+      headV,
+      headImage,
+      mode: otherComplexVectorFieldMode,
+    };
+  }, [otherComplexGrid2d, otherComplexShowVectorField, otherComplexVectorFieldMode, evalOtherComplexW, complexMapZExtent]);
 
   const otherComplexIntegralEstimate = useMemo(() => {
     if (!otherComplexPathZLoops.length) return null;
@@ -14164,6 +14566,59 @@ const App: React.FC = () => {
     const absW = w ? Math.hypot(w.re, w.im) : Number.NaN;
     const argW = w ? Math.atan2(w.im, w.re) : Number.NaN;
     return { z, w, absW, argW, derivative };
+  }, [otherComplexSelectedPoint, evalOtherComplexW, complexMapZExtent]);
+
+  const otherComplexSelectedPointCRAnalysis = useMemo(() => {
+    const z = otherComplexSelectedPoint;
+    const h = Math.max(1e-4, complexMapZExtent * 1e-3);
+    const fxh = evalOtherComplexW(z.re + h, z.im);
+    const fxmh = evalOtherComplexW(z.re - h, z.im);
+    const fyh = evalOtherComplexW(z.re, z.im + h);
+    const fymh = evalOtherComplexW(z.re, z.im - h);
+    if (!fxh || !fxmh || !fyh || !fymh) {
+      return {
+        ux: Number.NaN,
+        uy: Number.NaN,
+        vx: Number.NaN,
+        vy: Number.NaN,
+        residualA: Number.NaN,
+        residualB: Number.NaN,
+        residualNorm: Number.NaN,
+        crTolerance: Number.NaN,
+        crSatisfied: false,
+        conformalScale: Number.NaN,
+        localRotation: Number.NaN,
+        critical: false,
+      };
+    }
+    const ux = (fxh.re - fxmh.re) / (2 * h);
+    const vx = (fxh.im - fxmh.im) / (2 * h);
+    const uy = (fyh.re - fymh.re) / (2 * h);
+    const vy = (fyh.im - fymh.im) / (2 * h);
+    const residualA = ux - vy;
+    const residualB = uy + vx;
+    const residualNorm = Math.hypot(residualA, residualB);
+    const scaleU = Math.hypot(ux, uy);
+    const scaleV = Math.hypot(vx, vy);
+    const conformalScale = Math.hypot(ux, vx);
+    const localRotation = conformalScale > 1e-12 ? Math.atan2(vx, ux) : Number.NaN;
+    const crTolerance = 0.08 * Math.max(1e-6, scaleU + scaleV);
+    const crSatisfied = Number.isFinite(residualNorm) && residualNorm <= crTolerance;
+    const critical = Number.isFinite(conformalScale) && conformalScale <= Math.max(1e-5, complexMapZExtent * 1e-3);
+    return {
+      ux,
+      uy,
+      vx,
+      vy,
+      residualA,
+      residualB,
+      residualNorm,
+      crTolerance,
+      crSatisfied,
+      conformalScale,
+      localRotation,
+      critical,
+    };
   }, [otherComplexSelectedPoint, evalOtherComplexW, complexMapZExtent]);
 
   const otherComplexDetectedFeatures = useMemo(() => {
@@ -14555,9 +15010,12 @@ const App: React.FC = () => {
   const otherComplexSelectedPointStatus = useMemo(() => {
     const z = otherComplexSelectedPointInfo.z;
     const w = otherComplexSelectedPointInfo.w;
-    const derivative = otherComplexSelectedPointInfo.derivative;
-    const jacobianScale = derivative ? Math.hypot(derivative.re, derivative.im) : null;
-    const localRotation = derivative ? Math.atan2(derivative.im, derivative.re) : null;
+    const jacobianScale = Number.isFinite(otherComplexSelectedPointCRAnalysis.conformalScale)
+      ? otherComplexSelectedPointCRAnalysis.conformalScale
+      : null;
+    const localRotation = Number.isFinite(otherComplexSelectedPointCRAnalysis.localRotation)
+      ? otherComplexSelectedPointCRAnalysis.localRotation
+      : null;
     const finiteW = !!w && Number.isFinite(w.re) && Number.isFinite(w.im);
     const absW = finiteW ? Math.hypot(w.re, w.im) : Number.NaN;
     const rootTol = Math.max(
@@ -14572,7 +15030,7 @@ const App: React.FC = () => {
     const onZero = otherComplexRationalInspection
       ? nearRoot(otherComplexRationalInspection.zeros)
       : Number.isFinite(absW) && absW <= Math.max(1e-5, otherComplexWExtent * 1e-3);
-    const onCritical = jacobianScale != null && jacobianScale <= 1e-3 * Math.max(1, otherComplexSelectedPointInfo.absW);
+    const onCritical = !!otherComplexSelectedPointCRAnalysis.critical;
     let onBranchCut = false;
     if (otherComplexEffectiveBranchCutSegments?.length) {
       const segTol = rootTol * 1.8;
@@ -14603,10 +15061,11 @@ const App: React.FC = () => {
             : onBranchCut
               ? "branch cut"
               : "regular";
-    const conformal = jacobianScale == null ? null : jacobianScale > 1e-6;
+    const conformal = otherComplexSelectedPointCRAnalysis.crSatisfied;
     return { status, jacobianScale, localRotation, conformal, finiteW };
   }, [
     otherComplexSelectedPointInfo,
+    otherComplexSelectedPointCRAnalysis,
     otherComplexRationalInspection,
     otherComplexEffectiveBranchCutSegments,
     otherComplexWExtent,
@@ -15874,20 +16333,78 @@ case "mobius":
     }
 
     if (otherComplexShowVectorField && otherComplexVectorFieldSegments) {
-      for (const line of otherComplexVectorFieldSegments.body) {
-        zRef.current.drawCurve(line, "#0f766e", {
-          width: 1.2,
-          opacity: 0.82,
-          layer: "other-vector-z",
+      const drawField = (
+        body: [number, number][][],
+        head: [number, number][][],
+        color: string,
+        layer: string
+      ) => {
+        for (const line of body) {
+          zRef.current.drawCurve(line, color, {
+            width: 1.2,
+            opacity: 0.82,
+            layer,
+          });
+        }
+        for (const line of head) {
+          zRef.current.drawCurve(line, color, {
+            width: 1.2,
+            opacity: 0.82,
+            layer: `${layer}-head`,
+          });
+        }
+      };
+      drawField(
+        otherComplexVectorFieldSegments.bodyImage,
+        otherComplexVectorFieldSegments.headImage,
+        "#0f766e",
+        "other-vector-image-z"
+      );
+      drawField(
+        otherComplexVectorFieldSegments.bodyU,
+        otherComplexVectorFieldSegments.headU,
+        "#1d4ed8",
+        "other-vector-u-z"
+      );
+      drawField(
+        otherComplexVectorFieldSegments.bodyV,
+        otherComplexVectorFieldSegments.headV,
+        "#c2410c",
+        "other-vector-v-z"
+      );
+    }
+
+    if (otherComplexLevelCurveOverlays?.u.length) {
+      for (const line of otherComplexLevelCurveOverlays.u) {
+        zRef.current.drawCurve(line, "#1d4ed8", {
+          width: 1.25,
+          opacity: 0.86,
+          layer: "other-u-level-curves",
         });
       }
-      for (const line of otherComplexVectorFieldSegments.head) {
-        zRef.current.drawCurve(line, "#0f766e", {
-          width: 1.2,
-          opacity: 0.82,
-          layer: "other-vector-z-head",
+    }
+    if (otherComplexLevelCurveOverlays?.v.length) {
+      for (const line of otherComplexLevelCurveOverlays.v) {
+        zRef.current.drawCurve(line, "#c2410c", {
+          width: 1.25,
+          opacity: 0.86,
+          layer: "other-v-level-curves",
         });
       }
+    }
+    if (otherComplexOrthogonalityPoints) {
+      zRef.current.drawPoints(otherComplexOrthogonalityPoints.orthogonal, {
+        color: "#16a34a",
+        shape: "circle",
+        size: 2.4,
+        layer: "other-orthogonal-pts",
+      });
+      zRef.current.drawPoints(otherComplexOrthogonalityPoints.nonOrthogonal, {
+        color: "#dc2626",
+        shape: "square",
+        size: 2.2,
+        layer: "other-nonorthogonal-pts",
+      });
     }
 
     if (otherComplexShowBranchCuts && otherComplexEffectiveBranchCutSegments?.length) {
@@ -16098,6 +16615,8 @@ case "mobius":
     otherComplexMarkers2d,
     otherComplexContourBandField,
     otherComplexVectorFieldSegments,
+    otherComplexLevelCurveOverlays,
+    otherComplexOrthogonalityPoints,
     otherComplexBranchProfile,
     otherComplexEffectiveBranchCutSegments,
     otherComplexSelectedContourPolylines,
@@ -16112,6 +16631,9 @@ case "mobius":
     otherComplexShowCritical,
     otherComplexShowZeros,
     otherComplexShowPoles,
+    otherComplexShowULevelCurves,
+    otherComplexShowVLevelCurves,
+    otherComplexShowOrthogonality,
     otherComplexDomainValueMode,
     otherComplexSelectedPointInfo,
     otherComplexPathMode,
@@ -38582,7 +39104,31 @@ case "mobius":
                               checked={otherComplexShowVectorField}
                               onChange={(e) => setOtherComplexShowVectorField(e.target.checked)}
                             />
-                            Vector field
+                            Gradient / vector field
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowULevelCurves}
+                              onChange={(e) => setOtherComplexShowULevelCurves(e.target.checked)}
+                            />
+                            u-level curves
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowVLevelCurves}
+                              onChange={(e) => setOtherComplexShowVLevelCurves(e.target.checked)}
+                            />
+                            v-level curves
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={otherComplexShowOrthogonality}
+                              onChange={(e) => setOtherComplexShowOrthogonality(e.target.checked)}
+                            />
+                            Orthogonality markers
                           </label>
                           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <input
@@ -38645,6 +39191,36 @@ case "mobius":
                             linear |f|
                           </button>
                         </div>
+                        {otherComplexShowVectorField && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                            <span>Field:</span>
+                            <button type="button" onClick={() => setOtherComplexVectorFieldMode("image")} style={pill(otherComplexVectorFieldMode === "image")}>
+                              f(z)
+                            </button>
+                            <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_u")} style={pill(otherComplexVectorFieldMode === "grad_u")}>
+                              ∇u
+                            </button>
+                            <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_v")} style={pill(otherComplexVectorFieldMode === "grad_v")}>
+                              ∇v
+                            </button>
+                            <button type="button" onClick={() => setOtherComplexVectorFieldMode("grad_both")} style={pill(otherComplexVectorFieldMode === "grad_both")}>
+                              ∇u + ∇v
+                            </button>
+                          </div>
+                        )}
+                        {(otherComplexShowULevelCurves || otherComplexShowVLevelCurves) && (
+                          <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                            <span>Level-curve count: {Math.max(3, Math.round(otherComplexLevelCurveCount))}</span>
+                            <input
+                              type="range"
+                              min={3}
+                              max={20}
+                              step={1}
+                              value={otherComplexLevelCurveCount}
+                              onChange={(e) => setOtherComplexLevelCurveCount(Math.max(3, Math.round(Number(e.target.value))))}
+                            />
+                          </label>
+                        )}
                         {otherComplexShowContourBands && (
                           <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
                             <label style={{ display: "grid", gap: 2 }}>
@@ -38672,6 +39248,41 @@ case "mobius":
                                 style={pill(otherComplexContourBandMode === "argument")}
                               >
                                 bands of arg(f)
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("u")}
+                                style={pill(otherComplexContourBandMode === "u")}
+                              >
+                                bands of u
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("v")}
+                                style={pill(otherComplexContourBandMode === "v")}
+                              >
+                                bands of v
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("cr_residual")}
+                                style={pill(otherComplexContourBandMode === "cr_residual")}
+                              >
+                                CR residual
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("conformal_scale")}
+                                style={pill(otherComplexContourBandMode === "conformal_scale")}
+                              >
+                                |f'|
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setOtherComplexContourBandMode("local_rotation")}
+                                style={pill(otherComplexContourBandMode === "local_rotation")}
+                              >
+                                arg(f')
                               </button>
                             </div>
                           </div>
@@ -40001,6 +40612,7 @@ case "mobius":
                           <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("analysis")} style={pill(otherComplexInspectorTab === "analysis")}>Analysis</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
                         </div>
                         {otherComplexInspectorTab === "branch" && (
@@ -40257,6 +40869,54 @@ case "mobius":
                             )}
                             <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6, display: "grid", gap: 4 }}>
                               <div style={{ fontWeight: 700 }}>Sheet Preview</div>
+                              <div style={{ display: "grid", gap: 6, border: "1px solid #dbe2ea", borderRadius: 8, padding: "8px 10px", background: "#f8fafc" }}>
+                                <div style={{ fontWeight: 700, fontSize: 11 }}>3D value-surface preview</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  {(
+                                    [
+                                      { id: "re", label: "height = Re(f)" },
+                                      { id: "im", label: "height = Im(f)" },
+                                      { id: "abs", label: "height = |f|" },
+                                      { id: "arg", label: "height = arg(f)" },
+                                    ] as const
+                                  ).map((entry) => (
+                                    <button
+                                      key={`value-surface:${entry.id}`}
+                                      type="button"
+                                      onClick={() => setOtherComplexValueSurfaceQuantity(entry.id)}
+                                      style={pill(otherComplexValueSurfaceQuantity === entry.id)}
+                                    >
+                                      {entry.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                {otherComplexBranchProfile.id === "log" && (
+                                  <label style={{ fontSize: 11 }}>
+                                    log sheet count
+                                    <input
+                                      type="number"
+                                      min={2}
+                                      max={24}
+                                      step={1}
+                                      value={otherComplexValueSurfaceLogSheetCount}
+                                      onChange={(e) =>
+                                        setOtherComplexValueSurfaceLogSheetCount(
+                                          Math.max(2, Math.min(24, Math.round(Number(e.target.value) || 2)))
+                                        )
+                                      }
+                                      style={{ width: 90, marginLeft: 8 }}
+                                    />
+                                  </label>
+                                )}
+                                <div style={{ fontSize: 11, opacity: 0.82 }}>
+                                  Builds a 3D surface over z = x + iy using the selected branch profile and opens it in Surfaces.
+                                </div>
+                                <div>
+                                  <button type="button" onClick={buildOtherComplexValueSurface}>
+                                    Build 3D value surface
+                                  </button>
+                                </div>
+                              </div>
                               {otherComplexRiemannSurfacePreview ? (
                                 <>
                                   <div style={{ fontSize: 11 }}>{otherComplexRiemannSurfacePreview.title}</div>
@@ -40271,14 +40931,57 @@ case "mobius":
                                       </div>
                                     ))}
                                   </div>
-                                  <div style={{ fontSize: 11, opacity: 0.8 }}>
-                                    3D sheet surfaces are not included in this version; this preview is symbolic and continuation-based.
-                                  </div>
                                 </>
                               ) : (
                                 <div style={{ fontSize: 11 }}>No branch profile detected for sheet preview.</div>
                               )}
                             </div>
+                          </div>
+                        )}
+                        {otherComplexInspectorTab === "analysis" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            <div style={{ fontWeight: 700 }}>Cauchy-Riemann / Harmonic Inspector</div>
+                            <div>u_x = {Number.isFinite(otherComplexSelectedPointCRAnalysis.ux) ? otherComplexSelectedPointCRAnalysis.ux.toFixed(6) : "n/a"}</div>
+                            <div>u_y = {Number.isFinite(otherComplexSelectedPointCRAnalysis.uy) ? otherComplexSelectedPointCRAnalysis.uy.toFixed(6) : "n/a"}</div>
+                            <div>v_x = {Number.isFinite(otherComplexSelectedPointCRAnalysis.vx) ? otherComplexSelectedPointCRAnalysis.vx.toFixed(6) : "n/a"}</div>
+                            <div>v_y = {Number.isFinite(otherComplexSelectedPointCRAnalysis.vy) ? otherComplexSelectedPointCRAnalysis.vy.toFixed(6) : "n/a"}</div>
+                            <div>u_x - v_y = {Number.isFinite(otherComplexSelectedPointCRAnalysis.residualA) ? otherComplexSelectedPointCRAnalysis.residualA.toExponential(3) : "n/a"}</div>
+                            <div>u_y + v_x = {Number.isFinite(otherComplexSelectedPointCRAnalysis.residualB) ? otherComplexSelectedPointCRAnalysis.residualB.toExponential(3) : "n/a"}</div>
+                            <div>
+                              CR residual ={" "}
+                              {Number.isFinite(otherComplexSelectedPointCRAnalysis.residualNorm)
+                                ? otherComplexSelectedPointCRAnalysis.residualNorm.toExponential(3)
+                                : "n/a"}
+                            </div>
+                            <div>
+                              CR satisfied:{" "}
+                              <span style={{ color: otherComplexSelectedPointCRAnalysis.crSatisfied ? "#166534" : "#b42318", fontWeight: 700 }}>
+                                {otherComplexSelectedPointCRAnalysis.crSatisfied ? "yes" : "no"}
+                              </span>
+                            </div>
+                            <div>
+                              conformal scale |f'(z)| ={" "}
+                              {Number.isFinite(otherComplexSelectedPointCRAnalysis.conformalScale)
+                                ? otherComplexSelectedPointCRAnalysis.conformalScale.toFixed(6)
+                                : "n/a"}
+                            </div>
+                            <div>
+                              local rotation arg(f'(z)) ={" "}
+                              {Number.isFinite(otherComplexSelectedPointCRAnalysis.localRotation)
+                                ? otherComplexSelectedPointCRAnalysis.localRotation.toFixed(6)
+                                : "n/a"}
+                            </div>
+                            <div>
+                              critical point f'(z)=0:{" "}
+                              <span style={{ color: otherComplexSelectedPointCRAnalysis.critical ? "#b42318" : "#166534", fontWeight: 700 }}>
+                                {otherComplexSelectedPointCRAnalysis.critical ? "yes" : "no"}
+                              </span>
+                            </div>
+                            {otherComplexDerivativeField && (
+                              <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6, fontSize: 11 }}>
+                                median CR residual (grid): {otherComplexDerivativeField.crMedian.toExponential(3)}
+                              </div>
+                            )}
                           </div>
                         )}
                         {otherComplexInspectorTab === "point" && (
@@ -40875,10 +41578,106 @@ const TransformPanel: React.FC<TransformPanelProps> = ({ kind, value, onChangeKi
 
 /* ---------------- Maps UI ---------------- */
 
-const MAPS_META: { id: MapId; label: string; desc: string }[] = [
-  { id: "square", label: "z² demo", desc: "Unit circle mapped by w = z² (demo)." },
-  { id: "cayley", label: "Cayley", desc: "Cayley map: unit disk ↔ right half-plane." },
-  { id: "stripToDisk", label: "Strip → disk", desc: "Horizontal strip |Im z| < 1 mapped to the unit disk." },
+const MAPS_META: Array<{
+  id: MapId;
+  label: string;
+  desc: string;
+  formula: string;
+  domain: string;
+  image: string;
+  boundary: string;
+  specialPoints: string;
+}> = [
+  {
+    id: "upperHalfToDisk",
+    label: "Upper half-plane → disk",
+    desc: "Cayley transform from Im(z)>0 to the unit disk.",
+    formula: "w = (z - i) / (z + i)",
+    domain: "Upper half-plane (sampled as y > 0).",
+    image: "Unit disk.",
+    boundary: "Real axis maps to unit circle.",
+    specialPoints: "z=i -> w=0, z=0 -> w=-1, z=∞ -> w=1",
+  },
+  {
+    id: "diskAutomorphism",
+    label: "Disk automorphism",
+    desc: "Automorphism of unit disk with rotation and point shift.",
+    formula: "w = e^{iθ} (z-a)/(1-conj(a)z), a=0.45+0.2i",
+    domain: "Unit disk.",
+    image: "Unit disk.",
+    boundary: "|z|=1 maps to |w|=1.",
+    specialPoints: "z=a -> w=0",
+  },
+  {
+    id: "stripToHalfPlane",
+    label: "Strip → half-plane",
+    desc: "Horizontal strip 0<Im(z)<1 mapped to upper half-plane.",
+    formula: "w = exp(πz)",
+    domain: "Strip 0 < y < 1.",
+    image: "Upper half-plane Im(w) > 0.",
+    boundary: "y=0 and y=1 map to positive/negative real axis.",
+    specialPoints: "z=0.5i -> w=i",
+  },
+  {
+    id: "stripToDisk",
+    label: "Strip → disk",
+    desc: "Strip mapped to disk via exp then Cayley.",
+    formula: "w = (exp(πz)-i)/(exp(πz)+i)",
+    domain: "Strip 0 < y < 1.",
+    image: "Unit disk.",
+    boundary: "Strip boundaries map to unit-circle arcs.",
+    specialPoints: "z=0.5i -> w=0",
+  },
+  {
+    id: "exponential",
+    label: "Exponential map",
+    desc: "Periodic map with radial growth in image.",
+    formula: "w = exp(z)",
+    domain: "Rectangular window in z-plane.",
+    image: "Punctured plane (w != 0).",
+    boundary: "Horizontal shifts produce argument rotation; vertical shifts wrap periodically.",
+    specialPoints: "z=0 -> w=1, z=ln 2 -> w=2",
+  },
+  {
+    id: "logarithm",
+    label: "Logarithm map",
+    desc: "Principal branch with branch cut along negative real axis.",
+    formula: "w = Log(z) = ln|z| + i Arg(z), Arg in (-π, π)",
+    domain: "Punctured plane minus branch cut.",
+    image: "Horizontal strip in w-plane.",
+    boundary: "Approaching cut from above/below lands on Im(w)=±π.",
+    specialPoints: "z=1 -> w=0, z=i -> w=iπ/2",
+  },
+  {
+    id: "joukowski",
+    label: "Joukowski map",
+    desc: "Classical aerodynamics map from outside circle to airfoil-like image.",
+    formula: "w = z + 1/z",
+    domain: "Exterior of near-unit circle.",
+    image: "Plane with slit/airfoil-style boundary image.",
+    boundary: "Circle boundary maps to segment-like curve with cusp behavior.",
+    specialPoints: "Critical points at z=±1",
+  },
+  {
+    id: "powerN",
+    label: "Power map z^n",
+    desc: "Angle multiplication and radial power scaling.",
+    formula: "w = z^3",
+    domain: "Unit disk with polar grid.",
+    image: "Unit disk (3-fold angle wrapping).",
+    boundary: "Unit circle maps to unit circle with triple winding.",
+    specialPoints: "z=0 fixed, angles multiplied by 3",
+  },
+  {
+    id: "inverse",
+    label: "Inverse map 1/z",
+    desc: "Inversion in the unit circle with angle reversal.",
+    formula: "w = 1/z",
+    domain: "Punctured plane.",
+    image: "Punctured plane.",
+    boundary: "Circle |z|=r maps to |w|=1/r.",
+    specialPoints: "z=1 -> w=1, z=i -> w=-i",
+  },
 ];
 
 type MapsButtonsProps = {
@@ -40912,11 +41711,19 @@ const MapsButtons: React.FC<MapsButtonsProps> = ({ mapId, onChangeMapId }) => (
 );
 
 const MapsPanel: React.FC<{ mapId: MapId }> = ({ mapId }) => {
-  const meta = MAPS_META.find((m) => m.id === mapId) ?? MAPS_META[0];
+  const meta = MAPS_META.find((m) => m.id === mapId) ?? MAPS_META[0]!;
   return (
     <section>
-      <h2 style={styles.h2}>Standard conformal maps</h2>
+      <h2 style={styles.h2}>Conformal Map Gallery</h2>
       <p style={styles.hint}>{meta.desc}</p>
+      <div style={{ ...styles.group, display: "grid", gap: 6 }}>
+        <div><b>Formula:</b> {meta.formula}</div>
+        <div><b>Z-plane domain:</b> {meta.domain}</div>
+        <div><b>W-plane image:</b> {meta.image}</div>
+        <div><b>Grid deformation:</b> Blue/orange mapped families are linked between Z and W.</div>
+        <div><b>Boundary mapping:</b> {meta.boundary}</div>
+        <div><b>Special points:</b> {meta.specialPoints}</div>
+      </div>
     </section>
   );
 };
