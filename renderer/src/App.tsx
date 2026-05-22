@@ -1303,12 +1303,13 @@ type OtherComplexSphereColorMode = "f" | "z";
 type OtherComplexWScaleMode = "linear" | "log" | "auto";
 type OtherComplexLeftPanelView = "setup" | "gallery";
 type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
-type OtherComplexValueSurfaceQuantity = "re" | "im" | "abs" | "arg";
+type OtherComplexValueSurfaceQuantity = "re" | "im" | "abs" | "arg" | "sheet_index";
 type OtherComplexVectorFieldMode = "image" | "grad_u" | "grad_v" | "grad_both";
 type OtherComplexInspectorTab =
   | "branch"
   | "path"
   | "monodromy"
+  | "covering"
   | "sheet"
   | "analysis"
   | "warnings"
@@ -1336,6 +1337,7 @@ type OtherComplexContourPresetId =
   | "loop_branch_point"
   | "loop_all_branch_points"
   | "figure_eight";
+type OtherComplexCoveringExampleId = "exp" | "square" | "power_n" | "log" | "sqrt_inverse";
 const OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS = [0.5, 1, 2, 4] as const;
 type OtherComplexPathAnimationSpeed = (typeof OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS)[number];
 type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1" | "sqrt_zab";
@@ -8328,10 +8330,14 @@ const App: React.FC = () => {
   const [otherComplexBranchCutMode, setOtherComplexBranchCutMode] = useState<OtherComplexBranchCutMode>("principal");
   const [otherComplexBranchCutRadialAngleDeg, setOtherComplexBranchCutRadialAngleDeg] = useState(180);
   const [otherComplexDomainValueMode, setOtherComplexDomainValueMode] = useState<"log" | "linear">("log");
-  const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere" | "residue">("plane");
+  const [otherComplexMainViewMode, setOtherComplexMainViewMode] = useState<"plane" | "grid" | "path" | "sphere" | "residue" | "covering">("plane");
   const [otherComplexLayoutMode, setOtherComplexLayoutMode] = useState<OtherComplexLayoutMode>("two_pane");
   const [otherComplexLeftPanelView, setOtherComplexLeftPanelView] = useState<OtherComplexLeftPanelView>("setup");
   const [otherComplexInspectorTab, setOtherComplexInspectorTab] = useState<OtherComplexInspectorTab>("branch");
+  const [otherComplexCoveringExample, setOtherComplexCoveringExample] = useState<OtherComplexCoveringExampleId>("exp");
+  const [otherComplexCoveringPowerN, setOtherComplexCoveringPowerN] = useState(3);
+  const [otherComplexCoveringDeckK, setOtherComplexCoveringDeckK] = useState(1);
+  const [otherComplexCoveringFiberWindow, setOtherComplexCoveringFiberWindow] = useState(2);
   const [otherComplexSphereColorMode, setOtherComplexSphereColorMode] = useState<OtherComplexSphereColorMode>("f");
   const [otherComplexWScaleMode, setOtherComplexWScaleMode] = useState<OtherComplexWScaleMode>("auto");
   const [otherComplexValueSurfaceQuantity, setOtherComplexValueSurfaceQuantity] =
@@ -9680,6 +9686,41 @@ const App: React.FC = () => {
     setComplexMapError(null);
   }, []);
 
+  const activateOtherComplexCoveringExample = useCallback(
+    (example: OtherComplexCoveringExampleId, nOverride?: number) => {
+      const nValue = Math.max(2, Math.min(12, Math.round(nOverride ?? otherComplexCoveringPowerN)));
+      const expr =
+        example === "exp"
+          ? "exp(z)"
+          : example === "square"
+            ? "z^2"
+            : example === "power_n"
+              ? `z^${nValue}`
+              : example === "log"
+                ? "log(z)"
+                : "sqrt(z)";
+      const label =
+        example === "exp"
+          ? "exp: C -> C*"
+          : example === "square"
+            ? "z -> z^2 covering"
+            : example === "power_n"
+              ? `z -> z^${nValue} covering`
+              : example === "log"
+                ? "log as inverse of exp"
+                : "sqrt as inverse of z^2";
+      if (example === "power_n") setOtherComplexCoveringPowerN(nValue);
+      setOtherComplexCoveringExample(example);
+      applyOtherComplexFunctionPreset(expr, label);
+      setOtherComplexMainViewMode("covering");
+      setOtherComplexLayoutMode("two_pane");
+      setOtherComplexShowPathMapping(true);
+      setOtherComplexInspectorTab("covering");
+      setOtherComplexActionStatus(`Covering example loaded: ${label}.`);
+    },
+    [applyOtherComplexFunctionPreset, otherComplexCoveringPowerN]
+  );
+
   const handleOtherComplexAnalyzeFunction = useCallback(() => {
     setOtherComplexShowSingularityInspector(true);
     setOtherComplexShowCritical(true);
@@ -9703,18 +9744,22 @@ const App: React.FC = () => {
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
   const otherComplexPathMappingActive =
-    otherComplexShowPathMapping || otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue";
+    otherComplexShowPathMapping || otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue" || otherComplexMainViewMode === "covering";
   const otherComplexLabTitle =
     otherComplexMainViewMode === "path"
       ? "Branch Lab"
       : otherComplexMainViewMode === "residue"
         ? "Residue Lab"
+        : otherComplexMainViewMode === "covering"
+          ? "Covering Map Lab"
         : "Function Explorer";
   const otherComplexLabHeader =
     otherComplexMainViewMode === "path"
       ? "Branch Lab - branch cuts and monodromy"
       : otherComplexMainViewMode === "residue"
         ? "Residue Lab - contour and singularities"
+        : otherComplexMainViewMode === "covering"
+          ? "Covering Map Lab - cover space, base space, fibers, deck transformations"
         : "Function Explorer - general complex functions";
   const otherComplexFunctionExprSafe = (otherComplexFunctionExpr || "z").trim() || "z";
   const otherComplexExprNormalized = otherComplexFunctionExprSafe.replace(/\s+/g, "");
@@ -9874,10 +9919,13 @@ const App: React.FC = () => {
       const clamped = clampW(re, im);
       return clamped;
     };
-    const getHeight = (re: number, im: number) => {
+    const getHeight = (re: number, im: number, sheetIdx: number) => {
       if (otherComplexValueSurfaceQuantity === "re") return re;
       if (otherComplexValueSurfaceQuantity === "im") return im;
       if (otherComplexValueSurfaceQuantity === "abs") return Math.hypot(re, im);
+      if (otherComplexValueSurfaceQuantity === "sheet_index") {
+        return otherComplexBranchProfile.id === "log" ? sheetKOffset + sheetIdx : sheetIdx;
+      }
       return Math.atan2(im, re);
     };
 
@@ -9891,7 +9939,7 @@ const App: React.FC = () => {
           const outIdx = sheetOffset + idx;
           const w = evalSheetW(u, v, s);
           if (!w || !Number.isFinite(w.re) || !Number.isFinite(w.im)) continue;
-          const h = getHeight(w.re, w.im);
+          const h = getHeight(w.re, w.im, s);
           if (!Number.isFinite(h)) continue;
           positions[3 * outIdx] = u;
           positions[3 * outIdx + 1] = h;
@@ -9938,6 +9986,8 @@ const App: React.FC = () => {
           ? "Im(f)"
           : otherComplexValueSurfaceQuantity === "abs"
             ? "|f|"
+            : otherComplexValueSurfaceQuantity === "sheet_index"
+              ? "sheet index"
             : "arg(f)";
     const label = `Riemann value surface (${quantityLabel}, ${sheetCount} sheet${sheetCount === 1 ? "" : "s"})`;
     const mesh: SurfaceMeshData = {
@@ -15007,6 +15057,158 @@ const App: React.FC = () => {
     return null;
   }, [otherComplexWPathBounds, otherComplexWDisplayExtent, otherComplexWScaleMode, otherComplexWExtent]);
 
+  const otherComplexCoveringLab = useMemo(() => {
+    if (otherComplexMainViewMode !== "covering") return null;
+    const twoPi = Math.PI * 2;
+    const kShift = Math.max(-12, Math.min(12, Math.round(otherComplexCoveringDeckK)));
+    const fiberWindow = Math.max(1, Math.min(8, Math.round(otherComplexCoveringFiberWindow)));
+    const powerN = Math.max(2, Math.min(12, Math.round(otherComplexCoveringPowerN)));
+    const selectedZ = otherComplexSelectedPointInfo.z;
+    const selectedW = otherComplexSelectedPointInfo.w && cFinite(otherComplexSelectedPointInfo.w) ? otherComplexSelectedPointInfo.w : null;
+    const fallbackBaseW: C = { re: 1, im: 0 };
+    const fallbackBaseZ: C = cAbs(selectedZ) > 1e-9 ? selectedZ : { re: 1, im: 0 };
+    const nthRoots = (value: C, n: number) => {
+      const r = Math.hypot(value.re, value.im);
+      const theta = Math.atan2(value.im, value.re);
+      if (r <= 1e-12) return [{ re: 0, im: 0 }];
+      const rootR = Math.pow(r, 1 / n);
+      return Array.from({ length: n }, (_, idx) => {
+        const angle = (theta + twoPi * idx) / n;
+        return { re: rootR * Math.cos(angle), im: rootR * Math.sin(angle) };
+      });
+    };
+    const powInt = (value: C, n: number) => {
+      let acc: C = { re: 1, im: 0 };
+      for (let i = 0; i < n; i++) acc = cMul(acc, value);
+      return acc;
+    };
+    const expComplex = (value: C): C => {
+      const scale = Math.exp(value.re);
+      return { re: scale * Math.cos(value.im), im: scale * Math.sin(value.im) };
+    };
+    const closeError = (a: C, b: C) => cAbs(cSub(a, b));
+
+    let title = "Covering map";
+    let formula = "w = f(z)";
+    let coverSpaceLabel = "Cover space: z-plane";
+    let baseSpaceLabel = "Base space: w-plane";
+    let fiberRule = "";
+    let deckRule = "";
+    let monodromySummary = "";
+    let basePoint: C = fallbackBaseW;
+    let zFiberPoints: C[] = [];
+    let wFiberPoints: C[] = [];
+    let deckSegmentZ: [C, C] | null = null;
+    let deckSegmentW: [C, C] | null = null;
+    let invariantCheck = "";
+
+    if (otherComplexCoveringExample === "exp") {
+      title = "exp covering";
+      formula = "exp(w) = z  (implemented as w = exp(z))";
+      coverSpaceLabel = "Cover space (w): domain plane";
+      baseSpaceLabel = "Base space (z ≠ 0): image plane";
+      basePoint = selectedW && cAbs(selectedW) > 1e-9 ? selectedW : fallbackBaseW;
+      const principal = { re: Math.log(Math.max(1e-12, cAbs(basePoint))), im: Math.atan2(basePoint.im, basePoint.re) };
+      for (let k = -fiberWindow; k <= fiberWindow; k++) {
+        zFiberPoints.push({ re: principal.re, im: principal.im + twoPi * k });
+      }
+      const deckFrom = principal;
+      const deckTo = { re: principal.re, im: principal.im + twoPi * kShift };
+      deckSegmentZ = [deckFrom, deckTo];
+      const err = closeError(expComplex(deckFrom), expComplex(deckTo));
+      fiberRule = "Fiber over selected base point z0: w = Log(z0) + 2πik, k ∈ Z.";
+      deckRule = "Deck transformation: w -> w + 2πik.";
+      monodromySummary = "Monodromy group: Z (infinite cyclic).";
+      invariantCheck = `exp(w + 2πi·${kShift}) matches exp(w): error ${err.toExponential(2)}`;
+    } else if (otherComplexCoveringExample === "square" || otherComplexCoveringExample === "power_n") {
+      const n = otherComplexCoveringExample === "square" ? 2 : powerN;
+      title = n === 2 ? "z -> z^2 covering" : `z -> z^${n} covering`;
+      formula = `w = z^${n}`;
+      coverSpaceLabel = "Cover space: domain z-plane";
+      baseSpaceLabel = "Base space (w): image plane";
+      basePoint = selectedW ?? fallbackBaseW;
+      zFiberPoints = nthRoots(basePoint, n);
+      const rootOfUnity = { re: Math.cos((twoPi * kShift) / n), im: Math.sin((twoPi * kShift) / n) };
+      const deckFrom = zFiberPoints[0] ?? { re: 0, im: 0 };
+      const deckTo = cMul(deckFrom, rootOfUnity);
+      deckSegmentZ = [deckFrom, deckTo];
+      const err = closeError(powInt(deckFrom, n), powInt(deckTo, n));
+      fiberRule = `Fiber over selected base point w0: n roots of w0 (${n} sheet${n === 1 ? "" : "s"}).`;
+      deckRule = `Deck transformation: z -> exp(2πi·k/${n}) z.`;
+      monodromySummary = `Monodromy group: C${n}.`;
+      invariantCheck = `Deck invariance w(z) = w(deck(z)): error ${err.toExponential(2)}`;
+    } else if (otherComplexCoveringExample === "log") {
+      title = "log as inverse of exp";
+      formula = "w = Log(z) + 2πik i";
+      coverSpaceLabel = "Base space: domain z-plane (z ≠ 0)";
+      baseSpaceLabel = "Sheet values in w-plane";
+      basePoint = cAbs(selectedZ) > 1e-9 ? selectedZ : fallbackBaseZ;
+      const principal = { re: Math.log(Math.max(1e-12, cAbs(basePoint))), im: Math.atan2(basePoint.im, basePoint.re) };
+      for (let k = -fiberWindow; k <= fiberWindow; k++) {
+        wFiberPoints.push({ re: principal.re, im: principal.im + twoPi * k });
+      }
+      const deckFrom = principal;
+      const deckTo = { re: principal.re, im: principal.im + twoPi * kShift };
+      deckSegmentW = [deckFrom, deckTo];
+      const err = closeError(expComplex(deckFrom), expComplex(deckTo));
+      fiberRule = "Fiber over selected base point z0: all logarithms Log(z0)+2πik i.";
+      deckRule = "Deck transformation on sheets: w -> w + 2πik.";
+      monodromySummary = "Monodromy group: Z (infinite cyclic).";
+      invariantCheck = `exp(w + 2πi·${kShift}) = exp(w): error ${err.toExponential(2)}`;
+    } else {
+      title = "sqrt as inverse of z^2";
+      formula = "w^2 = z  (implemented as w = sqrt(z))";
+      coverSpaceLabel = "Base space: domain z-plane";
+      baseSpaceLabel = "Two sheets in w-plane";
+      basePoint = cAbs(selectedZ) > 1e-9 ? selectedZ : fallbackBaseZ;
+      const principal = cSqrt(basePoint);
+      const other = cNeg(principal);
+      if (cAbs(principal) <= 1e-9) wFiberPoints = [principal];
+      else wFiberPoints = [principal, other];
+      deckSegmentW = [principal, cMul(principal, { re: Math.cos(Math.PI * kShift), im: Math.sin(Math.PI * kShift) })];
+      const err = closeError(cMul(principal, principal), cMul(other, other));
+      fiberRule = "Fiber over selected base point z0: w = ±sqrt(z0).";
+      deckRule = "Deck transformation: w -> -w (order 2).";
+      monodromySummary = "Monodromy group: C2.";
+      invariantCheck = `Square invariance under sign change: error ${err.toExponential(2)}`;
+    }
+
+    const zVisible = zFiberPoints.filter(
+      (pt) => cFinite(pt) && Math.abs(pt.re) <= complexMapZExtent * 1.25 && Math.abs(pt.im) <= complexMapZExtent * 1.25
+    );
+    const wVisible = wFiberPoints.filter(
+      (pt) => cFinite(pt) && Math.abs(pt.re) <= otherComplexWDisplayExtent * 1.25 && Math.abs(pt.im) <= otherComplexWDisplayExtent * 1.25
+    );
+
+    return {
+      title,
+      formula,
+      coverSpaceLabel,
+      baseSpaceLabel,
+      fiberRule,
+      deckRule,
+      monodromySummary,
+      invariantCheck,
+      basePoint,
+      zFiberPoints: zVisible,
+      wFiberPoints: wVisible,
+      deckSegmentZ,
+      deckSegmentW,
+      deckK: kShift,
+      fiberWindow,
+      exampleId: otherComplexCoveringExample,
+    };
+  }, [
+    otherComplexMainViewMode,
+    otherComplexCoveringDeckK,
+    otherComplexCoveringExample,
+    otherComplexCoveringFiberWindow,
+    otherComplexCoveringPowerN,
+    otherComplexSelectedPointInfo,
+    complexMapZExtent,
+    otherComplexWDisplayExtent,
+  ]);
+
   const otherComplexSelectedPointStatus = useMemo(() => {
     const z = otherComplexSelectedPointInfo.z;
     const w = otherComplexSelectedPointInfo.w;
@@ -15567,6 +15769,42 @@ const App: React.FC = () => {
       perPathKInt,
     };
   }, [otherComplexBranchProfile, otherComplexBranchAnalysis, otherComplexPathLoopCount]);
+
+  const otherComplexMonodromyGroupPanel = useMemo(() => {
+    if (otherComplexBranchProfile.id === "none") return null;
+    if (otherComplexBranchProfile.id === "log") {
+      return {
+        title: "Monodromy group",
+        groupLabel: "Z (infinite cyclic)",
+        generator: "k → k + 1 per positive loop around z=0",
+        bullets: [
+          "loop once  -> log(z) + 2πi",
+          "loop k times -> log(z) + 2πik",
+        ],
+      };
+    }
+    if (otherComplexBranchProfile.id === "pow_third") {
+      return {
+        title: "Monodromy group",
+        groupLabel: "C3 (cyclic order 3)",
+        generator: "sheet shift +1 mod 3 per positive loop around z=0",
+        bullets: [
+          "loop once  -> sheet 0 -> sheet 1",
+          "loop twice -> sheet 0 -> sheet 2",
+          "loop three -> sheet 0 -> sheet 0",
+        ],
+      };
+    }
+    return {
+      title: "Monodromy group",
+      groupLabel: "C2 (cyclic order 2)",
+      generator: "sheet shift +1 mod 2 per positive loop around selected branch point",
+      bullets: [
+        "loop once  -> sign change",
+        "loop twice -> identity",
+      ],
+    };
+  }, [otherComplexBranchProfile.id]);
 
   const otherComplexSheetTracker = useMemo(() => {
     if (otherComplexBranchProfile.id === "none") return null;
@@ -16571,6 +16809,56 @@ case "mobius":
     } else {
       wRef.current.drawPoints([], { layer: "other-selected-w" });
     }
+
+    if (otherComplexCoveringLab) {
+      zRef.current.drawPoints(
+        otherComplexCoveringLab.zFiberPoints.map((pt) => [pt.re, pt.im] as [number, number]),
+        {
+          color: "#0284c7",
+          shape: "circle",
+          size: 4.6,
+          layer: "other-covering-fiber-z",
+        }
+      );
+      wRef.current.drawPoints(
+        otherComplexCoveringLab.wFiberPoints.map((pt) => [pt.re, pt.im] as [number, number]),
+        {
+          color: "#0284c7",
+          shape: "circle",
+          size: 4.6,
+          layer: "other-covering-fiber-w",
+        }
+      );
+      if (otherComplexCoveringLab.deckSegmentZ) {
+        zRef.current.drawCurve(
+          [
+            [otherComplexCoveringLab.deckSegmentZ[0].re, otherComplexCoveringLab.deckSegmentZ[0].im],
+            [otherComplexCoveringLab.deckSegmentZ[1].re, otherComplexCoveringLab.deckSegmentZ[1].im],
+          ],
+          "#0ea5e9",
+          { width: 1.8, opacity: 0.9, dash: "4 3", layer: "other-covering-deck-z" }
+        );
+      } else {
+        zRef.current.drawCurve([], "#0ea5e9", { layer: "other-covering-deck-z" });
+      }
+      if (otherComplexCoveringLab.deckSegmentW) {
+        wRef.current.drawCurve(
+          [
+            [otherComplexCoveringLab.deckSegmentW[0].re, otherComplexCoveringLab.deckSegmentW[0].im],
+            [otherComplexCoveringLab.deckSegmentW[1].re, otherComplexCoveringLab.deckSegmentW[1].im],
+          ],
+          "#0ea5e9",
+          { width: 1.8, opacity: 0.9, dash: "4 3", layer: "other-covering-deck-w" }
+        );
+      } else {
+        wRef.current.drawCurve([], "#0ea5e9", { layer: "other-covering-deck-w" });
+      }
+    } else {
+      zRef.current.drawPoints([], { layer: "other-covering-fiber-z" });
+      wRef.current.drawPoints([], { layer: "other-covering-fiber-w" });
+      zRef.current.drawCurve([], "#0ea5e9", { layer: "other-covering-deck-z" });
+      wRef.current.drawCurve([], "#0ea5e9", { layer: "other-covering-deck-w" });
+    }
   }
   break;
 
@@ -16636,6 +16924,7 @@ case "mobius":
     otherComplexShowOrthogonality,
     otherComplexDomainValueMode,
     otherComplexSelectedPointInfo,
+    otherComplexCoveringLab,
     otherComplexPathMode,
     otherComplexPathZLoops,
     otherComplexPathWMappedSegments,
@@ -28017,6 +28306,8 @@ case "mobius":
           ? "Branch Lab"
           : otherComplexMainViewMode === "residue"
             ? "Residue Lab"
+            : otherComplexMainViewMode === "covering"
+              ? "Covering Map Lab"
             : "Complex Function Explorer";
     }
     if (mode === "chebyshev") return "Chebyshev viewer";
@@ -30787,7 +31078,8 @@ case "mobius":
                   mode === "mobius" &&
                     functionExplorerScene === "other_complex" &&
                     otherComplexMainViewMode !== "residue" &&
-                    otherComplexMainViewMode !== "path"
+                    otherComplexMainViewMode !== "path" &&
+                    otherComplexMainViewMode !== "covering"
                 )}
               >
                 Function Explorer
@@ -30840,6 +31132,17 @@ case "mobius":
                 style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "path")}
               >
                 Branch Lab
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("mobius");
+                  setFunctionExplorerScene("other_complex");
+                  activateOtherComplexCoveringExample("exp");
+                }}
+                style={pill(mode === "mobius" && functionExplorerScene === "other_complex" && otherComplexMainViewMode === "covering")}
+              >
+                Covering Lab
               </button>
               <button
                 type="button"
@@ -39311,6 +39614,87 @@ case "mobius":
                         </div>
                       </div>
                       <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>COVERING MAP LAB</div>
+                        <div style={{ fontSize: 11, opacity: 0.78 }}>
+                          Cover space / base space / fiber / deck transformation for classical coverings and inverse branches.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => activateOtherComplexCoveringExample("exp")} style={pill(otherComplexCoveringExample === "exp")}>
+                            exp: C → C*
+                          </button>
+                          <button type="button" onClick={() => activateOtherComplexCoveringExample("square")} style={pill(otherComplexCoveringExample === "square")}>
+                            z → z²
+                          </button>
+                          <button type="button" onClick={() => activateOtherComplexCoveringExample("power_n")} style={pill(otherComplexCoveringExample === "power_n")}>
+                            z → zⁿ
+                          </button>
+                          <button type="button" onClick={() => activateOtherComplexCoveringExample("log")} style={pill(otherComplexCoveringExample === "log")}>
+                            log inverse
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => activateOtherComplexCoveringExample("sqrt_inverse")}
+                            style={pill(otherComplexCoveringExample === "sqrt_inverse")}
+                          >
+                            sqrt inverse
+                          </button>
+                        </div>
+                        {otherComplexCoveringExample === "power_n" && (
+                          <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                            <span>power n: {Math.max(2, Math.round(otherComplexCoveringPowerN))}</span>
+                            <input
+                              type="range"
+                              min={2}
+                              max={12}
+                              step={1}
+                              value={otherComplexCoveringPowerN}
+                              onChange={(e) => {
+                                const nextN = Math.max(2, Math.min(12, Math.round(Number(e.target.value))));
+                                setOtherComplexCoveringPowerN(nextN);
+                                if (otherComplexMainViewMode === "covering" && otherComplexCoveringExample === "power_n") {
+                                  activateOtherComplexCoveringExample("power_n", nextN);
+                                }
+                              }}
+                            />
+                          </label>
+                        )}
+                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                          <span>fiber window (k range): ±{Math.max(1, Math.round(otherComplexCoveringFiberWindow))}</span>
+                          <input
+                            type="range"
+                            min={1}
+                            max={8}
+                            step={1}
+                            value={otherComplexCoveringFiberWindow}
+                            onChange={(e) => setOtherComplexCoveringFiberWindow(Math.max(1, Math.min(8, Math.round(Number(e.target.value)))))}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 2, fontSize: 11, maxWidth: 360 }}>
+                          <span>deck shift k: {Math.max(-12, Math.min(12, Math.round(otherComplexCoveringDeckK)))}</span>
+                          <input
+                            type="range"
+                            min={-12}
+                            max={12}
+                            step={1}
+                            value={otherComplexCoveringDeckK}
+                            onChange={(e) => setOtherComplexCoveringDeckK(Math.max(-12, Math.min(12, Math.round(Number(e.target.value)))))}
+                          />
+                        </label>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOtherComplexMainViewMode("covering");
+                              setOtherComplexLayoutMode("two_pane");
+                              setOtherComplexInspectorTab("covering");
+                              setOtherComplexShowPathMapping(true);
+                            }}
+                          >
+                            Open covering view
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ ...cardStyle, display: "grid", gap: 8 }}>
                         <div style={{ fontWeight: 700, fontSize: 12 }}>BRANCH / MONODROMY LAB</div>
                         <div style={{ fontSize: 11, opacity: 0.78 }}>
                           Workflow: function → branch points → branch cut → path → continuation → monodromy inspector.
@@ -40256,6 +40640,13 @@ case "mobius":
                           {otherComplexFunctionExpr || "z"}
                         </span>
                       </div>
+                      {otherComplexMainViewMode === "covering" && otherComplexCoveringLab && (
+                        <div style={{ fontSize: 11, padding: "6px 8px", borderRadius: 8, border: "1px solid #dbe2ea", background: "#f8fafc", display: "grid", gap: 2 }}>
+                          <div style={{ fontWeight: 700 }}>{otherComplexCoveringLab.title}</div>
+                          <div>{otherComplexCoveringLab.formula}</div>
+                          <div>{otherComplexCoveringLab.monodromySummary}</div>
+                        </div>
+                      )}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                         <span>View:</span>
                         <button type="button" onClick={() => setOtherComplexMainViewMode("plane")} style={pill(otherComplexMainViewMode === "plane")}>
@@ -40287,6 +40678,18 @@ case "mobius":
                           style={pill(otherComplexMainViewMode === "residue")}
                         >
                           Residue
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOtherComplexMainViewMode("covering");
+                            setOtherComplexLayoutMode("two_pane");
+                            setOtherComplexShowPathMapping(true);
+                            setOtherComplexInspectorTab("covering");
+                          }}
+                          style={pill(otherComplexMainViewMode === "covering")}
+                        >
+                          Covering
                         </button>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
@@ -40611,10 +41014,36 @@ case "mobius":
                           <button type="button" onClick={() => setOtherComplexInspectorTab("branch")} style={pill(otherComplexInspectorTab === "branch")}>Branch</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("path")} style={pill(otherComplexInspectorTab === "path")}>Path</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("monodromy")} style={pill(otherComplexInspectorTab === "monodromy")}>Monodromy</button>
+                          <button type="button" onClick={() => setOtherComplexInspectorTab("covering")} style={pill(otherComplexInspectorTab === "covering")}>Covering</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("sheet")} style={pill(otherComplexInspectorTab === "sheet")}>Sheet</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("analysis")} style={pill(otherComplexInspectorTab === "analysis")}>Analysis</button>
                           <button type="button" onClick={() => setOtherComplexInspectorTab("warnings")} style={pill(otherComplexInspectorTab === "warnings")}>Warnings</button>
                         </div>
+                        {otherComplexInspectorTab === "covering" && (
+                          <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
+                            {otherComplexCoveringLab ? (
+                              <>
+                                <div style={{ fontWeight: 700 }}>{otherComplexCoveringLab.title}</div>
+                                <div>formula: {otherComplexCoveringLab.formula}</div>
+                                <div>{otherComplexCoveringLab.coverSpaceLabel}</div>
+                                <div>{otherComplexCoveringLab.baseSpaceLabel}</div>
+                                <div>selected base point: {cToStr(otherComplexCoveringLab.basePoint)}</div>
+                                <div>{otherComplexCoveringLab.fiberRule}</div>
+                                <div>{otherComplexCoveringLab.deckRule}</div>
+                                <div>{otherComplexCoveringLab.monodromySummary}</div>
+                                <div>{otherComplexCoveringLab.invariantCheck}</div>
+                                <div>
+                                  visible fiber markers: z={otherComplexCoveringLab.zFiberPoints.length}, w={otherComplexCoveringLab.wFiberPoints.length}
+                                </div>
+                                <div style={{ fontSize: 11, opacity: 0.8 }}>
+                                  exp/log deck shift: vertical translation by 2πi preserves exp. For power maps, deck action is multiplication by roots of unity.
+                                </div>
+                              </>
+                            ) : (
+                              <div>Open Covering view to inspect fibers and deck transformations.</div>
+                            )}
+                          </div>
+                        )}
                         {otherComplexInspectorTab === "branch" && (
                           <div style={{ display: "grid", gap: 4, fontSize: 12 }}>
                             <div>function: {otherComplexBranchProfile.label}</div>
@@ -40711,6 +41140,16 @@ case "mobius":
                               {otherComplexBranchAnalysis.analyticContinuationChangesSheet ? "changes sheet" : "no sheet change"}
                             </div>
                             <div>{otherComplexBranchProfile.monodromyNote}</div>
+                            {otherComplexMonodromyGroupPanel && (
+                              <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
+                                <div style={{ fontWeight: 700, marginBottom: 4 }}>{otherComplexMonodromyGroupPanel.title}</div>
+                                <div>Monodromy group: {otherComplexMonodromyGroupPanel.groupLabel}</div>
+                                <div>generator: {otherComplexMonodromyGroupPanel.generator}</div>
+                                {otherComplexMonodromyGroupPanel.bullets.map((line) => (
+                                  <div key={`mono-group:${line}`}>{line}</div>
+                                ))}
+                              </div>
+                            )}
                             {otherComplexMonodromyTable && (
                               <div style={{ marginTop: 6, borderTop: "1px dashed #cbd5e1", paddingTop: 6 }}>
                                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Monodromy table</div>
@@ -40878,6 +41317,7 @@ case "mobius":
                                       { id: "im", label: "height = Im(f)" },
                                       { id: "abs", label: "height = |f|" },
                                       { id: "arg", label: "height = arg(f)" },
+                                      { id: "sheet_index", label: "height = sheet index" },
                                     ] as const
                                   ).map((entry) => (
                                     <button
@@ -40954,9 +41394,15 @@ case "mobius":
                                 : "n/a"}
                             </div>
                             <div>
-                              CR satisfied:{" "}
+                              status:{" "}
                               <span style={{ color: otherComplexSelectedPointCRAnalysis.crSatisfied ? "#166534" : "#b42318", fontWeight: 700 }}>
-                                {otherComplexSelectedPointCRAnalysis.crSatisfied ? "yes" : "no"}
+                                {otherComplexSelectedPointCRAnalysis.critical
+                                  ? otherComplexSelectedPointCRAnalysis.crSatisfied
+                                    ? "critical point (holomorphic)"
+                                    : "critical point (not holomorphic)"
+                                  : otherComplexSelectedPointCRAnalysis.crSatisfied
+                                    ? "holomorphic"
+                                    : "not holomorphic"}
                               </span>
                             </div>
                             <div>
@@ -40974,7 +41420,7 @@ case "mobius":
                             <div>
                               critical point f'(z)=0:{" "}
                               <span style={{ color: otherComplexSelectedPointCRAnalysis.critical ? "#b42318" : "#166534", fontWeight: 700 }}>
-                                {otherComplexSelectedPointCRAnalysis.critical ? "yes" : "no"}
+                                {otherComplexSelectedPointCRAnalysis.critical ? "detected" : "not detected"}
                               </span>
                             </div>
                             {otherComplexDerivativeField && (
