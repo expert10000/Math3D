@@ -393,7 +393,7 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
   "euler",
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
-const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "inspect", "view", "analysis"] as const;
+const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "theory"] as const;
 const MOBIUS_SUB_TAB_VALUES: MobiusSubTab[] = ["map", "decompose", "invariants", "circles", "riemann", "animation"];
 const PLANIMETRY_PRESET_VALUES: PlanimetryPresetId[] = ["task", "euler", "tangent", "incircle_reflection"];
 const isGeometryModeValue = (value: string | undefined): value is GeometryMode =>
@@ -12600,6 +12600,7 @@ const App: React.FC = () => {
       : Math.floor(vertCount / 3);
     return { vertCount, triCount };
   }, [surfaceMeshData]);
+  const surfaceMeshBounds = useMemo(() => boundsFromPositions(surfaceMeshData?.positions), [surfaceMeshData]);
   const surfaceMeshConnectedComponentCount = useMemo(
     () => countMeshConnectedComponents(surfaceMeshData),
     [surfaceMeshData]
@@ -13453,9 +13454,9 @@ const App: React.FC = () => {
   const [surfacesTopActionsMoreOpen, setSurfacesTopActionsMoreOpen] = useState(false);
   const [surfacePreviewFocusMode, setSurfacePreviewFocusMode] = useState(false);
   const surfacePreviewFocusPrevRightPanelRef = useRef(true);
-  const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "inspect" | "view" | "analysis">("scene");
+  const surfacePreviewFocusPrevLeftTabRef = useRef<"scene" | "object" | "view" | "analysis" | "theory">("scene");
   const [surfacesLeftTab, setSurfacesLeftTab] = useState<
-    "scene" | "object" | "inspect" | "view" | "analysis"
+    "scene" | "object" | "view" | "analysis" | "theory"
   >("scene");
   const prevModeRef = useRef<Mode>(mode);
   const skipSurfacesAutoBrowseOnModeChangeRef = useRef(false);
@@ -28672,7 +28673,7 @@ case "mobius":
   const surfaceWorkflowActiveStepId: SurfaceWorkflowStepId = (() => {
     if (rightPanelTab === "workbook") return "save";
     if (surfaceFormulaEditorOpen) return parseReady ? "equation" : "parse";
-    if (surfacesLeftTab === "inspect") return "domain";
+    if (surfacesLeftTab === "object") return "domain";
     if (surfacesLeftTab === "analysis") return "analyze";
     if (surfaceViewerKind === "mesh" || surfaceViewerKind === "complex") return "mesh";
     if (inspectEnabled || probeEnabled) return "analyze";
@@ -28747,7 +28748,7 @@ case "mobius":
           break;
         case "domain":
           focusInspector();
-          setSurfacesLeftTab("inspect");
+          setSurfacesLeftTab("object");
           focusElementByIdWithRetry("surfaces-inspector-domain-card");
           break;
         case "preview":
@@ -29585,7 +29586,7 @@ case "mobius":
     headerSurfaceFamilyMoreOpen || (headerIsSurface && (surfaceViewerKind === "mesh" || surfaceViewerKind === "weierstrass"));
   const surfacesWorkspaceTabs = isPresentDisplayMode
     ? (["scene"] as const)
-    : (["scene", "object", "inspect", "view", "analysis"] as const);
+    : (["scene", "object", "view", "analysis", "theory"] as const);
   const surfacesWorkTabsEnabled = surfacesLayoutVariant !== "layout2";
   const surfacesCompareToggleEnabled =
     displayMode !== "present" &&
@@ -29924,6 +29925,46 @@ case "mobius":
                   onVtkSmooth={handleVtkSmooth}
                   vtkOutputMode={vtkOutputMode}
                   onChangeVtkOutputMode={setVtkOutputMode}
+                  generateSurfaceStatus={generateSurfaceStatus}
+                  vtkPreviewBusy={vtkPreviewBusy}
+                  vtkPreviewError={vtkPreviewError}
+                  vtkPreviewTargetFaces={vtkPreviewTargetFaces}
+                  vtkPreviewUseDecimate={vtkPreviewUseDecimate}
+                  onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
+                  onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
+                  onRunVtkPreview={handleVtkPreviewImplicit}
+                  cgalHealthState={cgalHealthState}
+                  cgalBusy={cgalBusy}
+                  cgalError={cgalError}
+                  cgalTargetEdge={cgalTargetEdge}
+                  onChangeCgalTargetEdge={setCgalTargetEdge}
+                  cgalAutoTargetEdge={cgalAutoTargetEdge}
+                  onChangeCgalAutoTargetEdge={setCgalAutoTargetEdge}
+                  cgalPadFrac={cgalPadFrac}
+                  onChangeCgalPadFrac={setCgalPadFrac}
+                  cgalTriBudgetEnabled={cgalTriBudgetEnabled}
+                  onChangeCgalTriBudgetEnabled={setCgalTriBudgetEnabled}
+                  cgalTriBudget={cgalTriBudget}
+                  onChangeCgalTriBudget={setCgalTriBudget}
+                  cgalAutoEdge={cgalAutoEdge}
+                  cgalTriBudgetEdge={cgalTriBudgetEdge}
+                  cgalRadiusBound={cgalRadiusBound}
+                  onChangeCgalRadiusBound={setCgalRadiusBound}
+                  cgalMinTrisEnabled={cgalMinTrisEnabled}
+                  onChangeCgalMinTrisEnabled={setCgalMinTrisEnabled}
+                  cgalMinTris={cgalMinTris}
+                  onChangeCgalMinTris={setCgalMinTris}
+                  cgalDomainDiag={cgalDomainDiag}
+                  cgalEffectiveEdge={cgalEffectiveEdge}
+                  cgalEstimatedTris={cgalEstimatedTris}
+                  cgalTooHeavy={cgalTooHeavy}
+                  cgalVerbose={cgalVerbose}
+                  onChangeCgalVerbose={setCgalVerbose}
+                  cgalPreflightSamples={cgalPreflightSamples}
+                  onChangeCgalPreflightSamples={setCgalPreflightSamples}
+                  onRunCgalMesh={handleRunCgalMesh}
+                  onStopCgalWorker={handleStopCgalWorker}
+                  cgalMeshInfo={cgalMeshInfo}
                   graphExpr={graphExpr}
                   implicitExpr={implicitExpr}
                 onChangeGraphExpr={setGraphExpr}
@@ -32274,32 +32315,32 @@ case "mobius":
                   )}
                 </>
               )}
-              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "inspect" && (
-                <SurfacesInspectPanel
-                  viewerKind={surfaceViewerKind}
-                  inspectEnabled={inspectEnabled}
-                  onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
-                  onClearInspect={clearInspect}
-                  inspectIdx={inspectIdx}
-                  inspectPos={inspectPos}
-                  inspectNormal={inspectNormal}
-                  inspectMetrics={inspectMetrics}
-                  probeInfo={probeInfo}
-                  probeCurv={probeCurv}
-                  paramProbeCurv={paramProbeCurv}
-                  graphDomain={activeGraphDomain}
-                  paramDomain={activeParamLikeDomain}
-                  onPickDomainXY={handlePickDomainXY}
-                  onPickDomainUV={handlePickDomainUV}
-                  probeEnabled={probeEnabled}
-                  onToggleProbe={() => setProbeEnabled((v) => !v)}
-                  showProbeNormal={showProbeNormal}
-                  onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
-                  showProbeTangentPlane={showProbeTangentPlane}
-                  onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
-                  showProbeTangents={showProbeTangents}
-                  onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
-                />
+              {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "theory" && (
+                <div
+                  style={{
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 10,
+                    background: "#f8fbff",
+                    padding: "10px 12px",
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700 }}>Theory</div>
+                  <div style={{ fontSize: 11, opacity: 0.82, lineHeight: 1.6 }}>
+                    <div>Explicit graph: X(x, y) = (x, f(x, y), y)</div>
+                    <div>Implicit surface: f(x, y, z) = 0</div>
+                    <div>Parametric surface: X(u, v) = (x(u,v), y(u,v), z(u,v))</div>
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.82, lineHeight: 1.6 }}>
+                    <div>First form: E = Xu·Xu, F = Xu·Xv, G = Xv·Xv</div>
+                    <div>Second form: e = n·Xuu, f = n·Xuv, g = n·Xvv</div>
+                    <div>K = (eg - f²)/(EG - F²), H = (Eg - 2Ff + Ge)/(2(EG - F²))</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#334155" }}>
+                    Live picking/probing is in right panel: <strong>Inspector → Probe</strong>.
+                  </div>
+                </div>
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <>
@@ -34460,6 +34501,7 @@ case "mobius":
                       paramId={paramSurfaceId}
                       surfaceMeshLabel={surfaceMeshLabel}
                       surfaceMeshStats={surfaceMeshStats}
+                      surfaceMeshBounds={surfaceMeshBounds}
                       surfaceMeshSource={surfaceMeshData?.source ?? null}
                       graphResolution={graphResolution}
                       onSetGraphResolution={setGraphResolution}
@@ -34577,6 +34619,20 @@ case "mobius":
                       probeCurv={probeCurv}
                       paramProbeCurv={paramProbeCurv}
                       probeEnabled={probeEnabled}
+                      onToggleProbe={() => setProbeEnabled((v) => !v)}
+                      showProbeNormal={showProbeNormal}
+                      onToggleProbeNormal={() => setShowProbeNormal((v) => !v)}
+                      showProbeTangentPlane={showProbeTangentPlane}
+                      onToggleProbeTangentPlane={() => setShowProbeTangentPlane((v) => !v)}
+                      showProbeTangents={showProbeTangents}
+                      onToggleProbeTangents={() => setShowProbeTangents((v) => !v)}
+                      inspectEnabled={inspectEnabled}
+                      onToggleInspectEnabled={() => setInspectEnabled((v) => !v)}
+                      onClearInspect={clearInspect}
+                      inspectIdx={inspectIdx}
+                      inspectPos={inspectPos}
+                      inspectNormal={inspectNormal}
+                      inspectMetrics={inspectMetrics}
                       onPickDomainUV={handlePickDomainUV}
                       onPickDomainXY={handlePickDomainXY}
                       onPickDomainXYZ={handlePickDomainXYZ}
@@ -47543,6 +47599,46 @@ type SurfacesLeftPanelProps = {
   onVtkSmooth: () => void;
   vtkOutputMode: "replace" | "derived";
   onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
+  generateSurfaceStatus: GenerateSurfaceStatus;
+  vtkPreviewBusy: boolean;
+  vtkPreviewError: string | null;
+  vtkPreviewTargetFaces: number;
+  vtkPreviewUseDecimate: boolean;
+  onChangeVtkPreviewTargetFaces: (v: number) => void;
+  onChangeVtkPreviewUseDecimate: (v: boolean) => void;
+  onRunVtkPreview: () => void;
+  cgalHealthState: CgalHealthState | null;
+  cgalBusy: boolean;
+  cgalError: string | null;
+  cgalTargetEdge: number;
+  onChangeCgalTargetEdge: (v: number) => void;
+  cgalAutoTargetEdge: boolean;
+  onChangeCgalAutoTargetEdge: (v: boolean) => void;
+  cgalPadFrac: number;
+  onChangeCgalPadFrac: (v: number) => void;
+  cgalTriBudgetEnabled: boolean;
+  onChangeCgalTriBudgetEnabled: (v: boolean) => void;
+  cgalTriBudget: number;
+  onChangeCgalTriBudget: (v: number) => void;
+  cgalAutoEdge: number;
+  cgalTriBudgetEdge: number;
+  cgalRadiusBound: number;
+  onChangeCgalRadiusBound: (v: number) => void;
+  cgalMinTrisEnabled: boolean;
+  onChangeCgalMinTrisEnabled: (v: boolean) => void;
+  cgalMinTris: number;
+  onChangeCgalMinTris: (v: number) => void;
+  cgalDomainDiag: number;
+  cgalEffectiveEdge: number;
+  cgalEstimatedTris: number;
+  cgalTooHeavy: boolean;
+  cgalVerbose: boolean;
+  onChangeCgalVerbose: (v: boolean) => void;
+  cgalPreflightSamples: number;
+  onChangeCgalPreflightSamples: (v: number) => void;
+  onRunCgalMesh: () => void;
+  onStopCgalWorker: () => void;
+  cgalMeshInfo: { vertexCount: number; triCount: number } | null;
 
   graphExpr: string;
   implicitExpr: string;
@@ -48120,6 +48216,46 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onVtkSmooth,
   vtkOutputMode,
   onChangeVtkOutputMode,
+  generateSurfaceStatus,
+  vtkPreviewBusy,
+  vtkPreviewError,
+  vtkPreviewTargetFaces,
+  vtkPreviewUseDecimate,
+  onChangeVtkPreviewTargetFaces,
+  onChangeVtkPreviewUseDecimate,
+  onRunVtkPreview,
+  cgalHealthState,
+  cgalBusy,
+  cgalError,
+  cgalTargetEdge,
+  onChangeCgalTargetEdge,
+  cgalAutoTargetEdge,
+  onChangeCgalAutoTargetEdge,
+  cgalPadFrac,
+  onChangeCgalPadFrac,
+  cgalTriBudgetEnabled,
+  onChangeCgalTriBudgetEnabled,
+  cgalTriBudget,
+  onChangeCgalTriBudget,
+  cgalAutoEdge,
+  cgalTriBudgetEdge,
+  cgalRadiusBound,
+  onChangeCgalRadiusBound,
+  cgalMinTrisEnabled,
+  onChangeCgalMinTrisEnabled,
+  cgalMinTris,
+  onChangeCgalMinTris,
+  cgalDomainDiag,
+  cgalEffectiveEdge,
+  cgalEstimatedTris,
+  cgalTooHeavy,
+  cgalVerbose,
+  onChangeCgalVerbose,
+  cgalPreflightSamples,
+  onChangeCgalPreflightSamples,
+  onRunCgalMesh,
+  onStopCgalWorker,
+  cgalMeshInfo,
   graphExpr,
   implicitExpr,
 onChangeGraphExpr,
@@ -48568,6 +48704,28 @@ onChangeImplicitExpr,
     : "pending";
   const diagStatusColor = diagSuccess ? diagStatusColors[diagSuccess.okLevel] : "#9e9e9e";
   const fmtVal = (v: number, digits = 2) => (Number.isFinite(v) ? v.toFixed(digits) : String(v));
+  const cgalReady = cgalHealthState?.ok === true;
+  const cgalStatusText = !cgalHealthState
+    ? "checking..."
+    : cgalHealthState.ok
+      ? `available${cgalHealthState.version ? ` · v${cgalHealthState.version}` : ""}`
+      : "unavailable";
+  const cgalStatusColor = cgalHealthState ? (cgalHealthState.ok ? "#1f894f" : "#b42318") : "#777";
+  const cgalDisabled = cgalBusy || cgalHealthState?.ok !== true;
+  const cgalStopDisabled = !cgalBusy && cgalHealthState?.ok !== true;
+  const cgalTargetEdgeLocked = cgalDisabled || cgalAutoTargetEdge || cgalTriBudgetEnabled;
+  const vtkPreviewDisabled = vtkPreviewBusy || cgalBusy;
+  const vtkPreviewResolution = Math.max(8, Math.min(220, Math.round(implicitResolution)));
+  const generateStateLabel = vtkPreviewBusy ? "running" : generateSurfaceStatus.state;
+  const generateStatusText = vtkPreviewBusy ? "generate running..." : generateSurfaceStatus.message;
+  const generateStatusColor =
+    generateStateLabel === "success" ? "#1f894f" : generateStateLabel === "error" ? "#b42318" : "#556";
+  const fmtTriEstimate = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return "0";
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+    return `${Math.round(value)}`;
+  };
   const volumeBounds = samplingToBounds(volumeSampling);
 
   const modeLabel =
@@ -50662,7 +50820,7 @@ onChangeImplicitExpr,
       </div>
       )}
 
-      {wrapComplexAdvancedTools(
+      {leftTab === "object" && wrapComplexAdvancedTools(
       <>
       <div style={{ display: "flex", gap: 6, marginTop: 10, marginBottom: 8 }}>
         <button
@@ -50679,7 +50837,7 @@ onChangeImplicitExpr,
           style={pill(meshToolsTab === "vtk")}
           aria-pressed={meshToolsTab === "vtk"}
         >
-          Python mesh ops (VTK)
+          Mesh Operations
         </button>
         <button
           type="button"
@@ -50717,6 +50875,227 @@ onChangeImplicitExpr,
             {surfaceMeshImportError && (
               <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>
                 {surfaceMeshImportError}
+              </div>
+            )}
+            {viewerKind === "implicit" && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #e0e0e0",
+                  background: "#fafafa",
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Generate</div>
+                <div style={{ display: "grid", gap: 3, fontSize: 11 }}>
+                  <div>
+                    <strong>Source</strong>
+                  </div>
+                  <div>Object: {activeMeta.label}</div>
+                  <div>Mode: implicit surface f(x,y,z)=0</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
+                  <div style={{ fontWeight: 600 }}>Preview meshing</div>
+                  <div>Backend: VTK</div>
+                  <div>Resolution: {vtkPreviewResolution}^3</div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={vtkPreviewUseDecimate}
+                      disabled={vtkPreviewDisabled}
+                      onChange={(e) => onChangeVtkPreviewUseDecimate(e.target.checked)}
+                    />
+                    Decimate preview
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Target faces
+                    <input
+                      type="number"
+                      min={200}
+                      max={500000}
+                      step={100}
+                      value={Math.min(500000, Math.max(200, Math.round(vtkPreviewTargetFaces)))}
+                      disabled={!vtkPreviewUseDecimate || vtkPreviewDisabled}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeVtkPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
+                      }}
+                      style={{ width: 110 }}
+                    />
+                  </label>
+                  <button type="button" onClick={() => void onRunVtkPreview()} disabled={vtkPreviewDisabled}>
+                    {vtkPreviewBusy ? "Running preview..." : "Run preview"}
+                  </button>
+                  <div style={{ color: generateStatusColor }}>Status: {generateStatusText}</div>
+                  {vtkPreviewError && <div style={{ color: "#b42318" }}>{vtkPreviewError}</div>}
+                </div>
+
+                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
+                  <div style={{ fontWeight: 600 }}>Robust meshing</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>Backend: CGAL</span>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: cgalStatusColor,
+                        display: "inline-block",
+                      }}
+                    />
+                    <span style={{ color: cgalStatusColor }}>{cgalStatusText}</span>
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Target edge
+                    <input
+                      type="number"
+                      min={0.0001}
+                      step={0.01}
+                      value={cgalTargetEdge}
+                      disabled={cgalTargetEdgeLocked}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.0001, v));
+                      }}
+                      style={{ width: 90 }}
+                    />
+                    <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={cgalAutoTargetEdge}
+                        disabled={cgalDisabled || cgalTriBudgetEnabled}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          onChangeCgalAutoTargetEdge(checked);
+                          if (checked) onChangeCgalTriBudgetEnabled(false);
+                        }}
+                      />
+                      Auto
+                    </label>
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Padding (%)
+                    <input
+                      type="number"
+                      min={0}
+                      max={50}
+                      step={0.5}
+                      value={Number.isFinite(cgalPadFrac) ? (cgalPadFrac * 100).toFixed(1) : "5.0"}
+                      disabled={cgalDisabled}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeCgalPadFrac(Math.min(0.5, Math.max(0, v / 100)));
+                      }}
+                      style={{ width: 70 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Preflight samples
+                    <input
+                      type="number"
+                      min={3}
+                      max={40}
+                      step={1}
+                      value={Math.max(3, Math.min(40, Math.round(cgalPreflightSamples)))}
+                      disabled={cgalDisabled}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeCgalPreflightSamples(Math.max(3, Math.min(40, Math.round(v))));
+                      }}
+                      style={{ width: 80 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    Radius bound
+                    <input
+                      type="number"
+                      min={0.001}
+                      max={1}
+                      step={0.001}
+                      value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
+                      disabled={cgalDisabled}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
+                      }}
+                      style={{ width: 90 }}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={cgalMinTrisEnabled}
+                      disabled={cgalDisabled}
+                      onChange={(e) => onChangeCgalMinTrisEnabled(e.target.checked)}
+                    />
+                    Min triangles
+                    <input
+                      type="number"
+                      min={200}
+                      max={1000000}
+                      step={200}
+                      value={Math.min(1000000, Math.max(200, Math.round(cgalMinTris)))}
+                      disabled={cgalDisabled || !cgalMinTrisEnabled}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (Number.isFinite(v)) onChangeCgalMinTris(Math.min(1000000, Math.max(200, v)));
+                      }}
+                      style={{ width: 110 }}
+                    />
+                  </label>
+                  <button type="button" onClick={() => void onRunCgalMesh()} disabled={cgalDisabled}>
+                    {cgalBusy ? "Meshing..." : "Run mesh"}
+                  </button>
+                  <div style={{ color: cgalTooHeavy ? "#b42318" : "#556" }}>
+                    Est. triangles ~{fmtTriEstimate(cgalEstimatedTris)} @ edge {fmtVal(cgalEffectiveEdge, 4)}
+                  </div>
+                  {cgalMinTrisEnabled && (
+                    <div style={{ color: "#556" }}>
+                      Min-tris edge estimate {fmtVal(estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris), 4)}
+                    </div>
+                  )}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={cgalVerbose}
+                      disabled={cgalDisabled}
+                      onChange={(e) => onChangeCgalVerbose(e.target.checked)}
+                    />
+                    Verbose (CGAL)
+                  </label>
+                  <button type="button" onClick={() => void onStopCgalWorker()} disabled={cgalStopDisabled}>
+                    Stop worker
+                  </button>
+                  {cgalMeshInfo && (
+                    <div style={{ color: "#556" }}>
+                      Last robust mesh: {cgalMeshInfo.vertexCount.toLocaleString()} verts /{" "}
+                      {cgalMeshInfo.triCount.toLocaleString()} tris
+                    </div>
+                  )}
+                  {cgalHealthState?.logsPath && (
+                    <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>log: {cgalHealthState.logsPath}</div>
+                  )}
+                  {cgalError && <div style={{ color: "#b42318" }}>{cgalError}</div>}
+                </div>
+
+                <div style={{ display: "grid", gap: 6, fontSize: 11, borderTop: "1px dashed #d5dbe5", paddingTop: 8 }}>
+                  <div style={{ fontWeight: 600 }}>Output</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" disabled title="Save-to-scene output is not wired yet.">
+                      Save to scene
+                    </button>
+                    <button type="button" onClick={onConvertToMesh} disabled={!surfaceMeshExportable}>
+                      Replace current mesh
+                    </button>
+                    <button type="button" disabled title="Derived mesh output is not wired yet.">
+                      Create derived mesh
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             {viewerKind === "implicit" && (
@@ -51067,11 +51446,24 @@ onChangeImplicitExpr,
       {meshToolsTab === "vtk" && (
       <div style={{ ...cardStyle, marginTop: 0 }}>
         <div style={{ marginTop: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>VTK Mesh Operations</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Mesh Operations</div>
           <div style={{ fontSize: 11, display: "grid", gap: 4 }}>
             <div>
-              <strong>Input:</strong> Current SurfaceMesh: {meshReady && vtkAvailable ? "ready" : "missing"}
+              <strong>Input:</strong> Current SurfaceMesh: {meshReady ? "ready" : "missing"}
             </div>
+            {surfaceMeshStats && (
+              <div>
+                <strong>Vertices / faces:</strong> {surfaceMeshStats.vertCount.toLocaleString()} /{" "}
+                {surfaceMeshStats.triCount.toLocaleString()}
+              </div>
+            )}
+            {surfaceMeshBounds && (
+              <div>
+                <strong>Bounds:</strong> min ({fmtVal(surfaceMeshBounds.min[0], 3)}, {fmtVal(surfaceMeshBounds.min[1], 3)},{" "}
+                {fmtVal(surfaceMeshBounds.min[2], 3)}) · max ({fmtVal(surfaceMeshBounds.max[0], 3)},{" "}
+                {fmtVal(surfaceMeshBounds.max[1], 3)}, {fmtVal(surfaceMeshBounds.max[2], 3)})
+              </div>
+            )}
             {!pythonWorkerAvailable && (
               <div style={{ color: "#b42318" }}>
                 {pythonWorkerStatusMessage ?? "Python worker unavailable."}
@@ -51084,7 +51476,7 @@ onChangeImplicitExpr,
             )}
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Operations</div>
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Repair</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
             <button type="button" onClick={onVtkCleanNormals} disabled={!meshReady || vtkOpsDisabled}>
               {vtkBusy ? "Working..." : "Clean mesh"}
@@ -51095,6 +51487,10 @@ onChangeImplicitExpr,
             <button type="button" onClick={onTriangulateSurfaceMesh} disabled={!meshReady || vtkBusy}>
               Triangulate
             </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Geometry processing</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
             <button type="button" onClick={onVtkSmooth} disabled={!meshReady || vtkOpsDisabled}>
               {vtkBusy ? "Working..." : "Smooth"}
             </button>
@@ -51104,6 +51500,10 @@ onChangeImplicitExpr,
             <button type="button" disabled title="Clip op is not wired yet.">
               Clip
             </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Extraction</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
             <button type="button" disabled title="Slice op is not wired yet.">
               Slice
             </button>
@@ -51181,7 +51581,7 @@ onChangeImplicitExpr,
             </label>
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Output</div>
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Output mode</div>
           <div style={{ display: "grid", gap: 4, marginTop: 6, fontSize: 11 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input
@@ -51199,8 +51599,11 @@ onChangeImplicitExpr,
                 checked={vtkOutputMode === "derived"}
                 onChange={() => onChangeVtkOutputMode("derived")}
               />
-              Create derived mesh
+              Create derived result
             </label>
+            <button type="button" disabled title="Operation presets are not wired yet." style={{ justifySelf: "start" }}>
+              Save operation preset
+            </button>
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
             Result details appear in the right Inspector under VTK result.
@@ -54220,6 +54623,7 @@ type SurfacesRightPanelProps = {
   paramId: ParamSurfaceId;
   surfaceMeshLabel: string;
   surfaceMeshStats: { vertCount: number; triCount: number } | null;
+  surfaceMeshBounds: BBox3 | null;
   surfaceMeshSource: SurfaceMeshSource | null;
   graphResolution: number;
   onSetGraphResolution: (v: number) => void;
@@ -54348,6 +54752,20 @@ type SurfacesRightPanelProps = {
   probeCurv: CurvatureData | null;
   paramProbeCurv: PrincipalCurvatureScalars | null;
   probeEnabled: boolean;
+  onToggleProbe: () => void;
+  showProbeNormal: boolean;
+  onToggleProbeNormal: () => void;
+  showProbeTangentPlane: boolean;
+  onToggleProbeTangentPlane: () => void;
+  showProbeTangents: boolean;
+  onToggleProbeTangents: () => void;
+  inspectEnabled: boolean;
+  onToggleInspectEnabled: () => void;
+  onClearInspect: () => void;
+  inspectIdx: number | null;
+  inspectPos: { x: number; y: number; z: number } | null;
+  inspectNormal: { x: number; y: number; z: number } | null;
+  inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
 
   onPickDomainUV: (uv: { u: number; v: number }) => void;
   onPickDomainXY: (xy: { x: number; y: number }) => void;
@@ -54374,7 +54792,7 @@ type SurfacesRightPanelProps = {
   onRemoveImplicitDomainPreset: (id: string) => void;
 };
 
-type InspectorPanelTab = "object" | "selection" | "analysis" | "warnings";
+type InspectorPanelTab = "object" | "selection" | "probe" | "analysis" | "warnings";
 type AnalysisResultsView = "show-all" | "current-screen";
 
 const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
@@ -54383,6 +54801,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   paramId,
   surfaceMeshLabel,
   surfaceMeshStats,
+  surfaceMeshBounds,
   surfaceMeshSource,
   graphResolution,
   onSetGraphResolution,
@@ -54498,6 +54917,20 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   probeCurv,
   paramProbeCurv,
   probeEnabled,
+  onToggleProbe,
+  showProbeNormal,
+  onToggleProbeNormal,
+  showProbeTangentPlane,
+  onToggleProbeTangentPlane,
+  showProbeTangents,
+  onToggleProbeTangents,
+  inspectEnabled,
+  onToggleInspectEnabled,
+  onClearInspect,
+  inspectIdx,
+  inspectPos,
+  inspectNormal,
+  inspectMetrics,
   onPickDomainUV,
   onPickDomainXY,
   onPickDomainXYZ,
@@ -55048,6 +55481,232 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
       </div>
     </div>
   );
+
+  const meshBackendLabel = cgalMeshInfo ? "CGAL" : vtkLastResult ? "VTK" : isImplicitViewer ? "VTK / CGAL" : "SurfaceMesh";
+  const watertight =
+    meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
+      ? meshQualityReport.topology.boundaryEdgeCount === 0 && meshQualityReport.topology.nonManifoldEdgeCount === 0
+      : null;
+  const normalStatus =
+    normalMagnitude == null ? "unknown" : hasUnstableNormals ? "unstable" : vtkLastResult?.normalsRecomputed ? "recomputed" : "valid";
+  const operationBeforeFaces = vtkLastResult?.beforeFaces ?? null;
+  const operationAfterFaces = vtkLastResult?.afterFaces ?? null;
+  const operationReductionPct =
+    operationBeforeFaces && operationAfterFaces && operationBeforeFaces > 0
+      ? ((operationBeforeFaces - operationAfterFaces) / operationBeforeFaces) * 100
+      : null;
+  const topologyChangedLabel =
+    vtkLastResult == null
+      ? "n/a"
+      : vtkLastResult.warnings.some((w) => w.toLowerCase().includes("topology"))
+        ? "yes"
+        : vtkLastResult.operation.toLowerCase().includes("decimate") || vtkLastResult.operation.toLowerCase().includes("clean")
+          ? "maybe"
+          : "unlikely";
+  const overlayLegend = [
+    showGaussMap ? "Gauss map" : null,
+    showContours ? "Contours" : null,
+    showPrincipalDirections ? "Principal directions" : null,
+    showPrincipalLines ? "Principal lines" : null,
+    showCurvatureLines ? "Curvature lines" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const cgalLogLink = cgalHealthState?.logsPath
+    ? `file:///${String(cgalHealthState.logsPath).replace(/\\/g, "/").replace(/^([A-Za-z]):/, "$1:")}`
+    : null;
+  const resultsInspectorTabs: Array<{ id: InspectorPanelTab; label: string }> = [
+    { id: "object", label: "Object" },
+    { id: "selection", label: "Selection" },
+    { id: "probe", label: "Probe" },
+    { id: "analysis", label: "Results" },
+    { id: "warnings", label: "Warnings" },
+  ];
+  const stickyPickPoint = probeInfo?.point ?? inspectPos;
+  const stickyPickLabel = stickyPickPoint
+    ? `(${fmt(stickyPickPoint.x)}, ${fmt(stickyPickPoint.y)}, ${fmt(stickyPickPoint.z)})`
+    : "none";
+
+  const resultsOnlyInspector = true;
+  if (resultsOnlyInspector) {
+    return (
+      <section>
+        <h2 style={styles.h2}>INSPECTOR</h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+          {resultsInspectorTabs.map((tab) => (
+            <button
+              key={`inspector-tab-${tab.id}`}
+              type="button"
+              onClick={() => setInspectorPanelTab(tab.id)}
+              style={pill(inspectorPanelTab === tab.id)}
+              aria-pressed={inspectorPanelTab === tab.id}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 1,
+            marginBottom: 10,
+            fontSize: 11,
+            fontWeight: 600,
+            padding: "6px 8px",
+            border: "1px solid #dbe4ee",
+            borderRadius: 8,
+            background: "#f8fafc",
+          }}
+        >
+          Selected: {activeMeta.label} | Pick: {stickyPickLabel}
+        </div>
+
+        {inspectorPanelTab === "object" && (
+          <>
+            <div style={inspectorSectionCard}>
+              <div style={inspectorSectionTitle}>Mesh Result</div>
+              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                <div><strong>Backend:</strong> {meshBackendLabel}</div>
+                <div><strong>Vertices:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
+                <div><strong>Faces:</strong> {formatInspectorCount(meshInspectorStats.faceCount)}</div>
+                <div>
+                  <strong>Bounds:</strong>{" "}
+                  {surfaceMeshBounds
+                    ? `min (${fmt(surfaceMeshBounds.min[0])}, ${fmt(surfaceMeshBounds.min[1])}, ${fmt(surfaceMeshBounds.min[2])}) · max (${fmt(surfaceMeshBounds.max[0])}, ${fmt(surfaceMeshBounds.max[1])}, ${fmt(surfaceMeshBounds.max[2])})`
+                    : "n/a"}
+                </div>
+                <div><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
+                <div><strong>Normal status:</strong> {normalStatus}</div>
+                <div><strong>Last operation:</strong> {vtkLastResult?.operation ?? "none"}</div>
+                <div><strong>Warnings:</strong> {activeWarningRows.length ? activeWarningRows.map((row) => row.label).join(", ") : "none"}</div>
+                <div>
+                  <strong>Log link:</strong>{" "}
+                  {cgalLogLink ? (
+                    <a href={cgalLogLink} target="_blank" rel="noreferrer">
+                      open log
+                    </a>
+                  ) : (
+                    "n/a"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div style={inspectorSectionCard}>
+              <div style={inspectorSectionTitle}>Operation Result</div>
+              {vtkLastResult ? (
+                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                  <div><strong>Operation:</strong> {vtkLastResult.operation}</div>
+                  <div><strong>Before:</strong> {vtkLastResult.beforeFaces.toLocaleString()} faces</div>
+                  <div><strong>After:</strong> {vtkLastResult.afterFaces.toLocaleString()} faces</div>
+                  <div>
+                    <strong>Reduction:</strong>{" "}
+                    {operationReductionPct == null ? "n/a" : `${Math.max(0, operationReductionPct).toFixed(1)}%`}
+                  </div>
+                  <div><strong>Topology changed:</strong> {topologyChangedLabel}</div>
+                  <div><strong>Normals valid:</strong> {normalStatus === "unstable" ? "no" : "yes"}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
+                    <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
+                    <button type="button" disabled title="Use Object → SurfaceMesh / Mesh Operations for save workflows.">
+                      Save derived mesh
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: "#556" }}>No mesh operation result yet.</div>
+              )}
+            </div>
+          </>
+        )}
+
+        {inspectorPanelTab === "selection" && (
+          <div style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Selection</div>
+            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+              <div>
+                <strong>Selected point p:</strong>{" "}
+                {probeInfo?.point ? `(${fmt(probeInfo.point.x)}, ${fmt(probeInfo.point.y)}, ${fmt(probeInfo.point.z)})` : "none"}
+              </div>
+              <div>
+                <strong>Normal n:</strong>{" "}
+                {probeInfo?.normal ? `(${fmt(probeInfo.normal.x)}, ${fmt(probeInfo.normal.y)}, ${fmt(probeInfo.normal.z)})` : "none"}
+              </div>
+              <div>
+                <strong>Chart coordinates:</strong>{" "}
+                {probeInfo?.uv
+                  ? `u,v=(${fmt(probeInfo.uv.u)}, ${fmt(probeInfo.uv.v)})`
+                  : probeInfo?.xy
+                    ? `x,y=(${fmt(probeInfo.xy.x)}, ${fmt(probeInfo.xy.y)})`
+                    : "n/a"}
+              </div>
+              <div><strong>Geodesic/path:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? `length=${fmt(geodesicPathLength)}` : "n/a"}</div>
+            </div>
+          </div>
+        )}
+
+        {inspectorPanelTab === "probe" && (
+          <SurfacesInspectPanel
+            viewerKind={viewerKind}
+            inspectEnabled={inspectEnabled}
+            onToggleInspectEnabled={onToggleInspectEnabled}
+            onClearInspect={onClearInspect}
+            inspectIdx={inspectIdx}
+            inspectPos={inspectPos}
+            inspectNormal={inspectNormal}
+            inspectMetrics={inspectMetrics}
+            probeInfo={probeInfo}
+            probeCurv={probeCurv}
+            paramProbeCurv={paramProbeCurv}
+            graphDomain={safeGraphDomain}
+            paramDomain={safeParamDomain}
+            onPickDomainXY={onPickDomainXY}
+            onPickDomainUV={onPickDomainUV}
+            probeEnabled={probeEnabled}
+            onToggleProbe={onToggleProbe}
+            showProbeNormal={showProbeNormal}
+            onToggleProbeNormal={onToggleProbeNormal}
+            showProbeTangentPlane={showProbeTangentPlane}
+            onToggleProbeTangentPlane={onToggleProbeTangentPlane}
+            showProbeTangents={showProbeTangents}
+            onToggleProbeTangents={onToggleProbeTangents}
+          />
+        )}
+
+        {inspectorPanelTab === "analysis" && (
+          <div style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Analysis Results</div>
+            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+              <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
+              <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
+              <div><strong>k1 / k2 range:</strong> {formatRange(curvatureRanges.k1)} / {formatRange(curvatureRanges.k2)}</div>
+              <div><strong>Overlay legend:</strong> {overlayLegend || "none active"}</div>
+              <div><strong>Warnings:</strong> {activeWarningRows.length}</div>
+            </div>
+          </div>
+        )}
+
+        {inspectorPanelTab === "warnings" && (
+          <div style={inspectorSectionCard}>
+            <div style={inspectorSectionTitle}>Warnings</div>
+            {activeWarningRows.length === 0 ? (
+              <div style={{ fontSize: 11, color: "#1f894f" }}>No active warnings.</div>
+            ) : (
+              <div style={{ fontSize: 11, display: "grid", gap: 7 }}>
+                {activeWarningRows.map((row) => (
+                  <div key={`warning-row-${row.id}`} style={{ display: "grid", gap: 2 }}>
+                    <div style={{ fontWeight: 700, color: "#b42318" }}>{row.label}</div>
+                    <div style={{ color: "#475467" }}>{row.detail}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
 
 
   return (
@@ -55829,334 +56488,13 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
 
       {isImplicitViewer && (
         <div style={workflowCardStyle("preview", "mesh")}>
-          <div style={inspectorSectionTitle}>Analysis tools</div>
+          <div style={inspectorSectionTitle}>Mesh generation</div>
           <div style={{ marginTop: -2, marginBottom: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
             {renderWorkflowStatus("Preview", "preview")}
             {renderWorkflowStatus("Mesh", "mesh")}
           </div>
-          <div style={{ marginTop: 2, display: "grid", gap: 6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600 }}>Preview (VTK)</div>
-                <div style={{ fontSize: 11, color: vtkPreviewBusy ? "#b42318" : "#556" }}>
-                  {vtkPreviewBusy ? "running..." : "fast grid"}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  data-testid="generate-button"
-                  type="button"
-                  onClick={() => void onRunVtkPreview()}
-                  disabled={vtkPreviewDisabled}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 8,
-                    border: "1px solid #d0d5dd",
-                    background: vtkPreviewDisabled ? "#f3f4f6" : "#fff",
-                    cursor: vtkPreviewDisabled ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {vtkPreviewBusy ? "running preview..." : "run preview (VTK)"}
-                </button>
-                <span style={{ fontSize: 11, color: "#556" }}>res {vtkPreviewResolution}^3</span>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
-                  <input
-                    type="checkbox"
-                    checked={vtkPreviewUseDecimate}
-                    disabled={vtkPreviewDisabled}
-                    onChange={(e) => onChangeVtkPreviewUseDecimate(e.target.checked)}
-                  />
-                  decimate
-                </label>
-                <input
-                  type="number"
-                  min={200}
-                  max={500000}
-                  step={100}
-                  value={Math.min(500000, Math.max(200, Math.round(vtkPreviewTargetFaces)))}
-                  disabled={!vtkPreviewUseDecimate || vtkPreviewDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeVtkPreviewTargetFaces(Math.min(500000, Math.max(200, v)));
-                  }}
-                  style={{ width: 110 }}
-                />
-                <span style={{ fontSize: 11, color: "#556" }}>faces</span>
-              </div>
-              {vtkPreviewError && (
-                <div data-testid="error-banner" style={{ fontSize: 11, color: "#b42318" }}>
-                  {vtkPreviewError}
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 600 }}>Robust meshing (CGAL)</div>
-                <span
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    background: cgalStatusColor,
-                    display: "inline-block",
-                  }}
-                />
-                <div style={{ fontSize: 11, color: cgalStatusColor }}>{cgalStatusText}</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <label style={{ fontSize: 11, color: "#556" }}>target edge</label>
-                <input
-                  type="number"
-                  min={0.0001}
-                  step={0.01}
-                  value={cgalTargetEdge}
-                  disabled={cgalTargetEdgeLocked}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalTargetEdge(Math.max(0.0001, v));
-                  }}
-                  style={{ width: 90 }}
-                />
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
-                  <input
-                    type="checkbox"
-                    checked={cgalAutoTargetEdge}
-                    disabled={cgalDisabled || cgalTriBudgetEnabled}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      onChangeCgalAutoTargetEdge(checked);
-                      if (checked) onChangeCgalTriBudgetEnabled(false);
-                    }}
-                  />
-                  auto (2% diag)
-                </label>
-                {cgalAutoTargetEdge && (
-                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(cgalAutoEdge)}</span>
-                )}
-                <label style={{ fontSize: 11, color: "#556" }}>pad %</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  step={0.5}
-                  value={Number.isFinite(cgalPadFrac) ? (cgalPadFrac * 100).toFixed(1) : "5.0"}
-                  disabled={cgalDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalPadFrac(Math.min(0.5, Math.max(0, v / 100)));
-                  }}
-                  style={{ width: 70 }}
-                />
-                <button
-                  type="button"
-                  onClick={() => void onRunCgalMesh()}
-                  disabled={cgalDisabled}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 8,
-                    border: "1px solid #d0d5dd",
-                    background: cgalDisabled ? "#f3f4f6" : "#fff",
-                    cursor: cgalDisabled ? "not-allowed" : "pointer",
-                  }}
-                  title={
-                    cgalTooHeavy
-                      ? "Estimated mesh too heavy. Increase target edge or enable auto/tri budget."
-                      : cgalReady
-                        ? ""
-                        : cgalHealthState?.error ?? "CGAL not available"
-                  }
-                >
-                  {cgalBusy ? "meshing..." : "run mesh (CGAL)"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onStopCgalWorker()}
-                  disabled={cgalStopDisabled}
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: 8,
-                    border: "1px solid #f04438",
-                    background: cgalStopDisabled ? "#f3f4f6" : "#fff",
-                    color: cgalStopDisabled ? "#999" : "#b42318",
-                    cursor: cgalStopDisabled ? "not-allowed" : "pointer",
-                  }}
-                  title={cgalStopDisabled ? "CGAL worker not running" : "Stop CGAL worker"}
-                >
-                  stop worker
-                </button>
-              </div>
-              <div style={{ fontSize: 11, color: cgalTooHeavy ? "#b42318" : "#556" }}>
-                est tris ~{fmtTriEstimate(cgalEstimatedTris)} @ edge {fmt(cgalEffectiveEdge)}
-              </div>
-              {cgalTooHeavy && (
-                <div style={{ fontSize: 11, color: "#b42318" }}>
-                  Estimated mesh is huge. Increase target edge or enable auto/tri budget.
-                </div>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
-                  <input
-                    type="checkbox"
-                    checked={cgalVerbose}
-                    disabled={cgalDisabled}
-                    onChange={(e) => onChangeCgalVerbose(e.target.checked)}
-                  />
-                  verbose (CGAL)
-                </label>
-                <label style={{ fontSize: 11, color: "#556" }}>preflight samples</label>
-                <input
-                  type="number"
-                  min={3}
-                  max={40}
-                  step={1}
-                  value={Math.max(3, Math.min(40, Math.round(cgalPreflightSamples)))}
-                  disabled={cgalDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalPreflightSamples(Math.max(3, Math.min(40, Math.round(v))));
-                  }}
-                  style={{ width: 80 }}
-                />
-                <span style={{ fontSize: 11, color: "#556" }}>per axis</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
-                  <input
-                    type="checkbox"
-                    checked={cgalTriBudgetEnabled}
-                    disabled={cgalDisabled}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      onChangeCgalTriBudgetEnabled(checked);
-                      if (checked) onChangeCgalAutoTargetEdge(false);
-                    }}
-                  />
-                  tri budget
-                </label>
-                <input
-                  type="range"
-                  min={200}
-                  max={1000000}
-                  step={200}
-                  value={Math.min(1000000, Math.max(200, Math.round(cgalTriBudget)))}
-                  disabled={cgalDisabled || !cgalTriBudgetEnabled}
-                  onChange={(e) => onChangeCgalTriBudget(Math.min(1000000, Math.max(200, Number(e.target.value))))}
-                  style={{ width: 160 }}
-                />
-                <input
-                  type="number"
-                  min={200}
-                  max={1000000}
-                  step={200}
-                  value={Math.min(1000000, Math.max(200, Math.round(cgalTriBudget)))}
-                  disabled={cgalDisabled || !cgalTriBudgetEnabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalTriBudget(Math.min(1000000, Math.max(200, v)));
-                  }}
-                  style={{ width: 90 }}
-                />
-                {cgalTriBudgetEnabled && (
-                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(cgalTriBudgetEdge)}</span>
-                )}
-                <label style={{ fontSize: 11, color: "#556" }}>radius bound</label>
-                <input
-                  type="range"
-                  min={0.001}
-                  max={1}
-                  step={0.001}
-                  value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
-                  disabled={cgalDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
-                  }}
-                  style={{ width: 140 }}
-                />
-                <input
-                  type="number"
-                  min={0.001}
-                  max={1}
-                  step={0.001}
-                  value={Number.isFinite(cgalRadiusBound) ? cgalRadiusBound : 0.1}
-                  disabled={cgalDisabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalRadiusBound(Math.max(0.001, Math.min(1, v)));
-                  }}
-                  style={{ width: 80 }}
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#556" }}>
-                  <input
-                    type="checkbox"
-                    checked={cgalMinTrisEnabled}
-                    disabled={cgalDisabled}
-                    onChange={(e) => onChangeCgalMinTrisEnabled(e.target.checked)}
-                  />
-                  min tris (domain)
-                </label>
-                <input
-                  type="number"
-                  min={200}
-                  max={1000000}
-                  step={200}
-                  value={Math.min(1000000, Math.max(200, Math.round(cgalMinTris)))}
-                  disabled={cgalDisabled || !cgalMinTrisEnabled}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    if (Number.isFinite(v)) onChangeCgalMinTris(Math.min(1000000, Math.max(200, v)));
-                  }}
-                  style={{ width: 110 }}
-                />
-                {cgalMinTrisEnabled && (
-                  <span style={{ fontSize: 11, color: "#556" }}>edge {fmt(estimateTargetEdgeFromBudget(cgalDomainDiag, cgalMinTris))}</span>
-                )}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <button
-                  type="button"
-                  disabled={cgalDisabled}
-                  onClick={() => {
-                    onChangeCgalMinTrisEnabled(true);
-                    onChangeCgalMinTris(100000);
-                  }}
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 8,
-                    border: "1px solid #d0d5dd",
-                    background: cgalDisabled ? "#f3f4f6" : "#fff",
-                    cursor: cgalDisabled ? "not-allowed" : "pointer",
-                    fontSize: 11,
-                  }}
-                >
-                  100k tris
-                </button>
-                <span style={{ fontSize: 11, color: "#556" }}>preset</span>
-              </div>
-              {cgalMeshInfo && (
-                <div style={{ fontSize: 11, color: "#556" }}>
-                  {cgalMeshInfo.vertexCount} verts · {cgalMeshInfo.triCount} tris
-                </div>
-              )}
-              {cgalHealthState && (
-                <div style={{ fontSize: 10, color: "#667085" }}>
-                  backend: {cgalHealthState.backend ?? "unknown"} · protocol: {cgalHealthState.protocol ?? "unknown"}
-                </div>
-              )}
-              {cgalHealthState?.logsPath && (
-                <div style={{ fontSize: 10, color: "#667085", wordBreak: "break-all" }}>
-                  log: {cgalHealthState.logsPath}
-                </div>
-              )}
-              {cgalError && <div style={{ fontSize: 11, color: "#b42318" }}>{cgalError}</div>}
-              {!cgalReady && !cgalHealthState?.error && cgalHealthState?.statusMessage && (
-                <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.statusMessage}</div>
-              )}
-              {!cgalReady && cgalHealthState?.error && (
-                <div style={{ fontSize: 11, color: "#b42318" }}>{cgalHealthState.error}</div>
-              )}
-              {!cgalReady && cgalHealthState?.errorCategory && (
-                <div style={{ fontSize: 10, color: "#b42318" }}>reason: {cgalHealthState.errorCategory}</div>
-              )}
+          <div style={{ fontSize: 11, color: "#556", lineHeight: 1.5 }}>
+            Use <strong>Object → SurfaceMesh → Generate</strong> for VTK preview and robust CGAL meshing controls.
           </div>
         </div>
       )}
