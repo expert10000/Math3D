@@ -55675,16 +55675,147 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
         )}
 
         {inspectorPanelTab === "analysis" && (
-          <div style={inspectorSectionCard}>
-            <div style={inspectorSectionTitle}>Analysis Results</div>
-            <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
-              <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
-              <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
-              <div><strong>k1 / k2 range:</strong> {formatRange(curvatureRanges.k1)} / {formatRange(curvatureRanges.k2)}</div>
-              <div><strong>Overlay legend:</strong> {overlayLegend || "none active"}</div>
-              <div><strong>Warnings:</strong> {activeWarningRows.length}</div>
+          <>
+            <div style={inspectorSectionCard}>
+              <div style={inspectorSectionTitle}>Results</div>
+              {showDetailedResultsCards && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setAnalysisResultsView("show-all")}
+                    style={pill(analysisResultsView === "show-all")}
+                    aria-pressed={analysisResultsView === "show-all"}
+                  >
+                    Show all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnalysisResultsView("current-screen")}
+                    style={pill(analysisResultsView === "current-screen")}
+                    aria-pressed={analysisResultsView === "current-screen"}
+                  >
+                    For your current screen
+                  </button>
+                </div>
+              )}
+              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                <div><strong>Global computed analysis</strong></div>
+                <div><strong>Differential geometry summary:</strong> {differentialGeometryStatus}</div>
+                <div><strong>Vector calculus summary:</strong> {vectorCalculusStatus}</div>
+                <div><strong>Mesh quality summary:</strong> {meshQualityStatus}</div>
+                <div><strong>Chart analysis summary:</strong> {chartAnalysisStatus}</div>
+                <div><strong>Topology diagnostics summary:</strong> {topologyDiagnosticsStatus}</div>
+                <div><strong>Warnings:</strong> {diagnosticsWarningCount}</div>
+              </div>
             </div>
-          </div>
+
+            {showFocusedResultCard && (
+              <div style={inspectorSectionCard}>
+                <div style={inspectorSectionTitle}>Focused result: {focusedResult.title}</div>
+                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                  <div><strong>Status:</strong> {focusedResult.status}</div>
+                  {focusedResult.rows.map((row) => (
+                    <div key={`focused-result-row-${row.label}`}>
+                      <strong>{row.label}:</strong> {row.value}
+                    </div>
+                  ))}
+                  <div><strong>Next action:</strong></div>
+                  <div>{focusedResult.nextAction}</div>
+                </div>
+              </div>
+            )}
+
+            <div style={inspectorSectionCard}>
+              <div style={inspectorSectionTitle}>Numerical summaries</div>
+              <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
+                <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
+                <div><strong>k1 / k2 range:</strong> {formatRange(curvatureRanges.k1)} / {formatRange(curvatureRanges.k2)}</div>
+                <div><strong>bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
+                <div><strong>boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+                <div><strong>geodesic length:</strong> {geodesicPathLength != null && Number.isFinite(geodesicPathLength) ? fmt(geodesicPathLength) : "n/a"}</div>
+                <div><strong>vector field magnitude range:</strong> {formatRange(activeVectorMagnitudeRange)}</div>
+                <div><strong>overlay legend:</strong> {overlayLegend || "none active"}</div>
+              </div>
+            </div>
+
+            {showAllResultsCards && (
+              <>
+                <div style={inspectorSectionCard}>
+                  <div style={inspectorSectionTitle}>Differential geometry</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div><strong>Status:</strong> {differentialGeometryStatus}</div>
+                    <div><strong>Samples:</strong> {formatInspectorCount(meshInspectorStats.vertexCount)}</div>
+                    <div><strong>k1 range:</strong> {formatRange(curvatureRanges.k1)}</div>
+                    <div><strong>k2 range:</strong> {formatRange(curvatureRanges.k2)}</div>
+                    <div><strong>H range:</strong> {formatRange(curvatureRanges.H)}</div>
+                    <div><strong>K range:</strong> {formatRange(curvatureRanges.K)}</div>
+                    <div><strong>Principal directions:</strong> {principalDirectionsStatus}</div>
+                    <div><strong>Curvature lines:</strong> {curvatureLinesStatus}</div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={onRebuildCurvatureLines}
+                        style={{ padding: "3px 7px", fontSize: 11 }}
+                      >
+                        Recompute
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={inspectorSectionCard}>
+                  <div style={inspectorSectionTitle}>Vector calculus</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div><strong>Status:</strong> {vectorCalculusDetailedStatus}</div>
+                    <div><strong>Scalar source:</strong> {calculusScalarSourceLabel}</div>
+                    <div><strong>Vector source:</strong> {calculusVectorSource || "none"}</div>
+                    <div><strong>Last operation:</strong> {vectorCalculusLastOperation}</div>
+                    <div><strong>Active vector field:</strong> {activeVectorFieldLabel}</div>
+                    <div><strong>Magnitude range:</strong> {formatRange(activeVectorMagnitudeRange)}</div>
+                  </div>
+                </div>
+
+                <div style={inspectorSectionCard}>
+                  <div style={inspectorSectionTitle}>Curvature lines</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div><strong>Status:</strong> {curvatureLinesStatus}</div>
+                    <div><strong>Field:</strong> {curvatureLineField}</div>
+                    <div><strong>Seed source:</strong> {curvatureSeedSource}</div>
+                    <div><strong>Seed density:</strong> {Math.max(1, Math.round(curvatureSeedDensity))}</div>
+                    <div><strong>Lines:</strong> {curvatureLineCountLabel}</div>
+                    <div><strong>Average length:</strong> n/a</div>
+                    <div><strong>Stopped at boundary:</strong> n/a</div>
+                    <div><strong>Stopped near singularity:</strong> n/a</div>
+                    <div><strong>Max steps:</strong> {Math.max(1, Math.round(curvatureMaxSteps))}</div>
+                  </div>
+                </div>
+
+                <div style={inspectorSectionCard}>
+                  <div style={inspectorSectionTitle}>Mesh quality</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div><strong>Status:</strong> {meshQualityStatus}</div>
+                    <div><strong>Bad triangles:</strong> {formatInspectorCount(badTriangleCount)}</div>
+                    <div><strong>Boundary edges:</strong> {formatInspectorCount(meshInspectorStats.boundaryEdgeCount)}</div>
+                    <div><strong>Non-manifold edges:</strong> {formatInspectorCount(meshQualityReport?.topology.nonManifoldEdgeCount ?? null)}</div>
+                    <div><strong>Min angle:</strong> n/a</div>
+                    <div><strong>Max aspect ratio:</strong> {meshQualityReport?.metrics.aspectRatio.max != null ? fmt(meshQualityReport.metrics.aspectRatio.max) : "n/a"}</div>
+                  </div>
+                </div>
+
+                <div style={inspectorSectionCard}>
+                  <div style={inspectorSectionTitle}>Topology diagnostics</div>
+                  <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                    <div><strong>Status:</strong> {topologyDiagnosticsStatus}</div>
+                    <div><strong>Connected components:</strong> {formatInspectorCount(meshInspectorStats.connectedComponentCount)}</div>
+                    <div><strong>Boundary loops:</strong> {topologyBoundaryLoopsLabel}</div>
+                    <div><strong>Euler characteristic χ:</strong> {topologyEulerCharacteristic != null && Number.isFinite(topologyEulerCharacteristic) ? fmt(topologyEulerCharacteristic) : "n/a"}</div>
+                    <div><strong>Orientability:</strong> {topologyOrientabilityLabel}</div>
+                  </div>
+                </div>
+              </>
+            )}
+          </>
         )}
 
         {inspectorPanelTab === "warnings" && (
