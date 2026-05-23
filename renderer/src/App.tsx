@@ -60,7 +60,7 @@ import { VolumeViewer } from "./components/VolumeViewer";
 import { VolumeSliceHistogram } from "./components/VolumeSliceHistogram";
 
 import { ParamSurfaceViewer, type ParamSurfaceId } from "./components/ParamSurfaceViewer";
-import type { ColorPalette } from "./components/colorPalette";
+import { solidColorForPalette, type ColorPalette } from "./components/colorPalette";
 import {
   DEFAULT_REFERENCE_PLANE_GRID_SETTINGS,
   type ReferencePlaneLabelSkin,
@@ -1668,14 +1668,6 @@ type UnifiedManualDerived = {
   displayState: string;
 };
 
-type UnifiedPipelineAction = {
-  id: string;
-  label: string;
-  disabled: boolean;
-  onRun: () => void;
-  hint?: string;
-};
-
 const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
   primaryObject: "PrimaryObject",
   overlay: "Overlay",
@@ -1764,6 +1756,27 @@ const fromHexColorString = (value: string, fallback = 0x8aa4ff) => {
   if (!/^[0-9a-fA-F]{6}$/.test(raw)) return fallback;
   const parsed = Number.parseInt(raw, 16);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const closestColorPaletteForHex = (hex: number): ColorPalette => {
+  const candidates: ColorPalette[] = ["blueRed", "rainbow", "grayscale", "redYellow"];
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8) & 0xff;
+  const b = hex & 0xff;
+  let best = candidates[0];
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const c = solidColorForPalette(candidate);
+    const cr = (c >> 16) & 0xff;
+    const cg = (c >> 8) & 0xff;
+    const cb = c & 0xff;
+    const d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = candidate;
+    }
+  }
+  return best;
 };
 
 const PROCEDURAL_SCRIPT_STARTER = [
@@ -27717,6 +27730,11 @@ case "mobius":
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
     handleUpdateGeometryTransform(refId, patch);
   }, [handleUpdateGeometryTransform, unifiedSelectedNode]);
+  const handlePatchUnifiedSelectedMaterial = useCallback((patch: Partial<GeometryObject["material"]>) => {
+    const refId = unifiedSelectedNode?.objectRefId;
+    if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
+    handleUpdateGeometryMaterial(refId, patch);
+  }, [handleUpdateGeometryMaterial, unifiedSelectedNode]);
   const handleIsolateUnifiedSelectedObject = useCallback(() => {
     const refId = unifiedSelectedNode?.objectRefId;
     if (!refId || unifiedSelectedNode?.category !== "sceneObject") return;
@@ -27804,9 +27822,13 @@ case "mobius":
       setUnifiedTreeSelectedId(nodeId);
       if (mode === "surfaces") {
         setSurfacesLeftTab("object");
+        return;
+      }
+      if (mode === "geometry" && geometryMode === "procedural") {
+        setGeometryProceduralPanelTab("object");
       }
     },
-    [mode]
+    [geometryMode, mode]
   );
   const handleToggleUnifiedNodeVisibility = useCallback(
     (nodeId: string) => {
@@ -28204,81 +28226,6 @@ case "mobius":
       setVolumeViewMode,
       addUnifiedDerivedNode,
       handleExportSurfaceMeshGlb,
-    ]
-  );
-
-  const unifiedPipelineActions = useMemo<UnifiedPipelineAction[]>(
-    () => [
-      {
-        id: "bake",
-        label: "Promote to SurfaceMesh",
-        disabled: !unifiedCanBake,
-        onRun: () => runUnifiedPipelineAction("bake"),
-      },
-      {
-        id: "convertMesh",
-        label: "Convert to Mesh",
-        disabled: !unifiedCanConvertToMeshObject,
-        onRun: () => runUnifiedPipelineAction("convertMesh"),
-      },
-      {
-        id: "wireframe",
-        label: "Extract wireframe",
-        disabled: !unifiedCanSurfaceOps,
-        onRun: () => runUnifiedPipelineAction("wireframe"),
-      },
-      {
-        id: "pointCloud",
-        label: "Extract point cloud",
-        disabled: !unifiedCanPointCloud,
-        onRun: () => runUnifiedPipelineAction("pointCloud"),
-      },
-      {
-        id: "chartGrid",
-        label: "Compute surface chart grid",
-        disabled: !unifiedCanSurfaceOps,
-        onRun: () => runUnifiedPipelineAction("chartGrid"),
-      },
-      {
-        id: "normals",
-        label: "Compute normals",
-        disabled: !unifiedCanNormals,
-        onRun: () => runUnifiedPipelineAction("normals"),
-      },
-      {
-        id: "curvature",
-        label: "Compute curvature field",
-        disabled: !unifiedCanSurfaceOps,
-        onRun: () => runUnifiedPipelineAction("curvature"),
-      },
-      {
-        id: "geodesic",
-        label: "Generate geodesic overlay",
-        disabled: !unifiedCanSurfaceOps,
-        onRun: () => runUnifiedPipelineAction("geodesic"),
-      },
-      {
-        id: "slice",
-        label: "Slice / section",
-        disabled: !(datasetKind === "volume" || unifiedCanSurfaceOps),
-        onRun: () => runUnifiedPipelineAction("slice"),
-      },
-      {
-        id: "export",
-        label: "Export",
-        disabled: !unifiedCanExport,
-        onRun: () => runUnifiedPipelineAction("export"),
-      },
-    ],
-    [
-      unifiedCanBake,
-      unifiedCanConvertToMeshObject,
-      unifiedCanSurfaceOps,
-      unifiedCanPointCloud,
-      unifiedCanNormals,
-      unifiedCanExport,
-      datasetKind,
-      runUnifiedPipelineAction,
     ]
   );
 
@@ -29574,6 +29521,27 @@ case "mobius":
     return part.toLowerCase() !== parts[index - 1]?.toLowerCase();
   });
   const surfacesWorkBreadcrumb = surfacesWorkBreadcrumbParts.join(" / ");
+  const selectedObjectRoleLabel = unifiedSelectedNode
+    ? UNIFIED_SCENE_ROLE_LABELS[
+        unifiedSelectedNode.sceneRole ??
+          inferUnifiedSceneRole(
+            unifiedSelectedNode.category,
+            unifiedSelectedNode.type,
+            unifiedSelectedNode.sourceDefinition
+          )
+      ]
+    : null;
+  const objectTabContextLabel =
+    surfacesPanelState === "work" && surfacesLeftTab === "object" && unifiedSelectedNode
+      ? `Object / ${selectedObjectRoleLabel} / ${unifiedSelectedNode.name}`
+      : surfacesWorkBreadcrumb;
+  const objectTabContextDetail =
+    surfacesPanelState === "work" &&
+    surfacesLeftTab === "object" &&
+    unifiedSelectedNode?.parentId &&
+    unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name
+      ? `Source object: ${unifiedObjectModel.nodeById.get(unifiedSelectedNode.parentId)?.name}`
+      : null;
   const surfacesLayoutUsesLeftBrowseWork =
     surfacesLayoutVariant === "layout1" || surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
   const surfacesBrowseUsesCardPresets = surfacesLayoutVariant === "layout3" || surfacesLayoutVariant === "layout4";
@@ -32064,7 +32032,10 @@ case "mobius":
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{surfacesWorkBreadcrumb}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b" }}>{objectTabContextLabel}</div>
+                  {objectTabContextDetail && (
+                    <div style={{ fontSize: 10, color: "#64748b" }}>{objectTabContextDetail}</div>
+                  )}
                 </div>
               )}
               {surfacesLayoutUsesLeftBrowseWork && (
@@ -32147,7 +32118,12 @@ case "mobius":
                     onDeleteNode={handleDeleteUnifiedNode}
                     onDuplicateNode={handleDuplicateUnifiedNode}
                     onRenameNode={handleRenameUnifiedNode}
-                    actions={unifiedPipelineActions}
+                    onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                    selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                    canIsolateSelected={unifiedCanIsolateSelected}
+                    onIsolateSelected={handleIsolateUnifiedSelectedObject}
+                    canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                    onShowAllSceneObjects={handleShowAllUnifiedObjects}
                     fillHeight
                   />
                 </div>
@@ -32155,18 +32131,28 @@ case "mobius":
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "object" && (
                 <>
                   <SurfacesObjectPanel
+                    currentFamilyLabel={objectTabContextLabel}
                     selectedNode={unifiedSelectedNode}
                     nodeById={unifiedObjectModel.nodeById}
                     selectedSceneObject={unifiedSelectedSceneObject}
                     selectedSceneObjectLocked={unifiedSelectedSceneLocked}
                     selectedSceneMeshStats={unifiedSelectedSceneMeshStats}
+                    activeSurfaceMeshStats={surfaceMeshStats}
+                    activeSurfaceMeshBounds={surfaceMeshBounds}
+                    meshQualityReport={meshQualityReport}
                     selectedVisible={unifiedSelectedSceneVisible}
+                    selectedNodeVisible={typeof unifiedSelectedNode?.visible === "boolean" ? unifiedSelectedNode.visible : null}
                     onToggleSelectedVisible={handleToggleUnifiedSelectedVisible}
+                    onToggleSelectedNodeVisible={() => {
+                      if (!unifiedSelectedNode) return;
+                      handleToggleUnifiedNodeVisibility(unifiedSelectedNode.id);
+                    }}
                     onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
                     onDuplicateSelectedObject={handleDuplicateUnifiedSelectedObject}
                     onDeleteSelectedObject={handleDeleteUnifiedSelectedObject}
                     onRenameSelectedObject={handleRenameUnifiedSelectedObject}
                     onPatchSelectedTransform={handlePatchUnifiedSelectedTransform}
+                    onPatchSelectedMaterial={handlePatchUnifiedSelectedMaterial}
                     objectTypeLabel={unifiedObjectTypeLabel}
                     objectDefinitionLabel={unifiedObjectDefinitionLabel}
                     objectDomainLabel={unifiedObjectDomainLabel}
@@ -32185,6 +32171,24 @@ case "mobius":
                     onIsolateSelectedObject={handleIsolateUnifiedSelectedObject}
                     canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                     onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                    showWireframeOverlay={showWireframe}
+                    onToggleWireframeOverlay={() => setShowWireframe((v) => !v)}
+                    showBoundingBoxOverlay={showBoundingBox}
+                    onToggleBoundingBoxOverlay={() => setShowBoundingBox((v) => !v)}
+                    showNormalsOverlay={implicitOverlay === "normals"}
+                    canToggleNormalsOverlay={surfaceViewerKind === "implicit"}
+                    onToggleNormalsOverlay={() => setImplicitOverlay((v) => (v === "normals" ? "none" : "normals"))}
+                    colorPalette={colorPalette}
+                    onChangeColorPalette={setColorPalette}
+                    materialRoughness={materialRoughness}
+                    onSetMaterialRoughness={setMaterialRoughness}
+                    materialMetalness={materialMetalness}
+                    onSetMaterialMetalness={setMaterialMetalness}
+                    materialOpacity={materialOpacity}
+                    onSetMaterialOpacity={setMaterialOpacity}
+                    canBakeAsPrimaryObject={unifiedCanConvertToMeshObject}
+                    onBakeAsPrimaryObject={handleDatasetToGeometryScene}
+                    onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
                   />
                   {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "implicit" && (
                     <div
@@ -32344,63 +32348,8 @@ case "mobius":
               )}
               {surfacesLayoutUsesLeftBrowseWork && surfacesPanelState === "work" && surfacesLeftTab === "view" && (
                 <>
-                  {isSurfaceDatasetKind(datasetKind) && (surfaceViewerKind === "graph" || surfaceViewerKind === "implicit") && (
-                    <div
-                      style={{
-                        marginBottom: 10,
-                        border: "1px solid #dbe4f0",
-                        borderRadius: 8,
-                        background: "#f8fbff",
-                        padding: "8px 10px",
-                        display: "grid",
-                        gap: 6,
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 700 }}>Workbook scene</div>
-                      <div style={{ fontSize: 10, opacity: 0.78 }}>
-                        Open detailed workbook scene from the current explicit/implicit workflow.
-                      </div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        <button
-                          type="button"
-                          data-testid="surface-open-workbook-scene-detailed"
-                          onClick={handleOpenDetailedWorkbookSceneFromSurfaces}
-                          style={{ fontSize: 11 }}
-                        >
-                          Open workbook scene (detailed)
-                        </button>
-                      </div>
-                    </div>
-                  )}
                   <SurfacesViewPanel
                     viewerKind={surfaceViewerKind}
-                    editCustomLabel={
-                      surfaceViewerKind === "graph"
-                        ? "Edit as Custom z=f(x,y)"
-                        : surfaceViewerKind === "implicit"
-                          ? "Edit as Custom f(x,y,z)"
-                          : surfaceViewerKind === "param"
-                            ? "Start as Custom σ(u,v)"
-                            : null
-                    }
-                    canEditCustom={
-                      surfaceViewerKind === "graph"
-                        ? canEditGraphAsCustom
-                        : surfaceViewerKind === "implicit"
-                          ? canEditImplicitAsCustom
-                          : surfaceViewerKind === "param"
-                            ? canEditParamAsCustom
-                            : false
-                    }
-                    onEditCustom={
-                      surfaceViewerKind === "graph"
-                        ? handleEditGraphAsCustom
-                        : surfaceViewerKind === "implicit"
-                          ? handleEditImplicitAsCustom
-                          : surfaceViewerKind === "param"
-                            ? handleEditParamAsCustom
-                            : null
-                    }
                     renderQuality={surfaceRenderQuality}
                     onChangeRenderQuality={setSurfaceRenderQuality}
                     colorModes={viewColorModes}
@@ -32410,12 +32359,6 @@ case "mobius":
                     onChangeColorPalette={setColorPalette}
                     lightPreset={lightPreset}
                     onChangeLightPreset={setLightPreset}
-                    materialRoughness={materialRoughness}
-                    onSetMaterialRoughness={setMaterialRoughness}
-                    materialMetalness={materialMetalness}
-                    onSetMaterialMetalness={setMaterialMetalness}
-                    materialOpacity={materialOpacity}
-                    onSetMaterialOpacity={setMaterialOpacity}
                     showWireframe={showWireframe}
                     onToggleWireframe={() => setShowWireframe((w) => !w)}
                     showBoundingBox={showBoundingBox}
@@ -36314,7 +36257,12 @@ case "mobius":
                       onDeleteNode={handleDeleteUnifiedNode}
                       onDuplicateNode={handleDuplicateUnifiedNode}
                       onRenameNode={handleRenameUnifiedNode}
-                      actions={unifiedPipelineActions}
+                      onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
+                      selectedSceneObjectLocked={unifiedSelectedSceneLocked}
+                      canIsolateSelected={unifiedCanIsolateSelected}
+                      onIsolateSelected={handleIsolateUnifiedSelectedObject}
+                      canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
+                      onShowAllSceneObjects={handleShowAllUnifiedObjects}
                     />
 
                     <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
@@ -45586,7 +45534,12 @@ type UnifiedObjectTreePanelProps = {
   onDeleteNode?: (id: string) => void;
   onDuplicateNode?: (id: string) => void;
   onRenameNode?: (id: string, name: string) => void;
-  actions: UnifiedPipelineAction[];
+  onToggleSelectedLocked?: () => void;
+  selectedSceneObjectLocked?: boolean;
+  canIsolateSelected?: boolean;
+  onIsolateSelected?: () => void;
+  canShowAllSceneObjects?: boolean;
+  onShowAllSceneObjects?: () => void;
   fillHeight?: boolean;
 };
 
@@ -45600,7 +45553,12 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onDeleteNode,
   onDuplicateNode,
   onRenameNode,
-  actions,
+  onToggleSelectedLocked,
+  selectedSceneObjectLocked = false,
+  canIsolateSelected = false,
+  onIsolateSelected,
+  canShowAllSceneObjects = false,
+  onShowAllSceneObjects,
   fillHeight = false,
 }) => {
   const [listMode, setListMode] = useState<"grouped" | "flat">("grouped");
@@ -45674,54 +45632,18 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     }
     return <span style={{ fontSize: 10, fontWeight: 700 }}>{fallback}</span>;
   };
-  const selectedDerivedNames = useMemo(
-    () => (selected ? selected.derivedProductIds.map((id) => byId.get(id)?.name ?? id) : []),
-    [selected, byId]
-  );
-  const groupedActionSections = useMemo(() => {
-    const byAction = new Map(actions.map((action) => [action.id, action]));
-    const sections = [
-      {
-        key: "generate",
-        label: "Generate",
-        actionIds: ["wireframe", "pointCloud", "chartGrid", "normals", "curvature", "geodesic", "slice"],
-      },
-      { key: "convert", label: "Convert", actionIds: ["bake", "convertMesh"] },
-      { key: "output", label: "Output", actionIds: ["export"] },
-    ];
-    const used = new Set<string>();
-    const resolved = sections
-      .map((section) => {
-        const grouped = section.actionIds
-          .map((id) => byAction.get(id))
-          .filter((action): action is UnifiedPipelineAction => !!action);
-        grouped.forEach((action) => used.add(action.id));
-        return { key: section.key, label: section.label, actions: grouped };
-      })
-      .filter((section) => section.actions.length > 0);
-    const remaining = actions.filter((action) => !used.has(action.id));
-    if (remaining.length) {
-      resolved.push({ key: "other", label: "Other", actions: remaining });
-    }
-    return resolved;
-  }, [actions]);
-  const [selectedSectionOpen, setSelectedSectionOpen] = useState(false);
-  const [actionsSectionOpen, setActionsSectionOpen] = useState(false);
-  const [activeActionSection, setActiveActionSection] = useState<string | null>(null);
-  useEffect(() => {
-    if (!selected) setSelectedSectionOpen(false);
-  }, [selected]);
-  useEffect(() => {
-    if (!groupedActionSections.length) {
-      setActiveActionSection(null);
-      return;
-    }
-    setActiveActionSection((current) =>
-      current && groupedActionSections.some((section) => section.key === current)
-        ? current
-        : groupedActionSections[0].key
-    );
-  }, [groupedActionSections]);
+  const selectedRole = selected
+    ? selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
+    : null;
+  const selectedRoleLabel = selectedRole ? UNIFIED_SCENE_ROLE_LABELS[selectedRole] : "n/a";
+  const selectedMeshReady = selected
+    ? selected.type.toLowerCase().includes("mesh") || selected.id.toLowerCase().includes("mesh")
+    : false;
+  const selectedIsSceneObject = selected?.category === "sceneObject";
+  const selectedCanToggleVisibility =
+    !!selected && !!selected.canToggleVisibility && typeof selected.visible === "boolean" && !!onToggleVisibility;
+  const selectedQuickToggleLabel =
+    selected && typeof selected.visible === "boolean" && selected.visible ? "Hide" : "Show";
 
   const renderRow = (node: UnifiedObjectNode) => {
     const active = selectedId === node.id;
@@ -46052,156 +45974,67 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
         <div style={{ fontSize: 11, opacity: 0.75 }}>No objects yet.</div>
       )}
 
-      <div style={{ marginTop: 10 }}>
-        <button
-          type="button"
-          onClick={() => setSelectedSectionOpen((prev) => !prev)}
-          disabled={!selected}
-          style={{
-            width: "100%",
-            textAlign: "left",
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid #dbe4f0",
-            background: "#fff",
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#334155",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-            opacity: selected ? 1 : 0.7,
-          }}
-          title={selected ? "Toggle selected object details" : "No selected object"}
-        >
-          <span>Selected object</span>
-          <span style={{ fontSize: 10, color: "#64748b" }}>
-            {selected ? (selectedSectionOpen ? "Collapse" : "Expand") : "None"}
+      <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid #dbe4f0", background: "#fff" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Scene organization</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={onShowAllSceneObjects}
+            disabled={!canShowAllSceneObjects}
+            title="Show all scene objects"
+            style={{ padding: "4px 8px", fontSize: 11 }}
+          >
+            Show all
+          </button>
+          <button
+            type="button"
+            onClick={onIsolateSelected}
+            disabled={!selectedIsSceneObject || !canIsolateSelected}
+            title="Isolate selected scene object"
+            style={{ padding: "4px 8px", fontSize: 11 }}
+          >
+            Isolate
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSelectedLocked}
+            disabled={!selectedIsSceneObject || !onToggleSelectedLocked}
+            title="Lock or unlock selected scene object"
+            style={{ padding: "4px 8px", fontSize: 11 }}
+          >
+            {selectedSceneObjectLocked ? "Unlock" : "Lock"}
+          </button>
+          <span style={{ fontSize: 10, color: "#64748b", alignSelf: "center" }}>
+            Visibility, duplicate, rename, delete are also available per row.
           </span>
-        </button>
-        {selected && selectedSectionOpen && (
-          <div style={{ marginTop: 8, fontSize: 11, overflowWrap: "anywhere", display: "grid", gap: 8 }}>
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                Selected object
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selected.name}</div>
-            </div>
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
-              <div><strong>ID:</strong> <code>{selected.id}</code></div>
-              <div><strong>Type:</strong> {selected.type}</div>
-              <div>
-                <strong>Role:</strong>{" "}
-                {UNIFIED_SCENE_ROLE_LABELS[
-                  selected.sceneRole ?? inferUnifiedSceneRole(selected.category, selected.type, selected.sourceDefinition)
-                ]}
-              </div>
-            </div>
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
-              <div><strong>Source definition:</strong> {selected.sourceDefinition}</div>
-              <div><strong>Display:</strong> {selected.displayState || "n/a"}</div>
-              <div><strong>Visible:</strong> {typeof selected.visible === "boolean" ? (selected.visible ? "yes" : "no") : "n/a"}</div>
-            </div>
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
-              {selectedDerivedNames.length ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {selectedDerivedNames.map((name, index) => (
-                    <span
-                      key={`selected-derived-${index}-${name}`}
-                      style={{
-                        fontSize: 10,
-                        border: "1px solid #dbe3ec",
-                        borderRadius: 999,
-                        padding: "2px 8px",
-                        background: "#f8fafc",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ opacity: 0.72 }}>none</div>
-              )}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
-      <div style={{ marginTop: 10 }}>
-        <button
-          type="button"
-          onClick={() => setActionsSectionOpen((prev) => !prev)}
-          style={{
-            width: "100%",
-            textAlign: "left",
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid #dbe4f0",
-            background: "#fff",
-            fontSize: 11,
-            fontWeight: 700,
-            color: "#334155",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-          title="Toggle derive/bake/convert tools"
-        >
-          <span>Actions</span>
-          <span style={{ fontSize: 10, color: "#64748b" }}>{actionsSectionOpen ? "Collapse" : "Expand"}</span>
-        </button>
-        {actionsSectionOpen && (
-          <div style={{ marginTop: 8 }}>
-            <div style={{ fontSize: 11, fontWeight: 700 }}>Derive / Bake / Convert</div>
-          <div style={{ display: "grid", gap: 7, marginTop: 7 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {groupedActionSections.map((section) => {
-                const active = activeActionSection === section.key;
-                return (
-                  <button
-                    key={`action-tab-${section.key}`}
-                    type="button"
-                    onClick={() => setActiveActionSection(section.key)}
-                    aria-pressed={active}
-                    style={{
-                      padding: "3px 10px",
-                      fontSize: 10,
-                      borderRadius: 999,
-                      border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
-                      background: active ? "#e6f0ff" : "#fff",
-                      color: active ? "#0a66c2" : "#475569",
-                      fontWeight: active ? 700 : 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {section.label} ({section.actions.length})
-                  </button>
-                );
-              })}
+      <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid #dbe4f0", background: "#fff" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Selected item</div>
+        {selected ? (
+          <div style={{ display: "grid", gap: 6, fontSize: 11, overflowWrap: "anywhere" }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{selected.name}</div>
+            <div style={{ color: "#475569" }}>
+              {selectedRoleLabel} · {shortTypeLabel(selected.type)} · mesh {selectedMeshReady ? "ready" : "n/a"} ·{" "}
+              {typeof selected.visible === "boolean" ? (selected.visible ? "visible" : "hidden") : "n/a"}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {(groupedActionSections.find((section) => section.key === activeActionSection)?.actions ?? []).map((action) => (
-                <button
-                  key={action.id}
-                  type="button"
-                  onClick={action.onRun}
-                  disabled={action.disabled}
-                  title={action.hint}
-                  style={{ padding: "4px 8px", fontSize: 11 }}
-                >
-                  {action.label}
-                </button>
-              ))}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => onFocus?.(selected.id)} style={{ padding: "4px 8px", fontSize: 11 }}>
+                Open in Object
+              </button>
+              <button
+                type="button"
+                onClick={() => onToggleVisibility?.(selected.id)}
+                disabled={!selectedCanToggleVisibility}
+                style={{ padding: "4px 8px", fontSize: 11 }}
+              >
+                {selectedQuickToggleLabel}
+              </button>
             </div>
           </div>
-          </div>
+        ) : (
+          <div style={{ fontSize: 11, opacity: 0.75 }}>No selected object.</div>
         )}
       </div>
     </div>
@@ -46209,18 +46042,25 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
 };
 
 type SurfacesObjectPanelProps = {
+  currentFamilyLabel: string;
   selectedNode: UnifiedObjectNode | null;
   nodeById: Map<string, UnifiedObjectNode>;
   selectedSceneObject: GeometryObject | GeometryDatasetMeshObject | null;
   selectedSceneObjectLocked: boolean;
   selectedSceneMeshStats: { vertCount: number; triCount: number } | null;
+  activeSurfaceMeshStats: { vertCount: number; triCount: number } | null;
+  activeSurfaceMeshBounds: BBox3 | null;
+  meshQualityReport: any | null;
   selectedVisible: boolean | null;
+  selectedNodeVisible: boolean | null;
   onToggleSelectedVisible: () => void;
+  onToggleSelectedNodeVisible: () => void;
   onToggleSelectedLocked: () => void;
   onDuplicateSelectedObject: () => void;
   onDeleteSelectedObject: () => void;
   onRenameSelectedObject: (name: string) => void;
   onPatchSelectedTransform: (patch: GeometryTransformPatch) => void;
+  onPatchSelectedMaterial: (patch: Partial<GeometryObject["material"]>) => void;
   objectTypeLabel: string;
   objectDefinitionLabel: string;
   objectDomainLabel: string;
@@ -46237,6 +46077,24 @@ type SurfacesObjectPanelProps = {
   onIsolateSelectedObject: () => void;
   canShowAllSceneObjects: boolean;
   onShowAllSceneObjects: () => void;
+  showWireframeOverlay: boolean;
+  onToggleWireframeOverlay: () => void;
+  showBoundingBoxOverlay: boolean;
+  onToggleBoundingBoxOverlay: () => void;
+  showNormalsOverlay: boolean;
+  canToggleNormalsOverlay: boolean;
+  onToggleNormalsOverlay: () => void;
+  colorPalette: ColorPalette;
+  onChangeColorPalette: (palette: ColorPalette) => void;
+  materialRoughness: number;
+  onSetMaterialRoughness: (v: number) => void;
+  materialMetalness: number;
+  onSetMaterialMetalness: (v: number) => void;
+  materialOpacity: number;
+  onSetMaterialOpacity: (v: number) => void;
+  canBakeAsPrimaryObject: boolean;
+  onBakeAsPrimaryObject: () => void;
+  onOpenAnalysis: () => void;
 };
 
 const OBJECT_CATEGORY_LABELS: Record<UnifiedObjectCategory, string> = {
@@ -46266,18 +46124,25 @@ const formatObjectParamValue = (
 };
 
 const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
+  currentFamilyLabel,
   selectedNode,
   nodeById,
   selectedSceneObject,
   selectedSceneObjectLocked,
   selectedSceneMeshStats,
+  activeSurfaceMeshStats,
+  activeSurfaceMeshBounds,
+  meshQualityReport,
   selectedVisible,
+  selectedNodeVisible,
   onToggleSelectedVisible,
+  onToggleSelectedNodeVisible,
   onToggleSelectedLocked,
   onDuplicateSelectedObject,
   onDeleteSelectedObject,
   onRenameSelectedObject,
   onPatchSelectedTransform,
+  onPatchSelectedMaterial,
   objectTypeLabel,
   objectDefinitionLabel,
   objectDomainLabel,
@@ -46294,6 +46159,24 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   onIsolateSelectedObject,
   canShowAllSceneObjects,
   onShowAllSceneObjects,
+  showWireframeOverlay,
+  onToggleWireframeOverlay,
+  showBoundingBoxOverlay,
+  onToggleBoundingBoxOverlay,
+  showNormalsOverlay,
+  canToggleNormalsOverlay,
+  onToggleNormalsOverlay,
+  colorPalette,
+  onChangeColorPalette,
+  materialRoughness,
+  onSetMaterialRoughness,
+  materialMetalness,
+  onSetMaterialMetalness,
+  materialOpacity,
+  onSetMaterialOpacity,
+  canBakeAsPrimaryObject,
+  onBakeAsPrimaryObject,
+  onOpenAnalysis,
 }) => {
   const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
   const categoryLabel = selectedNode ? OBJECT_CATEGORY_LABELS[selectedNode.category] : "n/a";
@@ -46423,254 +46306,388 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
     const vertCount = Math.floor(mesh.positions.length / 3);
     const triCount = mesh.indices?.length ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
     const hasNormals = !!mesh.normals && mesh.normals.length >= mesh.positions.length;
+    const bounds = boundsFromPositions(mesh.positions);
     return {
       sourceLabel: formatSurfaceMeshSource(mesh.source),
       vertCount,
       triCount,
       hasNormals,
+      bounds,
     };
   }, [selectedSceneObject]);
   const derivedProductNames = useMemo(() => {
     if (!selectedNode?.derivedProductIds.length) return [] as string[];
     return selectedNode.derivedProductIds.map((id) => nodeById.get(id)?.name ?? id);
   }, [selectedNode, nodeById]);
-  const visibleActionLabel = selectedVisible ? "Hide" : "Show";
+  const selectedIsDerivedSurfaceMesh = !!(
+    selectedNode &&
+    (resolvedSceneRole === "derivedResult" || selectedNode.category === "dataset") &&
+    selectedNode.type.includes("surface-mesh")
+  );
+  const selectedIsOverlay = resolvedSceneRole === "overlay";
+  const selectedIsReference = resolvedSceneRole === "referenceObject";
+  const selectedIsPrimary = resolvedSceneRole === "primaryObject";
+  const meshStats = selectedSceneMeshStats ?? sceneMeshDetails ?? activeSurfaceMeshStats;
+  const meshBounds = sceneMeshDetails?.bounds ?? activeSurfaceMeshBounds ?? null;
+  const watertight =
+    meshQualityReport?.topology?.boundaryEdgeCount != null && meshQualityReport?.topology?.nonManifoldEdgeCount != null
+      ? meshQualityReport.topology.boundaryEdgeCount === 0 && meshQualityReport.topology.nonManifoldEdgeCount === 0
+      : null;
+  const manifold =
+    meshQualityReport?.topology?.nonManifoldEdgeCount != null
+      ? meshQualityReport.topology.nonManifoldEdgeCount === 0
+      : null;
+  const derivedProductNodes = useMemo(
+    () => (selectedNode?.derivedProductIds ?? []).map((id) => nodeById.get(id)).filter((n): n is UnifiedObjectNode => !!n),
+    [nodeById, selectedNode]
+  );
+  const derivedStatusItems = useMemo(() => {
+    const specs = [
+      { key: "wireframe", label: "Wireframe", match: ["wireframe"] },
+      { key: "chart-grid", label: "Surface chart grid", match: ["chart-grid", "chart grid"] },
+      { key: "bounding-box", label: "Bounding box", match: ["bounding-box", "bounding box"] },
+      { key: "curvature-field", label: "Curvature field", match: ["curvature-field", "curvature field"] },
+      { key: "principal-directions", label: "Principal directions", match: ["principal-directions", "principal directions"] },
+      { key: "principal-lines", label: "Principal lines", match: ["principal-lines", "principal lines"] },
+      { key: "curvature-lines", label: "Curvature lines", match: ["curvature-lines", "curvature lines"] },
+      { key: "ridge-valley", label: "Ridges / valleys", match: ["ridge-valley", "ridge", "valley"] },
+      { key: "geodesic", label: "Geodesic overlay", match: ["geodesic"] },
+      { key: "compare-surface", label: "Comparison surface B", match: ["compare-surface", "comparison"] },
+    ];
+    return specs.map((spec) => {
+      const exists = derivedProductNodes.some((node) => {
+        const hay = `${node.id} ${node.type} ${node.name}`.toLowerCase();
+        return spec.match.some((needle) => hay.includes(needle));
+      });
+      return { ...spec, exists };
+    });
+  }, [derivedProductNodes]);
+  const selectedTypeChip = selectedNode
+    ? (selectedNode.type.includes("/") ? selectedNode.type.split("/").pop() ?? selectedNode.type : selectedNode.type).replaceAll("-", " ")
+    : "n/a";
+  const selectedReady = selectedIsDerivedSurfaceMesh ? !!meshStats : true;
 
   return (
     <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
       <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Object identity</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>
+          {selectedNode ? `Object / ${sceneRoleLabel} / ${selectedNode.name}` : "Object"}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+          <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+            {sceneRoleLabel}
+          </span>
+          <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+            {selectedTypeChip}
+          </span>
+          <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+            {selectedReady ? "ready" : "not ready"}
+          </span>
+          <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+            {selectedNodeVisible == null ? "visibility: n/a" : selectedNodeVisible ? "visible" : "hidden"}
+          </span>
+        </div>
+        {parentNode?.name && (
+          <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
+            Source object: <strong>{parentNode.name}</strong>
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>Family: {currentFamilyLabel}</div>
+      </div>
+
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Identity</div>
         {selectedNode ? (
-          <div style={{ fontSize: 11, display: "grid", gap: 8 }}>
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.3 }}>
-                Selected object
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", marginTop: 2 }}>{selectedNode.name}</div>
+          <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+            <div><strong>ID:</strong> {selectedNode.id}</div>
+            <div><strong>Type:</strong> {selectedNode.type}</div>
+            <div><strong>Role:</strong> {sceneRoleLabel}</div>
+            <div><strong>Category:</strong> {categoryLabel}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+              <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                {sceneRoleLabel}
+              </span>
+              <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                {(selectedNode.type.includes("/") ? selectedNode.type.split("/").pop() ?? selectedNode.type : selectedNode.type).replaceAll("-", " ")}
+              </span>
+              <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                Source: {technicalSourceKind}
+              </span>
+              <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
+                Domain: {technicalDomainModule}
+              </span>
             </div>
-
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
-              <div><strong>ID:</strong> {selectedNode.id}</div>
-              <div><strong>Type:</strong> {selectedNode.type}</div>
-              <div><strong>Role:</strong> {sceneRoleLabel}</div>
-              <div><strong>Category:</strong> {categoryLabel}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
-                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
-                  Domain: {technicalDomainModule}
-                </span>
-                <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontWeight: 700 }}>
-                  Source: {technicalSourceKind}
-                </span>
-              </div>
-            </div>
-
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Source</div>
-              <div><strong>Created from:</strong> {creationLabel}</div>
-              <div><strong>Definition:</strong> {objectDefinitionLabel}</div>
-              <div><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
-              <div><strong>Visible:</strong> {typeof selectedNode.visible === "boolean" ? (selectedNode.visible ? "yes" : "no") : "n/a"}</div>
-              <div><strong>Domain / ranges:</strong> {objectDomainLabel}</div>
-              <div><strong>Resolution / sampling:</strong> {objectSamplingLabel}</div>
-              <div><strong>Derived from:</strong> {technicalDerivedFrom}</div>
-              {showDerivedMeta && (
-                <>
-                  <div><strong>Generated by:</strong> {technicalGeneratedBy}</div>
-                  <div><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
-                </>
-              )}
-              {selectedSceneMeshStats && (
-                <div>
-                  <strong>Mesh stats:</strong> {selectedSceneMeshStats.vertCount.toLocaleString()} verts,{" "}
-                  {selectedSceneMeshStats.triCount.toLocaleString()} tris
-                </div>
-              )}
-              {sceneMeshDetails && (
-                <>
-                  <div><strong>Mesh source:</strong> {sceneMeshDetails.sourceLabel}</div>
-                  <div><strong>Topology:</strong> {sceneMeshDetails.vertCount.toLocaleString()} verts, {sceneMeshDetails.triCount.toLocaleString()} tris</div>
-                  <div><strong>Normals:</strong> {sceneMeshDetails.hasNormals ? "present" : "missing"}</div>
-                </>
-              )}
-            </div>
-
-            <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff", display: "grid", gap: 5 }}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
-              {derivedProductNames.length ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {derivedProductNames.map((name) => (
-                    <span
-                      key={name}
-                      style={{
-                        fontSize: 10,
-                        border: "1px solid #dbe3ec",
-                        borderRadius: 999,
-                        padding: "2px 8px",
-                        background: "#f8fafc",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {name}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ opacity: 0.72 }}>none</div>
-              )}
-            </div>
-
-            {sceneParamRows.length > 0 && (
-              <div style={{ padding: "8px 10px", border: "1px solid #dbe4f0", borderRadius: 8, background: "#fff" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>Parameters</div>
-                <div style={{ display: "grid", gap: 3 }}>
-                  {sceneParamRows.map((row) => (
-                    <div key={row.label}>
-                      <strong>{row.label}:</strong> {row.value}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           <div style={{ fontSize: 11, opacity: 0.75 }}>Select an item in Scene tab.</div>
         )}
       </div>
 
-      {selectedSceneObject && (
+      {selectedNode && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Source / Dependency</div>
+          <div style={{ fontSize: 11 }}><strong>Created from:</strong> {technicalDerivedFrom}</div>
+          <div style={{ fontSize: 11 }}><strong>Operation:</strong> {technicalGeneratedBy}</div>
+          <div style={{ fontSize: 11 }}><strong>Original source type:</strong> {technicalSourceKind.toLowerCase()}</div>
+          <div style={{ fontSize: 11 }}><strong>Definition:</strong> {objectDefinitionLabel}</div>
+          <div style={{ fontSize: 11 }}><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
+          <div style={{ fontSize: 11 }}><strong>Sampling:</strong> {objectSamplingLabel}</div>
+          <div style={{ fontSize: 11 }}><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
+          <div style={{ fontSize: 11 }}><strong>Visible:</strong> {typeof selectedNode.visible === "boolean" ? (selectedNode.visible ? "yes" : "no") : "n/a"}</div>
+        </div>
+      )}
+
+      {selectedIsDerivedSurfaceMesh && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry / Mesh status</div>
+          <div style={{ fontSize: 11 }}><strong>Vertices:</strong> {meshStats ? meshStats.vertCount.toLocaleString() : "n/a"}</div>
+          <div style={{ fontSize: 11 }}><strong>Faces:</strong> {meshStats ? meshStats.triCount.toLocaleString() : "n/a"}</div>
+          <div style={{ fontSize: 11 }}>
+            <strong>Normals:</strong>{" "}
+            {sceneMeshDetails ? (sceneMeshDetails.hasNormals ? "ready" : "missing") : "unknown"}
+          </div>
+          <div style={{ fontSize: 11 }}>
+            <strong>Bounds:</strong>{" "}
+            {meshBounds
+              ? `x [${fmt(meshBounds.min[0])}, ${fmt(meshBounds.max[0])}], y [${fmt(meshBounds.min[1])}, ${fmt(meshBounds.max[1])}], z [${fmt(meshBounds.min[2])}, ${fmt(meshBounds.max[2])}]`
+              : "n/a"}
+          </div>
+          <div style={{ fontSize: 11 }}><strong>Watertight:</strong> {watertight == null ? "unknown" : watertight ? "yes" : "no"}</div>
+          <div style={{ fontSize: 11 }}><strong>Manifold:</strong> {manifold == null ? "unknown" : manifold ? "yes" : "no"}</div>
+          <div style={{ fontSize: 11 }}><strong>Selected material:</strong> {"material" in (selectedSceneObject ?? {}) ? "custom" : "default"}</div>
+        </div>
+      )}
+
+      {selectedIsPrimary && sceneParamRows.length > 0 && (
         <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Scene object</div>
-          <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
-            Name
-            <input
-              type="text"
-              value={selectedSceneObject.name}
-              onChange={(e) => onRenameSelectedObject(e.target.value)}
-              disabled={!canEditSceneObject}
-            />
-          </label>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, marginBottom: 8 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={!!selectedVisible}
-                onChange={onToggleSelectedVisible}
-                disabled={selectedVisible == null || selectedSceneObjectLocked}
-              />
-              Visible
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked={selectedSceneObjectLocked} onChange={onToggleSelectedLocked} />
-              Lock
-            </label>
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Transform</div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "60px 1fr 1fr 1fr",
-              gap: "6px 8px",
-              alignItems: "center",
-            }}
-          >
-            <div />
-            <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
-            <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
-            <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
-
-            <div style={{ fontSize: 11 }}>Pos</div>
-            {(["x", "y", "z"] as const).map((axis) => (
-              <input
-                key={`obj-pos-${axis}`}
-                type="number"
-                step={0.1}
-                value={selectedSceneObject.transform.position[axis]}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (!Number.isFinite(next)) return;
-                  onPatchSelectedTransform({ position: axisPatch(axis, next) });
-                }}
-                disabled={!canEditSceneObject}
-              />
-            ))}
-
-            <div style={{ fontSize: 11 }}>Rot</div>
-            {(["x", "y", "z"] as const).map((axis) => (
-              <input
-                key={`obj-rot-${axis}`}
-                type="number"
-                step={1}
-                value={selectedSceneObject.transform.rotation[axis]}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (!Number.isFinite(next)) return;
-                  onPatchSelectedTransform({ rotation: axisPatch(axis, next) });
-                }}
-                disabled={!canEditSceneObject}
-              />
-            ))}
-
-            <div style={{ fontSize: 11 }}>Scale</div>
-            {(["x", "y", "z"] as const).map((axis) => (
-              <input
-                key={`obj-scale-${axis}`}
-                type="number"
-                step={0.1}
-                min={0.01}
-                value={selectedSceneObject.transform.scale[axis]}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  if (!Number.isFinite(next)) return;
-                  onPatchSelectedTransform({ scale: axisPatch(axis, Math.max(0.01, next)) });
-                }}
-                disabled={!canEditSceneObject}
-              />
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Definition / Parameters</div>
+          <div style={{ display: "grid", gap: 3, fontSize: 11 }}>
+            {sceneParamRows.map((row) => (
+              <div key={row.label}>
+                <strong>{row.label}:</strong> {row.value}
+              </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={onDuplicateSelectedObject} disabled={selectedSceneObjectLocked}>
-              Duplicate
-            </button>
-            <button
-              type="button"
-              onClick={onToggleSelectedVisible}
-              disabled={selectedVisible == null || selectedSceneObjectLocked}
-            >
-              {visibleActionLabel}
-            </button>
-            <button
-              type="button"
-              onClick={onIsolateSelectedObject}
-              disabled={!canIsolateSelectedObject || selectedSceneObjectLocked}
-            >
-              Isolate
-            </button>
-            <button type="button" onClick={onShowAllSceneObjects} disabled={!canShowAllSceneObjects}>
-              Show all
-            </button>
-            <button type="button" onClick={onDeleteSelectedObject} disabled={selectedSceneObjectLocked}>
-              Delete
-            </button>
+          <div style={{ marginTop: 8, fontSize: 11 }}>
+            <strong>Domain:</strong> {objectDomainLabel}
           </div>
         </div>
       )}
 
-      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Pipeline</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-          <button type="button" onClick={onBakeToSurfaceMesh} disabled={!canBakeToSurfaceMesh}>
-            Promote to SurfaceMesh
-          </button>
-          <button type="button" onClick={onConvertToMeshObject} disabled={!canConvertToMeshObject}>
-            Convert to Mesh
-          </button>
-          <button type="button" onClick={onExportSelectedObject} disabled={!canExportSelectedObject}>
-            Export selected (.glb)
-          </button>
-          <button type="button" onClick={onSendToCompare} disabled={!canSendToCompare}>
-            Send to Compare
-          </button>
+      {(selectedSceneObject || selectedIsDerivedSurfaceMesh) && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+            Display
+          </div>
+          {selectedSceneObject ? (
+            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 8px", alignItems: "center", fontSize: 11 }}>
+              <div>Visible</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!selectedVisible}
+                  onChange={onToggleSelectedVisible}
+                  disabled={selectedVisible == null || selectedSceneObjectLocked}
+                />
+                {selectedVisible ? "yes" : "no"}
+              </label>
+              <div>Lock</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input type="checkbox" checked={selectedSceneObjectLocked} onChange={onToggleSelectedLocked} />
+                {selectedSceneObjectLocked ? "locked" : "unlocked"}
+              </label>
+              <div>Opacity</div>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={Number(selectedSceneObject.material.opacity ?? 1)}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  onPatchSelectedMaterial({ opacity: clampNumber(raw, 0, 1) });
+                }}
+                disabled={!canEditSceneObject}
+              />
+              <div>Material</div>
+              <div>{"material" in selectedSceneObject ? "custom" : "default"}</div>
+              <div>Surface color</div>
+              <input
+                type="color"
+                value={toHexColorString(selectedSceneObject.material.color, 0x8aa4ff)}
+                onChange={(e) => onPatchSelectedMaterial({ color: fromHexColorString(e.target.value, 0x8aa4ff) })}
+                disabled={!canEditSceneObject}
+              />
+              <div>Wireframe overlay</div>
+              <button type="button" onClick={onToggleWireframeOverlay}>
+                {showWireframeOverlay ? "on" : "off"}
+              </button>
+              <div>Show bounding box</div>
+              <button type="button" onClick={onToggleBoundingBoxOverlay}>
+                {showBoundingBoxOverlay ? "on" : "off"}
+              </button>
+              <div>Show normals</div>
+              <button type="button" onClick={onToggleNormalsOverlay} disabled={!canToggleNormalsOverlay}>
+                {showNormalsOverlay ? "on" : "off"}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 8px", alignItems: "center", fontSize: 11 }}>
+              <div>Visible</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!selectedNodeVisible}
+                  onChange={onToggleSelectedNodeVisible}
+                  disabled={selectedNodeVisible == null}
+                />
+                {selectedNodeVisible == null ? "n/a" : selectedNodeVisible ? "yes" : "no"}
+              </label>
+              <div>Surface color</div>
+              <input
+                type="color"
+                value={toHexColorString(solidColorForPalette(colorPalette), 0x4f8cff)}
+                onChange={(e) => onChangeColorPalette(closestColorPaletteForHex(fromHexColorString(e.target.value, 0x4f8cff)))}
+              />
+              <div>Opacity</div>
+              <input
+                type="number"
+                min={0.1}
+                max={1}
+                step={0.05}
+                value={materialOpacity}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  onSetMaterialOpacity(clamp01(raw));
+                }}
+              />
+              <div>Roughness</div>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={materialRoughness}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  onSetMaterialRoughness(clamp01(raw));
+                }}
+              />
+              <div>Metalness</div>
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={materialMetalness}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  if (!Number.isFinite(raw)) return;
+                  onSetMaterialMetalness(clamp01(raw));
+                }}
+              />
+              <div>Wireframe overlay</div>
+              <button type="button" onClick={onToggleWireframeOverlay}>
+                {showWireframeOverlay ? "on" : "off"}
+              </button>
+              <div>Show bounding box</div>
+              <button type="button" onClick={onToggleBoundingBoxOverlay}>
+                {showBoundingBoxOverlay ? "on" : "off"}
+              </button>
+              <div>Show normals</div>
+              <button type="button" onClick={onToggleNormalsOverlay} disabled={!canToggleNormalsOverlay}>
+                {showNormalsOverlay ? "on" : "off"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedNode && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Derived products</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {derivedStatusItems.map((item) => (
+              <span
+                key={item.key}
+                title={item.exists ? "ready" : "can generate"}
+                style={{
+                  fontSize: 10,
+                  border: "1px solid " + (item.exists ? "#a7f3d0" : "#cbd5e1"),
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  background: item.exists ? "#ecfdf5" : "#f8fafc",
+                  color: item.exists ? "#166534" : "#475569",
+                  fontWeight: 700,
+                }}
+              >
+                {item.label} {item.exists ? "✓" : "+"}
+              </span>
+            ))}
+          </div>
+          {!!derivedProductNames.length && (
+            <div style={{ marginTop: 8, fontSize: 10, color: "#64748b" }}>
+              Linked: {derivedProductNames.join(", ")}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", display: "grid", gap: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700 }}>Pipeline actions</div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Promote / Convert</div>
+          {selectedIsDerivedSurfaceMesh ? (
+            <>
+              <div style={{ fontSize: 11 }}>SurfaceMesh: ready</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={onConvertToMeshObject} disabled={!canConvertToMeshObject}>
+                  Convert to Mesh object
+                </button>
+                <button
+                  type="button"
+                  onClick={selectedSceneObject ? onDuplicateSelectedObject : onConvertToMeshObject}
+                  disabled={selectedSceneObject ? selectedSceneObjectLocked : !canConvertToMeshObject}
+                >
+                  Duplicate as editable SurfaceMesh
+                </button>
+                <button type="button" onClick={onBakeAsPrimaryObject} disabled={!canBakeAsPrimaryObject}>
+                  Bake as PrimaryObject
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={onBakeToSurfaceMesh} disabled={!canBakeToSurfaceMesh}>
+                Promote to SurfaceMesh
+              </button>
+              <button type="button" onClick={onConvertToMeshObject} disabled={!canConvertToMeshObject}>
+                Convert to Mesh
+              </button>
+            </div>
+          )}
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Export</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onExportSelectedObject} disabled={!canExportSelectedObject}>
+              Export selected (.glb)
+            </button>
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>Analysis workflow</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onSendToCompare} disabled={!canSendToCompare}>
+              Send to Compare
+            </button>
+            <button type="button" onClick={onOpenAnalysis}>
+              Open in Analysis
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -46974,9 +46991,6 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
 
 type SurfacesViewPanelProps = {
   viewerKind: SurfaceViewerKind;
-  editCustomLabel: string | null;
-  canEditCustom: boolean;
-  onEditCustom: (() => void) | null;
   renderQuality: RenderQuality;
   onChangeRenderQuality: (quality: RenderQuality) => void;
   colorModes: ColorMode[];
@@ -46986,12 +47000,6 @@ type SurfacesViewPanelProps = {
   onChangeColorPalette: (palette: ColorPalette) => void;
   lightPreset: "studio" | "soft" | "contrast" | "neutral" | "warm";
   onChangeLightPreset: (preset: "studio" | "soft" | "contrast" | "neutral" | "warm") => void;
-  materialRoughness: number;
-  onSetMaterialRoughness: (v: number) => void;
-  materialMetalness: number;
-  onSetMaterialMetalness: (v: number) => void;
-  materialOpacity: number;
-  onSetMaterialOpacity: (v: number) => void;
   showWireframe: boolean;
   onToggleWireframe: () => void;
   showBoundingBox: boolean;
@@ -47042,9 +47050,6 @@ type SurfacesViewPanelProps = {
 
 const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   viewerKind,
-  editCustomLabel,
-  canEditCustom,
-  onEditCustom,
   renderQuality,
   onChangeRenderQuality,
   colorModes,
@@ -47054,12 +47059,6 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onChangeColorPalette,
   lightPreset,
   onChangeLightPreset,
-  materialRoughness,
-  onSetMaterialRoughness,
-  materialMetalness,
-  onSetMaterialMetalness,
-  materialOpacity,
-  onSetMaterialOpacity,
   showWireframe,
   onToggleWireframe,
   showBoundingBox,
@@ -47108,20 +47107,6 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
   onChangePrincipalGlyphMode,
 }) => (
   <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-    {editCustomLabel && onEditCustom && (
-      <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Edit preset</div>
-        <button
-          type="button"
-          onClick={onEditCustom}
-          disabled={!canEditCustom}
-          style={{ padding: "4px 10px" }}
-        >
-          {editCustomLabel}
-        </button>
-      </div>
-    )}
-
     {false && (viewerKind === "param" ||
       viewerKind === "weierstrass" ||
       viewerKind === "graph" ||
@@ -47264,22 +47249,6 @@ const SurfacesViewPanel: React.FC<SurfacesViewPanelProps> = ({
           </button>
         ))}
       </div>
-    </div>
-
-    <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
-      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Material</div>
-      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
-        Roughness: {materialRoughness.toFixed(2)}
-        <input type="range" min={0} max={1} step={0.01} value={materialRoughness} onChange={(e) => onSetMaterialRoughness(Number(e.target.value))} />
-      </label>
-      <label style={{ display: "grid", gap: 4, fontSize: 11, marginBottom: 8 }}>
-        Metalness: {materialMetalness.toFixed(2)}
-        <input type="range" min={0} max={1} step={0.01} value={materialMetalness} onChange={(e) => onSetMaterialMetalness(Number(e.target.value))} />
-      </label>
-      <label style={{ display: "grid", gap: 4, fontSize: 11 }}>
-        Opacity: {materialOpacity.toFixed(2)}
-        <input type="range" min={0.1} max={1} step={0.01} value={materialOpacity} onChange={(e) => onSetMaterialOpacity(Number(e.target.value))} />
-      </label>
     </div>
 
     <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
