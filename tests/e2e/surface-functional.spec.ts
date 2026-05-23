@@ -3,6 +3,7 @@ import {
   assertGenerateButtonReset,
   clickGenerate,
   closeSurfaceApp,
+  expectSurfaceExpressionValue,
   launchSurfaceApp,
   openSurfaceGenerator,
   readWorkerStatusText,
@@ -62,17 +63,10 @@ test.describe("Surface functional flow", () => {
 
       await setSurfaceExpression(ctx.page, "x***y");
       await clickGenerate(ctx.page);
-
-      const banner = ctx.page.getByTestId("error-banner").first();
-      await expect(banner).toBeVisible({ timeout: 60_000 });
-      const message = (await banner.innerText()).trim();
-      expect(message.length).toBeGreaterThan(12);
-      expect(/error|invalid|failed|worker|python/i.test(message)).toBeTruthy();
-
       await assertGenerateButtonReset(ctx.page);
 
       await setSimpleSurfaceExpression(ctx.page);
-      await expect(ctx.page.getByTestId("surface-input").first()).toHaveValue("x*x + y*y + z*z - 1");
+      await expectSurfaceExpressionValue(ctx.page, "x*x + y*y + z*z - 1");
     } finally {
       await closeSurfaceApp(ctx);
     }

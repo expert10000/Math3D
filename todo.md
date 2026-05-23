@@ -1,5 +1,21 @@
 # TODO
 
+## Tiny: Surface <-> Mesh representation map
+
+Keep a short map of places where the app shows both dataset and mesh-object forms of the same surface.
+
+### Current confirmed flow (Explicit / Saddle)
+1. Source definition: `Surfaces > Explicit > Graph > Saddle graph`.
+2. Derived dataset result: `dataset/surface-mesh` (for example Complex Map Sweep).
+3. Converted mesh object: `Geometry > Procedural > Object` as detached/editable mesh object.
+
+### UI consistency checklist (for each flow like above)
+1. Scene tab: list both forms clearly (`DerivedResult` vs mesh object).
+2. Object tab (Surfaces): show display/material controls even for derived dataset mesh.
+3. Geometry Object panel: keep equivalent material/opacity controls for converted mesh object.
+4. Labels/provenance: show `Source object` + `Operation` + conversion step.
+5. Keep one canonical list of these dual representations in `todo.md` and update when new conversions are added.
+
 ## Real bundle thinning (not only warning suppression)
 
 ### Goal

@@ -1303,6 +1303,7 @@ type OtherComplexSphereColorMode = "f" | "z";
 type OtherComplexWScaleMode = "linear" | "log" | "auto";
 type OtherComplexLeftPanelView = "setup" | "gallery";
 type OtherComplexLayoutMode = "two_pane" | "three_pane" | "focus";
+type OtherComplexDomainPanelId = "z" | "w" | "re" | "im" | "abs" | "arg";
 type OtherComplexValueSurfaceQuantity = "re" | "im" | "abs" | "arg" | "sheet_index";
 type OtherComplexVectorFieldMode = "image" | "grad_u" | "grad_v" | "grad_both";
 type OtherComplexInspectorTab =
@@ -1338,6 +1339,7 @@ type OtherComplexContourPresetId =
   | "loop_all_branch_points"
   | "figure_eight";
 type OtherComplexCoveringExampleId = "exp" | "square" | "power_n" | "log" | "sqrt_inverse";
+const OTHER_COMPLEX_DOMAIN_PANEL_IDS: OtherComplexDomainPanelId[] = ["z", "w", "re", "im", "abs", "arg"];
 const OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS = [0.5, 1, 2, 4] as const;
 type OtherComplexPathAnimationSpeed = (typeof OTHER_COMPLEX_PATH_ANIMATION_SPEED_OPTIONS)[number];
 type BranchLabProfileId = "none" | "log" | "sqrt" | "pow_half" | "pow_third" | "sqrt_z2m1" | "sqrt_zab";
@@ -8299,6 +8301,14 @@ const App: React.FC = () => {
   const [mobiusAnimationGridEnabled, setMobiusAnimationGridEnabled] = useState(true);
   const [mobiusAnimationCircleEnabled, setMobiusAnimationCircleEnabled] = useState(true);
   const [otherComplexShowDomainColoring, setOtherComplexShowDomainColoring] = useState(true);
+  const [otherComplexDomainPanels, setOtherComplexDomainPanels] = useState<Record<OtherComplexDomainPanelId, boolean>>({
+    z: true,
+    w: true,
+    re: true,
+    im: false,
+    abs: true,
+    arg: true,
+  });
   const [otherComplexShowGridDeformation, setOtherComplexShowGridDeformation] = useState(true);
   const [otherComplexShowPathMapping, setOtherComplexShowPathMapping] = useState(true);
   const [otherComplexShowSingularityInspector, setOtherComplexShowSingularityInspector] = useState(true);
@@ -9756,6 +9766,28 @@ const App: React.FC = () => {
   const complexMapInputMode: ComplexMapInputMode = complexMapSpec.inputMode === "fz" ? "fz" : "reim";
   const complexMapFunctionExpr = complexMapSpec.fExpr ?? "";
   const otherComplexFunctionExpr = complexMapInputMode === "fz" ? complexMapFunctionExpr : "";
+  const otherComplexToggleDomainPanel = useCallback((panel: OtherComplexDomainPanelId) => {
+    setOtherComplexDomainPanels((prev) => ({ ...prev, [panel]: !prev[panel] }));
+  }, []);
+  const applyOtherComplexDomainPanelPreset = useCallback((panelIds: OtherComplexDomainPanelId[]) => {
+    setOtherComplexDomainPanels(() =>
+      OTHER_COMPLEX_DOMAIN_PANEL_IDS.reduce(
+        (acc, id) => {
+          acc[id] = panelIds.includes(id);
+          return acc;
+        },
+        {} as Record<OtherComplexDomainPanelId, boolean>
+      )
+    );
+  }, []);
+  const otherComplexShowScalarMaps =
+    otherComplexDomainPanels.re || otherComplexDomainPanels.im || otherComplexDomainPanels.abs || otherComplexDomainPanels.arg;
+  const otherComplexShowZPanel = otherComplexDomainPanels.z;
+  const otherComplexShowWPanel = otherComplexDomainPanels.w;
+  const otherComplexSelectedScalarPanels = useMemo(
+    () => OTHER_COMPLEX_DOMAIN_PANEL_IDS.filter((panelId) => otherComplexDomainPanels[panelId]),
+    [otherComplexDomainPanels]
+  );
   const otherComplexPathMappingActive =
     otherComplexShowPathMapping || otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue" || otherComplexMainViewMode === "covering";
   const otherComplexLabTitle =
@@ -10076,6 +10108,62 @@ const App: React.FC = () => {
   const otherComplexWExtent = useMemo(() => {
     if (!otherComplexGrid2d) return 3;
     return Math.max(2, otherComplexGrid2d.wMagMax * 1.15);
+  }, [otherComplexGrid2d]);
+  const otherComplexScalarMaps = useMemo(() => {
+    if (!otherComplexGrid2d) return null;
+    const { nu, nv, uMin, uMax, vMin, vMax, re, im, wMag, valid } = otherComplexGrid2d;
+    const total = nu * nv;
+    if (!total) return null;
+
+    const arg = new Float32Array(total);
+    let reAbsMax = 0;
+    let imAbsMax = 0;
+    let absMax = 0;
+    let hasFinite = false;
+
+    for (let idx = 0; idx < total; idx++) {
+      if (!valid[idx]) {
+        arg[idx] = NaN;
+        continue;
+      }
+      const rr = re[idx];
+      const ii = im[idx];
+      if (!Number.isFinite(rr) || !Number.isFinite(ii)) {
+        arg[idx] = NaN;
+        continue;
+      }
+      hasFinite = true;
+      const rrAbs = Math.abs(rr);
+      const iiAbs = Math.abs(ii);
+      if (rrAbs > reAbsMax) reAbsMax = rrAbs;
+      if (iiAbs > imAbsMax) imAbsMax = iiAbs;
+      const mag = wMag[idx];
+      if (Number.isFinite(mag) && mag > absMax) absMax = mag;
+      arg[idx] = Math.atan2(ii, rr);
+    }
+
+    if (!hasFinite) return null;
+
+    return {
+      nu,
+      nv,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+      re,
+      im,
+      abs: wMag,
+      arg,
+      reMin: -Math.max(1e-6, reAbsMax),
+      reMax: Math.max(1e-6, reAbsMax),
+      imMin: -Math.max(1e-6, imAbsMax),
+      imMax: Math.max(1e-6, imAbsMax),
+      absMin: 0,
+      absMax: Math.max(1e-6, absMax),
+      argMin: -Math.PI,
+      argMax: Math.PI,
+    };
   }, [otherComplexGrid2d]);
   const otherComplexGridLines2d = useMemo(() => {
     if (!otherComplexGrid2d) return { zU: [] as [number, number][][], zV: [] as [number, number][][], wU: [] as [number, number][][], wV: [] as [number, number][][] };
@@ -13423,6 +13511,10 @@ const App: React.FC = () => {
   // plane refs for 2D modes
   const zRef = useRef<PlanePlotHandle | null>(null);
   const wRef = useRef<PlanePlotHandle | null>(null);
+  const zScalarReRef = useRef<PlanePlotHandle | null>(null);
+  const zScalarImRef = useRef<PlanePlotHandle | null>(null);
+  const zScalarAbsRef = useRef<PlanePlotHandle | null>(null);
+  const zScalarArgRef = useRef<PlanePlotHandle | null>(null);
   const surfaceSceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const curvesSceneCaptureRef = useRef<HTMLDivElement | null>(null);
   const topologySceneCaptureRef = useRef<HTMLDivElement | null>(null);
@@ -16955,6 +17047,111 @@ case "mobius":
     wPlaneShowRings,
     wPlaneShowRays,
   ]);
+
+  useEffect(() => {
+    zScalarReRef.current?.drawGrid(1);
+    zScalarImRef.current?.drawGrid(1);
+    zScalarAbsRef.current?.drawGrid(1);
+    zScalarArgRef.current?.drawGrid(1);
+
+    if (!otherComplexShowScalarMaps || !otherComplexScalarMaps) return;
+
+    const {
+      nu,
+      nv,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+      re,
+      im,
+      abs,
+      arg,
+      reMin,
+      reMax,
+      imMin,
+      imMax,
+      absMin,
+      absMax,
+      argMin,
+      argMax,
+    } = otherComplexScalarMaps;
+
+    if (otherComplexDomainPanels.re) {
+      zScalarReRef.current?.drawHeatmap({
+        values: re,
+        nx: nu,
+        ny: nv,
+        xMin: uMin,
+        xMax: uMax,
+        yMin: vMin,
+        yMax: vMax,
+        min: reMin,
+        max: reMax,
+        palette: "blueRed",
+        opacity: 0.86,
+      });
+    }
+    if (otherComplexDomainPanels.im) {
+      zScalarImRef.current?.drawHeatmap({
+        values: im,
+        nx: nu,
+        ny: nv,
+        xMin: uMin,
+        xMax: uMax,
+        yMin: vMin,
+        yMax: vMax,
+        min: imMin,
+        max: imMax,
+        palette: "blueRed",
+        opacity: 0.86,
+      });
+    }
+    if (otherComplexDomainPanels.abs) {
+      zScalarAbsRef.current?.drawHeatmap({
+        values: abs,
+        nx: nu,
+        ny: nv,
+        xMin: uMin,
+        xMax: uMax,
+        yMin: vMin,
+        yMax: vMax,
+        min: absMin,
+        max: absMax,
+        palette: "redYellow",
+        opacity: 0.86,
+      });
+    }
+    if (otherComplexDomainPanels.arg) {
+      zScalarArgRef.current?.drawHeatmap({
+        values: arg,
+        nx: nu,
+        ny: nv,
+        xMin: uMin,
+        xMax: uMax,
+        yMin: vMin,
+        yMax: vMax,
+        min: argMin,
+        max: argMax,
+        palette: "rainbow",
+        opacity: 0.86,
+      });
+    }
+
+    if (otherComplexSelectedPoint && Number.isFinite(otherComplexSelectedPoint.re) && Number.isFinite(otherComplexSelectedPoint.im)) {
+      const p: [number, number] = [otherComplexSelectedPoint.re, otherComplexSelectedPoint.im];
+      const marker = { color: "#111827", shape: "cross" as const, size: 4.6, layer: "scalar-probe-z" };
+      zScalarReRef.current?.drawPoints([p], marker);
+      zScalarImRef.current?.drawPoints([p], marker);
+      zScalarAbsRef.current?.drawPoints([p], marker);
+      zScalarArgRef.current?.drawPoints([p], marker);
+    } else {
+      zScalarReRef.current?.drawPoints([], { layer: "scalar-probe-z" });
+      zScalarImRef.current?.drawPoints([], { layer: "scalar-probe-z" });
+      zScalarAbsRef.current?.drawPoints([], { layer: "scalar-probe-z" });
+      zScalarArgRef.current?.drawPoints([], { layer: "scalar-probe-z" });
+    }
+  }, [otherComplexDomainPanels, otherComplexScalarMaps, otherComplexSelectedPoint, otherComplexShowScalarMaps]);
 
   /* ---------- probe reset rules ---------- */
   useEffect(() => {
@@ -30013,6 +30210,7 @@ case "mobius":
                   complexDistortionShowZ={complexDistortionShowZ}
                   complexDistortionShowSurface={complexDistortionShowSurface}
                   complexDistortionScale={complexDistortionScale}
+                  complexMapGridData={complexMapGrid}
                   complexMapDistortionField={complexMapDistortionField}
                   complexMapDistortionProbe={complexMapDistortionProbe}
                   complexMapProbe={complexMapProbe}
@@ -39491,6 +39689,108 @@ case "mobius":
                             Selected contour
                           </label>
                         </div>
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div style={{ fontWeight: 600 }}>Complex value domains</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span>Presets:</span>
+                            <button
+                              type="button"
+                              onClick={() => applyOtherComplexDomainPanelPreset(["z", "w", "abs", "arg"])}
+                              style={pill(
+                                otherComplexDomainPanels.z &&
+                                  otherComplexDomainPanels.w &&
+                                  otherComplexDomainPanels.abs &&
+                                  otherComplexDomainPanels.arg &&
+                                  !otherComplexDomainPanels.re &&
+                                  !otherComplexDomainPanels.im
+                              )}
+                            >
+                              starter 4
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyOtherComplexDomainPanelPreset(["z", "w", "re", "im", "abs", "arg"])}
+                              style={pill(otherComplexSelectedScalarPanels.length === 6)}
+                            >
+                              all 6
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyOtherComplexDomainPanelPreset(["z", "w"])}
+                              style={pill(otherComplexDomainPanels.z && otherComplexDomainPanels.w && !otherComplexShowScalarMaps)}
+                            >
+                              geometry
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyOtherComplexDomainPanelPreset(["re", "im", "abs", "arg"])}
+                              style={pill(
+                                !otherComplexDomainPanels.z &&
+                                  !otherComplexDomainPanels.w &&
+                                  otherComplexDomainPanels.re &&
+                                  otherComplexDomainPanels.im &&
+                                  otherComplexDomainPanels.abs &&
+                                  otherComplexDomainPanels.arg
+                              )}
+                            >
+                              values
+                            </button>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                            <span>Panels:</span>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("z")}
+                              style={pill(otherComplexDomainPanels.z)}
+                              aria-pressed={otherComplexDomainPanels.z}
+                            >
+                              Z
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("w")}
+                              style={pill(otherComplexDomainPanels.w)}
+                              aria-pressed={otherComplexDomainPanels.w}
+                            >
+                              W
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("re")}
+                              style={pill(otherComplexDomainPanels.re)}
+                              aria-pressed={otherComplexDomainPanels.re}
+                            >
+                              Re
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("im")}
+                              style={pill(otherComplexDomainPanels.im)}
+                              aria-pressed={otherComplexDomainPanels.im}
+                            >
+                              Im
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("abs")}
+                              style={pill(otherComplexDomainPanels.abs)}
+                              aria-pressed={otherComplexDomainPanels.abs}
+                            >
+                              |f|
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => otherComplexToggleDomainPanel("arg")}
+                              style={pill(otherComplexDomainPanels.arg)}
+                              aria-pressed={otherComplexDomainPanels.arg}
+                            >
+                              arg
+                            </button>
+                          </div>
+                          <div style={{ opacity: 0.72 }}>
+                            Z/W remain geometric planes. Re/Im/|f|/arg are synchronized scalar domains on the same z-grid.
+                          </div>
+                        </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
                           <span>Value scale:</span>
                           <button type="button" onClick={() => setOtherComplexDomainValueMode("log")} style={pill(otherComplexDomainValueMode === "log")}>
@@ -40778,34 +41078,65 @@ case "mobius":
                         alignItems: "start",
                         minHeight: 0,
                       }}
-                    >
+                      >
                       <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+                        {!otherComplexShowZPanel && (
+                          <div style={{ display: "none" }}>
+                            <PlanePlot
+                              id="svgZHiddenOther"
+                              extent={complexMapZExtent}
+                              step={mobiusGridStep}
+                              ref={zRef}
+                              style={{ height: 1 }}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
+                            />
+                          </div>
+                        )}
+                        {!otherComplexShowWPanel && (
+                          <div style={{ display: "none" }}>
+                            <PlanePlot
+                              id="svgWHiddenOther"
+                              extent={otherComplexWDisplayExtent}
+                              step={mobiusGridStep}
+                              ref={wRef}
+                              style={{ height: 1 }}
+                              showAxes={mobiusShowAxes}
+                              showLabels={mobiusShowLabels}
+                            />
+                          </div>
+                        )}
                         {otherComplexMainViewMode === "sphere" || (otherComplexLayoutMode === "three_pane" && (otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue")) ? (
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "repeat(3, minmax(240px, 1fr))",
+                              gridTemplateColumns: `repeat(${Math.max(
+                                1,
+                                (otherComplexShowZPanel ? 1 : 0) + 1 + (otherComplexShowWPanel ? 1 : 0)
+                              )}, minmax(240px, 1fr))`,
                               gap: 12,
                               alignItems: "stretch",
                             }}
                           >
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>Z-plane (domain)</h3>
-                              <div style={{ minHeight: 320, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgZ"
-                                  extent={complexMapZExtent}
-                                  step={mobiusGridStep}
-                                  ref={zRef}
-                                  style={{ height: "100%" }}
-                                  onClickPoint={handleOtherComplexZClick}
-                                  onDragPoint={handleOtherComplexZDragPoint}
-                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
+                            {otherComplexShowZPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>Z-plane (domain)</h3>
+                                <div style={{ minHeight: 320, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgZ"
+                                    extent={complexMapZExtent}
+                                    step={mobiusGridStep}
+                                    ref={zRef}
+                                    style={{ height: "100%" }}
+                                    onClickPoint={handleOtherComplexZClick}
+                                    onDragPoint={handleOtherComplexZDragPoint}
+                                    dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
+                                </div>
                               </div>
-                            </div>
+                            )}
                             <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
                               <h3 style={styles.h3}>Riemann sphere</h3>
                               <RiemannSpherePlot
@@ -40819,186 +41150,247 @@ case "mobius":
                                 Sphere coloring: hue = arg(·), value = |·|.
                               </div>
                             </div>
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>W-plane (image)</h3>
-                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
-                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOtherComplexWScaleMode("auto");
-                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
-                                      }}
-                                      style={pill(false)}
-                                    >
-                                      Auto-fit
-                                    </button>
-                                    <span>Scale:</span>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
-                                      linear
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
-                                      log
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
-                                      auto
-                                    </button>
+                            {otherComplexShowWPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>W-plane (image)</h3>
+                                {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                  <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOtherComplexWScaleMode("auto");
+                                          setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                        }}
+                                        style={pill(false)}
+                                      >
+                                        Auto-fit
+                                      </button>
+                                      <span>Scale:</span>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                        linear
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                        log
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                        auto
+                                      </button>
+                                    </div>
+                                    {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
                                   </div>
-                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                )}
+                                <div style={{ minHeight: 320, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgW"
+                                    extent={otherComplexWDisplayExtent}
+                                    step={mobiusGridStep}
+                                    ref={wRef}
+                                    style={{ height: "100%" }}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
                                 </div>
-                              )}
-                              <div style={{ minHeight: 320, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgW"
-                                  extent={otherComplexWDisplayExtent}
-                                  step={mobiusGridStep}
-                                  ref={wRef}
-                                  style={{ height: "100%" }}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
                               </div>
-                            </div>
+                            )}
                           </div>
                         ) : otherComplexMainViewMode === "plane" && otherComplexLayoutMode === "focus" ? (
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "minmax(0, 1.7fr) minmax(240px, 0.9fr)",
+                              gridTemplateColumns:
+                                otherComplexShowZPanel && otherComplexShowWPanel
+                                  ? "minmax(0, 1.7fr) minmax(240px, 0.9fr)"
+                                  : "minmax(0, 1fr)",
                               gap: 12,
                               alignItems: "stretch",
                             }}
                           >
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>Z-plane (domain coloring)</h3>
-                              <div style={{ minHeight: 360, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgZ"
-                                  extent={complexMapZExtent}
-                                  step={mobiusGridStep}
-                                  ref={zRef}
-                                  style={{ height: "100%" }}
-                                  onClickPoint={handleOtherComplexZClick}
-                                  onDragPoint={handleOtherComplexZDragPoint}
-                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
-                              </div>
-                              <div style={{ fontSize: 11, opacity: 0.74 }}>Hue = arg(f), value = {otherComplexDomainValueMode === "log" ? "log |f|" : "linear |f|"}.</div>
-                            </div>
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>W preview</h3>
-                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
-                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOtherComplexWScaleMode("auto");
-                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
-                                      }}
-                                      style={pill(false)}
-                                    >
-                                      Auto-fit
-                                    </button>
-                                    <span>Scale:</span>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
-                                      linear
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
-                                      log
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
-                                      auto
-                                    </button>
-                                  </div>
-                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                            {otherComplexShowZPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>Z-plane (domain coloring)</h3>
+                                <div style={{ minHeight: 360, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgZ"
+                                    extent={complexMapZExtent}
+                                    step={mobiusGridStep}
+                                    ref={zRef}
+                                    style={{ height: "100%" }}
+                                    onClickPoint={handleOtherComplexZClick}
+                                    onDragPoint={handleOtherComplexZDragPoint}
+                                    dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
                                 </div>
-                              )}
-                              <div style={{ minHeight: 260, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgW"
-                                  extent={otherComplexWDisplayExtent}
-                                  step={mobiusGridStep}
-                                  ref={wRef}
-                                  style={{ height: "100%" }}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
+                                <div style={{ fontSize: 11, opacity: 0.74 }}>Hue = arg(f), value = {otherComplexDomainValueMode === "log" ? "log |f|" : "linear |f|"}.</div>
                               </div>
-                            </div>
+                            )}
+                            {otherComplexShowWPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>W preview</h3>
+                                {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                  <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOtherComplexWScaleMode("auto");
+                                          setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                        }}
+                                        style={pill(false)}
+                                      >
+                                        Auto-fit
+                                      </button>
+                                      <span>Scale:</span>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                        linear
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                        log
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                        auto
+                                      </button>
+                                    </div>
+                                    {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                  </div>
+                                )}
+                                <div style={{ minHeight: 260, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgW"
+                                    extent={otherComplexWDisplayExtent}
+                                    step={mobiusGridStep}
+                                    ref={wRef}
+                                    style={{ height: "100%" }}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
+                              gridTemplateColumns:
+                                otherComplexShowZPanel && otherComplexShowWPanel
+                                  ? "repeat(2, minmax(280px, 1fr))"
+                                  : "minmax(280px, 1fr)",
                               gap: 12,
                               alignItems: "stretch",
                             }}
                           >
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>Z-plane (domain)</h3>
-                              <div style={{ minHeight: 320, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgZ"
-                                  extent={complexMapZExtent}
-                                  step={mobiusGridStep}
-                                  ref={zRef}
-                                  style={{ height: "100%" }}
-                                  onClickPoint={handleOtherComplexZClick}
-                                  onDragPoint={handleOtherComplexZDragPoint}
-                                  dragDrawEnabled={otherComplexPathMode === "freehand"}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
+                            {otherComplexShowZPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>Z-plane (domain)</h3>
+                                <div style={{ minHeight: 320, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgZ"
+                                    extent={complexMapZExtent}
+                                    step={mobiusGridStep}
+                                    ref={zRef}
+                                    style={{ height: "100%" }}
+                                    onClickPoint={handleOtherComplexZClick}
+                                    onDragPoint={handleOtherComplexZDragPoint}
+                                    dragDrawEnabled={otherComplexPathMode === "freehand"}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
+                                </div>
                               </div>
-                            </div>
-                            <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
-                              <h3 style={styles.h3}>W-plane (image)</h3>
-                              {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
-                                <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                                  <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOtherComplexWScaleMode("auto");
-                                        setOtherComplexActionStatus("W-plane auto-fit applied.");
-                                      }}
-                                      style={pill(false)}
-                                    >
-                                      Auto-fit
-                                    </button>
-                                    <span>Scale:</span>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
-                                      linear
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
-                                      log
-                                    </button>
-                                    <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
-                                      auto
-                                    </button>
+                            )}
+                            {otherComplexShowWPanel && (
+                              <div style={{ display: "grid", gap: 8, minHeight: 0 }}>
+                                <h3 style={styles.h3}>W-plane (image)</h3>
+                                {(otherComplexMainViewMode === "path" || otherComplexMainViewMode === "residue") && (
+                                  <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                    <div style={{ opacity: 0.82 }}>f(γ), direction arrows, and selected point image.</div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setOtherComplexWScaleMode("auto");
+                                          setOtherComplexActionStatus("W-plane auto-fit applied.");
+                                        }}
+                                        style={pill(false)}
+                                      >
+                                        Auto-fit
+                                      </button>
+                                      <span>Scale:</span>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("linear")} style={pill(otherComplexWScaleMode === "linear")}>
+                                        linear
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("log")} style={pill(otherComplexWScaleMode === "log")}>
+                                        log
+                                      </button>
+                                      <button type="button" onClick={() => setOtherComplexWScaleMode("auto")} style={pill(otherComplexWScaleMode === "auto")}>
+                                        auto
+                                      </button>
+                                    </div>
+                                    {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
                                   </div>
-                                  {otherComplexWVisibilityNote && <div style={{ color: "#92400e" }}>{otherComplexWVisibilityNote}</div>}
+                                )}
+                                <div style={{ minHeight: 320, flex: 1 }}>
+                                  <PlanePlot
+                                    id="svgW"
+                                    extent={otherComplexWDisplayExtent}
+                                    step={mobiusGridStep}
+                                    ref={wRef}
+                                    style={{ height: "100%" }}
+                                    showAxes={mobiusShowAxes}
+                                    showLabels={mobiusShowLabels}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!otherComplexShowZPanel && !otherComplexShowWPanel && (
+                          <div style={{ ...cardStyle, marginTop: 0, fontSize: 11, opacity: 0.78 }}>
+                            Z/W geometry panels are hidden. Enable `Z` or `W` in Complex value domains to draw or inspect mapping geometry.
+                          </div>
+                        )}
+                        {otherComplexShowScalarMaps && otherComplexGrid2d && (
+                          <div style={{ ...cardStyle, marginTop: 0, display: "grid", gap: 8 }}>
+                            <div style={{ fontWeight: 700, fontSize: 12 }}>Synchronized value domains</div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+                                gap: 8,
+                              }}
+                            >
+                              {otherComplexDomainPanels.re && (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 11, opacity: 0.78 }}>Re(f)</div>
+                                  <PlanePlot id="svgZScalarReOther" extent={complexMapZExtent} step={1} ref={zScalarReRef} style={{ height: 140 }} showLabels={false} />
                                 </div>
                               )}
-                              <div style={{ minHeight: 320, flex: 1 }}>
-                                <PlanePlot
-                                  id="svgW"
-                                  extent={otherComplexWDisplayExtent}
-                                  step={mobiusGridStep}
-                                  ref={wRef}
-                                  style={{ height: "100%" }}
-                                  showAxes={mobiusShowAxes}
-                                  showLabels={mobiusShowLabels}
-                                />
-                              </div>
+                              {otherComplexDomainPanels.im && (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 11, opacity: 0.78 }}>Im(f)</div>
+                                  <PlanePlot id="svgZScalarImOther" extent={complexMapZExtent} step={1} ref={zScalarImRef} style={{ height: 140 }} showLabels={false} />
+                                </div>
+                              )}
+                              {otherComplexDomainPanels.abs && (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 11, opacity: 0.78 }}>|f|</div>
+                                  <PlanePlot id="svgZScalarAbsOther" extent={complexMapZExtent} step={1} ref={zScalarAbsRef} style={{ height: 140 }} showLabels={false} />
+                                </div>
+                              )}
+                              {otherComplexDomainPanels.arg && (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  <div style={{ fontSize: 11, opacity: 0.78 }}>arg(f)</div>
+                                  <PlanePlot id="svgZScalarArgOther" extent={complexMapZExtent} step={1} ref={zScalarArgRef} style={{ height: 140 }} showLabels={false} />
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, opacity: 0.7 }}>
+                              Selected point and line markers stay synchronized across all visible value panels.
                             </div>
                           </div>
                         )}
@@ -47690,6 +48082,7 @@ type SurfacesLeftPanelProps = {
   complexDistortionShowZ: boolean;
   complexDistortionShowSurface: boolean;
   complexDistortionScale: "linear" | "log";
+  complexMapGridData: ComplexMapGridPanelData | null;
   complexMapDistortionField: ComplexMapDistortionField | null;
   complexMapDistortionProbe: ComplexMapDistortionProbe | null;
   complexMapProbe: ComplexMapProbe | null;
@@ -48033,6 +48426,18 @@ type DifferentialGeometryAnalysisMode = "auto" | "fast-preview" | "robust-mesh" 
 type DifferentialGeometryPrecheckMode = "run" | "auto";
 type DifferentialGeometrySmoothing = "none" | "light" | "medium";
 type DifferentialGeometryBinaryToggle = "off" | "on";
+type ComplexMapGridPanelData = {
+  nu: number;
+  nv: number;
+  uMin: number;
+  uMax: number;
+  vMin: number;
+  vMax: number;
+  re: Float32Array;
+  im: Float32Array;
+  wMag: Float32Array;
+  valid: Uint8Array;
+};
 
 const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   showInternalTabs = true,
@@ -48305,6 +48710,7 @@ onChangeImplicitExpr,
   complexDistortionShowZ,
   complexDistortionShowSurface,
   complexDistortionScale,
+  complexMapGridData,
   complexMapDistortionField,
   complexMapDistortionProbe,
   complexMapProbe,
@@ -48735,6 +49141,11 @@ onChangeImplicitExpr,
   const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const scalarRePlaneRef = useRef<PlanePlotHandle | null>(null);
+  const scalarImPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const scalarAbsPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const scalarArgPlaneRef = useRef<PlanePlotHandle | null>(null);
+  const [complexShowScalarDomains, setComplexShowScalarDomains] = useState(true);
   const [complexLineMode, setComplexLineMode] = useState<"vertical" | "horizontal">("vertical");
   const [complexToolMode, setComplexToolMode] = useState<"line" | "probe" | "preimage">("line");
   const [differentialMode, setDifferentialMode] = useState<DifferentialGeometryAnalysisMode>("auto");
@@ -48983,6 +49394,67 @@ onChangeImplicitExpr,
     [applyPreimageValue, complexMapWExtent, complexPreimageMode, complexToolMode, onSetComplexMapProbeFromW]
   );
 
+  const complexScalarDomainMaps = useMemo(() => {
+    if (!complexMapGridData) return null;
+    const { nu, nv, uMin, uMax, vMin, vMax, re, im, wMag, valid } = complexMapGridData;
+    const total = nu * nv;
+    if (!total) return null;
+
+    const arg = new Float32Array(total);
+    let reAbsMax = 0;
+    let imAbsMax = 0;
+    let absMax = 0;
+    let hasFinite = false;
+
+    for (let idx = 0; idx < total; idx++) {
+      if (!valid[idx]) {
+        arg[idx] = NaN;
+        continue;
+      }
+      const rr = re[idx];
+      const ii = im[idx];
+      if (!Number.isFinite(rr) || !Number.isFinite(ii)) {
+        arg[idx] = NaN;
+        continue;
+      }
+      hasFinite = true;
+      const rrAbs = Math.abs(rr);
+      const iiAbs = Math.abs(ii);
+      if (rrAbs > reAbsMax) reAbsMax = rrAbs;
+      if (iiAbs > imAbsMax) imAbsMax = iiAbs;
+      const mag = wMag[idx];
+      if (Number.isFinite(mag) && mag > absMax) absMax = mag;
+      arg[idx] = Math.atan2(ii, rr);
+    }
+
+    if (!hasFinite) return null;
+
+    reAbsMax = Math.max(1e-6, reAbsMax);
+    imAbsMax = Math.max(1e-6, imAbsMax);
+    absMax = Math.max(1e-6, absMax);
+
+    return {
+      nu,
+      nv,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+      re,
+      im,
+      abs: wMag,
+      arg,
+      reMin: -reAbsMax,
+      reMax: reAbsMax,
+      imMin: -imAbsMax,
+      imMax: imAbsMax,
+      absMin: 0,
+      absMax,
+      argMin: -Math.PI,
+      argMax: Math.PI,
+    };
+  }, [complexMapGridData]);
+
   useEffect(() => {
     zPlaneRef.current?.drawGrid(1);
     wPlaneRef.current?.drawGrid(1);
@@ -49167,6 +49639,135 @@ onChangeImplicitExpr,
     probeEnabled,
     complexMapProbe,
   ]);
+
+  useEffect(() => {
+    scalarRePlaneRef.current?.drawGrid(1);
+    scalarImPlaneRef.current?.drawGrid(1);
+    scalarAbsPlaneRef.current?.drawGrid(1);
+    scalarArgPlaneRef.current?.drawGrid(1);
+
+    if (!complexShowScalarDomains || !complexScalarDomainMaps) return;
+
+    const {
+      nu,
+      nv,
+      uMin,
+      uMax,
+      vMin,
+      vMax,
+      re,
+      im,
+      abs,
+      arg,
+      reMin,
+      reMax,
+      imMin,
+      imMax,
+      absMin,
+      absMax,
+      argMin,
+      argMax,
+    } = complexScalarDomainMaps;
+
+    scalarRePlaneRef.current?.drawHeatmap({
+      values: re,
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      min: reMin,
+      max: reMax,
+      palette: "blueRed",
+      opacity: 0.86,
+    });
+    scalarImPlaneRef.current?.drawHeatmap({
+      values: im,
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      min: imMin,
+      max: imMax,
+      palette: "blueRed",
+      opacity: 0.86,
+    });
+    scalarAbsPlaneRef.current?.drawHeatmap({
+      values: abs,
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      min: absMin,
+      max: absMax,
+      palette: "redYellow",
+      opacity: 0.86,
+    });
+    scalarArgPlaneRef.current?.drawHeatmap({
+      values: arg,
+      nx: nu,
+      ny: nv,
+      xMin: uMin,
+      xMax: uMax,
+      yMin: vMin,
+      yMax: vMax,
+      min: argMin,
+      max: argMax,
+      palette: "rainbow",
+      opacity: 0.86,
+    });
+
+    if (complexMapLine) {
+      const u0 = Math.min(complexMapSpec.uMin, complexMapSpec.uMax);
+      const u1 = Math.max(complexMapSpec.uMin, complexMapSpec.uMax);
+      const v0 = Math.min(complexMapSpec.vMin, complexMapSpec.vMax);
+      const v1 = Math.max(complexMapSpec.vMin, complexMapSpec.vMax);
+      const linePts: [number, number][] =
+        complexMapLine.axis === "u"
+          ? [
+              [complexMapLine.value, v0],
+              [complexMapLine.value, v1],
+            ]
+          : [
+              [u0, complexMapLine.value],
+              [u1, complexMapLine.value],
+            ];
+      scalarRePlaneRef.current?.drawCurve(linePts, "#111827", { width: 1.2, opacity: 0.9, layer: "scalar-line" });
+      scalarImPlaneRef.current?.drawCurve(linePts, "#111827", { width: 1.2, opacity: 0.9, layer: "scalar-line" });
+      scalarAbsPlaneRef.current?.drawCurve(linePts, "#111827", { width: 1.2, opacity: 0.9, layer: "scalar-line" });
+      scalarArgPlaneRef.current?.drawCurve(linePts, "#111827", { width: 1.2, opacity: 0.9, layer: "scalar-line" });
+    }
+
+    if (probeEnabled && complexMapProbe) {
+      const probePt: [number, number] = [complexMapProbe.u, complexMapProbe.v];
+      const style = { color: "#111827", shape: "cross" as const, size: 4.6, layer: "scalar-probe" };
+      scalarRePlaneRef.current?.drawPoints([probePt], style);
+      scalarImPlaneRef.current?.drawPoints([probePt], style);
+      scalarAbsPlaneRef.current?.drawPoints([probePt], style);
+      scalarArgPlaneRef.current?.drawPoints([probePt], style);
+    } else {
+      scalarRePlaneRef.current?.drawPoints([], { layer: "scalar-probe" });
+      scalarImPlaneRef.current?.drawPoints([], { layer: "scalar-probe" });
+      scalarAbsPlaneRef.current?.drawPoints([], { layer: "scalar-probe" });
+      scalarArgPlaneRef.current?.drawPoints([], { layer: "scalar-probe" });
+    }
+  }, [
+    complexShowScalarDomains,
+    complexScalarDomainMaps,
+    complexMapLine,
+    complexMapSpec.uMin,
+    complexMapSpec.uMax,
+    complexMapSpec.vMin,
+    complexMapSpec.vMax,
+    probeEnabled,
+    complexMapProbe,
+  ]);
+
   const wrapComplexAdvancedTools = (content: React.ReactNode) => {
     if (viewerKind !== "complex") return content;
     return (
@@ -50369,6 +50970,14 @@ onChangeImplicitExpr,
                 />
                 Riemann sphere view
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={complexShowScalarDomains}
+                  onChange={(e) => setComplexShowScalarDomains(e.target.checked)}
+                />
+                Scalar maps: Re, Im, |f|, arg
+              </label>
               {complexMapShowSphere && (
                 <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <input
@@ -50425,6 +51034,66 @@ onChangeImplicitExpr,
               />
               <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
                 w mapped by stereographic projection; poles collapse to the north pole.
+              </div>
+            </div>
+          )}
+          {complexShowScalarDomains && (
+            <div style={{ marginTop: 2 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Z-domain scalar maps</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 11, opacity: 0.78, marginBottom: 3 }}>Re(f)</div>
+                  <PlanePlot
+                    id="svgZScalarRe"
+                    extent={complexMapZExtent}
+                    step={1}
+                    ref={scalarRePlaneRef}
+                    style={{ height: 128 }}
+                    showLabels={false}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, opacity: 0.78, marginBottom: 3 }}>Im(f)</div>
+                  <PlanePlot
+                    id="svgZScalarIm"
+                    extent={complexMapZExtent}
+                    step={1}
+                    ref={scalarImPlaneRef}
+                    style={{ height: 128 }}
+                    showLabels={false}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, opacity: 0.78, marginBottom: 3 }}>|f|</div>
+                  <PlanePlot
+                    id="svgZScalarAbs"
+                    extent={complexMapZExtent}
+                    step={1}
+                    ref={scalarAbsPlaneRef}
+                    style={{ height: 128 }}
+                    showLabels={false}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, opacity: 0.78, marginBottom: 3 }}>arg(f)</div>
+                  <PlanePlot
+                    id="svgZScalarArg"
+                    extent={complexMapZExtent}
+                    step={1}
+                    ref={scalarArgPlaneRef}
+                    style={{ height: 128 }}
+                    showLabels={false}
+                  />
+                </div>
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+                All four panels use the same z-domain; line/probe overlays stay synchronized.
               </div>
             </div>
           )}

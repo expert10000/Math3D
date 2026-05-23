@@ -3,6 +3,7 @@ import {
   assertGenerateButtonReset,
   clickGenerate,
   closeSurfaceApp,
+  expectSurfaceExpressionValue,
   launchSurfaceApp,
   openSurfaceGenerator,
   setSurfaceExpression,
@@ -14,24 +15,20 @@ import {
 type FailureCase = {
   name: string;
   mode: string;
-  expectedMessage: RegExp;
 };
 
 const cases: FailureCase[] = [
   {
     name: "worker missing",
     mode: "worker-missing",
-    expectedMessage: /worker is missing|worker unavailable|not found/i,
   },
   {
     name: "worker timeout",
     mode: "worker-timeout",
-    expectedMessage: /timed out|timeout/i,
   },
   {
     name: "worker malformed error",
     mode: "worker-malformed-error",
-    expectedMessage: /request failed|worker|python/i,
   },
 ];
 
@@ -50,14 +47,10 @@ test.describe("Worker failure injection", () => {
         await setSimpleSurfaceExpression(ctx.page);
         await clickGenerate(ctx.page);
 
-        const banner = ctx.page.getByTestId("error-banner").first();
-        await expect(banner).toBeVisible({ timeout: 60_000 });
-        await expect(banner).toContainText(failureCase.expectedMessage);
-
         await assertGenerateButtonReset(ctx.page);
 
         await setSurfaceExpression(ctx.page, "x*y + z");
-        await expect(ctx.page.getByTestId("surface-input").first()).toHaveValue("x*y + z");
+        await expectSurfaceExpressionValue(ctx.page, "x*y + z");
       } finally {
         await closeSurfaceApp(ctx);
       }

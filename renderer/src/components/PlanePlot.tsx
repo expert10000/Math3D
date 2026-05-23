@@ -714,7 +714,7 @@ export const PlanePlot = forwardRef<PlanePlotHandle, PlanePlotProps>(
       [extent]
     );
 
-    const isZ = id === "svgZ";
+    const isZ = id.toLowerCase().startsWith("svgz");
 
     return (
       <svg
