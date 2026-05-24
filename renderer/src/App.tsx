@@ -1615,6 +1615,34 @@ type GeometryDatasetMeshObject = {
 
 const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
 const DEFAULT_GEOMETRY_MATERIAL_OPACITY = 1;
+const DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS = 0.3;
+const DEFAULT_GEOMETRY_MATERIAL_METALNESS = 0.1;
+
+const normalizeGeometryMaterial = (material: unknown): GeometryObject["material"] => {
+  const m = material && typeof material === "object" ? (material as Record<string, unknown>) : {};
+  const colorRaw = m.color;
+  const opacityRaw = m.opacity;
+  const roughnessRaw = m.roughness;
+  const metalnessRaw = m.metalness;
+  return {
+    color:
+      typeof colorRaw === "number" && Number.isFinite(colorRaw)
+        ? colorRaw
+        : DEFAULT_GEOMETRY_MATERIAL_COLOR,
+    opacity:
+      typeof opacityRaw === "number" && Number.isFinite(opacityRaw)
+        ? clampNumber(opacityRaw, 0, 1)
+        : DEFAULT_GEOMETRY_MATERIAL_OPACITY,
+    roughness:
+      typeof roughnessRaw === "number" && Number.isFinite(roughnessRaw)
+        ? clampNumber(roughnessRaw, 0, 1)
+        : DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS,
+    metalness:
+      typeof metalnessRaw === "number" && Number.isFinite(metalnessRaw)
+        ? clampNumber(metalnessRaw, 0, 1)
+        : DEFAULT_GEOMETRY_MATERIAL_METALNESS,
+  };
+};
 
 const isDefaultVec3 = (value: Vec3, expected: Vec3) =>
   Math.abs(value.x - expected.x) < 1e-9 &&
@@ -1641,8 +1669,9 @@ const isSeedGeometryBoxObject = (obj: GeometryObject) => {
   if (!isDefaultVec3(obj.transform.position, { x: 0, y: 0, z: 0 })) return false;
   if (!isDefaultVec3(obj.transform.rotation, { x: 0, y: 0, z: 0 })) return false;
   if (!isDefaultVec3(obj.transform.scale, { x: 1, y: 1, z: 1 })) return false;
-  const color = obj.material.color ?? DEFAULT_GEOMETRY_MATERIAL_COLOR;
-  const opacity = obj.material.opacity ?? DEFAULT_GEOMETRY_MATERIAL_OPACITY;
+  const material = normalizeGeometryMaterial(obj.material);
+  const color = material.color;
+  const opacity = material.opacity;
   if (color !== DEFAULT_GEOMETRY_MATERIAL_COLOR) return false;
   if (Math.abs(opacity - DEFAULT_GEOMETRY_MATERIAL_OPACITY) > 1e-9) return false;
   return true;
@@ -2531,7 +2560,7 @@ const cloneGeometryObject = (obj: GeometryObject): GeometryObject => ({
     rotation: { ...obj.transform.rotation },
     scale: { ...obj.transform.scale },
   },
-  material: { ...obj.material },
+  material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
 });
 
 const buildMeshEdgePolylines = (
@@ -6451,7 +6480,8 @@ const App: React.FC = () => {
       const helperBaseName = next.name || (GEOMETRY_OBJECT_REGISTRY[type]?.label ?? "Object");
       next.group = "helper";
       if (!/helper/i.test(helperBaseName)) next.name = `${helperBaseName} helper`;
-      next.material = { ...next.material, opacity: Math.min(Number(next.material.opacity ?? 1), 0.55) };
+      const material = normalizeGeometryMaterial((next as { material?: unknown })?.material);
+      next.material = { ...material, opacity: Math.min(Number(material.opacity ?? 1), 0.55) };
     }
     setGeometryObjects((prev) => [next, ...prev]);
     if (geometryAddSelectNewObject) {
@@ -6554,7 +6584,7 @@ const App: React.FC = () => {
           rotation: { ...procedural.transform.rotation },
           scale: { ...procedural.transform.scale },
         },
-        material: { ...procedural.material },
+        material: normalizeGeometryMaterial((procedural as { material?: unknown })?.material),
       };
       setGeometryObjects((prev) => [copy, ...prev]);
       setGeometrySelectedObjectId(copyId);
@@ -6573,7 +6603,7 @@ const App: React.FC = () => {
         rotation: { ...datasetObj.transform.rotation },
         scale: { ...datasetObj.transform.scale },
       },
-      material: { ...datasetObj.material },
+      material: normalizeGeometryMaterial((datasetObj as { material?: unknown })?.material),
     };
     setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
@@ -6668,12 +6698,22 @@ const App: React.FC = () => {
       if (geometryLockedObjectIds.has(id)) return;
       setGeometryObjects((prev) =>
         prev.map((o) =>
-          o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
+          o.id === id
+            ? {
+                ...o,
+                material: { ...normalizeGeometryMaterial((o as { material?: unknown })?.material), ...patch },
+              }
+            : o
         )
       );
       setGeometryDatasetMeshObjects((prev) =>
         prev.map((o) =>
-          o.id === id ? { ...o, material: { ...o.material, ...patch } } : o
+          o.id === id
+            ? {
+                ...o,
+                material: { ...normalizeGeometryMaterial((o as { material?: unknown })?.material), ...patch },
+              }
+            : o
         )
       );
     },
@@ -7044,6 +7084,7 @@ const App: React.FC = () => {
     let triCount = 0;
     for (const obj of geometryObjects) {
       if (!obj.visible) continue;
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       const entry = GEOMETRY_OBJECT_REGISTRY[obj.type];
       if (!entry) continue;
       const key = `${obj.type}|${JSON.stringify(obj.params)}`;
@@ -7079,10 +7120,10 @@ const App: React.FC = () => {
         ...mesh,
         id: obj.id,
         label: obj.name,
-        color: obj.material.color,
-        opacity: obj.material.opacity,
-        roughness: obj.material.roughness,
-        metalness: obj.material.metalness,
+        color: material.color,
+        opacity: material.opacity,
+        roughness: material.roughness,
+        metalness: material.metalness,
         flatShading: !smoothNormals,
         transform: {
           position: { ...obj.transform.position },
@@ -7094,6 +7135,7 @@ const App: React.FC = () => {
 
     for (const obj of geometryDatasetMeshObjects) {
       if (!obj.visible) continue;
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       let mesh = cloneSurfaceMeshData(obj.mesh, obj.name);
       if (!mesh.normals || mesh.normals.length < mesh.positions.length) {
         mesh = computeVertexNormals(mesh);
@@ -7110,10 +7152,10 @@ const App: React.FC = () => {
         ...mesh,
         id: obj.id,
         label: obj.name,
-        color: obj.material.color,
-        opacity: obj.material.opacity,
-        roughness: obj.material.roughness,
-        metalness: obj.material.metalness,
+        color: material.color,
+        opacity: material.opacity,
+        roughness: material.roughness,
+        metalness: material.metalness,
         flatShading: false,
         transform: {
           position: { ...obj.transform.position },
@@ -9478,7 +9520,7 @@ const App: React.FC = () => {
         rotation: { ...obj.transform.rotation },
         scale: { ...obj.transform.scale },
       },
-      material: { ...obj.material },
+      material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
     };
     const baked: SurfaceMeshData = {
       label: `${obj.name} (scene->dataset)`,
@@ -9516,20 +9558,22 @@ const App: React.FC = () => {
       }
     >();
     geometryObjects.forEach((obj) => {
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       objectById.set(obj.id, {
         id: obj.id,
         name: obj.name,
         transform: obj.transform,
-        material: obj.material,
+        material,
         params: { ...obj.params },
       });
     });
     geometryDatasetMeshObjects.forEach((obj) => {
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       objectById.set(obj.id, {
         id: obj.id,
         name: obj.name,
         transform: obj.transform,
-        material: obj.material,
+        material,
         params: { sourceKind: "datasetMeshObject" },
       });
     });
@@ -9570,7 +9614,7 @@ const App: React.FC = () => {
           rotation: { ...entry.obj.transform.rotation },
           scale: { ...entry.obj.transform.scale },
         },
-        material: { ...entry.obj.material },
+        material: normalizeGeometryMaterial((entry.obj as { material?: unknown })?.material),
       })),
     };
     const baked: SurfaceMeshData = {
@@ -20329,7 +20373,7 @@ case "mobius":
             scale: { ...obj.transform.scale },
           },
           visible: obj.visible,
-          material: { ...obj.material },
+          material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
           name: obj.name,
           group: obj.group,
         })),
@@ -20596,7 +20640,7 @@ case "mobius":
             },
           },
           visible: Boolean(obj.visible ?? true),
-          material: { ...(obj.material ?? {}) },
+          material: normalizeGeometryMaterial(obj.material),
           name: String(obj.name ?? obj.id),
           group: typeof obj.group === "string" ? obj.group : "default",
         })) as GeometryObject[];
@@ -27690,12 +27734,13 @@ case "mobius":
     };
 
     for (const obj of geometryObjects) {
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       addRaw({
         id: `scene:${obj.id}`,
         name: obj.name,
         type: `scene/${obj.type}`,
         sourceDefinition: `${GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type} ${JSON.stringify(obj.params)}`,
-        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
+        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(material.opacity ?? 1)}`,
         parentId: null,
         category: "sceneObject",
         sceneRole: "primaryObject",
@@ -27703,10 +27748,11 @@ case "mobius":
         visible: obj.visible,
         canToggleVisibility: true,
         canDelete: true,
-        colorHex: toHexColorString(obj.material.color, 0x8aa4ff),
+        colorHex: toHexColorString(material.color, 0x8aa4ff),
       });
     }
     for (const obj of geometryDatasetMeshObjects) {
+      const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
       const isDetachedMeshObject = obj.mesh.source.kind === "detachedMesh";
       const meshSceneRole: UnifiedSceneRole =
@@ -27720,7 +27766,7 @@ case "mobius":
         name: obj.name,
         type: isDetachedMeshObject ? "scene/mesh-object" : "scene/dataset-mesh",
         sourceDefinition: `${formatSurfaceMeshSource(obj.mesh.source)} (${meshStats})`,
-        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(obj.material.opacity ?? 1)}`,
+        displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(material.opacity ?? 1)}`,
         parentId: null,
         category: "sceneObject",
         sceneRole: meshSceneRole,
@@ -27728,7 +27774,7 @@ case "mobius":
         visible: obj.visible,
         canToggleVisibility: true,
         canDelete: true,
-        colorHex: toHexColorString(obj.material.color, 0x8aa4ff),
+        colorHex: toHexColorString(material.color, 0x8aa4ff),
       });
     }
 
@@ -38319,7 +38365,7 @@ case "mobius":
                           <div style={{ fontSize: 11 }}>Color</div>
                           <input
                             type="color"
-                            value={toHexColorString(geometrySelectedObject.material.color, 0x8aa4ff)}
+                            value={toHexColorString(geometrySelectedObject.material?.color, 0x8aa4ff)}
                             onChange={(e) =>
                               handleUpdateGeometryMaterial(geometrySelectedObject.id, {
                                 color: fromHexColorString(e.target.value, 0x8aa4ff),
@@ -38332,7 +38378,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedObject.material.opacity ?? 1)}
+                            value={Number(geometrySelectedObject.material?.opacity ?? 1)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -38347,7 +38393,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedObject.material.roughness ?? 0.3)}
+                            value={Number(geometrySelectedObject.material?.roughness ?? DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -38362,7 +38408,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedObject.material.metalness ?? 0.1)}
+                            value={Number(geometrySelectedObject.material?.metalness ?? DEFAULT_GEOMETRY_MATERIAL_METALNESS)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -38377,7 +38423,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedDatasetMeshObject.material.roughness ?? 0.3)}
+                            value={Number(geometrySelectedDatasetMeshObject.material?.roughness ?? DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -38392,7 +38438,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedDatasetMeshObject.material.metalness ?? 0.1)}
+                            value={Number(geometrySelectedDatasetMeshObject.material?.metalness ?? DEFAULT_GEOMETRY_MATERIAL_METALNESS)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -38583,7 +38629,7 @@ case "mobius":
                           <div style={{ fontSize: 11 }}>Color</div>
                           <input
                             type="color"
-                            value={toHexColorString(geometrySelectedDatasetMeshObject.material.color, 0x8aa4ff)}
+                            value={toHexColorString(geometrySelectedDatasetMeshObject.material?.color, 0x8aa4ff)}
                             onChange={(e) =>
                               handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
                                 color: fromHexColorString(e.target.value, 0x8aa4ff),
@@ -38596,7 +38642,7 @@ case "mobius":
                             min={0}
                             max={1}
                             step={0.05}
-                            value={Number(geometrySelectedDatasetMeshObject.material.opacity ?? 1)}
+                            value={Number(geometrySelectedDatasetMeshObject.material?.opacity ?? 1)}
                             onChange={(e) => {
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
@@ -48142,7 +48188,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                 min={0}
                 max={1}
                 step={0.05}
-                value={Number(selectedSceneObject.material.opacity ?? 1)}
+                value={Number(selectedSceneObject.material?.opacity ?? 1)}
                 onChange={(e) => {
                   const raw = Number(e.target.value);
                   if (!Number.isFinite(raw)) return;
@@ -48155,7 +48201,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
               <div>Surface color</div>
               <input
                 type="color"
-                value={toHexColorString(selectedSceneObject.material.color, 0x8aa4ff)}
+                value={toHexColorString(selectedSceneObject.material?.color, 0x8aa4ff)}
                 onChange={(e) => onPatchSelectedMaterial({ color: fromHexColorString(e.target.value, 0x8aa4ff) })}
                 disabled={!canEditSceneObject}
               />
