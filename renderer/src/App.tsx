@@ -354,7 +354,7 @@ interface GeometryObjectMeta {
   includeInStageFit: boolean;
   includeInClaimFit: boolean;
 }
-type GalleryCardViewMode = "rendered" | "diagram";
+type GalleryCardViewMode = "rendered" | "diagram" | "formula";
 type CommandPaletteItem = {
   id: string;
   title: string;
@@ -6043,6 +6043,8 @@ const App: React.FC = () => {
     GEOMETRY_GALLERY_DEFAULT_CARD_ID
   );
   const [geometryGallerySelectedPresetId, setGeometryGallerySelectedPresetId] = useState<string | null>(null);
+  const [geometryGalleryPreviewParams, setGeometryGalleryPreviewParams] = useState<Record<string, number | boolean | string>>({});
+  const [geometryGalleryRecentCardIds, setGeometryGalleryRecentCardIds] = useState<string[]>([]);
   const [galleryCardViewMode, setGalleryCardViewMode] = useState<GalleryCardViewMode>("rendered");
   const [geometryGallerySortPreset, setGeometryGallerySortPreset] = useState<GallerySortPreset>("family");
   const [geometryGallerySearchText, setGeometryGallerySearchText] = useState("");
@@ -6053,6 +6055,12 @@ const App: React.FC = () => {
   );
   const [geometryGalleryFavoritesOnly, setGeometryGalleryFavoritesOnly] = useState(false);
   const [geometryGalleryDemoReadyOnly, setGeometryGalleryDemoReadyOnly] = useState(false);
+  const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
+  const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
+  const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
+  const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
+  const [geometryAddAsHelper, setGeometryAddAsHelper] = useState(false);
+  const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
@@ -6147,6 +6155,25 @@ const App: React.FC = () => {
     if (!geometryGallerySelectedCard || !geometryGallerySelectedPresetId) return null;
     return geometryGallerySelectedCard.presets.find((presetDef) => presetDef.id === geometryGallerySelectedPresetId) ?? null;
   }, [geometryGallerySelectedCard, geometryGallerySelectedPresetId]);
+  const geometryGallerySelectedRecipe = useMemo(() => {
+    if (geometryGallerySelectedPreset) return geometryGallerySelectedPreset.recipe;
+    return geometryGallerySelectedCard?.defaultRecipe ?? null;
+  }, [geometryGallerySelectedCard, geometryGallerySelectedPreset]);
+  const geometryGalleryPreviewRecipe = useMemo(() => {
+    if (!geometryGallerySelectedRecipe) return null;
+    return {
+      ...geometryGallerySelectedRecipe,
+      params: {
+        ...(geometryGallerySelectedRecipe.params ?? {}),
+        ...geometryGalleryPreviewParams,
+      },
+    };
+  }, [geometryGalleryPreviewParams, geometryGallerySelectedRecipe]);
+  const geometryGalleryPreviewParamEntries = useMemo(() => {
+    const recipe = geometryGalleryPreviewRecipe;
+    if (!recipe?.params) return [] as Array<{ key: string; value: number | boolean | string }>;
+    return Object.entries(recipe.params).map(([key, value]) => ({ key, value }));
+  }, [geometryGalleryPreviewRecipe]);
   const geometryGalleryVisibleCards = useMemo(() => {
     const query = geometryGallerySearchText.trim().toLowerCase();
     return GEOMETRY_GALLERY_CARDS.filter((card) => {
@@ -6170,23 +6197,49 @@ const App: React.FC = () => {
   );
   const geometryGallerySections = useMemo(
     () => {
+      const byId = new Map(sortedGeometryGalleryVisibleCards.map((card) => [card.id, card] as const));
+      const recentCards = geometryGalleryRecentCardIds
+        .map((id) => byId.get(id))
+        .filter((card): card is GeometryGalleryCard => !!card);
+      const favoriteCards = sortedGeometryGalleryVisibleCards.filter((card) => geometryGalleryFavoriteCardIds.has(card.id));
+      const featuredIds = new Set<string>([
+        ...recentCards.map((card) => card.id),
+        ...favoriteCards.map((card) => card.id),
+      ]);
+      const sections: Array<{ key: string; label: string; cards: GeometryGalleryCard[] }> = [];
+      if (recentCards.length) {
+        sections.push({ key: "recent", label: "Recently used", cards: recentCards });
+      }
+      const favoritesOnlyUnique = favoriteCards.filter((card) => !recentCards.some((entry) => entry.id === card.id));
+      if (favoritesOnlyUnique.length) {
+        sections.push({ key: "favorites", label: "Favorites", cards: favoritesOnlyUnique });
+      }
       if (geometryGallerySortPreset === "family") {
-        return GEOMETRY_GALLERY_CATEGORIES.map((category) => ({
+        const familySections = GEOMETRY_GALLERY_CATEGORIES.map((category) => ({
           key: category.id,
           label: category.label,
-          cards: sortedGeometryGalleryVisibleCards.filter((card) => card.categoryId === category.id),
+          cards: sortedGeometryGalleryVisibleCards.filter(
+            (card) => card.categoryId === category.id && !featuredIds.has(card.id)
+          ),
         })).filter((section) => section.cards.length);
+        return [...sections, ...familySections];
       }
       const label = GALLERY_SORT_OPTIONS.find((entry) => entry.value === geometryGallerySortPreset)?.label ?? "Name";
       return [
+        ...sections,
         {
           key: `sorted-${geometryGallerySortPreset}`,
           label: `All cards · ${label}`,
-          cards: sortedGeometryGalleryVisibleCards,
+          cards: sortedGeometryGalleryVisibleCards.filter((card) => !featuredIds.has(card.id)),
         },
       ].filter((section) => section.cards.length);
     },
-    [geometryGallerySortPreset, sortedGeometryGalleryVisibleCards]
+    [
+      geometryGalleryFavoriteCardIds,
+      geometryGalleryRecentCardIds,
+      geometryGallerySortPreset,
+      sortedGeometryGalleryVisibleCards,
+    ]
   );
   const geometryGalleryThumbUrls = useMemo(() => {
     const urls: string[] = [];
@@ -6230,6 +6283,13 @@ const App: React.FC = () => {
     setGeometryGallerySelectedPresetId(null);
   }, [geometryGallerySelectedCard, geometryGallerySelectedPresetId]);
   useEffect(() => {
+    if (!geometryGallerySelectedRecipe?.params) {
+      setGeometryGalleryPreviewParams({});
+      return;
+    }
+    setGeometryGalleryPreviewParams({ ...geometryGallerySelectedRecipe.params });
+  }, [geometryGallerySelectedRecipe]);
+  useEffect(() => {
     if (!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe) return;
     setGeometryNewObjectType(geometryGallerySelectedCard.defaultRecipe.type);
   }, [geometryGallerySelectedCard]);
@@ -6263,21 +6323,62 @@ const App: React.FC = () => {
     });
   }, [geometryObjects, geometryDatasetMeshObjects]);
 
+  const markGeometryGalleryCardUsed = useCallback((cardId: string) => {
+    if (!cardId) return;
+    setGeometryGalleryRecentCardIds((prev) => {
+      const next = [cardId, ...prev.filter((id) => id !== cardId)];
+      return next.slice(0, 8);
+    });
+  }, []);
+
+  const buildRecipeWithPreviewOverrides = useCallback(
+    (recipe?: GeometryGalleryRecipe | null): GeometryGalleryRecipe | undefined => {
+      if (!recipe) return undefined;
+      const params = {
+        ...(recipe.params ?? {}),
+        ...geometryGalleryPreviewParams,
+      };
+      return { ...recipe, params };
+    },
+    [geometryGalleryPreviewParams]
+  );
+
   const handleAddGeometryObject = useCallback((recipe?: GeometryGalleryRecipe) => {
     const type = recipe?.type ?? geometryNewObjectType;
     const id = makeId();
     const next = createGeometryObject(type, id);
     if (recipe?.params) next.params = { ...next.params, ...recipe.params };
     if (recipe?.name) next.name = recipe.name;
+    if (geometryAddAsHelper) {
+      const helperBaseName = next.name || (GEOMETRY_OBJECT_REGISTRY[type]?.label ?? "Object");
+      next.group = "helper";
+      if (!/helper/i.test(helperBaseName)) next.name = `${helperBaseName} helper`;
+      next.material = { ...next.material, opacity: Math.min(Number(next.material.opacity ?? 1), 0.55) };
+    }
     setGeometryObjects((prev) => [next, ...prev]);
-    setGeometrySelectedObjectId(id);
-  }, [geometryNewObjectType]);
+    if (geometryAddSelectNewObject) {
+      setGeometrySelectedObjectId(id);
+    }
+    if (geometryAddOpenObjectTab) {
+      setGeometryProceduralPanelTab("object");
+    }
+    if (geometryAddFocusCamera) {
+      geometryFocusAfterAddRef.current?.();
+    }
+  }, [
+    geometryAddAsHelper,
+    geometryAddFocusCamera,
+    geometryAddOpenObjectTab,
+    geometryAddSelectNewObject,
+    geometryNewObjectType,
+  ]);
   const handleAddGeometryGalleryDefault = useCallback((card: GeometryGalleryCard) => {
     if (!card.supported || !card.defaultRecipe) return;
     setGeometryGallerySelectedCardId(card.id);
     setGeometryGallerySelectedPresetId(null);
     handleAddGeometryObject(card.defaultRecipe);
-  }, [handleAddGeometryObject]);
+    markGeometryGalleryCardUsed(card.id);
+  }, [handleAddGeometryObject, markGeometryGalleryCardUsed]);
   const handleAddGeometryGalleryPreset = useCallback(
     (card: GeometryGalleryCard, presetId: string) => {
       const presetDef = card.presets.find((entry) => entry.id === presetId);
@@ -6285,22 +6386,42 @@ const App: React.FC = () => {
       setGeometryGallerySelectedCardId(card.id);
       setGeometryGallerySelectedPresetId(presetDef.id);
       handleAddGeometryObject(presetDef.recipe);
+      markGeometryGalleryCardUsed(card.id);
     },
-    [handleAddGeometryObject]
+    [handleAddGeometryObject, markGeometryGalleryCardUsed]
   );
   const handleAddGeometryGallerySelected = useCallback(() => {
     if (!geometryGallerySelectedCard?.supported) return;
-    if (geometryGallerySelectedPreset) {
-      handleAddGeometryObject(geometryGallerySelectedPreset.recipe);
+    const previewRecipe = buildRecipeWithPreviewOverrides(geometryGallerySelectedRecipe);
+    if (previewRecipe) {
+      handleAddGeometryObject(previewRecipe);
+      markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
       return;
     }
-    if (geometryGallerySelectedCard.defaultRecipe) handleAddGeometryObject(geometryGallerySelectedCard.defaultRecipe);
-  }, [geometryGallerySelectedCard, geometryGallerySelectedPreset, handleAddGeometryObject]);
+    if (geometryGallerySelectedCard.defaultRecipe) {
+      handleAddGeometryObject(geometryGallerySelectedCard.defaultRecipe);
+      markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
+    }
+  }, [
+    buildRecipeWithPreviewOverrides,
+    geometryGallerySelectedCard,
+    geometryGallerySelectedRecipe,
+    handleAddGeometryObject,
+    markGeometryGalleryCardUsed,
+  ]);
   const handleOpenGeometryGalleryCustomEditor = useCallback(() => {
     if (!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe) return;
     setGeometryNewObjectType(geometryGallerySelectedCard.defaultRecipe.type);
-    handleAddGeometryObject(geometryGallerySelectedCard.defaultRecipe);
-  }, [geometryGallerySelectedCard, handleAddGeometryObject]);
+    const previewRecipe = buildRecipeWithPreviewOverrides(geometryGallerySelectedRecipe ?? geometryGallerySelectedCard.defaultRecipe);
+    handleAddGeometryObject(previewRecipe ?? geometryGallerySelectedCard.defaultRecipe);
+    markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
+  }, [
+    buildRecipeWithPreviewOverrides,
+    geometryGallerySelectedCard,
+    geometryGallerySelectedRecipe,
+    handleAddGeometryObject,
+    markGeometryGalleryCardUsed,
+  ]);
 
   const handleRemoveGeometryObject = useCallback((id: string) => {
     if (geometryLockedObjectIds.has(id)) return;
@@ -7786,6 +7907,11 @@ const App: React.FC = () => {
     },
     [handleGeometryFit]
   );
+  useEffect(() => {
+    geometryFocusAfterAddRef.current = () => {
+      handleGeometryFit("scene");
+    };
+  }, [handleGeometryFit]);
   useEffect(() => {
     if (geometryMode !== "demo") return;
     if (geometryDemoFamily === "planimetry") {
@@ -36101,6 +36227,7 @@ case "mobius":
                           {([
                             { id: "rendered" as const, label: "Rendered" },
                             { id: "diagram" as const, label: "Diagram" },
+                            { id: "formula" as const, label: "Formula" },
                           ] as const).map((modeOption) => (
                             <button
                               key={`geometry-gallery-view-${modeOption.id}`}
@@ -36109,7 +36236,7 @@ case "mobius":
                               aria-pressed={galleryCardViewMode === modeOption.id}
                               style={{
                                 border: "none",
-                                borderRight: modeOption.id === "rendered" ? "1px solid #cbd5e1" : "none",
+                                borderRight: modeOption.id === "formula" ? "none" : "1px solid #cbd5e1",
                                 borderRadius: 0,
                                 padding: "3px 8px",
                                 fontSize: 10,
@@ -36207,14 +36334,38 @@ case "mobius":
                                 >
                                   <div className="gallery-scan-card-preview">
                                     <div className="gallery-scan-card-preview-frame">
-                                      <img
-                                        src={cardThumb}
-                                        alt={`${card.name} card`}
-                                        className="gallery-scan-card-preview-image"
-                                        loading="lazy"
-                                        decoding="async"
-                                        onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
-                                      />
+                                      {galleryCardViewMode === "formula" ? (
+                                        <div
+                                          style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            padding: "6px 7px",
+                                            boxSizing: "border-box",
+                                            display: "grid",
+                                            gap: 2,
+                                            alignContent: "start",
+                                            background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+                                            color: "#1e293b",
+                                            fontSize: 9.5,
+                                            lineHeight: 1.2,
+                                          }}
+                                        >
+                                          {formatGalleryCardFormulaLines(card)
+                                            .slice(0, 6)
+                                            .map((line, idx) => (
+                                              <div key={`formula-card-${card.id}-${idx}`}>{line}</div>
+                                            ))}
+                                        </div>
+                                      ) : (
+                                        <img
+                                          src={cardThumb}
+                                          alt={`${card.name} card`}
+                                          className="gallery-scan-card-preview-image"
+                                          loading="lazy"
+                                          decoding="async"
+                                          onError={(event) => handleGalleryImageLoadError(event, cardFallbackThumb)}
+                                        />
+                                      )}
                                     </div>
                                     <button
                                       type="button"
@@ -36302,42 +36453,84 @@ case "mobius":
                       <div
                         style={{
                           marginTop: 10,
+                          position: "sticky",
+                          bottom: 0,
+                          zIndex: 12,
                           border: "1px solid #dbe2ea",
                           borderRadius: 8,
                           padding: "8px 10px",
-                          background: "#fbfdff",
+                          background: "rgba(251, 253, 255, 0.98)",
+                          boxShadow: "0 -8px 16px rgba(15,23,42,0.08)",
                           display: "grid",
-                          gap: 8,
+                          gap: 7,
                         }}
                       >
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Selected card</div>
                         <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
-                          <img
-                            src={thumbByViewMode(
-                              geometryGallerySelectedCard.renderedThumbnailDataUrl,
-                              geometryGallerySelectedCard.diagramThumbnailDataUrl,
-                              galleryCardViewMode
-                            )}
-                            alt={`${geometryGallerySelectedCard.name} selected`}
-                            style={{
-                              width: "100%",
-                              height: 64,
-                              borderRadius: 6,
-                              border: "1px solid #dbe2ea",
-                              objectFit: "contain",
-                              background: "linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%)",
-                              padding: 4,
-                            }}
-                            loading="lazy"
-                            decoding="async"
-                            onError={(event) =>
-                              handleGalleryImageLoadError(event, geometryGallerySelectedCard.diagramThumbnailDataUrl)
-                            }
-                          />
+                          <div style={{ display: "grid", gap: 4 }}>
+                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#334155" }}>Preview</div>
+                          {galleryCardViewMode === "formula" ? (
+                            <div
+                              style={{
+                                width: "100%",
+                                height: 64,
+                                borderRadius: 6,
+                                border: "1px solid #dbe2ea",
+                                background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+                                padding: "4px 5px",
+                                boxSizing: "border-box",
+                                display: "grid",
+                                gap: 1,
+                                alignContent: "start",
+                                fontSize: 8.5,
+                                lineHeight: 1.15,
+                                color: "#1e293b",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {formatGalleryCardFormulaLines(geometryGallerySelectedCard)
+                                .slice(0, 5)
+                                .map((line, idx) => (
+                                  <div key={`selected-formula-${idx}`}>{line}</div>
+                                ))}
+                            </div>
+                          ) : (
+                            <img
+                              src={thumbByViewMode(
+                                geometryGallerySelectedCard.renderedThumbnailDataUrl,
+                                geometryGallerySelectedCard.diagramThumbnailDataUrl,
+                                galleryCardViewMode
+                              )}
+                              alt={`${geometryGallerySelectedCard.name} selected`}
+                              style={{
+                                width: "100%",
+                                height: 64,
+                                borderRadius: 6,
+                                border: "1px solid #dbe2ea",
+                                objectFit: "contain",
+                                background: "linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%)",
+                                padding: 4,
+                              }}
+                              loading="lazy"
+                              decoding="async"
+                              onError={(event) =>
+                                handleGalleryImageLoadError(event, geometryGallerySelectedCard.diagramThumbnailDataUrl)
+                              }
+                            />
+                          )}
+                          </div>
                           <div style={{ display: "grid", gap: 4 }}>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>{geometryGallerySelectedCard.name}</div>
-                            <div style={{ fontSize: 10, opacity: 0.84, lineHeight: 1.35 }}>
-                              {geometryGallerySelectedCard.description}
+                            <div style={{ fontSize: 9.5, opacity: 0.9, fontWeight: 700 }}>
+                              {[
+                                geometryGallerySelectedCard.badge || "Primitive",
+                                "3D",
+                                geometryGallerySelectedCard.supported ? "Editable" : "Planned",
+                                geometryGallerySelectedCard.presets.length ? "Has presets" : "No presets",
+                              ].join(" · ")}
+                            </div>
+                            <div style={{ fontSize: 10, opacity: 0.82, lineHeight: 1.3 }}>
+                              {compactSummary(geometryGallerySelectedCard.description, 120)}
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                               <span
@@ -36370,6 +36563,76 @@ case "mobius":
                           </div>
                         </div>
 
+                        {geometryGalleryPreviewParamEntries.length > 0 && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              background: "#fff",
+                              padding: "6px 8px",
+                              display: "grid",
+                              gap: 5,
+                            }}
+                          >
+                            <div style={{ fontSize: 10.5, fontWeight: 700 }}>Parameters</div>
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {geometryGalleryPreviewParamEntries.slice(0, 8).map((entry) => (
+                                <label
+                                  key={`geometry-preview-param-${entry.key}`}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "1fr auto",
+                                    gap: 6,
+                                    alignItems: "center",
+                                    fontSize: 10.5,
+                                  }}
+                                >
+                                  <span style={{ color: "#334155" }}>{entry.key}</span>
+                                  {typeof entry.value === "boolean" ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={entry.value}
+                                      onChange={(e) =>
+                                        setGeometryGalleryPreviewParams((prev) => ({
+                                          ...prev,
+                                          [entry.key]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                  ) : typeof entry.value === "number" ? (
+                                    <input
+                                      type="number"
+                                      step={0.1}
+                                      value={entry.value}
+                                      onChange={(e) => {
+                                        const raw = Number(e.target.value);
+                                        if (!Number.isFinite(raw)) return;
+                                        setGeometryGalleryPreviewParams((prev) => ({
+                                          ...prev,
+                                          [entry.key]: raw,
+                                        }));
+                                      }}
+                                      style={{ width: 86, fontSize: 10.5 }}
+                                    />
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={String(entry.value)}
+                                      onChange={(e) =>
+                                        setGeometryGalleryPreviewParams((prev) => ({
+                                          ...prev,
+                                          [entry.key]: e.target.value,
+                                        }))
+                                      }
+                                      style={{ width: 110, fontSize: 10.5 }}
+                                    />
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button
                             type="button"
@@ -36377,25 +36640,182 @@ case "mobius":
                             onClick={handleAddGeometryGallerySelected}
                             disabled={!geometryGallerySelectedCard.supported}
                           >
-                            Add object
+                            Add selected
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAddGeometryGalleryDefault(geometryGallerySelectedCard)}
                             disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
                           >
-                            Create default
+                            Add default preset
                           </button>
                           <button
                             type="button"
                             onClick={handleOpenGeometryGalleryCustomEditor}
                             disabled={!geometryGallerySelectedCard.supported || !geometryGallerySelectedCard.defaultRecipe}
                           >
-                            Open custom editor
+                            Customize before adding
                           </button>
                         </div>
 
-                        <div style={{ fontSize: 11, fontWeight: 700 }}>Choose preset</div>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            background: "#fff",
+                            padding: "6px 8px",
+                            display: "grid",
+                            gap: 5,
+                          }}
+                        >
+                          <div style={{ fontSize: 10.5, fontWeight: 700 }}>After add</div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryAddSelectNewObject}
+                              onChange={(e) => setGeometryAddSelectNewObject(e.target.checked)}
+                            />
+                            Select new object
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryAddFocusCamera}
+                              onChange={(e) => setGeometryAddFocusCamera(e.target.checked)}
+                            />
+                            Focus camera
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryAddOpenObjectTab}
+                              onChange={(e) => setGeometryAddOpenObjectTab(e.target.checked)}
+                            />
+                            Open Object tab
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryAddAsHelper}
+                              onChange={(e) => setGeometryAddAsHelper(e.target.checked)}
+                            />
+                            Add as reference/helper
+                          </label>
+                        </div>
+
+                        <details
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            background: "#fff",
+                            padding: "6px 8px",
+                          }}
+                        >
+                          <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>
+                            Create from selected
+                          </summary>
+                          <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowBoundingBox(true);
+                                  setGeometryCreateActionStatus("Bounding box overlay enabled.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Bounding box
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryCreateActionStatus("Convex hull creation is planned for an upcoming update.")}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Convex hull
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  runUnifiedPipelineAction("wireframe");
+                                  setGeometryCreateActionStatus("Wireframe extracted from selected/active mesh.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Wireframe
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  runUnifiedPipelineAction("pointCloud");
+                                  setGeometryCreateActionStatus("Point-cloud node generated from selected/active mesh.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Point cloud
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  runUnifiedPipelineAction("normals");
+                                  setGeometryCreateActionStatus("Normal-field workflow enabled for selected/active mesh.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Normal field
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowAxes(true);
+                                  setGeometryCreateActionStatus("Coordinate-frame overlay enabled.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Coordinate frame
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (geometrySelectedSceneObject) {
+                                    handleDuplicateGeometryObject(geometrySelectedSceneObject.id);
+                                    setGeometryCreateActionStatus("Selected object duplicated.");
+                                  }
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Duplicate as primitive
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) return;
+                                  const suggestedCardId =
+                                    geometrySelectedSceneObject.type === "polyhedron"
+                                      ? "cube"
+                                      : geometrySelectedSceneObject.type === "polygon"
+                                        ? "polygon"
+                                        : geometrySelectedSceneObject.type;
+                                  if (GEOMETRY_GALLERY_CARD_BY_ID.has(suggestedCardId)) {
+                                    setGeometryGallerySelectedCardId(suggestedCardId);
+                                    setGeometryGallerySelectedPresetId(null);
+                                  }
+                                  handleGeometryFit("scene");
+                                  setGeometryCreateActionStatus("Suggested primitive selected and camera fit to scene.");
+                                }}
+                                disabled={!geometrySelectedSceneObject}
+                              >
+                                Fit primitive to selected
+                              </button>
+                            </div>
+                            {geometryCreateActionStatus && (
+                              <div style={{ fontSize: 10, color: "#334155" }}>{geometryCreateActionStatus}</div>
+                            )}
+                          </div>
+                        </details>
+
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Preset:</div>
                         {geometryGallerySelectedCard.presets.length ? (
                           <div style={{ display: "grid", gap: 6 }}>
                             {geometryGallerySelectedCard.presets.map((presetDef) => {
@@ -43149,7 +43569,45 @@ const thumbByViewMode = (
   renderedThumb: string,
   diagramThumb: string,
   viewMode: GalleryCardViewMode
-): string => (viewMode === "diagram" ? diagramThumb : renderedThumb);
+): string => (viewMode === "rendered" ? renderedThumb : diagramThumb);
+
+const formatGalleryCardFormulaLines = (card: GeometryGalleryCard): string[] => {
+  if (card.id === "box") {
+    return [
+      "Parameters: width w, height h, depth d",
+      "Volume: V = w*h*d",
+      "Area: A = 2(wh + wd + hd)",
+      "Vertices: 8",
+      "Faces: 6",
+      "Edges: 12",
+    ];
+  }
+  if (card.id === "sphere") {
+    return ["Parameters: radius r", "Volume: V = 4/3*pi*r^3", "Area: A = 4*pi*r^2"];
+  }
+  if (card.id === "cylinder") {
+    return ["Parameters: radius r, height h", "Volume: V = pi*r^2*h", "Lateral area: A_l = 2*pi*r*h"];
+  }
+  if (card.id === "cone") {
+    return ["Parameters: radius r, height h", "Volume: V = (1/3)*pi*r^2*h", "Slant height: l = sqrt(r^2 + h^2)"];
+  }
+  if (card.id === "torus") {
+    return ["Parameters: major R, tube r", "Volume: V = 2*pi^2*R*r^2", "Area: A = 4*pi^2*R*r"];
+  }
+  if (card.id === "polygon") {
+    return ["Parameters: sides n, radius r", "Regular n-gon perimeter: P ≈ 2*n*r*sin(pi/n)", "Planar primitive"];
+  }
+  if (card.badge === "Polyhedron") {
+    return ["Topology: chi = V - E + F", "Closed orientable genus: g = (2 - chi) / 2", "Parameterized family preset"];
+  }
+  if (card.badge === "Curve") {
+    return ["Curve primitive", "Parametric form: p(t) = (x(t), y(t), z(t))", "Arc length: L = integral ||p'(t)|| dt"];
+  }
+  if (card.badge === "Helper") {
+    return ["Construction/reference helper", "Supports alignment, measurement, and orientation scaffolding"];
+  }
+  return ["Procedural card", "Formula details coming with implementation."];
+};
 
 const handleGalleryImageLoadError = (
   event: React.SyntheticEvent<HTMLImageElement>,

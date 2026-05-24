@@ -5,10 +5,11 @@ type GeometryParamValue = number | boolean | string;
 export type GeometryGalleryCategoryId =
   | "basic-solids"
   | "polyhedra"
-  | "curves-lines"
-  | "analytic-surfaces"
-  | "special-surfaces"
-  | "helpers";
+  | "curves-frames"
+  | "construction-helpers"
+  | "procedural-generated"
+  | "boolean-ready"
+  | "educational-scenes";
 
 export type GeometryGalleryBadge = "Primitive" | "Polyhedron" | "Curve" | "Surface" | "Helper";
 
@@ -258,10 +259,11 @@ const supportedCard = (
 export const GEOMETRY_GALLERY_CATEGORIES: GeometryGalleryCategory[] = [
   { id: "basic-solids", label: "Basic solids", description: "Core editable 3D primitives." },
   { id: "polyhedra", label: "Polyhedra", description: "Platonic and constructive solid families." },
-  { id: "curves-lines", label: "Curves and lines", description: "Linear and parametric curve objects." },
-  { id: "analytic-surfaces", label: "Analytic surfaces", description: "Explicit, implicit, and parametric definitions." },
-  { id: "special-surfaces", label: "Special mathematical surfaces", description: "Classic differential-geometry examples." },
-  { id: "helpers", label: "Reference / helper objects", description: "Axes, vectors, grids, and construction aids." },
+  { id: "curves-frames", label: "Curves / frames", description: "Curve primitives and frame scaffolds." },
+  { id: "construction-helpers", label: "Construction helpers", description: "Reference axes, planes, frames, and measurement aids." },
+  { id: "procedural-generated", label: "Procedural / generated", description: "Sweeps, lofts, revolutions, and generated surfaces." },
+  { id: "boolean-ready", label: "Boolean-ready objects", description: "Cutters and operands prepared for boolean workflows." },
+  { id: "educational-scenes", label: "Educational scenes", description: "Teaching-focused scene templates and demonstrations." },
 ];
 
 export const GEOMETRY_GALLERY_CARDS: GeometryGalleryCard[] = [
@@ -723,54 +725,44 @@ export const GEOMETRY_GALLERY_CARDS: GeometryGalleryCard[] = [
       ),
     ],
   }),
-  unsupportedCard("line", "Line", "Infinite line defined by point and direction.", "curves-lines", "Curve", "curve"),
-  unsupportedCard("segment", "Segment", "Finite segment between two points.", "curves-lines", "Curve", "curve"),
-  unsupportedCard("circle", "Circle", "Circle primitive in 3D with radius and orientation.", "curves-lines", "Curve", "curve"),
-  unsupportedCard("helix", "Helix", "Parametric helical curve with turn and pitch controls.", "curves-lines", "Curve", "curve"),
-  unsupportedCard(
-    "parametric-curve",
-    "Parametric curve",
-    "Custom x(t), y(t), z(t) curve editor.",
-    "curves-lines",
-    "Curve",
-    "curve"
-  ),
-  unsupportedCard(
-    "explicit-surface",
-    "Explicit surface",
-    "Surface defined as z = f(x, y).",
-    "analytic-surfaces",
-    "Surface",
-    "surface"
-  ),
-  unsupportedCard(
-    "parametric-surface",
-    "Parametric surface",
-    "Surface defined by sigma(u,v).",
-    "analytic-surfaces",
-    "Surface",
-    "surface"
-  ),
-  unsupportedCard(
-    "implicit-surface",
-    "Implicit surface",
-    "Surface defined by F(x,y,z)=0.",
-    "analytic-surfaces",
-    "Surface",
-    "surface"
-  ),
-  unsupportedCard("mobius-strip", "Mobius strip", "One-sided parametric strip with half twist.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("klein-bottle", "Klein bottle", "Closed non-orientable surface immersion.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("catenoid", "Catenoid", "Minimal surface of revolution.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("helicoid", "Helicoid", "Minimal ruled surface with helical structure.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("enneper", "Enneper", "Classical self-intersecting minimal surface.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("pseudosphere", "Pseudosphere", "Surface with constant negative curvature.", "special-surfaces", "Surface", "surface"),
-  unsupportedCard("point", "Point", "Reference point marker.", "helpers", "Helper", "helper"),
-  unsupportedCard("axis", "Axis", "Reference axis helper.", "helpers", "Helper", "helper"),
-  unsupportedCard("grid-plane", "Grid plane", "Reference grid plane helper.", "helpers", "Helper", "helper"),
-  unsupportedCard("vector", "Vector", "Arrow/vector helper with magnitude and direction.", "helpers", "Helper", "helper"),
-  unsupportedCard("frame", "Frame", "Local coordinate frame helper.", "helpers", "Helper", "helper"),
-  unsupportedCard("normal-arrows", "Normal arrows", "Surface normal visualization helper.", "helpers", "Helper", "helper"),
+  unsupportedCard("line-segment", "Line segment", "Finite segment between two points.", "curves-frames", "Curve", "curve"),
+  unsupportedCard("polyline", "Polyline", "Piecewise linear chain through editable vertices.", "curves-frames", "Curve", "curve"),
+  unsupportedCard("circle", "Circle", "Circle primitive in 3D with radius and orientation.", "curves-frames", "Curve", "curve"),
+  unsupportedCard("arc", "Arc", "Circular arc with start/end angle controls.", "curves-frames", "Curve", "curve"),
+  unsupportedCard("helix", "Helix", "Parametric helical curve with turn and pitch controls.", "curves-frames", "Curve", "curve"),
+
+  unsupportedCard("point", "Point", "Reference point marker.", "construction-helpers", "Helper", "helper"),
+  unsupportedCard("axis", "Axis", "Reference axis helper.", "construction-helpers", "Helper", "helper"),
+  unsupportedCard("plane", "Plane", "Infinite reference plane with orientation presets.", "construction-helpers", "Helper", "helper"),
+  unsupportedCard("frame", "Coordinate frame", "Local coordinate frame helper.", "construction-helpers", "Helper", "helper"),
+  unsupportedCard("grid-plane", "Grid plane", "Reference grid plane helper.", "construction-helpers", "Helper", "helper"),
+  unsupportedCard("measurement-ruler", "Measurement ruler", "Distance/angle readout helper for constructions.", "construction-helpers", "Helper", "helper"),
+
+  unsupportedCard("sweep", "Sweep", "Generate surface/solid by sweeping a profile along a path.", "procedural-generated", "Surface", "surface"),
+  unsupportedCard("loft", "Loft", "Generated geometry interpolating multiple profile sections.", "procedural-generated", "Surface", "surface"),
+  unsupportedCard("revolution", "Revolution", "Lathe/revolution surface generated from a profile curve.", "procedural-generated", "Surface", "surface"),
+  unsupportedCard("extrusion", "Extrusion", "Linear extrusion of a 2D profile into a 3D object.", "procedural-generated", "Surface", "surface"),
+  unsupportedCard("tube-along-curve", "Tube along curve", "Tube generated around a guide curve.", "procedural-generated", "Surface", "surface"),
+
+  unsupportedCard("box-cutter", "Box cutter", "Boolean-ready box operand for subtraction operations.", "boolean-ready", "Primitive", "box"),
+  unsupportedCard("sphere-cutter", "Sphere cutter", "Boolean-ready sphere operand for subtraction operations.", "boolean-ready", "Primitive", "sphere"),
+  unsupportedCard("cylinder-cutter", "Cylinder cutter", "Boolean-ready cylinder operand for subtraction operations.", "boolean-ready", "Primitive", "cylinder"),
+  unsupportedCard("half-space-plane", "Half-space plane", "Infinite cutting plane for half-space booleans.", "boolean-ready", "Helper", "helper"),
+
+  unsupportedCard("edu-euler-characteristic", "Euler characteristic examples", "Scene pack illustrating V - E + F and quotient-surface topology.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("edu-platonic-solids", "Platonic solids", "Teaching scene with all five Platonic solids and metrics.", "educational-scenes", "Polyhedron", "polyhedron"),
+  unsupportedCard("edu-conic-sections", "Conic sections", "Interactive cone-plane intersections: circle, ellipse, parabola, hyperbola.", "educational-scenes", "Curve", "curve"),
+  unsupportedCard("edu-projection-demos", "Projection demos", "Orthographic and perspective projection teaching scenes.", "educational-scenes", "Helper", "helper"),
+
+  unsupportedCard("explicit-surface", "Explicit surface", "Surface defined as z = f(x, y).", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("parametric-surface", "Parametric surface", "Surface defined by sigma(u,v).", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("implicit-surface", "Implicit surface", "Surface defined by F(x,y,z)=0.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("mobius-strip", "Mobius strip", "One-sided parametric strip with half twist.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("klein-bottle", "Klein bottle", "Closed non-orientable surface immersion.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("catenoid", "Catenoid", "Minimal surface of revolution.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("helicoid", "Helicoid", "Minimal ruled surface with helical structure.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("enneper", "Enneper", "Classical self-intersecting minimal surface.", "educational-scenes", "Surface", "surface"),
+  unsupportedCard("pseudosphere", "Pseudosphere", "Surface with constant negative curvature.", "educational-scenes", "Surface", "surface"),
 ];
 
 export const GEOMETRY_GALLERY_DEFAULT_CARD_ID = "box";
