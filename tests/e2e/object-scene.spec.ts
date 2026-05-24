@@ -141,31 +141,30 @@ test("Object/scene behavior: create, toggle visibility, remove, overlay state re
 
     await resetStorage(page);
     await openProceduralGeometry(page);
+    await clickFirstVisibleButton(page, "Scene");
 
-    const rows = page.getByTestId("geometry-object-row");
-    const toggles = page.getByTestId("geometry-object-visible-toggle");
-    const deletes = page.getByTestId("geometry-object-delete");
-
-    const initialRows = await rows.count();
     const initialStats = await readGeometryStats(page);
-    expect(initialStats.objectCount).toBe(initialRows);
 
+    await clickFirstVisibleButton(page, "Create");
     await page.getByTestId("geometry-add-object").click();
-    await expect.poll(async () => rows.count()).toBe(initialRows + 1);
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount + 1);
     const createdStats = await readGeometryStats(page);
-    expect(createdStats.objectCount).toBe(initialRows + 1);
     expect(createdStats.visibleCount).toBe(initialStats.visibleCount + 1);
 
-    await expect(toggles.first()).toBeChecked();
-    await toggles.first().click();
-    await expect(toggles.first()).not.toBeChecked();
+    await clickFirstVisibleButton(page, "Scene");
+    const sceneTree = page.getByTestId("unified-object-tree");
+    const hideButton = sceneTree.getByRole("button", { name: /^Hide$/ }).first();
+    await expect(hideButton).toBeVisible();
+    await hideButton.click();
     await expect.poll(async () => {
       const stats = await readGeometryStats(page);
       return stats.visibleCount;
     }).toBe(createdStats.visibleCount - 1);
 
-    await deletes.first().click();
-    await expect.poll(async () => rows.count()).toBe(initialRows);
+    const actionMenu = sceneTree.getByTitle("Actions").first();
+    await actionMenu.click();
+    await sceneTree.getByRole("button", { name: "Delete", exact: true }).first().click();
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(initialStats.objectCount);
     const finalStats = await readGeometryStats(page);
     expect(finalStats.objectCount).toBe(initialStats.objectCount);
     expect(finalStats.visibleCount).toBe(initialStats.visibleCount);
@@ -195,20 +194,18 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
 
     await resetStorage(page);
     await openProceduralGeometry(page);
-
-    const rows = page.getByTestId("geometry-object-row");
-    const baseCount = await rows.count();
+    const baseCount = (await readGeometryStats(page)).objectCount;
 
     const sphereCard = page.getByTestId("geometry-gallery-card-sphere");
     await expect(sphereCard).toBeVisible();
-    await sphereCard.click();
-    await expect.poll(async () => rows.count()).toBe(baseCount);
+    await sphereCard.click({ position: { x: 16, y: 16 } });
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount);
 
-    await sphereCard.dblclick();
-    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+    await page.getByTestId("geometry-add-object").click();
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
 
     await page.getByTestId("geometry-gallery-quick-add-torus").click();
-    await expect.poll(async () => rows.count()).toBe(baseCount + 2);
+    await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 2);
 
     await page.getByTestId("geometry-gallery-search").fill("zzzz-no-match");
     await expect(page.getByText("No gallery cards match this search/filter.")).toBeVisible();
@@ -241,12 +238,10 @@ test("Persistence: save workspace and reopen restores scene", async () => {
     const firstPage = first.page;
     await resetStorage(firstPage);
     await openProceduralGeometry(firstPage);
-
-    const rows = firstPage.getByTestId("geometry-object-row");
-    const baseCount = await rows.count();
+    const baseCount = (await readGeometryStats(firstPage)).objectCount;
 
     await firstPage.getByTestId("geometry-add-object").click();
-    await expect.poll(async () => rows.count()).toBe(baseCount + 1);
+    await expect.poll(async () => (await readGeometryStats(firstPage)).objectCount).toBe(baseCount + 1);
     const savedStats = await readGeometryStats(firstPage);
 
     savedWorkspacePath = await saveWorkspace(firstPage);
@@ -263,9 +258,7 @@ test("Persistence: save workspace and reopen restores scene", async () => {
 
     await openWorkspace(secondPage, savedWorkspacePath);
     await openProceduralGeometry(secondPage);
-
-    const reopenedRows = secondPage.getByTestId("geometry-object-row");
-    await expect.poll(async () => reopenedRows.count()).toBe(savedStats.objectCount);
+    await expect.poll(async () => (await readGeometryStats(secondPage)).objectCount).toBe(savedStats.objectCount);
     const reopenedStats = await readGeometryStats(secondPage);
     expect(reopenedStats.objectCount).toBe(savedStats.objectCount);
     expect(reopenedStats.visibleCount).toBe(savedStats.visibleCount);

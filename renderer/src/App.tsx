@@ -36433,6 +36433,7 @@ case "mobius":
                       data-testid="geometry-gallery"
                       data-gallery-grid="true"
                       className="gallery-panel-scroll"
+                      style={{ paddingBottom: geometryGallerySelectedCard ? 14 : 0 }}
                     >
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cards</div>
                       {geometryGallerySections.map((section) => (
@@ -36626,10 +36627,11 @@ case "mobius":
 
                     {geometryGallerySelectedCard && (
                       <div
+                        data-testid="geometry-create-selected-card"
                         style={{
                           marginTop: 10,
-                          position: "sticky",
-                          bottom: 0,
+                          position: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "sticky" : "relative",
+                          bottom: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? 0 : undefined,
                           zIndex: 12,
                           border: "1px solid #dbe2ea",
                           borderRadius: 8,
@@ -36638,6 +36640,8 @@ case "mobius":
                           boxShadow: "0 -8px 16px rgba(15,23,42,0.08)",
                           display: "grid",
                           gap: 7,
+                          maxHeight: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "48vh" : undefined,
+                          overflowY: viewportSize.height >= 900 && !isPhoneLandscapeLayout ? "auto" : undefined,
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -36658,7 +36662,7 @@ case "mobius":
                             geometryGallerySelectedCard.presets.length ? "Has presets" : "No presets",
                           ].join(" · ")}
                         </div>
-                        {geometryCreateQuickParamEntries.length > 0 && (
+                        {geometryCreateSelectedCardExpanded && geometryCreateQuickParamEntries.length > 0 && (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -40157,15 +40161,9 @@ case "mobius":
                 )}
 
                 <div data-testid="geometry-scene-stats" style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
-                  {geometryStats.mode === "procedural" && geometryProceduralPanelTab === "object"
-                    ? geometrySelectedSceneMeshInfo
-                      ? `Selected object: ${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts · ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris`
-                      : geometrySelectedSceneObject
-                        ? "Selected object: mesh status pending"
-                        : "Selected object: none"
-                    : geometryStats.mode === "procedural"
-                      ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
-                      : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
+                  {geometryStats.mode === "procedural"
+                    ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                    : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                 </div>
               </section>
             </div>

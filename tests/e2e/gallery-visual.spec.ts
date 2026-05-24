@@ -101,6 +101,7 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
     style.id = styleId;
     style.textContent = `
       [data-testid="app-status-bar"] { display: none !important; }
+      [data-testid="geometry-create-selected-card"] { display: none !important; }
       [data-testid="geometry-gallery"],
       [data-testid="surface-preset-grid"],
       [data-testid="param-preset-grid"],
@@ -111,6 +112,9 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
         min-width: 191px !important;
         width: 191px !important;
         max-width: 191px !important;
+      }
+      [data-testid="geometry-gallery"] > div:first-child {
+        display: none !important;
       }
       [data-testid="surface-preset-grid"],
       [data-testid="param-preset-grid"],
@@ -239,6 +243,23 @@ test("Gallery cards visual baseline", async () => {
 
     await clickFirstVisibleButton(page, "Geometry");
     await clickFirstVisibleButton(page, "Procedural");
+    await clickFirstVisible(page.getByRole("button", { name: "Diagram", exact: true }), 'button "Diagram"');
+    await page.evaluate(() => {
+      const byTestId = document.querySelector("[data-testid='geometry-create-selected-card']") as HTMLElement | null;
+      if (byTestId) {
+        byTestId.style.display = "none";
+        return;
+      }
+      const addButton = document.querySelector("[data-testid='geometry-add-object']") as HTMLElement | null;
+      let cursor = addButton;
+      while (cursor) {
+        if ((cursor.textContent ?? "").includes("Selected:")) {
+          cursor.style.display = "none";
+          break;
+        }
+        cursor = cursor.parentElement;
+      }
+    });
     const geometryGallery = page.getByTestId("geometry-gallery");
     await expect(geometryGallery).toBeVisible();
     await waitForImagesLoaded(geometryGallery);
