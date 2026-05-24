@@ -22,6 +22,8 @@ export type GeometryObjectTransform = {
 export type GeometryObjectMaterial = {
   color?: number;
   opacity?: number;
+  roughness?: number;
+  metalness?: number;
 };
 
 export type GeometryObject = {
@@ -481,7 +483,7 @@ export const createGeometryObject = (type: GeometryObjectType, id: string): Geom
       scale: { ...DEFAULT_TRANSFORM.scale },
     },
     visible: true,
-    material: { color: 0x8aa4ff, opacity: 1 },
+    material: { color: 0x8aa4ff, opacity: 1, roughness: 0.3, metalness: 0.1 },
     name: entry.label,
     group: "default",
   };

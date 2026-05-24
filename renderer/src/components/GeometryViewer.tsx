@@ -26,6 +26,8 @@ export type GeometryViewerProps = {
       id?: string;
       color?: number;
       opacity?: number;
+      roughness?: number;
+      metalness?: number;
       flatShading?: boolean;
       transform?: {
         position?: { x: number; y: number; z: number };
@@ -247,6 +249,8 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
               validation: entry.validation ?? null,
               color: entry.color,
               opacity: entry.opacity,
+              roughness: entry.roughness,
+              metalness: entry.metalness,
               flatShading: entry.flatShading,
               transform: entry.transform,
             }))

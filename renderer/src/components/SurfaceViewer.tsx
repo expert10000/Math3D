@@ -120,6 +120,8 @@ type SurfaceMeshOverride = {
   validation?: MeshValidation | null;
   color?: number;
   opacity?: number;
+  roughness?: number;
+  metalness?: number;
   wireframe?: boolean;
   flatShading?: boolean;
   transform?: {
@@ -2426,7 +2428,14 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
         const mesh = anyO as THREE.Mesh;
         const geom = mesh.geometry as THREE.BufferGeometry;
         const style = (mesh as any)?.userData?.__surfaceMeshOverrideStyle as
-          | { color?: number; opacity?: number; wireframe?: boolean; flatShading?: boolean }
+          | {
+              color?: number;
+              opacity?: number;
+              roughness?: number;
+              metalness?: number;
+              wireframe?: boolean;
+              flatShading?: boolean;
+            }
           | undefined;
         const meshOpacity = clamp01((style?.opacity ?? 1) * materialOpacity);
         const posAttr = geom.getAttribute("position") as THREE.BufferAttribute | null;
@@ -2453,8 +2462,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
           (m as any).wireframe = style?.wireframe ?? !!wireframe;
           (m as any).flatShading = !!style?.flatShading;
           (m as any).vertexColors = heatmapOk || colorMode !== "solid";
-          (m as any).roughness = materialRoughness;
-          (m as any).metalness = materialMetalness;
+          (m as any).roughness = clamp01(style?.roughness ?? materialRoughness);
+          (m as any).metalness = clamp01(style?.metalness ?? materialMetalness);
           (m as any).transparent = meshOpacity < 1;
           (m as any).opacity = meshOpacity;
           if (heatmapOk) {
@@ -3353,8 +3362,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           colorMode === "solid"
             ? override?.color ?? solidColorForPalette(colorPalette)
             : 0xffffff,
-        metalness: materialMetalness,
-        roughness: materialRoughness,
+        metalness: clamp01(override?.metalness ?? materialMetalness),
+        roughness: clamp01(override?.roughness ?? materialRoughness),
         side: THREE.DoubleSide,
         wireframe: override?.wireframe ?? !!wireframe,
         flatShading: !!override?.flatShading,
@@ -4957,8 +4966,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           colorMode === "solid"
             ? override?.color ?? solidColorForPalette(colorPalette)
             : 0xffffff,
-        metalness: materialMetalness,
-        roughness: materialRoughness,
+        metalness: clamp01(override?.metalness ?? materialMetalness),
+        roughness: clamp01(override?.roughness ?? materialRoughness),
         side: THREE.DoubleSide,
         wireframe: override?.wireframe ?? !!wireframe,
         flatShading: !!override?.flatShading,
@@ -5005,6 +5014,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       (mesh as any).userData.__surfaceMeshOverrideStyle = {
         color: override.color,
         opacity: override.opacity,
+        roughness: override.roughness,
+        metalness: override.metalness,
         wireframe: override.wireframe,
         flatShading: override.flatShading,
       };
@@ -5099,6 +5110,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       const style = {
         color: override.color,
         opacity: override.opacity,
+        roughness: override.roughness,
+        metalness: override.metalness,
         wireframe: override.wireframe,
         flatShading: override.flatShading,
       };
@@ -5108,6 +5121,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         if (!m) continue;
         (m as any).wireframe = style.wireframe ?? !!wireframe;
         (m as any).flatShading = !!style.flatShading;
+        (m as any).roughness = clamp01(style.roughness ?? materialRoughness);
+        (m as any).metalness = clamp01(style.metalness ?? materialMetalness);
         const styleOpacity = clamp01((style.opacity ?? 1) * materialOpacity);
         (m as any).transparent = styleOpacity < 1;
         (m as any).opacity = styleOpacity;

@@ -2286,6 +2286,48 @@ const computeTriangleMeshCellCounts = (mesh: {
   };
 };
 
+const computeTriangleMeshEdgeTopology = (mesh: {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+}): { boundaryEdgeCount: number; nonManifoldEdgeCount: number; manifold: boolean; watertight: boolean } => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  if (vertexCount <= 0) {
+    return { boundaryEdgeCount: 0, nonManifoldEdgeCount: 0, manifold: true, watertight: true };
+  }
+  const indices = mesh.indices ?? null;
+  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  const edgeIncidence = new Map<string, number>();
+  const bumpEdge = (a: number, b: number) => {
+    const i0 = Math.min(a, b);
+    const i1 = Math.max(a, b);
+    const key = `${i0}|${i1}`;
+    edgeIncidence.set(key, (edgeIncidence.get(key) ?? 0) + 1);
+  };
+  for (let t = 0; t < triCount; t += 1) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    const allFinite = Number.isInteger(ia) && Number.isInteger(ib) && Number.isInteger(ic);
+    const inRange =
+      ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
+    const distinct = ia !== ib && ib !== ic && ia !== ic;
+    if (!allFinite || !inRange || !distinct) continue;
+    bumpEdge(ia, ib);
+    bumpEdge(ib, ic);
+    bumpEdge(ic, ia);
+  }
+  let boundaryEdgeCount = 0;
+  let nonManifoldEdgeCount = 0;
+  for (const count of edgeIncidence.values()) {
+    if (count === 1) boundaryEdgeCount += 1;
+    else if (count > 2) nonManifoldEdgeCount += 1;
+  }
+  const manifold = nonManifoldEdgeCount === 0;
+  const watertight = manifold && boundaryEdgeCount === 0;
+  return { boundaryEdgeCount, nonManifoldEdgeCount, manifold, watertight };
+};
+
 const buildFundamentalDiagramPreview = (
   diagram: FundamentalDiagram,
   opts: { gluePhase?: number } = {}
@@ -6036,6 +6078,10 @@ const App: React.FC = () => {
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
+  const [geometryObjectLiveRebuild, setGeometryObjectLiveRebuild] = useState(true);
+  const [geometryObjectParamDrafts, setGeometryObjectParamDrafts] = useState<
+    Record<string, Record<string, number | boolean | string>>
+  >({});
   const [geometryMeshInfoAccentObjectId, setGeometryMeshInfoAccentObjectId] = useState<string | null>(null);
   const geometryMeshInfoAccentTimerRef = useRef<number | null>(null);
   const [geometryNewObjectType, setGeometryNewObjectType] = useState<GeometryObjectType>("box");
@@ -6056,10 +6102,15 @@ const App: React.FC = () => {
   const [geometryGalleryFavoritesOnly, setGeometryGalleryFavoritesOnly] = useState(false);
   const [geometryGalleryDemoReadyOnly, setGeometryGalleryDemoReadyOnly] = useState(false);
   const [geometryCreateActionStatus, setGeometryCreateActionStatus] = useState<string | null>(null);
+  const [geometryCreateSelectedCardExpanded, setGeometryCreateSelectedCardExpanded] = useState(false);
   const [geometryAddSelectNewObject, setGeometryAddSelectNewObject] = useState(true);
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
+  const [geometryAddEnterPlacementMode, setGeometryAddEnterPlacementMode] = useState(false);
   const [geometryAddAsHelper, setGeometryAddAsHelper] = useState(false);
+  const [geometryCreatePlacementModeActive, setGeometryCreatePlacementModeActive] = useState(false);
+  const [geometryCreatePlacementSnapToGrid, setGeometryCreatePlacementSnapToGrid] = useState(false);
+  const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
@@ -6097,6 +6148,20 @@ const App: React.FC = () => {
   const geometrySelectedDatasetMeshObject = useMemo(
     () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
+  );
+  const geometrySelectedObjectDraftParams = useMemo(
+    () => (geometrySelectedObject ? geometryObjectParamDrafts[geometrySelectedObject.id] ?? null : null),
+    [geometryObjectParamDrafts, geometrySelectedObject]
+  );
+  const geometrySelectedObjectEditParams = useMemo(
+    () =>
+      geometrySelectedObject
+        ? {
+            ...geometrySelectedObject.params,
+            ...(geometryObjectParamDrafts[geometrySelectedObject.id] ?? {}),
+          }
+        : null,
+    [geometryObjectParamDrafts, geometrySelectedObject]
   );
   const accentGeometryMeshInfo = useCallback((objectId: string) => {
     setGeometryMeshInfoAccentObjectId(objectId);
@@ -6174,6 +6239,31 @@ const App: React.FC = () => {
     if (!recipe?.params) return [] as Array<{ key: string; value: number | boolean | string }>;
     return Object.entries(recipe.params).map(([key, value]) => ({ key, value }));
   }, [geometryGalleryPreviewRecipe]);
+  const geometryCreateQuickParamEntries = useMemo(() => {
+    if (!geometryGalleryPreviewParamEntries.length) return [] as Array<{ key: string; value: number | boolean | string }>;
+    const preferredByType: Record<string, string[]> = {
+      box: ["width", "height", "depth", "widthSegments", "heightSegments", "depthSegments"],
+      sphere: ["radius", "widthSegments", "heightSegments"],
+      cylinder: ["radiusTop", "radiusBottom", "height", "radialSegments"],
+      cone: ["radius", "height", "radialSegments", "heightSegments"],
+      torus: ["radius", "tube", "radialSegments", "tubularSegments"],
+      polyhedron: ["radius", "detail"],
+      polygon: ["radius", "sides"],
+    };
+    const type = geometryGallerySelectedRecipe?.type ?? "";
+    const preferred = preferredByType[type] ?? [];
+    const byKey = new Map(geometryGalleryPreviewParamEntries.map((entry) => [entry.key, entry] as const));
+    const ordered: Array<{ key: string; value: number | boolean | string }> = [];
+    for (const key of preferred) {
+      const entry = byKey.get(key);
+      if (!entry) continue;
+      ordered.push(entry);
+      byKey.delete(key);
+    }
+    const remaining = [...byKey.values()].filter((entry) => typeof entry.value !== "string");
+    const merged = [...ordered, ...remaining];
+    return merged.slice(0, 4);
+  }, [geometryGalleryPreviewParamEntries, geometryGallerySelectedRecipe]);
   const geometryGalleryVisibleCards = useMemo(() => {
     const query = geometryGallerySearchText.trim().toLowerCase();
     return GEOMETRY_GALLERY_CARDS.filter((card) => {
@@ -6343,6 +6433,14 @@ const App: React.FC = () => {
     [geometryGalleryPreviewParams]
   );
 
+  const resolveGeometryGallerySelectedRecipe = useCallback((): GeometryGalleryRecipe | null => {
+    if (!geometryGallerySelectedCard?.supported) return null;
+    const previewRecipe = buildRecipeWithPreviewOverrides(geometryGallerySelectedRecipe);
+    if (previewRecipe) return previewRecipe;
+    if (geometryGallerySelectedCard.defaultRecipe) return geometryGallerySelectedCard.defaultRecipe;
+    return null;
+  }, [buildRecipeWithPreviewOverrides, geometryGallerySelectedCard, geometryGallerySelectedRecipe]);
+
   const handleAddGeometryObject = useCallback((recipe?: GeometryGalleryRecipe) => {
     const type = recipe?.type ?? geometryNewObjectType;
     const id = makeId();
@@ -6390,25 +6488,27 @@ const App: React.FC = () => {
     },
     [handleAddGeometryObject, markGeometryGalleryCardUsed]
   );
-  const handleAddGeometryGallerySelected = useCallback(() => {
+  const handleAddGeometryGallerySelectedAtOrigin = useCallback((openPlacementMode: boolean) => {
     if (!geometryGallerySelectedCard?.supported) return;
-    const previewRecipe = buildRecipeWithPreviewOverrides(geometryGallerySelectedRecipe);
-    if (previewRecipe) {
-      handleAddGeometryObject(previewRecipe);
-      markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
-      return;
-    }
-    if (geometryGallerySelectedCard.defaultRecipe) {
-      handleAddGeometryObject(geometryGallerySelectedCard.defaultRecipe);
-      markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
+    const recipe = resolveGeometryGallerySelectedRecipe();
+    if (!recipe) return;
+    handleAddGeometryObject(recipe);
+    markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
+    if (openPlacementMode) {
+      setGeometryCreatePlacementModeActive(true);
+      setGeometryCreatePlacementStatus(
+        "Added at origin and selected. Click-to-place ghost mode will be enabled in a follow-up."
+      );
     }
   }, [
-    buildRecipeWithPreviewOverrides,
     geometryGallerySelectedCard,
-    geometryGallerySelectedRecipe,
     handleAddGeometryObject,
     markGeometryGalleryCardUsed,
+    resolveGeometryGallerySelectedRecipe,
   ]);
+  const handleAddGeometryGallerySelected = useCallback(() => {
+    handleAddGeometryGallerySelectedAtOrigin(geometryAddEnterPlacementMode);
+  }, [geometryAddEnterPlacementMode, handleAddGeometryGallerySelectedAtOrigin]);
   const handleOpenGeometryGalleryCustomEditor = useCallback(() => {
     if (!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe) return;
     setGeometryNewObjectType(geometryGallerySelectedCard.defaultRecipe.type);
@@ -6501,6 +6601,67 @@ const App: React.FC = () => {
       prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
     );
   }, [geometryLockedObjectIds]);
+  const handleUpdateGeometryObjectParam = useCallback(
+    (id: string, key: string, value: number | boolean | string) => {
+      if (geometryObjectLiveRebuild) {
+        handleUpdateGeometryParam(id, key, value);
+        setGeometryObjectParamDrafts((prev) => {
+          const entry = prev[id];
+          if (!entry || !(key in entry)) return prev;
+          const nextEntry = { ...entry };
+          delete nextEntry[key];
+          if (Object.keys(nextEntry).length === 0) {
+            const next = { ...prev };
+            delete next[id];
+            return next;
+          }
+          return { ...prev, [id]: nextEntry };
+        });
+        return;
+      }
+      setGeometryObjectParamDrafts((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] ?? {}),
+          [key]: value,
+        },
+      }));
+    },
+    [geometryObjectLiveRebuild, handleUpdateGeometryParam]
+  );
+  const handleRebuildGeometryObject = useCallback(
+    (id: string) => {
+      const draft = geometryObjectParamDrafts[id];
+      if (!draft) return;
+      for (const [key, value] of Object.entries(draft)) {
+        handleUpdateGeometryParam(id, key, value);
+      }
+      setGeometryObjectParamDrafts((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    },
+    [geometryObjectParamDrafts, handleUpdateGeometryParam]
+  );
+  const handleResetGeometryObjectParams = useCallback(
+    (obj: GeometryObject) => {
+      const defaults = createGeometryObject(obj.type, obj.id).params;
+      if (geometryObjectLiveRebuild) {
+        setGeometryObjects((prev) => prev.map((o) => (o.id === obj.id ? { ...o, params: { ...defaults } } : o)));
+        setGeometryObjectParamDrafts((prev) => {
+          if (!(obj.id in prev)) return prev;
+          const next = { ...prev };
+          delete next[obj.id];
+          return next;
+        });
+        return;
+      }
+      setGeometryObjectParamDrafts((prev) => ({ ...prev, [obj.id]: { ...defaults } }));
+    },
+    [geometryObjectLiveRebuild]
+  );
 
   const handleUpdateGeometryMaterial = useCallback(
     (id: string, patch: Partial<GeometryObject["material"]>) => {
@@ -6873,6 +7034,8 @@ const App: React.FC = () => {
         id: string;
         color?: number;
         opacity?: number;
+        roughness?: number;
+        metalness?: number;
         flatShading?: boolean;
         transform: GeometryObjectTransform;
       }
@@ -6918,6 +7081,8 @@ const App: React.FC = () => {
         label: obj.name,
         color: obj.material.color,
         opacity: obj.material.opacity,
+        roughness: obj.material.roughness,
+        metalness: obj.material.metalness,
         flatShading: !smoothNormals,
         transform: {
           position: { ...obj.transform.position },
@@ -6947,6 +7112,8 @@ const App: React.FC = () => {
         label: obj.name,
         color: obj.material.color,
         opacity: obj.material.opacity,
+        roughness: obj.material.roughness,
+        metalness: obj.material.metalness,
         flatShading: false,
         transform: {
           position: { ...obj.transform.position },
@@ -6966,10 +7133,17 @@ const App: React.FC = () => {
     const triCount =
       mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
     const hasNormals = !!mesh.normals && mesh.normals.length >= mesh.positions.length;
+    const bounds = boundsFromPositions(mesh.positions);
+    const topology = computeTriangleMeshEdgeTopology(mesh);
     return {
       vertCount,
       triCount,
       hasNormals,
+      bounds,
+      boundaryEdgeCount: topology.boundaryEdgeCount,
+      nonManifoldEdgeCount: topology.nonManifoldEdgeCount,
+      manifold: topology.manifold,
+      watertight: topology.watertight,
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
@@ -36260,6 +36434,7 @@ case "mobius":
                       data-gallery-grid="true"
                       className="gallery-panel-scroll"
                     >
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Cards</div>
                       {geometryGallerySections.map((section) => (
                         <div key={section.key} className="gallery-section">
                           <div className="gallery-section-header">
@@ -36465,105 +36640,25 @@ case "mobius":
                           gap: 7,
                         }}
                       >
-                        <div style={{ fontSize: 12, fontWeight: 700 }}>Selected card</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
-                          <div style={{ display: "grid", gap: 4 }}>
-                            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#334155" }}>Preview</div>
-                          {galleryCardViewMode === "formula" ? (
-                            <div
-                              style={{
-                                width: "100%",
-                                height: 64,
-                                borderRadius: 6,
-                                border: "1px solid #dbe2ea",
-                                background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
-                                padding: "4px 5px",
-                                boxSizing: "border-box",
-                                display: "grid",
-                                gap: 1,
-                                alignContent: "start",
-                                fontSize: 8.5,
-                                lineHeight: 1.15,
-                                color: "#1e293b",
-                                overflow: "hidden",
-                              }}
-                            >
-                              {formatGalleryCardFormulaLines(geometryGallerySelectedCard)
-                                .slice(0, 5)
-                                .map((line, idx) => (
-                                  <div key={`selected-formula-${idx}`}>{line}</div>
-                                ))}
-                            </div>
-                          ) : (
-                            <img
-                              src={thumbByViewMode(
-                                geometryGallerySelectedCard.renderedThumbnailDataUrl,
-                                geometryGallerySelectedCard.diagramThumbnailDataUrl,
-                                galleryCardViewMode
-                              )}
-                              alt={`${geometryGallerySelectedCard.name} selected`}
-                              style={{
-                                width: "100%",
-                                height: 64,
-                                borderRadius: 6,
-                                border: "1px solid #dbe2ea",
-                                objectFit: "contain",
-                                background: "linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%)",
-                                padding: 4,
-                              }}
-                              loading="lazy"
-                              decoding="async"
-                              onError={(event) =>
-                                handleGalleryImageLoadError(event, geometryGallerySelectedCard.diagramThumbnailDataUrl)
-                              }
-                            />
-                          )}
-                          </div>
-                          <div style={{ display: "grid", gap: 4 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700 }}>{geometryGallerySelectedCard.name}</div>
-                            <div style={{ fontSize: 9.5, opacity: 0.9, fontWeight: 700 }}>
-                              {[
-                                geometryGallerySelectedCard.badge || "Primitive",
-                                "3D",
-                                geometryGallerySelectedCard.supported ? "Editable" : "Planned",
-                                geometryGallerySelectedCard.presets.length ? "Has presets" : "No presets",
-                              ].join(" · ")}
-                            </div>
-                            <div style={{ fontSize: 10, opacity: 0.82, lineHeight: 1.3 }}>
-                              {compactSummary(geometryGallerySelectedCard.description, 120)}
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  border: "1px solid #cbd5e1",
-                                  background: "#f8fafc",
-                                  borderRadius: 999,
-                                  padding: "1px 6px",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {geometryGallerySelectedCard.badge}
-                              </span>
-                              {geometryGallerySelectedCard.tags.map((tag) => (
-                                <span
-                                  key={`selected-${geometryGallerySelectedCard.id}-${tag}`}
-                                  style={{
-                                    fontSize: 9,
-                                    border: "1px solid #d9e1ea",
-                                    borderRadius: 999,
-                                    padding: "1px 6px",
-                                    background: "#fff",
-                                  }}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Selected: {geometryGallerySelectedCard.name}</div>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryCreateSelectedCardExpanded((prev) => !prev)}
+                            style={{ fontSize: 10.5, padding: "2px 8px" }}
+                          >
+                            {geometryCreateSelectedCardExpanded ? "Collapse" : "Expand"}
+                          </button>
                         </div>
-
-                        {geometryGalleryPreviewParamEntries.length > 0 && (
+                        <div style={{ fontSize: 10.5, opacity: 0.9, fontWeight: 700 }}>
+                          {[
+                            geometryGallerySelectedCard.badge || "Primitive",
+                            "3D",
+                            geometryGallerySelectedCard.supported ? "Editable" : "Planned",
+                            geometryGallerySelectedCard.presets.length ? "Has presets" : "No presets",
+                          ].join(" · ")}
+                        </div>
+                        {geometryCreateQuickParamEntries.length > 0 && (
                           <div
                             style={{
                               border: "1px solid #dbe2ea",
@@ -36571,65 +36666,63 @@ case "mobius":
                               background: "#fff",
                               padding: "6px 8px",
                               display: "grid",
-                              gap: 5,
+                              gap: 4,
                             }}
                           >
-                            <div style={{ fontSize: 10.5, fontWeight: 700 }}>Parameters</div>
-                            <div style={{ display: "grid", gap: 4 }}>
-                              {geometryGalleryPreviewParamEntries.slice(0, 8).map((entry) => (
-                                <label
-                                  key={`geometry-preview-param-${entry.key}`}
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "1fr auto",
-                                    gap: 6,
-                                    alignItems: "center",
-                                    fontSize: 10.5,
-                                  }}
-                                >
-                                  <span style={{ color: "#334155" }}>{entry.key}</span>
-                                  {typeof entry.value === "boolean" ? (
-                                    <input
-                                      type="checkbox"
-                                      checked={entry.value}
-                                      onChange={(e) =>
-                                        setGeometryGalleryPreviewParams((prev) => ({
-                                          ...prev,
-                                          [entry.key]: e.target.checked,
-                                        }))
-                                      }
-                                    />
-                                  ) : typeof entry.value === "number" ? (
-                                    <input
-                                      type="number"
-                                      step={0.1}
-                                      value={entry.value}
-                                      onChange={(e) => {
-                                        const raw = Number(e.target.value);
-                                        if (!Number.isFinite(raw)) return;
-                                        setGeometryGalleryPreviewParams((prev) => ({
-                                          ...prev,
-                                          [entry.key]: raw,
-                                        }));
-                                      }}
-                                      style={{ width: 86, fontSize: 10.5 }}
-                                    />
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      value={String(entry.value)}
-                                      onChange={(e) =>
-                                        setGeometryGalleryPreviewParams((prev) => ({
-                                          ...prev,
-                                          [entry.key]: e.target.value,
-                                        }))
-                                      }
-                                      style={{ width: 110, fontSize: 10.5 }}
-                                    />
-                                  )}
-                                </label>
-                              ))}
-                            </div>
+                            <div style={{ fontSize: 10.5, fontWeight: 700 }}>Quick parameters</div>
+                            {geometryCreateQuickParamEntries.map((entry) => (
+                              <label
+                                key={`geometry-create-quick-${entry.key}`}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr auto",
+                                  gap: 6,
+                                  alignItems: "center",
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <span style={{ color: "#334155" }}>{entry.key}</span>
+                                {typeof entry.value === "boolean" ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={entry.value}
+                                    onChange={(e) =>
+                                      setGeometryGalleryPreviewParams((prev) => ({
+                                        ...prev,
+                                        [entry.key]: e.target.checked,
+                                      }))
+                                    }
+                                  />
+                                ) : typeof entry.value === "number" ? (
+                                  <input
+                                    type="number"
+                                    step={0.1}
+                                    value={entry.value}
+                                    onChange={(e) => {
+                                      const raw = Number(e.target.value);
+                                      if (!Number.isFinite(raw)) return;
+                                      setGeometryGalleryPreviewParams((prev) => ({
+                                        ...prev,
+                                        [entry.key]: raw,
+                                      }));
+                                    }}
+                                    style={{ width: 80, fontSize: 10.5 }}
+                                  />
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={String(entry.value)}
+                                    onChange={(e) =>
+                                      setGeometryGalleryPreviewParams((prev) => ({
+                                        ...prev,
+                                        [entry.key]: e.target.value,
+                                      }))
+                                    }
+                                    style={{ width: 100, fontSize: 10.5 }}
+                                  />
+                                )}
+                              </label>
+                            ))}
                           </div>
                         )}
 
@@ -36658,241 +36751,469 @@ case "mobius":
                           </button>
                         </div>
 
-                        <div
-                          style={{
-                            border: "1px solid #dbe2ea",
-                            borderRadius: 8,
-                            background: "#fff",
-                            padding: "6px 8px",
-                            display: "grid",
-                            gap: 5,
-                          }}
-                        >
-                          <div style={{ fontSize: 10.5, fontWeight: 700 }}>After add</div>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryAddSelectNewObject}
-                              onChange={(e) => setGeometryAddSelectNewObject(e.target.checked)}
-                            />
-                            Select new object
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryAddFocusCamera}
-                              onChange={(e) => setGeometryAddFocusCamera(e.target.checked)}
-                            />
-                            Focus camera
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryAddOpenObjectTab}
-                              onChange={(e) => setGeometryAddOpenObjectTab(e.target.checked)}
-                            />
-                            Open Object tab
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                            <input
-                              type="checkbox"
-                              checked={geometryAddAsHelper}
-                              onChange={(e) => setGeometryAddAsHelper(e.target.checked)}
-                            />
-                            Add as reference/helper
-                          </label>
-                        </div>
+                        {geometryGallerySelectedCard.presets.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", fontSize: 10.5 }}>
+                            <span style={{ fontWeight: 700 }}>Presets:</span>
+                            {geometryGallerySelectedCard.presets.slice(0, 3).map((presetDef) => (
+                              <span key={`quick-preset-${presetDef.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <span>{presetDef.label}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddGeometryGalleryPreset(geometryGallerySelectedCard, presetDef.id)}
+                                  disabled={!geometryGallerySelectedCard.supported}
+                                  style={{ fontSize: 10.5, padding: "1px 6px" }}
+                                >
+                                  Add
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
-                        <details
-                          style={{
-                            border: "1px solid #dbe2ea",
-                            borderRadius: 8,
-                            background: "#fff",
-                            padding: "6px 8px",
-                          }}
-                        >
-                          <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>
-                            Create from selected
-                          </summary>
-                          <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowBoundingBox(true);
-                                  setGeometryCreateActionStatus("Bounding box overlay enabled.");
-                                }}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Bounding box
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setGeometryCreateActionStatus("Convex hull creation is planned for an upcoming update.")}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Convex hull
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  runUnifiedPipelineAction("wireframe");
-                                  setGeometryCreateActionStatus("Wireframe extracted from selected/active mesh.");
-                                }}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Wireframe
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  runUnifiedPipelineAction("pointCloud");
-                                  setGeometryCreateActionStatus("Point-cloud node generated from selected/active mesh.");
-                                }}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Point cloud
-                              </button>
+                        {geometryCreatePlacementModeActive && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              background: "#fff",
+                              padding: "6px 8px",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 10.5, fontWeight: 700 }}>Placement mode</div>
+                            <div style={{ fontSize: 10.5, color: "#334155" }}>
+                              Click in viewer to place object.
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  runUnifiedPipelineAction("normals");
-                                  setGeometryCreateActionStatus("Normal-field workflow enabled for selected/active mesh.");
-                                }}
-                                disabled={!geometrySelectedSceneObject}
+                                onClick={() => handleAddGeometryGallerySelectedAtOrigin(false)}
+                                disabled={!geometryGallerySelectedCard.supported}
                               >
-                                Normal field
+                                Place at origin
+                              </button>
+                              <button
+                                type="button"
+                                aria-pressed={geometryCreatePlacementSnapToGrid}
+                                onClick={() => {
+                                  setGeometryCreatePlacementSnapToGrid((prev) => !prev);
+                                  setGeometryCreatePlacementStatus((prev) =>
+                                    prev && prev.includes("Snap to grid")
+                                      ? null
+                                      : "Snap to grid preference saved for upcoming click-placement mode."
+                                  );
+                                }}
+                              >
+                                {geometryCreatePlacementSnapToGrid ? "Snap to grid: On" : "Snap to grid"}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setShowAxes(true);
-                                  setGeometryCreateActionStatus("Coordinate-frame overlay enabled.");
+                                  setGeometryCreatePlacementModeActive(false);
+                                  setGeometryCreatePlacementStatus(null);
                                 }}
-                                disabled={!geometrySelectedSceneObject}
                               >
-                                Coordinate frame
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (geometrySelectedSceneObject) {
-                                    handleDuplicateGeometryObject(geometrySelectedSceneObject.id);
-                                    setGeometryCreateActionStatus("Selected object duplicated.");
-                                  }
-                                }}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Duplicate as primitive
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) return;
-                                  const suggestedCardId =
-                                    geometrySelectedSceneObject.type === "polyhedron"
-                                      ? "cube"
-                                      : geometrySelectedSceneObject.type === "polygon"
-                                        ? "polygon"
-                                        : geometrySelectedSceneObject.type;
-                                  if (GEOMETRY_GALLERY_CARD_BY_ID.has(suggestedCardId)) {
-                                    setGeometryGallerySelectedCardId(suggestedCardId);
-                                    setGeometryGallerySelectedPresetId(null);
-                                  }
-                                  handleGeometryFit("scene");
-                                  setGeometryCreateActionStatus("Suggested primitive selected and camera fit to scene.");
-                                }}
-                                disabled={!geometrySelectedSceneObject}
-                              >
-                                Fit primitive to selected
+                                Cancel
                               </button>
                             </div>
-                            {geometryCreateActionStatus && (
-                              <div style={{ fontSize: 10, color: "#334155" }}>{geometryCreateActionStatus}</div>
+                            {geometryCreatePlacementStatus && (
+                              <div style={{ fontSize: 10, color: "#334155" }}>{geometryCreatePlacementStatus}</div>
                             )}
                           </div>
-                        </details>
+                        )}
 
-                        <div style={{ fontSize: 11, fontWeight: 700 }}>Preset:</div>
-                        {geometryGallerySelectedCard.presets.length ? (
-                          <div style={{ display: "grid", gap: 6 }}>
-                            {geometryGallerySelectedCard.presets.map((presetDef) => {
-                              const active = geometryGallerySelectedPreset?.id === presetDef.id;
-                              return (
-                                <div
-                                  key={presetDef.id}
-                                  style={{
-                                    border: active ? "1px solid #0a66c2" : "1px solid #dbe2ea",
-                                    borderRadius: 8,
-                                    background: active ? "#eef4ff" : "#fff",
-                                    padding: 6,
-                                    display: "grid",
-                                    gridTemplateColumns: "1fr auto",
-                                    gap: 6,
-                                    alignItems: "center",
-                                  }}
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => setGeometryGallerySelectedPresetId(presetDef.id)}
+                        {geometryCreateSelectedCardExpanded && (
+                          <>
+                            <div style={{ display: "grid", gridTemplateColumns: "92px 1fr", gap: 8 }}>
+                              <div style={{ display: "grid", gap: 4 }}>
+                                <div style={{ fontSize: 10.5, fontWeight: 700, color: "#334155" }}>Preview</div>
+                                {galleryCardViewMode === "formula" ? (
+                                  <div
                                     style={{
-                                      border: "none",
-                                      background: "transparent",
-                                      textAlign: "left",
-                                      padding: 0,
-                                      cursor: "pointer",
+                                      width: "100%",
+                                      height: 64,
+                                      borderRadius: 6,
+                                      border: "1px solid #dbe2ea",
+                                      background: "linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%)",
+                                      padding: "4px 5px",
+                                      boxSizing: "border-box",
                                       display: "grid",
-                                      gridTemplateColumns: "48px 1fr",
-                                      gap: 6,
-                                      alignItems: "center",
+                                      gap: 1,
+                                      alignContent: "start",
+                                      fontSize: 8.5,
+                                      lineHeight: 1.15,
+                                      color: "#1e293b",
+                                      overflow: "hidden",
                                     }}
                                   >
-                                    <img
-                                      src={thumbByViewMode(
-                                        presetDef.renderedThumbnailDataUrl,
-                                        presetDef.diagramThumbnailDataUrl,
-                                        galleryCardViewMode
-                                      )}
-                                      alt={`${presetDef.label} preset`}
+                                    {formatGalleryCardFormulaLines(geometryGallerySelectedCard)
+                                      .slice(0, 5)
+                                      .map((line, idx) => (
+                                        <div key={`selected-formula-${idx}`}>{line}</div>
+                                      ))}
+                                  </div>
+                                ) : (
+                                  <img
+                                    src={thumbByViewMode(
+                                      geometryGallerySelectedCard.renderedThumbnailDataUrl,
+                                      geometryGallerySelectedCard.diagramThumbnailDataUrl,
+                                      galleryCardViewMode
+                                    )}
+                                    alt={`${geometryGallerySelectedCard.name} selected`}
+                                    style={{
+                                      width: "100%",
+                                      height: 64,
+                                      borderRadius: 6,
+                                      border: "1px solid #dbe2ea",
+                                      objectFit: "contain",
+                                      background: "linear-gradient(180deg, #eef2f7 0%, #e2e8f0 100%)",
+                                      padding: 4,
+                                    }}
+                                    loading="lazy"
+                                    decoding="async"
+                                    onError={(event) =>
+                                      handleGalleryImageLoadError(event, geometryGallerySelectedCard.diagramThumbnailDataUrl)
+                                    }
+                                  />
+                                )}
+                              </div>
+                              <div style={{ display: "grid", gap: 4 }}>
+                                <div style={{ fontSize: 10, opacity: 0.82, lineHeight: 1.3 }}>
+                                  {compactSummary(geometryGallerySelectedCard.description, 120)}
+                                </div>
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      border: "1px solid #cbd5e1",
+                                      background: "#f8fafc",
+                                      borderRadius: 999,
+                                      padding: "1px 6px",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    {geometryGallerySelectedCard.badge}
+                                  </span>
+                                  {geometryGallerySelectedCard.tags.map((tag) => (
+                                    <span
+                                      key={`selected-${geometryGallerySelectedCard.id}-${tag}`}
                                       style={{
-                                        width: 48,
-                                        height: 32,
-                                        borderRadius: 4,
-                                        border: "1px solid #dbe2ea",
-                                        objectFit: "cover",
+                                        fontSize: 9,
+                                        border: "1px solid #d9e1ea",
+                                        borderRadius: 999,
+                                        padding: "1px 6px",
                                         background: "#fff",
                                       }}
-                                      loading="lazy"
-                                      decoding="async"
-                                      onError={(event) =>
-                                        handleGalleryImageLoadError(event, presetDef.diagramThumbnailDataUrl)
-                                      }
-                                    />
-                                    <span style={{ display: "grid", gap: 2 }}>
-                                      <span style={{ fontSize: 11, fontWeight: 700 }}>{presetDef.label}</span>
-                                      <span style={{ fontSize: 10, opacity: 0.78 }}>{presetDef.description}</span>
+                                    >
+                                      {tag}
                                     </span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddGeometryGalleryPreset(geometryGallerySelectedCard, presetDef.id)}
-                                    disabled={!geometryGallerySelectedCard.supported}
-                                    style={{ fontSize: 11 }}
-                                  >
-                                    Add
-                                  </button>
+                                  ))}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 10, opacity: 0.76 }}>
-                            {geometryGallerySelectedCard.supported
-                              ? "This card has no explicit presets yet."
-                              : geometryGallerySelectedCard.comingSoonNote ?? "Planned for a future update."}
-                          </div>
+                              </div>
+                            </div>
+
+                            {geometryGalleryPreviewParamEntries.length > 0 && (
+                              <div
+                                style={{
+                                  border: "1px solid #dbe2ea",
+                                  borderRadius: 8,
+                                  background: "#fff",
+                                  padding: "6px 8px",
+                                  display: "grid",
+                                  gap: 5,
+                                }}
+                              >
+                                <div style={{ fontSize: 10.5, fontWeight: 700 }}>Parameters</div>
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  {geometryGalleryPreviewParamEntries.slice(0, 8).map((entry) => (
+                                    <label
+                                      key={`geometry-preview-param-${entry.key}`}
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "1fr auto",
+                                        gap: 6,
+                                        alignItems: "center",
+                                        fontSize: 10.5,
+                                      }}
+                                    >
+                                      <span style={{ color: "#334155" }}>{entry.key}</span>
+                                      {typeof entry.value === "boolean" ? (
+                                        <input
+                                          type="checkbox"
+                                          checked={entry.value}
+                                          onChange={(e) =>
+                                            setGeometryGalleryPreviewParams((prev) => ({
+                                              ...prev,
+                                              [entry.key]: e.target.checked,
+                                            }))
+                                          }
+                                        />
+                                      ) : typeof entry.value === "number" ? (
+                                        <input
+                                          type="number"
+                                          step={0.1}
+                                          value={entry.value}
+                                          onChange={(e) => {
+                                            const raw = Number(e.target.value);
+                                            if (!Number.isFinite(raw)) return;
+                                            setGeometryGalleryPreviewParams((prev) => ({
+                                              ...prev,
+                                              [entry.key]: raw,
+                                            }));
+                                          }}
+                                          style={{ width: 86, fontSize: 10.5 }}
+                                        />
+                                      ) : (
+                                        <input
+                                          type="text"
+                                          value={String(entry.value)}
+                                          onChange={(e) =>
+                                            setGeometryGalleryPreviewParams((prev) => ({
+                                              ...prev,
+                                              [entry.key]: e.target.value,
+                                            }))
+                                          }
+                                          style={{ width: 110, fontSize: 10.5 }}
+                                        />
+                                      )}
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            <details
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                background: "#fff",
+                                padding: "6px 8px",
+                              }}
+                            >
+                              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>
+                                Add behavior
+                              </summary>
+                              <div style={{ display: "grid", gap: 5, marginTop: 8 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryAddSelectNewObject}
+                                    onChange={(e) => setGeometryAddSelectNewObject(e.target.checked)}
+                                  />
+                                  Select new object
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryAddFocusCamera}
+                                    onChange={(e) => setGeometryAddFocusCamera(e.target.checked)}
+                                  />
+                                  Focus camera
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryAddOpenObjectTab}
+                                    onChange={(e) => setGeometryAddOpenObjectTab(e.target.checked)}
+                                  />
+                                  Open Object tab after adding
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryAddEnterPlacementMode}
+                                    onChange={(e) => setGeometryAddEnterPlacementMode(e.target.checked)}
+                                  />
+                                  Enter placement mode
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={geometryAddAsHelper}
+                                    onChange={(e) => setGeometryAddAsHelper(e.target.checked)}
+                                  />
+                                  Add as helper/reference
+                                </label>
+                              </div>
+                            </details>
+
+                            <details
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                background: "#fff",
+                                padding: "6px 8px",
+                              }}
+                            >
+                              <summary style={{ cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>
+                                Create from selected
+                              </summary>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowBoundingBox(true);
+                                    setGeometryCreateActionStatus("Bounding box overlay enabled.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Bounding box
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    runUnifiedPipelineAction("wireframe");
+                                    setGeometryCreateActionStatus("Wireframe extracted from selected/active mesh.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Wireframe
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    runUnifiedPipelineAction("pointCloud");
+                                    setGeometryCreateActionStatus("Point-cloud node generated from selected/active mesh.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Point cloud
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometryCreateActionStatus("Convex hull creation is planned for an upcoming update.")}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Convex hull
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    runUnifiedPipelineAction("normals");
+                                    setGeometryCreateActionStatus("Normal-field workflow enabled for selected/active mesh.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Normal field
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setShowAxes(true);
+                                    setGeometryCreateActionStatus("Coordinate-frame overlay enabled.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Coordinate frame
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) return;
+                                    const suggestedCardId =
+                                      geometrySelectedSceneObject.type === "polyhedron"
+                                        ? "cube"
+                                        : geometrySelectedSceneObject.type === "polygon"
+                                          ? "polygon"
+                                          : geometrySelectedSceneObject.type;
+                                    if (GEOMETRY_GALLERY_CARD_BY_ID.has(suggestedCardId)) {
+                                      setGeometryGallerySelectedCardId(suggestedCardId);
+                                      setGeometryGallerySelectedPresetId(null);
+                                    }
+                                    handleGeometryFit("scene");
+                                    setGeometryCreateActionStatus("Suggested primitive selected and camera fit to scene.");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  Fit primitive to selected
+                                </button>
+                                {geometryCreateActionStatus && (
+                                  <div style={{ fontSize: 10, color: "#334155", width: "100%" }}>{geometryCreateActionStatus}</div>
+                                )}
+                              </div>
+                            </details>
+
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Presets</div>
+                            {geometryGallerySelectedCard.presets.length ? (
+                              <div style={{ display: "grid", gap: 6 }}>
+                                {geometryGallerySelectedCard.presets.map((presetDef) => {
+                                  const active = geometryGallerySelectedPreset?.id === presetDef.id;
+                                  return (
+                                    <div
+                                      key={presetDef.id}
+                                      style={{
+                                        border: active ? "1px solid #0a66c2" : "1px solid #dbe2ea",
+                                        borderRadius: 8,
+                                        background: active ? "#eef4ff" : "#fff",
+                                        padding: 6,
+                                        display: "grid",
+                                        gridTemplateColumns: "1fr auto",
+                                        gap: 6,
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <button
+                                        type="button"
+                                        onClick={() => setGeometryGallerySelectedPresetId(presetDef.id)}
+                                        style={{
+                                          border: "none",
+                                          background: "transparent",
+                                          textAlign: "left",
+                                          padding: 0,
+                                          cursor: "pointer",
+                                          display: "grid",
+                                          gridTemplateColumns: "48px 1fr",
+                                          gap: 6,
+                                          alignItems: "center",
+                                        }}
+                                      >
+                                        <img
+                                          src={thumbByViewMode(
+                                            presetDef.renderedThumbnailDataUrl,
+                                            presetDef.diagramThumbnailDataUrl,
+                                            galleryCardViewMode
+                                          )}
+                                          alt={`${presetDef.label} preset`}
+                                          style={{
+                                            width: 48,
+                                            height: 32,
+                                            borderRadius: 4,
+                                            border: "1px solid #dbe2ea",
+                                            objectFit: "cover",
+                                            background: "#fff",
+                                          }}
+                                          loading="lazy"
+                                          decoding="async"
+                                          onError={(event) =>
+                                            handleGalleryImageLoadError(event, presetDef.diagramThumbnailDataUrl)
+                                          }
+                                        />
+                                        <span style={{ display: "grid", gap: 2 }}>
+                                          <span style={{ fontSize: 11, fontWeight: 700 }}>{presetDef.label}</span>
+                                          <span style={{ fontSize: 10, opacity: 0.78 }}>{presetDef.description}</span>
+                                        </span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddGeometryGalleryPreset(geometryGallerySelectedCard, presetDef.id)}
+                                        disabled={!geometryGallerySelectedCard.supported}
+                                        style={{ fontSize: 11 }}
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 10, opacity: 0.76 }}>
+                                {geometryGallerySelectedCard.supported
+                                  ? "This card has no explicit presets yet."
+                                  : geometryGallerySelectedCard.comingSoonNote ?? "Planned for a future update."}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
@@ -37303,21 +37624,73 @@ case "mobius":
                     {geometryProceduralPanelTab === "object" &&
                       (geometrySelectedObject ? (
                       <>
-                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
+                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>
+                          Object / {geometrySelectedObject.group === "helper" ? "ReferenceObject" : "PrimaryObject"} / {geometrySelectedObject.name}
+                        </div>
+                        <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.75 }}>
+                          {[
+                            geometrySelectedObject.group === "helper" ? "ReferenceObject" : "PrimaryObject",
+                            "Procedural primitive",
+                            geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending",
+                          ].join(" · ")}
+                        </div>
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-                          <label style={{ fontSize: 11, fontWeight: 600 }}>
-                            Name
-                            <input
-                              type="text"
-                              value={geometrySelectedObject.name}
-                              onChange={(e) =>
-                                handleRenameGeometryObject(geometrySelectedObject.id, e.target.value)
-                              }
-                              style={{ width: "100%", marginTop: 4 }}
-                            />
-                          </label>
-                          <div style={{ fontSize: 11, opacity: 0.7 }}>
-                            Type: {GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.label ?? geometrySelectedObject.type}
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
+                            <label style={{ fontSize: 11, fontWeight: 600 }}>
+                              Name
+                              <input
+                                type="text"
+                                value={geometrySelectedObject.name}
+                                onChange={(e) =>
+                                  handleRenameGeometryObject(geometrySelectedObject.id, e.target.value)
+                                }
+                                style={{ width: "100%", marginTop: 4 }}
+                              />
+                            </label>
+                            <div style={{ fontSize: 10.5, display: "grid", gap: 2 }}>
+                              <div><strong>Type:</strong> {GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.label ?? geometrySelectedObject.type}</div>
+                              <div><strong>Role:</strong> {geometrySelectedObject.group === "helper" ? "ReferenceObject" : "PrimaryObject"}</div>
+                              <div><strong>Category:</strong> {geometrySelectedObject.type === "polyhedron" ? "Polyhedron" : "Primitive"}</div>
+                              <div><strong>Source:</strong> Procedural</div>
+                              <div><strong>Visible:</strong> {geometrySelectedObject.visible ? "yes" : "no"}</div>
+                              <div><strong>Status:</strong> {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}</div>
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Transform</div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Position: {fmt3(geometrySelectedObject.transform.position)}
+                            </div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Rotation: {fmt3(geometrySelectedObject.transform.rotation)}
+                            </div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Scale: {fmt3(geometrySelectedObject.transform.scale)}
+                            </div>
+                            <div>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("transform")} style={{ fontSize: 11 }}>
+                                Open Transform
+                              </button>
+                            </div>
                           </div>
                           {geometrySelectedSceneMeshInfo && (
                             <div
@@ -37338,7 +37711,7 @@ case "mobius":
                               }}
                             >
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700 }}>Mesh info</div>
+                                <div style={{ fontSize: 11, fontWeight: 700 }}>Geometry / Mesh status</div>
                                 {geometryMeshInfoAccentObjectId === geometrySelectedObject.id && (
                                   <span style={{ fontSize: 10, fontWeight: 700, color: "#0a66c2" }}>Focused</span>
                                 )}
@@ -37351,13 +37724,19 @@ case "mobius":
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Normals: {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                  Analyze (Gaussian)
-                                </button>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                  Analyze + Gauss map
-                                </button>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Bounds:{" "}
+                                {geometrySelectedSceneMeshInfo.bounds
+                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) · max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
+                                {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
+                                {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
                             </div>
                           )}
@@ -37476,7 +37855,7 @@ case "mobius":
                           (() => {
                             const polyFamily = geometrySelectedPolyhedron?.family ?? "platonic";
                             const polyCounts = geometrySelectedPolyhedron?.counts ?? null;
-                            const paramValues = geometrySelectedObject.params;
+                            const paramValues = geometrySelectedObjectEditParams ?? geometrySelectedObject.params;
                             const showNFamily =
                               polyFamily === "prism" ||
                               polyFamily === "pyramid" ||
@@ -37488,13 +37867,13 @@ case "mobius":
                                   Family
                                   <select
                                     value={polyFamily}
-                                    onChange={(e) =>
-                                      handleUpdateGeometryParam(
-                                        geometrySelectedObject.id,
-                                        "family",
-                                        e.target.value
-                                      )
-                                    }
+                                      onChange={(e) =>
+                                        handleUpdateGeometryObjectParam(
+                                          geometrySelectedObject.id,
+                                          "family",
+                                          e.target.value
+                                        )
+                                      }
                                     style={{ width: "100%", marginTop: 4 }}
                                   >
                                     {POLYHEDRON_FAMILY_OPTIONS.map((opt) => (
@@ -37512,7 +37891,7 @@ case "mobius":
                                       <select
                                         value={String(paramValues.kind ?? "dodeca")}
                                         onChange={(e) =>
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "kind",
                                             e.target.value
@@ -37538,7 +37917,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "radius",
                                             clampNumber(raw, 0.1, 10)
@@ -37558,7 +37937,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "subdivision",
                                             toClampedInt(raw, 0, 0, 5)
@@ -37583,7 +37962,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "n",
                                             toClampedInt(raw, 6, 3, 64)
@@ -37603,7 +37982,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "radius",
                                             clampNumber(raw, 0.1, 10)
@@ -37623,7 +38002,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "height",
                                             clampNumber(raw, 0.1, 20)
@@ -37648,7 +38027,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "frequency",
                                             toClampedInt(raw, 2, 1, 8)
@@ -37668,7 +38047,7 @@ case "mobius":
                                         onChange={(e) => {
                                           const raw = Number(e.target.value);
                                           if (!Number.isFinite(raw)) return;
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             "radius",
                                             clampNumber(raw, 0.1, 10)
@@ -37695,7 +38074,7 @@ case "mobius":
                                       type="checkbox"
                                       checked={Boolean(paramValues.triangulate ?? true)}
                                       onChange={(e) =>
-                                        handleUpdateGeometryParam(
+                                        handleUpdateGeometryObjectParam(
                                           geometrySelectedObject.id,
                                           "triangulate",
                                           e.target.checked
@@ -37709,7 +38088,7 @@ case "mobius":
                                       type="checkbox"
                                       checked={Boolean(paramValues.smoothNormals ?? true)}
                                       onChange={(e) =>
-                                        handleUpdateGeometryParam(
+                                        handleUpdateGeometryObjectParam(
                                           geometrySelectedObject.id,
                                           "smoothNormals",
                                           e.target.checked
@@ -37723,7 +38102,7 @@ case "mobius":
                                       type="checkbox"
                                       checked={Boolean(paramValues.edgeDisplay ?? false)}
                                       onChange={(e) =>
-                                        handleUpdateGeometryParam(
+                                        handleUpdateGeometryObjectParam(
                                           geometrySelectedObject.id,
                                           "edgeDisplay",
                                           e.target.checked
@@ -37750,7 +38129,7 @@ case "mobius":
                           <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
                             {(GEOMETRY_OBJECT_REGISTRY[geometrySelectedObject.type]?.params ?? []).map(
                               (param: GeometryParamDef) => {
-                                const value = geometrySelectedObject.params[param.id];
+                                const value = (geometrySelectedObjectEditParams ?? geometrySelectedObject.params)[param.id];
                                 if (param.kind === "toggle") {
                                   return (
                                     <label key={param.id} style={{ display: "flex", gap: 6, fontSize: 11 }}>
@@ -37758,7 +38137,7 @@ case "mobius":
                                         type="checkbox"
                                         checked={Boolean(value)}
                                         onChange={(e) =>
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             param.id,
                                             e.target.checked
@@ -37776,7 +38155,7 @@ case "mobius":
                                       <select
                                         value={String(value ?? "")}
                                         onChange={(e) =>
-                                          handleUpdateGeometryParam(
+                                          handleUpdateGeometryObjectParam(
                                             geometrySelectedObject.id,
                                             param.id,
                                             e.target.value
@@ -37807,7 +38186,7 @@ case "mobius":
                                         if (!Number.isFinite(raw)) return;
                                         const min = param.min ?? -Infinity;
                                         const max = param.max ?? Infinity;
-                                        handleUpdateGeometryParam(
+                                        handleUpdateGeometryObjectParam(
                                           geometrySelectedObject.id,
                                           param.id,
                                           clampNumber(raw, min, max)
@@ -37821,6 +38200,50 @@ case "mobius":
                             )}
                           </div>
                         )}
+                        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700 }}>Update mode</div>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryObjectLiveRebuild}
+                              onChange={(e) => setGeometryObjectLiveRebuild(e.target.checked)}
+                            />
+                            Live rebuild
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={!geometryObjectLiveRebuild}
+                              onChange={(e) => setGeometryObjectLiveRebuild(!e.target.checked)}
+                            />
+                            Manual rebuild
+                          </label>
+                          {!geometryObjectLiveRebuild && (
+                            <div style={{ fontSize: 10, opacity: 0.8 }}>
+                              Manual rebuild is active.
+                              {geometrySelectedObjectDraftParams
+                                ? ` Pending parameter edits: ${Object.keys(geometrySelectedObjectDraftParams).length}.`
+                                : " No pending parameter edits."}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleRebuildGeometryObject(geometrySelectedObject.id)}
+                              disabled={geometryObjectLiveRebuild || !geometrySelectedObjectDraftParams}
+                              style={{ fontSize: 11 }}
+                            >
+                              Rebuild mesh
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleResetGeometryObjectParams(geometrySelectedObject)}
+                              style={{ fontSize: 11 }}
+                            >
+                              Reset parameters
+                            </button>
+                          </div>
+                        </div>
 
                         {geometrySelectedObject.type === "polyhedron" && (
                           <div style={{ marginTop: 12 }}>
@@ -37914,6 +38337,101 @@ case "mobius":
                               });
                             }}
                           />
+                          <div style={{ fontSize: 11 }}>Roughness</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedObject.material.roughness ?? 0.3)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedObject.id, {
+                                roughness: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                          <div style={{ fontSize: 11 }}>Metalness</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedObject.material.metalness ?? 0.1)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedObject.id, {
+                                metalness: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                          <div style={{ fontSize: 11 }}>Roughness</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedDatasetMeshObject.material.roughness ?? 0.3)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
+                                roughness: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                          <div style={{ fontSize: 11 }}>Metalness</div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={Number(geometrySelectedDatasetMeshObject.material.metalness ?? 0.1)}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              if (!Number.isFinite(raw)) return;
+                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
+                                metalness: clampNumber(raw, 0, 1),
+                              });
+                            }}
+                          />
+                        </div>
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Pipeline actions</div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
+                            Convert to Mesh object
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateGeometryObject(geometrySelectedObject.id)}
+                            style={{ fontSize: 11 }}
+                          >
+                            Duplicate as editable mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleExportUnifiedSelectedObject();
+                            }}
+                            style={{ fontSize: 11 }}
+                          >
+                            Export selected (.glb)
+                          </button>
+                          <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                            Open Gaussian analysis
+                          </button>
+                          <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                            Open Gauss map workflow
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("analysis")}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Compare
+                          </button>
                         </div>
                         {geometryProceduralPick?.meshKey === geometrySelectedObject.id && (
                           <div
@@ -37930,20 +38448,70 @@ case "mobius":
                       </>
                       ) : geometrySelectedDatasetMeshObject ? (
                       <>
-                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>Object settings</div>
+                        <div style={{ marginTop: 14, fontSize: 12, fontWeight: 700 }}>
+                          Object / DatasetMesh / {geometrySelectedDatasetMeshObject.name}
+                        </div>
+                        <div style={{ marginTop: 3, fontSize: 10.5, opacity: 0.75 }}>
+                          Dataset mesh object · {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}
+                        </div>
                         <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-                          <label style={{ fontSize: 11, fontWeight: 600 }}>
-                            Name
-                            <input
-                              type="text"
-                              value={geometrySelectedDatasetMeshObject.name}
-                              onChange={(e) =>
-                                handleRenameGeometryObject(geometrySelectedDatasetMeshObject.id, e.target.value)
-                              }
-                              style={{ width: "100%", marginTop: 4 }}
-                            />
-                          </label>
-                          <div style={{ fontSize: 11, opacity: 0.7 }}>Type: Dataset mesh object</div>
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Identity</div>
+                            <label style={{ fontSize: 11, fontWeight: 600 }}>
+                              Name
+                              <input
+                                type="text"
+                                value={geometrySelectedDatasetMeshObject.name}
+                                onChange={(e) =>
+                                  handleRenameGeometryObject(geometrySelectedDatasetMeshObject.id, e.target.value)
+                                }
+                                style={{ width: "100%", marginTop: 4 }}
+                              />
+                            </label>
+                            <div style={{ fontSize: 10.5, display: "grid", gap: 2 }}>
+                              <div><strong>Type:</strong> Dataset mesh object</div>
+                              <div><strong>Role:</strong> SceneObject</div>
+                              <div><strong>Category:</strong> Mesh</div>
+                              <div><strong>Source:</strong> Dataset</div>
+                              <div><strong>Visible:</strong> {geometrySelectedDatasetMeshObject.visible ? "yes" : "no"}</div>
+                              <div><strong>Status:</strong> {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}</div>
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Transform</div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Position: {fmt3(geometrySelectedDatasetMeshObject.transform.position)}
+                            </div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Rotation: {fmt3(geometrySelectedDatasetMeshObject.transform.rotation)}
+                            </div>
+                            <div style={{ fontSize: 10.5, fontFamily: "monospace" }}>
+                              Scale: {fmt3(geometrySelectedDatasetMeshObject.transform.scale)}
+                            </div>
+                            <div>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("transform")} style={{ fontSize: 11 }}>
+                                Open Transform
+                              </button>
+                            </div>
+                          </div>
                           {geometrySelectedSceneMeshInfo && (
                             <div
                               style={{
@@ -37967,7 +38535,7 @@ case "mobius":
                               }}
                             >
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                                <div style={{ fontSize: 11, fontWeight: 700 }}>Mesh info</div>
+                                <div style={{ fontSize: 11, fontWeight: 700 }}>Geometry / Mesh status</div>
                                 {geometryMeshInfoAccentObjectId === geometrySelectedDatasetMeshObject.id && (
                                   <span style={{ fontSize: 10, fontWeight: 700, color: "#0a66c2" }}>Focused</span>
                                 )}
@@ -37980,13 +38548,19 @@ case "mobius":
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Normals: {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}
                               </div>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                  Analyze (Gaussian)
-                                </button>
-                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                  Analyze + Gauss map
-                                </button>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Bounds:{" "}
+                                {geometrySelectedSceneMeshInfo.bounds
+                                  ? `min (${fmt(geometrySelectedSceneMeshInfo.bounds.min[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.min[2])}) · max (${fmt(geometrySelectedSceneMeshInfo.bounds.max[0])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[1])}, ${fmt(geometrySelectedSceneMeshInfo.bounds.max[2])})`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
+                                {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
+                                {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
                             </div>
                           )}
@@ -38027,6 +38601,41 @@ case "mobius":
                               });
                             }}
                           />
+                        </div>
+                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Pipeline actions</div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
+                            Convert to Mesh object
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateGeometryObject(geometrySelectedDatasetMeshObject.id)}
+                            style={{ fontSize: 11 }}
+                          >
+                            Duplicate as editable mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void handleExportUnifiedSelectedObject();
+                            }}
+                            style={{ fontSize: 11 }}
+                          >
+                            Export selected (.glb)
+                          </button>
+                          <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                            Open Gaussian analysis
+                          </button>
+                          <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                            Open Gauss map workflow
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("analysis")}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Compare
+                          </button>
                         </div>
                         {geometryProceduralPick?.meshKey === geometrySelectedDatasetMeshObject.id && (
                           <div
@@ -38159,10 +38768,10 @@ case "mobius":
                               <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                                  Analyze selected
+                                  Open Gaussian analysis
                                 </button>
                                 <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                                  Analyze + Gauss map
+                                  Open Gauss map workflow
                                 </button>
                               </div>
                             </>
@@ -39548,9 +40157,15 @@ case "mobius":
                 )}
 
                 <div data-testid="geometry-scene-stats" style={{ marginTop: 12, fontSize: 11, opacity: 0.75 }}>
-                  {geometryStats.mode === "procedural"
-                    ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
-                    : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
+                  {geometryStats.mode === "procedural" && geometryProceduralPanelTab === "object"
+                    ? geometrySelectedSceneMeshInfo
+                      ? `Selected object: ${geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} verts · ${geometrySelectedSceneMeshInfo.triCount.toLocaleString()} tris`
+                      : geometrySelectedSceneObject
+                        ? "Selected object: mesh status pending"
+                        : "Selected object: none"
+                    : geometryStats.mode === "procedural"
+                      ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible) · ${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                      : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments · ${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
                 </div>
               </section>
             </div>
@@ -43574,19 +44189,19 @@ const thumbByViewMode = (
 const formatGalleryCardFormulaLines = (card: GeometryGalleryCard): string[] => {
   if (card.id === "box") {
     return [
-      "Parameters: width w, height h, depth d",
+      "Box",
       "Volume: V = w*h*d",
       "Area: A = 2(wh + wd + hd)",
       "Vertices: 8",
-      "Faces: 6",
       "Edges: 12",
+      "Faces: 6",
     ];
   }
   if (card.id === "sphere") {
     return ["Parameters: radius r", "Volume: V = 4/3*pi*r^3", "Area: A = 4*pi*r^2"];
   }
   if (card.id === "cylinder") {
-    return ["Parameters: radius r, height h", "Volume: V = pi*r^2*h", "Lateral area: A_l = 2*pi*r*h"];
+    return ["Cylinder", "V = pi*r^2*h", "A = 2*pi*r*(r+h)", "Parameters: r, h, segments"];
   }
   if (card.id === "cone") {
     return ["Parameters: radius r, height h", "Volume: V = (1/3)*pi*r^2*h", "Slant height: l = sqrt(r^2 + h^2)"];

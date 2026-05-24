@@ -173,16 +173,13 @@ const CAPTURED_OBJECT_THUMB_IDS = new Set<string>([
 
 const resolveGalleryAssetPath = (relativePath: string): string => {
   const normalized = relativePath.replace(/^\/+/, "");
-  const base =
-    typeof document !== "undefined" && document.baseURI
-      ? document.baseURI
-      : typeof window !== "undefined" && window.location?.href
-        ? window.location.href
-        : "/";
+  const envBase = (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/";
+  const basePath = envBase.endsWith("/") ? envBase : `${envBase}/`;
+  if (typeof window === "undefined") return `${basePath}${normalized}`;
   try {
-    return new URL(normalized, base).toString();
+    return new URL(normalized, new URL(basePath, window.location.origin)).toString();
   } catch {
-    return `./${normalized}`;
+    return `${basePath}${normalized}`;
   }
 };
 
