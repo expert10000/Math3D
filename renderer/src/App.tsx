@@ -900,6 +900,13 @@ type SurfaceWorkflowStepId =
   | "promote"
   | "save";
 type SurfaceWorkflowStepState = "done" | "active" | "available" | "disabled";
+type GeometryWorkflowStepId = "create" | "place" | "transform" | "analyze" | "export";
+type GeometryCreatePlacementTarget =
+  | "click-viewer"
+  | "on-grid"
+  | "on-selected-face"
+  | "on-selected-vertex"
+  | "along-selected-edge";
 type WorkflowActionOverlayKind = "mesh" | "promote" | "save";
 type WorkflowActionOverlayStatus = "running" | "success" | "error" | "info";
 const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }> = [
@@ -911,6 +918,20 @@ const SURFACE_WORKFLOW_STEPS: Array<{ id: SurfaceWorkflowStepId; label: string }
   { id: "mesh", label: "Mesh" },
   { id: "promote", label: "Promote" },
   { id: "save", label: "Save" },
+];
+const GEOMETRY_WORKFLOW_STEPS: Array<{ id: GeometryWorkflowStepId; label: string }> = [
+  { id: "create", label: "Create" },
+  { id: "place", label: "Place" },
+  { id: "transform", label: "Transform" },
+  { id: "analyze", label: "Analyze" },
+  { id: "export", label: "Export" },
+];
+const GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS: Array<{ id: GeometryCreatePlacementTarget; label: string }> = [
+  { id: "click-viewer", label: "Click in viewer" },
+  { id: "on-grid", label: "On grid" },
+  { id: "on-selected-face", label: "On selected face" },
+  { id: "on-selected-vertex", label: "On selected vertex" },
+  { id: "along-selected-edge", label: "Along selected edge" },
 ];
 type WorkbookReplayPayload = {
   workbooks: Workbook[];
@@ -2736,6 +2757,7 @@ const MAX_ADVANCED_SNAP_TRIANGLES = 14000;
 
 type SnapPoint3 = { x: number; y: number; z: number };
 type SnapTriangle3 = { a: SnapPoint3; b: SnapPoint3; c: SnapPoint3 };
+type SnapSegment3 = { a: SnapPoint3; b: SnapPoint3 };
 type GeometrySnapPreviewKind = "grid" | "vertex" | "edge" | "face_center" | "surface";
 
 const vecDistSq3 = (a: SnapPoint3, b: SnapPoint3) => {
@@ -2786,6 +2808,84 @@ const nearestPointOnTriangles = (
     }
   }
   return { point: best, distSq: bestDistSq };
+};
+
+const nearestPointOnSegments = (
+  query: SnapPoint3,
+  segments: SnapSegment3[]
+): { point: SnapPoint3 | null; distSq: number } => {
+  if (!segments.length) return { point: null, distSq: Number.POSITIVE_INFINITY };
+  const q = new THREE.Vector3(query.x, query.y, query.z);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const ab = new THREE.Vector3();
+  const aq = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  let best: SnapPoint3 | null = null;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    a.set(seg.a.x, seg.a.y, seg.a.z);
+    b.set(seg.b.x, seg.b.y, seg.b.z);
+    ab.subVectors(b, a);
+    const lenSq = ab.lengthSq();
+    if (lenSq <= 1e-12) continue;
+    aq.subVectors(q, a);
+    const t = Math.max(0, Math.min(1, aq.dot(ab) / lenSq));
+    closest.copy(a).addScaledVector(ab, t);
+    const d2 = closest.distanceToSquared(q);
+    if (d2 < bestDistSq) {
+      bestDistSq = d2;
+      best = { x: closest.x, y: closest.y, z: closest.z };
+    }
+  }
+  return { point: best, distSq: bestDistSq };
+};
+
+const buildMeshPlacementSnapPrimitives = (
+  mesh: Pick<SurfaceMeshData, "positions" | "indices">
+): { vertices: SnapPoint3[]; edgeSegments: SnapSegment3[]; triangles: SnapTriangle3[] } => {
+  const vertices: SnapPoint3[] = [];
+  const edgeSegments: SnapSegment3[] = [];
+  const triangles: SnapTriangle3[] = [];
+  const positions = mesh.positions;
+  if (!positions || positions.length < 9) return { vertices, edgeSegments, triangles };
+
+  const vertexCount = Math.floor(positions.length / 3);
+  const maxVertices = Math.min(vertexCount, 48000);
+  for (let i = 0; i < maxVertices; i++) {
+    const idx = i * 3;
+    vertices.push({ x: positions[idx], y: positions[idx + 1], z: positions[idx + 2] });
+  }
+
+  const pushFace = (ia: number, ib: number, ic: number) => {
+    if (ia < 0 || ib < 0 || ic < 0) return;
+    if (ia >= vertexCount || ib >= vertexCount || ic >= vertexCount) return;
+    const aIdx = ia * 3;
+    const bIdx = ib * 3;
+    const cIdx = ic * 3;
+    const a = { x: positions[aIdx], y: positions[aIdx + 1], z: positions[aIdx + 2] };
+    const b = { x: positions[bIdx], y: positions[bIdx + 1], z: positions[bIdx + 2] };
+    const c = { x: positions[cIdx], y: positions[cIdx + 1], z: positions[cIdx + 2] };
+    if (triangles.length < 20000) triangles.push({ a, b, c });
+    if (edgeSegments.length < 30000) edgeSegments.push({ a, b });
+    if (edgeSegments.length < 30000) edgeSegments.push({ a: b, b: c });
+    if (edgeSegments.length < 30000) edgeSegments.push({ a: c, b: a });
+  };
+
+  const indices = mesh.indices;
+  if (indices && indices.length >= 3) {
+    for (let i = 0; i + 2 < indices.length; i += 3) {
+      pushFace(indices[i], indices[i + 1], indices[i + 2]);
+      if (triangles.length >= 20000 && edgeSegments.length >= 30000) break;
+    }
+  } else {
+    for (let i = 0; i + 2 < vertexCount; i += 3) {
+      pushFace(i, i + 1, i + 2);
+      if (triangles.length >= 20000 && edgeSegments.length >= 30000) break;
+    }
+  }
+  return { vertices, edgeSegments, triangles };
 };
 
 const computeSurfaceMeshFocus = (
@@ -6092,6 +6192,11 @@ const App: React.FC = () => {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   } | null>(null);
+  const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<{
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  } | null>(null);
   const handleGeometryPick = useCallback(
     (info: {
       point: { x: number; y: number; z: number };
@@ -6133,7 +6238,19 @@ const App: React.FC = () => {
       normal: info.normal,
       meshKey: info.meshKey,
     });
+    if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
+  }, [geometryCreatePlacementModeActive, geometryPendingPlacementObjectId]);
+  const handleProceduralPickHover = useCallback((info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => {
+    setGeometryProceduralHoverPick({
+      point: info.point,
+      normal: info.normal,
+      meshKey: info.meshKey,
+    });
   }, []);
   const handleProblemPick = useCallback((info: {
     point: { x: number; y: number; z: number };
@@ -6198,10 +6315,13 @@ const App: React.FC = () => {
   const [geometryAddFocusCamera, setGeometryAddFocusCamera] = useState(true);
   const [geometryAddOpenObjectTab, setGeometryAddOpenObjectTab] = useState(false);
   const [geometryAddEnterPlacementMode, setGeometryAddEnterPlacementMode] = useState(false);
-  const [geometryAddAsHelper, setGeometryAddAsHelper] = useState(false);
+  const [geometryCreatePlacementTarget, setGeometryCreatePlacementTarget] =
+    useState<GeometryCreatePlacementTarget>("click-viewer");
+  const [geometryAddAsHelper] = useState(false);
   const [geometryCreatePlacementModeActive, setGeometryCreatePlacementModeActive] = useState(false);
-  const [geometryCreatePlacementSnapToGrid, setGeometryCreatePlacementSnapToGrid] = useState(false);
+  const [, setGeometryCreatePlacementSnapToGrid] = useState(false);
   const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
+  const [geometryPendingPlacementObjectId, setGeometryPendingPlacementObjectId] = useState<string | null>(null);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
@@ -6545,7 +6665,11 @@ const App: React.FC = () => {
     return null;
   }, [buildRecipeWithPreviewOverrides, geometryGallerySelectedCard, geometryGallerySelectedRecipe]);
 
-  const handleAddGeometryObject = useCallback((recipe?: GeometryGalleryRecipe) => {
+  const handleAddGeometryObject = useCallback((recipe?: GeometryGalleryRecipe): string => {
+    setGeometryPendingPlacementObjectId(null);
+    setGeometryCreatePlacementModeActive(false);
+    setGeometryCreatePlacementStatus(null);
+    setGeometrySnapPreview(null);
     const type = recipe?.type ?? geometryNewObjectType;
     const id = makeId();
     const next = createGeometryObject(type, id);
@@ -6568,6 +6692,7 @@ const App: React.FC = () => {
     if (geometryAddFocusCamera) {
       geometryFocusAfterAddRef.current?.();
     }
+    return id;
   }, [
     geometryAddAsHelper,
     geometryAddFocusCamera,
@@ -6597,15 +6722,27 @@ const App: React.FC = () => {
     if (!geometryGallerySelectedCard?.supported) return;
     const recipe = resolveGeometryGallerySelectedRecipe();
     if (!recipe) return;
-    handleAddGeometryObject(recipe);
+    const createdId = handleAddGeometryObject(recipe);
     markGeometryGalleryCardUsed(geometryGallerySelectedCard.id);
     if (openPlacementMode) {
+      const placementLabel =
+        GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.find((opt) => opt.id === geometryCreatePlacementTarget)?.label ??
+        "Click in viewer";
+      setGeometryProceduralPick(null);
+      setGeometryProceduralHoverPick(null);
+      setGeometryPendingPlacementObjectId(createdId);
       setGeometryCreatePlacementModeActive(true);
       setGeometryCreatePlacementStatus(
-        "Added at origin and selected. Click-to-place ghost mode will be enabled in a follow-up."
+        `Object added. Click in viewer to place using "${placementLabel}".`
       );
+    } else {
+      setGeometryPendingPlacementObjectId(null);
+      setGeometryCreatePlacementModeActive(false);
+      setGeometryCreatePlacementStatus(null);
+      setGeometrySnapPreview(null);
     }
   }, [
+    geometryCreatePlacementTarget,
     geometryGallerySelectedCard,
     handleAddGeometryObject,
     markGeometryGalleryCardUsed,
@@ -7416,6 +7553,113 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const resolveGeometryPlacementTarget = useCallback(
+    (pick: {
+      point: { x: number; y: number; z: number };
+      meshKey?: string;
+    }): { point: SnapPoint3; kind: GeometrySnapPreviewKind } => {
+      const pickPoint: SnapPoint3 = {
+        x: pick.point.x,
+        y: pick.point.y,
+        z: pick.point.z,
+      };
+
+      const snapToGrid = (point: SnapPoint3): SnapPoint3 => {
+        const step = Math.max(1e-6, Number(geometrySnapMoveStep) || 0.25);
+        return {
+          x: Math.round(point.x / step) * step,
+          y: Math.round(point.y / step) * step,
+          z: Math.round(point.z / step) * step,
+        };
+      };
+
+      if (geometryCreatePlacementTarget === "on-grid") {
+        return { point: snapToGrid(pickPoint), kind: "grid" };
+      }
+      if (
+        geometryCreatePlacementTarget === "on-selected-face" ||
+        geometryCreatePlacementTarget === "on-selected-vertex" ||
+        geometryCreatePlacementTarget === "along-selected-edge"
+      ) {
+        const referenceMeshId =
+          pick.meshKey && pick.meshKey !== geometryPendingPlacementObjectId
+            ? pick.meshKey
+            : geometrySelectedObjectId && geometrySelectedObjectId !== geometryPendingPlacementObjectId
+              ? geometrySelectedObjectId
+              : null;
+        const referenceMesh =
+          referenceMeshId != null
+            ? proceduralMeshSet.meshes.find((entry) => entry.id === referenceMeshId) ?? null
+            : null;
+        if (referenceMesh) {
+          const identityTransform: GeometryObjectTransform = {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          };
+          const worldMesh = transformSurfaceMeshByGeometryTransform(
+            referenceMesh,
+            (referenceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
+          );
+          const primitives = buildMeshPlacementSnapPrimitives(worldMesh);
+          if (geometryCreatePlacementTarget === "on-selected-vertex") {
+            const nearest = nearestPointFromList(pickPoint, primitives.vertices);
+            if (nearest.point) return { point: nearest.point, kind: "vertex" };
+          } else if (geometryCreatePlacementTarget === "along-selected-edge") {
+            const nearest = nearestPointOnSegments(pickPoint, primitives.edgeSegments);
+            if (nearest.point) return { point: nearest.point, kind: "edge" };
+          } else {
+            const nearest = nearestPointOnTriangles(pickPoint, primitives.triangles);
+            if (nearest.point) return { point: nearest.point, kind: "surface" };
+          }
+        }
+      }
+      return { point: pickPoint, kind: "surface" };
+    },
+    [
+      geometryCreatePlacementTarget,
+      geometryPendingPlacementObjectId,
+      geometrySelectedObjectId,
+      geometrySnapMoveStep,
+      proceduralMeshSet.meshes,
+    ]
+  );
+  useEffect(() => {
+    if (!geometryCreatePlacementModeActive || !geometryPendingPlacementObjectId || !geometryProceduralHoverPick) return;
+    const resolved = resolveGeometryPlacementTarget({
+      point: geometryProceduralHoverPick.point,
+      meshKey: geometryProceduralHoverPick.meshKey,
+    });
+    setGeometrySnapPreview(resolved);
+  }, [
+    geometryCreatePlacementModeActive,
+    geometryPendingPlacementObjectId,
+    geometryProceduralHoverPick,
+    resolveGeometryPlacementTarget,
+  ]);
+  useEffect(() => {
+    if (!geometryCreatePlacementModeActive || !geometryPendingPlacementObjectId || !geometryProceduralPick) return;
+    const resolved = resolveGeometryPlacementTarget({
+      point: geometryProceduralPick.point,
+      meshKey: geometryProceduralPick.meshKey,
+    });
+    handleUpdateGeometryTransform(geometryPendingPlacementObjectId, { position: resolved.point });
+    if (geometryAddSelectNewObject) setGeometrySelectedObjectId(geometryPendingPlacementObjectId);
+    setGeometryCreatePlacementModeActive(false);
+    setGeometryPendingPlacementObjectId(null);
+    setGeometryProceduralHoverPick(null);
+    setGeometrySnapPreview(null);
+    setGeometryCreatePlacementStatus(
+      `Placed object at (${fmt(resolved.point.x)}, ${fmt(resolved.point.y)}, ${fmt(resolved.point.z)}).`
+    );
+  }, [
+    geometryAddSelectNewObject,
+    geometryCreatePlacementModeActive,
+    geometryPendingPlacementObjectId,
+    geometryProceduralPick,
+    handleUpdateGeometryTransform,
+    resolveGeometryPlacementTarget,
+  ]);
   const geometryAdvancedSnapActive = useMemo(
     () =>
       geometrySurfaceSnapEnabled ||
@@ -29449,6 +29693,56 @@ case "mobius":
     !cleanScreenshotSurfaceActive &&
     !surfacesBrowseModeActive;
   const showSurfaceLocalToolStrip = showSurfaceWorkflowStrip && !isSurfacePreviewMode;
+  const showGeometryWorkflowStrip = mode === "geometry" && !isPresentDisplayMode;
+  const geometryWorkflowActiveStepId = useMemo<GeometryWorkflowStepId>(() => {
+    if (geometryMode === "workbook") return "export";
+    if (geometryMode === "demo") return "analyze";
+    if (geometryMode === "scratch") return "place";
+    if (geometryProceduralPanelTab === "create") return geometryAddEnterPlacementMode ? "place" : "create";
+    if (geometryProceduralPanelTab === "scene") return "place";
+    if (
+      geometryProceduralPanelTab === "object" ||
+      geometryProceduralPanelTab === "transform" ||
+      geometryProceduralPanelTab === "view"
+    ) {
+      return "transform";
+    }
+    if (
+      geometryProceduralPanelTab === "analysis" ||
+      geometryProceduralPanelTab === "euler" ||
+      geometryProceduralPanelTab === "theory"
+    ) {
+      return "analyze";
+    }
+    return "create";
+  }, [geometryAddEnterPlacementMode, geometryMode, geometryProceduralPanelTab]);
+  const handleGeometryWorkflowStepClick = useCallback(
+    (stepId: GeometryWorkflowStepId) => {
+      if (stepId === "create") {
+        setGeometryMode("procedural");
+        setGeometryProceduralPanelTab("create");
+        return;
+      }
+      if (stepId === "place") {
+        setGeometryMode("procedural");
+        setGeometryProceduralPanelTab("scene");
+        return;
+      }
+      if (stepId === "transform") {
+        setGeometryMode("procedural");
+        setGeometryProceduralPanelTab("transform");
+        return;
+      }
+      if (stepId === "analyze") {
+        setGeometryMode("procedural");
+        setGeometryProceduralPanelTab("analysis");
+        return;
+      }
+      openGeometryWorkbookMode(geometryScratchSceneSeed);
+      setGeometryWorkbookUiMode("full");
+    },
+    [geometryScratchSceneSeed, openGeometryWorkbookMode]
+  );
   const activeWorkbookStage = useMemo(
     () => activeWorkbook?.stages.find((stage) => stage.id === activeStageId) ?? null,
     [activeWorkbook, activeStageId]
@@ -32725,6 +33019,50 @@ case "mobius":
                   {geometryViewerControlsOpen ? "Hide viewer bar" : "Show viewer bar"}
                 </button>
               </div>
+              {showGeometryWorkflowStrip && (
+                <div
+                  style={{
+                    ...styles.group,
+                    ...styles.groupWide,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    border: "1px solid #dbe4f0",
+                    borderRadius: 10,
+                    padding: "5px 8px",
+                    background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+                  }}
+                >
+                  <span style={{ fontSize: 10.5, fontWeight: 700, color: "#334155", marginRight: 2 }}>
+                    Workflow
+                  </span>
+                  {GEOMETRY_WORKFLOW_STEPS.map((step, index) => {
+                    const active = geometryWorkflowActiveStepId === step.id;
+                    return (
+                      <React.Fragment key={`geometry-workflow-step-${step.id}`}>
+                        {index > 0 && <span style={{ color: "#94a3b8", fontSize: 11 }}>→</span>}
+                        <button
+                          type="button"
+                          onClick={() => handleGeometryWorkflowStepClick(step.id)}
+                          aria-current={active ? "step" : undefined}
+                          style={{
+                            ...pill(active),
+                            fontSize: 10.5,
+                            border: "1px solid " + (active ? "#0a66c2" : "#cbd5e1"),
+                            background: active ? "#e6f0ff" : "#ffffff",
+                            color: active ? "#0a66c2" : "#334155",
+                            boxShadow: active ? "0 3px 8px rgba(10, 102, 194, 0.15)" : "none",
+                            padding: "3px 9px",
+                          }}
+                        >
+                          {step.label}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
               {geometryMode === "procedural" && (
                 <div
                   style={{
@@ -37301,6 +37639,97 @@ case "mobius":
                           </div>
                         )}
 
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            background: "#fff",
+                            padding: "6px 8px",
+                            display: "grid",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ fontSize: 10.5, fontWeight: 700 }}>Placement</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              aria-pressed={!geometryAddEnterPlacementMode}
+                              onClick={() => {
+                                setGeometryAddEnterPlacementMode(false);
+                                setGeometryCreatePlacementModeActive(false);
+                                setGeometryCreatePlacementStatus(null);
+                                setGeometryPendingPlacementObjectId(null);
+                                setGeometryProceduralHoverPick(null);
+                                setGeometrySnapPreview(null);
+                              }}
+                              style={{ ...pill(!geometryAddEnterPlacementMode), fontSize: 10.5, padding: "2px 8px" }}
+                            >
+                              At origin
+                            </button>
+                            {GEOMETRY_CREATE_PLACEMENT_TARGET_OPTIONS.map((option) => {
+                              const active = geometryAddEnterPlacementMode && geometryCreatePlacementTarget === option.id;
+                              return (
+                                <button
+                                  key={`geometry-placement-target-${option.id}`}
+                                  type="button"
+                                  aria-pressed={active}
+                                  onClick={() => {
+                                    setGeometryAddEnterPlacementMode(true);
+                                    setGeometryCreatePlacementTarget(option.id);
+                                    setGeometryCreatePlacementSnapToGrid(option.id === "on-grid");
+                                  }}
+                                  style={{ ...pill(active), fontSize: 10.5, padding: "2px 8px" }}
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: "grid", gap: 5 }}>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={!geometryAddEnterPlacementMode}
+                                onChange={(e) => {
+                                  setGeometryAddEnterPlacementMode(!e.target.checked);
+                                  if (e.target.checked) {
+                                    setGeometryCreatePlacementModeActive(false);
+                                    setGeometryCreatePlacementStatus(null);
+                                    setGeometryPendingPlacementObjectId(null);
+                                    setGeometryProceduralHoverPick(null);
+                                    setGeometrySnapPreview(null);
+                                  }
+                                }}
+                              />
+                              Add at origin
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryAddSelectNewObject}
+                                onChange={(e) => setGeometryAddSelectNewObject(e.target.checked)}
+                              />
+                              Select after adding
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryAddFocusCamera}
+                                onChange={(e) => setGeometryAddFocusCamera(e.target.checked)}
+                              />
+                              Focus camera
+                            </label>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryAddOpenObjectTab}
+                                onChange={(e) => setGeometryAddOpenObjectTab(e.target.checked)}
+                              />
+                              Open Object tab
+                            </label>
+                          </div>
+                        </div>
+
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button
                             type="button"
@@ -37358,38 +37787,20 @@ case "mobius":
                           >
                             <div style={{ fontSize: 10.5, fontWeight: 700 }}>Placement mode</div>
                             <div style={{ fontSize: 10.5, color: "#334155" }}>
-                              Click in viewer to place object.
+                              Placement target is staged. Object was added at origin; interactive ghost placement will follow.
                             </div>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                              <button
-                                type="button"
-                                onClick={() => handleAddGeometryGallerySelectedAtOrigin(false)}
-                                disabled={!geometryGallerySelectedCard.supported}
-                              >
-                                Place at origin
-                              </button>
-                              <button
-                                type="button"
-                                aria-pressed={geometryCreatePlacementSnapToGrid}
-                                onClick={() => {
-                                  setGeometryCreatePlacementSnapToGrid((prev) => !prev);
-                                  setGeometryCreatePlacementStatus((prev) =>
-                                    prev && prev.includes("Snap to grid")
-                                      ? null
-                                      : "Snap to grid preference saved for upcoming click-placement mode."
-                                  );
-                                }}
-                              >
-                                {geometryCreatePlacementSnapToGrid ? "Snap to grid: On" : "Snap to grid"}
-                              </button>
                               <button
                                 type="button"
                                 onClick={() => {
                                   setGeometryCreatePlacementModeActive(false);
                                   setGeometryCreatePlacementStatus(null);
+                                  setGeometryPendingPlacementObjectId(null);
+                                  setGeometryProceduralHoverPick(null);
+                                  setGeometrySnapPreview(null);
                                 }}
                               >
-                                Cancel
+                                Close
                               </button>
                             </div>
                             {geometryCreatePlacementStatus && (
@@ -37573,10 +37984,18 @@ case "mobius":
                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
                                   <input
                                     type="checkbox"
+                                    checked={!geometryAddEnterPlacementMode}
+                                    onChange={(e) => setGeometryAddEnterPlacementMode(!e.target.checked)}
+                                  />
+                                  Add at origin
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                                  <input
+                                    type="checkbox"
                                     checked={geometryAddSelectNewObject}
                                     onChange={(e) => setGeometryAddSelectNewObject(e.target.checked)}
                                   />
-                                  Select new object
+                                  Select after adding
                                 </label>
                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
                                   <input
@@ -37592,23 +38011,7 @@ case "mobius":
                                     checked={geometryAddOpenObjectTab}
                                     onChange={(e) => setGeometryAddOpenObjectTab(e.target.checked)}
                                   />
-                                  Open Object tab after adding
-                                </label>
-                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={geometryAddEnterPlacementMode}
-                                    onChange={(e) => setGeometryAddEnterPlacementMode(e.target.checked)}
-                                  />
-                                  Enter placement mode
-                                </label>
-                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={geometryAddAsHelper}
-                                    onChange={(e) => setGeometryAddAsHelper(e.target.checked)}
-                                  />
-                                  Add as helper/reference
+                                  Open Object tab
                                 </label>
                               </div>
                             </details>
@@ -41364,6 +41767,7 @@ case "mobius":
                           ? handleProblemPick
                           : undefined
                   }
+                  onPickHover={geometryMode === "procedural" ? handleProceduralPickHover : undefined}
                 />
               </div>
             </div>

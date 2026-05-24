@@ -1256,6 +1256,14 @@ type Props = {
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
+  onInspectHover?: (info: {
+    index: number;
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+    uv?: { u: number; v: number };
+    xy?: { x: number; y: number };
+  }) => void;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
@@ -1453,6 +1461,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     geodesicDiskShowBoundary = true,
     inspectEnabled = false,
     onInspectPick,
+    onInspectHover,
     inspectPoint = null,
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
@@ -1539,6 +1548,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const geodesicDiskPickEnabledRef = useRef(geodesicDiskPickEnabled);
   const showChartGridRef = useRef(showChartGrid);
   const onInspectPickRef = useRef(onInspectPick);
+  const onInspectHoverRef = useRef(onInspectHover);
   const onDragStartRef = useRef(onDragStart);
   const onDragRef = useRef(onDrag);
   const onDragEndRef = useRef(onDragEnd);
@@ -1819,6 +1829,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     onInspectPickRef.current = onInspectPick;
   }, [onInspectPick]);
+  useEffect(() => {
+    onInspectHoverRef.current = onInspectHover;
+  }, [onInspectHover]);
   useEffect(() => {
     dragEnabledRef.current = dragEnabled;
   }, [dragEnabled]);
@@ -4477,24 +4490,75 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
     const handlePointerMove = (event: PointerEvent) => {
       const dragState = dragStateRef.current;
-      if (!dragState || event.pointerId !== dragState.pointerId) return;
       const rect = renderer.domElement.getBoundingClientRect();
       const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       pointer.set(x, y);
       raycaster.setFromCamera(pointer, camera);
 
-      const hitPoint = new THREE.Vector3();
-      if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
-      dragState.lastPoint.copy(hitPoint);
-      const delta = hitPoint.clone().sub(dragState.startPoint);
-      const dragCb = onDragRef.current;
-      if (dragCb) {
-        dragCb({
-          point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
-          normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
-          delta: { x: delta.x, y: delta.y, z: delta.z },
-          meshKey: dragState.meshKey,
+      if (dragState && event.pointerId === dragState.pointerId) {
+        const hitPoint = new THREE.Vector3();
+        if (!raycaster.ray.intersectPlane(dragState.plane, hitPoint)) return;
+        dragState.lastPoint.copy(hitPoint);
+        const delta = hitPoint.clone().sub(dragState.startPoint);
+        const dragCb = onDragRef.current;
+        if (dragCb) {
+          dragCb({
+            point: { x: hitPoint.x, y: hitPoint.y, z: hitPoint.z },
+            normal: { x: dragState.normal.x, y: dragState.normal.y, z: dragState.normal.z },
+            delta: { x: delta.x, y: delta.y, z: delta.z },
+            meshKey: dragState.meshKey,
+          });
+        }
+        return;
+      }
+
+      if (!inspectEnabledRef.current) return;
+      const inspectHoverCb = onInspectHoverRef.current;
+      if (!inspectHoverCb) return;
+      const intersects = raycaster.intersectObjects([surfaceObj], true);
+      if (!intersects.length) return;
+      const hit = intersects[0];
+      const point = hit.point.clone();
+      const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
+      let normalWorld = new THREE.Vector3(0, 1, 0);
+      if (hit.face) {
+        normalWorld.copy(hit.face.normal);
+        const obj = hit.object as THREE.Object3D;
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(obj.matrixWorld);
+        normalWorld.applyMatrix3(normalMatrix).normalize();
+      } else if ((hit as any).normal) {
+        normalWorld.copy((hit as any).normal).normalize();
+      }
+      const isGraphSurface = isGraphId(surfaceId);
+      let xyDomain: { x: number; y: number } | undefined;
+      if (isGraphSurface) {
+        xyDomain = { x: point.x, y: point.z };
+      }
+      let uvDomain: { u: number; v: number } | undefined;
+      const hitUv = (hit as any).uv as THREE.Vector2 | undefined;
+      if (hitUv && Number.isFinite(hitUv.x) && Number.isFinite(hitUv.y)) {
+        uvDomain = { u: hitUv.x, v: hitUv.y };
+      }
+      const nearest = findNearestSample(point);
+      if (nearest) {
+        const inspectNormal = nearest.sample.normal.clone().normalize();
+        inspectHoverCb({
+          index: nearest.index,
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
+          meshKey: hitMeshKey ?? nearest.sample.meshKey,
+          uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
+          xy: xyDomain,
+        });
+      } else {
+        inspectHoverCb({
+          index: -1,
+          point: { x: point.x, y: point.y, z: point.z },
+          normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
+          meshKey: hitMeshKey ?? undefined,
+          uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
+          xy: xyDomain,
         });
       }
     };

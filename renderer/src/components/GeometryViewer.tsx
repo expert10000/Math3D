@@ -81,6 +81,11 @@ export type GeometryViewerProps = {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   }) => void;
+  onPickHover?: (info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => void;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;
   gizmoMode?: "translate" | "rotate" | "scale";
@@ -131,6 +136,7 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
   onShiftWheelScale,
   pickEnabled = false,
   onPick,
+  onPickHover,
   gizmoEnabled = false,
   gizmoMeshKey = null,
   gizmoMode = "translate",
@@ -291,6 +297,13 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
         pickEnabled && onPick
           ? (info) => {
               onPick({ point: info.point, normal: info.normal, meshKey: info.meshKey });
+            }
+          : undefined
+      }
+      onInspectHover={
+        pickEnabled && onPickHover
+          ? (info) => {
+              onPickHover({ point: info.point, normal: info.normal, meshKey: info.meshKey });
             }
           : undefined
       }

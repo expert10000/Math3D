@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Vec3 } from "./types";
 
-export type GeometryObjectType = "sphere" | "box" | "polygon" | "cylinder" | "cone" | "torus" | "polyhedron";
+export type GeometryObjectType = "sphere" | "box" | "polygon" | "cylinder" | "cone" | "torus" | "plane" | "polyhedron";
 
 export type GeometryParamDef = {
   id: string;
@@ -412,6 +412,47 @@ export const GEOMETRY_OBJECT_REGISTRY: Record<GeometryObjectType, GeometryObject
         Math.min(96, Math.max(8, Math.round(Number(params.tubularSegments ?? 48)))),
         Number(params.arc ?? Math.PI * 2)
       ),
+  },
+  plane: {
+    type: "plane",
+    label: "Plane",
+    defaultParams: {
+      width: 2,
+      height: 2,
+      widthSegments: 1,
+      heightSegments: 1,
+      axis: "xy",
+    },
+    params: [
+      { id: "width", label: "Width", kind: "number", min: 0.1, max: 20, step: 0.1 },
+      { id: "height", label: "Height", kind: "number", min: 0.1, max: 20, step: 0.1 },
+      { id: "widthSegments", label: "Width segments", kind: "number", min: 1, max: 128, step: 1 },
+      { id: "heightSegments", label: "Height segments", kind: "number", min: 1, max: 128, step: 1 },
+      {
+        id: "axis",
+        label: "Orientation",
+        kind: "select",
+        options: [
+          { value: "xy", label: "XY" },
+          { value: "xz", label: "XZ" },
+          { value: "yz", label: "YZ" },
+        ],
+      },
+    ],
+    build: (params) => {
+      const width = Number(params.width ?? 2);
+      const height = Number(params.height ?? 2);
+      const widthSegments = Math.max(1, Math.round(Number(params.widthSegments ?? 1)));
+      const heightSegments = Math.max(1, Math.round(Number(params.heightSegments ?? 1)));
+      const axis = String(params.axis ?? "xy");
+      const geometry = new THREE.PlaneGeometry(width, height, widthSegments, heightSegments);
+      if (axis === "xz") {
+        geometry.rotateX(-Math.PI * 0.5);
+      } else if (axis === "yz") {
+        geometry.rotateY(Math.PI * 0.5);
+      }
+      return geometry;
+    },
   },
   polyhedron: {
     type: "polyhedron",
