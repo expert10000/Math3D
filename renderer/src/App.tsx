@@ -316,7 +316,16 @@ type GeometryMode = "procedural" | "demo" | "scratch" | "workbook";
 type GeometryWorkbookUiMode = "compact" | "full";
 type GeometryDemoFamily = "stereometry" | "planimetry";
 type PlanimetryPresetId = "task" | "euler" | "tangent" | "incircle_reflection";
-type GeometryProceduralPanelTab = "scene" | "script" | "transform" | "object" | "euler";
+type GeometryProceduralPanelTab =
+  | "create"
+  | "scene"
+  | "object"
+  | "transform"
+  | "view"
+  | "analysis"
+  | "theory"
+  | "script"
+  | "euler";
 type GeometryEulerScope = "selected" | "scene";
 type GeometryEulerPolygonTemplateId =
   | "torus_abab_inv"
@@ -386,10 +395,14 @@ const MAX_WORKSPACE_HISTORY = 120;
 const GEOMETRY_MODE_VALUES: GeometryMode[] = ["procedural", "demo", "scratch", "workbook"];
 const GEOMETRY_DEMO_TAB_VALUES: GeometryDemoTab[] = ["task", "objects", "solve", "script"];
 const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
+  "create",
   "scene",
-  "script",
-  "transform",
   "object",
+  "transform",
+  "view",
+  "analysis",
+  "theory",
+  "script",
   "euler",
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
@@ -5721,7 +5734,7 @@ const App: React.FC = () => {
   const [geometryWorkspaceTab, setGeometryWorkspaceTab] = useState<ConstructionWorkspaceTab>("build");
   const [geometryDemoTab, setGeometryDemoTab] = useState<GeometryDemoTab>("task");
   const [geometryProceduralPanelTab, setGeometryProceduralPanelTab] =
-    useState<GeometryProceduralPanelTab>("scene");
+    useState<GeometryProceduralPanelTab>("create");
   const [geometryEulerScope, setGeometryEulerScope] = useState<GeometryEulerScope>("selected");
   const [geometryEulerPolygonTemplateId, setGeometryEulerPolygonTemplateId] =
     useState<GeometryEulerPolygonTemplateId>("torus_abab_inv");
@@ -6123,23 +6136,6 @@ const App: React.FC = () => {
       counts: getPolyhedronCounts(family, geometrySelectedObject.params),
     };
   }, [geometrySelectedObject]);
-  const geometrySceneObjectRows = useMemo(
-    () => [
-      ...geometryObjects.map((obj) => ({
-        id: obj.id,
-        visible: obj.visible,
-        name: obj.name,
-        label: GEOMETRY_OBJECT_REGISTRY[obj.type]?.label ?? obj.type,
-      })),
-      ...geometryDatasetMeshObjects.map((obj) => ({
-        id: obj.id,
-        visible: obj.visible,
-        name: obj.name,
-        label: "Dataset mesh",
-      })),
-    ],
-    [geometryObjects, geometryDatasetMeshObjects]
-  );
   const geometryGallerySelectedCard = useMemo(
     () =>
       GEOMETRY_GALLERY_CARD_BY_ID.get(geometryGallerySelectedCardId) ??
@@ -6911,6 +6907,75 @@ const App: React.FC = () => {
     geometryEulerSelectedMeshCounts,
     geometrySelectedSceneObject,
   ]);
+  const geometryTheorySummary = useMemo(() => {
+    if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) return null;
+    const selected = geometrySelectedSceneObject;
+    const typeLabel = GEOMETRY_OBJECT_REGISTRY[selected.type]?.label ?? selected.type;
+    const params = Object.entries(selected.params).map(([key, raw]) => ({
+      key,
+      value: typeof raw === "number" ? (Number.isFinite(raw) ? raw.toFixed(3).replace(/\.?0+$/, "") : "n/a") : String(raw),
+    }));
+    const formulas: string[] = [];
+    const related: string[] = [];
+    if (selected.type === "box") {
+      const w = Number(selected.params.width ?? 0);
+      const h = Number(selected.params.height ?? 0);
+      const d = Number(selected.params.depth ?? 0);
+      if (Number.isFinite(w) && Number.isFinite(h) && Number.isFinite(d)) {
+        formulas.push(`Volume = w*h*d = ${(w * h * d).toFixed(4).replace(/\.?0+$/, "")}`);
+        formulas.push(`Surface area = 2(wh + wd + hd) = ${(2 * (w * h + w * d + h * d)).toFixed(4).replace(/\.?0+$/, "")}`);
+      } else {
+        formulas.push("Volume = w*h*d");
+        formulas.push("Surface area = 2(wh + wd + hd)");
+      }
+      related.push("cube", "cuboid", "rectangular prism");
+    } else if (selected.type === "sphere") {
+      const r = Number(selected.params.radius ?? 0);
+      formulas.push(`Volume = 4/3*pi*r^3${Number.isFinite(r) ? ` = ${((4 / 3) * Math.PI * r * r * r).toFixed(4).replace(/\.?0+$/, "")}` : ""}`);
+      formulas.push(`Surface area = 4*pi*r^2${Number.isFinite(r) ? ` = ${(4 * Math.PI * r * r).toFixed(4).replace(/\.?0+$/, "")}` : ""}`);
+      related.push("ball", "ellipsoid", "icosphere");
+    } else if (selected.type === "cylinder") {
+      const r = Number(selected.params.radiusTop ?? selected.params.radiusBottom ?? 0);
+      const h = Number(selected.params.height ?? 0);
+      formulas.push("Volume ≈ pi*r^2*h (for equal top/bottom radii)");
+      if (Number.isFinite(r) && Number.isFinite(h)) {
+        formulas.push(`Approx volume = ${(Math.PI * r * r * h).toFixed(4).replace(/\.?0+$/, "")}`);
+      }
+      related.push("cone", "prism", "tube");
+    } else if (selected.type === "cone") {
+      const r = Number(selected.params.radius ?? 0);
+      const h = Number(selected.params.height ?? 0);
+      formulas.push("Volume = (1/3)*pi*r^2*h");
+      if (Number.isFinite(r) && Number.isFinite(h)) {
+        formulas.push(`Volume = ${((Math.PI * r * r * h) / 3).toFixed(4).replace(/\.?0+$/, "")}`);
+      }
+      related.push("cylinder", "pyramid");
+    } else if (selected.type === "torus") {
+      const R = Number(selected.params.radius ?? 0);
+      const r = Number(selected.params.tube ?? 0);
+      formulas.push("Volume = 2*pi^2*R*r^2");
+      formulas.push("Surface area = 4*pi^2*R*r");
+      if (Number.isFinite(R) && Number.isFinite(r)) {
+        formulas.push(`Volume = ${(2 * Math.PI * Math.PI * R * r * r).toFixed(4).replace(/\.?0+$/, "")}`);
+      }
+      related.push("ring torus", "spindle torus");
+    } else if (selected.type === "polygon") {
+      formulas.push("Area (full disk) = pi*r^2 · (thetaLength / 2pi)");
+      formulas.push("Perimeter (regular n-gon, full turn) ≈ 2*n*r*sin(pi/n)");
+      related.push("circle sector", "regular polygon");
+    } else if (selected.type === "polyhedron") {
+      formulas.push("Euler characteristic (closed orientable): chi = V - E + F");
+      formulas.push("Genus relation: chi = 2 - 2g");
+      related.push("platonic solids", "prisms", "antiprisms");
+    }
+    return {
+      title: typeLabel,
+      definition: `${typeLabel} procedural primitive in the Geometry scene.`,
+      params,
+      formulas,
+      related,
+    };
+  }, [geometrySelectedSceneObject]);
   const geometryEulerPolygonWord = useMemo(
     () => formatPolygonWord(geometryEulerPolygonEdges),
     [geometryEulerPolygonEdges]
@@ -31806,10 +31871,13 @@ case "mobius":
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Panel</span>
                   {([
+                    { id: "create" as const, label: "Create" },
                     { id: "scene" as const, label: "Scene" },
-                    { id: "script" as const, label: "Script" },
-                    { id: "transform" as const, label: "Transform" },
                     { id: "object" as const, label: "Object" },
+                    { id: "transform" as const, label: "Transform" },
+                    { id: "view" as const, label: "View" },
+                    { id: "analysis" as const, label: "Analysis" },
+                    { id: "theory" as const, label: "Theory" },
                   ] as const).map((entry) => {
                     const active = geometryProceduralPanelTab === entry.id;
                     return (
@@ -35971,6 +36039,8 @@ case "mobius":
 
                 {geometryMode === "procedural" ? (
                   <>
+                    {geometryProceduralPanelTab === "create" && (
+                    <>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Object gallery</div>
                     <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 6 }}>
@@ -36406,6 +36476,8 @@ case "mobius":
                         )}
                       </div>
                     )}
+                    </>
+                    )}
 
                     {geometryProceduralPanelTab === "script" && (
                     <div style={{ marginTop: 4, display: "grid", gap: 6 }}>
@@ -36463,64 +36535,9 @@ case "mobius":
                       onShowAllSceneObjects={handleShowAllUnifiedObjects}
                     />
 
-                    <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Objects</div>
-                    <div data-testid="scene-object-list">
-                    <div data-testid="geometry-objects-list" style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                      {geometrySceneObjectRows.map((obj) => {
-                        const active = obj.id === geometrySelectedObjectId;
-                        return (
-                          <div
-                            key={obj.id}
-                            data-testid="geometry-object-row"
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "auto 1fr auto",
-                              gap: 8,
-                              alignItems: "center",
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: active ? "1px solid #0a66c2" : "1px solid #e5e7eb",
-                              background: active ? "#eef4ff" : "#fff",
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              data-testid="geometry-object-visible-toggle"
-                              checked={obj.visible}
-                              onChange={() => handleToggleGeometryObjectVisible(obj.id)}
-                              title="Show/Hide"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setGeometrySelectedObjectId(obj.id)}
-                              style={{
-                                textAlign: "left",
-                                background: "transparent",
-                                border: "none",
-                                padding: 0,
-                                cursor: "pointer",
-                                fontWeight: active ? 600 : 500,
-                              }}
-                            >
-                              {obj.name}
-                              <span style={{ marginLeft: 6, fontSize: 11, opacity: 0.7 }}>{obj.label}</span>
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="geometry-object-delete"
-                              onClick={() => handleRemoveGeometryObject(obj.id)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Scene ↔ Dataset</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <details style={{ marginTop: 12 }}>
+                      <summary style={{ fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Scene output / export</summary>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                         <button
                           type="button"
                           onClick={handleBakeSelectedGeometryObject}
@@ -36544,13 +36561,138 @@ case "mobius":
                         </button>
                       </div>
                       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
-                        Compose scene meshes as one dataset, analyze them as SurfaceMesh, then detach into generic Mesh objects.
+                        Compose scene meshes as one dataset, analyze as SurfaceMesh, then detach into Mesh objects.
                       </div>
                       {geometryBakeError && (
                         <div style={{ fontSize: 11, color: "#b42318", marginTop: 4 }}>{geometryBakeError}</div>
                       )}
-                    </div>
+                    </details>
                     </>
+                    )}
+
+                    {geometryProceduralPanelTab === "view" && (
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#fbfdff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Viewport</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("3d")} aria-pressed={geometryViewPreset === "3d"}>
+                            3D
+                          </button>
+                          <button type="button" onClick={() => handleGeometryApplyViewPreset("planar")} aria-pressed={geometryViewPreset === "planar"}>
+                            Planar
+                          </button>
+                          <button type="button" onClick={() => handleGeometryFit("scene")}>Fit scene</button>
+                          <button type="button" onClick={() => handleGeometryFit("stage")}>Fit active stage</button>
+                          <button type="button" onClick={() => handleGeometryFit("claim")}>Fit claim</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWorkspaceCameraPreset("reset_camera");
+                              setGeometryResetToken((t) => t + 1);
+                            }}
+                          >
+                            Reset camera
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#fbfdff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Display</div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryWireframe}
+                            onChange={(e) => setGeometryWireframe(e.target.checked)}
+                          />
+                          Wireframe
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryShowPlanes}
+                            onChange={(e) => setGeometryShowPlanes(e.target.checked)}
+                          />
+                          Show planes
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showXY}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showXY: e.target.checked }))}
+                          />
+                          XY plane
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showXZ}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showXZ: e.target.checked }))}
+                          />
+                          XZ plane
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showYZ}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showYZ: e.target.checked }))}
+                          />
+                          YZ plane
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showGrid}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showGrid: e.target.checked }))}
+                          />
+                          Major grid
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showMinorGrid}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showMinorGrid: e.target.checked }))}
+                          />
+                          Minor grid
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={planeGridSettings.showLabels}
+                            onChange={(e) => setPlaneGridSettings((prev) => ({ ...prev, showLabels: e.target.checked }))}
+                          />
+                          Grid labels
+                        </label>
+                        <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                          Opacity
+                          <input
+                            type="range"
+                            min={0.2}
+                            max={1}
+                            step={0.05}
+                            value={geometryOpacity}
+                            onChange={(e) => setGeometryOpacity(Math.max(0.2, Math.min(1, Number(e.target.value))))}
+                          />
+                        </label>
+                      </div>
+                    </div>
                     )}
 
                     {geometryProceduralPanelTab === "transform" && (
@@ -36650,6 +36792,91 @@ case "mobius":
                           />
                         </label>
                       </div>
+                      {geometrySelectedSceneObject ? (
+                        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Selected object transform</div>
+                          <div style={{ fontSize: 11, opacity: 0.75 }}>{geometrySelectedSceneObject.name}</div>
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "60px 1fr 1fr 1fr",
+                              gap: "6px 8px",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div />
+                            <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
+                            <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
+                            <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
+                            <div style={{ fontSize: 11 }}>Pos</div>
+                            {(["x", "y", "z"] as const).map((axis) => (
+                              <input
+                                key={`transform-tab-pos-${axis}`}
+                                type="number"
+                                step={0.1}
+                                value={geometrySelectedSceneObject.transform.position[axis]}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (!Number.isFinite(v)) return;
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    position: axisPatch(axis, v),
+                                  });
+                                }}
+                              />
+                            ))}
+                            <div style={{ fontSize: 11 }}>Rot (deg)</div>
+                            {(["x", "y", "z"] as const).map((axis) => (
+                              <input
+                                key={`transform-tab-rot-${axis}`}
+                                type="number"
+                                step={1}
+                                value={geometrySelectedSceneObject.transform.rotation[axis]}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (!Number.isFinite(v)) return;
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    rotation: axisPatch(axis, v),
+                                  });
+                                }}
+                              />
+                            ))}
+                            <div style={{ fontSize: 11 }}>Scale</div>
+                            {(["x", "y", "z"] as const).map((axis) => (
+                              <input
+                                key={`transform-tab-scale-${axis}`}
+                                type="number"
+                                step={0.1}
+                                value={geometrySelectedSceneObject.transform.scale[axis]}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (!Number.isFinite(v)) return;
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    scale: axisPatch(axis, v),
+                                  });
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                  position: { x: 0, y: 0, z: 0 },
+                                  rotation: { x: 0, y: 0, z: 0 },
+                                  scale: { x: 1, y: 1, z: 1 },
+                                })
+                              }
+                            >
+                              Reset transform
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
+                          Select an object in Scene to edit position/rotation/scale.
+                        </div>
+                      )}
                     </div>
                     )}
 
@@ -37232,87 +37459,6 @@ case "mobius":
                           </div>
                         )}
 
-                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Transform</div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "60px 1fr 1fr 1fr",
-                            gap: "6px 8px",
-                            alignItems: "center",
-                            marginTop: 6,
-                          }}
-                        >
-                          <div />
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
-
-                          <div style={{ fontSize: 11 }}>Pos</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`pos-${axis}`}
-                              type="number"
-                              step={0.1}
-                              value={geometrySelectedObject.transform.position[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  position: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-
-                          <div style={{ fontSize: 11 }}>Rot (deg)</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`rot-${axis}`}
-                              type="number"
-                              step={1}
-                              value={geometrySelectedObject.transform.rotation[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  rotation: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-
-                          <div style={{ fontSize: 11 }}>Scale</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`scale-${axis}`}
-                              type="number"
-                              step={0.1}
-                              value={geometrySelectedObject.transform.scale[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                  scale: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGeometryTransform(geometrySelectedObject.id, {
-                                position: { x: 0, y: 0, z: 0 },
-                                rotation: { x: 0, y: 0, z: 0 },
-                                scale: { x: 1, y: 1, z: 1 },
-                              })
-                            }
-                          >
-                            Reset transform
-                          </button>
-                        </div>
-
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Material</div>
                         <div
                           style={{
@@ -37426,87 +37572,6 @@ case "mobius":
                           )}
                         </div>
 
-                        <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Transform</div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "60px 1fr 1fr 1fr",
-                            gap: "6px 8px",
-                            alignItems: "center",
-                            marginTop: 6,
-                          }}
-                        >
-                          <div />
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
-                          <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
-
-                          <div style={{ fontSize: 11 }}>Pos</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`dataset-pos-${axis}`}
-                              type="number"
-                              step={0.1}
-                              value={geometrySelectedDatasetMeshObject.transform.position[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
-                                  position: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-
-                          <div style={{ fontSize: 11 }}>Rot (deg)</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`dataset-rot-${axis}`}
-                              type="number"
-                              step={1}
-                              value={geometrySelectedDatasetMeshObject.transform.rotation[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
-                                  rotation: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-
-                          <div style={{ fontSize: 11 }}>Scale</div>
-                          {(["x", "y", "z"] as const).map((axis) => (
-                            <input
-                              key={`dataset-scale-${axis}`}
-                              type="number"
-                              step={0.1}
-                              value={geometrySelectedDatasetMeshObject.transform.scale[axis]}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (!Number.isFinite(v)) return;
-                                handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
-                                  scale: axisPatch(axis, v),
-                                });
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleUpdateGeometryTransform(geometrySelectedDatasetMeshObject.id, {
-                                position: { x: 0, y: 0, z: 0 },
-                                rotation: { x: 0, y: 0, z: 0 },
-                                scale: { x: 1, y: 1, z: 1 },
-                              })
-                            }
-                          >
-                            Reset transform
-                          </button>
-                        </div>
-
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Material</div>
                         <div
                           style={{
@@ -37571,8 +37636,120 @@ case "mobius":
                           Select an object in the Scene tab to edit parameters and material.
                         </div>
                       ))}
-                    {geometryProceduralPanelTab === "euler" && (
+                    {geometryProceduralPanelTab === "theory" && (
                       <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        {geometryTheorySummary ? (
+                          <>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Object definition</div>
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fbfdff",
+                                fontSize: 11,
+                                lineHeight: 1.45,
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div><strong>{geometryTheorySummary.title}</strong></div>
+                              <div>{geometryTheorySummary.definition}</div>
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Parameters</div>
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fff",
+                                display: "grid",
+                                gap: 4,
+                                fontSize: 11,
+                              }}
+                            >
+                              {geometryTheorySummary.params.map((entry) => (
+                                <div key={`geometry-theory-param-${entry.key}`}>
+                                  <strong>{entry.key}:</strong> {entry.value}
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Formulas</div>
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fff",
+                                display: "grid",
+                                gap: 4,
+                                fontSize: 11,
+                              }}
+                            >
+                              {geometryTheorySummary.formulas.length ? (
+                                geometryTheorySummary.formulas.map((line, idx) => (
+                                  <div key={`geometry-theory-formula-${idx}`}>{line}</div>
+                                ))
+                              ) : (
+                                <div>No formulas available for this object.</div>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Related objects</div>
+                            <div style={{ fontSize: 11, color: "#475467" }}>
+                              {geometryTheorySummary.related.length ? geometryTheorySummary.related.join(" · ") : "n/a"}
+                            </div>
+                          </>
+                        ) : (
+                          <div
+                            style={{
+                              border: "1px dashed #cbd5e1",
+                              borderRadius: 8,
+                              padding: "10px 12px",
+                              fontSize: 11,
+                              color: "#334155",
+                              background: "#f8fafc",
+                            }}
+                          >
+                            Select a procedural scene object in Scene tab to view theory notes.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(geometryProceduralPanelTab === "analysis" || geometryProceduralPanelTab === "euler") && (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                          {geometrySelectedSceneMeshInfo ? (
+                            <>
+                              <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                              <div>
+                                <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
+                                {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
+                              </div>
+                              <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                  Analyze selected
+                                </button>
+                                <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                  Analyze + Gauss map
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <div>Select an object with mesh data to inspect measurements and quality.</div>
+                          )}
+                        </div>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic from mesh/cell counts</div>
                         <div
                           style={{
