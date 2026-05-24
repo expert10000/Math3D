@@ -1604,6 +1604,9 @@ type GeometryTransformPatch = {
   scale?: Partial<Vec3>;
 };
 
+type GeometryGizmoSpace = "world" | "local" | "parent";
+type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
+
 type GeometryDatasetMeshObject = {
   id: string;
   name: string;
@@ -2724,6 +2727,65 @@ const transformSurfaceMeshByGeometryTransform = (
     meanEdgeLength: null,
     validation: null,
   };
+};
+
+const MAX_ADVANCED_SNAP_VERTICES = 24000;
+const MAX_ADVANCED_SNAP_EDGE_POINTS = 24000;
+const MAX_ADVANCED_SNAP_FACE_POINTS = 24000;
+const MAX_ADVANCED_SNAP_TRIANGLES = 14000;
+
+type SnapPoint3 = { x: number; y: number; z: number };
+type SnapTriangle3 = { a: SnapPoint3; b: SnapPoint3; c: SnapPoint3 };
+type GeometrySnapPreviewKind = "grid" | "vertex" | "edge" | "face_center" | "surface";
+
+const vecDistSq3 = (a: SnapPoint3, b: SnapPoint3) => {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return dx * dx + dy * dy + dz * dz;
+};
+
+const nearestPointFromList = (query: SnapPoint3, points: SnapPoint3[]): { point: SnapPoint3 | null; distSq: number } => {
+  let best: SnapPoint3 | null = null;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < points.length; i++) {
+    const candidate = points[i];
+    const d2 = vecDistSq3(query, candidate);
+    if (d2 < bestDistSq) {
+      bestDistSq = d2;
+      best = candidate;
+    }
+  }
+  return { point: best, distSq: bestDistSq };
+};
+
+const nearestPointOnTriangles = (
+  query: SnapPoint3,
+  triangles: SnapTriangle3[]
+): { point: SnapPoint3 | null; distSq: number } => {
+  if (!triangles.length) return { point: null, distSq: Number.POSITIVE_INFINITY };
+  const queryV = new THREE.Vector3(query.x, query.y, query.z);
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  const tri = new THREE.Triangle();
+  let best: SnapPoint3 | null = null;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < triangles.length; i++) {
+    const t = triangles[i];
+    a.set(t.a.x, t.a.y, t.a.z);
+    b.set(t.b.x, t.b.y, t.b.z);
+    c.set(t.c.x, t.c.y, t.c.z);
+    tri.set(a, b, c);
+    tri.closestPointToPoint(queryV, closest);
+    const d2 = closest.distanceToSquared(queryV);
+    if (d2 < bestDistSq) {
+      bestDistSq = d2;
+      best = { x: closest.x, y: closest.y, z: closest.z };
+    }
+  }
+  return { point: best, distSq: bestDistSq };
 };
 
 const computeSurfaceMeshFocus = (
@@ -6147,13 +6209,26 @@ const App: React.FC = () => {
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
   const [geometryGizmoMode, setGeometryGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
-  const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<"world" | "local">("world");
+  const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<GeometryGizmoSpace>("world");
+  const [geometryTransformPivotMode, setGeometryTransformPivotMode] = useState<GeometryTransformPivotMode>("center");
+  const [geometryTransformPivotCustom, setGeometryTransformPivotCustom] = useState<Vec3>({ x: 0, y: 0, z: 0 });
+  const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(true);
   const [geometrySnapMoveEnabled, setGeometrySnapMoveEnabled] = useState(false);
   const [geometrySnapMoveStep, setGeometrySnapMoveStep] = useState(0.25);
   const [geometrySnapRotateEnabled, setGeometrySnapRotateEnabled] = useState(false);
   const [geometrySnapRotateStepDeg, setGeometrySnapRotateStepDeg] = useState(15);
   const [geometrySnapScaleEnabled, setGeometrySnapScaleEnabled] = useState(false);
   const [geometrySnapScaleStep, setGeometrySnapScaleStep] = useState(0.1);
+  const [geometryAdvancedSnapOpen, setGeometryAdvancedSnapOpen] = useState(false);
+  const [geometryGridSnapEnabled, setGeometryGridSnapEnabled] = useState(false);
+  const [geometrySurfaceSnapEnabled, setGeometrySurfaceSnapEnabled] = useState(false);
+  const [geometryVertexSnapEnabled, setGeometryVertexSnapEnabled] = useState(false);
+  const [geometryEdgeSnapEnabled, setGeometryEdgeSnapEnabled] = useState(false);
+  const [geometryFaceCenterSnapEnabled, setGeometryFaceCenterSnapEnabled] = useState(false);
+  const [geometrySnapPreview, setGeometrySnapPreview] = useState<{
+    point: SnapPoint3;
+    kind: GeometrySnapPreviewKind;
+  } | null>(null);
   const [geometryPolySharpEdgesEnabled, setGeometryPolySharpEdgesEnabled] = useState(false);
   const [geometryPolyDihedralThresholdDeg, setGeometryPolyDihedralThresholdDeg] = useState(25);
   const [geometryPolyAngleDefectEnabled, setGeometryPolyAngleDefectEnabled] = useState(false);
@@ -6987,6 +7062,18 @@ const App: React.FC = () => {
     id: string;
     startPosition: { x: number; y: number; z: number };
   } | null>(null);
+  const geometryAdvancedSnapCandidatesRef = useRef<{
+    vertices: SnapPoint3[];
+    edgePoints: SnapPoint3[];
+    facePoints: SnapPoint3[];
+    surfaceTriangles: SnapTriangle3[];
+  }>({
+    vertices: [],
+    edgePoints: [],
+    facePoints: [],
+    surfaceTriangles: [],
+  });
+  const geometrySelectedPivotPointRef = useRef<SnapPoint3 | null>(null);
   const handleProceduralDragStart = useCallback(
     (info: { meshKey?: string }) => {
       if (!info.meshKey) return;
@@ -7036,28 +7123,164 @@ const App: React.FC = () => {
       rotation: { x: number; y: number; z: number };
       scale: { x: number; y: number; z: number };
     }) => {
-      if (!info.meshKey) return;
-      if (geometryLockedObjectIds.has(info.meshKey)) return;
+      if (!info.meshKey) {
+        setGeometrySnapPreview(null);
+        return;
+      }
+      if (geometryLockedObjectIds.has(info.meshKey)) {
+        setGeometrySnapPreview(null);
+        return;
+      }
+      const targetObj =
+        geometryObjects.find((obj) => obj.id === info.meshKey) ??
+        geometryDatasetMeshObjects.find((obj) => obj.id === info.meshKey) ??
+        null;
+      const currentPosition = targetObj?.transform.position ?? { x: 0, y: 0, z: 0 };
+      let nextPosition: Vec3 = {
+        x: info.position.x,
+        y: info.position.y,
+        z: info.position.z,
+      };
+
+      if (geometryGizmoMode === "translate") {
+        const selectedPivotPoint = geometrySelectedPivotPointRef.current;
+        const pivotOffset =
+          geometrySelectedObjectId === info.meshKey && selectedPivotPoint
+            ? {
+                x: selectedPivotPoint.x - currentPosition.x,
+                y: selectedPivotPoint.y - currentPosition.y,
+                z: selectedPivotPoint.z - currentPosition.z,
+              }
+            : { x: 0, y: 0, z: 0 };
+        const nextPivot: SnapPoint3 = {
+          x: nextPosition.x + pivotOffset.x,
+          y: nextPosition.y + pivotOffset.y,
+          z: nextPosition.z + pivotOffset.z,
+        };
+
+        let snappedPivot: SnapPoint3 = { ...nextPivot };
+        let snapPreviewCandidate: { point: SnapPoint3; kind: GeometrySnapPreviewKind } | null = null;
+        if (geometryGridSnapEnabled) {
+          const gridStep = Math.max(1e-6, geometrySnapMoveStep);
+          const gridPivot = {
+            x: Math.round(snappedPivot.x / gridStep) * gridStep,
+            y: Math.round(snappedPivot.y / gridStep) * gridStep,
+            z: Math.round(snappedPivot.z / gridStep) * gridStep,
+          };
+          const gridMoved =
+            Math.abs(gridPivot.x - snappedPivot.x) > 1e-9 ||
+            Math.abs(gridPivot.y - snappedPivot.y) > 1e-9 ||
+            Math.abs(gridPivot.z - snappedPivot.z) > 1e-9;
+          snappedPivot = gridPivot;
+          if (gridMoved) {
+            snapPreviewCandidate = { point: { ...gridPivot }, kind: "grid" };
+          }
+        }
+
+        const snapDistanceLimit = Math.max(
+          0.12,
+          geometrySnapMoveEnabled ? geometrySnapMoveStep * 2.5 : 0.45
+        );
+        const snapDistanceLimitSq = snapDistanceLimit * snapDistanceLimit;
+        const snapCandidates = geometryAdvancedSnapCandidatesRef.current;
+
+        let bestCandidate: SnapPoint3 | null = null;
+        let bestCandidateKind: GeometrySnapPreviewKind | null = null;
+        let bestDistSq = Number.POSITIVE_INFINITY;
+        if (geometryVertexSnapEnabled && snapCandidates.vertices.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.vertices);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "vertex";
+          }
+        }
+        if (geometryEdgeSnapEnabled && snapCandidates.edgePoints.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.edgePoints);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "edge";
+          }
+        }
+        if (geometryFaceCenterSnapEnabled && snapCandidates.facePoints.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.facePoints);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "face_center";
+          }
+        }
+        if (geometrySurfaceSnapEnabled && snapCandidates.surfaceTriangles.length) {
+          const nearest = nearestPointOnTriangles(nextPivot, snapCandidates.surfaceTriangles);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "surface";
+          }
+        }
+
+        if (bestCandidate && bestCandidateKind && bestDistSq <= snapDistanceLimitSq) {
+          snappedPivot = bestCandidate;
+          snapPreviewCandidate = { point: { ...bestCandidate }, kind: bestCandidateKind };
+        }
+
+        nextPosition = {
+          x: nextPosition.x + (snappedPivot.x - nextPivot.x),
+          y: nextPosition.y + (snappedPivot.y - nextPivot.y),
+          z: nextPosition.z + (snappedPivot.z - nextPivot.z),
+        };
+        setGeometrySnapPreview(snapPreviewCandidate);
+      } else {
+        setGeometrySnapPreview(null);
+      }
+
+      const nextScale =
+        geometryUniformScaleLock && geometryGizmoMode === "scale"
+          ? (() => {
+              const uniform = Math.max(
+                1e-6,
+                (Math.max(1e-6, info.scale.x) + Math.max(1e-6, info.scale.y) + Math.max(1e-6, info.scale.z)) / 3
+              );
+              return { x: uniform, y: uniform, z: uniform };
+            })()
+          : {
+              x: Math.max(1e-6, info.scale.x),
+              y: Math.max(1e-6, info.scale.y),
+              z: Math.max(1e-6, info.scale.z),
+            };
+
       handleUpdateGeometryTransform(info.meshKey, {
-        position: {
-          x: info.position.x,
-          y: info.position.y,
-          z: info.position.z,
-        },
+        position: nextPosition,
         rotation: {
           x: info.rotation.x,
           y: info.rotation.y,
           z: info.rotation.z,
         },
-        scale: {
-          x: Math.max(1e-6, info.scale.x),
-          y: Math.max(1e-6, info.scale.y),
-          z: Math.max(1e-6, info.scale.z),
-        },
+        scale: nextScale,
       });
     },
-    [geometryLockedObjectIds, handleUpdateGeometryTransform]
+    [
+      geometryLockedObjectIds,
+      geometryObjects,
+      geometryDatasetMeshObjects,
+      geometryGizmoMode,
+      geometrySelectedObjectId,
+      geometryGridSnapEnabled,
+      geometrySnapMoveStep,
+      geometrySnapMoveEnabled,
+      geometryVertexSnapEnabled,
+      geometryEdgeSnapEnabled,
+      geometryFaceCenterSnapEnabled,
+      geometrySurfaceSnapEnabled,
+      geometryUniformScaleLock,
+      handleUpdateGeometryTransform,
+    ]
   );
+  useEffect(() => {
+    if (geometryMode === "procedural" && geometryGizmoEnabled && geometryGizmoMode === "translate") return;
+    setGeometrySnapPreview(null);
+  }, [geometryGizmoEnabled, geometryGizmoMode, geometryMode]);
 
   const proceduralMeshSet = useMemo(() => {
     const cache = geometryObjectGeomCacheRef.current;
@@ -7193,6 +7416,282 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometryAdvancedSnapActive = useMemo(
+    () =>
+      geometrySurfaceSnapEnabled ||
+      geometryVertexSnapEnabled ||
+      geometryEdgeSnapEnabled ||
+      geometryFaceCenterSnapEnabled,
+    [geometryEdgeSnapEnabled, geometryFaceCenterSnapEnabled, geometrySurfaceSnapEnabled, geometryVertexSnapEnabled]
+  );
+  const geometryAdvancedSnapCandidates = useMemo(() => {
+    const empty = {
+      vertices: [] as SnapPoint3[],
+      edgePoints: [] as SnapPoint3[],
+      facePoints: [] as SnapPoint3[],
+      surfaceTriangles: [] as SnapTriangle3[],
+    };
+    if (!geometryAdvancedSnapActive) return empty;
+
+    const vertices: SnapPoint3[] = [];
+    const edgePoints: SnapPoint3[] = [];
+    const facePoints: SnapPoint3[] = [];
+    const surfaceTriangles: SnapTriangle3[] = [];
+    const identityTransform: GeometryObjectTransform = {
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+    };
+
+    for (const mesh of proceduralMeshSet.meshes) {
+      if (mesh.id === geometrySelectedObjectId) continue;
+      const worldMesh = transformSurfaceMeshByGeometryTransform(
+        mesh,
+        (mesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
+      );
+      const positions = worldMesh.positions;
+      if (!positions?.length) continue;
+      const vertCount = Math.floor(positions.length / 3);
+      if (vertCount < 3) continue;
+
+      if (geometryVertexSnapEnabled && vertices.length < MAX_ADVANCED_SNAP_VERTICES) {
+        for (let vi = 0; vi < vertCount && vertices.length < MAX_ADVANCED_SNAP_VERTICES; vi++) {
+          const idx = vi * 3;
+          vertices.push({
+            x: positions[idx],
+            y: positions[idx + 1],
+            z: positions[idx + 2],
+          });
+        }
+      }
+
+      const pushFaceByVertexIndices = (ia: number, ib: number, ic: number) => {
+        if (ia < 0 || ib < 0 || ic < 0) return;
+        if (ia >= vertCount || ib >= vertCount || ic >= vertCount) return;
+        const aIdx = ia * 3;
+        const bIdx = ib * 3;
+        const cIdx = ic * 3;
+        const a = { x: positions[aIdx], y: positions[aIdx + 1], z: positions[aIdx + 2] };
+        const b = { x: positions[bIdx], y: positions[bIdx + 1], z: positions[bIdx + 2] };
+        const c = { x: positions[cIdx], y: positions[cIdx + 1], z: positions[cIdx + 2] };
+
+        if (geometryFaceCenterSnapEnabled && facePoints.length < MAX_ADVANCED_SNAP_FACE_POINTS) {
+          facePoints.push({
+            x: (a.x + b.x + c.x) / 3,
+            y: (a.y + b.y + c.y) / 3,
+            z: (a.z + b.z + c.z) / 3,
+          });
+        }
+
+        if (geometryEdgeSnapEnabled && edgePoints.length < MAX_ADVANCED_SNAP_EDGE_POINTS) {
+          if (edgePoints.length < MAX_ADVANCED_SNAP_EDGE_POINTS) {
+            edgePoints.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 });
+          }
+          if (edgePoints.length < MAX_ADVANCED_SNAP_EDGE_POINTS) {
+            edgePoints.push({ x: (b.x + c.x) / 2, y: (b.y + c.y) / 2, z: (b.z + c.z) / 2 });
+          }
+          if (edgePoints.length < MAX_ADVANCED_SNAP_EDGE_POINTS) {
+            edgePoints.push({ x: (c.x + a.x) / 2, y: (c.y + a.y) / 2, z: (c.z + a.z) / 2 });
+          }
+        }
+
+        if (geometrySurfaceSnapEnabled && surfaceTriangles.length < MAX_ADVANCED_SNAP_TRIANGLES) {
+          surfaceTriangles.push({ a, b, c });
+        }
+      };
+
+      if (worldMesh.indices && worldMesh.indices.length >= 3) {
+        for (let fi = 0; fi + 2 < worldMesh.indices.length; fi += 3) {
+          pushFaceByVertexIndices(
+            Number(worldMesh.indices[fi]),
+            Number(worldMesh.indices[fi + 1]),
+            Number(worldMesh.indices[fi + 2])
+          );
+          if (
+            facePoints.length >= MAX_ADVANCED_SNAP_FACE_POINTS &&
+            edgePoints.length >= MAX_ADVANCED_SNAP_EDGE_POINTS &&
+            surfaceTriangles.length >= MAX_ADVANCED_SNAP_TRIANGLES
+          ) {
+            break;
+          }
+        }
+      } else {
+        for (let vi = 0; vi + 2 < vertCount; vi += 3) {
+          pushFaceByVertexIndices(vi, vi + 1, vi + 2);
+          if (
+            facePoints.length >= MAX_ADVANCED_SNAP_FACE_POINTS &&
+            edgePoints.length >= MAX_ADVANCED_SNAP_EDGE_POINTS &&
+            surfaceTriangles.length >= MAX_ADVANCED_SNAP_TRIANGLES
+          ) {
+            break;
+          }
+        }
+      }
+    }
+
+    return { vertices, edgePoints, facePoints, surfaceTriangles };
+  }, [
+    geometryAdvancedSnapActive,
+    geometryEdgeSnapEnabled,
+    geometryFaceCenterSnapEnabled,
+    geometrySelectedObjectId,
+    geometrySurfaceSnapEnabled,
+    geometryVertexSnapEnabled,
+    proceduralMeshSet.meshes,
+  ]);
+  useEffect(() => {
+    geometryAdvancedSnapCandidatesRef.current = geometryAdvancedSnapCandidates;
+  }, [geometryAdvancedSnapCandidates]);
+  const geometrySelectedWorldBounds = useMemo(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedSceneMesh) return null;
+    const transformedMesh = transformSurfaceMeshByGeometryTransform(
+      geometrySelectedSceneMesh,
+      geometrySelectedSceneObject.transform
+    );
+    return boundsFromPositions(transformedMesh.positions);
+  }, [geometrySelectedSceneMesh, geometrySelectedSceneObject]);
+  const geometrySelectedPivotPoint = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const position = geometrySelectedSceneObject.transform.position;
+    const bounds = geometrySelectedWorldBounds;
+    if (geometryTransformPivotMode === "origin") {
+      return { x: position.x, y: position.y, z: position.z };
+    }
+    if (geometryTransformPivotMode === "custom") {
+      return { ...geometryTransformPivotCustom };
+    }
+    if (!bounds) {
+      return { x: position.x, y: position.y, z: position.z };
+    }
+    const center = {
+      x: 0.5 * (bounds.min[0] + bounds.max[0]),
+      y: 0.5 * (bounds.min[1] + bounds.max[1]),
+      z: 0.5 * (bounds.min[2] + bounds.max[2]),
+    };
+    if (geometryTransformPivotMode === "bottomCenter") {
+      return { ...center, y: bounds.min[1] };
+    }
+    return center;
+  }, [geometrySelectedSceneObject, geometrySelectedWorldBounds, geometryTransformPivotCustom, geometryTransformPivotMode]);
+  useEffect(() => {
+    geometrySelectedPivotPointRef.current = geometrySelectedPivotPoint;
+  }, [geometrySelectedPivotPoint]);
+  const geometrySelectedTransformSummary = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const statusLabel = geometrySelectedSceneMeshInfo ? "mesh ready" : "mesh pending";
+    if ("type" in geometrySelectedSceneObject) {
+      const roleLabel = geometrySelectedSceneObject.group === "helper" ? "ReferenceObject" : "PrimaryObject";
+      const typeLabel = `procedural ${GEOMETRY_OBJECT_REGISTRY[geometrySelectedSceneObject.type]?.label?.toLowerCase() ?? geometrySelectedSceneObject.type}`;
+      return { roleLabel, typeLabel, statusLabel };
+    }
+    const roleLabel = geometrySelectedSceneObject.mesh.source.kind === "import" ? "ReferenceObject" : "PrimaryObject";
+    const typeLabel =
+      geometrySelectedSceneObject.mesh.source.kind === "detachedMesh"
+        ? "mesh object"
+        : "dataset mesh object";
+    return { roleLabel, typeLabel, statusLabel };
+  }, [geometrySelectedSceneMeshInfo, geometrySelectedSceneObject]);
+  const applySelectedPivotDelta = useCallback(
+    (delta: Vec3) => {
+      if (!geometrySelectedSceneObject) return;
+      const current = geometrySelectedSceneObject.transform.position;
+      handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+        position: {
+          x: current.x + delta.x,
+          y: current.y + delta.y,
+          z: current.z + delta.z,
+        },
+      });
+    },
+    [geometrySelectedSceneObject, handleUpdateGeometryTransform]
+  );
+  const handleCenterSelectedAtOrigin = useCallback(() => {
+    if (!geometrySelectedPivotPoint) return;
+    applySelectedPivotDelta({
+      x: -geometrySelectedPivotPoint.x,
+      y: -geometrySelectedPivotPoint.y,
+      z: -geometrySelectedPivotPoint.z,
+    });
+  }, [applySelectedPivotDelta, geometrySelectedPivotPoint]);
+  const handleAlignSelectedPivotToPlane = useCallback(
+    (axis: keyof Vec3) => {
+      if (!geometrySelectedPivotPoint) return;
+      const delta: Vec3 = { x: 0, y: 0, z: 0 };
+      delta[axis] = -geometrySelectedPivotPoint[axis];
+      applySelectedPivotDelta(delta);
+    },
+    [applySelectedPivotDelta, geometrySelectedPivotPoint]
+  );
+  const handleFitSelectedToUnitBox = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedWorldBounds) return;
+    const sizeX = geometrySelectedWorldBounds.max[0] - geometrySelectedWorldBounds.min[0];
+    const sizeY = geometrySelectedWorldBounds.max[1] - geometrySelectedWorldBounds.min[1];
+    const sizeZ = geometrySelectedWorldBounds.max[2] - geometrySelectedWorldBounds.min[2];
+    const maxDim = Math.max(sizeX, sizeY, sizeZ);
+    if (!Number.isFinite(maxDim) || maxDim <= 1e-9) return;
+    const factor = 1 / maxDim;
+    const current = geometrySelectedSceneObject.transform.scale;
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      scale: {
+        x: current.x * factor,
+        y: current.y * factor,
+        z: current.z * factor,
+      },
+    });
+  }, [geometrySelectedSceneObject, geometrySelectedWorldBounds, handleUpdateGeometryTransform]);
+  const handleBakeSelectedTransformToMesh = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    if (geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) return;
+    const identity: GeometryObjectTransform = {
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+    };
+
+    if ("mesh" in geometrySelectedSceneObject) {
+      const bakedMesh = toDetachedMeshData(
+        transformSurfaceMeshByGeometryTransform(
+          geometrySelectedSceneObject.mesh,
+          geometrySelectedSceneObject.transform
+        ),
+        geometrySelectedSceneObject.mesh.label
+      );
+      setGeometryDatasetMeshObjects((prev) =>
+        prev.map((obj) =>
+          obj.id === geometrySelectedSceneObject.id
+            ? {
+                ...obj,
+                mesh: bakedMesh,
+                transform: identity,
+              }
+            : obj
+        )
+      );
+      setGeometryBakeError(null);
+      return;
+    }
+
+    const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
+    if (!sourceMesh) {
+      setGeometryBakeError("Selected object has no mesh to bake.");
+      return;
+    }
+    const replacement: GeometryDatasetMeshObject = {
+      id: geometrySelectedSceneObject.id,
+      name: geometrySelectedSceneObject.name,
+      mesh: toDetachedMeshData(
+        transformSurfaceMeshByGeometryTransform(sourceMesh, geometrySelectedSceneObject.transform),
+        `${geometrySelectedSceneObject.name} (baked mesh)`
+      ),
+      transform: identity,
+      visible: geometrySelectedSceneObject.visible,
+      material: normalizeGeometryMaterial((geometrySelectedSceneObject as { material?: unknown })?.material),
+    };
+    setGeometryObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedSceneObject.id));
+    setGeometryDatasetMeshObjects((prev) => [replacement, ...prev.filter((obj) => obj.id !== geometrySelectedSceneObject.id)]);
+    setGeometrySelectedObjectId(replacement.id);
+    setGeometryBakeError(null);
+  }, [geometryLockedObjectIds, geometrySelectedSceneObject, proceduralMeshSet.meshes]);
   const geometryEulerSelectedMeshCounts = useMemo(
     () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
     [geometrySelectedSceneMesh]
@@ -7644,6 +8143,35 @@ const App: React.FC = () => {
     geometryPolyFaceNormalsEnabled,
     geometryPolyDihedralReadoutsEnabled,
   ]);
+  const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
+    const colorByKind: Record<GeometrySnapPreviewKind, number> = {
+      grid: 0x1d4ed8,
+      vertex: 0x16a34a,
+      edge: 0xf59e0b,
+      face_center: 0x7c3aed,
+      surface: 0xdc2626,
+    };
+    return [
+      {
+        points: [geometrySnapPreview.point],
+        color: colorByKind[geometrySnapPreview.kind],
+        size: 0.1,
+        opacity: 0.98,
+      },
+    ];
+  }, [geometryMode, geometrySnapPreview]);
+  const geometryProceduralHighlightPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const sets: OverlayPointSet[] = [];
+    if (geometryProceduralFeatureOverlays.pointSets?.length) {
+      sets.push(...geometryProceduralFeatureOverlays.pointSets);
+    }
+    if (geometryProceduralSnapPreviewPointSet?.length) {
+      sets.push(...geometryProceduralSnapPreviewPointSet);
+    }
+    return sets.length ? sets : null;
+  }, [geometryMode, geometryProceduralFeatureOverlays.pointSets, geometryProceduralSnapPreviewPointSet]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryProblemScene: GeometryScene = useMemo(() => {
@@ -27754,17 +28282,14 @@ case "mobius":
     for (const obj of geometryDatasetMeshObjects) {
       const material = normalizeGeometryMaterial((obj as { material?: unknown })?.material);
       const meshStats = `${Math.floor(obj.mesh.positions.length / 3)} verts`;
-      const isDetachedMeshObject = obj.mesh.source.kind === "detachedMesh";
       const meshSceneRole: UnifiedSceneRole =
         obj.mesh.source.kind === "import"
           ? "referenceObject"
-          : isDetachedMeshObject
-            ? "primaryObject"
-            : "derivedResult";
+          : "primaryObject";
       addRaw({
         id: `scene:${obj.id}`,
         name: obj.name,
-        type: isDetachedMeshObject ? "scene/mesh-object" : "scene/dataset-mesh",
+        type: obj.mesh.source.kind === "detachedMesh" ? "scene/mesh-object" : "scene/dataset-mesh",
         sourceDefinition: `${formatSurfaceMeshSource(obj.mesh.source)} (${meshStats})`,
         displayState: `${obj.visible ? "visible" : "hidden"}, opacity ${fmt(material.opacity ?? 1)}`,
         parentId: null,
@@ -37487,44 +38012,152 @@ case "mobius":
                     )}
 
                     {geometryProceduralPanelTab === "transform" && (
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gizmo + snapping</div>
-                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                        <input
-                          type="checkbox"
-                          checked={geometryGizmoEnabled}
-                          onChange={(e) => setGeometryGizmoEnabled(e.target.checked)}
-                        />
-                        Enable transform gizmo
-                      </label>
-                      <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                        <label style={{ fontSize: 11 }}>
-                          Mode
-                          <select
-                            value={geometryGizmoMode}
-                            onChange={(e) =>
-                              setGeometryGizmoMode(e.target.value as "translate" | "rotate" | "scale")
-                            }
-                            style={{ marginLeft: 6 }}
-                          >
-                            <option value="translate">Move</option>
-                            <option value="rotate">Rotate</option>
-                            <option value="scale">Scale</option>
-                          </select>
-                        </label>
-                        <label style={{ fontSize: 11 }}>
-                          Space
-                          <select
-                            value={geometryGizmoSpace}
-                            onChange={(e) => setGeometryGizmoSpace(e.target.value as "world" | "local")}
-                            style={{ marginLeft: 6 }}
-                          >
-                            <option value="world">World</option>
-                            <option value="local">Local</option>
-                          </select>
-                        </label>
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", color: "#0f172a" }}>
+                          GEOMETRY TRANSFORM
+                        </div>
+                        <div style={{ fontSize: 11, color: "#475569" }}>
+                          Move, rotate, scale, align, and snap selected objects.
+                        </div>
                       </div>
-                      <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Selected object</div>
+                        {geometrySelectedSceneObject ? (
+                          <>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>{geometrySelectedSceneObject.name}</div>
+                            <div style={{ fontSize: 11, color: "#475569" }}>
+                              {geometrySelectedTransformSummary
+                                ? `${geometrySelectedTransformSummary.roleLabel} · ${geometrySelectedTransformSummary.typeLabel} · ${geometrySelectedTransformSummary.statusLabel}`
+                                : "n/a"}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 11, opacity: 0.75 }}>Select an object in Scene first.</div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Gizmo</div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                          <input
+                            type="checkbox"
+                            checked={geometryGizmoEnabled}
+                            onChange={(e) => setGeometryGizmoEnabled(e.target.checked)}
+                          />
+                          Enable transform gizmo
+                        </label>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <label style={{ fontSize: 11 }}>
+                            Mode
+                            <select
+                              value={geometryGizmoMode}
+                              onChange={(e) => setGeometryGizmoMode(e.target.value as "translate" | "rotate" | "scale")}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="translate">Move</option>
+                              <option value="rotate">Rotate</option>
+                              <option value="scale">Scale</option>
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 11 }}>
+                            Space
+                            <select
+                              value={geometryGizmoSpace}
+                              onChange={(e) => setGeometryGizmoSpace(e.target.value as GeometryGizmoSpace)}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="world">World</option>
+                              <option value="local">Local</option>
+                              <option value="parent">Parent</option>
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 11 }}>
+                            Pivot
+                            <select
+                              value={geometryTransformPivotMode}
+                              onChange={(e) => setGeometryTransformPivotMode(e.target.value as GeometryTransformPivotMode)}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="center">Center</option>
+                              <option value="origin">Origin</option>
+                              <option value="bboxCenter">Bounding box center</option>
+                              <option value="bottomCenter">Bottom center</option>
+                              <option value="custom">Custom</option>
+                            </select>
+                          </label>
+                        </div>
+                        {geometryTransformPivotMode === "custom" && (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "52px 1fr 1fr 1fr",
+                              gap: "6px 8px",
+                              alignItems: "center",
+                            }}
+                          >
+                            <div style={{ fontSize: 11 }}>Pivot</div>
+                            {(["x", "y", "z"] as const).map((axis) => (
+                              <input
+                                key={`transform-pivot-custom-${axis}`}
+                                type="number"
+                                step={0.1}
+                                value={geometryTransformPivotCustom[axis]}
+                                onChange={(e) => {
+                                  const v = Number(e.target.value);
+                                  if (!Number.isFinite(v)) return;
+                                  setGeometryTransformPivotCustom((prev) => ({ ...prev, [axis]: v }));
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
+                        {geometrySelectedPivotPoint && (
+                          <div style={{ fontSize: 10, color: "#64748b" }}>
+                            Active pivot: ({fmt(geometrySelectedPivotPoint.x)}, {fmt(geometrySelectedPivotPoint.y)}, {fmt(geometrySelectedPivotPoint.z)})
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Snapping</div>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                           <input
                             type="checkbox"
@@ -37541,7 +38174,7 @@ case "mobius":
                               const v = Number(e.target.value);
                               if (Number.isFinite(v)) setGeometrySnapMoveStep(Math.max(0.001, v));
                             }}
-                            style={{ width: 70 }}
+                            style={{ width: 72 }}
                           />
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
@@ -37550,7 +38183,7 @@ case "mobius":
                             checked={geometrySnapRotateEnabled}
                             onChange={(e) => setGeometrySnapRotateEnabled(e.target.checked)}
                           />
-                          Angle snap (deg)
+                          Angle snap
                           <input
                             type="number"
                             min={0.5}
@@ -37560,8 +38193,9 @@ case "mobius":
                               const v = Number(e.target.value);
                               if (Number.isFinite(v)) setGeometrySnapRotateStepDeg(Math.max(0.5, v));
                             }}
-                            style={{ width: 70 }}
+                            style={{ width: 72 }}
                           />
+                          °
                         </label>
                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                           <input
@@ -37579,93 +38213,217 @@ case "mobius":
                               const v = Number(e.target.value);
                               if (Number.isFinite(v)) setGeometrySnapScaleStep(Math.max(0.001, v));
                             }}
-                            style={{ width: 70 }}
+                            style={{ width: 72 }}
                           />
                         </label>
+                        <details
+                          open={geometryAdvancedSnapOpen}
+                          onToggle={(e) => setGeometryAdvancedSnapOpen((e.currentTarget as HTMLDetailsElement).open)}
+                        >
+                          <summary style={{ fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Advanced snapping</summary>
+                          <div style={{ marginTop: 6, display: "grid", gap: 4, fontSize: 11 }}>
+                            <label><input type="checkbox" checked={geometryGridSnapEnabled} onChange={(e) => setGeometryGridSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Grid snap</label>
+                            <label><input type="checkbox" checked={geometrySurfaceSnapEnabled} onChange={(e) => setGeometrySurfaceSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Surface snap</label>
+                            <label><input type="checkbox" checked={geometryVertexSnapEnabled} onChange={(e) => setGeometryVertexSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Vertex snap</label>
+                            <label><input type="checkbox" checked={geometryEdgeSnapEnabled} onChange={(e) => setGeometryEdgeSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Edge snap</label>
+                            <label><input type="checkbox" checked={geometryFaceCenterSnapEnabled} onChange={(e) => setGeometryFaceCenterSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Face center snap</label>
+                            <div style={{ fontSize: 10, color: "#64748b" }}>
+                              Advanced snap modes are staged controls for upcoming interactive snapping.
+                            </div>
+                          </div>
+                        </details>
                       </div>
+
                       {geometrySelectedSceneObject ? (
-                        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>Selected object transform</div>
-                          <div style={{ fontSize: 11, opacity: 0.75 }}>{geometrySelectedSceneObject.name}</div>
+                        <>
                           <div
                             style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
                               display: "grid",
-                              gridTemplateColumns: "60px 1fr 1fr 1fr",
-                              gap: "6px 8px",
-                              alignItems: "center",
+                              gap: 6,
                             }}
                           >
-                            <div />
-                            <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
-                            <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
-                            <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
-                            <div style={{ fontSize: 11 }}>Pos</div>
-                            {(["x", "y", "z"] as const).map((axis) => (
-                              <input
-                                key={`transform-tab-pos-${axis}`}
-                                type="number"
-                                step={0.1}
-                                value={geometrySelectedSceneObject.transform.position[axis]}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (!Number.isFinite(v)) return;
-                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
-                                    position: axisPatch(axis, v),
-                                  });
-                                }}
-                              />
-                            ))}
-                            <div style={{ fontSize: 11 }}>Rot (deg)</div>
-                            {(["x", "y", "z"] as const).map((axis) => (
-                              <input
-                                key={`transform-tab-rot-${axis}`}
-                                type="number"
-                                step={1}
-                                value={geometrySelectedSceneObject.transform.rotation[axis]}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (!Number.isFinite(v)) return;
-                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
-                                    rotation: axisPatch(axis, v),
-                                  });
-                                }}
-                              />
-                            ))}
-                            <div style={{ fontSize: 11 }}>Scale</div>
-                            {(["x", "y", "z"] as const).map((axis) => (
-                              <input
-                                key={`transform-tab-scale-${axis}`}
-                                type="number"
-                                step={0.1}
-                                value={geometrySelectedSceneObject.transform.scale[axis]}
-                                onChange={(e) => {
-                                  const v = Number(e.target.value);
-                                  if (!Number.isFinite(v)) return;
-                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
-                                    scale: axisPatch(axis, v),
-                                  });
-                                }}
-                              />
-                            ))}
-                          </div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
-                                  position: { x: 0, y: 0, z: 0 },
-                                  rotation: { x: 0, y: 0, z: 0 },
-                                  scale: { x: 1, y: 1, z: 1 },
-                                })
-                              }
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Numeric transform</div>
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "72px 1fr 1fr 1fr",
+                                gap: "6px 8px",
+                                alignItems: "center",
+                                fontSize: 11,
+                              }}
                             >
-                              Reset transform
-                            </button>
+                              <div />
+                              <div style={{ fontSize: 10, opacity: 0.7 }}>X</div>
+                              <div style={{ fontSize: 10, opacity: 0.7 }}>Y</div>
+                              <div style={{ fontSize: 10, opacity: 0.7 }}>Z</div>
+                              <div>Position</div>
+                              {(["x", "y", "z"] as const).map((axis) => (
+                                <input
+                                  key={`transform-tab-pos-${axis}`}
+                                  type="number"
+                                  step={0.1}
+                                  value={geometrySelectedSceneObject.transform.position[axis]}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (!Number.isFinite(v)) return;
+                                    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                      position: axisPatch(axis, v),
+                                    });
+                                  }}
+                                />
+                              ))}
+                              <div>Rotation</div>
+                              {(["x", "y", "z"] as const).map((axis) => (
+                                <input
+                                  key={`transform-tab-rot-${axis}`}
+                                  type="number"
+                                  step={1}
+                                  value={geometrySelectedSceneObject.transform.rotation[axis]}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (!Number.isFinite(v)) return;
+                                    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                      rotation: axisPatch(axis, v),
+                                    });
+                                  }}
+                                />
+                              ))}
+                              <div>Scale</div>
+                              {(["x", "y", "z"] as const).map((axis) => (
+                                <input
+                                  key={`transform-tab-scale-${axis}`}
+                                  type="number"
+                                  step={0.1}
+                                  value={geometrySelectedSceneObject.transform.scale[axis]}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (!Number.isFinite(v)) return;
+                                    if (geometryUniformScaleLock) {
+                                      handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                        scale: { x: v, y: v, z: v },
+                                      });
+                                      return;
+                                    }
+                                    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                      scale: axisPatch(axis, v),
+                                    });
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                              <input
+                                type="checkbox"
+                                checked={geometryUniformScaleLock}
+                                onChange={(e) => setGeometryUniformScaleLock(e.target.checked)}
+                              />
+                              Uniform scale lock
+                            </label>
                           </div>
-                        </div>
+
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Quick actions</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    position: { x: 0, y: 0, z: 0 },
+                                    rotation: { x: 0, y: 0, z: 0 },
+                                    scale: { x: 1, y: 1, z: 1 },
+                                  })
+                                }
+                              >
+                                Reset transform
+                              </button>
+                              <button type="button" onClick={handleCenterSelectedAtOrigin}>
+                                Center at origin
+                              </button>
+                              <button type="button" onClick={() => handleAlignSelectedPivotToPlane("y")}>
+                                Drop to ground plane
+                              </button>
+                              <button type="button" onClick={handleFitSelectedToUnitBox}>
+                                Fit to unit box
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!geometrySelectedWorldBounds) return;
+                                  const current = geometrySelectedSceneObject.transform.position;
+                                  const deltaY = -geometrySelectedWorldBounds.min[1];
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    position: { x: current.x, y: current.y + deltaY, z: current.z },
+                                  });
+                                }}
+                                disabled={!geometrySelectedWorldBounds}
+                              >
+                                Align base to XY plane
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    rotation: { x: 0, y: 0, z: 0 },
+                                  })
+                                }
+                              >
+                                Reset rotation
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+                                    scale: { x: 1, y: 1, z: 1 },
+                                  })
+                                }
+                              >
+                                Reset scale
+                              </button>
+                              <button type="button" onClick={handleBakeSelectedTransformToMesh}>
+                                Apply / bake transform
+                              </button>
+                            </div>
+                            <div style={{ fontSize: 10, color: "#64748b" }}>
+                              Baking rewrites mesh coordinates and resets transform to identity.
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              border: "1px solid #dbe4f0",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#f8fbff",
+                              display: "grid",
+                              gap: 6,
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 700 }}>Alignment</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => handleAlignSelectedPivotToPlane("z")}>Align to XY</button>
+                              <button type="button" onClick={() => handleAlignSelectedPivotToPlane("y")}>Align to XZ</button>
+                              <button type="button" onClick={() => handleAlignSelectedPivotToPlane("x")}>Align to YZ</button>
+                              <button type="button" disabled title="Requires multi-select (planned)">Align to selected</button>
+                              <button type="button" disabled title="Requires multi-select (planned)">Match transform from selected</button>
+                            </div>
+                          </div>
+                        </>
                       ) : (
-                        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.75 }}>
-                          Select an object in Scene to edit position/rotation/scale.
+                        <div style={{ marginTop: 2, fontSize: 11, opacity: 0.75 }}>
+                          Select an object in Scene to edit position, rotation, scale, and alignment.
                         </div>
                       )}
                     </div>
@@ -38413,36 +39171,6 @@ case "mobius":
                               const raw = Number(e.target.value);
                               if (!Number.isFinite(raw)) return;
                               handleUpdateGeometryMaterial(geometrySelectedObject.id, {
-                                metalness: clampNumber(raw, 0, 1),
-                              });
-                            }}
-                          />
-                          <div style={{ fontSize: 11 }}>Roughness</div>
-                          <input
-                            type="number"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={Number(geometrySelectedDatasetMeshObject.material?.roughness ?? DEFAULT_GEOMETRY_MATERIAL_ROUGHNESS)}
-                            onChange={(e) => {
-                              const raw = Number(e.target.value);
-                              if (!Number.isFinite(raw)) return;
-                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
-                                roughness: clampNumber(raw, 0, 1),
-                              });
-                            }}
-                          />
-                          <div style={{ fontSize: 11 }}>Metalness</div>
-                          <input
-                            type="number"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={Number(geometrySelectedDatasetMeshObject.material?.metalness ?? DEFAULT_GEOMETRY_MATERIAL_METALNESS)}
-                            onChange={(e) => {
-                              const raw = Number(e.target.value);
-                              if (!Number.isFinite(raw)) return;
-                              handleUpdateGeometryMaterial(geometrySelectedDatasetMeshObject.id, {
                                 metalness: clampNumber(raw, 0, 1),
                               });
                             }}
@@ -40600,7 +41328,7 @@ case "mobius":
                       ? geometryHighlightPointSets
                       : geometryMode === "scratch" || geometryMode === "workbook"
                         ? null
-                        : geometryProceduralFeatureOverlays.pointSets
+                        : geometryProceduralHighlightPointSets
                   }
                   overlayLabelSets={
                     geometryMode === "demo"
@@ -40617,7 +41345,7 @@ case "mobius":
                   gizmoEnabled={geometryMode === "procedural" && geometryGizmoEnabled}
                   gizmoMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                   gizmoMode={geometryGizmoMode}
-                  gizmoSpace={geometryGizmoSpace}
+                  gizmoSpace={geometryGizmoSpace === "parent" ? "local" : geometryGizmoSpace}
                   gizmoTranslationSnap={geometrySnapMoveEnabled ? geometrySnapMoveStep : null}
                   gizmoRotationSnapDeg={geometrySnapRotateEnabled ? geometrySnapRotateStepDeg : null}
                   gizmoScaleSnap={geometrySnapScaleEnabled ? geometrySnapScaleStep : null}
@@ -47323,7 +48051,9 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     : null;
   const selectedRoleLabel = selectedRole ? UNIFIED_SCENE_ROLE_LABELS[selectedRole] : "n/a";
   const selectedMeshReady = selected
-    ? selected.type.toLowerCase().includes("mesh") || selected.id.toLowerCase().includes("mesh")
+    ? selected.category === "sceneObject" ||
+      selected.type.toLowerCase().includes("mesh") ||
+      selected.id.toLowerCase().includes("mesh")
     : false;
   const selectedIsSceneObject = selected?.category === "sceneObject";
   const selectedCanToggleVisibility =
