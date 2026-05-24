@@ -183,9 +183,11 @@ export async function setSurfaceExpression(page: Page, expression: string): Prom
   await ensureSurfaceEditorOpen(page);
   const input = await resolveSurfaceInput(page);
   await input.fill(expression);
+  await input.focus();
+  await input.press("Control+Enter");
   const applyButtons = page.getByRole("button", { name: /^Apply$/i });
   if ((await applyButtons.count()) > 0 && (await applyButtons.first().isVisible())) {
-    await applyButtons.first().click();
+    await applyButtons.first().click({ force: true });
   }
 }
 
