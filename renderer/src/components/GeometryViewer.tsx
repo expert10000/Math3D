@@ -80,11 +80,15 @@ export type GeometryViewerProps = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    faceIndex?: number;
+    vertexIndex?: number;
   }) => void;
   onPickHover?: (info: {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    faceIndex?: number;
+    vertexIndex?: number;
   }) => void;
   gizmoEnabled?: boolean;
   gizmoMeshKey?: string | null;
@@ -296,14 +300,26 @@ export const GeometryViewer: React.FC<GeometryViewerProps> = ({
       onInspectPick={
         pickEnabled && onPick
           ? (info) => {
-              onPick({ point: info.point, normal: info.normal, meshKey: info.meshKey });
+              onPick({
+                point: info.point,
+                normal: info.normal,
+                meshKey: info.meshKey,
+                faceIndex: info.faceIndex,
+                vertexIndex: info.vertexIndex,
+              });
             }
           : undefined
       }
       onInspectHover={
         pickEnabled && onPickHover
           ? (info) => {
-              onPickHover({ point: info.point, normal: info.normal, meshKey: info.meshKey });
+              onPickHover({
+                point: info.point,
+                normal: info.normal,
+                meshKey: info.meshKey,
+                faceIndex: info.faceIndex,
+                vertexIndex: info.vertexIndex,
+              });
             }
           : undefined
       }

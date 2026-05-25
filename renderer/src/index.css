@@ -464,19 +464,35 @@ button:focus-visible {
 .gallery-scan-card-badge-btn {
   position: absolute;
   top: 10px;
-  left: 10px;
-  font-size: 10px;
-  line-height: 1.1;
-  padding: 2px 6px;
+  right: 10px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
   border-radius: 999px;
   border: 1px solid #c7d3e0;
   background: rgba(255, 255, 255, 0.96);
   color: #1e293b;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.gallery-scan-card:hover .gallery-scan-card-badge-btn,
+.gallery-scan-card:focus-within .gallery-scan-card-badge-btn {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .gallery-scan-card-badge-btn.is-favorite {
   background: #fef3c7;
   border-color: #fcd34d;
+  color: #b45309;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .gallery-scan-card-action-btn {

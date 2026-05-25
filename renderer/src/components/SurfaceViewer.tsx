@@ -1253,6 +1253,8 @@ type Props = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    faceIndex?: number;
+    vertexIndex?: number;
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
@@ -1261,6 +1263,8 @@ type Props = {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
     meshKey?: string;
+    faceIndex?: number;
+    vertexIndex?: number;
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
@@ -4442,6 +4446,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           const inspectCb = onInspectPickRef.current;
           if (inspectCb) {
             const nearest = findNearestSample(point);
+            const faceIndex = typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined;
             if (nearest) {
               const inspectNormal = nearest.sample.normal.clone().normalize();
               inspectCb({
@@ -4453,6 +4458,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 },
                 normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
                 meshKey: hitMeshKey ?? nearest.sample.meshKey,
+                faceIndex,
+                vertexIndex: nearest.sample.vertexIndex,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
               });
@@ -4462,6 +4469,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
                 point: { x: point.x, y: point.y, z: point.z },
                 normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
                 meshKey: hitMeshKey ?? undefined,
+                faceIndex,
+                vertexIndex: undefined,
                 uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
                 xy: xyDomain,
               });
@@ -4541,6 +4550,7 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
         uvDomain = { u: hitUv.x, v: hitUv.y };
       }
       const nearest = findNearestSample(point);
+      const faceIndex = typeof (hit as any).faceIndex === "number" ? Number((hit as any).faceIndex) : undefined;
       if (nearest) {
         const inspectNormal = nearest.sample.normal.clone().normalize();
         inspectHoverCb({
@@ -4548,6 +4558,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: inspectNormal.x, y: inspectNormal.y, z: inspectNormal.z },
           meshKey: hitMeshKey ?? nearest.sample.meshKey,
+          faceIndex,
+          vertexIndex: nearest.sample.vertexIndex,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });
@@ -4557,6 +4569,8 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           point: { x: point.x, y: point.y, z: point.z },
           normal: { x: normalWorld.x, y: normalWorld.y, z: normalWorld.z },
           meshKey: hitMeshKey ?? undefined,
+          faceIndex,
+          vertexIndex: undefined,
           uv: uvDomain ?? (xyDomain ? { u: xyDomain.x, v: xyDomain.y } : undefined),
           xy: xyDomain,
         });

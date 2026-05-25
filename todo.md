@@ -290,32 +290,3 @@ Actions
 [Clear]
 [Save vector field]
 
-
-
-PR3 Transform improvementsImplemented  
-Pivot + custom pivot, uniform scale lock, center at origin, drop to ground, bake/apply transform in App.tsx (line 38548), App.tsx (line 38727), App.tsx (line 38756), App.tsx (line 38759), App.tsx (line 38799).
-
-PR4 Probe / selection modesPartial  
-Present: probe mode, picked point and normal in App.tsx (line 49599), App.tsx (line 58544), App.tsx (line 59418).  
-Present: edge length + triangle area metrics in App.tsx (line 55784).  
-Missing as explicit mode set: object / face / edge / vertex selector (I only found placement targets like “on selected face/vertex/edge” in App.tsx (line 932)).
-
-PR5 Presets and construction historyPartial  
-Present: saved presets (domain saves) in App.tsx (line 59166).  
-Present: history lists (snapshotHistory, compute runHistory) in App.tsx (line 36147), App.tsx (line 26484).  
-Missing: explicit duplicate from step; also Save operation preset is currently disabled in App.tsx (line 54671).
-
-PR6 Derived geometryPartial  
-Present: bounding box, wireframe, normals, point cloud in App.tsx (line 38035), App.tsx (line 38049), App.tsx (line 38059), App.tsx (line 29525).  
-Present: section/slice as derived Surface section action in App.tsx (line 29568).  
-Not implemented yet: convex hull explicitly marked planned in App.tsx (line 38063).
-
-eometry mode -> left panel -> Analysis tab -> Measurements / mesh quality.
-
-Inside that card, just below Normals, you now have:
-
-Selection mode buttons: Object / Face / Edge / Vertex
-Picked coordinate
-Normal
-Face area
-Edge length

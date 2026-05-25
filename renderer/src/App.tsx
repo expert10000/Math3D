@@ -1,6 +1,7 @@
 // src/App.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
@@ -80,7 +81,7 @@ import {
   buildDemoPyramidConstruction,
 } from "./geometry/demoScene";
 import { buildGeometryRenderData } from "./geometry/render";
-import type { GeometryScene, Point3, Segment3 } from "./geometry/types";
+import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
@@ -854,6 +855,8 @@ const WORKBOOK_GHOST_OVERLAYS_KEY = "math3d.workbook.ghostOverlays.v1";
 const WORKBOOK_AUTOSAVE_KEY = "math3d.workbook.autosave.v1";
 const WORKBOOK_SNAPSHOT_KEY = "math3d.workbook.snapshot.v1";
 const WORKBOOK_SNAPSHOT_HISTORY_KEY = "math3d.workbook.snapshotHistory.v1";
+const GEOMETRY_OBJECT_PRESETS_KEY = "math3d.geometry.objectPresets.v1";
+const GEOMETRY_OPERATION_PRESETS_KEY = "math3d.geometry.operationPresets.v1";
 const WORKBOOK_AUTOSAVE_JOURNAL_KEY = "math3d.workbook.autosaveJournal.v1";
 const WORKBOOK_AUTOSAVE_RECOVERY_DISMISSED_AT_KEY = "math3d.workbook.autosaveRecoveryDismissedAt.v1";
 const WORKBOOK_BUNDLE_ASSET_MODE_KEY = "math3d.workbook.bundleAssetMode.v1";
@@ -971,6 +974,20 @@ type WorkbookDatasetRecipe = {
     createdAt: number;
     version: number;
   };
+};
+type GeometryObjectPreset = {
+  id: string;
+  name: string;
+  createdAt: number;
+  snapshot: GeometryObject | GeometryDatasetMeshObject;
+};
+type GeometryOperationPreset = {
+  id: string;
+  name: string;
+  createdAt: number;
+  outputMode: "replace" | "derived";
+  smoothIterations: number;
+  smoothPassband: number;
 };
 type WorkbookWorkspaceState = {
   version: 1 | 2;
@@ -1628,6 +1645,35 @@ type GeometryTransformPatch = {
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
+type GeometryProceduralPickInfo = {
+  point: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  meshKey?: string;
+  faceIndex?: number;
+  vertexIndex?: number;
+};
+type GeometryProbeSelectionDetails = {
+  mode: GeometryProbeSelectionMode;
+  meshKey: string | null;
+  point: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  edgeLength: number | null;
+  faceArea: number | null;
+  faceIndex: number | null;
+  vertexIndex: number | null;
+  edgeVertexPair: [number, number] | null;
+  edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+  faceVertices: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+};
+type GeometryObjectHistoryStep = {
+  id: string;
+  at: number;
+  action: string;
+  objectId: string;
+  objectName: string;
+  snapshot: GeometryObject | GeometryDatasetMeshObject;
+};
+type GeometryDerivedStatus = "ready" | "stale" | "planned";
 
 type GeometryDatasetMeshObject = {
   id: string;
@@ -1726,6 +1772,10 @@ type UnifiedObjectNode = {
   canToggleVisibility?: boolean;
   canDelete?: boolean;
   colorHex?: string | null;
+  derivedStatus?: GeometryDerivedStatus;
+  provenanceSource?: string;
+  linkedObjectIds?: string[];
+  sourceVersion?: number;
 };
 
 type UnifiedManualDerived = {
@@ -1735,6 +1785,10 @@ type UnifiedManualDerived = {
   type: string;
   sourceDefinition: string;
   displayState: string;
+  derivedStatus?: GeometryDerivedStatus;
+  provenanceSource?: string;
+  linkedObjectIds?: string[];
+  sourceVersion?: number;
 };
 
 const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
@@ -2587,6 +2641,19 @@ const cloneGeometryObject = (obj: GeometryObject): GeometryObject => ({
   },
   material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
 });
+const cloneGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): GeometryDatasetMeshObject => ({
+  ...obj,
+  mesh: cloneSurfaceMeshData(obj.mesh),
+  transform: {
+    position: { ...obj.transform.position },
+    rotation: { ...obj.transform.rotation },
+    scale: { ...obj.transform.scale },
+  },
+  material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
+});
+const cloneGeometrySceneObjectSnapshot = (
+  obj: GeometryObject | GeometryDatasetMeshObject
+): GeometryObject | GeometryDatasetMeshObject => ("mesh" in obj ? cloneGeometryDatasetMeshObject(obj) : cloneGeometryObject(obj));
 
 const buildMeshEdgePolylines = (
   mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
@@ -6188,16 +6255,12 @@ const App: React.FC = () => {
     },
     []
   );
-  const [geometryProceduralPick, setGeometryProceduralPick] = useState<{
-    point: { x: number; y: number; z: number };
-    normal: { x: number; y: number; z: number };
-    meshKey?: string;
-  } | null>(null);
-  const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<{
-    point: { x: number; y: number; z: number };
-    normal: { x: number; y: number; z: number };
-    meshKey?: string;
-  } | null>(null);
+  const [geometryProceduralPick, setGeometryProceduralPick] = useState<GeometryProceduralPickInfo | null>(null);
+  const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
+  const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
+  const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
+  const [geometryObjectPresets, setGeometryObjectPresets] = useState<GeometryObjectPreset[]>([]);
+  const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
     useState<GeometryProbeSelectionMode>("object");
   const handleGeometryPick = useCallback(
@@ -6231,15 +6294,13 @@ const App: React.FC = () => {
     },
     [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points, geometryPlanimetryVisiblePointIds]
   );
-  const handleProceduralPickHover = useCallback((info: {
-    point: { x: number; y: number; z: number };
-    normal: { x: number; y: number; z: number };
-    meshKey?: string;
-  }) => {
+  const handleProceduralPickHover = useCallback((info: GeometryProceduralPickInfo) => {
     setGeometryProceduralHoverPick({
       point: info.point,
       normal: info.normal,
       meshKey: info.meshKey,
+      faceIndex: info.faceIndex,
+      vertexIndex: info.vertexIndex,
     });
   }, []);
   const handleProblemPick = useCallback((info: {
@@ -6312,15 +6373,13 @@ const App: React.FC = () => {
   const [, setGeometryCreatePlacementSnapToGrid] = useState(false);
   const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
   const [geometryPendingPlacementObjectId, setGeometryPendingPlacementObjectId] = useState<string | null>(null);
-  const handleProceduralPick = useCallback((info: {
-    point: { x: number; y: number; z: number };
-    normal: { x: number; y: number; z: number };
-    meshKey?: string;
-  }) => {
+  const handleProceduralPick = useCallback((info: GeometryProceduralPickInfo) => {
     setGeometryProceduralPick({
       point: info.point,
       normal: info.normal,
       meshKey: info.meshKey,
+      faceIndex: info.faceIndex,
+      vertexIndex: info.vertexIndex,
     });
     if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
     if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
@@ -6376,6 +6435,191 @@ const App: React.FC = () => {
     () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
   );
+  const [geometryObjectRevisionById, setGeometryObjectRevisionById] = useState<Record<string, number>>({});
+  const geometryHistoryFingerprintRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    const nextFingerprint = new Map<string, string>();
+    const allObjects: Array<GeometryObject | GeometryDatasetMeshObject> = [...geometryObjects, ...geometryDatasetMeshObjects];
+    const changedObjectIds: string[] = [];
+    setGeometryObjectHistoryById((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const obj of allObjects) {
+        const fingerprint =
+          "mesh" in obj
+            ? JSON.stringify({
+                id: obj.id,
+                name: obj.name,
+                transform: obj.transform,
+                material: obj.material,
+                visible: obj.visible,
+                meshLabel: obj.mesh.label,
+                meshVertCount: Math.floor(obj.mesh.positions.length / 3),
+                meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
+              })
+            : JSON.stringify({
+                id: obj.id,
+                name: obj.name,
+                type: obj.type,
+                params: obj.params,
+                transform: obj.transform,
+                material: obj.material,
+                visible: obj.visible,
+              });
+        nextFingerprint.set(obj.id, fingerprint);
+        const previous = geometryHistoryFingerprintRef.current.get(obj.id);
+        if (previous === fingerprint) continue;
+        changedObjectIds.push(obj.id);
+        const history = next[obj.id] ?? [];
+        const step: GeometryObjectHistoryStep = {
+          id: makeId(),
+          at: Date.now(),
+          action: previous == null ? "created" : "updated",
+          objectId: obj.id,
+          objectName: obj.name,
+          snapshot: cloneGeometrySceneObjectSnapshot(obj),
+        };
+        next[obj.id] = [step, ...history].slice(0, 24);
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+    if (changedObjectIds.length) {
+      setGeometryObjectRevisionById((prev) => {
+        const next = { ...prev };
+        for (const id of changedObjectIds) {
+          next[id] = (next[id] ?? 0) + 1;
+        }
+        return next;
+      });
+    }
+    geometryHistoryFingerprintRef.current = nextFingerprint;
+  }, [geometryDatasetMeshObjects, geometryObjects]);
+  const geometrySelectedObjectHistory = useMemo(
+    () => (geometrySelectedObjectId ? geometryObjectHistoryById[geometrySelectedObjectId] ?? [] : []),
+    [geometryObjectHistoryById, geometrySelectedObjectId]
+  );
+  const geometrySelectedHistoryStep = useMemo(
+    () =>
+      geometrySelectedHistoryStepId
+        ? geometrySelectedObjectHistory.find((entry) => entry.id === geometrySelectedHistoryStepId) ?? null
+        : null,
+    [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]
+  );
+  useEffect(() => {
+    if (!geometrySelectedObjectHistory.length) {
+      if (geometrySelectedHistoryStepId != null) setGeometrySelectedHistoryStepId(null);
+      return;
+    }
+    if (
+      !geometrySelectedHistoryStepId ||
+      !geometrySelectedObjectHistory.some((entry) => entry.id === geometrySelectedHistoryStepId)
+    ) {
+      setGeometrySelectedHistoryStepId(geometrySelectedObjectHistory[0].id);
+    }
+  }, [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]);
+  const handleRestoreGeometryObjectFromHistoryStep = useCallback(() => {
+    if (!geometrySelectedObjectId || !geometrySelectedHistoryStep) return;
+    if (geometryLockedObjectIds.has(geometrySelectedObjectId)) return;
+    const snapshot = geometrySelectedHistoryStep.snapshot;
+    if ("mesh" in snapshot) {
+      const restored = cloneGeometryDatasetMeshObject(snapshot);
+      restored.id = geometrySelectedObjectId;
+      setGeometryDatasetMeshObjects((prev) => prev.map((obj) => (obj.id === geometrySelectedObjectId ? restored : obj)));
+      setGeometryObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedObjectId));
+      return;
+    }
+    const restored = cloneGeometryObject(snapshot);
+    restored.id = geometrySelectedObjectId;
+    setGeometryObjects((prev) => prev.map((obj) => (obj.id === geometrySelectedObjectId ? restored : obj)));
+    setGeometryDatasetMeshObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedObjectId));
+  }, [geometryLockedObjectIds, geometrySelectedHistoryStep, geometrySelectedObjectId]);
+  const handleDuplicateGeometryObjectFromHistoryStep = useCallback(() => {
+    if (!geometrySelectedHistoryStep) return;
+    const snapshot = geometrySelectedHistoryStep.snapshot;
+    const copyId = makeId();
+    if ("mesh" in snapshot) {
+      const copy = cloneGeometryDatasetMeshObject(snapshot);
+      copy.id = copyId;
+      copy.name = `${snapshot.name} history copy`;
+      copy.transform.position.x += 0.25;
+      setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
+      setGeometrySelectedObjectId(copyId);
+      return;
+    }
+    const copy = cloneGeometryObject(snapshot);
+    copy.id = copyId;
+    copy.name = `${snapshot.name} history copy`;
+    copy.transform.position.x += 0.25;
+    setGeometryObjects((prev) => [copy, ...prev]);
+    setGeometrySelectedObjectId(copyId);
+  }, [geometrySelectedHistoryStep]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(GEOMETRY_OBJECT_PRESETS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as GeometryObjectPreset[]) : [];
+      if (Array.isArray(parsed)) setGeometryObjectPresets(parsed.slice(0, 40));
+    } catch {
+      setGeometryObjectPresets([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(GEOMETRY_OBJECT_PRESETS_KEY, JSON.stringify(geometryObjectPresets.slice(0, 40)));
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [geometryObjectPresets]);
+  const handleSaveSelectedGeometryObjectPreset = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    const name = window.prompt("Preset name", `${geometrySelectedSceneObject.name} preset`);
+    if (!name?.trim()) return;
+    const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+    setGeometryObjectPresets((prev) =>
+      [{ id: makeId(), name: name.trim(), createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
+    );
+  }, [geometrySelectedSceneObject]);
+  const handleApplyGeometryObjectPreset = useCallback(
+    (presetId: string) => {
+      const preset = geometryObjectPresets.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      const snapshot = preset.snapshot;
+      const id = makeId();
+      if ("mesh" in snapshot) {
+        const copy = cloneGeometryDatasetMeshObject(snapshot);
+        copy.id = id;
+        copy.name = `${preset.name}`;
+        setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
+      } else {
+        const copy = cloneGeometryObject(snapshot);
+        copy.id = id;
+        copy.name = `${preset.name}`;
+        setGeometryObjects((prev) => [copy, ...prev]);
+      }
+      setGeometrySelectedObjectId(id);
+    },
+    [geometryObjectPresets]
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(GEOMETRY_OPERATION_PRESETS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as GeometryOperationPreset[]) : [];
+      if (Array.isArray(parsed)) setGeometryOperationPresets(parsed.slice(0, 40));
+    } catch {
+      setGeometryOperationPresets([]);
+    }
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(GEOMETRY_OPERATION_PRESETS_KEY, JSON.stringify(geometryOperationPresets.slice(0, 40)));
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [geometryOperationPresets]);
   const geometrySelectedObjectDraftParams = useMemo(
     () => (geometrySelectedObject ? geometryObjectParamDrafts[geometrySelectedObject.id] ?? null : null),
     [geometryObjectParamDrafts, geometrySelectedObject]
@@ -6754,6 +6998,93 @@ const App: React.FC = () => {
   const handleAddGeometryGallerySelected = useCallback(() => {
     handleAddGeometryGallerySelectedAtOrigin(geometryAddEnterPlacementMode);
   }, [geometryAddEnterPlacementMode, handleAddGeometryGallerySelectedAtOrigin]);
+  const handleCreateConvexHullFromSelected = () => {
+    if (!geometrySelectedSceneObject || !geometrySelectedSceneMesh) {
+      setGeometryCreateActionStatus("Select a mesh-backed object first.");
+      return;
+    }
+    const sourceId = geometrySelectedSceneObject.id;
+    const sourceName = geometrySelectedSceneObject.name;
+    const planned = unifiedManualDerived.find(
+      (entry) =>
+        entry.type === "derived/convex-hull" &&
+        entry.linkedObjectIds?.includes(sourceId) &&
+        (entry.derivedStatus ?? "ready") === "planned"
+    );
+    if (!planned) {
+      addUnifiedDerivedNode({
+        parentId: `scene:${sourceId}`,
+        name: `${sourceName} convex hull`,
+        type: "derived/convex-hull",
+        sourceDefinition: "Planned convex hull derived mesh.",
+        displayState: "planned",
+        derivedStatus: "planned",
+        provenanceSource: "convex-hull planned",
+        linkedObjectIds: [sourceId],
+      });
+      setGeometryCreateActionStatus("Convex hull planned. Click Convex hull again to generate.");
+      return;
+    }
+    try {
+      const transformed = transformSurfaceMeshByGeometryTransform(
+        geometrySelectedSceneMesh,
+        geometrySelectedSceneObject.transform
+      );
+      const points: THREE.Vector3[] = [];
+      for (let i = 0; i + 2 < transformed.positions.length; i += 3) {
+        points.push(new THREE.Vector3(transformed.positions[i], transformed.positions[i + 1], transformed.positions[i + 2]));
+      }
+      if (points.length < 4) {
+        setGeometryCreateActionStatus("Convex hull needs at least 4 points.");
+        return;
+      }
+      const hullGeometry = new ConvexGeometry(points);
+      const hullMesh = computeVertexNormals(
+        buildSurfaceMeshFromGeometry(hullGeometry, `${sourceName} convex hull`, { kind: "convexHull" }, { mergeVertices: true })
+      );
+      hullGeometry.dispose();
+      const id = makeId();
+      const nextObject: GeometryDatasetMeshObject = {
+        id,
+        name: `${sourceName} convex hull`,
+        mesh: hullMesh,
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: true,
+        material: {
+          color: 0x3b82f6,
+          opacity: 0.92,
+          roughness: 0.28,
+          metalness: 0.12,
+        },
+      };
+      setGeometryDatasetMeshObjects((prev) => [nextObject, ...prev]);
+      setGeometrySelectedObjectId(id);
+      setUnifiedManualDerived((prev) =>
+        prev.map((entry) =>
+          entry.id === planned.id
+            ? {
+                ...entry,
+                name: nextObject.name,
+                displayState: "ready",
+                derivedStatus: "ready",
+                provenanceSource: "convex-hull mesh generated",
+                sourceVersion: (geometryObjectRevisionById[sourceId] ?? 0),
+              }
+            : entry
+        )
+      );
+      setGeometryCreateActionStatus(
+        `Convex hull generated (${Math.floor(hullMesh.positions.length / 3).toLocaleString()} verts).`
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Convex hull generation failed.";
+      setGeometryCreateActionStatus(message);
+    }
+  };
   const handleOpenGeometryGalleryCustomEditor = useCallback(() => {
     if (!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe) return;
     setGeometryNewObjectType(geometryGallerySelectedCard.defaultRecipe.type);
@@ -7572,176 +7903,223 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
-  const geometryProbeSelectionDetails = useMemo(() => {
-    if (!geometryProceduralPick) return null;
-    const fallback = {
-      mode: geometryProbeSelectionMode,
-      meshKey: geometryProceduralPick.meshKey ?? null,
-      point: geometryProceduralPick.point,
-      normal: geometryProceduralPick.normal,
-      edgeLength: null as number | null,
-      faceArea: null as number | null,
-    };
-    if (geometryProbeSelectionMode === "object") return fallback;
-
-    const meshKey = geometryProceduralPick.meshKey ?? geometrySelectedObjectId ?? null;
-    if (!meshKey) return fallback;
-    const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === meshKey);
-    if (!sourceMesh) return fallback;
-
-    const identityTransform: GeometryObjectTransform = {
-      position: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-    };
-    const worldMesh = transformSurfaceMeshByGeometryTransform(
-      sourceMesh,
-      (sourceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
-    );
-    const positions = worldMesh.positions;
-    const vertexCount = Math.floor((positions?.length ?? 0) / 3);
-    if (!vertexCount) return fallback;
-
-    const getPoint = (idx: number) => {
-      const base = idx * 3;
-      return { x: positions[base] ?? 0, y: positions[base + 1] ?? 0, z: positions[base + 2] ?? 0 };
-    };
-    const query = geometryProceduralPick.point;
-
-    if (geometryProbeSelectionMode === "vertex") {
-      let bestPoint = query;
-      let bestDistSq = Number.POSITIVE_INFINITY;
-      for (let i = 0; i < vertexCount; i += 1) {
-        const p = getPoint(i);
-        const d2 = vecDistSq3(query, p);
-        if (d2 < bestDistSq) {
-          bestDistSq = d2;
-          bestPoint = p;
-        }
-      }
-      return {
-        ...fallback,
-        meshKey,
-        point: bestPoint,
+  const resolveGeometryProbeSelectionDetails = useCallback(
+    (pick: GeometryProceduralPickInfo | null): GeometryProbeSelectionDetails | null => {
+      if (!pick) return null;
+      const fallback: GeometryProbeSelectionDetails = {
+        mode: geometryProbeSelectionMode,
+        meshKey: pick.meshKey ?? null,
+        point: pick.point,
+        normal: pick.normal,
+        edgeLength: null,
+        faceArea: null,
+        faceIndex: null,
+        vertexIndex: null,
+        edgeVertexPair: null,
+        edgePoints: null,
+        faceVertices: null,
       };
-    }
+      if (geometryProbeSelectionMode === "object") return fallback;
 
-    const indices = worldMesh.indices ?? null;
-    const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
-    if (!triCount) return fallback;
+      const meshKey = pick.meshKey ?? geometrySelectedObjectId ?? null;
+      if (!meshKey) return fallback;
+      const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === meshKey);
+      if (!sourceMesh) return fallback;
 
-    const queryV = new THREE.Vector3(query.x, query.y, query.z);
+      const identityTransform: GeometryObjectTransform = {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      };
+      const worldMesh = transformSurfaceMeshByGeometryTransform(
+        sourceMesh,
+        (sourceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
+      );
+      const positions = worldMesh.positions;
+      const vertexCount = Math.floor((positions?.length ?? 0) / 3);
+      if (!vertexCount) return fallback;
+      const getPoint = (idx: number) => {
+        const base = idx * 3;
+        return { x: positions[base] ?? 0, y: positions[base + 1] ?? 0, z: positions[base + 2] ?? 0 };
+      };
+      const indices = worldMesh.indices ?? null;
+      const triCount =
+        indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+      const query = pick.point;
+      const queryV = new THREE.Vector3(query.x, query.y, query.z);
 
-    if (geometryProbeSelectionMode === "face") {
-      const closest = new THREE.Vector3();
-      const tri = new THREE.Triangle();
-      const aV = new THREE.Vector3();
-      const bV = new THREE.Vector3();
-      const cV = new THREE.Vector3();
-      const ab = new THREE.Vector3();
-      const ac = new THREE.Vector3();
-      const faceNormal = new THREE.Vector3();
-      let bestDistSq = Number.POSITIVE_INFINITY;
-      let bestPoint = query;
-      let bestArea: number | null = null;
-      let bestNormal = geometryProceduralPick.normal;
-
-      for (let t = 0; t < triCount; t += 1) {
-        const base = t * 3;
+      const resolveFace = (faceIndex: number) => {
+        if (!Number.isInteger(faceIndex) || faceIndex < 0 || faceIndex >= triCount) return null;
+        const base = faceIndex * 3;
         const ia = indices ? Number(indices[base]) : base;
         const ib = indices ? Number(indices[base + 1]) : base + 1;
         const ic = indices ? Number(indices[base + 2]) : base + 2;
         const inRange = ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
-        if (!inRange || ia === ib || ib === ic || ia === ic) continue;
+        if (!inRange || ia === ib || ib === ic || ia === ic) return null;
         const a = getPoint(ia);
         const b = getPoint(ib);
         const c = getPoint(ic);
-        aV.set(a.x, a.y, a.z);
-        bV.set(b.x, b.y, b.z);
-        cV.set(c.x, c.y, c.z);
-        tri.set(aV, bV, cV);
-        tri.closestPointToPoint(queryV, closest);
-        const d2 = closest.distanceToSquared(queryV);
-        if (d2 >= bestDistSq) continue;
-        bestDistSq = d2;
-        bestPoint = { x: closest.x, y: closest.y, z: closest.z };
-        ab.subVectors(bV, aV);
-        ac.subVectors(cV, aV);
-        faceNormal.crossVectors(ab, ac);
-        const area = 0.5 * faceNormal.length();
-        if (faceNormal.lengthSq() > 1e-12) {
-          faceNormal.normalize();
-          bestNormal = { x: faceNormal.x, y: faceNormal.y, z: faceNormal.z };
+        const aV = new THREE.Vector3(a.x, a.y, a.z);
+        const bV = new THREE.Vector3(b.x, b.y, b.z);
+        const cV = new THREE.Vector3(c.x, c.y, c.z);
+        const ab = new THREE.Vector3().subVectors(bV, aV);
+        const ac = new THREE.Vector3().subVectors(cV, aV);
+        const n = new THREE.Vector3().crossVectors(ab, ac);
+        const area = 0.5 * n.length();
+        const normal =
+          n.lengthSq() > 1e-12
+            ? { x: n.normalize().x, y: n.y, z: n.z }
+            : pick.normal;
+        return {
+          faceIndex,
+          ia,
+          ib,
+          ic,
+          a,
+          b,
+          c,
+          normal,
+          area: Number.isFinite(area) ? area : null,
+        };
+      };
+
+      if (geometryProbeSelectionMode === "vertex") {
+        let bestIndex = Number.isInteger(pick.vertexIndex) ? Number(pick.vertexIndex) : -1;
+        if (bestIndex < 0 || bestIndex >= vertexCount) {
+          let bestDistSq = Number.POSITIVE_INFINITY;
+          for (let i = 0; i < vertexCount; i += 1) {
+            const p = getPoint(i);
+            const d2 = vecDistSq3(query, p);
+            if (d2 < bestDistSq) {
+              bestDistSq = d2;
+              bestIndex = i;
+            }
+          }
         }
-        bestArea = Number.isFinite(area) ? area : null;
+        if (bestIndex < 0 || bestIndex >= vertexCount) return fallback;
+        return {
+          ...fallback,
+          meshKey,
+          point: getPoint(bestIndex),
+          vertexIndex: bestIndex,
+        };
       }
 
+      if (!triCount) return fallback;
+
+      if (geometryProbeSelectionMode === "face") {
+        const exact = pick.faceIndex != null ? resolveFace(pick.faceIndex) : null;
+        if (exact) {
+          return {
+            ...fallback,
+            meshKey,
+            point: pick.point,
+            normal: exact.normal,
+            faceArea: exact.area,
+            faceIndex: exact.faceIndex,
+            faceVertices: [exact.a, exact.b, exact.c],
+          };
+        }
+        const closest = new THREE.Vector3();
+        const tri = new THREE.Triangle();
+        let bestDistSq = Number.POSITIVE_INFINITY;
+        let bestFace: ReturnType<typeof resolveFace> = null;
+        for (let t = 0; t < triCount; t += 1) {
+          const face = resolveFace(t);
+          if (!face) continue;
+          tri.set(
+            new THREE.Vector3(face.a.x, face.a.y, face.a.z),
+            new THREE.Vector3(face.b.x, face.b.y, face.b.z),
+            new THREE.Vector3(face.c.x, face.c.y, face.c.z)
+          );
+          tri.closestPointToPoint(queryV, closest);
+          const d2 = closest.distanceToSquared(queryV);
+          if (d2 < bestDistSq) {
+            bestDistSq = d2;
+            bestFace = face;
+          }
+        }
+        if (!bestFace) return fallback;
+        return {
+          ...fallback,
+          meshKey,
+          point: pick.point,
+          normal: bestFace.normal,
+          faceArea: bestFace.area,
+          faceIndex: bestFace.faceIndex,
+          faceVertices: [bestFace.a, bestFace.b, bestFace.c],
+        };
+      }
+
+      const edgeKeySet = new Set<string>();
+      const aV = new THREE.Vector3();
+      const bV = new THREE.Vector3();
+      const ab = new THREE.Vector3();
+      const aq = new THREE.Vector3();
+      const closest = new THREE.Vector3();
+      let bestDistSq = Number.POSITIVE_INFINITY;
+      let bestPoint = query;
+      let bestEdgeLength: number | null = null;
+      let bestPair: [number, number] | null = null;
+      let bestEdgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null = null;
+      const testEdge = (ia: number, ib: number) => {
+        const i0 = Math.min(ia, ib);
+        const i1 = Math.max(ia, ib);
+        if (i0 < 0 || i1 < 0 || i0 >= vertexCount || i1 >= vertexCount || i0 === i1) return;
+        const key = `${i0}|${i1}`;
+        if (edgeKeySet.has(key)) return;
+        edgeKeySet.add(key);
+        const p0 = getPoint(i0);
+        const p1 = getPoint(i1);
+        aV.set(p0.x, p0.y, p0.z);
+        bV.set(p1.x, p1.y, p1.z);
+        ab.subVectors(bV, aV);
+        const lenSq = ab.lengthSq();
+        if (!Number.isFinite(lenSq) || lenSq <= 1e-12) return;
+        aq.subVectors(queryV, aV);
+        const t = Math.max(0, Math.min(1, aq.dot(ab) / lenSq));
+        closest.copy(aV).addScaledVector(ab, t);
+        const d2 = closest.distanceToSquared(queryV);
+        if (d2 >= bestDistSq) return;
+        bestDistSq = d2;
+        bestPoint = { x: closest.x, y: closest.y, z: closest.z };
+        bestEdgeLength = Math.sqrt(lenSq);
+        bestPair = [i0, i1];
+        bestEdgePoints = [p0, p1];
+      };
+      const exactFace = pick.faceIndex != null ? resolveFace(pick.faceIndex) : null;
+      if (exactFace) {
+        testEdge(exactFace.ia, exactFace.ib);
+        testEdge(exactFace.ib, exactFace.ic);
+        testEdge(exactFace.ic, exactFace.ia);
+      } else {
+        for (let t = 0; t < triCount; t += 1) {
+          const face = resolveFace(t);
+          if (!face) continue;
+          testEdge(face.ia, face.ib);
+          testEdge(face.ib, face.ic);
+          testEdge(face.ic, face.ia);
+        }
+      }
       return {
         ...fallback,
         meshKey,
         point: bestPoint,
-        normal: bestNormal,
-        faceArea: bestArea,
+        edgeLength: bestEdgeLength,
+        edgeVertexPair: bestPair,
+        edgePoints: bestEdgePoints,
       };
-    }
-
-    const edgeKeySet = new Set<string>();
-    const aV = new THREE.Vector3();
-    const bV = new THREE.Vector3();
-    const ab = new THREE.Vector3();
-    const aq = new THREE.Vector3();
-    const closest = new THREE.Vector3();
-    let bestDistSq = Number.POSITIVE_INFINITY;
-    let bestPoint = query;
-    let bestEdgeLength: number | null = null;
-
-    const testEdge = (ia: number, ib: number) => {
-      const i0 = Math.min(ia, ib);
-      const i1 = Math.max(ia, ib);
-      const key = `${i0}|${i1}`;
-      if (edgeKeySet.has(key)) return;
-      edgeKeySet.add(key);
-      const p0 = getPoint(i0);
-      const p1 = getPoint(i1);
-      aV.set(p0.x, p0.y, p0.z);
-      bV.set(p1.x, p1.y, p1.z);
-      ab.subVectors(bV, aV);
-      const lenSq = ab.lengthSq();
-      if (!Number.isFinite(lenSq) || lenSq <= 1e-12) return;
-      aq.subVectors(queryV, aV);
-      const t = Math.max(0, Math.min(1, aq.dot(ab) / lenSq));
-      closest.copy(aV).addScaledVector(ab, t);
-      const d2 = closest.distanceToSquared(queryV);
-      if (d2 >= bestDistSq) return;
-      bestDistSq = d2;
-      bestPoint = { x: closest.x, y: closest.y, z: closest.z };
-      bestEdgeLength = Math.sqrt(lenSq);
-    };
-
-    for (let t = 0; t < triCount; t += 1) {
-      const base = t * 3;
-      const ia = indices ? Number(indices[base]) : base;
-      const ib = indices ? Number(indices[base + 1]) : base + 1;
-      const ic = indices ? Number(indices[base + 2]) : base + 2;
-      const inRange = ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
-      if (!inRange || ia === ib || ib === ic || ia === ic) continue;
-      testEdge(ia, ib);
-      testEdge(ib, ic);
-      testEdge(ic, ia);
-    }
-
-    return {
-      ...fallback,
-      meshKey,
-      point: bestPoint,
-      edgeLength: bestEdgeLength,
-    };
-  }, [
-    geometryProceduralPick,
-    geometryProbeSelectionMode,
-    geometrySelectedObjectId,
-    proceduralMeshSet.meshes,
-  ]);
+    },
+    [geometryProbeSelectionMode, geometrySelectedObjectId, proceduralMeshSet.meshes]
+  );
+  const geometryProbeSelectionDetails = useMemo(
+    () => resolveGeometryProbeSelectionDetails(geometryProceduralPick),
+    [geometryProceduralPick, resolveGeometryProbeSelectionDetails]
+  );
+  const geometryProbeHoverSelectionDetails = useMemo(
+    () => resolveGeometryProbeSelectionDetails(geometryProceduralHoverPick),
+    [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
+  );
   const resolveGeometryPlacementTarget = useCallback(
     (pick: {
       point: { x: number; y: number; z: number };
@@ -7770,6 +8148,29 @@ const App: React.FC = () => {
         geometryCreatePlacementTarget === "on-selected-vertex" ||
         geometryCreatePlacementTarget === "along-selected-edge"
       ) {
+        const selectedMeshKey = geometryProbeSelectionDetails?.meshKey;
+        const selectedBelongsToOtherObject =
+          !!selectedMeshKey && selectedMeshKey !== geometryPendingPlacementObjectId;
+        if (selectedBelongsToOtherObject && geometryProbeSelectionDetails) {
+          if (
+            geometryCreatePlacementTarget === "on-selected-face" &&
+            geometryProbeSelectionDetails.mode === "face"
+          ) {
+            return { point: geometryProbeSelectionDetails.point, kind: "surface" };
+          }
+          if (
+            geometryCreatePlacementTarget === "on-selected-vertex" &&
+            geometryProbeSelectionDetails.mode === "vertex"
+          ) {
+            return { point: geometryProbeSelectionDetails.point, kind: "vertex" };
+          }
+          if (
+            geometryCreatePlacementTarget === "along-selected-edge" &&
+            geometryProbeSelectionDetails.mode === "edge"
+          ) {
+            return { point: geometryProbeSelectionDetails.point, kind: "edge" };
+          }
+        }
         const referenceMeshId =
           pick.meshKey && pick.meshKey !== geometryPendingPlacementObjectId
             ? pick.meshKey
@@ -7808,6 +8209,7 @@ const App: React.FC = () => {
     [
       geometryCreatePlacementTarget,
       geometryPendingPlacementObjectId,
+      geometryProbeSelectionDetails,
       geometrySelectedObjectId,
       geometrySnapMoveStep,
       proceduralMeshSet.meshes,
@@ -8443,7 +8845,7 @@ const App: React.FC = () => {
       if (!obj) continue;
       const selected = geometrySelectedObjectId === mesh.id;
       const isPoly = !!proceduralObj && proceduralObj.type === "polyhedron";
-      const selectedEdgeHighlight = selected && isPoly;
+      const selectedEdgeHighlight = selected;
       const edgeDisplay = isPoly ? Boolean(proceduralObj.params.edgeDisplay ?? false) : false;
       if (!selectedEdgeHighlight && !edgeDisplay) continue;
       const triangulate = isPoly ? Boolean(proceduralObj.params.triangulate ?? true) : true;
@@ -8576,6 +8978,67 @@ const App: React.FC = () => {
     geometryPolyFaceNormalsEnabled,
     geometryPolyDihedralReadoutsEnabled,
   ]);
+  const geometryProceduralSelectionHighlightPolygons = useMemo<Polygon3[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const polygons: Polygon3[] = [];
+    const hover = geometryProbeHoverSelectionDetails;
+    const click = geometryProbeSelectionDetails;
+    if (hover?.mode === "face" && hover.faceVertices) {
+      polygons.push({ vertices: hover.faceVertices });
+    }
+    if (click?.mode === "face" && click.faceVertices) {
+      polygons.push({ vertices: click.faceVertices });
+    }
+    return polygons.length ? polygons : null;
+  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const groups: OverlayPolylineGroup[] = [];
+    const edgeFrom = (detail: GeometryProbeSelectionDetails | null) => {
+      if (!detail || detail.mode !== "edge" || !detail.edgePoints) return null;
+      return [[detail.edgePoints[0], detail.edgePoints[1]]] as PolylineSet;
+    };
+    const hoverEdges = edgeFrom(geometryProbeHoverSelectionDetails);
+    if (hoverEdges?.length) {
+      groups.push({
+        lines: hoverEdges,
+        color: 0xfbbf24,
+        opacity: 0.9,
+        radiusScale: 2.3,
+      });
+    }
+    const selectedEdges = edgeFrom(geometryProbeSelectionDetails);
+    if (selectedEdges?.length) {
+      groups.push({
+        lines: selectedEdges,
+        color: 0xf97316,
+        opacity: 0.96,
+        radiusScale: 2.9,
+      });
+    }
+    return groups.length ? groups : null;
+  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryProceduralSelectionPointSets = useMemo<OverlayPointSet[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    const sets: OverlayPointSet[] = [];
+    if (geometryProbeHoverSelectionDetails?.mode === "vertex") {
+      sets.push({
+        points: [geometryProbeHoverSelectionDetails.point],
+        color: 0xfbbf24,
+        size: 0.085,
+        opacity: 0.9,
+      });
+    }
+    if (geometryProbeSelectionDetails?.mode === "vertex") {
+      sets.push({
+        points: [geometryProbeSelectionDetails.point],
+        color: 0xf97316,
+        size: 0.11,
+        opacity: 0.98,
+      });
+    }
+    return sets.length ? sets : null;
+  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
     const colorByKind: Record<GeometrySnapPreviewKind, number> = {
@@ -8600,11 +9063,19 @@ const App: React.FC = () => {
     if (geometryProceduralFeatureOverlays.pointSets?.length) {
       sets.push(...geometryProceduralFeatureOverlays.pointSets);
     }
+    if (geometryProceduralSelectionPointSets?.length) {
+      sets.push(...geometryProceduralSelectionPointSets);
+    }
     if (geometryProceduralSnapPreviewPointSet?.length) {
       sets.push(...geometryProceduralSnapPreviewPointSet);
     }
     return sets.length ? sets : null;
-  }, [geometryMode, geometryProceduralFeatureOverlays.pointSets, geometryProceduralSnapPreviewPointSet]);
+  }, [
+    geometryMode,
+    geometryProceduralFeatureOverlays.pointSets,
+    geometryProceduralSelectionPointSets,
+    geometryProceduralSnapPreviewPointSet,
+  ]);
 
   const proceduralScene: GeometryScene = useMemo(() => ({}), []);
   const geometryProblemScene: GeometryScene = useMemo(() => {
@@ -10423,6 +10894,26 @@ const App: React.FC = () => {
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
+  const handleSaveGeometryOperationPreset = useCallback(() => {
+    const name = window.prompt("Operation preset name", "VTK operation preset");
+    if (!name?.trim()) return;
+    const preset: GeometryOperationPreset = {
+      id: makeId(),
+      name: name.trim(),
+      createdAt: Date.now(),
+      outputMode: vtkOutputMode,
+      smoothIterations: Math.max(1, Math.round(vtkSmoothIterations)),
+      smoothPassband: clampNumber(vtkSmoothPassband, 0.001, 1),
+    };
+    setGeometryOperationPresets((prev) => [preset, ...prev].slice(0, 40));
+  }, [vtkOutputMode, vtkSmoothIterations, vtkSmoothPassband]);
+  const handleApplyGeometryOperationPreset = useCallback((presetId: string) => {
+    const preset = geometryOperationPresets.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    setVtkOutputMode(preset.outputMode);
+    setVtkSmoothIterations(Math.max(1, Math.round(preset.smoothIterations)));
+    setVtkSmoothPassband(clampNumber(preset.smoothPassband, 0.001, 1));
+  }, [geometryOperationPresets]);
   const [generateSurfaceStatus, setGenerateSurfaceStatus] = useState<GenerateSurfaceStatus>({
     state: "idle",
     message: "Not run yet.",
@@ -28680,12 +29171,73 @@ case "mobius":
 
   const [unifiedManualDerived, setUnifiedManualDerived] = useState<UnifiedManualDerived[]>([]);
   const [unifiedTreeSelectedId, setUnifiedTreeSelectedId] = useState<string | null>(null);
-
-  const addUnifiedDerivedNode = useCallback((entry: Omit<UnifiedManualDerived, "id">) => {
-    setUnifiedManualDerived((prev) =>
-      [{ id: makeId(), ...entry }, ...prev].slice(0, 80)
+  const geometryHasPlannedConvexHullForSelected = useMemo(() => {
+    const sourceId = geometrySelectedSceneObject?.id;
+    if (!sourceId) return false;
+    return unifiedManualDerived.some(
+      (entry) =>
+        entry.type === "derived/convex-hull" &&
+        entry.linkedObjectIds?.includes(sourceId) &&
+        (entry.derivedStatus ?? "ready") === "planned"
     );
-  }, []);
+  }, [geometrySelectedSceneObject?.id, unifiedManualDerived]);
+
+  const addUnifiedDerivedNode = useCallback(
+    (
+      entry: Omit<UnifiedManualDerived, "id"> & {
+        linkedObjectIds?: string[];
+      }
+    ) => {
+      const linkedObjectIds = entry.linkedObjectIds ?? [];
+      const sourceVersion = linkedObjectIds.reduce(
+        (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
+        0
+      );
+      setUnifiedManualDerived((prev) =>
+        [
+          {
+            id: makeId(),
+            derivedStatus: entry.derivedStatus ?? "ready",
+            provenanceSource: entry.provenanceSource ?? entry.type,
+            sourceVersion,
+            ...entry,
+          },
+          ...prev,
+        ].slice(0, 80)
+      );
+    },
+    [geometryObjectRevisionById]
+  );
+  useEffect(() => {
+    setUnifiedManualDerived((prev) =>
+      prev.map((entry) => {
+        if (!entry.linkedObjectIds?.length) return entry;
+        const currentVersion = entry.linkedObjectIds.reduce(
+          (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
+          0
+        );
+        if ((entry.derivedStatus ?? "ready") === "planned") return entry;
+        if ((entry.sourceVersion ?? 0) < currentVersion) {
+          return { ...entry, derivedStatus: "stale" as GeometryDerivedStatus };
+        }
+        return entry;
+      })
+    );
+  }, [geometryObjectRevisionById]);
+  const handleRegenerateDerivedProducts = useCallback((scope: "selected" | "all") => {
+    const selectedNodeId = unifiedTreeSelectedId;
+    setUnifiedManualDerived((prev) =>
+      prev.map((entry) => {
+        if ((entry.derivedStatus ?? "ready") !== "stale") return entry;
+        if (scope === "selected" && selectedNodeId !== `derived:manual:${entry.id}`) return entry;
+        const sourceVersion = (entry.linkedObjectIds ?? []).reduce(
+          (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
+          0
+        );
+        return { ...entry, derivedStatus: "ready" as GeometryDerivedStatus, sourceVersion };
+      })
+    );
+  }, [geometryObjectRevisionById, unifiedTreeSelectedId]);
 
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
@@ -29111,10 +29663,14 @@ case "mobius":
         name: derived.name,
         type: derived.type,
         sourceDefinition: derived.sourceDefinition,
-        displayState: derived.displayState,
+        displayState: `${derived.displayState} · ${(derived.derivedStatus ?? "ready").toUpperCase()}`,
         parentId: derived.parentId,
         category: "derived",
         canDelete: true,
+        derivedStatus: derived.derivedStatus ?? "ready",
+        provenanceSource: derived.provenanceSource,
+        linkedObjectIds: derived.linkedObjectIds,
+        sourceVersion: derived.sourceVersion,
       });
     }
 
@@ -29650,6 +30206,7 @@ case "mobius":
     (actionId: string) => {
       const parentId =
         unifiedSelectedNode?.id ?? unifiedObjectModel.activeDatasetNodeId ?? unifiedObjectModel.activeDefinitionNodeId ?? null;
+      const linkedObjectIds = unifiedSelectedNode?.objectRefId ? [unifiedSelectedNode.objectRefId] : [];
       if (actionId === "bake") {
         if (unifiedSelectedNode?.category === "sceneObject" && unifiedSelectedNode.objectRefId) {
           bakeGeometryObjectToDatasetById(unifiedSelectedNode.objectRefId);
@@ -29674,6 +30231,8 @@ case "mobius":
           type: "derived/wireframe",
           sourceDefinition: "Extracted edge wireframe from current surface.",
           displayState: "visible",
+          provenanceSource: "wireframe extraction",
+          linkedObjectIds,
         });
         return;
       }
@@ -29686,6 +30245,8 @@ case "mobius":
           type: "derived/point-cloud",
           sourceDefinition: `Sampled mesh vertices from ${surfaceMeshData.label}.`,
           displayState: "stored",
+          provenanceSource: "point-cloud sampling",
+          linkedObjectIds,
         });
         return;
       }
@@ -29698,6 +30259,8 @@ case "mobius":
           type: "derived/chart-grid",
           sourceDefinition: "Computed chart grid overlay.",
           displayState: "visible",
+          provenanceSource: "chart-grid overlay",
+          linkedObjectIds,
         });
         return;
       }
@@ -29714,6 +30277,8 @@ case "mobius":
           type: "derived/normals",
           sourceDefinition: unifiedMeshReady ? "Recomputed mesh vertex normals." : "Implicit normal field.",
           displayState: "visible",
+          provenanceSource: unifiedMeshReady ? "normals recompute" : "implicit normals",
+          linkedObjectIds,
         });
         return;
       }
@@ -29727,6 +30292,8 @@ case "mobius":
           type: "derived/curvature-field",
           sourceDefinition: "Computed curvature scalar field.",
           displayState: "visible",
+          provenanceSource: "curvature field compute",
+          linkedObjectIds,
         });
         return;
       }
@@ -29739,6 +30306,8 @@ case "mobius":
           type: "derived/geodesic-overlay",
           sourceDefinition: "Enabled geodesic path overlay tools.",
           displayState: "visible",
+          provenanceSource: "geodesic overlay",
+          linkedObjectIds,
         });
         return;
       }
@@ -29751,6 +30320,8 @@ case "mobius":
             type: "derived/volume-slices",
             sourceDefinition: "Enabled orthogonal section views.",
             displayState: "visible",
+            provenanceSource: "volume slice extraction",
+            linkedObjectIds,
           });
           return;
         }
@@ -29762,6 +30333,8 @@ case "mobius":
           type: "derived/surface-section",
           sourceDefinition: "Enabled section/slice overlays.",
           displayState: "visible",
+          provenanceSource: "surface slicing",
+          linkedObjectIds,
         });
         return;
       }
@@ -31509,6 +32082,9 @@ case "mobius":
                   onVtkSmooth={handleVtkSmooth}
                   vtkOutputMode={vtkOutputMode}
                   onChangeVtkOutputMode={setVtkOutputMode}
+                  vtkOperationPresets={geometryOperationPresets}
+                  onSaveVtkOperationPreset={handleSaveGeometryOperationPreset}
+                  onApplyVtkOperationPreset={handleApplyGeometryOperationPreset}
                   generateSurfaceStatus={generateSurfaceStatus}
                   vtkPreviewBusy={vtkPreviewBusy}
                   vtkPreviewError={vtkPreviewError}
@@ -37647,10 +38223,19 @@ case "mobius":
                                         e.stopPropagation();
                                         handleToggleGeometryGalleryFavorite(card.id);
                                       }}
+                                      aria-label={favorite ? "Remove favorite" : "Mark as favorite"}
                                       title={favorite ? "Remove favorite" : "Mark as favorite"}
                                       className={`gallery-scan-card-badge-btn ${favorite ? "is-favorite" : ""}`}
                                     >
-                                      {favorite ? "Fav" : "Star"}
+                                      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true" focusable="false">
+                                        <path
+                                          d="M8 1.6l1.86 3.77 4.16.6-3.01 2.94.71 4.14L8 11.09l-3.72 1.96.71-4.14L2 5.97l4.16-.6L8 1.6z"
+                                          fill={favorite ? "currentColor" : "none"}
+                                          stroke="currentColor"
+                                          strokeWidth="1.3"
+                                          strokeLinejoin="round"
+                                        />
+                                      </svg>
                                     </button>
                                   </div>
                                   <div className="gallery-scan-card-meta">
@@ -38249,10 +38834,15 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setGeometryCreateActionStatus("Convex hull creation is planned for an upcoming update.")}
+                                  onClick={handleCreateConvexHullFromSelected}
                                   disabled={!geometrySelectedSceneObject}
+                                  title={
+                                    geometryHasPlannedConvexHullForSelected
+                                      ? "Convex hull is planned for selected object. Click to generate."
+                                      : "Plan convex hull for selected object."
+                                  }
                                 >
-                                  Convex hull
+                                  {geometryHasPlannedConvexHullForSelected ? "Convex hull (planned)" : "Convex hull"}
                                 </button>
                                 <button
                                   type="button"
@@ -38294,6 +38884,24 @@ case "mobius":
                                   disabled={!geometrySelectedSceneObject}
                                 >
                                   Fit primitive to selected
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleRegenerateDerivedProducts("selected");
+                                    setGeometryCreateActionStatus("Regenerated stale derived products for selected item.");
+                                  }}
+                                >
+                                  Regenerate stale (selected)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleRegenerateDerivedProducts("all");
+                                    setGeometryCreateActionStatus("Regenerated all stale derived products.");
+                                  }}
+                                >
+                                  Regenerate stale (all)
                                 </button>
                                 {geometryCreateActionStatus && (
                                   <div style={{ fontSize: 10, color: "#334155", width: "100%" }}>{geometryCreateActionStatus}</div>
@@ -39827,6 +40435,65 @@ case "mobius":
                             Pick p={fmt3(geometryProceduralPick.point)} n={fmt3(geometryProceduralPick.normal)}
                           </div>
                         )}
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Object presets</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                          <button type="button" onClick={handleSaveSelectedGeometryObjectPreset} style={{ fontSize: 11 }}>
+                            Save object preset
+                          </button>
+                          {geometryObjectPresets.slice(0, 5).map((preset) => (
+                            <button
+                              key={`geometry-object-preset-apply-${preset.id}`}
+                              type="button"
+                              onClick={() => handleApplyGeometryObjectPreset(preset.id)}
+                              style={{ fontSize: 11 }}
+                              title={new Date(preset.createdAt).toLocaleString()}
+                            >
+                              Apply: {preset.name}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
+                        <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
+                          {geometrySelectedObjectHistory.length ? (
+                            geometrySelectedObjectHistory.slice(0, 10).map((entry) => (
+                              <button
+                                key={`geometry-history-step-${entry.id}`}
+                                type="button"
+                                onClick={() => setGeometrySelectedHistoryStepId(entry.id)}
+                                style={{
+                                  textAlign: "left",
+                                  fontSize: 10.5,
+                                  borderRadius: 7,
+                                  border: "1px solid " + (geometrySelectedHistoryStepId === entry.id ? "#0a66c2" : "#dbe2ea"),
+                                  background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#fff",
+                                  padding: "5px 7px",
+                                }}
+                              >
+                                {entry.action} · {new Date(entry.at).toLocaleTimeString()}
+                              </button>
+                            ))
+                          ) : (
+                            <div style={{ fontSize: 10.5, opacity: 0.75 }}>No steps yet.</div>
+                          )}
+                        </div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={handleRestoreGeometryObjectFromHistoryStep}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Restore snapshot
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDuplicateGeometryObjectFromHistoryStep}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Duplicate object from selected step
+                          </button>
+                        </div>
                       </>
                       ) : geometrySelectedDatasetMeshObject ? (
                       <>
@@ -40043,6 +40710,65 @@ case "mobius":
                             Pick p={fmt3(geometryProceduralPick.point)} n={fmt3(geometryProceduralPick.normal)}
                           </div>
                         )}
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Object presets</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                          <button type="button" onClick={handleSaveSelectedGeometryObjectPreset} style={{ fontSize: 11 }}>
+                            Save object preset
+                          </button>
+                          {geometryObjectPresets.slice(0, 5).map((preset) => (
+                            <button
+                              key={`geometry-object-preset-apply-dataset-${preset.id}`}
+                              type="button"
+                              onClick={() => handleApplyGeometryObjectPreset(preset.id)}
+                              style={{ fontSize: 11 }}
+                              title={new Date(preset.createdAt).toLocaleString()}
+                            >
+                              Apply: {preset.name}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
+                        <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
+                          {geometrySelectedObjectHistory.length ? (
+                            geometrySelectedObjectHistory.slice(0, 10).map((entry) => (
+                              <button
+                                key={`geometry-history-step-dataset-${entry.id}`}
+                                type="button"
+                                onClick={() => setGeometrySelectedHistoryStepId(entry.id)}
+                                style={{
+                                  textAlign: "left",
+                                  fontSize: 10.5,
+                                  borderRadius: 7,
+                                  border: "1px solid " + (geometrySelectedHistoryStepId === entry.id ? "#0a66c2" : "#dbe2ea"),
+                                  background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#fff",
+                                  padding: "5px 7px",
+                                }}
+                              >
+                                {entry.action} · {new Date(entry.at).toLocaleTimeString()}
+                              </button>
+                            ))
+                          ) : (
+                            <div style={{ fontSize: 10.5, opacity: 0.75 }}>No steps yet.</div>
+                          )}
+                        </div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={handleRestoreGeometryObjectFromHistoryStep}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Restore snapshot
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDuplicateGeometryObjectFromHistoryStep}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Duplicate object from selected step
+                          </button>
+                        </div>
                       </>
                       ) : (
                         <div
@@ -40152,6 +40878,91 @@ case "mobius":
                           }}
                         >
                           <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                          <div style={{ marginTop: 4 }}>
+                            <strong>Selection mode:</strong>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                              {([
+                                ["object", "Object"],
+                                ["face", "Face"],
+                                ["edge", "Edge"],
+                                ["vertex", "Vertex"],
+                              ] as const).map(([modeId, label]) => (
+                                <button
+                                  key={`geometry-probe-mode-${modeId}`}
+                                  type="button"
+                                  onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                  style={pill(geometryProbeSelectionMode === modeId)}
+                                  aria-pressed={geometryProbeSelectionMode === modeId}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <strong>Picked coordinate:</strong>{" "}
+                            {geometryProbeSelectionDetails
+                              ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
+                              : "none"}
+                          </div>
+                          <div>
+                            <strong>Hover coordinate:</strong>{" "}
+                            {geometryProbeHoverSelectionDetails
+                              ? `(${fmt(geometryProbeHoverSelectionDetails.point.x)}, ${fmt(geometryProbeHoverSelectionDetails.point.y)}, ${fmt(geometryProbeHoverSelectionDetails.point.z)})`
+                              : "none"}
+                          </div>
+                          <div>
+                            <strong>Normal:</strong>{" "}
+                            {geometryProbeSelectionDetails
+                              ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
+                              : "none"}
+                          </div>
+                          <div>
+                            <strong>Click state:</strong>{" "}
+                            {geometryProbeSelectionDetails
+                              ? `${geometryProbeSelectionDetails.mode}${
+                                  geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                                }${
+                                  geometryProbeSelectionDetails.edgeVertexPair
+                                    ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                    : ""
+                                }${
+                                  geometryProbeSelectionDetails.vertexIndex != null
+                                    ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                                    : ""
+                                }`
+                              : "none"}
+                          </div>
+                          <div>
+                            <strong>Hover state:</strong>{" "}
+                            {geometryProbeHoverSelectionDetails
+                              ? `${geometryProbeHoverSelectionDetails.mode}${
+                                  geometryProbeHoverSelectionDetails.faceIndex != null ? ` · face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
+                                }${
+                                  geometryProbeHoverSelectionDetails.edgeVertexPair
+                                    ? ` · edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
+                                    : ""
+                                }${
+                                  geometryProbeHoverSelectionDetails.vertexIndex != null
+                                    ? ` · vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
+                                    : ""
+                                }`
+                              : "none"}
+                          </div>
+                          <div>
+                            <strong>Face area:</strong>{" "}
+                            {geometryProbeSelectionDetails?.faceArea != null &&
+                            Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                              ? fmt(geometryProbeSelectionDetails.faceArea)
+                              : "n/a"}
+                          </div>
+                          <div>
+                            <strong>Edge length:</strong>{" "}
+                            {geometryProbeSelectionDetails?.edgeLength != null &&
+                            Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                              ? fmt(geometryProbeSelectionDetails.edgeLength)
+                              : "n/a"}
+                          </div>
                           {geometrySelectedSceneMeshInfo ? (
                             <>
                               <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
@@ -40172,53 +40983,6 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
-                              <div style={{ marginTop: 4 }}>
-                                <strong>Selection mode:</strong>
-                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                  {([
-                                    ["object", "Object"],
-                                    ["face", "Face"],
-                                    ["edge", "Edge"],
-                                    ["vertex", "Vertex"],
-                                  ] as const).map(([modeId, label]) => (
-                                    <button
-                                      key={`geometry-probe-mode-${modeId}`}
-                                      type="button"
-                                      onClick={() => setGeometryProbeSelectionMode(modeId)}
-                                      style={pill(geometryProbeSelectionMode === modeId)}
-                                      aria-pressed={geometryProbeSelectionMode === modeId}
-                                    >
-                                      {label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <strong>Picked coordinate:</strong>{" "}
-                                {geometryProbeSelectionDetails
-                                  ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
-                                  : "none"}
-                              </div>
-                              <div>
-                                <strong>Normal:</strong>{" "}
-                                {geometryProbeSelectionDetails
-                                  ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
-                                  : "none"}
-                              </div>
-                              <div>
-                                <strong>Face area:</strong>{" "}
-                                {geometryProbeSelectionDetails?.faceArea != null &&
-                                Number.isFinite(geometryProbeSelectionDetails.faceArea)
-                                  ? fmt(geometryProbeSelectionDetails.faceArea)
-                                  : "n/a"}
-                              </div>
-                              <div>
-                                <strong>Edge length:</strong>{" "}
-                                {geometryProbeSelectionDetails?.edgeLength != null &&
-                                Number.isFinite(geometryProbeSelectionDetails.edgeLength)
-                                  ? fmt(geometryProbeSelectionDetails.edgeLength)
-                                  : "n/a"}
-                              </div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
                                   Open Gaussian analysis
@@ -40229,7 +40993,9 @@ case "mobius":
                               </div>
                             </>
                           ) : (
-                            <div>Select an object with mesh data to inspect measurements and quality.</div>
+                            <div style={{ color: "#475467" }}>
+                              Select an object with mesh data to see mesh quality metrics and open analysis workflows.
+                            </div>
                           )}
                         </div>
                         <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic from mesh/cell counts</div>
@@ -41977,6 +42743,7 @@ case "mobius":
                     geometryMode === "procedural"
                       ? [
                           ...(geometryProceduralOverlayGroups ?? []),
+                          ...(geometryProceduralSelectionOverlayGroups ?? []),
                           ...(geometryProceduralFeatureOverlays.groups ?? []),
                         ]
                       : null
@@ -41997,7 +42764,13 @@ case "mobius":
                   cameraFitCommand={geometryCameraFitCommand}
                   cameraTourCommand={geometryCameraTourCommand}
                   onCameraTourEvent={handleGeometryCameraTourEvent}
-                  highlightPolygons={geometryMode === "demo" ? geometryHighlightPolygons : null}
+                  highlightPolygons={
+                    geometryMode === "demo"
+                      ? geometryHighlightPolygons
+                      : geometryMode === "procedural"
+                        ? geometryProceduralSelectionHighlightPolygons
+                        : null
+                  }
                   highlightPointSets={
                     geometryMode === "demo"
                       ? geometryHighlightPointSets
@@ -48756,8 +49529,12 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
             ? "Dataset"
             : "Derived";
     const derivedFrom = node.parentId ? (byId.get(node.parentId)?.name ?? null) : null;
+    const derivedStatus =
+      node.derivedStatus ??
+      (node.category === "derived" ? ((node.visible ?? false) ? "ready" : "planned") : null);
     const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
-    const metadataLine = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
+    const withSource = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
+    const metadataLine = derivedStatus ? `${withSource} · ${derivedStatus.toUpperCase()}` : withSource;
     return (
       <div
         key={node.id}
@@ -49457,6 +50234,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   const selectedTypeChip = selectedNode
     ? (selectedNode.type.includes("/") ? selectedNode.type.split("/").pop() ?? selectedNode.type : selectedNode.type).replaceAll("-", " ")
     : "n/a";
+  const selectedDerivedStatus =
+    selectedNode?.derivedStatus ??
+    (selectedNode?.category === "derived" ? ((selectedNode.visible ?? false) ? "ready" : "planned") : null);
   const selectedReady = selectedIsDerivedSurfaceMesh ? !!meshStats : true;
 
   return (
@@ -49473,7 +50253,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
             {selectedTypeChip}
           </span>
           <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
-            {selectedReady ? "ready" : "not ready"}
+            {selectedDerivedStatus ?? (selectedReady ? "ready" : "not ready")}
           </span>
           <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
             {selectedNodeVisible == null ? "visibility: n/a" : selectedNodeVisible ? "visible" : "hidden"}
@@ -49523,6 +50303,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           <div style={{ fontSize: 11 }}><strong>Original source type:</strong> {technicalSourceKind.toLowerCase()}</div>
           <div style={{ fontSize: 11 }}><strong>Definition:</strong> {objectDefinitionLabel}</div>
           <div style={{ fontSize: 11 }}><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
+          <div style={{ fontSize: 11 }}><strong>Derived status:</strong> {selectedDerivedStatus ?? "n/a"}</div>
+          <div style={{ fontSize: 11 }}><strong>Provenance:</strong> {selectedNode.provenanceSource ?? "n/a"}</div>
           <div style={{ fontSize: 11 }}><strong>Sampling:</strong> {objectSamplingLabel}</div>
           <div style={{ fontSize: 11 }}><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
           <div style={{ fontSize: 11 }}><strong>Visible:</strong> {typeof selectedNode.visible === "boolean" ? (selectedNode.visible ? "yes" : "no") : "n/a"}</div>
@@ -50660,6 +51442,9 @@ type SurfacesLeftPanelProps = {
   onVtkSmooth: () => void;
   vtkOutputMode: "replace" | "derived";
   onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
+  vtkOperationPresets: GeometryOperationPreset[];
+  onSaveVtkOperationPreset: () => void;
+  onApplyVtkOperationPreset: (presetId: string) => void;
   generateSurfaceStatus: GenerateSurfaceStatus;
   vtkPreviewBusy: boolean;
   vtkPreviewError: string | null;
@@ -51290,6 +52075,9 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onVtkSmooth,
   vtkOutputMode,
   onChangeVtkOutputMode,
+  vtkOperationPresets,
+  onSaveVtkOperationPreset,
+  onApplyVtkOperationPreset,
   generateSurfaceStatus,
   vtkPreviewBusy,
   vtkPreviewError,
@@ -54939,9 +55727,20 @@ onChangeImplicitExpr,
               />
               Create derived result
             </label>
-            <button type="button" disabled title="Operation presets are not wired yet." style={{ justifySelf: "start" }}>
+            <button type="button" onClick={onSaveVtkOperationPreset} style={{ justifySelf: "start" }}>
               Save operation preset
             </button>
+            {vtkOperationPresets.slice(0, 4).map((preset) => (
+              <button
+                key={`vtk-operation-preset-${preset.id}`}
+                type="button"
+                onClick={() => onApplyVtkOperationPreset(preset.id)}
+                style={{ justifySelf: "start", fontSize: 11 }}
+                title={new Date(preset.createdAt).toLocaleString()}
+              >
+                Apply: {preset.name}
+              </button>
+            ))}
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
             Result details appear in the right Inspector under VTK result.
@@ -58947,8 +59746,8 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     <button type="button" disabled title="Apply action is not wired in right results panel.">Apply</button>
                     <button type="button" disabled title="Undo action is not wired in right results panel.">Undo</button>
-                    <button type="button" disabled title="Use Object → SurfaceMesh / Mesh Operations for save workflows.">
-                      Save derived mesh
+                    <button type="button" onClick={onSaveVtkOperationPreset} title="Save the current VTK settings as an operation preset.">
+                      Save operation preset
                     </button>
                   </div>
                 </div>
