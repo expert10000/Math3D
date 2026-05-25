@@ -1627,6 +1627,7 @@ type GeometryTransformPatch = {
 
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
+type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
 
 type GeometryDatasetMeshObject = {
   id: string;
@@ -6197,6 +6198,8 @@ const App: React.FC = () => {
     normal: { x: number; y: number; z: number };
     meshKey?: string;
   } | null>(null);
+  const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
+    useState<GeometryProbeSelectionMode>("object");
   const handleGeometryPick = useCallback(
     (info: {
       point: { x: number; y: number; z: number };
@@ -7536,12 +7539,28 @@ const App: React.FC = () => {
       mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
     const hasNormals = !!mesh.normals && mesh.normals.length >= mesh.positions.length;
     const bounds = boundsFromPositions(mesh.positions);
+    const dimensions = bounds
+      ? {
+          x: bounds.max[0] - bounds.min[0],
+          y: bounds.max[1] - bounds.min[1],
+          z: bounds.max[2] - bounds.min[2],
+        }
+      : null;
+    const centroid = bounds
+      ? {
+          x: 0.5 * (bounds.min[0] + bounds.max[0]),
+          y: 0.5 * (bounds.min[1] + bounds.max[1]),
+          z: 0.5 * (bounds.min[2] + bounds.max[2]),
+        }
+      : null;
     const topology = computeTriangleMeshEdgeTopology(mesh);
     return {
       vertCount,
       triCount,
       hasNormals,
       bounds,
+      dimensions,
+      centroid,
       boundaryEdgeCount: topology.boundaryEdgeCount,
       nonManifoldEdgeCount: topology.nonManifoldEdgeCount,
       manifold: topology.manifold,
@@ -7553,6 +7572,176 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometryProbeSelectionDetails = useMemo(() => {
+    if (!geometryProceduralPick) return null;
+    const fallback = {
+      mode: geometryProbeSelectionMode,
+      meshKey: geometryProceduralPick.meshKey ?? null,
+      point: geometryProceduralPick.point,
+      normal: geometryProceduralPick.normal,
+      edgeLength: null as number | null,
+      faceArea: null as number | null,
+    };
+    if (geometryProbeSelectionMode === "object") return fallback;
+
+    const meshKey = geometryProceduralPick.meshKey ?? geometrySelectedObjectId ?? null;
+    if (!meshKey) return fallback;
+    const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === meshKey);
+    if (!sourceMesh) return fallback;
+
+    const identityTransform: GeometryObjectTransform = {
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+    };
+    const worldMesh = transformSurfaceMeshByGeometryTransform(
+      sourceMesh,
+      (sourceMesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
+    );
+    const positions = worldMesh.positions;
+    const vertexCount = Math.floor((positions?.length ?? 0) / 3);
+    if (!vertexCount) return fallback;
+
+    const getPoint = (idx: number) => {
+      const base = idx * 3;
+      return { x: positions[base] ?? 0, y: positions[base + 1] ?? 0, z: positions[base + 2] ?? 0 };
+    };
+    const query = geometryProceduralPick.point;
+
+    if (geometryProbeSelectionMode === "vertex") {
+      let bestPoint = query;
+      let bestDistSq = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < vertexCount; i += 1) {
+        const p = getPoint(i);
+        const d2 = vecDistSq3(query, p);
+        if (d2 < bestDistSq) {
+          bestDistSq = d2;
+          bestPoint = p;
+        }
+      }
+      return {
+        ...fallback,
+        meshKey,
+        point: bestPoint,
+      };
+    }
+
+    const indices = worldMesh.indices ?? null;
+    const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+    if (!triCount) return fallback;
+
+    const queryV = new THREE.Vector3(query.x, query.y, query.z);
+
+    if (geometryProbeSelectionMode === "face") {
+      const closest = new THREE.Vector3();
+      const tri = new THREE.Triangle();
+      const aV = new THREE.Vector3();
+      const bV = new THREE.Vector3();
+      const cV = new THREE.Vector3();
+      const ab = new THREE.Vector3();
+      const ac = new THREE.Vector3();
+      const faceNormal = new THREE.Vector3();
+      let bestDistSq = Number.POSITIVE_INFINITY;
+      let bestPoint = query;
+      let bestArea: number | null = null;
+      let bestNormal = geometryProceduralPick.normal;
+
+      for (let t = 0; t < triCount; t += 1) {
+        const base = t * 3;
+        const ia = indices ? Number(indices[base]) : base;
+        const ib = indices ? Number(indices[base + 1]) : base + 1;
+        const ic = indices ? Number(indices[base + 2]) : base + 2;
+        const inRange = ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
+        if (!inRange || ia === ib || ib === ic || ia === ic) continue;
+        const a = getPoint(ia);
+        const b = getPoint(ib);
+        const c = getPoint(ic);
+        aV.set(a.x, a.y, a.z);
+        bV.set(b.x, b.y, b.z);
+        cV.set(c.x, c.y, c.z);
+        tri.set(aV, bV, cV);
+        tri.closestPointToPoint(queryV, closest);
+        const d2 = closest.distanceToSquared(queryV);
+        if (d2 >= bestDistSq) continue;
+        bestDistSq = d2;
+        bestPoint = { x: closest.x, y: closest.y, z: closest.z };
+        ab.subVectors(bV, aV);
+        ac.subVectors(cV, aV);
+        faceNormal.crossVectors(ab, ac);
+        const area = 0.5 * faceNormal.length();
+        if (faceNormal.lengthSq() > 1e-12) {
+          faceNormal.normalize();
+          bestNormal = { x: faceNormal.x, y: faceNormal.y, z: faceNormal.z };
+        }
+        bestArea = Number.isFinite(area) ? area : null;
+      }
+
+      return {
+        ...fallback,
+        meshKey,
+        point: bestPoint,
+        normal: bestNormal,
+        faceArea: bestArea,
+      };
+    }
+
+    const edgeKeySet = new Set<string>();
+    const aV = new THREE.Vector3();
+    const bV = new THREE.Vector3();
+    const ab = new THREE.Vector3();
+    const aq = new THREE.Vector3();
+    const closest = new THREE.Vector3();
+    let bestDistSq = Number.POSITIVE_INFINITY;
+    let bestPoint = query;
+    let bestEdgeLength: number | null = null;
+
+    const testEdge = (ia: number, ib: number) => {
+      const i0 = Math.min(ia, ib);
+      const i1 = Math.max(ia, ib);
+      const key = `${i0}|${i1}`;
+      if (edgeKeySet.has(key)) return;
+      edgeKeySet.add(key);
+      const p0 = getPoint(i0);
+      const p1 = getPoint(i1);
+      aV.set(p0.x, p0.y, p0.z);
+      bV.set(p1.x, p1.y, p1.z);
+      ab.subVectors(bV, aV);
+      const lenSq = ab.lengthSq();
+      if (!Number.isFinite(lenSq) || lenSq <= 1e-12) return;
+      aq.subVectors(queryV, aV);
+      const t = Math.max(0, Math.min(1, aq.dot(ab) / lenSq));
+      closest.copy(aV).addScaledVector(ab, t);
+      const d2 = closest.distanceToSquared(queryV);
+      if (d2 >= bestDistSq) return;
+      bestDistSq = d2;
+      bestPoint = { x: closest.x, y: closest.y, z: closest.z };
+      bestEdgeLength = Math.sqrt(lenSq);
+    };
+
+    for (let t = 0; t < triCount; t += 1) {
+      const base = t * 3;
+      const ia = indices ? Number(indices[base]) : base;
+      const ib = indices ? Number(indices[base + 1]) : base + 1;
+      const ic = indices ? Number(indices[base + 2]) : base + 2;
+      const inRange = ia >= 0 && ib >= 0 && ic >= 0 && ia < vertexCount && ib < vertexCount && ic < vertexCount;
+      if (!inRange || ia === ib || ib === ic || ia === ic) continue;
+      testEdge(ia, ib);
+      testEdge(ib, ic);
+      testEdge(ic, ia);
+    }
+
+    return {
+      ...fallback,
+      meshKey,
+      point: bestPoint,
+      edgeLength: bestEdgeLength,
+    };
+  }, [
+    geometryProceduralPick,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    proceduralMeshSet.meshes,
+  ]);
   const resolveGeometryPlacementTarget = useCallback(
     (pick: {
       point: { x: number; y: number; z: number };
@@ -38942,6 +39131,18 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Dimensions:{" "}
+                                {geometrySelectedSceneMeshInfo.dimensions
+                                  ? `${fmt(geometrySelectedSceneMeshInfo.dimensions.x)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.y)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.z)}`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Centroid:{" "}
+                                {geometrySelectedSceneMeshInfo.centroid
+                                  ? `(${fmt(geometrySelectedSceneMeshInfo.centroid.x)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.y)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.z)})`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
                                 {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
                               </div>
@@ -39736,6 +39937,18 @@ case "mobius":
                                   : "n/a"}
                               </div>
                               <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Dimensions:{" "}
+                                {geometrySelectedSceneMeshInfo.dimensions
+                                  ? `${fmt(geometrySelectedSceneMeshInfo.dimensions.x)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.y)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.z)}`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
+                                Centroid:{" "}
+                                {geometrySelectedSceneMeshInfo.centroid
+                                  ? `(${fmt(geometrySelectedSceneMeshInfo.centroid.x)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.y)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.z)})`
+                                  : "n/a"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.8 }}>
                                 Manifold: {geometrySelectedSceneMeshInfo.manifold ? "yes" : "no"} · Watertight:{" "}
                                 {geometrySelectedSceneMeshInfo.watertight ? "yes" : "no"}
                               </div>
@@ -39946,7 +40159,66 @@ case "mobius":
                                 <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
                                 {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
                               </div>
+                              <div>
+                                <strong>Dimensions:</strong>{" "}
+                                {geometrySelectedSceneMeshInfo.dimensions
+                                  ? `${fmt(geometrySelectedSceneMeshInfo.dimensions.x)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.y)} x ${fmt(geometrySelectedSceneMeshInfo.dimensions.z)}`
+                                  : "n/a"}
+                              </div>
+                              <div>
+                                <strong>Centroid:</strong>{" "}
+                                {geometrySelectedSceneMeshInfo.centroid
+                                  ? `(${fmt(geometrySelectedSceneMeshInfo.centroid.x)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.y)}, ${fmt(geometrySelectedSceneMeshInfo.centroid.z)})`
+                                  : "n/a"}
+                              </div>
                               <div><strong>Normals:</strong> {geometrySelectedSceneMeshInfo.hasNormals ? "present" : "missing"}</div>
+                              <div style={{ marginTop: 4 }}>
+                                <strong>Selection mode:</strong>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                  {([
+                                    ["object", "Object"],
+                                    ["face", "Face"],
+                                    ["edge", "Edge"],
+                                    ["vertex", "Vertex"],
+                                  ] as const).map(([modeId, label]) => (
+                                    <button
+                                      key={`geometry-probe-mode-${modeId}`}
+                                      type="button"
+                                      onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                      style={pill(geometryProbeSelectionMode === modeId)}
+                                      aria-pressed={geometryProbeSelectionMode === modeId}
+                                    >
+                                      {label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <strong>Picked coordinate:</strong>{" "}
+                                {geometryProbeSelectionDetails
+                                  ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
+                                  : "none"}
+                              </div>
+                              <div>
+                                <strong>Normal:</strong>{" "}
+                                {geometryProbeSelectionDetails
+                                  ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
+                                  : "none"}
+                              </div>
+                              <div>
+                                <strong>Face area:</strong>{" "}
+                                {geometryProbeSelectionDetails?.faceArea != null &&
+                                Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                                  ? fmt(geometryProbeSelectionDetails.faceArea)
+                                  : "n/a"}
+                              </div>
+                              <div>
+                                <strong>Edge length:</strong>{" "}
+                                {geometryProbeSelectionDetails?.edgeLength != null &&
+                                Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                                  ? fmt(geometryProbeSelectionDetails.edgeLength)
+                                  : "n/a"}
+                              </div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                 <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
                                   Open Gaussian analysis
