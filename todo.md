@@ -290,13 +290,3 @@ Actions
 [Clear]
 [Save vector field]
 
-In Geometry today, show it here:
-
-Geometry mode
-Procedural
-Panel -> Analysis
-Card Measurements / mesh quality
-Set Selection mode (Object/Face/Edge/Vertex) and click mesh in viewport
-You’ll get the geometry probe fields there (entity, coordinate, normal, face area, edge length, vertex info).
-
-The right-side Inspector -> Probe path is still Surfaces-hosted UI in this build, not a dedicated Geometry right panel yet. If you want, I can wire the same probe card into Geometry’s right panel directly next.

@@ -1645,6 +1645,8 @@ type GeometryTransformPatch = {
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
+type GeometryRightPanelTab = "inspector" | "scene";
+type GeometryInspectorPanelTab = "probe";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
   normal: { x: number; y: number; z: number };
@@ -9726,6 +9728,8 @@ const App: React.FC = () => {
     const saved = localStorage.getItem(WORKBOOK_PANEL_KEY);
     return saved === "workbook" ? "workbook" : "inspector";
   });
+  const [geometryRightPanelTab, setGeometryRightPanelTab] = useState<GeometryRightPanelTab>("inspector");
+  const [geometryInspectorPanelTab, setGeometryInspectorPanelTab] = useState<GeometryInspectorPanelTab>("probe");
   const [analysisFocusedSection, setAnalysisFocusedSection] = useState<AnalysisFocusedSection>("vector-calculus");
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
@@ -15601,6 +15605,13 @@ const App: React.FC = () => {
       if (rightPanelTab !== "inspector") setRightPanelTab("inspector");
     }
   }, [displayMode, mode, rightPanelTab, showRightPanel, showViewportDebug, surfacesLeftTab]);
+  useEffect(() => {
+    if (mode !== "geometry" || geometryMode !== "procedural") return;
+    if (displayMode !== "inspect") return;
+    if (!showRightPanel) setShowRightPanel(true);
+    if (geometryRightPanelTab !== "inspector") setGeometryRightPanelTab("inspector");
+    if (geometryInspectorPanelTab !== "probe") setGeometryInspectorPanelTab("probe");
+  }, [displayMode, geometryInspectorPanelTab, geometryMode, geometryRightPanelTab, mode, showRightPanel]);
   useEffect(() => {
     if (!viewMenuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -31260,8 +31271,11 @@ case "mobius":
     !surfacePreviewFocusMode &&
     (mode === "surfaces" ? (isPresentDisplayMode ? true : showRightPanel) : showRightPanel) &&
     !cleanScreenshotSurfaceActive;
+  const showGeometryRightPanel =
+    mode === "geometry" && geometryMode === "procedural" && showRightPanel && !isPresentDisplayMode;
   const surfaceLeftPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(leftWidth, 280) : leftWidth;
   const surfaceRightPanelWidth = mode === "surfaces" && isPresentDisplayMode ? Math.min(rightWidth, 280) : rightWidth;
+  const geometryRightPanelWidth = rightWidth;
   const showSurfaceSideCompanions =
     (showGaussMap || (surfaceViewerKind === "complex" && complexMapShowSphere)) &&
     !(mode === "surfaces" && isPresentDisplayMode) &&
@@ -42764,155 +42778,27 @@ case "mobius":
                 </div>
               </div>
               )}
-              {geometryMode === "procedural" && (
-                <div
-                  style={{
-                    borderBottom: "1px solid #d9e2ef",
-                    padding: "8px 10px",
-                    background: "linear-gradient(180deg, #fbfdff 0%, #f7faff 100%)",
-                  }}
-                >
-                  <div
-                    style={{
-                      border: "1px solid #dbe2ea",
-                      borderRadius: 8,
-                      padding: "8px 10px",
-                      background: "#ffffff",
-                      display: "grid",
-                      gap: 8,
-                      fontSize: 11,
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
-                    <div style={{ color: "#475467" }}>
-                      Set selection mode, then click mesh in viewport to probe object/face/edge/vertex data.
-                    </div>
-                    <div>
-                      <strong>Selection mode:</strong>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                        {([
-                          ["object", "Object"],
-                          ["face", "Face"],
-                          ["edge", "Edge"],
-                          ["vertex", "Vertex"],
-                        ] as const).map(([modeId, label]) => (
-                          <button
-                            key={`geometry-right-probe-mode-${modeId}`}
-                            type="button"
-                            onClick={() => setGeometryProbeSelectionMode(modeId)}
-                            style={pill(geometryProbeSelectionMode === modeId)}
-                            aria-pressed={geometryProbeSelectionMode === modeId}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    {geometrySelectedSceneMeshInfo ? (
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
-                        <div>
-                          <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
-                          {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ color: "#475467" }}>
-                        Select an object with mesh data to enable detailed probe measurements.
-                      </div>
-                    )}
-                    <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "4px 8px" }}>
-                      <div style={{ color: "#556" }}>Clicked entity</div>
-                      <div>
-                        {geometryProbeSelectionDetails
-                          ? `${geometryProbeSelectionDetails.mode}${
-                              geometryProbeSelectionDetails.faceIndex != null ? ` | face #${geometryProbeSelectionDetails.faceIndex}` : ""
-                            }${
-                              geometryProbeSelectionDetails.edgeVertexPair
-                                ? ` | edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
-                                : ""
-                            }${
-                              geometryProbeSelectionDetails.vertexIndex != null
-                                ? ` | vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                                : ""
-                            }`
-                          : "none"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Hovered entity</div>
-                      <div>
-                        {geometryProbeHoverSelectionDetails
-                          ? `${geometryProbeHoverSelectionDetails.mode}${
-                              geometryProbeHoverSelectionDetails.faceIndex != null ? ` | face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
-                            }${
-                              geometryProbeHoverSelectionDetails.edgeVertexPair
-                                ? ` | edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
-                                : ""
-                            }${
-                              geometryProbeHoverSelectionDetails.vertexIndex != null
-                                ? ` | vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
-                                : ""
-                            }`
-                          : "none"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Coordinate</div>
-                      <div>
-                        {geometryProbeSelectionDetails
-                          ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
-                          : "none"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Normal</div>
-                      <div>
-                        {geometryProbeSelectionDetails
-                          ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
-                          : "none"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Face area</div>
-                      <div>
-                        {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
-                          ? fmt(geometryProbeSelectionDetails.faceArea)
-                          : "n/a"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Edge length</div>
-                      <div>
-                        {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
-                          ? fmt(geometryProbeSelectionDetails.edgeLength)
-                          : "n/a"}
-                      </div>
-
-                      <div style={{ color: "#556" }}>Vertex info</div>
-                      <div>
-                        {geometryProbeSelectionDetails?.vertexIndex != null
-                          ? `vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                          : "n/a"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
-                        Open Gaussian analysis
-                      </button>
-                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
-                        Open Gauss map workflow
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div
-                data-testid="main-viewer"
-                ref={geometrySceneCaptureRef}
                 style={{
                   flex: 1,
                   minHeight: 0,
-                  overflow: "hidden",
-                  background: "#f8fbff",
+                  display: "flex",
+                  flexDirection: isPhoneLandscapeLayout ? "column" : "row",
+                  alignItems: "stretch",
                 }}
               >
-                <GeometryViewer
+                <div
+                  data-testid="main-viewer"
+                  ref={geometrySceneCaptureRef}
+                  style={{
+                    flex: 1,
+                    minHeight: 0,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    background: "#f8fbff",
+                  }}
+                >
+                  <GeometryViewer
                   scene={geometryScene}
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
@@ -42993,6 +42879,210 @@ case "mobius":
                   }
                   onPickHover={geometryMode === "procedural" ? handleProceduralPickHover : undefined}
                 />
+                </div>
+                {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
+                {showGeometryRightPanel && (
+                  <div
+                    style={{
+                      ...styles.panelLeft,
+                      width: isPhoneLandscapeLayout ? "100%" : geometryRightPanelWidth,
+                      maxWidth: isPhoneLandscapeLayout ? "100%" : maxRight,
+                      maxHeight: isPhoneLandscapeLayout ? Math.max(180, Math.floor(viewportSize.height * 0.46)) : undefined,
+                      overflowY: "auto",
+                      order: isPhoneLandscapeLayout ? 3 : 0,
+                      borderLeft: isPhoneLandscapeLayout ? "1px solid #d9e2ef" : undefined,
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                      {([
+                        ["inspector", "Inspector"],
+                        ["scene", "Scene"],
+                      ] as const).map(([tabId, label]) => (
+                        <button
+                          key={`geometry-right-panel-tab-${tabId}`}
+                          type="button"
+                          onClick={() => setGeometryRightPanelTab(tabId)}
+                          style={pill(geometryRightPanelTab === tabId)}
+                          aria-pressed={geometryRightPanelTab === tabId}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {geometryRightPanelTab === "inspector" ? (
+                      <>
+                        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                          {([["probe", "Probe"]] as const).map(([tabId, label]) => (
+                            <button
+                              key={`geometry-inspector-tab-${tabId}`}
+                              type="button"
+                              onClick={() => setGeometryInspectorPanelTab(tabId)}
+                              style={pill(geometryInspectorPanelTab === tabId)}
+                              aria-pressed={geometryInspectorPanelTab === tabId}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {geometryInspectorPanelTab === "probe" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                            <div style={{ color: "#475467" }}>
+                              Set selection mode, then click mesh in viewport to probe object/face/edge/vertex data.
+                            </div>
+                            <div>
+                              <strong>Selection mode:</strong>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                {([
+                                  ["object", "Object"],
+                                  ["face", "Face"],
+                                  ["edge", "Edge"],
+                                  ["vertex", "Vertex"],
+                                ] as const).map(([modeId, label]) => (
+                                  <button
+                                    key={`geometry-right-probe-mode-${modeId}`}
+                                    type="button"
+                                    onClick={() => setGeometryProbeSelectionMode(modeId)}
+                                    style={pill(geometryProbeSelectionMode === modeId)}
+                                    aria-pressed={geometryProbeSelectionMode === modeId}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {geometrySelectedSceneMeshInfo ? (
+                              <div style={{ display: "grid", gap: 4 }}>
+                                <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                                <div>
+                                  <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
+                                  {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>
+                                Select an object with mesh data to enable detailed probe measurements.
+                              </div>
+                            )}
+                            <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "4px 8px" }}>
+                              <div style={{ color: "#556" }}>Clicked entity</div>
+                              <div>
+                                {geometryProbeSelectionDetails
+                                  ? `${geometryProbeSelectionDetails.mode}${
+                                      geometryProbeSelectionDetails.faceIndex != null ? ` | face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                                    }${
+                                      geometryProbeSelectionDetails.edgeVertexPair
+                                        ? ` | edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                        : ""
+                                    }${
+                                      geometryProbeSelectionDetails.vertexIndex != null
+                                        ? ` | vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                                        : ""
+                                    }`
+                                  : "none"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Hovered entity</div>
+                              <div>
+                                {geometryProbeHoverSelectionDetails
+                                  ? `${geometryProbeHoverSelectionDetails.mode}${
+                                      geometryProbeHoverSelectionDetails.faceIndex != null ? ` | face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
+                                    }${
+                                      geometryProbeHoverSelectionDetails.edgeVertexPair
+                                        ? ` | edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
+                                        : ""
+                                    }${
+                                      geometryProbeHoverSelectionDetails.vertexIndex != null
+                                        ? ` | vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
+                                        : ""
+                                    }`
+                                  : "none"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Coordinate</div>
+                              <div>
+                                {geometryProbeSelectionDetails
+                                  ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
+                                  : "none"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Normal</div>
+                              <div>
+                                {geometryProbeSelectionDetails
+                                  ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
+                                  : "none"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Face area</div>
+                              <div>
+                                {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                                  ? fmt(geometryProbeSelectionDetails.faceArea)
+                                  : "n/a"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Edge length</div>
+                              <div>
+                                {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                                  ? fmt(geometryProbeSelectionDetails.edgeLength)
+                                  : "n/a"}
+                              </div>
+
+                              <div style={{ color: "#556" }}>Vertex info</div>
+                              <div>
+                                {geometryProbeSelectionDetails?.vertexIndex != null
+                                  ? `vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                                  : "n/a"}
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                                Open Gaussian analysis
+                              </button>
+                              <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                                Open Gauss map workflow
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div
+                        style={{
+                          border: "1px solid #dbe2ea",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#ffffff",
+                          display: "grid",
+                          gap: 8,
+                          fontSize: 11,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Scene summary</div>
+                        <div style={{ color: "#475467" }}>
+                          {geometryStats.mode === "procedural"
+                            ? `${geometryStats.objectCount} objects (${geometryStats.visibleCount} visible)`
+                            : `${geometryStats.pointCount} points · ${geometryStats.segmentCount} segments`}
+                        </div>
+                        <div style={{ color: "#475467" }}>
+                          {geometryStats.mode === "procedural"
+                            ? `${geometryStats.vertCount.toLocaleString()} verts · ${geometryStats.triCount.toLocaleString()} tris`
+                            : `${geometryStats.triangleCount} triangles · ${geometryStats.polygonCount} polygons · ${geometryStats.polyhedronFaces} polyhedron faces`}
+                        </div>
+                        {geometryViewerSourceLabel && <div style={{ color: "#475467" }}>Source: {geometryViewerSourceLabel}</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
