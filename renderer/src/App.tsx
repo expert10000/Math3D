@@ -6228,19 +6228,6 @@ const App: React.FC = () => {
     },
     [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points, geometryPlanimetryVisiblePointIds]
   );
-  const handleProceduralPick = useCallback((info: {
-    point: { x: number; y: number; z: number };
-    normal: { x: number; y: number; z: number };
-    meshKey?: string;
-  }) => {
-    setGeometryProceduralPick({
-      point: info.point,
-      normal: info.normal,
-      meshKey: info.meshKey,
-    });
-    if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
-    if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
-  }, [geometryCreatePlacementModeActive, geometryPendingPlacementObjectId]);
   const handleProceduralPickHover = useCallback((info: {
     point: { x: number; y: number; z: number };
     normal: { x: number; y: number; z: number };
@@ -6322,6 +6309,19 @@ const App: React.FC = () => {
   const [, setGeometryCreatePlacementSnapToGrid] = useState(false);
   const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
   const [geometryPendingPlacementObjectId, setGeometryPendingPlacementObjectId] = useState<string | null>(null);
+  const handleProceduralPick = useCallback((info: {
+    point: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    meshKey?: string;
+  }) => {
+    setGeometryProceduralPick({
+      point: info.point,
+      normal: info.normal,
+      meshKey: info.meshKey,
+    });
+    if (geometryCreatePlacementModeActive && geometryPendingPlacementObjectId) return;
+    if (info.meshKey) setGeometrySelectedObjectId(info.meshKey);
+  }, [geometryCreatePlacementModeActive, geometryPendingPlacementObjectId]);
   const geometryFocusAfterAddRef = useRef<(() => void) | null>(null);
   const [geometryProceduralScriptText, setGeometryProceduralScriptText] = useState(PROCEDURAL_SCRIPT_STARTER);
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);

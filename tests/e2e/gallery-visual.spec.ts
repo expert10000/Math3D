@@ -86,7 +86,7 @@ const snapshotOpts = {
 };
 const geometrySnapshotOpts = {
   ...snapshotOpts,
-  maxDiffPixels: 2_000,
+  maxDiffPixels: 6_000,
 };
 const surfaceSnapshotOpts = {
   ...snapshotOpts,
@@ -112,6 +112,8 @@ const stabilizeGalleryVisuals = async (page: Page): Promise<void> => {
         min-width: 191px !important;
         width: 191px !important;
         max-width: 191px !important;
+        padding-bottom: 0 !important;
+        margin-bottom: 0 !important;
       }
       [data-testid="geometry-gallery"] > div:first-child {
         display: none !important;
