@@ -204,7 +204,7 @@ test("Geometry gallery: select vs add flow, quick add, and filtering", async () 
     await page.getByTestId("geometry-add-object").click();
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 1);
 
-    await page.getByTestId("geometry-gallery-quick-add-torus").click();
+    await page.getByTestId("geometry-gallery-quick-add-torus").click({ noWaitAfter: true });
     await expect.poll(async () => (await readGeometryStats(page)).objectCount).toBe(baseCount + 2);
 
     await page.getByTestId("geometry-gallery-search").fill("zzzz-no-match");
