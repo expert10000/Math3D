@@ -1669,8 +1669,12 @@ type GeometryObjectHistoryStep = {
   id: string;
   at: number;
   action: string;
+  label: string;
   objectId: string;
   objectName: string;
+  beforeSummary: string | null;
+  afterSummary: string;
+  changeSummary: string;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
 type GeometryDerivedStatus = "ready" | "stale" | "planned";
@@ -2654,6 +2658,60 @@ const cloneGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Geometr
 const cloneGeometrySceneObjectSnapshot = (
   obj: GeometryObject | GeometryDatasetMeshObject
 ): GeometryObject | GeometryDatasetMeshObject => ("mesh" in obj ? cloneGeometryDatasetMeshObject(obj) : cloneGeometryObject(obj));
+
+const formatHistoryNumber = (value: number): string => {
+  if (!Number.isFinite(value)) return "0";
+  const abs = Math.abs(value);
+  if (abs >= 100) return value.toFixed(0);
+  if (abs >= 10) return value.toFixed(1);
+  return value.toFixed(2);
+};
+
+const formatHistoryVec3 = (value: { x: number; y: number; z: number }): string =>
+  `(${formatHistoryNumber(value.x)}, ${formatHistoryNumber(value.y)}, ${formatHistoryNumber(value.z)})`;
+
+const summarizeGeometryHistorySnapshot = (snapshot: GeometryObject | GeometryDatasetMeshObject): string => {
+  const transformSummary = `pos ${formatHistoryVec3(snapshot.transform.position)}`;
+  if ("mesh" in snapshot) {
+    const vertexCount = Math.floor(snapshot.mesh.positions.length / 3);
+    const faceCount = snapshot.mesh.indices?.length
+      ? Math.floor(snapshot.mesh.indices.length / 3)
+      : Math.floor(snapshot.mesh.positions.length / 9);
+    return `mesh V${vertexCount.toLocaleString()} F${faceCount.toLocaleString()} · ${transformSummary}`;
+  }
+  const sampleParams = Object.entries(snapshot.params)
+    .filter(([, raw]) => typeof raw === "number" || typeof raw === "boolean" || typeof raw === "string")
+    .slice(0, 2)
+    .map(([key, raw]) => `${key}=${typeof raw === "number" ? formatHistoryNumber(raw) : String(raw)}`);
+  const paramsSummary = sampleParams.length ? ` · ${sampleParams.join(", ")}` : "";
+  return `${snapshot.type}${paramsSummary} · ${transformSummary}`;
+};
+
+const summarizeGeometryHistoryChange = (
+  before: GeometryObject | GeometryDatasetMeshObject | null,
+  after: GeometryObject | GeometryDatasetMeshObject
+): string => {
+  if (!before) return "Initial snapshot";
+  const changes: string[] = [];
+  if (before.name !== after.name) changes.push("renamed");
+  if (before.visible !== after.visible) changes.push(after.visible ? "shown" : "hidden");
+  if ("mesh" in before && "mesh" in after) {
+    const beforeV = Math.floor(before.mesh.positions.length / 3);
+    const afterV = Math.floor(after.mesh.positions.length / 3);
+    if (beforeV !== afterV) changes.push(`vertices ${beforeV}→${afterV}`);
+    const beforeF = before.mesh.indices?.length ? Math.floor(before.mesh.indices.length / 3) : Math.floor(before.mesh.positions.length / 9);
+    const afterF = after.mesh.indices?.length ? Math.floor(after.mesh.indices.length / 3) : Math.floor(after.mesh.positions.length / 9);
+    if (beforeF !== afterF) changes.push(`faces ${beforeF}→${afterF}`);
+  } else if (!("mesh" in before) && !("mesh" in after)) {
+    if (before.type !== after.type) changes.push(`${before.type}→${after.type}`);
+    if (JSON.stringify(before.params) !== JSON.stringify(after.params)) changes.push("params updated");
+  } else {
+    changes.push("object kind changed");
+  }
+  if (JSON.stringify(before.transform) !== JSON.stringify(after.transform)) changes.push("transform updated");
+  if (JSON.stringify(before.material) !== JSON.stringify(after.material)) changes.push("material updated");
+  return changes.length ? changes.join(" · ") : "No visible change";
+};
 
 const buildMeshEdgePolylines = (
   mesh: { positions: ArrayLike<number>; indices?: ArrayLike<number> | null },
@@ -6435,6 +6493,19 @@ const App: React.FC = () => {
     () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
   );
+  const geometryObjectIdSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const obj of geometryObjects) ids.add(obj.id);
+    for (const obj of geometryDatasetMeshObjects) ids.add(obj.id);
+    return ids;
+  }, [geometryDatasetMeshObjects, geometryObjects]);
+  const allocateUniqueGeometryObjectId = useCallback(() => {
+    let id = makeId();
+    while (geometryObjectIdSet.has(id)) {
+      id = makeId();
+    }
+    return id;
+  }, [geometryObjectIdSet]);
   const [geometryObjectRevisionById, setGeometryObjectRevisionById] = useState<Record<string, number>>({});
   const geometryHistoryFingerprintRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
@@ -6471,13 +6542,20 @@ const App: React.FC = () => {
         if (previous === fingerprint) continue;
         changedObjectIds.push(obj.id);
         const history = next[obj.id] ?? [];
+        const previousSnapshot = history.length ? history[0].snapshot : null;
+        const action = previous == null ? "created" : "updated";
+        const afterSnapshot = cloneGeometrySceneObjectSnapshot(obj);
         const step: GeometryObjectHistoryStep = {
           id: makeId(),
           at: Date.now(),
-          action: previous == null ? "created" : "updated",
+          action,
+          label: action === "created" ? "Created object" : "Updated object",
           objectId: obj.id,
           objectName: obj.name,
-          snapshot: cloneGeometrySceneObjectSnapshot(obj),
+          beforeSummary: previousSnapshot ? summarizeGeometryHistorySnapshot(previousSnapshot) : null,
+          afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
+          changeSummary: summarizeGeometryHistoryChange(previousSnapshot, afterSnapshot),
+          snapshot: afterSnapshot,
         };
         next[obj.id] = [step, ...history].slice(0, 24);
         changed = true;
@@ -6537,7 +6615,7 @@ const App: React.FC = () => {
   const handleDuplicateGeometryObjectFromHistoryStep = useCallback(() => {
     if (!geometrySelectedHistoryStep) return;
     const snapshot = geometrySelectedHistoryStep.snapshot;
-    const copyId = makeId();
+    const copyId = allocateUniqueGeometryObjectId();
     if ("mesh" in snapshot) {
       const copy = cloneGeometryDatasetMeshObject(snapshot);
       copy.id = copyId;
@@ -6553,7 +6631,7 @@ const App: React.FC = () => {
     copy.transform.position.x += 0.25;
     setGeometryObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
-  }, [geometrySelectedHistoryStep]);
+  }, [allocateUniqueGeometryObjectId, geometrySelectedHistoryStep]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -6586,7 +6664,7 @@ const App: React.FC = () => {
       const preset = geometryObjectPresets.find((entry) => entry.id === presetId);
       if (!preset) return;
       const snapshot = preset.snapshot;
-      const id = makeId();
+      const id = allocateUniqueGeometryObjectId();
       if ("mesh" in snapshot) {
         const copy = cloneGeometryDatasetMeshObject(snapshot);
         copy.id = id;
@@ -6600,7 +6678,7 @@ const App: React.FC = () => {
       }
       setGeometrySelectedObjectId(id);
     },
-    [geometryObjectPresets]
+    [allocateUniqueGeometryObjectId, geometryObjectPresets]
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -34429,6 +34507,8 @@ case "mobius":
                     canBakeAsPrimaryObject={unifiedCanConvertToMeshObject}
                     onBakeAsPrimaryObject={handleDatasetToGeometryScene}
                     onOpenAnalysis={() => setSurfacesLeftTab("analysis")}
+                    onRegenerateStaleSelected={() => handleRegenerateDerivedProducts("selected")}
+                    onRegenerateStaleAll={() => handleRegenerateDerivedProducts("all")}
                   />
                   {isSurfaceDatasetKind(datasetKind) && surfaceViewerKind === "implicit" && (
                     <div
@@ -36816,6 +36896,9 @@ case "mobius":
                       inspectPos={inspectPos}
                       inspectNormal={inspectNormal}
                       inspectMetrics={inspectMetrics}
+                      geometryProbeSelectionMode={geometryProbeSelectionMode}
+                      geometryProbeSelectionDetails={geometryProbeSelectionDetails}
+                      geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
                       onPickDomainUV={handlePickDomainUV}
                       onPickDomainXY={handlePickDomainXY}
                       onPickDomainXYZ={handlePickDomainXYZ}
@@ -40452,6 +40535,9 @@ case "mobius":
                             </button>
                           ))}
                         </div>
+                        <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
+                          Presets are saved locally and persist after reload.
+                        </div>
                         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
                         <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
                           {geometrySelectedObjectHistory.length ? (
@@ -40460,6 +40546,7 @@ case "mobius":
                                 key={`geometry-history-step-${entry.id}`}
                                 type="button"
                                 onClick={() => setGeometrySelectedHistoryStepId(entry.id)}
+                                title={`${entry.beforeSummary ? `Before: ${entry.beforeSummary}\n` : ""}After: ${entry.afterSummary}\n${entry.changeSummary}`}
                                 style={{
                                   textAlign: "left",
                                   fontSize: 10.5,
@@ -40469,7 +40556,14 @@ case "mobius":
                                   padding: "5px 7px",
                                 }}
                               >
-                                {entry.action} · {new Date(entry.at).toLocaleTimeString()}
+                                <div style={{ fontWeight: 700 }}>
+                                  {entry.label} · {new Date(entry.at).toLocaleTimeString()}
+                                </div>
+                                <div style={{ opacity: 0.82 }}>{entry.changeSummary}</div>
+                                <div style={{ opacity: 0.72 }}>
+                                  {entry.beforeSummary ? `Before: ${entry.beforeSummary}` : "Before: n/a"}
+                                </div>
+                                <div style={{ opacity: 0.72 }}>After: {entry.afterSummary}</div>
                               </button>
                             ))
                           ) : (
@@ -40727,6 +40821,9 @@ case "mobius":
                             </button>
                           ))}
                         </div>
+                        <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
+                          Presets are saved locally and persist after reload.
+                        </div>
                         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Construction history</div>
                         <div style={{ marginTop: 6, display: "grid", gap: 5 }}>
                           {geometrySelectedObjectHistory.length ? (
@@ -40735,6 +40832,7 @@ case "mobius":
                                 key={`geometry-history-step-dataset-${entry.id}`}
                                 type="button"
                                 onClick={() => setGeometrySelectedHistoryStepId(entry.id)}
+                                title={`${entry.beforeSummary ? `Before: ${entry.beforeSummary}\n` : ""}After: ${entry.afterSummary}\n${entry.changeSummary}`}
                                 style={{
                                   textAlign: "left",
                                   fontSize: 10.5,
@@ -40744,7 +40842,14 @@ case "mobius":
                                   padding: "5px 7px",
                                 }}
                               >
-                                {entry.action} · {new Date(entry.at).toLocaleTimeString()}
+                                <div style={{ fontWeight: 700 }}>
+                                  {entry.label} · {new Date(entry.at).toLocaleTimeString()}
+                                </div>
+                                <div style={{ opacity: 0.82 }}>{entry.changeSummary}</div>
+                                <div style={{ opacity: 0.72 }}>
+                                  {entry.beforeSummary ? `Before: ${entry.beforeSummary}` : "Before: n/a"}
+                                </div>
+                                <div style={{ opacity: 0.72 }}>After: {entry.afterSummary}</div>
                               </button>
                             ))
                           ) : (
@@ -40898,70 +41003,6 @@ case "mobius":
                                 </button>
                               ))}
                             </div>
-                          </div>
-                          <div>
-                            <strong>Picked coordinate:</strong>{" "}
-                            {geometryProbeSelectionDetails
-                              ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
-                              : "none"}
-                          </div>
-                          <div>
-                            <strong>Hover coordinate:</strong>{" "}
-                            {geometryProbeHoverSelectionDetails
-                              ? `(${fmt(geometryProbeHoverSelectionDetails.point.x)}, ${fmt(geometryProbeHoverSelectionDetails.point.y)}, ${fmt(geometryProbeHoverSelectionDetails.point.z)})`
-                              : "none"}
-                          </div>
-                          <div>
-                            <strong>Normal:</strong>{" "}
-                            {geometryProbeSelectionDetails
-                              ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
-                              : "none"}
-                          </div>
-                          <div>
-                            <strong>Click state:</strong>{" "}
-                            {geometryProbeSelectionDetails
-                              ? `${geometryProbeSelectionDetails.mode}${
-                                  geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
-                                }${
-                                  geometryProbeSelectionDetails.edgeVertexPair
-                                    ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
-                                    : ""
-                                }${
-                                  geometryProbeSelectionDetails.vertexIndex != null
-                                    ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}`
-                                    : ""
-                                }`
-                              : "none"}
-                          </div>
-                          <div>
-                            <strong>Hover state:</strong>{" "}
-                            {geometryProbeHoverSelectionDetails
-                              ? `${geometryProbeHoverSelectionDetails.mode}${
-                                  geometryProbeHoverSelectionDetails.faceIndex != null ? ` · face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
-                                }${
-                                  geometryProbeHoverSelectionDetails.edgeVertexPair
-                                    ? ` · edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
-                                    : ""
-                                }${
-                                  geometryProbeHoverSelectionDetails.vertexIndex != null
-                                    ? ` · vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
-                                    : ""
-                                }`
-                              : "none"}
-                          </div>
-                          <div>
-                            <strong>Face area:</strong>{" "}
-                            {geometryProbeSelectionDetails?.faceArea != null &&
-                            Number.isFinite(geometryProbeSelectionDetails.faceArea)
-                              ? fmt(geometryProbeSelectionDetails.faceArea)
-                              : "n/a"}
-                          </div>
-                          <div>
-                            <strong>Edge length:</strong>{" "}
-                            {geometryProbeSelectionDetails?.edgeLength != null &&
-                            Number.isFinite(geometryProbeSelectionDetails.edgeLength)
-                              ? fmt(geometryProbeSelectionDetails.edgeLength)
-                              : "n/a"}
                           </div>
                           {geometrySelectedSceneMeshInfo ? (
                             <>
@@ -42722,6 +42763,144 @@ case "mobius":
                   </label>
                 </div>
               </div>
+              )}
+              {geometryMode === "procedural" && (
+                <div
+                  style={{
+                    borderBottom: "1px solid #d9e2ef",
+                    padding: "8px 10px",
+                    background: "linear-gradient(180deg, #fbfdff 0%, #f7faff 100%)",
+                  }}
+                >
+                  <div
+                    style={{
+                      border: "1px solid #dbe2ea",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      background: "#ffffff",
+                      display: "grid",
+                      gap: 8,
+                      fontSize: 11,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                    <div style={{ color: "#475467" }}>
+                      Set selection mode, then click mesh in viewport to probe object/face/edge/vertex data.
+                    </div>
+                    <div>
+                      <strong>Selection mode:</strong>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                        {([
+                          ["object", "Object"],
+                          ["face", "Face"],
+                          ["edge", "Edge"],
+                          ["vertex", "Vertex"],
+                        ] as const).map(([modeId, label]) => (
+                          <button
+                            key={`geometry-right-probe-mode-${modeId}`}
+                            type="button"
+                            onClick={() => setGeometryProbeSelectionMode(modeId)}
+                            style={pill(geometryProbeSelectionMode === modeId)}
+                            aria-pressed={geometryProbeSelectionMode === modeId}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {geometrySelectedSceneMeshInfo ? (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div><strong>Selected:</strong> {geometrySelectedSceneObject?.name ?? "n/a"}</div>
+                        <div>
+                          <strong>Vertices/Faces:</strong> {geometrySelectedSceneMeshInfo.vertCount.toLocaleString()} /{" "}
+                          {geometrySelectedSceneMeshInfo.triCount.toLocaleString()}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ color: "#475467" }}>
+                        Select an object with mesh data to enable detailed probe measurements.
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: "4px 8px" }}>
+                      <div style={{ color: "#556" }}>Clicked entity</div>
+                      <div>
+                        {geometryProbeSelectionDetails
+                          ? `${geometryProbeSelectionDetails.mode}${
+                              geometryProbeSelectionDetails.faceIndex != null ? ` | face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                            }${
+                              geometryProbeSelectionDetails.edgeVertexPair
+                                ? ` | edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                : ""
+                            }${
+                              geometryProbeSelectionDetails.vertexIndex != null
+                                ? ` | vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                                : ""
+                            }`
+                          : "none"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Hovered entity</div>
+                      <div>
+                        {geometryProbeHoverSelectionDetails
+                          ? `${geometryProbeHoverSelectionDetails.mode}${
+                              geometryProbeHoverSelectionDetails.faceIndex != null ? ` | face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
+                            }${
+                              geometryProbeHoverSelectionDetails.edgeVertexPair
+                                ? ` | edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
+                                : ""
+                            }${
+                              geometryProbeHoverSelectionDetails.vertexIndex != null
+                                ? ` | vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
+                                : ""
+                            }`
+                          : "none"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Coordinate</div>
+                      <div>
+                        {geometryProbeSelectionDetails
+                          ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
+                          : "none"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Normal</div>
+                      <div>
+                        {geometryProbeSelectionDetails
+                          ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
+                          : "none"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Face area</div>
+                      <div>
+                        {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                          ? fmt(geometryProbeSelectionDetails.faceArea)
+                          : "n/a"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Edge length</div>
+                      <div>
+                        {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                          ? fmt(geometryProbeSelectionDetails.edgeLength)
+                          : "n/a"}
+                      </div>
+
+                      <div style={{ color: "#556" }}>Vertex info</div>
+                      <div>
+                        {geometryProbeSelectionDetails?.vertexIndex != null
+                          ? `vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                          : "n/a"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
+                        Open Gaussian analysis
+                      </button>
+                      <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(true)} style={{ fontSize: 11 }}>
+                        Open Gauss map workflow
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
               <div
                 data-testid="main-viewer"
@@ -49532,6 +49711,14 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     const derivedStatus =
       node.derivedStatus ??
       (node.category === "derived" ? ((node.visible ?? false) ? "ready" : "planned") : null);
+    const derivedStatusColor =
+      derivedStatus === "stale"
+        ? "#b42318"
+        : derivedStatus === "planned"
+          ? "#b45309"
+          : derivedStatus === "ready"
+            ? "#166534"
+            : "#64748b";
     const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
     const withSource = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
     const metadataLine = derivedStatus ? `${withSource} · ${derivedStatus.toUpperCase()}` : withSource;
@@ -49599,7 +49786,8 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
               <span
                 style={{
                   fontSize: 10,
-                  color: "#64748b",
+                  color: derivedStatus ? derivedStatusColor : "#64748b",
+                  fontWeight: derivedStatus === "stale" ? 700 : 500,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -49964,6 +50152,8 @@ type SurfacesObjectPanelProps = {
   canBakeAsPrimaryObject: boolean;
   onBakeAsPrimaryObject: () => void;
   onOpenAnalysis: () => void;
+  onRegenerateStaleSelected: () => void;
+  onRegenerateStaleAll: () => void;
 };
 
 const OBJECT_CATEGORY_LABELS: Record<UnifiedObjectCategory, string> = {
@@ -50046,6 +50236,8 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   canBakeAsPrimaryObject,
   onBakeAsPrimaryObject,
   onOpenAnalysis,
+  onRegenerateStaleSelected,
+  onRegenerateStaleAll,
 }) => {
   const canEditSceneObject = !!selectedSceneObject && !selectedSceneObjectLocked;
   const categoryLabel = selectedNode ? OBJECT_CATEGORY_LABELS[selectedNode.category] : "n/a";
@@ -50224,19 +50416,59 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
       { key: "compare-surface", label: "Comparison surface B", match: ["compare-surface", "comparison"] },
     ];
     return specs.map((spec) => {
-      const exists = derivedProductNodes.some((node) => {
+      const matches = derivedProductNodes.filter((node) => {
         const hay = `${node.id} ${node.type} ${node.name}`.toLowerCase();
         return spec.match.some((needle) => hay.includes(needle));
       });
-      return { ...spec, exists };
+      let status: "missing" | "ready" | "stale" | "planned" = "missing";
+      if (matches.length) {
+        if (
+          matches.some(
+            (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "stale"
+          )
+        ) {
+          status = "stale";
+        } else if (
+          matches.some(
+            (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "planned"
+          )
+        ) {
+          status = "planned";
+        } else {
+          status = "ready";
+        }
+      }
+      return { ...spec, status };
     });
   }, [derivedProductNodes]);
+  const staleDerivedCountForSelected = useMemo(
+    () =>
+      derivedProductNodes.filter(
+        (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "stale"
+      ).length,
+    [derivedProductNodes]
+  );
+  const staleDerivedCountAll = useMemo(
+    () =>
+      Array.from(nodeById.values()).filter(
+        (node) =>
+          node.category === "derived" &&
+          (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "stale"
+      ).length,
+    [nodeById]
+  );
   const selectedTypeChip = selectedNode
     ? (selectedNode.type.includes("/") ? selectedNode.type.split("/").pop() ?? selectedNode.type : selectedNode.type).replaceAll("-", " ")
     : "n/a";
   const selectedDerivedStatus =
     selectedNode?.derivedStatus ??
     (selectedNode?.category === "derived" ? ((selectedNode.visible ?? false) ? "ready" : "planned") : null);
+  const selectedDerivedStatusTone =
+    selectedDerivedStatus === "stale"
+      ? { border: "#ef4444", background: "#fef2f2", color: "#991b1b" }
+      : selectedDerivedStatus === "planned"
+        ? { border: "#f59e0b", background: "#fffbeb", color: "#92400e" }
+        : { border: "#16a34a", background: "#ecfdf5", color: "#166534" };
   const selectedReady = selectedIsDerivedSurfaceMesh ? !!meshStats : true;
 
   return (
@@ -50252,7 +50484,17 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
             {selectedTypeChip}
           </span>
-          <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+          <span
+            style={{
+              border: `1px solid ${selectedDerivedStatusTone.border}`,
+              borderRadius: 999,
+              padding: "2px 8px",
+              fontSize: 10,
+              fontWeight: 800,
+              background: selectedDerivedStatusTone.background,
+              color: selectedDerivedStatusTone.color,
+            }}
+          >
             {selectedDerivedStatus ?? (selectedReady ? "ready" : "not ready")}
           </span>
           <span style={{ border: "1px solid #cbd5e1", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
@@ -50303,7 +50545,22 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           <div style={{ fontSize: 11 }}><strong>Original source type:</strong> {technicalSourceKind.toLowerCase()}</div>
           <div style={{ fontSize: 11 }}><strong>Definition:</strong> {objectDefinitionLabel}</div>
           <div style={{ fontSize: 11 }}><strong>Pipeline stage:</strong> {technicalPipelineStage}</div>
-          <div style={{ fontSize: 11 }}><strong>Derived status:</strong> {selectedDerivedStatus ?? "n/a"}</div>
+          <div style={{ fontSize: 11 }}>
+            <strong>Derived status:</strong>{" "}
+            <span
+              style={{
+                border: `1px solid ${selectedDerivedStatusTone.border}`,
+                background: selectedDerivedStatusTone.background,
+                color: selectedDerivedStatusTone.color,
+                borderRadius: 999,
+                padding: "1px 8px",
+                fontWeight: 800,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {(selectedDerivedStatus ?? "n/a").toUpperCase()}
+            </span>
+          </div>
           <div style={{ fontSize: 11 }}><strong>Provenance:</strong> {selectedNode.provenanceSource ?? "n/a"}</div>
           <div style={{ fontSize: 11 }}><strong>Sampling:</strong> {objectSamplingLabel}</div>
           <div style={{ fontSize: 11 }}><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
@@ -50487,20 +50744,62 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
             {derivedStatusItems.map((item) => (
               <span
                 key={item.key}
-                title={item.exists ? "ready" : "can generate"}
+                title={item.status}
                 style={{
                   fontSize: 10,
-                  border: "1px solid " + (item.exists ? "#a7f3d0" : "#cbd5e1"),
+                  border:
+                    "1px solid " +
+                    (item.status === "stale"
+                      ? "#ef4444"
+                      : item.status === "planned"
+                        ? "#f59e0b"
+                        : item.status === "ready"
+                          ? "#16a34a"
+                          : "#cbd5e1"),
                   borderRadius: 999,
                   padding: "2px 8px",
-                  background: item.exists ? "#ecfdf5" : "#f8fafc",
-                  color: item.exists ? "#166534" : "#475569",
+                  background:
+                    item.status === "stale"
+                      ? "#fef2f2"
+                      : item.status === "planned"
+                        ? "#fffbeb"
+                        : item.status === "ready"
+                          ? "#ecfdf5"
+                          : "#f8fafc",
+                  color:
+                    item.status === "stale"
+                      ? "#991b1b"
+                      : item.status === "planned"
+                        ? "#92400e"
+                        : item.status === "ready"
+                          ? "#166534"
+                          : "#475569",
                   fontWeight: 700,
                 }}
               >
-                {item.label} {item.exists ? "✓" : "+"}
+                {item.label} · {item.status.toUpperCase()}
               </span>
             ))}
+          </div>
+          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={onRegenerateStaleSelected}
+              disabled={staleDerivedCountForSelected <= 0}
+              style={{ fontSize: 11 }}
+              title={staleDerivedCountForSelected > 0 ? "Regenerate stale derived products linked to this object." : "No stale derived products linked to this object."}
+            >
+              Regenerate stale (selected) {staleDerivedCountForSelected > 0 ? `(${staleDerivedCountForSelected})` : ""}
+            </button>
+            <button
+              type="button"
+              onClick={onRegenerateStaleAll}
+              disabled={staleDerivedCountAll <= 0}
+              style={{ fontSize: 11 }}
+              title={staleDerivedCountAll > 0 ? "Regenerate all stale derived products in scene." : "No stale derived products in scene."}
+            >
+              Regenerate stale (all) {staleDerivedCountAll > 0 ? `(${staleDerivedCountAll})` : ""}
+            </button>
           </div>
           {!!derivedProductNames.length && (
             <div style={{ marginTop: 8, fontSize: 10, color: "#64748b" }}>
@@ -50577,6 +50876,9 @@ type SurfacesInspectPanelProps = {
   inspectPos: { x: number; y: number; z: number } | null;
   inspectNormal: { x: number; y: number; z: number } | null;
   inspectMetrics: { K?: number; H?: number; k1?: number; k2?: number } | null;
+  geometryProbeSelectionMode: GeometryProbeSelectionMode;
+  geometryProbeSelectionDetails: GeometryProbeSelectionDetails | null;
+  geometryProbeHoverSelectionDetails: GeometryProbeSelectionDetails | null;
   probeInfo: ProbeInfo | null;
   probeCurv: CurvatureData | null;
   paramProbeCurv: PrincipalCurvatureScalars | null;
@@ -50592,6 +50894,9 @@ type SurfacesInspectPanelProps = {
   onToggleProbeTangentPlane: () => void;
   showProbeTangents: boolean;
   onToggleProbeTangents: () => void;
+  geometryProbeSelectionMode?: GeometryProbeSelectionMode;
+  geometryProbeSelectionDetails?: GeometryProbeSelectionDetails | null;
+  geometryProbeHoverSelectionDetails?: GeometryProbeSelectionDetails | null;
 };
 
 const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
@@ -50618,6 +50923,9 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
   onToggleProbeTangentPlane,
   showProbeTangents,
   onToggleProbeTangents,
+  geometryProbeSelectionMode,
+  geometryProbeSelectionDetails,
+  geometryProbeHoverSelectionDetails,
 }) => {
   const [navigatorMode, setNavigatorMode] = useState<"click" | "hover">("click");
   const [navigatorDrag, setNavigatorDrag] = useState(false);
@@ -50738,6 +51046,92 @@ const SurfacesInspectPanel: React.FC<SurfacesInspectPanelProps> = ({
           </div>
         )}
       </div>
+
+      {geometryProbeSelectionMode && (
+        <div style={{ padding: 10, border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>Geometry probe (entity)</div>
+          <div style={{ fontSize: 11, display: "grid", gridTemplateColumns: "112px 1fr", gap: "4px 8px" }}>
+            <div style={{ color: "#556" }}>Selection mode</div>
+            <div>{geometryProbeSelectionMode}</div>
+
+            <div style={{ color: "#556" }}>Clicked entity</div>
+            <div>
+              {geometryProbeSelectionDetails
+                ? `${geometryProbeSelectionDetails.mode}${
+                    geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                  }${
+                    geometryProbeSelectionDetails.edgeVertexPair
+                      ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                      : ""
+                  }${
+                    geometryProbeSelectionDetails.vertexIndex != null
+                      ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                      : ""
+                  }`
+                : "none"}
+            </div>
+
+            <div style={{ color: "#556" }}>Hovered entity</div>
+            <div>
+              {geometryProbeHoverSelectionDetails
+                ? `${geometryProbeHoverSelectionDetails.mode}${
+                    geometryProbeHoverSelectionDetails.faceIndex != null ? ` · face #${geometryProbeHoverSelectionDetails.faceIndex}` : ""
+                  }${
+                    geometryProbeHoverSelectionDetails.edgeVertexPair
+                      ? ` · edge [${geometryProbeHoverSelectionDetails.edgeVertexPair[0]}, ${geometryProbeHoverSelectionDetails.edgeVertexPair[1]}]`
+                      : ""
+                  }${
+                    geometryProbeHoverSelectionDetails.vertexIndex != null
+                      ? ` · vertex #${geometryProbeHoverSelectionDetails.vertexIndex}`
+                      : ""
+                  }`
+                : "none"}
+            </div>
+
+            <div style={{ color: "#556" }}>Coordinate</div>
+            <div>
+              {geometryProbeSelectionDetails
+                ? `(${fmt(geometryProbeSelectionDetails.point.x)}, ${fmt(geometryProbeSelectionDetails.point.y)}, ${fmt(geometryProbeSelectionDetails.point.z)})`
+                : "none"}
+            </div>
+
+            <div style={{ color: "#556" }}>Hover coordinate</div>
+            <div>
+              {geometryProbeHoverSelectionDetails
+                ? `(${fmt(geometryProbeHoverSelectionDetails.point.x)}, ${fmt(geometryProbeHoverSelectionDetails.point.y)}, ${fmt(geometryProbeHoverSelectionDetails.point.z)})`
+                : "none"}
+            </div>
+
+            <div style={{ color: "#556" }}>Normal</div>
+            <div>
+              {geometryProbeSelectionDetails
+                ? `(${fmt(geometryProbeSelectionDetails.normal.x)}, ${fmt(geometryProbeSelectionDetails.normal.y)}, ${fmt(geometryProbeSelectionDetails.normal.z)})`
+                : "none"}
+            </div>
+
+            <div style={{ color: "#556" }}>Face area</div>
+            <div>
+              {geometryProbeSelectionDetails?.faceArea != null && Number.isFinite(geometryProbeSelectionDetails.faceArea)
+                ? fmt(geometryProbeSelectionDetails.faceArea)
+                : "n/a"}
+            </div>
+
+            <div style={{ color: "#556" }}>Edge length</div>
+            <div>
+              {geometryProbeSelectionDetails?.edgeLength != null && Number.isFinite(geometryProbeSelectionDetails.edgeLength)
+                ? fmt(geometryProbeSelectionDetails.edgeLength)
+                : "n/a"}
+            </div>
+
+            <div style={{ color: "#556" }}>Vertex info</div>
+            <div>
+              {geometryProbeSelectionDetails?.vertexIndex != null
+                ? `vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                : "n/a"}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDomainNavigator && (
         <>
@@ -55743,7 +56137,7 @@ onChangeImplicitExpr,
             ))}
           </div>
           <div style={{ marginTop: 4, fontSize: 10, opacity: 0.72 }}>
-            Result details appear in the right Inspector under VTK result.
+            Result details appear in the right Inspector under VTK result. Presets persist after reload.
           </div>
         {vtkError && <div style={{ fontSize: 11, color: "#b42318", marginTop: 6 }}>{vtkError}</div>}
         </div>
@@ -59068,6 +59462,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   inspectPos,
   inspectNormal,
   inspectMetrics,
+  geometryProbeSelectionMode,
+  geometryProbeSelectionDetails,
+  geometryProbeHoverSelectionDetails,
   onPickDomainUV,
   onPickDomainXY,
   onPickDomainXYZ,
@@ -59808,6 +60205,9 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
             onToggleProbeTangentPlane={onToggleProbeTangentPlane}
             showProbeTangents={showProbeTangents}
             onToggleProbeTangents={onToggleProbeTangents}
+            geometryProbeSelectionMode={geometryProbeSelectionMode}
+            geometryProbeSelectionDetails={geometryProbeSelectionDetails}
+            geometryProbeHoverSelectionDetails={geometryProbeHoverSelectionDetails}
           />
         )}
 
