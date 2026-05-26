@@ -84,6 +84,8 @@ import {
 import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
+import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
+import { computeMeshSection, sectionPlaneNormalFromPreset, type SectionPlanePreset } from "./geometry/meshSection";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
   GEOMETRY_OBJECT_REGISTRY,
@@ -350,6 +352,37 @@ type SurfaceMeshAssetPreset = {
 type GeometryDemoTab = "task" | "objects" | "solve" | "script";
 type GeometryFitMode = "scene" | "stage" | "claim";
 type GeometryObjectRole = "primary" | "construction" | "helper" | "claim" | "diagnostic";
+type GeometrySavedSectionCurve = {
+  id: string;
+  name: string;
+  objectId: string;
+  objectName: string;
+  createdAt: number;
+  plane: {
+    preset: SectionPlanePreset;
+    origin: Vec3;
+    normal: Vec3;
+    offset: number;
+  };
+  polylines: Vec3[][];
+  metrics: {
+    curveLength: number;
+    area: number;
+    segmentCount: number;
+    closed: boolean;
+  };
+};
+type CurveImportedSection = {
+  id: string;
+  name: string;
+  objectName: string;
+  points: CurveViewerVec3[];
+  closed: boolean;
+  curveLength: number;
+  area: number;
+  segmentCount: number;
+  createdAt: number;
+};
 interface GeometryObjectMeta {
   id: string;
   label?: string;
@@ -5693,6 +5726,94 @@ const summarizeCurveMetric = (values: number[]): CurveMetricSummary | null => {
   return { min, max, avg: sum / finite.length };
 };
 
+const curvePolylineLength = (points: CurveViewerVec3[], closed: boolean): number => {
+  if (points.length < 2) return 0;
+  let sum = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    sum += Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y,
+      points[i].z - points[i - 1].z
+    );
+  }
+  if (closed) {
+    sum += Math.hypot(
+      points[0].x - points[points.length - 1].x,
+      points[0].y - points[points.length - 1].y,
+      points[0].z - points[points.length - 1].z
+    );
+  }
+  return sum;
+};
+
+const curvePolylineProbeAt = (
+  points: CurveViewerVec3[],
+  closed: boolean,
+  u: number
+): CurveFrameSample | null => {
+  if (points.length < 2) return null;
+  const safeU = clamp(u, 0, 1);
+  const lengths: number[] = [0];
+  const segments: Array<{ a: CurveViewerVec3; b: CurveViewerVec3; len: number }> = [];
+  for (let i = 1; i < points.length; i += 1) {
+    const a = points[i - 1];
+    const b = points[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    segments.push({ a, b, len: segLen });
+    lengths.push(lengths[lengths.length - 1] + segLen);
+  }
+  if (closed) {
+    const a = points[points.length - 1];
+    const b = points[0];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    segments.push({ a, b, len: segLen });
+    lengths.push(lengths[lengths.length - 1] + segLen);
+  }
+  const total = lengths[lengths.length - 1] ?? 0;
+  if (!Number.isFinite(total) || total <= 1e-12) return null;
+  const target = safeU * total;
+  let segIndex = segments.length - 1;
+  for (let i = 0; i < segments.length; i += 1) {
+    if (target <= lengths[i + 1]) {
+      segIndex = i;
+      break;
+    }
+  }
+  const seg = segments[segIndex];
+  const segStart = lengths[segIndex] ?? 0;
+  const segEnd = lengths[segIndex + 1] ?? segStart;
+  const span = Math.max(1e-12, segEnd - segStart);
+  const t = clamp((target - segStart) / span, 0, 1);
+  const point: CurveViewerVec3 = {
+    x: seg.a.x + (seg.b.x - seg.a.x) * t,
+    y: seg.a.y + (seg.b.y - seg.a.y) * t,
+    z: seg.a.z + (seg.b.z - seg.a.z) * t,
+  };
+  const tangent = normalizedCurveVec3({
+    x: seg.b.x - seg.a.x,
+    y: seg.b.y - seg.a.y,
+    z: seg.b.z - seg.a.z,
+  });
+  const normal = tangent ? normalizedCurveVec3({ x: -tangent.y, y: tangent.x, z: 0 }) : null;
+  const binormal =
+    tangent && normal
+      ? normalizedCurveVec3({
+          x: tangent.y * normal.z - tangent.z * normal.y,
+          y: tangent.z * normal.x - tangent.x * normal.z,
+          z: tangent.x * normal.y - tangent.y * normal.x,
+        })
+      : null;
+  return {
+    t: safeU,
+    point,
+    tangent,
+    normal,
+    binormal,
+    curvature: 0,
+    torsion: 0,
+  };
+};
+
 const buildTangentBasis = (normal: Vec3) => {
   const n = vNormalize(normal);
   const ref = Math.abs(n.y) < 0.9 ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
@@ -6271,6 +6392,7 @@ const App: React.FC = () => {
   const [curveFrameScale, setCurveFrameScale] = useState(0.42);
   const [curveProbeU, setCurveProbeU] = useState(0.5);
   const [curveViewerResetToken, setCurveViewerResetToken] = useState(0);
+  const [curveImportedSection, setCurveImportedSection] = useState<CurveImportedSection | null>(null);
   const visibleCurvePresets = useMemo(
     () => (curvePresetCategoryFilter === "all" ? CURVE_PRESETS : CURVE_PRESETS.filter((p) => p.category === curvePresetCategoryFilter)),
     [curvePresetCategoryFilter]
@@ -6355,6 +6477,25 @@ const App: React.FC = () => {
     [activeCurveDomain, activeCurveFormulas, activeCurvePreset?.dimension, activeCurvePreset?.id, activeCurvePreset?.kind, activeCurvePreset?.label]
   );
   const curveRenderState = useMemo(() => {
+    if (curveImportedSection) {
+      const samplePoints = curveImportedSection.points.filter((point) => isFiniteCurveVec3(point));
+      const probe = curvePolylineProbeAt(samplePoints, curveImportedSection.closed, curveProbeU);
+      return {
+        curve: null as CoreAnyCurve | null,
+        source: "geometry-section-handoff",
+        errors: samplePoints.length < 2 ? ["Imported section has fewer than 2 finite points."] : [],
+        samplePoints,
+        frameSamples: [] as CurveFrameSample[],
+        probe,
+        probeT: clamp(curveProbeU, 0, 1),
+        arcLength:
+          Number.isFinite(curveImportedSection.curveLength) && curveImportedSection.curveLength > 0
+            ? curveImportedSection.curveLength
+            : curvePolylineLength(samplePoints, curveImportedSection.closed),
+        curvatureSummary: null as CurveMetricSummary | null,
+        torsionSummary: null as CurveMetricSummary | null,
+      };
+    }
     const built = buildCurveFromPreset(activeCurveInput);
     const errors = [...built.errors];
     const curve = built.curve;
@@ -6437,6 +6578,7 @@ const App: React.FC = () => {
       torsionSummary,
     };
   }, [
+    curveImportedSection,
     activeCurveInput,
     curveAdaptiveMaxDepth,
     curveAdaptiveTolerance,
@@ -6445,6 +6587,9 @@ const App: React.FC = () => {
     curveSampleCount,
     curveSamplingMode,
   ]);
+  const curveActiveIsImported = !!curveImportedSection;
+  const curveActiveDimension = curveActiveIsImported ? 3 : (activeCurvePreset?.dimension ?? 2);
+  const curveActiveClosed = curveActiveIsImported ? curveImportedSection.closed : Boolean(activeCurveDomain.closed);
   const [geometryMode, setGeometryMode] = useState<GeometryMode>("procedural");
   const [geometryWorkbookUiMode, setGeometryWorkbookUiMode] = useState<GeometryWorkbookUiMode>("compact");
   const [geometryViewerControlsOpen, setGeometryViewerControlsOpen] = useState(true);
@@ -6896,6 +7041,13 @@ const App: React.FC = () => {
   const [geometryPolyAngleDefectEnabled, setGeometryPolyAngleDefectEnabled] = useState(false);
   const [geometryPolyFaceNormalsEnabled, setGeometryPolyFaceNormalsEnabled] = useState(false);
   const [geometryPolyDihedralReadoutsEnabled, setGeometryPolyDihedralReadoutsEnabled] = useState(false);
+  const [geometrySectionPlanePreset, setGeometrySectionPlanePreset] = useState<SectionPlanePreset>("xy");
+  const [geometrySectionPlaneOffset, setGeometrySectionPlaneOffset] = useState(0);
+  const [geometrySectionCustomNormal, setGeometrySectionCustomNormal] = useState<Vec3>({ x: 0, y: 0, z: 1 });
+  const [geometrySectionShowCap, setGeometrySectionShowCap] = useState(false);
+  const [geometrySectionShowCurve, setGeometrySectionShowCurve] = useState(true);
+  const [geometrySectionSaveStatus, setGeometrySectionSaveStatus] = useState<string | null>(null);
+  const [geometrySavedSectionCurves, setGeometrySavedSectionCurves] = useState<GeometrySavedSectionCurve[]>([]);
   const geometryObjectGeomCacheRef = useRef(
     new Map<string, { key: string; geom: THREE.BufferGeometry }>()
   );
@@ -8845,6 +8997,7 @@ const App: React.FC = () => {
         }
       : null;
     const topology = computeTriangleMeshEdgeTopology(mesh);
+    const readiness = evaluateGeometryMeshReadiness(mesh);
     return {
       vertCount,
       triCount,
@@ -8856,6 +9009,7 @@ const App: React.FC = () => {
       nonManifoldEdgeCount: topology.nonManifoldEdgeCount,
       manifold: topology.manifold,
       watertight: topology.watertight,
+      readiness,
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
@@ -8921,6 +9075,56 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometrySectionPreview = useMemo(() => {
+    if (!geometrySelectedSceneMesh) return null;
+    const bounds = boundsFromPositions(geometrySelectedSceneMesh.positions);
+    const center = bounds
+      ? {
+          x: 0.5 * (bounds.min[0] + bounds.max[0]),
+          y: 0.5 * (bounds.min[1] + bounds.max[1]),
+          z: 0.5 * (bounds.min[2] + bounds.max[2]),
+        }
+      : { x: 0, y: 0, z: 0 };
+    const dx = bounds ? bounds.max[0] - bounds.min[0] : 1;
+    const dy = bounds ? bounds.max[1] - bounds.min[1] : 1;
+    const dz = bounds ? bounds.max[2] - bounds.min[2] : 1;
+    const diag = Math.max(1e-6, Math.hypot(dx, dy, dz));
+    const normal = sectionPlaneNormalFromPreset(geometrySectionPlanePreset, geometrySectionCustomNormal);
+    const planeOrigin = {
+      x: center.x + normal.x * geometrySectionPlaneOffset,
+      y: center.y + normal.y * geometrySectionPlaneOffset,
+      z: center.z + normal.z * geometrySectionPlaneOffset,
+    };
+    const section = computeMeshSection(
+      geometrySelectedSceneMesh,
+      { origin: planeOrigin, normal },
+      Math.max(1e-7, diag * 1e-6)
+    );
+    const planeSize = Math.max(dx, dy, dz, diag * 0.45, 0.5);
+    const basisRef = Math.abs(normal.y) < 0.9 ? ({ x: 0, y: 1, z: 0 } as Vec3) : ({ x: 1, y: 0, z: 0 } as Vec3);
+    const uAxis = vNormalize(vCross(basisRef, normal)) ?? { x: 1, y: 0, z: 0 };
+    const vAxis = vNormalize(vCross(normal, uAxis)) ?? { x: 0, y: 0, z: 1 };
+    const half = planeSize * 0.5;
+    const p0 = vAdd(vAdd(planeOrigin, vScale(uAxis, -half)), vScale(vAxis, -half));
+    const p1 = vAdd(vAdd(planeOrigin, vScale(uAxis, half)), vScale(vAxis, -half));
+    const p2 = vAdd(vAdd(planeOrigin, vScale(uAxis, half)), vScale(vAxis, half));
+    const p3 = vAdd(vAdd(planeOrigin, vScale(uAxis, -half)), vScale(vAxis, half));
+    const planeFrameLines: PolylineSet = [
+      [p0, p1],
+      [p1, p2],
+      [p2, p3],
+      [p3, p0],
+    ];
+    return {
+      section,
+      normal,
+      center,
+      planeOrigin,
+      planeSize,
+      offsetRange: Math.max(diag, 0.5),
+      planeFrameLines,
+    };
+  }, [geometrySectionCustomNormal, geometrySectionPlaneOffset, geometrySectionPlanePreset, geometrySelectedSceneMesh]);
   const resolveGeometryProbeSelectionDetails = useCallback(
     (pick: GeometryProceduralPickInfo | null): GeometryProbeSelectionDetails | null => {
       if (!pick) return null;
@@ -11704,6 +11908,45 @@ const App: React.FC = () => {
     }
     return groups.length ? groups : null;
   }, [geometryMarkedEdges, geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometrySectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    if (!geometrySectionPreview) return null;
+    const groups: OverlayPolylineGroup[] = [];
+    groups.push({
+      lines: geometrySectionPreview.planeFrameLines,
+      color: 0x7c3aed,
+      opacity: 0.5,
+      radiusScale: 1.05,
+    });
+    if (geometrySectionShowCurve && geometrySectionPreview.section.polylines.length) {
+      const curveLines: PolylineSet = [];
+      for (const poly of geometrySectionPreview.section.polylines) {
+        const pts = poly.points;
+        for (let i = 1; i < pts.length; i += 1) {
+          curveLines.push([pts[i - 1], pts[i]]);
+        }
+        if (poly.closed && pts.length >= 3) curveLines.push([pts[pts.length - 1], pts[0]]);
+      }
+      if (curveLines.length) {
+        groups.push({
+          lines: curveLines,
+          color: 0x0ea5e9,
+          opacity: 0.98,
+          radiusScale: 2.25,
+        });
+      }
+    }
+    return groups.length ? groups : null;
+  }, [geometryMode, geometrySectionPreview, geometrySectionShowCurve]);
+  const geometrySectionCapPolygons = useMemo<Polygon3[] | null>(() => {
+    if (geometryMode !== "procedural" || !geometrySectionShowCap || !geometrySectionPreview) return null;
+    if (!geometrySectionPreview.section.closedPolygons.length) return null;
+    return geometrySectionPreview.section.closedPolygons.map((vertices) => ({
+      vertices,
+      color: 0x14b8a6,
+      opacity: 0.35,
+    }));
+  }, [geometryMode, geometrySectionPreview, geometrySectionShowCap]);
   const geometryProceduralSelectionPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -14120,6 +14363,336 @@ const App: React.FC = () => {
     setGeometrySelectedObjectId(duplicateId);
     setGeometryCreateActionStatus("Editable mesh duplicate created.");
   }, [geometrySelectedObjectId, queueGeometryHistoryIntent, resolveGeometrySceneMeshById]);
+  const handleSaveSectionCurve = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySectionPreview) {
+      setGeometrySectionSaveStatus("Select a mesh-backed object to save section.");
+      return;
+    }
+    const polylines = geometrySectionPreview.section.polylines.map((poly) => poly.points.map((p) => ({ ...p })));
+    if (!polylines.length) {
+      setGeometrySectionSaveStatus("Section has no intersection curve to save.");
+      return;
+    }
+    const entry: GeometrySavedSectionCurve = {
+      id: makeId(),
+      name: `${geometrySelectedSceneObject.name} section`,
+      objectId: geometrySelectedSceneObject.id,
+      objectName: geometrySelectedSceneObject.name,
+      createdAt: Date.now(),
+      plane: {
+        preset: geometrySectionPlanePreset,
+        origin: { ...geometrySectionPreview.planeOrigin },
+        normal: { ...geometrySectionPreview.normal },
+        offset: geometrySectionPlaneOffset,
+      },
+      polylines,
+      metrics: {
+        curveLength: geometrySectionPreview.section.curveLength,
+        area: geometrySectionPreview.section.area,
+        segmentCount: geometrySectionPreview.section.segmentCount,
+        closed: geometrySectionPreview.section.closed,
+      },
+    };
+    setGeometrySavedSectionCurves((prev) => [entry, ...prev].slice(0, 48));
+    const payload = {
+      object: {
+        id: entry.objectId,
+        name: entry.objectName,
+      },
+      plane: entry.plane,
+      metrics: entry.metrics,
+      polylines: entry.polylines,
+      createdAt: new Date(entry.createdAt).toISOString(),
+    };
+    const base = sanitizeFileBase(`${entry.objectName}_section`, "section_curve");
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      `${base}-${new Date().toISOString().slice(0, 10)}.json`,
+      "application/json"
+    );
+    setGeometrySectionSaveStatus("Section curve saved.");
+  }, [
+    geometrySectionPlaneOffset,
+    geometrySectionPlanePreset,
+    geometrySectionPreview,
+    geometrySelectedSceneObject,
+  ]);
+  const handlePromoteSectionToCurveObject = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySectionPreview) {
+      setGeometryCreateActionStatus("Select a mesh-backed object first.");
+      return;
+    }
+    const loops = geometrySectionPreview.section.polylines.filter((poly) => poly.points.length >= 2);
+    if (!loops.length) {
+      setGeometryCreateActionStatus("Section has no curve to promote.");
+      return;
+    }
+    const bounds = boundsFromPositions(geometrySelectedSceneMesh?.positions ?? new Float32Array());
+    const diag = bounds
+      ? Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2])
+      : 1;
+    const tubeRadius = Math.max(1e-4, Math.min(0.08, diag * 0.006));
+    const loopMeshes: SurfaceMeshData[] = [];
+    for (const poly of loops) {
+      const points = poly.points.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+      if (poly.closed && points.length > 2) points.push(points[0].clone());
+      const curve = new THREE.CatmullRomCurve3(points, poly.closed, "catmullrom", 0.3);
+      const tubularSegments = Math.max(24, Math.min(512, points.length * 8));
+      const radialSegments = 8;
+      const tube = new THREE.TubeGeometry(curve, tubularSegments, tubeRadius, radialSegments, poly.closed);
+      const meshData = buildSurfaceMeshFromGeometry(
+        tube,
+        `${geometrySelectedSceneObject.name} section curve`,
+        { kind: "geometryObject", objectId: geometrySelectedSceneObject.id, objectName: geometrySelectedSceneObject.name },
+        { mergeVertices: true }
+      );
+      tube.dispose();
+      loopMeshes.push(meshData);
+    }
+    if (!loopMeshes.length) {
+      setGeometryCreateActionStatus("Section curve promotion failed.");
+      return;
+    }
+    const merged = mergeMeshData(
+      loopMeshes.map((mesh) => ({
+        positions: mesh.positions,
+        indices: mesh.indices,
+      }))
+    );
+    const sectionObject: GeometryDatasetMeshObject = {
+      id: makeId(),
+      name: `${geometrySelectedSceneObject.name} section curve`,
+      mesh: computeVertexNormals(
+        toDetachedMeshData(
+          {
+            label: `${geometrySelectedSceneObject.name} section curve`,
+            positions: merged.positions,
+            indices: merged.indices,
+            source: {
+              kind: "geometryObject",
+              objectId: geometrySelectedSceneObject.id,
+              objectName: geometrySelectedSceneObject.name,
+            },
+          },
+          `${geometrySelectedSceneObject.name} section curve`
+        )
+      ),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: true,
+      material: {
+        color: 0x0ea5e9,
+        opacity: 1,
+        roughness: 0.45,
+        metalness: 0.05,
+      },
+    };
+    setGeometryDatasetMeshObjects((prev) => [sectionObject, ...prev]);
+    setGeometrySelectedObjectId(sectionObject.id);
+    upsertGeometryDerivedProduct(geometrySelectedSceneObject, "section", {
+      status: "ready",
+      displayState: "ready",
+      resultObjectId: sectionObject.id,
+      generatedAt: Date.now(),
+    });
+    setGeometryCreateActionStatus("Section promoted to curve object.");
+  }, [
+    geometrySectionPreview,
+    geometrySelectedSceneMesh?.positions,
+    geometrySelectedSceneObject,
+    upsertGeometryDerivedProduct,
+  ]);
+  const handleSendPromotedSectionToCurvesModule = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySectionPreview) {
+      setGeometryCreateActionStatus("Select a mesh-backed object first.");
+      return;
+    }
+    const loops = geometrySectionPreview.section.polylines.filter((poly) => poly.points.length >= 2);
+    if (!loops.length) {
+      setGeometryCreateActionStatus("Section has no curve to send.");
+      return;
+    }
+    const longest = loops.reduce((best, poly) => (poly.length > best.length ? poly : best), loops[0]);
+    const points = longest.points.map((point) => ({ x: point.x, y: point.y, z: point.z }));
+    setCurveImportedSection({
+      id: makeId(),
+      name: `${geometrySelectedSceneObject.name} section`,
+      objectName: geometrySelectedSceneObject.name,
+      points,
+      closed: longest.closed,
+      curveLength: longest.length,
+      area: longest.area ?? 0,
+      segmentCount: geometrySectionPreview.section.segmentCount,
+      createdAt: Date.now(),
+    });
+    setCurveProbeU(0.5);
+    setCurveViewerResetToken((token) => token + 1);
+    upsertGeometryDerivedProduct(geometrySelectedSceneObject, "section", {
+      status: "ready",
+      displayState: "sent to curves",
+      generatedAt: Date.now(),
+    });
+    setMode("curves");
+    setGeometryCreateActionStatus("Section sent to Curves module.");
+  }, [geometrySectionPreview, geometrySelectedSceneObject, upsertGeometryDerivedProduct]);
+  const handleBakeSelectedToMeshObject = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select an object first.");
+      return;
+    }
+    if ("mesh" in geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Selected object is already a mesh object.");
+      return;
+    }
+    if (geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) {
+      setGeometryCreateActionStatus("Selected object is locked.");
+      return;
+    }
+    const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
+    if (!sourceMesh) {
+      setGeometryCreateActionStatus("Selected object has no visible mesh.");
+      return;
+    }
+    queueGeometryHistoryIntent(geometrySelectedSceneObject.id, {
+      action: "pipeline-bake-mesh-object",
+      label: "Bake to mesh object",
+      operationType: "Pipeline",
+      target: geometrySelectedSceneObject.name,
+      parameters: "convert procedural object to detached mesh object",
+      destructive: false,
+    });
+    const replacement: GeometryDatasetMeshObject = {
+      id: geometrySelectedSceneObject.id,
+      name: `${geometrySelectedSceneObject.name} mesh`,
+      mesh: computeVertexNormals(
+        toDetachedMeshData(cloneSurfaceMeshData(sourceMesh, `${geometrySelectedSceneObject.name} (mesh)`))
+      ),
+      transform: {
+        position: { ...geometrySelectedSceneObject.transform.position },
+        rotation: { ...geometrySelectedSceneObject.transform.rotation },
+        scale: { ...geometrySelectedSceneObject.transform.scale },
+      },
+      visible: geometrySelectedSceneObject.visible,
+      material: normalizeGeometryMaterial((geometrySelectedSceneObject as { material?: unknown })?.material),
+    };
+    setGeometryObjects((prev) => prev.filter((entry) => entry.id !== geometrySelectedSceneObject.id));
+    setGeometryDatasetMeshObjects((prev) => [replacement, ...prev.filter((entry) => entry.id !== replacement.id)]);
+    setGeometrySelectedObjectId(replacement.id);
+    setGeometryCreateActionStatus("Baked to mesh object.");
+  }, [
+    geometryLockedObjectIds,
+    geometrySelectedSceneObject,
+    proceduralMeshSet.meshes,
+    queueGeometryHistoryIntent,
+  ]);
+  const handleFixSelectedGeometryNormals = useCallback(() => {
+    const objectId = geometrySelectedSceneObject && "mesh" in geometrySelectedSceneObject ? geometrySelectedSceneObject.id : null;
+    if (!objectId) {
+      setGeometryCreateActionStatus("Fix normals requires a Mesh object. Use Bake to mesh first.");
+      return;
+    }
+    applyMeshEditToObject(
+      objectId,
+      "Fixed normals",
+      (mesh) =>
+        computeVertexNormals({
+          ...mesh,
+          label: `${mesh.label} (normals)`,
+          normals: null,
+          adjacency: null,
+          meanEdgeLength: null,
+          validation: null,
+        }),
+      {
+        action: "mesh-fix-normals",
+        label: "Fix normals",
+        operationType: "Mesh repair",
+        target: geometrySelectedSceneObject?.name ?? null,
+        parameters: "recompute vertex normals",
+        destructive: false,
+      }
+    );
+  }, [applyMeshEditToObject, geometrySelectedSceneObject, setGeometryCreateActionStatus]);
+  const handleWeldSelectedGeometryCloseVertices = useCallback(() => {
+    const objectId = geometrySelectedSceneObject && "mesh" in geometrySelectedSceneObject ? geometrySelectedSceneObject.id : null;
+    if (!objectId) {
+      setGeometryCreateActionStatus("Weld close vertices requires a Mesh object. Use Bake to mesh first.");
+      return;
+    }
+    const tolerance = Math.max(1e-6, geometrySelectedSceneMeshInfo?.readiness?.suggestions.weldTolerance ?? 1e-5);
+    applyMeshEditToObject(
+      objectId,
+      "Welded close vertices",
+      (mesh) => weldSurfaceMeshVertices(mesh, tolerance, `${mesh.label} (weld)`),
+      {
+        action: "mesh-weld-close",
+        label: "Weld close vertices",
+        operationType: "Mesh repair",
+        target: geometrySelectedSceneObject?.name ?? null,
+        parameters: `tol=${formatHistoryNumber(tolerance)}`,
+        destructive: true,
+      }
+    );
+  }, [applyMeshEditToObject, geometrySelectedSceneMeshInfo?.readiness?.suggestions.weldTolerance, geometrySelectedSceneObject, setGeometryCreateActionStatus]);
+  const handleRemoveSelectedGeometryDuplicateVertices = useCallback(() => {
+    const objectId = geometrySelectedSceneObject && "mesh" in geometrySelectedSceneObject ? geometrySelectedSceneObject.id : null;
+    if (!objectId) {
+      setGeometryCreateActionStatus("Remove duplicate vertices requires a Mesh object. Use Bake to mesh first.");
+      return;
+    }
+    const tolerance = Math.max(1e-9, geometrySelectedSceneMeshInfo?.readiness?.suggestions.dedupeTolerance ?? 1e-8);
+    applyMeshEditToObject(
+      objectId,
+      "Removed duplicate vertices",
+      (mesh) => weldSurfaceMeshVertices(mesh, tolerance, `${mesh.label} (dedupe)`),
+      {
+        action: "mesh-remove-duplicates",
+        label: "Remove duplicate vertices",
+        operationType: "Mesh repair",
+        target: geometrySelectedSceneObject?.name ?? null,
+        parameters: `tol=${formatHistoryNumber(tolerance)}`,
+        destructive: true,
+      }
+    );
+  }, [applyMeshEditToObject, geometrySelectedSceneMeshInfo?.readiness?.suggestions.dedupeTolerance, geometrySelectedSceneObject, setGeometryCreateActionStatus]);
+  const handleTriangulateSelectedGeometryFaces = useCallback(() => {
+    const objectId = geometrySelectedSceneObject && "mesh" in geometrySelectedSceneObject ? geometrySelectedSceneObject.id : null;
+    if (!objectId) {
+      setGeometryCreateActionStatus("Triangulate faces requires a Mesh object. Use Bake to mesh first.");
+      return;
+    }
+    applyMeshEditToObject(
+      objectId,
+      "Triangulated faces",
+      (mesh) => {
+        const vertexCount = Math.floor(mesh.positions.length / 3);
+        const triCount = Math.floor(vertexCount / 3);
+        const sequential = new Uint32Array(triCount * 3);
+        for (let i = 0; i < sequential.length; i += 1) sequential[i] = i;
+        return {
+          ...mesh,
+          label: `${mesh.label} (triangulated)`,
+          positions: Float32Array.from(mesh.positions),
+          indices: mesh.indices && mesh.indices.length >= 3 ? Uint32Array.from(mesh.indices) : sequential,
+          normals: null,
+          adjacency: null,
+          meanEdgeLength: null,
+          validation: null,
+        };
+      },
+      {
+        action: "mesh-triangulate",
+        label: "Triangulate faces",
+        operationType: "Mesh repair",
+        target: geometrySelectedSceneObject?.name ?? null,
+        parameters: "indexed triangle conversion",
+        destructive: false,
+      }
+    );
+  }, [applyMeshEditToObject, geometrySelectedSceneObject, setGeometryCreateActionStatus]);
   const handleSendSelectedGeometryObjectToVolumeModule = useCallback(() => {
     if (!geometrySelectedObjectId) {
       setGeometryBakeError("Select an object first.");
@@ -32375,12 +32948,21 @@ case "mobius":
         return;
       }
       if (operation === "section") {
+        if (!geometrySectionPreview || !geometrySectionPreview.section.polylines.length) {
+          upsertGeometryDerivedProduct(source, operation, {
+            status: "failed",
+            displayState: "failed",
+            errorMessage: "Section plane does not intersect the selected mesh.",
+          });
+          setGeometryCreateActionStatus("Section failed: no intersection with current section plane.");
+          return;
+        }
         upsertGeometryDerivedProduct(source, operation, {
-          status: "failed",
-          displayState: "failed",
-          errorMessage: "Section extraction is not available for procedural geometry yet.",
+          status: "ready",
+          displayState: `segments ${geometrySectionPreview.section.segmentCount.toLocaleString()}`,
+          generatedAt: Date.now(),
         });
-        setGeometryCreateActionStatus("Section failed: extraction is not available for procedural geometry yet.");
+        setGeometryCreateActionStatus("Section curve generated from current section plane.");
         return;
       }
       try {
@@ -32446,6 +33028,7 @@ case "mobius":
       geometryDatasetMeshObjects,
       geometryObjects,
       geometrySelectedSceneObject?.id,
+      geometrySectionPreview,
       proceduralMeshSet.meshes,
       unifiedManualDerived,
       upsertGeometryDerivedProduct,
@@ -36916,7 +37499,13 @@ case "mobius":
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                 Preset
-                <select value={activeCurvePreset?.id ?? ""} onChange={(e) => setCurvePresetId(e.target.value)}>
+                <select
+                  value={activeCurvePreset?.id ?? ""}
+                  onChange={(e) => {
+                    setCurveImportedSection(null);
+                    setCurvePresetId(e.target.value);
+                  }}
+                >
                   {visibleCurvePresets.map((preset) => (
                     <option key={`curve-preset-head-${preset.id}`} value={preset.id}>
                       {preset.label}
@@ -40375,7 +40964,10 @@ case "mobius":
                       <button
                         key={`curve-preset-side-${preset.id}`}
                         type="button"
-                        onClick={() => setCurvePresetId(preset.id)}
+                        onClick={() => {
+                          setCurveImportedSection(null);
+                          setCurvePresetId(preset.id);
+                        }}
                         style={{
                           textAlign: "left",
                           padding: "8px 10px",
@@ -40436,14 +41028,58 @@ case "mobius":
                       minHeight: 0,
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>{activeCurvePreset?.label ?? "Curve preset"}</div>
-                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
-                      {activeCurvePreset?.kind ?? "custom"} | {activeCurvePreset?.dimension ?? 2}D | samples {curveSampleCount}
+                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 2 }}>
+                      {curveActiveIsImported ? curveImportedSection?.name ?? "Imported section curve" : activeCurvePreset?.label ?? "Curve preset"}
                     </div>
-                    <div style={{ fontSize: 12, marginBottom: 8 }}>{activeCurvePreset?.note ?? "Preset description."}</div>
+                    <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                      {curveActiveIsImported
+                        ? `geometry section handoff | 3D | samples ${curveRenderState.samplePoints.length}`
+                        : `${activeCurvePreset?.kind ?? "custom"} | ${activeCurvePreset?.dimension ?? 2}D | samples ${curveSampleCount}`}
+                    </div>
+                    <div style={{ fontSize: 12, marginBottom: 8 }}>
+                      {curveActiveIsImported
+                        ? `Imported from ${curveImportedSection?.objectName ?? "geometry object"} section.`
+                        : activeCurvePreset?.note ?? "Preset description."}
+                    </div>
+                    {curveActiveIsImported && curveImportedSection && (
+                      <div
+                        style={{
+                          border: "1px solid #d6deea",
+                          borderRadius: 8,
+                          background: "#f8fbff",
+                          padding: "8px 10px",
+                          display: "grid",
+                          gap: 4,
+                          marginBottom: 10,
+                          fontSize: 11,
+                        }}
+                      >
+                        <div><strong>source object:</strong> {curveImportedSection.objectName}</div>
+                        <div><strong>curve length:</strong> {fmt(curveImportedSection.curveLength)}</div>
+                        <div><strong>area:</strong> {fmt(curveImportedSection.area)}</div>
+                        <div><strong>segments:</strong> {curveImportedSection.segmentCount.toLocaleString()}</div>
+                        <div><strong>closed:</strong> {curveImportedSection.closed ? "yes" : "no"}</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurveImportedSection(null);
+                              setCurveViewerResetToken((token) => token + 1);
+                            }}
+                            style={{ fontSize: 11 }}
+                          >
+                            Clear imported section
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Domain</div>
-                    {activeCurveIsCustom ? (
+                    {curveActiveIsImported ? (
+                      <div style={{ fontSize: 12, marginBottom: 10 }}>
+                        polyline domain u in [0, 1], closed: {curveImportedSection?.closed ? "yes" : "no"}
+                      </div>
+                    ) : activeCurveIsCustom ? (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 10 }}>
                         <label style={{ fontSize: 11 }}>
                           tMin
@@ -40482,6 +41118,11 @@ case "mobius":
                     )}
 
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Parametric equations</div>
+                    {curveActiveIsImported ? (
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>
+                        Imported section curves are polyline samples and do not have symbolic parametric equations.
+                      </div>
+                    ) : (
                     <div style={{ display: "grid", gap: 6 }}>
                       <label style={{ fontSize: 11 }}>
                         x(t)
@@ -40561,6 +41202,7 @@ case "mobius":
                         </label>
                       )}
                     </div>
+                    )}
                   </div>
 
                   <div
@@ -40579,13 +41221,13 @@ case "mobius":
                     <div style={{ border: "1px solid #dce5f1", borderRadius: 10, overflow: "hidden", minHeight: 0 }}>
                       <CurveViewer
                         samples={curveRenderState.samplePoints}
-                        dimension={activeCurvePreset?.dimension ?? 2}
-                        closed={Boolean(activeCurveDomain.closed)}
+                        dimension={curveActiveDimension}
+                        closed={curveActiveClosed}
                         frameGlyphs={curveRenderState.frameSamples}
                         probeGlyph={curveRenderState.probe}
                         showTangent={curveShowTangent}
                         showNormal={curveShowNormal}
-                        showBinormal={curveShowBinormal && (activeCurvePreset?.dimension ?? 2) === 3}
+                        showBinormal={curveShowBinormal && curveActiveDimension === 3}
                         frameScale={curveFrameScale}
                         resetToken={curveViewerResetToken}
                       />
@@ -40643,7 +41285,7 @@ case "mobius":
                       <div style={{ display: "grid", gap: 2 }}>
                         <div>source: <strong>{curveRenderState.source ?? "-"}</strong></div>
                         <div>sample points: <strong>{curveRenderState.samplePoints.length}</strong></div>
-                        <div>sample mode: <strong>{curveSamplingMode}</strong></div>
+                        <div>sample mode: <strong>{curveActiveIsImported ? "imported polyline" : curveSamplingMode}</strong></div>
                         <div>arc length: <strong>{fmt(curveRenderState.arcLength)}</strong></div>
                         <div>
                           curvature [min, avg, max]:{" "}
@@ -42217,7 +42859,7 @@ case "mobius":
                                   type="button"
                                   onClick={() => generateGeometryDerivedProduct("section")}
                                   disabled={!geometrySelectedSceneObject}
-                                  title="Records a failed section result until procedural section extraction is implemented."
+                                  title="Records section extraction from current section plane."
                                 >
                                   Section
                                 </button>
@@ -43765,6 +44407,66 @@ case "mobius":
                                 Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
                                 {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
+                              <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
+                                Geometry validity:{" "}
+                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject
+                                  ? "safe to become mesh object"
+                                  : "needs attention before mesh handoff"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.85, display: "grid", gap: 2 }}>
+                                {geometrySelectedSceneMeshInfo.readiness.checks.map((check) => (
+                                  <div key={`geo-validity-proc-${check.id}`}>
+                                    <strong>
+                                      {check.status === "ok" ? "OK" : check.status === "warning" ? "Warning" : check.status === "error" ? "Error" : "Unknown"}
+                                    </strong>{" "}
+                                    {check.label}: {check.detail}
+                                  </div>
+                                ))}
+                              </div>
+                              {geometrySelectedSceneMeshInfo.readiness.notes.length > 0 && (
+                                <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
+                                  {geometrySelectedSceneMeshInfo.readiness.notes.map((note, index) => (
+                                    <div key={`geo-validity-note-proc-${index}`}>{note}</div>
+                                  ))}
+                                </div>
+                              )}
+                              <div style={{ marginTop: 4, fontSize: 10, fontWeight: 700 }}>Quick actions</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleFixSelectedGeometryNormals} disabled>
+                                  Fix normals
+                                </button>
+                                <button type="button" onClick={handleWeldSelectedGeometryCloseVertices} disabled>
+                                  Weld close vertices
+                                </button>
+                                <button type="button" onClick={handleRemoveSelectedGeometryDuplicateVertices} disabled>
+                                  Remove duplicate vertices
+                                </button>
+                                <button type="button" onClick={handleTriangulateSelectedGeometryFaces} disabled>
+                                  Triangulate faces
+                                </button>
+                                <button type="button" onClick={handleCenterSelectedAtOrigin}>
+                                  Center object
+                                </button>
+                                <button type="button" onClick={handleBakeSelectedTransformToMesh}>
+                                  Apply transform
+                                </button>
+                                <button type="button" onClick={handleBakeSelectedToMeshObject}>
+                                  Bake to mesh
+                                </button>
+                                <button type="button" onClick={handleSendSelectedGeometryObjectToMeshModule}>
+                                  Send to Mesh module
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.72 }}>
+                                Mesh-edit quick fixes enable after baking to a mesh object. Advanced repair belongs to Mesh module.
+                              </div>
+                              {geometrySectionPreview && (
+                                <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
+                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} · area {fmt(geometrySectionPreview.section.area)} ·
+                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} · closed{" "}
+                                  {geometrySectionPreview.section.closed ? "yes" : "no"}
+                                </div>
+                              )}
                             </div>
                           )}
                           <GeometryDerivedProductsPanel
@@ -44726,6 +45428,66 @@ case "mobius":
                                 Boundary edges: {geometrySelectedSceneMeshInfo.boundaryEdgeCount.toLocaleString()} · Non-manifold edges:{" "}
                                 {geometrySelectedSceneMeshInfo.nonManifoldEdgeCount.toLocaleString()}
                               </div>
+                              <div style={{ marginTop: 2, fontSize: 10, fontWeight: 700 }}>
+                                Geometry validity:{" "}
+                                {geometrySelectedSceneMeshInfo.readiness.canSafelyBecomeMeshObject
+                                  ? "safe to become mesh object"
+                                  : "needs attention before mesh handoff"}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.85, display: "grid", gap: 2 }}>
+                                {geometrySelectedSceneMeshInfo.readiness.checks.map((check) => (
+                                  <div key={`geo-validity-mesh-${check.id}`}>
+                                    <strong>
+                                      {check.status === "ok" ? "OK" : check.status === "warning" ? "Warning" : check.status === "error" ? "Error" : "Unknown"}
+                                    </strong>{" "}
+                                    {check.label}: {check.detail}
+                                  </div>
+                                ))}
+                              </div>
+                              {geometrySelectedSceneMeshInfo.readiness.notes.length > 0 && (
+                                <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
+                                  {geometrySelectedSceneMeshInfo.readiness.notes.map((note, index) => (
+                                    <div key={`geo-validity-note-mesh-${index}`}>{note}</div>
+                                  ))}
+                                </div>
+                              )}
+                              <div style={{ marginTop: 4, fontSize: 10, fontWeight: 700 }}>Quick actions</div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={handleFixSelectedGeometryNormals}>
+                                  Fix normals
+                                </button>
+                                <button type="button" onClick={handleWeldSelectedGeometryCloseVertices}>
+                                  Weld close vertices
+                                </button>
+                                <button type="button" onClick={handleRemoveSelectedGeometryDuplicateVertices}>
+                                  Remove duplicate vertices
+                                </button>
+                                <button type="button" onClick={handleTriangulateSelectedGeometryFaces}>
+                                  Triangulate faces
+                                </button>
+                                <button type="button" onClick={handleCenterSelectedAtOrigin}>
+                                  Center object
+                                </button>
+                                <button type="button" onClick={handleBakeSelectedTransformToMesh}>
+                                  Apply transform
+                                </button>
+                                <button type="button" onClick={handleBakeSelectedToMeshObject}>
+                                  Bake to mesh
+                                </button>
+                                <button type="button" onClick={handleSendSelectedGeometryObjectToMeshModule}>
+                                  Send to Mesh module
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.72 }}>
+                                Geometry can flag issues early; advanced cleanup should be completed in Mesh module.
+                              </div>
+                              {geometrySectionPreview && (
+                                <div style={{ marginTop: 4, fontSize: 10, opacity: 0.88 }}>
+                                  Section Result: length {fmt(geometrySectionPreview.section.curveLength)} · area {fmt(geometrySectionPreview.section.area)} ·
+                                  segments {geometrySectionPreview.section.segmentCount.toLocaleString()} · closed{" "}
+                                  {geometrySectionPreview.section.closed ? "yes" : "no"}
+                                </div>
+                              )}
                             </div>
                           )}
                           <GeometryDerivedProductsPanel
@@ -45728,6 +46490,149 @@ case "mobius":
                             <div style={{ color: "#475467" }}>
                               Select an object with mesh data to see mesh quality metrics and open analysis workflows.
                             </div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                            fontSize: 11,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Section</div>
+                          <div style={{ color: "#475467" }}>
+                            Cut selected geometry with a plane and inspect the cross-section before promoting to Curves/Mesh workflows.
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <label style={{ display: "grid", gap: 4 }}>
+                              Plane
+                              <select
+                                value={geometrySectionPlanePreset}
+                                onChange={(e) => setGeometrySectionPlanePreset(e.target.value as SectionPlanePreset)}
+                              >
+                                <option value="xy">XY</option>
+                                <option value="yz">YZ</option>
+                                <option value="xz">XZ</option>
+                                <option value="custom">Custom</option>
+                              </select>
+                            </label>
+                            <label style={{ display: "grid", gap: 4 }}>
+                              Offset
+                              <input
+                                type="number"
+                                value={geometrySectionPlaneOffset}
+                                step={0.05}
+                                onChange={(e) => setGeometrySectionPlaneOffset(Number(e.target.value))}
+                              />
+                            </label>
+                          </div>
+                          <input
+                            type="range"
+                            min={-(geometrySectionPreview?.offsetRange ?? 1)}
+                            max={geometrySectionPreview?.offsetRange ?? 1}
+                            step={Math.max(0.001, (geometrySectionPreview?.offsetRange ?? 1) / 200)}
+                            value={geometrySectionPlaneOffset}
+                            onChange={(e) => setGeometrySectionPlaneOffset(Number(e.target.value))}
+                            disabled={!geometrySectionPreview}
+                          />
+                          {geometrySectionPlanePreset === "custom" && (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                nx
+                                <input
+                                  type="number"
+                                  value={geometrySectionCustomNormal.x}
+                                  step={0.1}
+                                  onChange={(e) =>
+                                    setGeometrySectionCustomNormal((prev) => ({ ...prev, x: Number(e.target.value) }))
+                                  }
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                ny
+                                <input
+                                  type="number"
+                                  value={geometrySectionCustomNormal.y}
+                                  step={0.1}
+                                  onChange={(e) =>
+                                    setGeometrySectionCustomNormal((prev) => ({ ...prev, y: Number(e.target.value) }))
+                                  }
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 3 }}>
+                                nz
+                                <input
+                                  type="number"
+                                  value={geometrySectionCustomNormal.z}
+                                  step={0.1}
+                                  onChange={(e) =>
+                                    setGeometrySectionCustomNormal((prev) => ({ ...prev, z: Number(e.target.value) }))
+                                  }
+                                />
+                              </label>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={geometrySectionShowCurve}
+                                onChange={(e) => setGeometrySectionShowCurve(e.target.checked)}
+                              />
+                              Show curve
+                            </label>
+                            <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                              <input
+                                type="checkbox"
+                                checked={geometrySectionShowCap}
+                                onChange={(e) => setGeometrySectionShowCap(e.target.checked)}
+                              />
+                              Show cap
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={handleSaveSectionCurve} disabled={!geometrySectionPreview}>
+                              Save section curve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePromoteSectionToCurveObject}
+                              disabled={!geometrySectionPreview?.section.polylines.length}
+                            >
+                              Promote section to curve object
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSendPromotedSectionToCurvesModule}
+                              disabled={!geometrySectionPreview?.section.polylines.length}
+                            >
+                              Send promoted section to Curves module
+                            </button>
+                          </div>
+                          {geometrySectionSaveStatus && <div style={{ fontSize: 10, color: "#475467" }}>{geometrySectionSaveStatus}</div>}
+                          <div style={{ fontSize: 10, color: "#475467" }}>
+                            Saved section curves: {geometrySavedSectionCurves.length.toLocaleString()}
+                          </div>
+                          <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4 }}>Section Result</div>
+                          {geometrySectionPreview ? (
+                            <div style={{ display: "grid", gap: 2, fontSize: 10.5 }}>
+                              <div><strong>curve length:</strong> {fmt(geometrySectionPreview.section.curveLength)}</div>
+                              <div><strong>area:</strong> {fmt(geometrySectionPreview.section.area)}</div>
+                              <div><strong>number of segments:</strong> {geometrySectionPreview.section.segmentCount.toLocaleString()}</div>
+                              <div><strong>closed:</strong> {geometrySectionPreview.section.closed ? "yes" : "no"}</div>
+                              <div>
+                                <strong>loops:</strong> {geometrySectionPreview.section.polylines.length.toLocaleString()}
+                                {geometrySectionPreview.section.equivalentRadius != null
+                                  ? ` · equiv radius ${fmt(geometrySectionPreview.section.equivalentRadius)}`
+                                  : ""}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ color: "#475467" }}>Select a mesh-backed object to evaluate section results.</div>
                           )}
                         </div>
                         <div
@@ -47623,6 +48528,7 @@ case "mobius":
                       ? [
                           ...(geometryProceduralOverlayGroups ?? []),
                           ...(geometryProceduralSelectionOverlayGroups ?? []),
+                          ...(geometrySectionOverlayGroups ?? []),
                           ...(geometryProceduralFeatureOverlays.groups ?? []),
                           ...(geometryProceduralAnnotationOverlays.groups ?? []),
                         ]
@@ -47648,7 +48554,10 @@ case "mobius":
                     geometryMode === "demo"
                       ? geometryHighlightPolygons
                       : geometryMode === "procedural"
-                        ? geometryProceduralSelectionHighlightPolygons
+                        ? [
+                            ...(geometryProceduralSelectionHighlightPolygons ?? []),
+                            ...(geometrySectionCapPolygons ?? []),
+                          ]
                         : null
                   }
                   highlightPointSets={
