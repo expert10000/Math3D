@@ -12,6 +12,7 @@ export type {
   SliceAxis,
   VtkMeshRequest,
   VtkMeshResponse,
+  VtkBooleanRequest,
   VtkPreviewRequest,
   VtkVolumeDistanceRequest,
   VtkVolumeDistanceResponse,
@@ -33,6 +34,7 @@ export type MeshBackendCapabilities = {
   vtkMeshCleanNormals: boolean;
   vtkMeshDecimate: boolean;
   vtkMeshSmooth: boolean;
+  vtkMeshBoolean: boolean;
   vtkVolumeSlice: boolean;
   vtkVolumeIsosurface: boolean;
   vtkVolumeDistance: boolean;

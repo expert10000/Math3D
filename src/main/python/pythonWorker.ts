@@ -41,6 +41,7 @@ export type PythonWorkerStartupStatus =
     };
 
 export type VtkMeshOp = "vtk_clean_normals" | "vtk_decimate" | "vtk_smooth";
+export type VtkBooleanOp = "union" | "difference" | "intersection" | "imprint";
 export type VtkMeshRequest = {
   jobId: string;
   positions: ArrayBuffer | ArrayBufferView | Buffer;
@@ -51,6 +52,18 @@ export type VtkMeshRequest = {
     iterations?: number;
     passband?: number;
     computeNormals?: boolean;
+  };
+};
+export type VtkBooleanRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView | Buffer;
+  indicesA: ArrayBuffer | ArrayBufferView | Buffer;
+  positionsB: ArrayBuffer | ArrayBufferView | Buffer;
+  indicesB: ArrayBuffer | ArrayBufferView | Buffer;
+  operation: VtkBooleanOp;
+  options?: {
+    computeNormals?: boolean;
+    curveRadius?: number;
   };
 };
 export type VtkMeshResponse =
@@ -682,6 +695,61 @@ class PythonWorker {
       return { ok: false, error: "VTK preview returned empty buffers" };
     }
 
+    const normals = payloads?.normals;
+    return {
+      ok: true,
+      positions: bufferToArrayBuffer(pos),
+      indices: bufferToArrayBuffer(idx),
+      normals: normals ? bufferToArrayBuffer(normals) : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
+  async vtkBoolean(req: VtkBooleanRequest): Promise<VtkMeshResponse> {
+    const positionsABuf = toBuffer(req.positionsA);
+    const indicesABuf = toBuffer(req.indicesA);
+    const positionsBBuf = toBuffer(req.positionsB);
+    const indicesBBuf = toBuffer(req.indicesB);
+    if (!positionsABuf.length || !indicesABuf.length || !positionsBBuf.length || !indicesBBuf.length) {
+      return { ok: false, error: "VTK boolean request missing buffers" };
+    }
+
+    const msg = {
+      type: "mesh.boolean",
+      jobId: req.jobId,
+      operation: req.operation,
+      options: req.options ?? {},
+      binary: [
+        { name: "positionsA", bytes: positionsABuf.length },
+        { name: "indicesA", bytes: indicesABuf.length },
+        { name: "positionsB", bytes: positionsBBuf.length },
+        { name: "indicesB", bytes: indicesBBuf.length },
+      ],
+    };
+
+    const t0 = Date.now();
+    const res = await this.request(msg, 180000, [positionsABuf, indicesABuf, positionsBBuf, indicesBBuf]);
+    const t1 = Date.now();
+    console.log("[CGAL worker] vtk boolean response", {
+      jobId: req.jobId,
+      type: res?.type,
+      operation: req.operation,
+      ms: t1 - t0,
+      vertexCount: res?.vertexCount,
+      triCount: res?.triCount,
+    });
+
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK boolean response") };
+    }
+
+    const payloads = res.binaryPayloads as Record<string, Buffer> | undefined;
+    const pos = payloads?.positions;
+    const idx = payloads?.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK boolean returned empty buffers" };
+    }
     const normals = payloads?.normals;
     return {
       ok: true,

@@ -9,6 +9,7 @@ import type {
   GeodesicHeatRequest,
   GeodesicHeatResponse,
   MeshBackendCapabilities,
+  VtkBooleanRequest,
   VtkMeshRequest,
   VtkMeshResponse,
   VtkPreviewRequest,
@@ -34,6 +35,7 @@ export interface MeshBackend {
   vtkCleanNormals(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkDecimate(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkSmooth(req: Omit<VtkMeshRequest, "jobId">): Promise<VtkMeshResponse>;
+  vtkBoolean(req: Omit<VtkBooleanRequest, "jobId">): Promise<VtkMeshResponse>;
   vtkVolumeSlice(req: Omit<VtkVolumeSliceRequest, "jobId">): Promise<VtkVolumeSliceResponse>;
   vtkVolumeIsosurface(req: Omit<VtkVolumeIsosurfaceRequest, "jobId">): Promise<VtkVolumeIsosurfaceResponse>;
   vtkVolumeDistance(req: Omit<VtkVolumeDistanceRequest, "jobId">): Promise<VtkVolumeDistanceResponse>;
@@ -108,6 +110,7 @@ const capabilitySnapshot = (win: any): MeshBackendCapabilities => ({
   vtkMeshCleanNormals: typeof win?.vtkMesh?.cleanNormals === "function",
   vtkMeshDecimate: typeof win?.vtkMesh?.decimate === "function",
   vtkMeshSmooth: typeof win?.vtkMesh?.smooth === "function",
+  vtkMeshBoolean: typeof win?.vtkMesh?.boolean === "function",
   vtkVolumeSlice: typeof win?.vtkVolume?.slice === "function",
   vtkVolumeIsosurface: typeof win?.vtkVolume?.isosurface === "function",
   vtkVolumeDistance: typeof win?.vtkVolume?.distanceField === "function",
@@ -290,6 +293,11 @@ export function createElectronMeshBackend(): MeshBackend {
       if (!api?.smooth) return { ok: false, error: "VTK IPC unavailable" };
       return api.smooth({ ...req, jobId: makeJobId() });
     },
+    async vtkBoolean(req) {
+      const api = (getWindowObject() as any)?.vtkMesh;
+      if (!api?.boolean) return { ok: false, error: "VTK IPC unavailable" };
+      return api.boolean({ ...req, jobId: makeJobId() });
+    },
     async vtkVolumeSlice(req) {
       const api = (getWindowObject() as any)?.vtkVolume;
       if (!api?.slice) return { ok: false, error: "VTK volume IPC unavailable" };
@@ -321,6 +329,13 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
     positions_b64: encodeBase64(req.positions),
     indices_b64: encodeBase64(req.indices),
   });
+  const booleanPayload = (req: Omit<VtkBooleanRequest, "jobId">): JsonRecord => ({
+    ...withJobId(req as unknown as JsonRecord),
+    positionsA_b64: encodeBase64(req.positionsA),
+    indicesA_b64: encodeBase64(req.indicesA),
+    positionsB_b64: encodeBase64(req.positionsB),
+    indicesB_b64: encodeBase64(req.indicesB),
+  });
 
   return {
     getCapabilities() {
@@ -332,6 +347,7 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
         vtkMeshCleanNormals: true,
         vtkMeshDecimate: true,
         vtkMeshSmooth: true,
+        vtkMeshBoolean: true,
         vtkVolumeSlice: true,
         vtkVolumeIsosurface: true,
         vtkVolumeDistance: true,
@@ -416,6 +432,14 @@ export function createHttpMeshBackend(baseUrl: string, options?: HttpMeshBackend
         return toVtkMeshResponse(payload);
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "VTK smooth request failed") };
+      }
+    },
+    async vtkBoolean(req) {
+      try {
+        const payload = await http.postJson<VtkMeshProxyResponse>("/vtk/boolean", booleanPayload(req));
+        return toVtkMeshResponse(payload);
+      } catch (error) {
+        return { ok: false, error: asErrorMessage(error, "VTK boolean request failed") };
       }
     },
     async vtkVolumeSlice(req) {

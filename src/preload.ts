@@ -72,6 +72,20 @@ export type VtkMeshRequest = {
   };
 };
 
+export type VtkBooleanOperation = "union" | "difference" | "intersection" | "imprint";
+export type VtkBooleanRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView;
+  indicesA: ArrayBuffer | ArrayBufferView;
+  positionsB: ArrayBuffer | ArrayBufferView;
+  indicesB: ArrayBuffer | ArrayBufferView;
+  operation: VtkBooleanOperation;
+  options?: {
+    computeNormals?: boolean;
+    curveRadius?: number;
+  };
+};
+
 export type VtkMeshResponse =
   | {
       ok: true;
@@ -282,6 +296,8 @@ contextBridge.exposeInMainWorld("vtkMesh", {
     ipcRenderer.invoke("mesh:vtk:decimate", req),
   smooth: (req: VtkMeshRequest): Promise<VtkMeshResponse> =>
     ipcRenderer.invoke("mesh:vtk:smooth", req),
+  boolean: (req: VtkBooleanRequest): Promise<VtkMeshResponse> =>
+    ipcRenderer.invoke("mesh:vtk:boolean", req),
   previewImplicit: (req: VtkPreviewRequest): Promise<VtkMeshResponse> =>
     ipcRenderer.invoke("mesh:vtk:preview", req),
 });

@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
-import { ADDITION, Brush, Evaluator, INTERSECTION, SUBTRACTION } from "three-bvh-csg";
+import { ADDITION, Brush, Evaluator, INTERSECTION, REVERSE_SUBTRACTION, SUBTRACTION } from "three-bvh-csg";
 import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
@@ -133,7 +133,7 @@ import {
   type PythonWorkerDiagnosticsSnapshot,
 } from "./services/pythonWorkerDiagnosticsClient";
 import { runGeodesicHeat } from "./services/geodesicHeatClient";
-import { vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
+import { vtkBoolean, vtkCleanNormals, vtkDecimate, vtkPreviewImplicit, vtkSmooth } from "./services/vtkMeshClient";
 import { supportsVtkVolumeDistance, vtkVolumeDistance } from "./services/vtkVolumeClient";
 import { solveContinuousGraphGeodesic } from "./math/graphGeodesicContinuous";
 import { compileExpression } from "./math/expression";
@@ -341,6 +341,7 @@ type GeometryEulerPolygonTemplateId =
   | "mobius_baca_inv"
   | "cylinder_uava_inv";
 type SurfaceViewerKind = "implicit" | "graph" | "param" | "weierstrass" | "mesh" | "complex";
+type MeshBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
 type ChartMode = "auto" | "xy" | "uv" | "local";
 type MeshChartGridMode = "local" | "meshFace";
 type SurfaceMeshAssetPreset = {
@@ -1689,7 +1690,16 @@ type GeometryRepeatMode =
   | "circular-array"
   | "mirror-plane"
   | "mirror-axis";
-type GeometryBooleanOperation = "union" | "difference" | "intersection";
+type GeometryBooleanOperation = "union" | "difference" | "intersection" | "split" | "imprint";
+type GeometryBooleanPreviewMesh = SurfaceMeshData & {
+  id: string;
+  color?: number;
+  opacity?: number;
+  roughness?: number;
+  metalness?: number;
+  flatShading?: boolean;
+  transform: GeometryObjectTransform;
+};
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
@@ -7032,6 +7042,9 @@ const App: React.FC = () => {
   const [geometryBooleanOperation, setGeometryBooleanOperation] =
     useState<GeometryBooleanOperation>("union");
   const [geometryBooleanPreviewStatus, setGeometryBooleanPreviewStatus] = useState<string | null>(null);
+  const [geometryBooleanPreviewWarnings, setGeometryBooleanPreviewWarnings] = useState<string[]>([]);
+  const [geometryBooleanPreviewMeshes, setGeometryBooleanPreviewMeshes] = useState<GeometryBooleanPreviewMesh[]>([]);
+  const [geometryBooleanPreviewCurveLines, setGeometryBooleanPreviewCurveLines] = useState<PolylineSet>([]);
   const [geometrySnapPreview, setGeometrySnapPreview] = useState<{
     point: SnapPoint3;
     kind: GeometrySnapPreviewKind;
@@ -7095,6 +7108,9 @@ const App: React.FC = () => {
     if (!geometryBooleanObjectOptions.length) {
       if (geometryBooleanObjectAId !== null) setGeometryBooleanObjectAId(null);
       if (geometryBooleanObjectBId !== null) setGeometryBooleanObjectBId(null);
+      setGeometryBooleanPreviewMeshes([]);
+      setGeometryBooleanPreviewCurveLines([]);
+      setGeometryBooleanPreviewWarnings([]);
       return;
     }
     const optionIds = new Set(geometryBooleanObjectOptions.map((entry) => entry.id));
@@ -7119,6 +7135,12 @@ const App: React.FC = () => {
     geometryBooleanObjectOptions,
     geometrySelectedSceneObject?.id,
   ]);
+  useEffect(() => {
+    if (geometryMode === "procedural") return;
+    if (geometryBooleanPreviewMeshes.length) setGeometryBooleanPreviewMeshes([]);
+    if (geometryBooleanPreviewCurveLines.length) setGeometryBooleanPreviewCurveLines([]);
+    if (geometryBooleanPreviewWarnings.length) setGeometryBooleanPreviewWarnings([]);
+  }, [geometryMode, geometryBooleanPreviewMeshes, geometryBooleanPreviewCurveLines, geometryBooleanPreviewWarnings]);
   useEffect(() => {
     if (!geometryCompareObjectOptions.length) {
       if (geometryCompareObjectAId !== null) setGeometryCompareObjectAId(null);
@@ -11126,6 +11148,10 @@ const App: React.FC = () => {
     geometryRepeatMode,
     geometrySelectedSceneObject,
   ]);
+  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
+    setMeshDatasetState(toMeshDataset(mesh));
+    setDatasetKind("surface");
+  }, []);
   const runGeometryBooleanOperation = useCallback(
     (previewOnly: boolean) => {
       const objectAId = geometryBooleanObjectAId;
@@ -11133,12 +11159,18 @@ const App: React.FC = () => {
       if (!objectAId || !objectBId) {
         const message = "Pick object A and object B first.";
         setGeometryBooleanPreviewStatus(message);
+        setGeometryBooleanPreviewWarnings([]);
+        setGeometryBooleanPreviewMeshes([]);
+        setGeometryBooleanPreviewCurveLines([]);
         if (!previewOnly) setGeometryCreateActionStatus(message);
         return;
       }
       if (objectAId === objectBId) {
         const message = "Object A and object B must be different.";
         setGeometryBooleanPreviewStatus(message);
+        setGeometryBooleanPreviewWarnings([]);
+        setGeometryBooleanPreviewMeshes([]);
+        setGeometryBooleanPreviewCurveLines([]);
         if (!previewOnly) setGeometryCreateActionStatus(message);
         return;
       }
@@ -11147,6 +11179,9 @@ const App: React.FC = () => {
       if (!aData || !bData) {
         const message = "Both operands must be visible mesh-backed objects.";
         setGeometryBooleanPreviewStatus(message);
+        setGeometryBooleanPreviewWarnings([]);
+        setGeometryBooleanPreviewMeshes([]);
+        setGeometryBooleanPreviewCurveLines([]);
         if (!previewOnly) setGeometryCreateActionStatus(message);
         return;
       }
@@ -11160,60 +11195,159 @@ const App: React.FC = () => {
         brushA.updateMatrixWorld(true);
         brushB.updateMatrixWorld(true);
         const evaluator = new Evaluator();
-        const operation = geometryBooleanOperation === "union" ? ADDITION : geometryBooleanOperation === "difference" ? SUBTRACTION : INTERSECTION;
-        const resultBrush = evaluator.evaluate(brushA, brushB, operation);
-        const resultGeometry = resultBrush.geometry.clone();
-        if (!resultGeometry.getAttribute("normal")) resultGeometry.computeVertexNormals();
-        const previewMesh = buildSurfaceMeshFromGeometry(
-          resultGeometry,
-          `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
-          { kind: "csg" },
-          { mergeVertices: true }
+        evaluator.debug.enabled = true;
+
+        const previewMeshes: GeometryBooleanPreviewMesh[] = [];
+        const pushPreviewMesh = (
+          operation: number,
+          label: string,
+          color: number,
+          opacity: number
+        ) => {
+          const resultBrush = evaluator.evaluate(brushA, brushB, operation);
+          const resultGeometry = resultBrush.geometry.clone();
+          if (!resultGeometry.getAttribute("normal")) resultGeometry.computeVertexNormals();
+          const baseMesh = buildSurfaceMeshFromGeometry(
+            resultGeometry,
+            label,
+            { kind: "csg" },
+            { mergeVertices: true }
+          );
+          resultGeometry.dispose();
+          const withNormals = computeVertexNormals(baseMesh);
+          const vertCount = Math.floor(withNormals.positions.length / 3);
+          const triCount =
+            withNormals.indices && withNormals.indices.length >= 3
+              ? Math.floor(withNormals.indices.length / 3)
+              : Math.floor(vertCount / 3);
+          if (!vertCount || !triCount) return;
+          previewMeshes.push({
+            ...withNormals,
+            id: makeId(),
+            color,
+            opacity,
+            roughness: 0.24,
+            metalness: 0.08,
+            flatShading: false,
+            transform: {
+              position: { x: 0, y: 0, z: 0 },
+              rotation: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1, z: 1 },
+            },
+          });
+        };
+
+        if (geometryBooleanOperation === "union") {
+          pushPreviewMesh(ADDITION, `${aData.object.name} union ${bData.object.name}`, 0x14b8a6, 0.68);
+        } else if (geometryBooleanOperation === "difference") {
+          pushPreviewMesh(SUBTRACTION, `${aData.object.name} minus ${bData.object.name}`, 0xf97316, 0.7);
+        } else if (geometryBooleanOperation === "intersection") {
+          pushPreviewMesh(INTERSECTION, `${aData.object.name} intersect ${bData.object.name}`, 0x0ea5e9, 0.78);
+        } else if (geometryBooleanOperation === "split") {
+          pushPreviewMesh(SUBTRACTION, `${aData.object.name} minus ${bData.object.name}`, 0xf97316, 0.62);
+          pushPreviewMesh(INTERSECTION, `${aData.object.name} intersect ${bData.object.name}`, 0x0ea5e9, 0.78);
+          pushPreviewMesh(REVERSE_SUBTRACTION, `${bData.object.name} minus ${aData.object.name}`, 0x8b5cf6, 0.62);
+        } else {
+          pushPreviewMesh(INTERSECTION, `${aData.object.name} imprint ${bData.object.name}`, 0x22c55e, 0.25);
+        }
+
+        const curveLines: PolylineSet = evaluator.debug.intersectionEdges
+          .map((edge) => [
+            { x: edge.start.x, y: edge.start.y, z: edge.start.z },
+            { x: edge.end.x, y: edge.end.y, z: edge.end.z },
+          ])
+          .filter((line) => line.length === 2);
+
+        const warnings: string[] = [];
+        const pushReadinessWarnings = (objectName: string, mesh: SurfaceMeshData) => {
+          const readiness = evaluateGeometryMeshReadiness(mesh);
+          const failed = readiness.checks.filter((check) => check.status === "warning" || check.status === "error");
+          if (!failed.length) return;
+          const summary = failed
+            .slice(0, 2)
+            .map((check) => `${check.label}: ${check.detail}`)
+            .join(" | ");
+          warnings.push(`${objectName}: ${summary}`);
+        };
+        pushReadinessWarnings(aData.object.name, aData.mesh);
+        pushReadinessWarnings(bData.object.name, bData.mesh);
+        if (curveLines.length === 0) {
+          warnings.push("No intersection curve detected; operands may not overlap.");
+        }
+        const totalPreviewVerts = previewMeshes.reduce((acc, mesh) => acc + Math.floor(mesh.positions.length / 3), 0);
+        const totalPreviewTris = previewMeshes.reduce(
+          (acc, mesh) =>
+            acc +
+            (mesh.indices && mesh.indices.length >= 3
+              ? Math.floor(mesh.indices.length / 3)
+              : Math.floor(mesh.positions.length / 9)),
+          0
         );
-        const previewVerts = Math.floor(previewMesh.positions.length / 3);
-        const previewTris = previewMesh.indices ? Math.floor(previewMesh.indices.length / 3) : 0;
-        const previewMessage = `Preview ${geometryBooleanOperation}: ${previewVerts.toLocaleString()} verts, ${previewTris.toLocaleString()} tris.`;
+        if (totalPreviewTris > 160_000) {
+          warnings.push("Heavy preview mesh size; run accurate operation in Mesh/CGAL for robust cleanup.");
+        }
+
+        setGeometryBooleanPreviewMeshes(previewMeshes);
+        setGeometryBooleanPreviewCurveLines(curveLines);
+        setGeometryBooleanPreviewWarnings(warnings.slice(0, 4));
+        const previewMessage =
+          `Preview ${geometryBooleanOperation}: ${totalPreviewVerts.toLocaleString()} verts, ` +
+          `${totalPreviewTris.toLocaleString()} tris, ${curveLines.length.toLocaleString()} curve segments.`;
         setGeometryBooleanPreviewStatus(previewMessage);
         if (previewOnly) {
-          resultGeometry.dispose();
           geomA.dispose();
           geomB.dispose();
           return;
         }
-        const resultObjectId = makeId();
-        const nextObject: GeometryDatasetMeshObject = {
-          id: resultObjectId,
-          name: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
-          mesh: computeVertexNormals({
-            ...previewMesh,
-            label: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
-            source: { kind: "csg" },
-          }),
-          transform: {
-            position: { x: 0, y: 0, z: 0 },
-            rotation: { x: 0, y: 0, z: 0 },
-            scale: { x: 1, y: 1, z: 1 },
-          },
-          visible: true,
-          material: {
-            color: 0x14b8a6,
-            opacity: 0.95,
-            roughness: 0.25,
-            metalness: 0.1,
-          },
-        };
-        setGeometryDatasetMeshObjects((prev) => [nextObject, ...prev]);
-        setGeometrySelectedObjectId(resultObjectId);
-        setGeometryProceduralPanelTab("object");
-        const doneMessage = `Boolean result created (${previewVerts.toLocaleString()} verts, ${previewTris.toLocaleString()} tris).`;
+
+        if (!previewMeshes.length) {
+          const message = "Preview produced no triangle mesh. Adjust operands or operation.";
+          setGeometryBooleanPreviewStatus(message);
+          if (!previewOnly) setGeometryCreateActionStatus(message);
+          geomA.dispose();
+          geomB.dispose();
+          return;
+        }
+
+        const merged =
+          previewMeshes.length === 1
+            ? {
+                positions: Float32Array.from(previewMeshes[0].positions),
+                indices: previewMeshes[0].indices
+                  ? Uint32Array.from(previewMeshes[0].indices)
+                  : null,
+              }
+            : mergeMeshData(
+                previewMeshes.map((mesh) => ({
+                  positions: mesh.positions,
+                  indices: mesh.indices,
+                }))
+              );
+        const handoffMesh = applySurfaceMeshOps({
+          label: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name} (geometry preview handoff)`,
+          positions: merged.positions,
+          indices: merged.indices,
+          source: { kind: "csg" },
+        });
+        setMeshDataset(handoffMesh);
+        setSurfaceViewerKind("mesh");
+        setMode("surfaces");
+        setSurfacesPanelState("work");
+        setSurfacesLeftTab("scene");
+        setGeometryBooleanPreviewMeshes([]);
+        setGeometryBooleanPreviewCurveLines([]);
+        const doneMessage =
+          "Preview handed off to Mesh module. Run repair/remesh/validation for accurate boolean cleanup.";
         setGeometryCreateActionStatus(doneMessage);
         setGeometryBooleanPreviewStatus(doneMessage);
-        resultGeometry.dispose();
         geomA.dispose();
         geomB.dispose();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Boolean operation failed.";
         setGeometryBooleanPreviewStatus(message);
+        setGeometryBooleanPreviewWarnings([]);
+        setGeometryBooleanPreviewMeshes([]);
+        setGeometryBooleanPreviewCurveLines([]);
         if (!previewOnly) setGeometryCreateActionStatus(message);
       }
     },
@@ -11222,6 +11356,7 @@ const App: React.FC = () => {
       geometryBooleanObjectBId,
       geometryBooleanOperation,
       resolveGeometrySceneMeshById,
+      setMeshDataset,
     ]
   );
   const handlePreviewGeometryBoolean = useCallback(() => {
@@ -11947,6 +12082,23 @@ const App: React.FC = () => {
       opacity: 0.35,
     }));
   }, [geometryMode, geometrySectionPreview, geometrySectionShowCap]);
+  const geometryBooleanPreviewOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
+    if (geometryMode !== "procedural") return null;
+    if (!geometryBooleanPreviewCurveLines.length) return null;
+    return [
+      {
+        lines: geometryBooleanPreviewCurveLines,
+        color: 0x0ea5e9,
+        opacity: 0.98,
+        radiusScale: 2.25,
+      },
+    ];
+  }, [geometryBooleanPreviewCurveLines, geometryMode]);
+  const geometryProceduralMeshOverrides = useMemo(() => {
+    if (geometryMode !== "procedural") return null;
+    if (!geometryBooleanPreviewMeshes.length) return proceduralMeshSet.meshes;
+    return [...proceduralMeshSet.meshes, ...geometryBooleanPreviewMeshes];
+  }, [geometryBooleanPreviewMeshes, geometryMode, proceduralMeshSet.meshes]);
   const geometryProceduralSelectionPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -14064,12 +14216,33 @@ const App: React.FC = () => {
   const [vtkUseTargetFaces, setVtkUseTargetFaces] = useState(false);
   const [vtkSmoothIterations, setVtkSmoothIterations] = useState(20);
   const [vtkSmoothPassband, setVtkSmoothPassband] = useState(0.1);
+  const [vtkBooleanOperation, setVtkBooleanOperation] = useState<MeshBooleanOperation>("union");
+  const [vtkBooleanOperandObjectId, setVtkBooleanOperandObjectId] = useState<string | null>(null);
+  const [vtkBooleanCurveRadius, setVtkBooleanCurveRadius] = useState(0);
+  const [vtkBooleanStatus, setVtkBooleanStatus] = useState<string | null>(null);
   const [vtkOutputMode, setVtkOutputMode] = useState<"replace" | "derived">("derived");
   const [vtkLastResult, setVtkLastResult] = useState<VtkResultSummary | null>(null);
   const [vtkPreviewBusy, setVtkPreviewBusy] = useState(false);
   const [vtkPreviewError, setVtkPreviewError] = useState<string | null>(null);
   const [vtkPreviewTargetFaces, setVtkPreviewTargetFaces] = useState(20000);
   const [vtkPreviewUseDecimate, setVtkPreviewUseDecimate] = useState(true);
+  useEffect(() => {
+    if (!geometryBooleanObjectOptions.length) {
+      if (vtkBooleanOperandObjectId !== null) setVtkBooleanOperandObjectId(null);
+      return;
+    }
+    const ids = new Set(geometryBooleanObjectOptions.map((entry) => entry.id));
+    if (vtkBooleanOperandObjectId && ids.has(vtkBooleanOperandObjectId)) return;
+    const fallback =
+      geometrySelectedSceneObject?.id && ids.has(geometrySelectedSceneObject.id)
+        ? geometrySelectedSceneObject.id
+        : geometryBooleanObjectOptions[0]?.id ?? null;
+    setVtkBooleanOperandObjectId(fallback);
+  }, [
+    geometryBooleanObjectOptions,
+    geometrySelectedSceneObject?.id,
+    vtkBooleanOperandObjectId,
+  ]);
   const handleSaveGeometryOperationPreset = useCallback(() => {
     const name = window.prompt("Operation preset name", "VTK operation preset");
     if (!name?.trim()) return;
@@ -14095,10 +14268,6 @@ const App: React.FC = () => {
     message: "Not run yet.",
     at: Date.now(),
   });
-  const setMeshDataset = useCallback((mesh: SurfaceMeshData | null) => {
-    setMeshDatasetState(toMeshDataset(mesh));
-    setDatasetKind("surface");
-  }, []);
   const focusSurfaceMeshViewport = useCallback((mesh: SurfaceMeshData | null) => {
     if (!mesh?.positions?.length) return;
     const focus = computeSurfaceMeshFocus(mesh);
@@ -14503,7 +14672,6 @@ const App: React.FC = () => {
     geometrySectionPreview,
     geometrySelectedSceneMesh?.positions,
     geometrySelectedSceneObject,
-    upsertGeometryDerivedProduct,
   ]);
   const handleSendPromotedSectionToCurvesModule = useCallback(() => {
     if (!geometrySelectedSceneObject || !geometrySectionPreview) {
@@ -14537,7 +14705,7 @@ const App: React.FC = () => {
     });
     setMode("curves");
     setGeometryCreateActionStatus("Section sent to Curves module.");
-  }, [geometrySectionPreview, geometrySelectedSceneObject, upsertGeometryDerivedProduct]);
+  }, [geometrySectionPreview, geometrySelectedSceneObject]);
   const handleBakeSelectedToMeshObject = useCallback(() => {
     if (!geometrySelectedSceneObject) {
       setGeometryCreateActionStatus("Select an object first.");
@@ -27600,6 +27768,164 @@ case "mobius":
     refreshCgalHealthAfterWorkerAction,
   ]);
 
+  const handleVtkBoolean = useCallback(async () => {
+    if (vtkBusy) return;
+    setVtkBooleanStatus(null);
+    if (cgalHealthState?.ok === false) {
+      setVtkError(cgalHealthState.error ?? "Python worker unavailable.");
+      return;
+    }
+    const meshA = getMeshForVtk();
+    if (!meshA) {
+      setVtkError("Surface mesh not ready yet.");
+      return;
+    }
+    if (!vtkBooleanOperandObjectId) {
+      setVtkError("Pick a Geometry object as operand B.");
+      return;
+    }
+    const resolvedB = resolveGeometrySceneMeshById(vtkBooleanOperandObjectId);
+    if (!resolvedB) {
+      setVtkError("Operand B is unavailable. Ensure the selected Geometry object is visible.");
+      return;
+    }
+    const meshBIndices = resolvedB.mesh.indices
+      ? resolvedB.mesh.indices
+      : (() => {
+          const vc = Math.floor(resolvedB.mesh.positions.length / 3);
+          const seq = new Uint32Array(vc);
+          for (let i = 0; i < vc; i += 1) seq[i] = i;
+          return seq;
+        })();
+
+    setVtkBusy(true);
+    setVtkError(null);
+    setVtkBooleanStatus(`Running ${vtkBooleanOperation}...`);
+    try {
+      const beforeFaces = Math.round(meshA.indices.length / 3);
+      const options = {
+        computeNormals: true,
+        curveRadius: vtkBooleanCurveRadius > 0 ? vtkBooleanCurveRadius : undefined,
+      };
+
+      if (vtkBooleanOperation === "split") {
+        const aMinusB = await vtkBoolean({
+          positionsA: meshA.positions,
+          indicesA: meshA.indices,
+          positionsB: resolvedB.mesh.positions,
+          indicesB: meshBIndices,
+          operation: "difference",
+          options,
+        });
+        if (!aMinusB.ok) {
+          setVtkError(aMinusB.error);
+          setVtkBooleanStatus("Split failed.");
+          return;
+        }
+        const aIntersectB = await vtkBoolean({
+          positionsA: meshA.positions,
+          indicesA: meshA.indices,
+          positionsB: resolvedB.mesh.positions,
+          indicesB: meshBIndices,
+          operation: "intersection",
+          options,
+        });
+        if (!aIntersectB.ok) {
+          setVtkError(aIntersectB.error);
+          setVtkBooleanStatus("Split failed.");
+          return;
+        }
+        const bMinusA = await vtkBoolean({
+          positionsA: resolvedB.mesh.positions,
+          indicesA: meshBIndices,
+          positionsB: meshA.positions,
+          indicesB: meshA.indices,
+          operation: "difference",
+          options,
+        });
+        if (!bMinusA.ok) {
+          setVtkError(bMinusA.error);
+          setVtkBooleanStatus("Split failed.");
+          return;
+        }
+
+        const merged = mergeMeshData([
+          { positions: aMinusB.positions, indices: aMinusB.indices },
+          { positions: aIntersectB.positions, indices: aIntersectB.indices },
+          { positions: bMinusA.positions, indices: bMinusA.indices },
+        ]);
+        const splitMesh = applySurfaceMeshOps({
+          label: `${meshA.label} split ${resolvedB.object.name}`,
+          positions: merged.positions,
+          indices: merged.indices,
+          source: surfaceMeshData?.source ?? { kind: "csg" },
+        });
+        applyVtkResultToSurfaceMesh(
+          "VTK boolean split",
+          {
+            positions: splitMesh.positions,
+            indices: splitMesh.indices ?? new Uint32Array(),
+            normals: splitMesh.normals ?? undefined,
+          },
+          {
+            operation: "Boolean split",
+            beforeFaces,
+            requestedFaces: null,
+            normalsRecomputed: true,
+            warnings: ["Split merged A-B, A intersect B, and B-A into one editable mesh."],
+          }
+        );
+        setVtkBooleanStatus("Split completed.");
+        return;
+      }
+
+      const operation = vtkBooleanOperation === "imprint" ? "imprint" : vtkBooleanOperation;
+      const result = await vtkBoolean({
+        positionsA: meshA.positions,
+        indicesA: meshA.indices,
+        positionsB: resolvedB.mesh.positions,
+        indicesB: meshBIndices,
+        operation,
+        options,
+      });
+      if (!result.ok) {
+        setVtkError(result.error);
+        setVtkBooleanStatus(`${vtkBooleanOperation} failed.`);
+        return;
+      }
+
+      applyVtkResultToSurfaceMesh(
+        `VTK boolean ${vtkBooleanOperation}`,
+        result,
+        {
+          operation: `Boolean ${vtkBooleanOperation}`,
+          beforeFaces,
+          requestedFaces: null,
+          normalsRecomputed: true,
+          warnings: vtkBooleanOperation === "imprint" ? ["Imprint returns an intersection-curve mesh."] : [],
+        }
+      );
+      setVtkBooleanStatus(`${vtkBooleanOperation} completed.`);
+    } catch (err: any) {
+      setVtkError(err?.message ?? "VTK boolean failed.");
+      setVtkBooleanStatus(`${vtkBooleanOperation} failed.`);
+    } finally {
+      setVtkBusy(false);
+      refreshCgalHealthAfterWorkerAction();
+    }
+  }, [
+    vtkBusy,
+    cgalHealthState,
+    getMeshForVtk,
+    vtkBooleanOperandObjectId,
+    resolveGeometrySceneMeshById,
+    vtkBooleanOperation,
+    vtkBooleanCurveRadius,
+    surfaceMeshData?.source,
+    applyVtkResultToSurfaceMesh,
+    refreshCgalHealthAfterWorkerAction,
+  ]);
+
   const handleBuildDistanceVolume = useCallback(async () => {
     if (volumeDistanceBusy) return;
     if (cgalHealthState?.ok === false) {
@@ -36013,6 +36339,15 @@ case "mobius":
                   onVtkCleanNormals={handleVtkCleanNormals}
                   onVtkDecimate={handleVtkDecimate}
                   onVtkSmooth={handleVtkSmooth}
+                  vtkBooleanOperation={vtkBooleanOperation}
+                  onChangeVtkBooleanOperation={setVtkBooleanOperation}
+                  vtkBooleanOperandObjectId={vtkBooleanOperandObjectId}
+                  onChangeVtkBooleanOperandObjectId={setVtkBooleanOperandObjectId}
+                  vtkBooleanOperandOptions={geometryBooleanObjectOptions}
+                  vtkBooleanCurveRadius={vtkBooleanCurveRadius}
+                  onChangeVtkBooleanCurveRadius={setVtkBooleanCurveRadius}
+                  vtkBooleanStatus={vtkBooleanStatus}
+                  onRunVtkBoolean={handleVtkBoolean}
                   vtkOutputMode={vtkOutputMode}
                   onChangeVtkOutputMode={setVtkOutputMode}
                   vtkOperationPresets={geometryOperationPresets}
@@ -43327,7 +43662,7 @@ case "mobius":
                           gap: 6,
                         }}
                       >
-                        <div style={{ fontSize: 11, fontWeight: 700 }}>Boolean / CSG (PR11)</div>
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Boolean Preview (PR21)</div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                           <label>
                             Object A
@@ -43369,22 +43704,31 @@ case "mobius":
                               <option value="union">Union</option>
                               <option value="difference">Difference (A - B)</option>
                               <option value="intersection">Intersection</option>
+                              <option value="split">Split (A-B, A intersect B, B-A)</option>
+                              <option value="imprint">Imprint / intersection curve</option>
                             </select>
                           </label>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button type="button" onClick={handlePreviewGeometryBoolean}>
-                            Preview result
+                            Preview (fast)
                           </button>
                           <button type="button" onClick={handleBakeGeometryBoolean}>
-                            Bake result as mesh
+                            Send to Mesh/CGAL
                           </button>
                         </div>
                         <div style={{ fontSize: 10, color: "#64748b" }}>
-                          Output: Boolean result · Role: DerivedResult · Type: surface mesh · Pipeline stage: boolean mesh
+                          Geometry: fast approximate preview with warnings. Mesh: robust boolean, repair, remesh, topology validation.
                         </div>
                         {geometryBooleanPreviewStatus && (
                           <div style={{ fontSize: 10, color: "#475569" }}>{geometryBooleanPreviewStatus}</div>
+                        )}
+                        {geometryBooleanPreviewWarnings.length > 0 && (
+                          <div style={{ fontSize: 10, color: "#92400e", display: "grid", gap: 2 }}>
+                            {geometryBooleanPreviewWarnings.map((warning, index) => (
+                              <div key={`geo-boolean-warning-${index}`}>Warning: {warning}</div>
+                            ))}
+                          </div>
                         )}
                       </div>
 
@@ -48522,13 +48866,14 @@ case "mobius":
                   lineRadiusScale={geometryMode === "demo" ? geometryDemoLineRadiusScale : 1}
                   segmentRadiusScale={geometryMode === "demo" ? geometryDemoSegmentRadiusScale : 1}
                   edgeRadiusScale={geometryMode === "demo" ? geometryDemoEdgeRadiusScale : 1}
-                  meshOverrides={geometryMode === "procedural" ? proceduralMeshSet.meshes : null}
+                  meshOverrides={geometryProceduralMeshOverrides}
                   extraOverlayPolylineGroups={
                     geometryMode === "procedural"
                       ? [
                           ...(geometryProceduralOverlayGroups ?? []),
                           ...(geometryProceduralSelectionOverlayGroups ?? []),
                           ...(geometrySectionOverlayGroups ?? []),
+                          ...(geometryBooleanPreviewOverlayGroups ?? []),
                           ...(geometryProceduralFeatureOverlays.groups ?? []),
                           ...(geometryProceduralAnnotationOverlays.groups ?? []),
                         ]
@@ -57840,6 +58185,15 @@ type SurfacesLeftPanelProps = {
   onVtkCleanNormals: () => void;
   onVtkDecimate: () => void;
   onVtkSmooth: () => void;
+  vtkBooleanOperation: MeshBooleanOperation;
+  onChangeVtkBooleanOperation: (op: MeshBooleanOperation) => void;
+  vtkBooleanOperandObjectId: string | null;
+  onChangeVtkBooleanOperandObjectId: (id: string | null) => void;
+  vtkBooleanOperandOptions: Array<{ id: string; name: string }>;
+  vtkBooleanCurveRadius: number;
+  onChangeVtkBooleanCurveRadius: (v: number) => void;
+  vtkBooleanStatus: string | null;
+  onRunVtkBoolean: () => void | Promise<void>;
   vtkOutputMode: "replace" | "derived";
   onChangeVtkOutputMode: (mode: "replace" | "derived") => void;
   vtkOperationPresets: GeometryOperationPreset[];
@@ -58473,6 +58827,15 @@ const SurfacesLeftPanel: React.FC<SurfacesLeftPanelProps> = ({
   onVtkCleanNormals,
   onVtkDecimate,
   onVtkSmooth,
+  vtkBooleanOperation,
+  onChangeVtkBooleanOperation,
+  vtkBooleanOperandObjectId,
+  onChangeVtkBooleanOperandObjectId,
+  vtkBooleanOperandOptions,
+  vtkBooleanCurveRadius,
+  onChangeVtkBooleanCurveRadius,
+  vtkBooleanStatus,
+  onRunVtkBoolean,
   vtkOutputMode,
   onChangeVtkOutputMode,
   vtkOperationPresets,
@@ -59027,6 +59390,7 @@ onChangeImplicitExpr,
   const meshFileInputRef = useRef<HTMLInputElement | null>(null);
   const [meshToolsTab, setMeshToolsTab] = useState<"surface_mesh" | "vtk" | "volume">("surface_mesh");
   const vtkOpsDisabled = vtkBusy || !pythonWorkerAvailable;
+  const vtkBooleanDisabled = vtkOpsDisabled || !meshReady;
   const zPlaneRef = useRef<PlanePlotHandle | null>(null);
   const wPlaneRef = useRef<PlanePlotHandle | null>(null);
   const scalarRePlaneRef = useRef<PlanePlotHandle | null>(null);
@@ -62036,6 +62400,74 @@ onChangeImplicitExpr,
             <button type="button" disabled title="Contour extraction is not wired yet.">
               Extract contours
             </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600 }}>Robust boolean (Mesh engine)</div>
+          <div style={{ display: "grid", gap: 6, marginTop: 6, fontSize: 11 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Operation
+              <select
+                value={vtkBooleanOperation}
+                onChange={(e) => onChangeVtkBooleanOperation(e.target.value as MeshBooleanOperation)}
+                disabled={vtkBooleanDisabled}
+                style={{ minWidth: 140 }}
+              >
+                <option value="union">union</option>
+                <option value="difference">difference</option>
+                <option value="intersection">intersection</option>
+                <option value="split">split</option>
+                <option value="imprint">imprint / intersection curve</option>
+              </select>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              Operand B
+              <select
+                value={vtkBooleanOperandObjectId ?? ""}
+                onChange={(e) => onChangeVtkBooleanOperandObjectId(e.target.value || null)}
+                disabled={vtkBooleanDisabled || vtkBooleanOperandOptions.length === 0}
+                style={{ minWidth: 180 }}
+              >
+                {vtkBooleanOperandOptions.length === 0 ? (
+                  <option value="">No Geometry objects</option>
+                ) : (
+                  vtkBooleanOperandOptions.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+            {vtkBooleanOperation === "imprint" && (
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                Curve radius
+                <input
+                  type="number"
+                  min={0}
+                  max={10}
+                  step={0.01}
+                  value={vtkBooleanCurveRadius}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (Number.isFinite(value)) onChangeVtkBooleanCurveRadius(Math.max(0, Math.min(10, value)));
+                  }}
+                  disabled={vtkBooleanDisabled}
+                  style={{ width: 90 }}
+                />
+              </label>
+            )}
+            <button
+              type="button"
+              onClick={() => void onRunVtkBoolean()}
+              disabled={vtkBooleanDisabled || !vtkBooleanOperandObjectId}
+              style={{ justifySelf: "start" }}
+            >
+              {vtkBusy ? "Working..." : "Run robust boolean"}
+            </button>
+            <div style={{ color: "#556" }}>
+              Source A: current SurfaceMesh. Source B: selected Geometry object. Output: SurfaceMesh result.
+            </div>
+            {vtkBooleanStatus && <div style={{ color: "#0a66c2" }}>{vtkBooleanStatus}</div>}
           </div>
 
           <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, marginBottom: 4 }}>Decimate</div>

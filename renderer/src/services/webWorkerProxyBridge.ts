@@ -125,6 +125,27 @@ function installVtkMeshBridge(win: Window & typeof globalThis) {
       triCount: Number(res.triCount) || 0,
     };
   };
+  const withBooleanBuffers = async (path: string, req: any) => {
+    const payload = {
+      jobId: req.jobId,
+      operation: req.operation,
+      options: req.options || {},
+      positionsA_b64: encodeBase64(req.positionsA),
+      indicesA_b64: encodeBase64(req.indicesA),
+      positionsB_b64: encodeBase64(req.positionsB),
+      indicesB_b64: encodeBase64(req.indicesB),
+    };
+    const res = await requestJson<any>("POST", path, payload);
+    if (!res?.ok) return { ok: false, error: res?.error || "VTK proxy failed" };
+    return {
+      ok: true,
+      positions: decodeBase64(String(res.positions_b64 || "")),
+      indices: decodeBase64(String(res.indices_b64 || "")),
+      normals: res.normals_b64 ? decodeBase64(String(res.normals_b64)) : undefined,
+      vertexCount: Number(res.vertexCount) || 0,
+      triCount: Number(res.triCount) || 0,
+    };
+  };
 
   (win as any).vtkMesh = {
     cleanNormals: async (req: any) => {
@@ -144,6 +165,13 @@ function installVtkMeshBridge(win: Window & typeof globalThis) {
     smooth: async (req: any) => {
       try {
         return await withMeshBuffers("/vtk/smooth", req);
+      } catch (error) {
+        return { ok: false, error: asErrorMessage(error, "VTK proxy unavailable") };
+      }
+    },
+    boolean: async (req: any) => {
+      try {
+        return await withBooleanBuffers("/vtk/boolean", req);
       } catch (error) {
         return { ok: false, error: asErrorMessage(error, "VTK proxy unavailable") };
       }
@@ -253,4 +281,3 @@ export function installWebWorkerProxyBridge() {
   installVtkVolumeBridge(win);
   installDiagnosticsBridge(win);
 }
-

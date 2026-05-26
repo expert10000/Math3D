@@ -1,7 +1,7 @@
-import type { VtkMeshRequest, VtkPreviewRequest } from "@math3d/api-client";
+import type { VtkBooleanRequest, VtkMeshRequest, VtkPreviewRequest } from "@math3d/api-client";
 import { meshBackend } from "./meshBackend";
 
-export type { VtkMeshRequest, VtkPreviewRequest };
+export type { VtkBooleanRequest, VtkMeshRequest, VtkPreviewRequest };
 
 export type VtkMeshResponse =
   | {
@@ -82,4 +82,8 @@ export async function vtkSmooth(
   options?: VtkMeshRequest["options"]
 ): Promise<VtkMeshResponse> {
   return runVtk("smooth", { positions, indices, options });
+}
+
+export async function vtkBoolean(req: Omit<VtkBooleanRequest, "jobId">): Promise<VtkMeshResponse> {
+  return normalizeVtkMeshResponse(await meshBackend.vtkBoolean(req), "VTK boolean failed");
 }

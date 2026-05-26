@@ -49,6 +49,21 @@ export type VtkMeshRequest = {
   };
 };
 
+export type VtkBooleanOperation = "union" | "difference" | "intersection" | "imprint";
+
+export type VtkBooleanRequest = {
+  jobId: string;
+  positionsA: ArrayBuffer | ArrayBufferView;
+  indicesA: ArrayBuffer | ArrayBufferView;
+  positionsB: ArrayBuffer | ArrayBufferView;
+  indicesB: ArrayBuffer | ArrayBufferView;
+  operation: VtkBooleanOperation;
+  options?: {
+    computeNormals?: boolean;
+    curveRadius?: number;
+  };
+};
+
 export type VtkMeshResponse =
   | {
       ok: true;
@@ -178,6 +193,7 @@ export type WorkerRequest =
   | { kind: "vtk.clean-normals"; payload: Omit<VtkMeshRequest, "jobId"> }
   | { kind: "vtk.decimate"; payload: Omit<VtkMeshRequest, "jobId"> }
   | { kind: "vtk.smooth"; payload: Omit<VtkMeshRequest, "jobId"> }
+  | { kind: "vtk.boolean"; payload: Omit<VtkBooleanRequest, "jobId"> }
   | { kind: "vtk.volume.slice"; payload: Omit<VtkVolumeSliceRequest, "jobId"> }
   | { kind: "vtk.volume.isosurface"; payload: Omit<VtkVolumeIsosurfaceRequest, "jobId"> }
   | { kind: "vtk.volume.distance"; payload: Omit<VtkVolumeDistanceRequest, "jobId"> }
@@ -191,4 +207,3 @@ export type WorkerResponse =
   | VtkVolumeIsosurfaceResponse
   | VtkVolumeDistanceResponse
   | VtkVolumeStreamlinesResponse;
-

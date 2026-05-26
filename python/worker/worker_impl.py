@@ -1187,6 +1187,20 @@ def vtk_poly_to_buffers(poly, compute_normals: bool):
     )
 
 
+def vtk_prepare_poly_for_boolean(poly):
+    import vtk
+
+    tri = vtk.vtkTriangleFilter()
+    tri.SetInputData(poly)
+    tri.Update()
+
+    clean = vtk.vtkCleanPolyData()
+    clean.SetInputData(tri.GetOutput())
+    clean.PointMergingOn()
+    clean.Update()
+    return clean.GetOutput()
+
+
 def handle_vtk_job(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
     job_id = msg.get("jobId", "")
     op = msg.get("op") or msg.get("action")
@@ -1272,10 +1286,103 @@ def handle_vtk_job(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) ->
         parts,
     )
 
+
+def handle_vtk_boolean(msg: Dict[str, Any], payloads: Optional[Dict[str, bytes]]) -> None:
+    job_id = msg.get("jobId", "")
+    operation = str(msg.get("operation") or "union").lower()
+    if not payloads:
+        raise RuntimeError("Missing binary payloads for vtk boolean")
+
+    pos_a = payloads.get("positionsA")
+    idx_a = payloads.get("indicesA")
+    pos_b = payloads.get("positionsB")
+    idx_b = payloads.get("indicesB")
+    if not pos_a or not idx_a or not pos_b or not idx_b:
+        raise RuntimeError("vtk boolean requires positionsA/indicesA/positionsB/indicesB")
+
+    try:
+        import vtk
+    except Exception as e:
+        raise RuntimeError(f"VTK not available: {e}")
+
+    options = msg.get("options") or {}
+    compute_normals = bool(options.get("computeNormals", True))
+
+    poly_a = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_a, idx_a))
+    poly_b = vtk_prepare_poly_for_boolean(vtk_poly_from_buffers(pos_b, idx_b))
+
+    if operation in ("union", "difference", "intersection"):
+        boolean = vtk.vtkBooleanOperationPolyDataFilter()
+        if operation == "union":
+            boolean.SetOperationToUnion()
+        elif operation == "difference":
+            boolean.SetOperationToDifference()
+            if hasattr(boolean, "ReorientDifferenceCellsOn"):
+                boolean.ReorientDifferenceCellsOn()
+        else:
+            boolean.SetOperationToIntersection()
+        boolean.SetInputData(0, poly_a)
+        boolean.SetInputData(1, poly_b)
+        boolean.Update()
+        out_poly = boolean.GetOutput()
+    elif operation == "imprint":
+        inter = vtk.vtkIntersectionPolyDataFilter()
+        inter.SetInputData(0, poly_a)
+        inter.SetInputData(1, poly_b)
+        if hasattr(inter, "SplitFirstOutputOff"):
+            inter.SplitFirstOutputOff()
+        if hasattr(inter, "SplitSecondOutputOff"):
+            inter.SplitSecondOutputOff()
+        inter.Update()
+        lines = inter.GetOutput(0)
+        if lines is None or lines.GetNumberOfPoints() <= 0:
+            raise RuntimeError("No intersection curve found for imprint.")
+        radius = float(options.get("curveRadius", 0.0) or 0.0)
+        if radius <= 0:
+            bounds = poly_a.GetBounds()
+            if bounds:
+                dx = float(bounds[1] - bounds[0])
+                dy = float(bounds[3] - bounds[2])
+                dz = float(bounds[5] - bounds[4])
+                diag = max(1e-6, (dx * dx + dy * dy + dz * dz) ** 0.5)
+                radius = max(1e-4, diag * 0.0025)
+            else:
+                radius = 1e-3
+        tube = vtk.vtkTubeFilter()
+        tube.SetInputData(lines)
+        tube.SetRadius(radius)
+        tube.SetNumberOfSides(12)
+        tube.CappingOn()
+        tube.Update()
+        out_poly = tube.GetOutput()
+    else:
+        raise RuntimeError(f"Unsupported vtk boolean operation: {operation}")
+
+    out_poly = vtk_triangles_only(out_poly)
+    if out_poly is None or out_poly.GetNumberOfPoints() <= 0 or out_poly.GetNumberOfPolys() <= 0:
+        raise RuntimeError("VTK boolean produced empty output.")
+
+    pos_out, idx_out, normals_out, vcount, tcount = vtk_poly_to_buffers(out_poly, compute_normals)
+    parts: List[Tuple[str, bytes]] = [("positions", pos_out), ("indices", idx_out)]
+    if normals_out:
+        parts.append(("normals", normals_out))
+
+    send_binary(
+        {
+            "type": "vtk_result",
+            "jobId": job_id,
+            "ok": True,
+            "vertexCount": vcount,
+            "triCount": tcount,
+        },
+        parts,
+    )
+
 def main() -> None:
     alias_map = {
         "mesh.generate": "mesh_job",
         "mesh.transform": "vtk_job",
+        "mesh.boolean": "vtk_boolean",
         "mesh.preview": "vtk_preview",
         "volume.slice": "volume_slice",
         "volume.isosurface": "volume_isosurface",
@@ -1290,6 +1397,7 @@ def main() -> None:
         "health",
         "mesh.generate",
         "mesh.transform",
+        "mesh.boolean",
         "mesh.preview",
         "volume.slice",
         "volume.isosurface",
@@ -1327,6 +1435,8 @@ def main() -> None:
             run_handler(msg, handle_job)
         elif msg_type == "vtk_job":
             run_handler(msg, handle_vtk_job, payloads)
+        elif msg_type == "vtk_boolean":
+            run_handler(msg, handle_vtk_boolean, payloads)
         elif msg_type == "vtk_preview":
             run_handler(msg, handle_vtk_preview)
         elif msg_type == "volume_slice":

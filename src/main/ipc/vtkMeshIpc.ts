@@ -3,6 +3,7 @@ import {
   getPythonWorker,
   type VtkMeshRequest,
   type VtkMeshResponse,
+  type VtkBooleanRequest,
   type VtkMeshOp,
   type VtkPreviewRequest,
   type VtkVolumeSliceRequest,
@@ -20,6 +21,7 @@ import {
 } from "../python/pythonWorkerDiagnostics";
 
 export type VtkMeshRequestPayload = Omit<VtkMeshRequest, "jobId"> & { jobId: string };
+export type VtkBooleanRequestPayload = Omit<VtkBooleanRequest, "jobId"> & { jobId: string };
 export type VtkPreviewRequestPayload = Omit<VtkPreviewRequest, "jobId"> & { jobId: string };
 export type VtkVolumeSliceRequestPayload = Omit<VtkVolumeSliceRequest, "jobId"> & { jobId: string };
 export type VtkVolumeIsosurfaceRequestPayload = Omit<VtkVolumeIsosurfaceRequest, "jobId"> & { jobId: string };
@@ -53,6 +55,22 @@ export function registerVtkMeshIpc() {
 
   ipcMain.handle("mesh:vtk:smooth", async (_evt, req: VtkMeshRequestPayload): Promise<VtkMeshResponse> => {
     return runVtkJob("vtk_smooth", req);
+  });
+
+  ipcMain.handle("mesh:vtk:boolean", async (_evt, req: VtkBooleanRequestPayload): Promise<VtkMeshResponse> => {
+    try {
+      const worker = await getPythonWorker();
+      const res = await worker.vtkBoolean(req);
+      if (!res.ok) {
+        const diag = recordPythonWorkerFailure(res.error, "mesh:vtk:boolean", "WORKER_OPERATION_FAILED");
+        return { ok: false, error: diag.message };
+      }
+      recordPythonWorkerSuccess();
+      return res;
+    } catch (e: any) {
+      const diag = recordPythonWorkerFailure(e, "mesh:vtk:boolean", "WORKER_OPERATION_FAILED");
+      return { ok: false, error: diag.message };
+    }
   });
 
   ipcMain.handle("mesh:vtk:preview", async (_evt, req: VtkPreviewRequestPayload): Promise<VtkMeshResponse> => {

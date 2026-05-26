@@ -507,6 +507,47 @@ class PythonWorkerClient {
     };
   }
 
+  async vtkBoolean(req) {
+    const positionsABuf = toBuffer(req.positionsA);
+    const indicesABuf = toBuffer(req.indicesA);
+    const positionsBBuf = toBuffer(req.positionsB);
+    const indicesBBuf = toBuffer(req.indicesB);
+    if (!positionsABuf.length || !indicesABuf.length || !positionsBBuf.length || !indicesBBuf.length) {
+      return { ok: false, error: "VTK boolean request missing buffers" };
+    }
+    const msg = {
+      type: "mesh.boolean",
+      jobId: req.jobId,
+      operation: req.operation,
+      options: req.options || {},
+      binary: [
+        { name: "positionsA", bytes: positionsABuf.length },
+        { name: "indicesA", bytes: indicesABuf.length },
+        { name: "positionsB", bytes: positionsBBuf.length },
+        { name: "indicesB", bytes: indicesBBuf.length },
+      ],
+    };
+    const res = await this.request(msg, 180000, [positionsABuf, indicesABuf, positionsBBuf, indicesBBuf]);
+    if (!res || res.type !== "vtk_result") {
+      return { ok: false, error: workerErrorText(res, "Unknown VTK boolean response") };
+    }
+    const payloads = res.binaryPayloads || {};
+    const pos = payloads.positions;
+    const idx = payloads.indices;
+    if (!pos || !idx) {
+      return { ok: false, error: "VTK boolean returned empty buffers" };
+    }
+    const normals = payloads.normals;
+    return {
+      ok: true,
+      positions_b64: Buffer.from(pos).toString("base64"),
+      indices_b64: Buffer.from(idx).toString("base64"),
+      normals_b64: normals ? Buffer.from(normals).toString("base64") : undefined,
+      vertexCount: Number(res.vertexCount) || Math.floor(pos.byteLength / 12),
+      triCount: Number(res.triCount) || Math.floor(idx.byteLength / 12),
+    };
+  }
+
   async vtkPreviewImplicit(req) {
     const msg = {
       type: "mesh.preview",
@@ -916,6 +957,28 @@ async function handleRoute(req, res, pathname) {
       });
       if (!result.ok) {
         const diag = recordWorkerFailure(result.error, "web:vtk:smooth", "WORKER_OPERATION_FAILED");
+        json(res, 200, { ok: false, error: diag.message });
+        return;
+      }
+      recordWorkerSuccess();
+      json(res, 200, result);
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/worker/vtk/boolean") {
+      const body = await readJsonBody(req);
+      const worker = await getPythonWorker();
+      const result = await worker.vtkBoolean({
+        jobId: String(body?.jobId || nextJobId("vtk-boolean")),
+        operation: String(body?.operation || "union"),
+        positionsA: toBuffer(body?.positionsA_b64),
+        indicesA: toBuffer(body?.indicesA_b64),
+        positionsB: toBuffer(body?.positionsB_b64),
+        indicesB: toBuffer(body?.indicesB_b64),
+        options: body?.options || {},
+      });
+      if (!result.ok) {
+        const diag = recordWorkerFailure(result.error, "web:vtk:boolean", "WORKER_OPERATION_FAILED");
         json(res, 200, { ok: false, error: diag.message });
         return;
       }

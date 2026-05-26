@@ -65,6 +65,19 @@ declare global {
       computeNormals?: boolean;
     };
   };
+  type VtkBooleanOperation = "union" | "difference" | "intersection" | "imprint";
+  type VtkBooleanRequest = {
+    jobId: string;
+    positionsA: ArrayBuffer | ArrayBufferView;
+    indicesA: ArrayBuffer | ArrayBufferView;
+    positionsB: ArrayBuffer | ArrayBufferView;
+    indicesB: ArrayBuffer | ArrayBufferView;
+    operation: VtkBooleanOperation;
+    options?: {
+      computeNormals?: boolean;
+      curveRadius?: number;
+    };
+  };
 
   type VtkMeshResponse =
     | {
@@ -261,6 +274,7 @@ declare global {
       cleanNormals: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       decimate: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
       smooth: (req: VtkMeshRequest) => Promise<VtkMeshResponse>;
+      boolean: (req: VtkBooleanRequest) => Promise<VtkMeshResponse>;
       previewImplicit: (req: VtkPreviewRequest) => Promise<VtkMeshResponse>;
     };
     vtkVolume?: {
