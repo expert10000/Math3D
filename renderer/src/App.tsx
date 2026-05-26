@@ -204,6 +204,7 @@ import {
   subdivideSurfaceMesh,
   validateMesh,
 } from "./mesh/meshOps";
+import { bevelEdge, deleteFace, extrudeFace, insetFace, moveVertex, splitEdge, weldVertices } from "./mesh/meshEditOps";
 import type { MeshQualityReport, MeshQualityReportPhase } from "./mesh/meshQualityReport";
 import type {
   DatasetKind,
@@ -2514,6 +2515,106 @@ const computeTriangleMeshEdgeTopology = (mesh: {
   const manifold = nonManifoldEdgeCount === 0;
   const watertight = manifold && boundaryEdgeCount === 0;
   return { boundaryEdgeCount, nonManifoldEdgeCount, manifold, watertight };
+};
+
+type TriangleMeshGeometricMetrics = {
+  vertexCount: number;
+  faceCount: number;
+  surfaceArea: number;
+  volume: number;
+  bounds: BBox3 | null;
+  dimensions: { x: number; y: number; z: number } | null;
+};
+
+const computeTriangleMeshGeometricMetrics = (mesh: {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+}): TriangleMeshGeometricMetrics => {
+  const positions = mesh.positions;
+  const vertexCount = Math.floor((positions?.length ?? 0) / 3);
+  if (vertexCount <= 0) {
+    return {
+      vertexCount: 0,
+      faceCount: 0,
+      surfaceArea: 0,
+      volume: 0,
+      bounds: null,
+      dimensions: null,
+    };
+  }
+  const indices = mesh.indices ?? null;
+  const triCount = indices && indices.length >= 3 ? Math.floor(indices.length / 3) : Math.floor(vertexCount / 3);
+  let surfaceArea = 0;
+  let signedVolume = 0;
+  let faceCount = 0;
+  for (let t = 0; t < triCount; t += 1) {
+    const base = t * 3;
+    const ia = indices ? Number(indices[base]) : base;
+    const ib = indices ? Number(indices[base + 1]) : base + 1;
+    const ic = indices ? Number(indices[base + 2]) : base + 2;
+    if (!Number.isInteger(ia) || !Number.isInteger(ib) || !Number.isInteger(ic)) continue;
+    if (ia < 0 || ib < 0 || ic < 0 || ia >= vertexCount || ib >= vertexCount || ic >= vertexCount) continue;
+    if (ia === ib || ib === ic || ia === ic) continue;
+    const a3 = ia * 3;
+    const b3 = ib * 3;
+    const c3 = ic * 3;
+    const ax = Number(positions[a3] ?? 0);
+    const ay = Number(positions[a3 + 1] ?? 0);
+    const az = Number(positions[a3 + 2] ?? 0);
+    const bx = Number(positions[b3] ?? 0);
+    const by = Number(positions[b3 + 1] ?? 0);
+    const bz = Number(positions[b3 + 2] ?? 0);
+    const cx = Number(positions[c3] ?? 0);
+    const cy = Number(positions[c3 + 1] ?? 0);
+    const cz = Number(positions[c3 + 2] ?? 0);
+    if (
+      !Number.isFinite(ax) ||
+      !Number.isFinite(ay) ||
+      !Number.isFinite(az) ||
+      !Number.isFinite(bx) ||
+      !Number.isFinite(by) ||
+      !Number.isFinite(bz) ||
+      !Number.isFinite(cx) ||
+      !Number.isFinite(cy) ||
+      !Number.isFinite(cz)
+    ) {
+      continue;
+    }
+    const abx = bx - ax;
+    const aby = by - ay;
+    const abz = bz - az;
+    const acx = cx - ax;
+    const acy = cy - ay;
+    const acz = cz - az;
+    const crossX = aby * acz - abz * acy;
+    const crossY = abz * acx - abx * acz;
+    const crossZ = abx * acy - aby * acx;
+    const area = 0.5 * Math.hypot(crossX, crossY, crossZ);
+    if (Number.isFinite(area)) {
+      surfaceArea += area;
+    }
+    const tetra6 = ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+    if (Number.isFinite(tetra6)) {
+      signedVolume += tetra6 / 6;
+    }
+    faceCount += 1;
+  }
+  const bounds = boundsFromPositions(positions);
+  const dimensions = bounds
+    ? {
+        x: bounds.max[0] - bounds.min[0],
+        y: bounds.max[1] - bounds.min[1],
+        z: bounds.max[2] - bounds.min[2],
+      }
+    : null;
+  return {
+    vertexCount,
+    faceCount,
+    surfaceArea,
+    volume: Math.abs(signedVolume),
+    bounds,
+    dimensions,
+  };
 };
 
 const buildFundamentalDiagramPreview = (
@@ -5291,6 +5392,19 @@ function autoLabelParamDomain(p: ParamDomain) {
 
 const fmt = (x: number) => (Number.isFinite(x) ? x.toFixed(4) : String(x));
 const fmt3 = (v: { x: number; y: number; z: number }) => `(${fmt(v.x)}, ${fmt(v.y)}, ${fmt(v.z)})`;
+const fmtCompareValue = (value: number | null, integer = false) => {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return integer ? Math.round(value).toLocaleString() : fmt(value);
+};
+const fmtCompareDiff = (a: number | null, b: number | null, integer = false) => {
+  if (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b)) return "n/a";
+  const diff = b - a;
+  if (integer) {
+    const rounded = Math.round(diff);
+    return `${rounded >= 0 ? "+" : ""}${rounded.toLocaleString()}`;
+  }
+  return `${diff >= 0 ? "+" : ""}${fmt(diff)}`;
+};
 type Vec3 = { x: number; y: number; z: number };
 const DEFAULT_ROTATIONAL_PROFILE_POINTS_TEXT = [
   "-2.0, 0.24, -1.8",
@@ -6409,6 +6523,11 @@ const App: React.FC = () => {
     useState<GeometryProbeSelectionMode>("object");
   const [geometryMeasuredEdges, setGeometryMeasuredEdges] = useState<GeometryMeasuredEdgeEntry[]>([]);
   const [geometryMarkedEdges, setGeometryMarkedEdges] = useState<GeometryMarkedEdgeEntry[]>([]);
+  const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
+  const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
+  const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
+  const [geometryVertexMoveAmount, setGeometryVertexMoveAmount] = useState(0.06);
+  const [geometryVertexWeldDistance, setGeometryVertexWeldDistance] = useState(0.05);
   const handleGeometryPick = useCallback(
     (info: {
       point: { x: number; y: number; z: number };
@@ -6483,6 +6602,8 @@ const App: React.FC = () => {
   const [geometryDatasetMeshObjects, setGeometryDatasetMeshObjects] = useState<GeometryDatasetMeshObject[]>([]);
   const [geometryLockedObjectIds, setGeometryLockedObjectIds] = useState<Set<string>>(() => new Set());
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
+  const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
+  const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
   const [geometryObjectLiveRebuild, setGeometryObjectLiveRebuild] = useState(true);
   const [geometryObjectParamDrafts, setGeometryObjectParamDrafts] = useState<
     Record<string, Record<string, number | boolean | string>>
@@ -6631,6 +6752,16 @@ const App: React.FC = () => {
       })),
     [geometryDatasetMeshObjects, geometryObjects]
   );
+  const geometryCompareObjectOptions = useMemo(
+    () =>
+      [...geometryObjects, ...geometryDatasetMeshObjects].map((obj) => ({
+        id: obj.id,
+        name: obj.name,
+        visible: !!obj.visible,
+        type: "type" in obj ? "procedural" : "mesh",
+      })),
+    [geometryDatasetMeshObjects, geometryObjects]
+  );
   useEffect(() => {
     if (!geometryBooleanObjectOptions.length) {
       if (geometryBooleanObjectAId !== null) setGeometryBooleanObjectAId(null);
@@ -6658,6 +6789,31 @@ const App: React.FC = () => {
     geometryBooleanObjectBId,
     geometryBooleanObjectOptions,
     geometrySelectedSceneObject?.id,
+  ]);
+  useEffect(() => {
+    if (!geometryCompareObjectOptions.length) {
+      if (geometryCompareObjectAId !== null) setGeometryCompareObjectAId(null);
+      if (geometryCompareObjectBId !== null) setGeometryCompareObjectBId(null);
+      return;
+    }
+    const ids = geometryCompareObjectOptions.map((entry) => entry.id);
+    const first = ids[0] ?? null;
+    const second = ids.find((id) => id !== first) ?? first;
+    if (!geometryCompareObjectAId || !ids.includes(geometryCompareObjectAId)) {
+      setGeometryCompareObjectAId(geometrySelectedObjectId && ids.includes(geometrySelectedObjectId) ? geometrySelectedObjectId : first);
+    }
+    if (!geometryCompareObjectBId || !ids.includes(geometryCompareObjectBId) || geometryCompareObjectBId === geometryCompareObjectAId) {
+      const preferredSecond =
+        geometrySelectedObjectId && geometrySelectedObjectId !== (geometryCompareObjectAId ?? first) && ids.includes(geometrySelectedObjectId)
+          ? geometrySelectedObjectId
+          : ids.find((id) => id !== (geometryCompareObjectAId ?? first)) ?? second;
+      setGeometryCompareObjectBId(preferredSecond);
+    }
+  }, [
+    geometryCompareObjectAId,
+    geometryCompareObjectBId,
+    geometryCompareObjectOptions,
+    geometrySelectedObjectId,
   ]);
   const allocateUniqueGeometryObjectId = useCallback(() => {
     let id = makeId();
@@ -6687,6 +6843,10 @@ const App: React.FC = () => {
                 meshLabel: obj.mesh.label,
                 meshVertCount: Math.floor(obj.mesh.positions.length / 3),
                 meshTriCount: obj.mesh.indices?.length ? Math.floor(obj.mesh.indices.length / 3) : Math.floor(obj.mesh.positions.length / 9),
+                meshPosSample: Array.from(obj.mesh.positions.slice(0, 24)),
+                meshPosTailSample: Array.from(
+                  obj.mesh.positions.slice(Math.max(0, obj.mesh.positions.length - 24), obj.mesh.positions.length)
+                ),
               })
             : JSON.stringify({
                 id: obj.id,
@@ -8183,6 +8343,64 @@ const App: React.FC = () => {
       sourceLabel: formatSurfaceMeshSource(mesh.source),
     };
   }, [geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  const geometryCompareEntryA = useMemo(() => {
+    if (!geometryCompareObjectAId) return null;
+    const object =
+      geometryObjects.find((entry) => entry.id === geometryCompareObjectAId) ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === geometryCompareObjectAId) ??
+      null;
+    if (!object) return null;
+    const resolved = resolveGeometrySceneMeshById(geometryCompareObjectAId);
+    const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+    return { object, metrics };
+  }, [geometryCompareObjectAId, geometryDatasetMeshObjects, geometryObjects, resolveGeometrySceneMeshById]);
+  const geometryCompareEntryB = useMemo(() => {
+    if (!geometryCompareObjectBId) return null;
+    const object =
+      geometryObjects.find((entry) => entry.id === geometryCompareObjectBId) ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === geometryCompareObjectBId) ??
+      null;
+    if (!object) return null;
+    const resolved = resolveGeometrySceneMeshById(geometryCompareObjectBId);
+    const metrics = resolved ? computeTriangleMeshGeometricMetrics(resolved.mesh) : null;
+    return { object, metrics };
+  }, [geometryCompareObjectBId, geometryDatasetMeshObjects, geometryObjects, resolveGeometrySceneMeshById]);
+  const geometryCompareRows = useMemo(() => {
+    if (!geometryCompareEntryA || !geometryCompareEntryB) return [];
+    const a = geometryCompareEntryA.metrics;
+    const b = geometryCompareEntryB.metrics;
+    if (!a || !b) return [];
+    const row = (metric: string, aValue: number | null, bValue: number | null, integer = false) => ({
+      metric,
+      a: aValue,
+      b: bValue,
+      integer,
+    });
+    return [
+      row("Width (bounds X)", a.dimensions?.x ?? null, b.dimensions?.x ?? null),
+      row("Height (bounds Y)", a.dimensions?.y ?? null, b.dimensions?.y ?? null),
+      row("Depth (bounds Z)", a.dimensions?.z ?? null, b.dimensions?.z ?? null),
+      row("Volume", a.volume, b.volume),
+      row("Surface area", a.surfaceArea, b.surfaceArea),
+      row("Vertex count", a.vertexCount, b.vertexCount, true),
+      row("Face count", a.faceCount, b.faceCount, true),
+      row("Bounds min X", a.bounds?.min[0] ?? null, b.bounds?.min[0] ?? null),
+      row("Bounds min Y", a.bounds?.min[1] ?? null, b.bounds?.min[1] ?? null),
+      row("Bounds min Z", a.bounds?.min[2] ?? null, b.bounds?.min[2] ?? null),
+      row("Bounds max X", a.bounds?.max[0] ?? null, b.bounds?.max[0] ?? null),
+      row("Bounds max Y", a.bounds?.max[1] ?? null, b.bounds?.max[1] ?? null),
+      row("Bounds max Z", a.bounds?.max[2] ?? null, b.bounds?.max[2] ?? null),
+      row("Position X", geometryCompareEntryA.object.transform.position.x, geometryCompareEntryB.object.transform.position.x),
+      row("Position Y", geometryCompareEntryA.object.transform.position.y, geometryCompareEntryB.object.transform.position.y),
+      row("Position Z", geometryCompareEntryA.object.transform.position.z, geometryCompareEntryB.object.transform.position.z),
+      row("Rotation X (deg)", geometryCompareEntryA.object.transform.rotation.x, geometryCompareEntryB.object.transform.rotation.x),
+      row("Rotation Y (deg)", geometryCompareEntryA.object.transform.rotation.y, geometryCompareEntryB.object.transform.rotation.y),
+      row("Rotation Z (deg)", geometryCompareEntryA.object.transform.rotation.z, geometryCompareEntryB.object.transform.rotation.z),
+      row("Scale X", geometryCompareEntryA.object.transform.scale.x, geometryCompareEntryB.object.transform.scale.x),
+      row("Scale Y", geometryCompareEntryA.object.transform.scale.y, geometryCompareEntryB.object.transform.scale.y),
+      row("Scale Z", geometryCompareEntryA.object.transform.scale.z, geometryCompareEntryB.object.transform.scale.z),
+    ];
+  }, [geometryCompareEntryA, geometryCompareEntryB]);
   const geometrySelectedSceneMesh = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     return proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id) ?? null;
@@ -8510,6 +8728,202 @@ const App: React.FC = () => {
   const handleDeleteMarkedEdge = useCallback((id: string) => {
     setGeometryMarkedEdges((prev) => prev.filter((entry) => entry.id !== id));
   }, []);
+  const findNearestVertexIndexWithinDistance = useCallback(
+    (mesh: SurfaceMeshData, sourceIndex: number, maxDistance: number): number | null => {
+      const vertexCount = Math.floor(mesh.positions.length / 3);
+      if (sourceIndex < 0 || sourceIndex >= vertexCount || !Number.isFinite(maxDistance) || maxDistance <= 0) {
+        return null;
+      }
+      const base = sourceIndex * 3;
+      const sx = mesh.positions[base] ?? 0;
+      const sy = mesh.positions[base + 1] ?? 0;
+      const sz = mesh.positions[base + 2] ?? 0;
+      const limitSq = maxDistance * maxDistance;
+      let bestIndex: number | null = null;
+      let bestDistSq = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < vertexCount; i += 1) {
+        if (i === sourceIndex) continue;
+        const p = i * 3;
+        const dx = (mesh.positions[p] ?? 0) - sx;
+        const dy = (mesh.positions[p + 1] ?? 0) - sy;
+        const dz = (mesh.positions[p + 2] ?? 0) - sz;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > limitSq || d2 >= bestDistSq) continue;
+        bestDistSq = d2;
+        bestIndex = i;
+      }
+      return bestIndex;
+    },
+    []
+  );
+  const applyMeshEditToObject = useCallback(
+    (objectId: string, actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): boolean => {
+      if (!objectId) {
+        setGeometryCreateActionStatus("Select an object first.");
+        return false;
+      }
+      if (geometryLockedObjectIds.has(objectId)) {
+        setGeometryCreateActionStatus("Selected object is locked.");
+        return false;
+      }
+      const target = geometryDatasetMeshObjects.find((entry) => entry.id === objectId) ?? null;
+      if (!target) {
+        setGeometryCreateActionStatus("Convert selected procedural object to a Mesh object first.");
+        return false;
+      }
+      try {
+        const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
+        setGeometryDatasetMeshObjects((prev) =>
+          prev.map((entry) => (entry.id === objectId ? { ...entry, mesh: edited } : entry))
+        );
+        if (geometrySelectedObjectId !== objectId) setGeometrySelectedObjectId(objectId);
+        setGeometryBakeError(null);
+        setGeometryCreateActionStatus(`${actionLabel} on ${target.name}.`);
+        return true;
+      } catch (err: any) {
+        const message = err?.message ?? `${actionLabel} failed.`;
+        setGeometryBakeError(message);
+        setGeometryCreateActionStatus(message);
+        return false;
+      }
+    },
+    [
+      geometryDatasetMeshObjects,
+      geometryLockedObjectIds,
+      geometrySelectedObjectId,
+      setGeometryCreateActionStatus,
+    ]
+  );
+  const handleExtrudeSelectedFace = useCallback(() => {
+    if (geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null) {
+      setGeometryCreateActionStatus("Set selection mode to Face and click a face first.");
+      return;
+    }
+    const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
+    applyMeshEditToObject(objectId, "Extruded face", (mesh) =>
+      extrudeFace(mesh, geometryProbeSelectionDetails.faceIndex as number, geometryFaceExtrudeDistance)
+    );
+  }, [
+    applyMeshEditToObject,
+    geometryFaceExtrudeDistance,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleInsetSelectedFace = useCallback(() => {
+    if (geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null) {
+      setGeometryCreateActionStatus("Set selection mode to Face and click a face first.");
+      return;
+    }
+    const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
+    applyMeshEditToObject(objectId, "Inset face applied", (mesh) =>
+      insetFace(mesh, geometryProbeSelectionDetails.faceIndex as number, geometryFaceInsetRatio)
+    );
+  }, [
+    applyMeshEditToObject,
+    geometryFaceInsetRatio,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleDeleteSelectedFace = useCallback(() => {
+    if (geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null) {
+      setGeometryCreateActionStatus("Set selection mode to Face and click a face first.");
+      return;
+    }
+    const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
+    applyMeshEditToObject(objectId, "Deleted face", (mesh) =>
+      deleteFace(mesh, geometryProbeSelectionDetails.faceIndex as number)
+    );
+  }, [
+    applyMeshEditToObject,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleSplitSelectedProbeEdge = useCallback(() => {
+    if (geometryProbeSelectionMode !== "edge" || !geometryMeasuredEdgeCandidate?.edgeVertexPair) {
+      setGeometryCreateActionStatus("Set selection mode to Edge and click an edge first.");
+      return;
+    }
+    const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
+    applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Split edge applied", (mesh) => splitEdge(mesh, a, b));
+  }, [
+    applyMeshEditToObject,
+    geometryMeasuredEdgeCandidate,
+    geometryProbeSelectionMode,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleBevelSelectedProbeEdge = useCallback(() => {
+    if (geometryProbeSelectionMode !== "edge" || !geometryMeasuredEdgeCandidate?.edgeVertexPair) {
+      setGeometryCreateActionStatus("Set selection mode to Edge and click an edge first.");
+      return;
+    }
+    const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
+    applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Bevel edge applied", (mesh) =>
+      bevelEdge(mesh, a, b, geometryEdgeBevelAmount)
+    );
+  }, [
+    applyMeshEditToObject,
+    geometryEdgeBevelAmount,
+    geometryMeasuredEdgeCandidate,
+    geometryProbeSelectionMode,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleMoveSelectedVertex = useCallback(() => {
+    if (geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null) {
+      setGeometryCreateActionStatus("Set selection mode to Vertex and click a vertex first.");
+      return;
+    }
+    const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
+    applyMeshEditToObject(objectId, "Moved vertex", (mesh) =>
+      moveVertex(
+        mesh,
+        geometryProbeSelectionDetails.vertexIndex as number,
+        geometryVertexMoveAmount,
+        geometryProbeSelectionDetails.normal
+      )
+    );
+  }, [
+    applyMeshEditToObject,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    geometryVertexMoveAmount,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleWeldVertices = useCallback(() => {
+    if (geometryProbeSelectionMode === "edge" && geometryMeasuredEdgeCandidate?.edgeVertexPair) {
+      const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
+      applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Welded vertices", (mesh) => weldVertices(mesh, a, b));
+      return;
+    }
+    if (geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null) {
+      setGeometryCreateActionStatus("Use Vertex mode (or Edge mode for direct pair weld) and select a vertex.");
+      return;
+    }
+    const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
+    const sourceIndex = geometryProbeSelectionDetails.vertexIndex as number;
+    applyMeshEditToObject(objectId, "Welded vertices", (mesh) => {
+      const nearest = findNearestVertexIndexWithinDistance(mesh, sourceIndex, geometryVertexWeldDistance);
+      if (nearest == null) {
+        throw new Error("No nearby vertex found within weld distance.");
+      }
+      return weldVertices(mesh, sourceIndex, nearest);
+    });
+  }, [
+    applyMeshEditToObject,
+    findNearestVertexIndexWithinDistance,
+    geometryMeasuredEdgeCandidate,
+    geometryProbeSelectionDetails,
+    geometryProbeSelectionMode,
+    geometrySelectedObjectId,
+    geometryVertexWeldDistance,
+    setGeometryCreateActionStatus,
+  ]);
   const createGeometryHelperObject = useCallback(
     (args: {
       type: GeometryObjectType;
@@ -9699,25 +10113,31 @@ const App: React.FC = () => {
     const notes: string[] = [];
     const related: string[] = [];
     let eulerLine: string | null = null;
+    let definition = `${typeLabel} procedural primitive in the Geometry scene.`;
     if (selected.type === "box") {
       const w = Number(selected.params.width ?? 0);
       const h = Number(selected.params.height ?? 0);
       const d = Number(selected.params.depth ?? 0);
-      formulas.push("Volume: V = w*h*d");
+      definition = "Box / rectangular prism. A parameterized solid controlled by width, height, and depth.";
+      formulas.push("Volume: V = whd");
       formulas.push("Surface area: A = 2(wh + wd + hd)");
       if (Number.isFinite(w) && Number.isFinite(h) && Number.isFinite(d)) {
         formulas.push(`Current V = ${formatTheoryNumber(w * h * d)}`);
         formulas.push(`Current A = ${formatTheoryNumber(2 * (w * h + w * d + h * d))}`);
       }
+      notes.push("Parameters: width w, height h, depth d.");
       combinatorics.push("Vertices: 8");
       combinatorics.push("Edges: 12");
       combinatorics.push("Faces: 6");
-      eulerLine = "chi = V - E + F = 8 - 12 + 6 = 2";
+      eulerLine = "χ = V - E + F = 8 - 12 + 6 = 2";
       related.push("cube", "cuboid", "rectangular prism");
     } else if (selected.type === "sphere") {
       const r = Number(selected.params.radius ?? 0);
-      formulas.push(`Volume = 4/3*pi*r^3${Number.isFinite(r) ? ` = ${formatTheoryNumber((4 / 3) * Math.PI * r * r * r)}` : ""}`);
-      formulas.push(`Surface area = 4*pi*r^2${Number.isFinite(r) ? ` = ${formatTheoryNumber(4 * Math.PI * r * r)}` : ""}`);
+      definition = "Sphere. A constant-radius surface where every point is equally distant from the center.";
+      formulas.push(`Volume: V = (4/3)πr³${Number.isFinite(r) ? ` = ${formatTheoryNumber((4 / 3) * Math.PI * r * r * r)}` : ""}`);
+      formulas.push(`Surface area: A = 4πr²${Number.isFinite(r) ? ` = ${formatTheoryNumber(4 * Math.PI * r * r)}` : ""}`);
+      eulerLine = "Smooth limit topology: χ = 2 (genus 0).";
+      notes.push("Parameter: radius r.");
       related.push("ball", "ellipsoid", "icosphere");
     } else if (selected.type === "cylinder") {
       const rTop = Number(selected.params.radiusTop ?? 0);
@@ -9726,15 +10146,29 @@ const App: React.FC = () => {
       const radialSegments = Math.max(3, Math.round(Number(selected.params.radialSegments ?? 24)));
       const isRightCylinder = Number.isFinite(rTop) && Number.isFinite(rBottom) && Math.abs(rTop - rBottom) < 1e-9;
       const r = isRightCylinder ? rTop : (rTop + rBottom) * 0.5;
-      formulas.push("Volume: V = pi*r^2*h");
-      formulas.push("Surface area: A = 2*pi*r^2 + 2*pi*r*h");
-      if (Number.isFinite(r) && Number.isFinite(h)) {
-        formulas.push(`Current V (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(Math.PI * r * r * h)}`);
-        formulas.push(
-          `Current A (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(2 * Math.PI * r * r + 2 * Math.PI * r * h)}`
-        );
+      definition = "Cylinder. A radius-and-height primitive with circular cross-sections approximated by radial segments.";
+      if (isRightCylinder) {
+        formulas.push("Volume: V = πr²h");
+        formulas.push("Surface area: A = 2πr² + 2πrh");
+      } else {
+        formulas.push("Frustum volume: V = (1/3)πh(r1² + r1r2 + r2²)");
+        formulas.push("Frustum area: A = π(r1 + r2)s + πr1² + πr2²,  s = sqrt((r1-r2)² + h²)");
       }
-      notes.push(`Mesh approximation: radial segments = ${radialSegments} (controls circular approximation).`);
+      if (Number.isFinite(h) && Number.isFinite(rTop) && Number.isFinite(rBottom)) {
+        if (isRightCylinder) {
+          formulas.push(`Current V (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(Math.PI * r * r * h)}`);
+          formulas.push(
+            `Current A (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(2 * Math.PI * r * r + 2 * Math.PI * r * h)}`
+          );
+        } else {
+          const s = Math.sqrt((rTop - rBottom) * (rTop - rBottom) + h * h);
+          const v = (Math.PI * h * (rTop * rTop + rTop * rBottom + rBottom * rBottom)) / 3;
+          const a = Math.PI * (rTop + rBottom) * s + Math.PI * rTop * rTop + Math.PI * rBottom * rBottom;
+          formulas.push(`Current V = ${formatTheoryNumber(v)}`);
+          formulas.push(`Current A = ${formatTheoryNumber(a)}`);
+        }
+      }
+      notes.push(`Mesh approximation: segments = ${radialSegments} (controls circular approximation).`);
       if (!isRightCylinder) {
         notes.push(
           `Current primitive has radiusTop=${formatTheoryNumber(rTop, 3)} and radiusBottom=${formatTheoryNumber(rBottom, 3)}.`
@@ -9745,9 +10179,10 @@ const App: React.FC = () => {
       const r = Number(selected.params.radius ?? 0);
       const h = Number(selected.params.height ?? 0);
       const radialSegments = Math.max(3, Math.round(Number(selected.params.radialSegments ?? 24)));
-      formulas.push("Volume: V = (1/3)*pi*r^2*h");
-      formulas.push("Slant height: l = sqrt(r^2 + h^2)");
-      formulas.push("Surface area: A = pi*r^2 + pi*r*l");
+      definition = "Cone. A base-radius and height primitive with an apex singularity.";
+      formulas.push("Volume: V = (1/3)πr²h");
+      formulas.push("Slant height: l = sqrt(r² + h²)");
+      formulas.push("Surface area: A = πr² + πrl");
       if (Number.isFinite(r) && Number.isFinite(h)) {
         const slant = Math.sqrt(r * r + h * h);
         formulas.push(`Current l = ${formatTheoryNumber(slant)}`);
@@ -9759,33 +10194,71 @@ const App: React.FC = () => {
     } else if (selected.type === "torus") {
       const R = Number(selected.params.radius ?? 0);
       const r = Number(selected.params.tube ?? 0);
-      formulas.push("Volume = 2*pi^2*R*r^2");
-      formulas.push("Surface area = 4*pi^2*R*r");
+      definition = "Torus. A ring surface controlled by major radius R and tube radius r.";
+      formulas.push("Volume: V = 2π²Rr²");
+      formulas.push("Surface area: A = 4π²Rr");
       if (Number.isFinite(R) && Number.isFinite(r)) {
-        formulas.push(`Volume = ${formatTheoryNumber(2 * Math.PI * Math.PI * R * r * r)}`);
+        formulas.push(`Current V = ${formatTheoryNumber(2 * Math.PI * Math.PI * R * r * r)}`);
+        formulas.push(`Current A = ${formatTheoryNumber(4 * Math.PI * Math.PI * R * r)}`);
+      }
+      combinatorics.push("Euler characteristic χ = 0 (torus topology).");
+      notes.push("Parameters: major radius R, tube radius r.");
+      if (Number.isFinite(R) && Number.isFinite(r)) {
+        notes.push(
+          R > r
+            ? "Shape regime: ring torus (R > r)."
+            : Math.abs(R - r) < 1e-9
+              ? "Shape regime: horn torus (R = r)."
+              : "Shape regime: spindle/self-intersecting torus (R < r)."
+        );
       }
       related.push("ring torus", "spindle torus");
     } else if (selected.type === "polygon") {
-      formulas.push("Area (full disk) = pi*r^2 · (thetaLength / 2pi)");
-      formulas.push("Perimeter (regular n-gon, full turn) ≈ 2*n*r*sin(pi/n)");
+      const r = Number(selected.params.radius ?? 0);
+      const segments = Math.max(3, Math.round(Number(selected.params.segments ?? 32)));
+      const thetaLength = Number(selected.params.thetaLength ?? Math.PI * 2);
+      const theta = Number.isFinite(thetaLength) ? Math.max(0, thetaLength) : Math.PI * 2;
+      definition = "Circular disk/sector primitive triangulated with radial segments.";
+      formulas.push("Sector area: A = (1/2)r²θ,  θ in radians");
+      formulas.push("Arc length: L = rθ");
+      formulas.push("Full disk (θ = 2π): A = πr²");
+      if (Number.isFinite(r)) {
+        formulas.push(`Current A = ${formatTheoryNumber(0.5 * r * r * theta)}`);
+        formulas.push(`Current L = ${formatTheoryNumber(r * theta)}`);
+      }
+      notes.push(`Mesh approximation: segments = ${segments}.`);
+      if (theta < Math.PI * 2 - 1e-9) {
+        notes.push("Current shape is an open sector (not full disk).");
+      }
       related.push("circle sector", "regular polygon");
     } else if (selected.type === "plane") {
       const w = Number(selected.params.width ?? 0);
       const h = Number(selected.params.height ?? 0);
+      definition = "Finite rectangular patch representing a local piece of a mathematical plane.";
       formulas.push("Area: A = w*h");
       if (Number.isFinite(w) && Number.isFinite(h)) {
         formulas.push(`Current A = ${formatTheoryNumber(w * h)}`);
       }
+      combinatorics.push("Rectangular patch corners: 4");
+      combinatorics.push("Patch edges: 4");
+      eulerLine = "Patch topology (disk-like): χ = 1";
       notes.push("A plane primitive is finite in this editor (rectangular patch), even though mathematical planes are unbounded.");
       related.push("coordinate plane", "rectangle patch");
     } else if (selected.type === "polyhedron") {
-      formulas.push("Euler characteristic (closed orientable): chi = V - E + F");
-      formulas.push("Genus relation: chi = 2 - 2g");
+      definition = "Polyhedron primitive family (platonic / prism / pyramid / bipyramid / antiprism / geodesic).";
+      formulas.push("Euler characteristic (closed orientable): χ = V - E + F");
+      formulas.push("Genus relation: χ = 2 - 2g");
+      const family = String(selected.params.family ?? "platonic");
+      const counts = getPolyhedronCounts(family, selected.params);
+      combinatorics.push(`Vertices: ${counts.vertices}`);
+      combinatorics.push(`Edges: ${counts.edges}`);
+      combinatorics.push(`Faces: ${counts.faces}`);
+      eulerLine = `χ = ${counts.vertices} - ${counts.edges} + ${counts.faces} = ${counts.vertices - counts.edges + counts.faces}`;
       related.push("platonic solids", "prisms", "antiprisms");
     }
     return {
       title: typeLabel,
-      definition: `${typeLabel} procedural primitive in the Geometry scene.`,
+      definition,
       params,
       formulas,
       combinatorics,
@@ -42512,6 +42985,10 @@ case "mobius":
                             Send to Compare
                           </button>
                         </div>
+                        <div style={{ marginTop: 6, fontSize: 10.5, color: "#475467" }}>
+                          Convert freezes procedural parameters and creates a mesh object for vertex/edge/face workflows.
+                          {" "}Box width/height/depth become frozen after conversion; mesh vertices become editable/analyzable.
+                        </div>
                         {geometryProceduralPick?.meshKey === geometrySelectedObject.id && (
                           <div
                             style={{
@@ -43075,13 +43552,130 @@ case "mobius":
                               <div style={{ fontSize: 11, color: "#334155" }}>
                                 Geometry focuses on simple construction editing. Deep mesh editing should route to Mesh module.
                               </div>
+                              <div style={{ fontSize: 11, color: "#475467" }}>
+                                Procedural object = editable by parameters. Mesh object = editable by mesh operations.
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" onClick={() => setGeometryProbeSelectionMode("face")} style={pill(geometryProbeSelectionMode === "face")}>
+                                  Face mode
+                                </button>
+                                <button type="button" onClick={() => setGeometryProbeSelectionMode("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
+                                  Edge mode
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGeometryProbeSelectionMode("vertex")}
+                                  style={pill(geometryProbeSelectionMode === "vertex")}
+                                >
+                                  Vertex mode
+                                </button>
+                              </div>
                               <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
                                 <div><strong>Face tools:</strong> extrude face, inset face, delete face, create face normal marker</div>
                                 <div><strong>Edge tools:</strong> bevel edge, split edge, mark edge, measure edge</div>
                                 <div><strong>Vertex tools:</strong> move vertex, weld vertices, create vertex marker</div>
                               </div>
+                              <div
+                                style={{
+                                  border: "1px solid #dbe2ea",
+                                  borderRadius: 6,
+                                  padding: "6px 8px",
+                                  background: "#fff",
+                                  display: "grid",
+                                  gap: 6,
+                                  fontSize: 10.5,
+                                }}
+                              >
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Extrude
+                                    <input
+                                      type="number"
+                                      step={0.01}
+                                      value={geometryFaceExtrudeDistance}
+                                      onChange={(e) => setGeometryFaceExtrudeDistance(Number(e.target.value) || 0)}
+                                      style={{ width: 68 }}
+                                    />
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Inset
+                                    <input
+                                      type="number"
+                                      min={0.02}
+                                      max={0.92}
+                                      step={0.02}
+                                      value={geometryFaceInsetRatio}
+                                      onChange={(e) => setGeometryFaceInsetRatio(clampNumber(Number(e.target.value) || 0.2, 0.02, 0.92))}
+                                      style={{ width: 68 }}
+                                    />
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Bevel
+                                    <input
+                                      type="number"
+                                      step={0.01}
+                                      value={geometryEdgeBevelAmount}
+                                      onChange={(e) => setGeometryEdgeBevelAmount(Number(e.target.value) || 0)}
+                                      style={{ width: 68 }}
+                                    />
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Move
+                                    <input
+                                      type="number"
+                                      step={0.01}
+                                      value={geometryVertexMoveAmount}
+                                      onChange={(e) => setGeometryVertexMoveAmount(Number(e.target.value) || 0)}
+                                      style={{ width: 68 }}
+                                    />
+                                  </label>
+                                  <label style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    Weld dist
+                                    <input
+                                      type="number"
+                                      min={0.001}
+                                      step={0.005}
+                                      value={geometryVertexWeldDistance}
+                                      onChange={(e) => setGeometryVertexWeldDistance(Math.max(0.001, Number(e.target.value) || 0.001))}
+                                      style={{ width: 68 }}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
                               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                <button type="button" disabled title="Planned in PR14">Face tools (planned)</button>
+                                <button
+                                  type="button"
+                                  onClick={handleExtrudeSelectedFace}
+                                  disabled={geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null}
+                                >
+                                  Extrude face
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleInsetSelectedFace}
+                                  disabled={geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null}
+                                >
+                                  Inset face
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleDeleteSelectedFace}
+                                  disabled={geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null}
+                                >
+                                  Delete face
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateHelperFromFaceSelection("face-normal")}
+                                  disabled={geometryProbeSelectionMode !== "face" || !geometryProbeSelectionDetails?.faceVertices}
+                                  title={
+                                    geometryProbeSelectionMode !== "face"
+                                      ? "Set selection mode to Face, then click a face in the viewport."
+                                      : "Create face normal marker"
+                                  }
+                                >
+                                  Create face normal marker
+                                </button>
                                 <button
                                   type="button"
                                   onClick={handleMeasureSelectedProbeEdge}
@@ -43106,8 +43700,53 @@ case "mobius":
                                 >
                                   Mark edge
                                 </button>
-                                <button type="button" disabled title="Planned in PR14">Edge tools (other planned)</button>
-                                <button type="button" disabled title="Planned in PR14">Vertex tools (planned)</button>
+                                <button
+                                  type="button"
+                                  onClick={handleBevelSelectedProbeEdge}
+                                  disabled={!geometryMeasuredEdgeCandidate}
+                                  title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Bevel selected edge"}
+                                >
+                                  Bevel edge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleSplitSelectedProbeEdge}
+                                  disabled={!geometryMeasuredEdgeCandidate}
+                                  title={geometryProbeSelectionMode !== "edge" ? "Set selection mode to Edge." : "Split selected edge"}
+                                >
+                                  Split edge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCreateHelperFromVertexSelection("vertex-point")}
+                                  disabled={geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null}
+                                  title={
+                                    geometryProbeSelectionMode !== "vertex"
+                                      ? "Set selection mode to Vertex, then click a vertex in the viewport."
+                                      : "Create vertex marker"
+                                  }
+                                >
+                                  Create vertex marker
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleMoveSelectedVertex}
+                                  disabled={geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null}
+                                  title={geometryProbeSelectionMode !== "vertex" ? "Set selection mode to Vertex." : "Move selected vertex"}
+                                >
+                                  Move vertex
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleWeldVertices}
+                                  disabled={
+                                    (geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null) &&
+                                    (geometryProbeSelectionMode !== "edge" || !geometryMeasuredEdgeCandidate)
+                                  }
+                                  title="Weld selected vertex to nearest in threshold (or weld selected edge pair)."
+                                >
+                                  Weld vertices
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -43123,7 +43762,7 @@ case "mobius":
                                 </button>
                               </div>
                               <div style={{ fontSize: 10, color: "#475467" }}>
-                                Edge tools use the current Probe selection in Edge mode.
+                                Mesh-edit tools operate on mesh objects. Convert a procedural object first when needed.
                               </div>
                               {geometryMarkedEdges.length > 0 ? (
                                 <div
@@ -43275,6 +43914,143 @@ case "mobius":
                           ) : (
                             <div style={{ color: "#475467" }}>
                               Select an object with mesh data to see mesh quality metrics and open analysis workflows.
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Compare geometry objects (PR15)</div>
+                          <div style={{ color: "#475467", fontSize: 11 }}>
+                            Compare selected A/B object metrics for teaching and debugging.
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>
+                              Object A
+                              <select
+                                value={geometryCompareObjectAId ?? ""}
+                                onChange={(event) => setGeometryCompareObjectAId(event.target.value || null)}
+                                style={{ fontSize: 11 }}
+                              >
+                                <option value="">Select object A</option>
+                                {geometryCompareObjectOptions.map((entry) => (
+                                  <option key={`geometry-compare-a-${entry.id}`} value={entry.id}>
+                                    {entry.name} {entry.type === "mesh" ? "(mesh)" : "(procedural)"}{entry.visible ? "" : " [hidden]"}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label style={{ display: "grid", gap: 4, fontSize: 10.5 }}>
+                              Object B
+                              <select
+                                value={geometryCompareObjectBId ?? ""}
+                                onChange={(event) => setGeometryCompareObjectBId(event.target.value || null)}
+                                style={{ fontSize: 11 }}
+                              >
+                                <option value="">Select object B</option>
+                                {geometryCompareObjectOptions.map((entry) => (
+                                  <option key={`geometry-compare-b-${entry.id}`} value={entry.id}>
+                                    {entry.name} {entry.type === "mesh" ? "(mesh)" : "(procedural)"}{entry.visible ? "" : " [hidden]"}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!geometrySelectedObjectId) return;
+                                setGeometryCompareObjectAId(geometrySelectedObjectId);
+                              }}
+                              disabled={!geometrySelectedObjectId}
+                            >
+                              Use selected as A
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!geometrySelectedObjectId) return;
+                                setGeometryCompareObjectBId(geometrySelectedObjectId);
+                              }}
+                              disabled={!geometrySelectedObjectId}
+                            >
+                              Use selected as B
+                            </button>
+                          </div>
+                          {geometryCompareObjectAId && geometryCompareObjectAId === geometryCompareObjectBId ? (
+                            <div style={{ fontSize: 11, color: "#b42318" }}>
+                              Object A and object B must be different.
+                            </div>
+                          ) : !geometryCompareEntryA || !geometryCompareEntryB ? (
+                            <div style={{ fontSize: 11, color: "#475467" }}>
+                              Select two objects to start comparison.
+                            </div>
+                          ) : !geometryCompareEntryA.metrics || !geometryCompareEntryB.metrics ? (
+                            <div style={{ fontSize: 11, color: "#475467" }}>
+                              One of the selected objects has no visible mesh data. Show the objects (or convert procedural object to mesh if needed).
+                            </div>
+                          ) : (
+                            <div style={{ overflowX: "auto" }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5, minWidth: 560 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Metric</th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                      {geometryCompareEntryA.object.name}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>
+                                      {geometryCompareEntryB.object.name}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Difference (B - A)</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {geometryCompareRows.map((row) => (
+                                    <tr key={`geometry-compare-row-${row.metric}`}>
+                                      <td style={{ borderBottom: "1px solid #eef2f6", padding: "4px 6px" }}>{row.metric}</td>
+                                      <td
+                                        style={{
+                                          borderBottom: "1px solid #eef2f6",
+                                          padding: "4px 6px",
+                                          textAlign: "right",
+                                          fontFamily: "monospace",
+                                        }}
+                                      >
+                                        {fmtCompareValue(row.a, row.integer)}
+                                      </td>
+                                      <td
+                                        style={{
+                                          borderBottom: "1px solid #eef2f6",
+                                          padding: "4px 6px",
+                                          textAlign: "right",
+                                          fontFamily: "monospace",
+                                        }}
+                                      >
+                                        {fmtCompareValue(row.b, row.integer)}
+                                      </td>
+                                      <td
+                                        style={{
+                                          borderBottom: "1px solid #eef2f6",
+                                          padding: "4px 6px",
+                                          textAlign: "right",
+                                          fontFamily: "monospace",
+                                          color: "#334155",
+                                        }}
+                                      >
+                                        {fmtCompareDiff(row.a, row.b, row.integer)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                         </div>
