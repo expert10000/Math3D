@@ -3185,6 +3185,7 @@ const MAX_ADVANCED_SNAP_EDGE_POINTS = 24000;
 const MAX_ADVANCED_SNAP_FACE_POINTS = 24000;
 const MAX_ADVANCED_SNAP_TRIANGLES = 14000;
 const MAX_ADVANCED_SNAP_OBJECT_CENTERS = 6000;
+const MAX_ADVANCED_SNAP_OBJECT_ORIGINS = 6000;
 const MAX_ADVANCED_SNAP_BBOX_CORNERS = 24000;
 
 type SnapPoint3 = { x: number; y: number; z: number };
@@ -3197,8 +3198,10 @@ type GeometrySnapPreviewKind =
   | "face_center"
   | "surface"
   | "object_center"
+  | "object_origin"
   | "bbox_corner"
-  | "face_plane";
+  | "face_plane"
+  | "ground_plane";
 
 const vecDistSq3 = (a: SnapPoint3, b: SnapPoint3) => {
   const dx = a.x - b.x;
@@ -6794,9 +6797,13 @@ const App: React.FC = () => {
   const [geometryLockXEnabled, setGeometryLockXEnabled] = useState(false);
   const [geometryLockYEnabled, setGeometryLockYEnabled] = useState(false);
   const [geometryLockZEnabled, setGeometryLockZEnabled] = useState(false);
+  const [geometryLockMoveAlongSelectedEdgeEnabled, setGeometryLockMoveAlongSelectedEdgeEnabled] = useState(false);
+  const [geometryLockMoveAlongFaceNormalEnabled, setGeometryLockMoveAlongFaceNormalEnabled] = useState(false);
   const [geometryKeepOnXYPlaneEnabled, setGeometryKeepOnXYPlaneEnabled] = useState(false);
   const [geometryKeepOnSelectedPlaneEnabled, setGeometryKeepOnSelectedPlaneEnabled] = useState(false);
   const [geometryAlignToSelectedEdgeEnabled, setGeometryAlignToSelectedEdgeEnabled] = useState(false);
+  const [geometryConstraintDistanceInput, setGeometryConstraintDistanceInput] = useState(0.5);
+  const [geometryConstraintAngleInputDeg, setGeometryConstraintAngleInputDeg] = useState(15);
   const [geometrySnapMoveEnabled, setGeometrySnapMoveEnabled] = useState(false);
   const [geometrySnapMoveStep, setGeometrySnapMoveStep] = useState(0.25);
   const [geometrySnapRotateEnabled, setGeometrySnapRotateEnabled] = useState(false);
@@ -6811,7 +6818,17 @@ const App: React.FC = () => {
   const [geometryFaceCenterSnapEnabled, setGeometryFaceCenterSnapEnabled] = useState(false);
   const [geometryFacePlaneSnapEnabled, setGeometryFacePlaneSnapEnabled] = useState(false);
   const [geometryObjectCenterSnapEnabled, setGeometryObjectCenterSnapEnabled] = useState(false);
+  const [geometryObjectOriginSnapEnabled, setGeometryObjectOriginSnapEnabled] = useState(false);
   const [geometryBboxCornerSnapEnabled, setGeometryBboxCornerSnapEnabled] = useState(false);
+  const [geometryGroundPlaneSnapEnabled, setGeometryGroundPlaneSnapEnabled] = useState(false);
+  const [geometryMatchDimensionSourceObjectId, setGeometryMatchDimensionSourceObjectId] = useState<string | null>(null);
+  const [geometryMatchDimensionAxis, setGeometryMatchDimensionAxis] = useState<"x" | "y" | "z">("x");
+  const [geometryAlignReferenceObjectId, setGeometryAlignReferenceObjectId] = useState<string | null>(null);
+  const [geometryAlignAxis, setGeometryAlignAxis] = useState<"x" | "y" | "z">("x");
+  const [geometryAlignMode, setGeometryAlignMode] = useState<"center" | "min" | "max" | "face_to_face">("center");
+  const [geometryAlignSelectedFaceSide, setGeometryAlignSelectedFaceSide] = useState<"min" | "max">("max");
+  const [geometryAlignReferenceFaceSide, setGeometryAlignReferenceFaceSide] = useState<"min" | "max">("min");
+  const [geometryDistributeAxis, setGeometryDistributeAxis] = useState<"x" | "y" | "z">("x");
   const [geometryRepeatMode, setGeometryRepeatMode] = useState<GeometryRepeatMode>("duplicate");
   const [geometryRepeatLinearCopies, setGeometryRepeatLinearCopies] = useState(5);
   const [geometryRepeatLinearDirectionMode, setGeometryRepeatLinearDirectionMode] = useState<GeometryRepeatAxis>("x");
@@ -6943,6 +6960,32 @@ const App: React.FC = () => {
     geometryCompareObjectBId,
     geometryCompareObjectOptions,
     geometrySelectedObjectId,
+  ]);
+  const geometryTransformReferenceOptions = useMemo(
+    () =>
+      geometryCompareObjectOptions.filter(
+        (entry) => !!entry.visible && (!!geometrySelectedObjectId ? entry.id !== geometrySelectedObjectId : true)
+      ),
+    [geometryCompareObjectOptions, geometrySelectedObjectId]
+  );
+  useEffect(() => {
+    const ids = new Set(geometryTransformReferenceOptions.map((entry) => entry.id));
+    if (!ids.size) {
+      if (geometryMatchDimensionSourceObjectId !== null) setGeometryMatchDimensionSourceObjectId(null);
+      if (geometryAlignReferenceObjectId !== null) setGeometryAlignReferenceObjectId(null);
+      return;
+    }
+    const fallback = geometryTransformReferenceOptions[0]?.id ?? null;
+    if (!geometryMatchDimensionSourceObjectId || !ids.has(geometryMatchDimensionSourceObjectId)) {
+      setGeometryMatchDimensionSourceObjectId(fallback);
+    }
+    if (!geometryAlignReferenceObjectId || !ids.has(geometryAlignReferenceObjectId)) {
+      setGeometryAlignReferenceObjectId(fallback);
+    }
+  }, [
+    geometryAlignReferenceObjectId,
+    geometryMatchDimensionSourceObjectId,
+    geometryTransformReferenceOptions,
   ]);
   const queueGeometryHistoryIntent = useCallback((objectId: string, intent: GeometryHistoryIntent) => {
     if (!objectId) return;
@@ -7964,6 +8007,42 @@ const App: React.FC = () => {
         const nextRotation: Vec3 = { ...baseRotation, ...(patch.rotation ?? {}) };
         let nextScale: Vec3 = { ...baseScale, ...(patch.scale ?? {}) };
 
+        if (geometryLockMoveAlongSelectedEdgeEnabled && probeSelectionDetails?.mode === "edge" && probeSelectionDetails.edgePoints) {
+          const [ea, eb] = probeSelectionDetails.edgePoints;
+          const dir = new THREE.Vector3(eb.x - ea.x, eb.y - ea.y, eb.z - ea.z);
+          if (dir.lengthSq() > 1e-12) {
+            dir.normalize();
+            const delta = new THREE.Vector3(
+              nextPosition.x - basePosition.x,
+              nextPosition.y - basePosition.y,
+              nextPosition.z - basePosition.z
+            );
+            const projected = dir.multiplyScalar(delta.dot(dir));
+            nextPosition = {
+              x: basePosition.x + projected.x,
+              y: basePosition.y + projected.y,
+              z: basePosition.z + projected.z,
+            };
+          }
+        } else if (geometryLockMoveAlongFaceNormalEnabled && probeSelectionDetails?.mode === "face") {
+          const nRaw = probeSelectionDetails.normal;
+          const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
+          if (Number.isFinite(nLen) && nLen > 1e-9) {
+            const nx = nRaw.x / nLen;
+            const ny = nRaw.y / nLen;
+            const nz = nRaw.z / nLen;
+            const dx = nextPosition.x - basePosition.x;
+            const dy = nextPosition.y - basePosition.y;
+            const dz = nextPosition.z - basePosition.z;
+            const signed = dx * nx + dy * ny + dz * nz;
+            nextPosition = {
+              x: basePosition.x + signed * nx,
+              y: basePosition.y + signed * ny,
+              z: basePosition.z + signed * nz,
+            };
+          }
+        }
+
         if (geometryKeepOnSelectedPlaneEnabled && probeSelectionDetails?.mode === "face") {
           const nRaw = probeSelectionDetails.normal;
           const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
@@ -8045,6 +8124,8 @@ const App: React.FC = () => {
     },
     [
       geometryAlignToSelectedEdgeEnabled,
+      geometryLockMoveAlongFaceNormalEnabled,
+      geometryLockMoveAlongSelectedEdgeEnabled,
       geometryKeepOnSelectedPlaneEnabled,
       geometryKeepOnXYPlaneEnabled,
       geometryLockXEnabled,
@@ -8310,6 +8391,7 @@ const App: React.FC = () => {
     facePoints: SnapPoint3[];
     surfaceTriangles: SnapTriangle3[];
     objectCenters: SnapPoint3[];
+    objectOrigins: SnapPoint3[];
     bboxCorners: SnapPoint3[];
   }>({
     vertices: [],
@@ -8317,6 +8399,7 @@ const App: React.FC = () => {
     facePoints: [],
     surfaceTriangles: [],
     objectCenters: [],
+    objectOrigins: [],
     bboxCorners: [],
   });
   const geometrySelectedPivotPointRef = useRef<SnapPoint3 | null>(null);
@@ -8474,6 +8557,14 @@ const App: React.FC = () => {
             bestCandidateKind = "object_center";
           }
         }
+        if (geometryObjectOriginSnapEnabled && snapCandidates.objectOrigins.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.objectOrigins);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "object_origin";
+          }
+        }
         if (geometryBboxCornerSnapEnabled && snapCandidates.bboxCorners.length) {
           const nearest = nearestPointFromList(nextPivot, snapCandidates.bboxCorners);
           if (nearest.point && nearest.distSq < bestDistSq) {
@@ -8508,6 +8599,13 @@ const App: React.FC = () => {
               };
               snapPreviewCandidate = { point: { ...snappedPivot }, kind: "face_plane" };
             }
+          }
+        }
+        if (geometryGroundPlaneSnapEnabled) {
+          const zDist = Math.abs(snappedPivot.z);
+          if (zDist <= snapDistanceLimit) {
+            snappedPivot = { ...snappedPivot, z: 0 };
+            snapPreviewCandidate = { point: { ...snappedPivot }, kind: "ground_plane" };
           }
         }
 
@@ -8560,8 +8658,10 @@ const App: React.FC = () => {
       geometryFaceCenterSnapEnabled,
       geometrySurfaceSnapEnabled,
       geometryObjectCenterSnapEnabled,
+      geometryObjectOriginSnapEnabled,
       geometryBboxCornerSnapEnabled,
       geometryFacePlaneSnapEnabled,
+      geometryGroundPlaneSnapEnabled,
       geometryUniformScaleLock,
       handleUpdateGeometryTransform,
     ]
@@ -9825,14 +9925,18 @@ const App: React.FC = () => {
       geometryEdgeSnapEnabled ||
       geometryFaceCenterSnapEnabled ||
       geometryObjectCenterSnapEnabled ||
+      geometryObjectOriginSnapEnabled ||
       geometryBboxCornerSnapEnabled ||
-      geometryFacePlaneSnapEnabled,
+      geometryFacePlaneSnapEnabled ||
+      geometryGroundPlaneSnapEnabled,
     [
       geometryBboxCornerSnapEnabled,
       geometryEdgeSnapEnabled,
       geometryFaceCenterSnapEnabled,
       geometryFacePlaneSnapEnabled,
+      geometryGroundPlaneSnapEnabled,
       geometryObjectCenterSnapEnabled,
+      geometryObjectOriginSnapEnabled,
       geometrySurfaceSnapEnabled,
       geometryVertexSnapEnabled,
     ]
@@ -9844,6 +9948,7 @@ const App: React.FC = () => {
       facePoints: [] as SnapPoint3[],
       surfaceTriangles: [] as SnapTriangle3[],
       objectCenters: [] as SnapPoint3[],
+      objectOrigins: [] as SnapPoint3[],
       bboxCorners: [] as SnapPoint3[],
     };
     if (!geometryAdvancedSnapActive) return empty;
@@ -9853,7 +9958,11 @@ const App: React.FC = () => {
     const facePoints: SnapPoint3[] = [];
     const surfaceTriangles: SnapTriangle3[] = [];
     const objectCenters: SnapPoint3[] = [];
+    const objectOrigins: SnapPoint3[] = [];
     const bboxCorners: SnapPoint3[] = [];
+    const sceneObjectById = new Map<string, GeometryObject | GeometryDatasetMeshObject>();
+    for (const object of geometryObjects) sceneObjectById.set(object.id, object);
+    for (const object of geometryDatasetMeshObjects) sceneObjectById.set(object.id, object);
     const identityTransform: GeometryObjectTransform = {
       position: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
@@ -9866,6 +9975,13 @@ const App: React.FC = () => {
         mesh,
         (mesh.transform as GeometryObjectTransform | undefined) ?? identityTransform
       );
+      const sceneObject = sceneObjectById.get(mesh.id) ?? null;
+      if (geometryObjectOriginSnapEnabled && objectOrigins.length < MAX_ADVANCED_SNAP_OBJECT_ORIGINS) {
+        const origin = sceneObject?.transform.position ?? (mesh.transform as GeometryObjectTransform | undefined)?.position ?? null;
+        if (origin) {
+          objectOrigins.push({ x: origin.x, y: origin.y, z: origin.z });
+        }
+      }
       const positions = worldMesh.positions;
       if (!positions?.length) continue;
       const vertCount = Math.floor(positions.length / 3);
@@ -9970,12 +10086,15 @@ const App: React.FC = () => {
       }
     }
 
-    return { vertices, edgePoints, facePoints, surfaceTriangles, objectCenters, bboxCorners };
+    return { vertices, edgePoints, facePoints, surfaceTriangles, objectCenters, objectOrigins, bboxCorners };
   }, [
     geometryAdvancedSnapActive,
     geometryBboxCornerSnapEnabled,
     geometryEdgeSnapEnabled,
     geometryFaceCenterSnapEnabled,
+    geometryObjectOriginSnapEnabled,
+    geometryDatasetMeshObjects,
+    geometryObjects,
     geometryObjectCenterSnapEnabled,
     geometrySelectedObjectId,
     geometrySurfaceSnapEnabled,
@@ -10089,6 +10208,240 @@ const App: React.FC = () => {
       rotation: { x: e.x, y: e.y, z: e.z },
     });
   }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const resolveGeometrySceneBoundsById = useCallback(
+    (id: string): { object: GeometryObject | GeometryDatasetMeshObject; bounds: BBox3 } | null => {
+      const resolved = resolveGeometrySceneMeshById(id);
+      if (!resolved) return null;
+      const bounds = boundsFromPositions(resolved.mesh.positions);
+      if (!bounds) return null;
+      return { object: resolved.object, bounds };
+    },
+    [resolveGeometrySceneMeshById]
+  );
+  const handleApplyConstraintDistance = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    const distance = Number(geometryConstraintDistanceInput);
+    if (!Number.isFinite(distance) || Math.abs(distance) < 1e-9) return;
+    let dir: Vec3 | null = null;
+    if (geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints) {
+      const [a, b] = geometryProbeSelectionDetails.edgePoints;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len > 1e-9) dir = { x: dx / len, y: dy / len, z: dz / len };
+    } else if (geometryProbeSelectionDetails?.mode === "face") {
+      const n = geometryProbeSelectionDetails.normal;
+      const len = Math.hypot(n.x, n.y, n.z);
+      if (len > 1e-9) dir = { x: n.x / len, y: n.y / len, z: n.z / len };
+    } else {
+      dir = { x: 1, y: 0, z: 0 };
+    }
+    if (!dir) return;
+    const p = geometrySelectedSceneObject.transform.position;
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      position: {
+        x: p.x + dir.x * distance,
+        y: p.y + dir.y * distance,
+        z: p.z + dir.z * distance,
+      },
+    });
+  }, [geometryConstraintDistanceInput, geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const handleApplyConstraintAngle = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    const angleDeg = Number(geometryConstraintAngleInputDeg);
+    if (!Number.isFinite(angleDeg) || Math.abs(angleDeg) < 1e-9) return;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const axis =
+      geometryProbeSelectionDetails?.mode === "face"
+        ? geometryProbeSelectionDetails.normal
+        : ({ x: 0, y: 1, z: 0 } as Vec3);
+    const axisLen = Math.hypot(axis.x, axis.y, axis.z);
+    if (axisLen < 1e-9) return;
+    const axisUnit = new THREE.Vector3(axis.x / axisLen, axis.y / axisLen, axis.z / axisLen);
+    const current = geometrySelectedSceneObject.transform.rotation;
+    const qCurrent = new THREE.Quaternion().setFromEuler(new THREE.Euler(current.x, current.y, current.z, "XYZ"));
+    const qDelta = new THREE.Quaternion().setFromAxisAngle(axisUnit, angleRad);
+    const qNext = qDelta.multiply(qCurrent);
+    const eNext = new THREE.Euler().setFromQuaternion(qNext, "XYZ");
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      rotation: { x: eNext.x, y: eNext.y, z: eNext.z },
+    });
+  }, [geometryConstraintAngleInputDeg, geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const handleMatchSelectedDimensionFromReference = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometryMatchDimensionSourceObjectId) return;
+    const selectedBounds = resolveGeometrySceneBoundsById(geometrySelectedSceneObject.id);
+    const referenceBounds = resolveGeometrySceneBoundsById(geometryMatchDimensionSourceObjectId);
+    if (!selectedBounds || !referenceBounds) return;
+    const axisIndex = geometryMatchDimensionAxis === "x" ? 0 : geometryMatchDimensionAxis === "y" ? 1 : 2;
+    const selectedDim = selectedBounds.bounds.max[axisIndex] - selectedBounds.bounds.min[axisIndex];
+    const referenceDim = referenceBounds.bounds.max[axisIndex] - referenceBounds.bounds.min[axisIndex];
+    if (!Number.isFinite(selectedDim) || !Number.isFinite(referenceDim) || selectedDim <= 1e-9) return;
+    const factor = referenceDim / selectedDim;
+    const currentScale = geometrySelectedSceneObject.transform.scale;
+    if (geometryUniformScaleLock) {
+      handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+        scale: {
+          x: currentScale.x * factor,
+          y: currentScale.y * factor,
+          z: currentScale.z * factor,
+        },
+      });
+      return;
+    }
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      scale: {
+        ...currentScale,
+        [geometryMatchDimensionAxis]: currentScale[geometryMatchDimensionAxis] * factor,
+      },
+    });
+  }, [
+    geometryMatchDimensionAxis,
+    geometryMatchDimensionSourceObjectId,
+    geometrySelectedSceneObject,
+    geometryUniformScaleLock,
+    handleUpdateGeometryTransform,
+    resolveGeometrySceneBoundsById,
+  ]);
+  const handleAlignSelectedToReference = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometryAlignReferenceObjectId) return;
+    const selected = resolveGeometrySceneBoundsById(geometrySelectedSceneObject.id);
+    const reference = resolveGeometrySceneBoundsById(geometryAlignReferenceObjectId);
+    if (!selected || !reference) return;
+    const axisIndex = geometryAlignAxis === "x" ? 0 : geometryAlignAxis === "y" ? 1 : 2;
+    const selectedCenter = 0.5 * (selected.bounds.min[axisIndex] + selected.bounds.max[axisIndex]);
+    const referenceCenter = 0.5 * (reference.bounds.min[axisIndex] + reference.bounds.max[axisIndex]);
+    const selectedMin = selected.bounds.min[axisIndex];
+    const selectedMax = selected.bounds.max[axisIndex];
+    const referenceMin = reference.bounds.min[axisIndex];
+    const referenceMax = reference.bounds.max[axisIndex];
+    let sourceValue = selectedCenter;
+    let targetValue = referenceCenter;
+    if (geometryAlignMode === "min") {
+      sourceValue = selectedMin;
+      targetValue = referenceMin;
+    } else if (geometryAlignMode === "max") {
+      sourceValue = selectedMax;
+      targetValue = referenceMax;
+    } else if (geometryAlignMode === "face_to_face") {
+      sourceValue = geometryAlignSelectedFaceSide === "min" ? selectedMin : selectedMax;
+      targetValue = geometryAlignReferenceFaceSide === "min" ? referenceMin : referenceMax;
+    }
+    const delta = targetValue - sourceValue;
+    if (!Number.isFinite(delta) || Math.abs(delta) <= 1e-9) return;
+    const position = geometrySelectedSceneObject.transform.position;
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      position: {
+        ...position,
+        [geometryAlignAxis]: position[geometryAlignAxis] + delta,
+      },
+    });
+  }, [
+    geometryAlignAxis,
+    geometryAlignMode,
+    geometryAlignReferenceFaceSide,
+    geometryAlignReferenceObjectId,
+    geometryAlignSelectedFaceSide,
+    geometrySelectedSceneObject,
+    handleUpdateGeometryTransform,
+    resolveGeometrySceneBoundsById,
+  ]);
+  const handleAlignSelectedToSelectedNormal = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    if (geometryProbeSelectionDetails?.mode !== "face") return;
+    const n = geometryProbeSelectionDetails.normal;
+    const len = Math.hypot(n.x, n.y, n.z);
+    if (len < 1e-9) return;
+    const unit = new THREE.Vector3(n.x / len, n.y / len, n.z / len);
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), unit);
+    const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      rotation: { x: e.x, y: e.y, z: e.z },
+    });
+  }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const handleDistributeVisibleObjectsEvenly = useCallback(() => {
+    const axis = geometryDistributeAxis;
+    const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
+    const sceneObjects = [...geometryObjects, ...geometryDatasetMeshObjects].filter((entry) => entry.visible);
+    const candidates = sceneObjects
+      .map((entry) => {
+        const resolved = resolveGeometrySceneBoundsById(entry.id);
+        if (!resolved) return null;
+        const center = 0.5 * (resolved.bounds.min[axisIndex] + resolved.bounds.max[axisIndex]);
+        return { id: entry.id, center };
+      })
+      .filter((entry): entry is { id: string; center: number } => !!entry)
+      .sort((a, b) => a.center - b.center);
+    if (candidates.length < 3) {
+      setGeometryCreateActionStatus("Need at least three visible objects to distribute evenly.");
+      return;
+    }
+    const first = candidates[0].center;
+    const last = candidates[candidates.length - 1].center;
+    const step = (last - first) / (candidates.length - 1);
+    const positionDeltaById = new Map<string, number>();
+    for (let i = 1; i < candidates.length - 1; i += 1) {
+      const target = first + step * i;
+      const current = candidates[i].center;
+      const delta = target - current;
+      if (Math.abs(delta) > 1e-9) positionDeltaById.set(candidates[i].id, delta);
+    }
+    if (!positionDeltaById.size) {
+      setGeometryCreateActionStatus("Objects are already evenly distributed.");
+      return;
+    }
+    for (const [id, delta] of positionDeltaById.entries()) {
+      if (geometryLockedObjectIds.has(id)) continue;
+      queueGeometryHistoryIntent(id, {
+        action: "align-distribute",
+        label: "Distribute objects evenly",
+        operationType: "Alignment",
+        target: `${axis.toUpperCase()} axis`,
+        parameters: `delta=${formatHistoryNumber(delta)}`,
+        destructive: false,
+      });
+    }
+    setGeometryObjects((prev) =>
+      prev.map((entry) => {
+        const delta = positionDeltaById.get(entry.id);
+        if (delta == null || geometryLockedObjectIds.has(entry.id)) return entry;
+        return {
+          ...entry,
+          transform: {
+            ...entry.transform,
+            position: {
+              ...entry.transform.position,
+              [axis]: entry.transform.position[axis] + delta,
+            },
+          },
+        };
+      })
+    );
+    setGeometryDatasetMeshObjects((prev) =>
+      prev.map((entry) => {
+        const delta = positionDeltaById.get(entry.id);
+        if (delta == null || geometryLockedObjectIds.has(entry.id)) return entry;
+        return {
+          ...entry,
+          transform: {
+            ...entry.transform,
+            position: {
+              ...entry.transform.position,
+              [axis]: entry.transform.position[axis] + delta,
+            },
+          },
+        };
+      })
+    );
+    setGeometryCreateActionStatus(`Distributed ${positionDeltaById.size} object(s) evenly along ${axis.toUpperCase()}.`);
+  }, [
+    geometryDatasetMeshObjects,
+    geometryDistributeAxis,
+    geometryLockedObjectIds,
+    geometryObjects,
+    queueGeometryHistoryIntent,
+    resolveGeometrySceneBoundsById,
+  ]);
   const buildGeometryRepeatOffsets = useCallback((): { offsets: Vec3[]; error: string | null } => {
     if (!geometrySelectedSceneObject) {
       return { offsets: [], error: "Select an object in Scene first." };
@@ -11142,8 +11495,10 @@ const App: React.FC = () => {
       face_center: 0x7c3aed,
       surface: 0xdc2626,
       object_center: 0x0f766e,
+      object_origin: 0x0e7490,
       bbox_corner: 0x0891b2,
       face_plane: 0x9333ea,
+      ground_plane: 0x0369a1,
     };
     return [
       {
@@ -42218,6 +42573,10 @@ case "mobius":
                           <label><input type="checkbox" checked={geometryKeepOnSelectedPlaneEnabled} onChange={(e) => setGeometryKeepOnSelectedPlaneEnabled(e.target.checked)} style={{ marginRight: 6 }} />Keep on selected plane</label>
                           <label><input type="checkbox" checked={geometryAlignToSelectedEdgeEnabled} onChange={(e) => setGeometryAlignToSelectedEdgeEnabled(e.target.checked)} style={{ marginRight: 6 }} />Keep aligned to selected edge</label>
                         </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                          <label><input type="checkbox" checked={geometryLockMoveAlongSelectedEdgeEnabled} onChange={(e) => setGeometryLockMoveAlongSelectedEdgeEnabled(e.target.checked)} style={{ marginRight: 6 }} />Lock movement along selected edge</label>
+                          <label><input type="checkbox" checked={geometryLockMoveAlongFaceNormalEnabled} onChange={(e) => setGeometryLockMoveAlongFaceNormalEnabled(e.target.checked)} style={{ marginRight: 6 }} />Lock movement along selected face normal</label>
+                        </div>
                         <div style={{ fontSize: 10, color: "#64748b" }}>
                           Selected plane/edge source:{" "}
                           {geometryProbeSelectionDetails
@@ -42229,6 +42588,35 @@ case "mobius":
                                   : ""
                               }`
                             : "none"}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                          <label>
+                            Distance
+                            <input
+                              type="number"
+                              step={0.05}
+                              value={geometryConstraintDistanceInput}
+                              onChange={(e) => setGeometryConstraintDistanceInput(Number(e.target.value) || 0)}
+                              style={{ marginLeft: 6, width: 82 }}
+                            />
+                          </label>
+                          <button type="button" onClick={handleApplyConstraintDistance} disabled={!geometrySelectedSceneObject}>
+                            Apply distance
+                          </button>
+                          <label>
+                            Angle
+                            <input
+                              type="number"
+                              step={1}
+                              value={geometryConstraintAngleInputDeg}
+                              onChange={(e) => setGeometryConstraintAngleInputDeg(Number(e.target.value) || 0)}
+                              style={{ marginLeft: 6, width: 82 }}
+                            />
+                            °
+                          </label>
+                          <button type="button" onClick={handleApplyConstraintAngle} disabled={!geometrySelectedSceneObject}>
+                            Apply angle
+                          </button>
                         </div>
                       </div>
 
@@ -42426,11 +42814,13 @@ case "mobius":
                             <label><input type="checkbox" checked={geometryGridSnapEnabled} onChange={(e) => setGeometryGridSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Grid snap</label>
                             <label><input type="checkbox" checked={geometrySurfaceSnapEnabled} onChange={(e) => setGeometrySurfaceSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Surface snap</label>
                             <label><input type="checkbox" checked={geometryVertexSnapEnabled} onChange={(e) => setGeometryVertexSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Vertex snap</label>
-                            <label><input type="checkbox" checked={geometryEdgeSnapEnabled} onChange={(e) => setGeometryEdgeSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Edge snap</label>
+                            <label><input type="checkbox" checked={geometryEdgeSnapEnabled} onChange={(e) => setGeometryEdgeSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Edge midpoint snap</label>
                             <label><input type="checkbox" checked={geometryFaceCenterSnapEnabled} onChange={(e) => setGeometryFaceCenterSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Face center snap</label>
                             <label><input type="checkbox" checked={geometryFacePlaneSnapEnabled} onChange={(e) => setGeometryFacePlaneSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Face plane snap</label>
                             <label><input type="checkbox" checked={geometryObjectCenterSnapEnabled} onChange={(e) => setGeometryObjectCenterSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Object center snap</label>
+                            <label><input type="checkbox" checked={geometryObjectOriginSnapEnabled} onChange={(e) => setGeometryObjectOriginSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Object origin snap</label>
                             <label><input type="checkbox" checked={geometryBboxCornerSnapEnabled} onChange={(e) => setGeometryBboxCornerSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Bounding box corner snap</label>
+                            <label><input type="checkbox" checked={geometryGroundPlaneSnapEnabled} onChange={(e) => setGeometryGroundPlaneSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Ground plane snap (Z=0)</label>
                             <div style={{ fontSize: 10, color: "#64748b" }}>
                               Snap candidates are computed from visible scene objects (excluding the selected object).
                             </div>
@@ -42616,12 +43006,146 @@ case "mobius":
                             }}
                           >
                             <div style={{ fontSize: 11, fontWeight: 700 }}>Alignment</div>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
                               <button type="button" onClick={() => handleAlignSelectedPivotToPlane("z")}>Align to XY</button>
                               <button type="button" onClick={() => handleAlignSelectedPivotToPlane("y")}>Align to XZ</button>
                               <button type="button" onClick={() => handleAlignSelectedPivotToPlane("x")}>Align to YZ</button>
-                              <button type="button" disabled title="Requires multi-select (planned)">Align to selected</button>
-                              <button type="button" disabled title="Requires multi-select (planned)">Match transform from selected</button>
+                              <button
+                                type="button"
+                                onClick={handleAlignSelectedToSelectedNormal}
+                                disabled={geometryProbeSelectionDetails?.mode !== "face"}
+                                title="Requires face probe selection."
+                              >
+                                Align object to selected normal
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                              <label>
+                                Reference
+                                <select
+                                  value={geometryAlignReferenceObjectId ?? ""}
+                                  onChange={(e) => setGeometryAlignReferenceObjectId(e.target.value || null)}
+                                  style={{ marginLeft: 6, minWidth: 160 }}
+                                >
+                                  <option value="">Select</option>
+                                  {geometryTransformReferenceOptions.map((entry) => (
+                                    <option key={`align-reference-${entry.id}`} value={entry.id}>
+                                      {entry.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Axis
+                                <select
+                                  value={geometryAlignAxis}
+                                  onChange={(e) => setGeometryAlignAxis(e.target.value as "x" | "y" | "z")}
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  <option value="x">X</option>
+                                  <option value="y">Y</option>
+                                  <option value="z">Z</option>
+                                </select>
+                              </label>
+                              <label>
+                                Mode
+                                <select
+                                  value={geometryAlignMode}
+                                  onChange={(e) =>
+                                    setGeometryAlignMode(e.target.value as "center" | "min" | "max" | "face_to_face")
+                                  }
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  <option value="center">Align centers</option>
+                                  <option value="min">Align min bounds</option>
+                                  <option value="max">Align max bounds</option>
+                                  <option value="face_to_face">Align face to face</option>
+                                </select>
+                              </label>
+                              {geometryAlignMode === "face_to_face" && (
+                                <>
+                                  <label>
+                                    Selected face
+                                    <select
+                                      value={geometryAlignSelectedFaceSide}
+                                      onChange={(e) => setGeometryAlignSelectedFaceSide(e.target.value as "min" | "max")}
+                                      style={{ marginLeft: 6 }}
+                                    >
+                                      <option value="min">min</option>
+                                      <option value="max">max</option>
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Reference face
+                                    <select
+                                      value={geometryAlignReferenceFaceSide}
+                                      onChange={(e) => setGeometryAlignReferenceFaceSide(e.target.value as "min" | "max")}
+                                      style={{ marginLeft: 6 }}
+                                    >
+                                      <option value="min">min</option>
+                                      <option value="max">max</option>
+                                    </select>
+                                  </label>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={handleAlignSelectedToReference}
+                                disabled={!geometrySelectedSceneObject || !geometryAlignReferenceObjectId}
+                              >
+                                Apply alignment
+                              </button>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                              <label>
+                                Match dimension from
+                                <select
+                                  value={geometryMatchDimensionSourceObjectId ?? ""}
+                                  onChange={(e) => setGeometryMatchDimensionSourceObjectId(e.target.value || null)}
+                                  style={{ marginLeft: 6, minWidth: 160 }}
+                                >
+                                  <option value="">Select</option>
+                                  {geometryTransformReferenceOptions.map((entry) => (
+                                    <option key={`match-dimension-${entry.id}`} value={entry.id}>
+                                      {entry.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                Axis
+                                <select
+                                  value={geometryMatchDimensionAxis}
+                                  onChange={(e) => setGeometryMatchDimensionAxis(e.target.value as "x" | "y" | "z")}
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  <option value="x">X</option>
+                                  <option value="y">Y</option>
+                                  <option value="z">Z</option>
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                onClick={handleMatchSelectedDimensionFromReference}
+                                disabled={!geometrySelectedSceneObject || !geometryMatchDimensionSourceObjectId}
+                              >
+                                Match dimension
+                              </button>
+                              <label>
+                                Distribute axis
+                                <select
+                                  value={geometryDistributeAxis}
+                                  onChange={(e) => setGeometryDistributeAxis(e.target.value as "x" | "y" | "z")}
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  <option value="x">X</option>
+                                  <option value="y">Y</option>
+                                  <option value="z">Z</option>
+                                </select>
+                              </label>
+                              <button type="button" onClick={handleDistributeVisibleObjectsEvenly}>
+                                Distribute visible evenly
+                              </button>
                             </div>
                           </div>
                         </>
