@@ -1679,7 +1679,32 @@ type GeometryObjectHistoryStep = {
   changeSummary: string;
   snapshot: GeometryObject | GeometryDatasetMeshObject;
 };
-type GeometryDerivedStatus = "ready" | "stale" | "planned";
+type GeometryDerivedStatus = "ready" | "stale" | "available" | "planned" | "failed";
+type GeometryDerivedOperation = "wireframe" | "bounding-box" | "normals" | "point-cloud" | "convex-hull" | "section";
+
+const GEOMETRY_DERIVED_PRODUCT_SPECS: Array<{
+  operation: GeometryDerivedOperation;
+  label: string;
+  defaultStatus: GeometryDerivedStatus;
+}> = [
+  { operation: "wireframe", label: "Wireframe", defaultStatus: "available" },
+  { operation: "bounding-box", label: "Bounding box", defaultStatus: "available" },
+  { operation: "normals", label: "Normals", defaultStatus: "available" },
+  { operation: "point-cloud", label: "Point cloud", defaultStatus: "available" },
+  { operation: "convex-hull", label: "Convex hull", defaultStatus: "available" },
+  { operation: "section", label: "Section", defaultStatus: "planned" },
+];
+
+const GEOMETRY_DERIVED_STATUS_META: Record<
+  GeometryDerivedStatus,
+  { symbol: string; label: string; border: string; background: string; color: string }
+> = {
+  ready: { symbol: "✓", label: "ready", border: "#16a34a", background: "#ecfdf5", color: "#166534" },
+  stale: { symbol: "!", label: "stale", border: "#ef4444", background: "#fef2f2", color: "#991b1b" },
+  available: { symbol: "+", label: "available", border: "#2563eb", background: "#eff6ff", color: "#1d4ed8" },
+  planned: { symbol: "", label: "planned", border: "#f59e0b", background: "#fffbeb", color: "#92400e" },
+  failed: { symbol: "×", label: "failed", border: "#dc2626", background: "#fef2f2", color: "#991b1b" },
+};
 
 type GeometryDatasetMeshObject = {
   id: string;
@@ -1782,6 +1807,10 @@ type UnifiedObjectNode = {
   provenanceSource?: string;
   linkedObjectIds?: string[];
   sourceVersion?: number;
+  generatedAt?: number;
+  operation?: GeometryDerivedOperation;
+  resultObjectId?: string;
+  errorMessage?: string;
 };
 
 type UnifiedManualDerived = {
@@ -1795,6 +1824,10 @@ type UnifiedManualDerived = {
   provenanceSource?: string;
   linkedObjectIds?: string[];
   sourceVersion?: number;
+  generatedAt?: number;
+  operation?: GeometryDerivedOperation;
+  resultObjectId?: string;
+  errorMessage?: string;
 };
 
 const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
@@ -1802,6 +1835,17 @@ const UNIFIED_SCENE_ROLE_LABELS: Record<UnifiedSceneRole, string> = {
   overlay: "Overlay",
   derivedResult: "DerivedResult",
   referenceObject: "ReferenceObject",
+};
+
+const geometryDerivedOperationFromType = (type: string): GeometryDerivedOperation | null => {
+  const normalized = type.toLowerCase();
+  if (normalized.includes("wireframe")) return "wireframe";
+  if (normalized.includes("bounding-box")) return "bounding-box";
+  if (normalized.includes("normal")) return "normals";
+  if (normalized.includes("point-cloud")) return "point-cloud";
+  if (normalized.includes("convex-hull")) return "convex-hull";
+  if (normalized.includes("section") || normalized.includes("slice")) return "section";
+  return null;
 };
 
 const inferUnifiedSceneRole = (
@@ -7078,93 +7122,6 @@ const App: React.FC = () => {
   const handleAddGeometryGallerySelected = useCallback(() => {
     handleAddGeometryGallerySelectedAtOrigin(geometryAddEnterPlacementMode);
   }, [geometryAddEnterPlacementMode, handleAddGeometryGallerySelectedAtOrigin]);
-  const handleCreateConvexHullFromSelected = () => {
-    if (!geometrySelectedSceneObject || !geometrySelectedSceneMesh) {
-      setGeometryCreateActionStatus("Select a mesh-backed object first.");
-      return;
-    }
-    const sourceId = geometrySelectedSceneObject.id;
-    const sourceName = geometrySelectedSceneObject.name;
-    const planned = unifiedManualDerived.find(
-      (entry) =>
-        entry.type === "derived/convex-hull" &&
-        entry.linkedObjectIds?.includes(sourceId) &&
-        (entry.derivedStatus ?? "ready") === "planned"
-    );
-    if (!planned) {
-      addUnifiedDerivedNode({
-        parentId: `scene:${sourceId}`,
-        name: `${sourceName} convex hull`,
-        type: "derived/convex-hull",
-        sourceDefinition: "Planned convex hull derived mesh.",
-        displayState: "planned",
-        derivedStatus: "planned",
-        provenanceSource: "convex-hull planned",
-        linkedObjectIds: [sourceId],
-      });
-      setGeometryCreateActionStatus("Convex hull planned. Click Convex hull again to generate.");
-      return;
-    }
-    try {
-      const transformed = transformSurfaceMeshByGeometryTransform(
-        geometrySelectedSceneMesh,
-        geometrySelectedSceneObject.transform
-      );
-      const points: THREE.Vector3[] = [];
-      for (let i = 0; i + 2 < transformed.positions.length; i += 3) {
-        points.push(new THREE.Vector3(transformed.positions[i], transformed.positions[i + 1], transformed.positions[i + 2]));
-      }
-      if (points.length < 4) {
-        setGeometryCreateActionStatus("Convex hull needs at least 4 points.");
-        return;
-      }
-      const hullGeometry = new ConvexGeometry(points);
-      const hullMesh = computeVertexNormals(
-        buildSurfaceMeshFromGeometry(hullGeometry, `${sourceName} convex hull`, { kind: "convexHull" }, { mergeVertices: true })
-      );
-      hullGeometry.dispose();
-      const id = makeId();
-      const nextObject: GeometryDatasetMeshObject = {
-        id,
-        name: `${sourceName} convex hull`,
-        mesh: hullMesh,
-        transform: {
-          position: { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          scale: { x: 1, y: 1, z: 1 },
-        },
-        visible: true,
-        material: {
-          color: 0x3b82f6,
-          opacity: 0.92,
-          roughness: 0.28,
-          metalness: 0.12,
-        },
-      };
-      setGeometryDatasetMeshObjects((prev) => [nextObject, ...prev]);
-      setGeometrySelectedObjectId(id);
-      setUnifiedManualDerived((prev) =>
-        prev.map((entry) =>
-          entry.id === planned.id
-            ? {
-                ...entry,
-                name: nextObject.name,
-                displayState: "ready",
-                derivedStatus: "ready",
-                provenanceSource: "convex-hull mesh generated",
-                sourceVersion: (geometryObjectRevisionById[sourceId] ?? 0),
-              }
-            : entry
-        )
-      );
-      setGeometryCreateActionStatus(
-        `Convex hull generated (${Math.floor(hullMesh.positions.length / 3).toLocaleString()} verts).`
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Convex hull generation failed.";
-      setGeometryCreateActionStatus(message);
-    }
-  };
   const handleOpenGeometryGalleryCustomEditor = useCallback(() => {
     if (!geometryGallerySelectedCard?.supported || !geometryGallerySelectedCard.defaultRecipe) return;
     setGeometryNewObjectType(geometryGallerySelectedCard.defaultRecipe.type);
@@ -29260,16 +29217,6 @@ case "mobius":
 
   const [unifiedManualDerived, setUnifiedManualDerived] = useState<UnifiedManualDerived[]>([]);
   const [unifiedTreeSelectedId, setUnifiedTreeSelectedId] = useState<string | null>(null);
-  const geometryHasPlannedConvexHullForSelected = useMemo(() => {
-    const sourceId = geometrySelectedSceneObject?.id;
-    if (!sourceId) return false;
-    return unifiedManualDerived.some(
-      (entry) =>
-        entry.type === "derived/convex-hull" &&
-        entry.linkedObjectIds?.includes(sourceId) &&
-        (entry.derivedStatus ?? "ready") === "planned"
-    );
-  }, [geometrySelectedSceneObject?.id, unifiedManualDerived]);
 
   const addUnifiedDerivedNode = useCallback(
     (
@@ -29278,6 +29225,7 @@ case "mobius":
       }
     ) => {
       const linkedObjectIds = entry.linkedObjectIds ?? [];
+      const status = entry.derivedStatus ?? "ready";
       const sourceVersion = linkedObjectIds.reduce(
         (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
         0
@@ -29286,9 +29234,11 @@ case "mobius":
         [
           {
             id: makeId(),
-            derivedStatus: entry.derivedStatus ?? "ready",
+            derivedStatus: status,
             provenanceSource: entry.provenanceSource ?? entry.type,
             sourceVersion,
+            generatedAt: status === "ready" ? Date.now() : undefined,
+            operation: entry.operation ?? geometryDerivedOperationFromType(entry.type) ?? undefined,
             ...entry,
           },
           ...prev,
@@ -29296,6 +29246,193 @@ case "mobius":
       );
     },
     [geometryObjectRevisionById]
+  );
+  const upsertGeometryDerivedProduct = useCallback(
+    (
+      source: GeometryObject | GeometryDatasetMeshObject,
+      operation: GeometryDerivedOperation,
+      patch: {
+        status: GeometryDerivedStatus;
+        displayState?: string;
+        resultObjectId?: string;
+        errorMessage?: string;
+        generatedAt?: number;
+      }
+    ) => {
+      const spec = GEOMETRY_DERIVED_PRODUCT_SPECS.find((entry) => entry.operation === operation);
+      const sourceVersion = geometryObjectRevisionById[source.id] ?? 0;
+      setUnifiedManualDerived((prev) => {
+        const existing = prev.find(
+          (entry) =>
+            (entry.operation ?? geometryDerivedOperationFromType(entry.type)) === operation &&
+            entry.linkedObjectIds?.includes(source.id)
+        );
+        const next: UnifiedManualDerived = {
+          id: existing?.id ?? makeId(),
+          parentId: `scene:${source.id}`,
+          name: `${source.name} ${spec?.label.toLowerCase() ?? operation}`,
+          type: `derived/${operation}`,
+          sourceDefinition: `${spec?.label ?? operation} derived from ${source.name}.`,
+          displayState: patch.displayState ?? patch.status,
+          derivedStatus: patch.status,
+          provenanceSource: operation,
+          linkedObjectIds: [source.id],
+          sourceVersion,
+          generatedAt: patch.generatedAt ?? existing?.generatedAt,
+          resultObjectId: patch.resultObjectId ?? existing?.resultObjectId,
+          errorMessage: patch.errorMessage,
+          operation,
+        };
+        return [next, ...prev.filter((entry) => entry.id !== next.id)].slice(0, 80);
+      });
+    },
+    [geometryObjectRevisionById]
+  );
+  const handlePlanGeometryConvexHull = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedSceneMesh) {
+      setGeometryCreateActionStatus("Select a mesh-backed object first.");
+      return;
+    }
+    upsertGeometryDerivedProduct(geometrySelectedSceneObject, "convex-hull", {
+      status: "planned",
+      displayState: "planned",
+    });
+    setGeometryCreateActionStatus("Convex hull planned. Use Generate hull mesh when ready.");
+  }, [geometrySelectedSceneMesh, geometrySelectedSceneObject, upsertGeometryDerivedProduct]);
+  const generateGeometryDerivedProduct = useCallback(
+    (operation: GeometryDerivedOperation, sourceId?: string) => {
+      const targetId = sourceId ?? geometrySelectedSceneObject?.id;
+      const source =
+        geometryObjects.find((entry) => entry.id === targetId) ??
+        geometryDatasetMeshObjects.find((entry) => entry.id === targetId) ??
+        null;
+      const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === targetId) ?? null;
+      if (!source || !sourceMesh) {
+        setGeometryCreateActionStatus("Select a mesh-backed object first.");
+        return;
+      }
+      if (operation === "wireframe") {
+        setGeometryWireframe(true);
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "ready",
+          displayState: "visible",
+          generatedAt: Date.now(),
+        });
+        setGeometryCreateActionStatus("Wireframe generated from selected object.");
+        return;
+      }
+      if (operation === "bounding-box") {
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "ready",
+          displayState: "ready",
+          generatedAt: Date.now(),
+        });
+        setGeometryCreateActionStatus("Bounding box computed from selected object.");
+        return;
+      }
+      if (operation === "normals") {
+        if (!sourceMesh.normals || sourceMesh.normals.length < sourceMesh.positions.length) {
+          upsertGeometryDerivedProduct(source, operation, {
+            status: "failed",
+            displayState: "failed",
+            errorMessage: "Selected mesh does not contain vertex normals.",
+          });
+          setGeometryCreateActionStatus("Normals failed: selected mesh does not contain vertex normals.");
+          return;
+        }
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "ready",
+          displayState: "ready",
+          generatedAt: Date.now(),
+        });
+        setGeometryCreateActionStatus("Normals generated from selected object.");
+        return;
+      }
+      if (operation === "point-cloud") {
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "ready",
+          displayState: `${Math.floor(sourceMesh.positions.length / 3).toLocaleString()} points`,
+          generatedAt: Date.now(),
+        });
+        setGeometryCreateActionStatus("Point cloud generated from selected vertices.");
+        return;
+      }
+      if (operation === "section") {
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "failed",
+          displayState: "failed",
+          errorMessage: "Section extraction is not available for procedural geometry yet.",
+        });
+        setGeometryCreateActionStatus("Section failed: extraction is not available for procedural geometry yet.");
+        return;
+      }
+      try {
+        const transformed = transformSurfaceMeshByGeometryTransform(sourceMesh, source.transform);
+        const points: THREE.Vector3[] = [];
+        for (let i = 0; i + 2 < transformed.positions.length; i += 3) {
+          points.push(new THREE.Vector3(transformed.positions[i], transformed.positions[i + 1], transformed.positions[i + 2]));
+        }
+        if (points.length < 4) throw new Error("Convex hull needs at least 4 points.");
+        const hullGeometry = new ConvexGeometry(points);
+        const hullMesh = computeVertexNormals(
+          buildSurfaceMeshFromGeometry(hullGeometry, `${source.name} convex hull`, { kind: "convexHull" }, { mergeVertices: true })
+        );
+        hullGeometry.dispose();
+        const existing = unifiedManualDerived.find(
+          (entry) =>
+            (entry.operation ?? geometryDerivedOperationFromType(entry.type)) === "convex-hull" &&
+            entry.linkedObjectIds?.includes(source.id)
+        );
+        const resultObjectId = existing?.resultObjectId ?? makeId();
+        const nextObject: GeometryDatasetMeshObject = {
+          id: resultObjectId,
+          name: `${source.name} convex hull`,
+          mesh: hullMesh,
+          transform: {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          },
+          visible: true,
+          material: {
+            color: 0x3b82f6,
+            opacity: 0.92,
+            roughness: 0.28,
+            metalness: 0.12,
+          },
+        };
+        setGeometryDatasetMeshObjects((prev) =>
+          prev.some((entry) => entry.id === resultObjectId)
+            ? prev.map((entry) => (entry.id === resultObjectId ? nextObject : entry))
+            : [nextObject, ...prev]
+        );
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "ready",
+          displayState: "ready",
+          resultObjectId,
+          generatedAt: Date.now(),
+        });
+        setGeometryCreateActionStatus(
+          `Convex hull generated (${Math.floor(hullMesh.positions.length / 3).toLocaleString()} verts).`
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Convex hull generation failed.";
+        upsertGeometryDerivedProduct(source, operation, {
+          status: "failed",
+          displayState: "failed",
+          errorMessage: message,
+        });
+        setGeometryCreateActionStatus(message);
+      }
+    },
+    [
+      geometryDatasetMeshObjects,
+      geometryObjects,
+      geometrySelectedSceneObject?.id,
+      proceduralMeshSet.meshes,
+      unifiedManualDerived,
+      upsertGeometryDerivedProduct,
+    ]
   );
   useEffect(() => {
     setUnifiedManualDerived((prev) =>
@@ -29305,7 +29442,7 @@ case "mobius":
           (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
           0
         );
-        if ((entry.derivedStatus ?? "ready") === "planned") return entry;
+        if ((entry.derivedStatus ?? "ready") !== "ready") return entry;
         if ((entry.sourceVersion ?? 0) < currentVersion) {
           return { ...entry, derivedStatus: "stale" as GeometryDerivedStatus };
         }
@@ -29314,19 +29451,101 @@ case "mobius":
     );
   }, [geometryObjectRevisionById]);
   const handleRegenerateDerivedProducts = useCallback((scope: "selected" | "all") => {
-    const selectedNodeId = unifiedTreeSelectedId;
-    setUnifiedManualDerived((prev) =>
-      prev.map((entry) => {
-        if ((entry.derivedStatus ?? "ready") !== "stale") return entry;
-        if (scope === "selected" && selectedNodeId !== `derived:manual:${entry.id}`) return entry;
-        const sourceVersion = (entry.linkedObjectIds ?? []).reduce(
-          (max, objectId) => Math.max(max, geometryObjectRevisionById[objectId] ?? 0),
-          0
-        );
-        return { ...entry, derivedStatus: "ready" as GeometryDerivedStatus, sourceVersion };
-      })
+    const selectedSourceId = geometrySelectedSceneObject?.id;
+    const targets = unifiedManualDerived.filter(
+      (entry) =>
+        entry.derivedStatus === "stale" &&
+        (scope === "all" || (!!selectedSourceId && entry.linkedObjectIds?.includes(selectedSourceId)))
     );
-  }, [geometryObjectRevisionById, unifiedTreeSelectedId]);
+    for (const entry of targets) {
+      const operation = entry.operation ?? geometryDerivedOperationFromType(entry.type);
+      const sourceId = entry.linkedObjectIds?.[0];
+      if (!operation || !sourceId) continue;
+      generateGeometryDerivedProduct(operation, sourceId);
+    }
+  }, [generateGeometryDerivedProduct, geometrySelectedSceneObject?.id, unifiedManualDerived]);
+  const handleDeleteGeometryDerivedProduct = useCallback((entryId: string) => {
+    const entry = unifiedManualDerived.find((candidate) => candidate.id === entryId);
+    if (!entry) return;
+    if (entry.resultObjectId) {
+      setGeometryDatasetMeshObjects((prev) => prev.filter((candidate) => candidate.id !== entry.resultObjectId));
+      if (geometrySelectedObjectId === entry.resultObjectId) {
+        setGeometrySelectedObjectId(entry.linkedObjectIds?.[0] ?? null);
+      }
+    }
+    setUnifiedManualDerived((prev) => prev.filter((candidate) => candidate.id !== entryId));
+  }, [geometrySelectedObjectId, unifiedManualDerived]);
+  const handleDeleteStaleGeometryDerivedProducts = useCallback((scope: "selected" | "all") => {
+    const selectedSourceId = geometrySelectedSceneObject?.id;
+    const stale = unifiedManualDerived.filter(
+      (entry) =>
+        entry.derivedStatus === "stale" &&
+        (scope === "all" || (!!selectedSourceId && entry.linkedObjectIds?.includes(selectedSourceId)))
+    );
+    const removedIds = new Set(stale.map((entry) => entry.id));
+    const resultObjectIds = new Set(stale.map((entry) => entry.resultObjectId).filter((id): id is string => !!id));
+    setUnifiedManualDerived((prev) => prev.filter((entry) => !removedIds.has(entry.id)));
+    if (resultObjectIds.size) {
+      setGeometryDatasetMeshObjects((prev) => prev.filter((entry) => !resultObjectIds.has(entry.id)));
+      if (geometrySelectedObjectId && resultObjectIds.has(geometrySelectedObjectId)) {
+        setGeometrySelectedObjectId(selectedSourceId ?? null);
+      }
+    }
+  }, [geometrySelectedObjectId, geometrySelectedSceneObject?.id, unifiedManualDerived]);
+  const geometrySelectedDerivedProducts = useMemo(() => {
+    const source = geometrySelectedSceneObject;
+    return GEOMETRY_DERIVED_PRODUCT_SPECS.map((spec) => {
+      const entry = source
+        ? unifiedManualDerived.find(
+            (candidate) =>
+              (candidate.operation ?? geometryDerivedOperationFromType(candidate.type)) === spec.operation &&
+              candidate.linkedObjectIds?.includes(source.id)
+          ) ?? null
+        : null;
+      return {
+        ...spec,
+        entry,
+        status: entry?.derivedStatus ?? spec.defaultStatus,
+        sourceName: source?.name ?? "n/a",
+        sourceVersion: entry?.sourceVersion ?? null,
+        staleReason:
+          entry?.derivedStatus === "stale" && source
+            ? geometryObjectHistoryById[source.id]?.[0]?.changeSummary ?? "Source object changed."
+            : null,
+      };
+    });
+  }, [geometryObjectHistoryById, geometrySelectedSceneObject, unifiedManualDerived]);
+  const geometryStaleDerivedProducts = useMemo(
+    () =>
+      unifiedManualDerived.filter(
+        (entry) => entry.derivedStatus === "stale" && entry.linkedObjectIds?.some((id) => geometryObjectIdSet.has(id))
+      ),
+    [geometryObjectIdSet, unifiedManualDerived]
+  );
+  const geometryStaleDerivedSummary = useMemo(
+    () =>
+      geometryStaleDerivedProducts.map((entry) => {
+        const sourceId = entry.linkedObjectIds?.[0];
+        const sourceName =
+          geometryObjects.find((source) => source.id === sourceId)?.name ??
+          geometryDatasetMeshObjects.find((source) => source.id === sourceId)?.name ??
+          "unknown source";
+        return { id: entry.id, name: entry.name, sourceName };
+      }),
+    [geometryDatasetMeshObjects, geometryObjects, geometryStaleDerivedProducts]
+  );
+  const geometrySelectedResultProvenance = useMemo(() => {
+    const selectedId = geometrySelectedSceneObject?.id;
+    if (!selectedId) return null;
+    const entry = unifiedManualDerived.find((candidate) => candidate.resultObjectId === selectedId) ?? null;
+    if (!entry) return null;
+    const sourceId = entry.linkedObjectIds?.[0];
+    const sourceName =
+      geometryObjects.find((source) => source.id === sourceId)?.name ??
+      geometryDatasetMeshObjects.find((source) => source.id === sourceId)?.name ??
+      "unknown source";
+    return { entry, sourceName };
+  }, [geometryDatasetMeshObjects, geometryObjects, geometrySelectedSceneObject?.id, unifiedManualDerived]);
 
   const unifiedObjectModel = useMemo(() => {
     const raw: Array<Omit<UnifiedObjectNode, "derivedProductIds">> = [];
@@ -29760,6 +29979,10 @@ case "mobius":
         provenanceSource: derived.provenanceSource,
         linkedObjectIds: derived.linkedObjectIds,
         sourceVersion: derived.sourceVersion,
+        generatedAt: derived.generatedAt,
+        operation: derived.operation ?? geometryDerivedOperationFromType(derived.type) ?? undefined,
+        resultObjectId: derived.resultObjectId,
+        errorMessage: derived.errorMessage,
       });
     }
 
@@ -30031,6 +30254,10 @@ case "mobius":
   const handleFocusUnifiedNode = useCallback(
     (nodeId: string) => {
       setUnifiedTreeSelectedId(nodeId);
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (node?.category === "sceneObject" && node.objectRefId) {
+        setGeometrySelectedObjectId(node.objectRefId);
+      }
       if (mode === "surfaces") {
         setSurfacesLeftTab("object");
         return;
@@ -30039,8 +30266,15 @@ case "mobius":
         setGeometryProceduralPanelTab("object");
       }
     },
-    [geometryMode, mode]
+    [geometryMode, mode, unifiedObjectModel.nodeById]
   );
+  const handleSelectUnifiedNode = useCallback((nodeId: string) => {
+    setUnifiedTreeSelectedId(nodeId);
+    const node = unifiedObjectModel.nodeById.get(nodeId);
+    if (node?.category === "sceneObject" && node.objectRefId) {
+      setGeometrySelectedObjectId(node.objectRefId);
+    }
+  }, [unifiedObjectModel.nodeById]);
   const handleToggleUnifiedNodeVisibility = useCallback(
     (nodeId: string) => {
       const node = unifiedObjectModel.nodeById.get(nodeId);
@@ -30147,12 +30381,12 @@ case "mobius":
       }
       if (nodeId.startsWith("derived:manual:")) {
         const manualId = nodeId.slice("derived:manual:".length);
-        setUnifiedManualDerived((prev) => prev.filter((entry) => entry.id !== manualId));
+        handleDeleteGeometryDerivedProduct(manualId);
         return;
       }
       handleToggleUnifiedNodeVisibility(nodeId);
     },
-    [handleRemoveGeometryObject, handleToggleUnifiedNodeVisibility, unifiedObjectModel.nodeById]
+    [handleDeleteGeometryDerivedProduct, handleRemoveGeometryObject, handleToggleUnifiedNodeVisibility, unifiedObjectModel.nodeById]
   );
   const handleSendUnifiedObjectToCompare = useCallback(() => {
     if (!isSurfaceDatasetKind(datasetKind) || !unifiedSelectedNode) return;
@@ -34444,7 +34678,7 @@ case "mobius":
                     title={isInspectDisplayMode ? "Scene roles / pipeline" : "Scene contents"}
                     nodes={unifiedObjectNodes}
                     selectedId={unifiedTreeSelectedId}
-                    onSelect={setUnifiedTreeSelectedId}
+                    onSelect={handleSelectUnifiedNode}
                     onFocus={handleFocusUnifiedNode}
                     onToggleVisibility={handleToggleUnifiedNodeVisibility}
                     onDeleteNode={handleDeleteUnifiedNode}
@@ -38902,8 +39136,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setShowBoundingBox(true);
-                                    setGeometryCreateActionStatus("Bounding box overlay enabled.");
+                                    generateGeometryDerivedProduct("bounding-box");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
                                 >
@@ -38912,8 +39145,7 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    runUnifiedPipelineAction("wireframe");
-                                    setGeometryCreateActionStatus("Wireframe extracted from selected/active mesh.");
+                                    generateGeometryDerivedProduct("wireframe");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
                                 >
@@ -38922,34 +39154,34 @@ case "mobius":
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    runUnifiedPipelineAction("pointCloud");
-                                    setGeometryCreateActionStatus("Point-cloud node generated from selected/active mesh.");
+                                    generateGeometryDerivedProduct("point-cloud");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
                                 >
                                   Point cloud
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={handleCreateConvexHullFromSelected}
-                                  disabled={!geometrySelectedSceneObject}
-                                  title={
-                                    geometryHasPlannedConvexHullForSelected
-                                      ? "Convex hull is planned for selected object. Click to generate."
-                                      : "Plan convex hull for selected object."
-                                  }
-                                >
-                                  {geometryHasPlannedConvexHullForSelected ? "Convex hull (planned)" : "Convex hull"}
+                                <button type="button" onClick={handlePlanGeometryConvexHull} disabled={!geometrySelectedSceneObject}>
+                                  Plan convex hull
+                                </button>
+                                <button type="button" onClick={() => generateGeometryDerivedProduct("convex-hull")} disabled={!geometrySelectedSceneObject}>
+                                  Generate hull mesh
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    runUnifiedPipelineAction("normals");
-                                    setGeometryCreateActionStatus("Normal-field workflow enabled for selected/active mesh.");
+                                    generateGeometryDerivedProduct("normals");
                                   }}
                                   disabled={!geometrySelectedSceneObject}
                                 >
                                   Normal field
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => generateGeometryDerivedProduct("section")}
+                                  disabled={!geometrySelectedSceneObject}
+                                  title="Records a failed section result until procedural section extraction is implemented."
+                                >
+                                  Section
                                 </button>
                                 <button
                                   type="button"
@@ -38984,19 +39216,15 @@ case "mobius":
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    handleRegenerateDerivedProducts("selected");
-                                    setGeometryCreateActionStatus("Regenerated stale derived products for selected item.");
-                                  }}
+                                onClick={() => handleRegenerateDerivedProducts("selected")}
+                                  disabled={!geometrySelectedSceneObject}
                                 >
                                   Regenerate stale (selected)
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    handleRegenerateDerivedProducts("all");
-                                    setGeometryCreateActionStatus("Regenerated all stale derived products.");
-                                  }}
+                                onClick={() => handleRegenerateDerivedProducts("all")}
+                                  disabled={!geometryStaleDerivedProducts.length}
                                 >
                                   Regenerate stale (all)
                                 </button>
@@ -39134,7 +39362,7 @@ case "mobius":
                       title="Scene contents"
                       nodes={unifiedObjectNodes}
                       selectedId={unifiedTreeSelectedId}
-                      onSelect={setUnifiedTreeSelectedId}
+                      onSelect={handleSelectUnifiedNode}
                       onFocus={handleFocusUnifiedNode}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
                       onDeleteNode={handleDeleteUnifiedNode}
@@ -39146,6 +39374,11 @@ case "mobius":
                       onIsolateSelected={handleIsolateUnifiedSelectedObject}
                       canShowAllSceneObjects={unifiedCanShowAllSceneObjects}
                       onShowAllSceneObjects={handleShowAllUnifiedObjects}
+                    />
+                    <GeometryStaleSummaryPanel
+                      products={geometryStaleDerivedSummary}
+                      onRegenerateAll={() => handleRegenerateDerivedProducts("all")}
+                      onDeleteAll={() => handleDeleteStaleGeometryDerivedProducts("all")}
                     />
 
                     <details style={{ marginTop: 12 }}>
@@ -39857,6 +40090,18 @@ case "mobius":
                               </div>
                             </div>
                           )}
+                          <GeometryDerivedProductsPanel
+                            products={geometrySelectedDerivedProducts}
+                            onPlanConvexHull={handlePlanGeometryConvexHull}
+                            onGenerate={(operation) => generateGeometryDerivedProduct(operation)}
+                            onOpenResult={(objectId) => {
+                              setGeometrySelectedObjectId(objectId);
+                              setGeometryProceduralPanelTab("object");
+                            }}
+                            onDelete={handleDeleteGeometryDerivedProduct}
+                            onRegenerateStale={() => handleRegenerateDerivedProducts("selected")}
+                            onDeleteStale={() => handleDeleteStaleGeometryDerivedProducts("selected")}
+                          />
                           {geometrySelectedObject.type === "torus" && (
                             <div
                               style={{
@@ -40643,6 +40888,31 @@ case "mobius":
                               <div><strong>Status:</strong> {geometrySelectedSceneMeshInfo ? "Mesh ready" : "Mesh pending"}</div>
                             </div>
                           </div>
+                          {geometrySelectedResultProvenance && (
+                            <div
+                              style={{
+                                border: "1px solid #bfdbfe",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#eff6ff",
+                                display: "grid",
+                                gap: 4,
+                                fontSize: 10.5,
+                              }}
+                            >
+                              <div style={{ fontSize: 11, fontWeight: 700 }}>Derived result provenance</div>
+                              <div><strong>Generated from:</strong> {geometrySelectedResultProvenance.sourceName}</div>
+                              <div><strong>Operation:</strong> {geometrySelectedResultProvenance.entry.operation ?? "derived"}</div>
+                              <div><strong>Source version:</strong> history step {geometrySelectedResultProvenance.entry.sourceVersion ?? "n/a"}</div>
+                              <div>
+                                <strong>Generated at:</strong>{" "}
+                                {geometrySelectedResultProvenance.entry.generatedAt
+                                  ? new Date(geometrySelectedResultProvenance.entry.generatedAt).toLocaleString()
+                                  : "not generated yet"}
+                              </div>
+                              <div><strong>Status:</strong> {geometrySelectedResultProvenance.entry.derivedStatus ?? "ready"}</div>
+                            </div>
+                          )}
                           <div
                             style={{
                               border: "1px solid #dbe4f0",
@@ -40733,6 +41003,18 @@ case "mobius":
                               </div>
                             </div>
                           )}
+                          <GeometryDerivedProductsPanel
+                            products={geometrySelectedDerivedProducts}
+                            onPlanConvexHull={handlePlanGeometryConvexHull}
+                            onGenerate={(operation) => generateGeometryDerivedProduct(operation)}
+                            onOpenResult={(objectId) => {
+                              setGeometrySelectedObjectId(objectId);
+                              setGeometryProceduralPanelTab("object");
+                            }}
+                            onDelete={handleDeleteGeometryDerivedProduct}
+                            onRegenerateStale={() => handleRegenerateDerivedProducts("selected")}
+                            onDeleteStale={() => handleDeleteStaleGeometryDerivedProducts("selected")}
+                          />
                         </div>
 
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Material</div>
@@ -40996,7 +41278,10 @@ case "mobius":
                             fontSize: 11,
                           }}
                         >
-                          <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis tools / mesh quality</div>
+                          <div style={{ color: "#475467" }}>
+                            Measurement and computation actions live here. See Inspector &gt; Probe for live picked entity details.
+                          </div>
                           <div style={{ marginTop: 4 }}>
                             <strong>Selection mode:</strong>
                             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
@@ -42936,9 +43221,10 @@ case "mobius":
                               fontSize: 11,
                             }}
                           >
-                            <div style={{ fontSize: 12, fontWeight: 700 }}>Measurements / mesh quality</div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Live probe readout</div>
                             <div style={{ color: "#475467" }}>
-                              Set selection mode, then click mesh in viewport to probe object/face/edge/vertex data.
+                              Canonical live pick details for the viewport. Set selection mode, then click mesh to inspect
+                              object/face/edge/vertex data.
                             </div>
                             <div>
                               <strong>Selection mode:</strong>
@@ -49804,6 +50090,10 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     const derivedStatusColor =
       derivedStatus === "stale"
         ? "#b42318"
+        : derivedStatus === "failed"
+          ? "#b42318"
+          : derivedStatus === "available"
+            ? "#1d4ed8"
         : derivedStatus === "planned"
           ? "#b45309"
           : derivedStatus === "ready"
@@ -49811,7 +50101,10 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
             : "#64748b";
     const metaLine = [roleLabel, typeLabel, sourceKind].join(" · ");
     const withSource = derivedFrom ? `${metaLine} · Derived from ${derivedFrom}` : metaLine;
-    const metadataLine = derivedStatus ? `${withSource} · ${derivedStatus.toUpperCase()}` : withSource;
+    const statusMeta = derivedStatus ? GEOMETRY_DERIVED_STATUS_META[derivedStatus] : null;
+    const metadataLine = statusMeta
+      ? `${withSource} · ${statusMeta.symbol ? `${statusMeta.symbol} ` : ""}${statusMeta.label.toUpperCase()}`
+      : withSource;
     return (
       <div
         key={node.id}
@@ -49877,7 +50170,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
                 style={{
                   fontSize: 10,
                   color: derivedStatus ? derivedStatusColor : "#64748b",
-                  fontWeight: derivedStatus === "stale" ? 700 : 500,
+                  fontWeight: derivedStatus === "stale" || derivedStatus === "failed" ? 700 : 500,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -50187,6 +50480,154 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
     </div>
   );
 };
+
+type GeometryDerivedProductRow = {
+  operation: GeometryDerivedOperation;
+  label: string;
+  status: GeometryDerivedStatus;
+  sourceName: string;
+  sourceVersion: number | null;
+  staleReason: string | null;
+  entry: UnifiedManualDerived | null;
+};
+
+type GeometryDerivedProductsPanelProps = {
+  products: GeometryDerivedProductRow[];
+  onPlanConvexHull: () => void;
+  onGenerate: (operation: GeometryDerivedOperation) => void;
+  onOpenResult: (objectId: string) => void;
+  onDelete: (entryId: string) => void;
+  onRegenerateStale: () => void;
+  onDeleteStale: () => void;
+};
+
+const GeometryDerivedProductsPanel: React.FC<GeometryDerivedProductsPanelProps> = ({
+  products,
+  onPlanConvexHull,
+  onGenerate,
+  onOpenResult,
+  onDelete,
+  onRegenerateStale,
+  onDeleteStale,
+}) => {
+  const staleCount = products.filter((product) => product.status === "stale").length;
+  return (
+    <div
+      data-testid="geometry-derived-products"
+      style={{ border: "1px solid #dbe4f0", borderRadius: 8, padding: "8px 10px", background: "#f8fbff", display: "grid", gap: 8 }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 700 }}>Derived products</div>
+      <div style={{ fontSize: 10, color: "#475569" }}>
+        Results are versioned against the selected source. Parameter or transform edits mark generated results stale.
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {products.map((product) => {
+          const statusMeta = GEOMETRY_DERIVED_STATUS_META[product.status];
+          const generated = !!product.entry;
+          return (
+            <div
+              key={`geometry-derived-product-${product.operation}`}
+              style={{ border: "1px solid #e2e8f0", borderRadius: 7, background: "#fff", padding: "6px 7px", display: "grid", gap: 5 }}
+            >
+              <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>{product.label}</div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    border: `1px solid ${statusMeta.border}`,
+                    color: statusMeta.color,
+                    background: statusMeta.background,
+                    borderRadius: 999,
+                    padding: "2px 7px",
+                  }}
+                >
+                  {statusMeta.symbol ? `${statusMeta.symbol} ` : ""}{statusMeta.label}
+                </span>
+              </div>
+              {generated && (
+                <div style={{ fontSize: 10, color: "#475569", display: "grid", gap: 2 }}>
+                  <div><strong>Generated from:</strong> {product.sourceName}</div>
+                  <div><strong>Operation:</strong> {product.label.toLowerCase()}</div>
+                  <div><strong>Source version:</strong> history step {product.sourceVersion ?? "n/a"}</div>
+                  <div><strong>Generated at:</strong> {product.entry?.generatedAt ? new Date(product.entry.generatedAt).toLocaleString() : "not generated yet"}</div>
+                  <div><strong>Status:</strong> {statusMeta.label}</div>
+                  {product.staleReason && <div style={{ color: "#991b1b" }}><strong>Outdated after:</strong> {product.staleReason}</div>}
+                  {product.entry?.errorMessage && <div style={{ color: "#991b1b" }}><strong>Error:</strong> {product.entry.errorMessage}</div>}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {product.operation === "convex-hull" && !generated && (
+                  <button type="button" onClick={onPlanConvexHull} style={{ fontSize: 10 }}>Plan</button>
+                )}
+                {product.status === "available" && (
+                  <button type="button" onClick={() => onGenerate(product.operation)} style={{ fontSize: 10 }}>
+                    {product.operation === "convex-hull" ? "Generate hull mesh" : "Generate"}
+                  </button>
+                )}
+                {product.status === "planned" && (
+                  <button type="button" onClick={() => onGenerate(product.operation)} style={{ fontSize: 10 }}>
+                    {product.operation === "convex-hull" ? "Generate hull mesh" : "Generate"}
+                  </button>
+                )}
+                {(product.status === "ready" || product.status === "stale" || product.status === "failed") && (
+                  <button type="button" onClick={() => onGenerate(product.operation)} style={{ fontSize: 10 }}>Regenerate</button>
+                )}
+                {product.entry?.resultObjectId && product.status !== "planned" && (
+                  <button type="button" onClick={() => onOpenResult(product.entry!.resultObjectId!)} style={{ fontSize: 10 }}>Open result</button>
+                )}
+                {product.entry && (
+                  <button type="button" onClick={() => onDelete(product.entry!.id)} style={{ fontSize: 10 }}>Delete</button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button type="button" onClick={onRegenerateStale} disabled={staleCount === 0} style={{ fontSize: 10 }}>
+          Regenerate stale selected{staleCount ? ` (${staleCount})` : ""}
+        </button>
+        <button type="button" onClick={onDeleteStale} disabled={staleCount === 0} style={{ fontSize: 10 }}>
+          Delete stale
+        </button>
+      </div>
+    </div>
+  );
+};
+
+type GeometryStaleSummaryPanelProps = {
+  products: Array<{ id: string; name: string; sourceName: string }>;
+  onRegenerateAll: () => void;
+  onDeleteAll: () => void;
+};
+
+const GeometryStaleSummaryPanel: React.FC<GeometryStaleSummaryPanelProps> = ({ products, onRegenerateAll, onDeleteAll }) => (
+  <div
+    data-testid="geometry-stale-summary"
+    style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, border: "1px solid #f1c27d", background: products.length ? "#fffbeb" : "#f8fafc", display: "grid", gap: 6 }}
+  >
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+      <div style={{ fontSize: 11, fontWeight: 700 }}>Derived dependency status</div>
+      <span style={{ fontSize: 10, fontWeight: 800, color: products.length ? "#92400e" : "#166534" }}>
+        {products.length ? `! ${products.length} stale` : "✓ up to date"}
+      </span>
+    </div>
+    {products.length ? (
+      <>
+        <div style={{ fontSize: 10, color: "#475569" }}>
+          {products.map((product) => `${product.name} from ${product.sourceName}`).join(" · ")}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button type="button" onClick={onRegenerateAll} style={{ fontSize: 10 }}>Regenerate all stale</button>
+          <button type="button" onClick={onDeleteAll} style={{ fontSize: 10 }}>Delete stale</button>
+        </div>
+      </>
+    ) : (
+      <div style={{ fontSize: 10, color: "#475569" }}>No stale generated products in the scene.</div>
+    )}
+  </div>
+);
 
 type SurfacesObjectPanelProps = {
   currentFamilyLabel: string;
@@ -50510,7 +50951,7 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
         const hay = `${node.id} ${node.type} ${node.name}`.toLowerCase();
         return spec.match.some((needle) => hay.includes(needle));
       });
-      let status: "missing" | "ready" | "stale" | "planned" = "missing";
+      let status: "missing" | GeometryDerivedStatus = "missing";
       if (matches.length) {
         if (
           matches.some(
@@ -50520,10 +50961,22 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
           status = "stale";
         } else if (
           matches.some(
+            (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "failed"
+          )
+        ) {
+          status = "failed";
+        } else if (
+          matches.some(
             (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "planned"
           )
         ) {
           status = "planned";
+        } else if (
+          matches.some(
+            (node) => (node.derivedStatus ?? (node.visible ? "ready" : "planned")) === "available"
+          )
+        ) {
+          status = "available";
         } else {
           status = "ready";
         }
@@ -50556,6 +51009,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
   const selectedDerivedStatusTone =
     selectedDerivedStatus === "stale"
       ? { border: "#ef4444", background: "#fef2f2", color: "#991b1b" }
+      : selectedDerivedStatus === "failed"
+        ? { border: "#dc2626", background: "#fef2f2", color: "#991b1b" }
+        : selectedDerivedStatus === "available"
+          ? { border: "#2563eb", background: "#eff6ff", color: "#1d4ed8" }
       : selectedDerivedStatus === "planned"
         ? { border: "#f59e0b", background: "#fffbeb", color: "#92400e" }
         : { border: "#16a34a", background: "#ecfdf5", color: "#166534" };
@@ -50652,6 +51109,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
             </span>
           </div>
           <div style={{ fontSize: 11 }}><strong>Provenance:</strong> {selectedNode.provenanceSource ?? "n/a"}</div>
+          <div style={{ fontSize: 11 }}><strong>Source version:</strong> {selectedNode.sourceVersion != null ? `history step ${selectedNode.sourceVersion}` : "n/a"}</div>
+          <div style={{ fontSize: 11 }}><strong>Generated at:</strong> {selectedNode.generatedAt ? new Date(selectedNode.generatedAt).toLocaleString() : "not generated yet"}</div>
+          {selectedNode.errorMessage && <div style={{ fontSize: 11, color: "#991b1b" }}><strong>Error:</strong> {selectedNode.errorMessage}</div>}
           <div style={{ fontSize: 11 }}><strong>Sampling:</strong> {objectSamplingLabel}</div>
           <div style={{ fontSize: 11 }}><strong>Display:</strong> {selectedNode.displayState || "n/a"}</div>
           <div style={{ fontSize: 11 }}><strong>Visible:</strong> {typeof selectedNode.visible === "boolean" ? (selectedNode.visible ? "yes" : "no") : "n/a"}</div>
@@ -50841,6 +51301,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                     "1px solid " +
                     (item.status === "stale"
                       ? "#ef4444"
+                      : item.status === "failed"
+                        ? "#dc2626"
+                        : item.status === "available"
+                          ? "#2563eb"
                       : item.status === "planned"
                         ? "#f59e0b"
                         : item.status === "ready"
@@ -50851,6 +51315,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                   background:
                     item.status === "stale"
                       ? "#fef2f2"
+                      : item.status === "failed"
+                        ? "#fef2f2"
+                        : item.status === "available"
+                          ? "#eff6ff"
                       : item.status === "planned"
                         ? "#fffbeb"
                         : item.status === "ready"
@@ -50859,6 +51327,10 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                   color:
                     item.status === "stale"
                       ? "#991b1b"
+                      : item.status === "failed"
+                        ? "#991b1b"
+                        : item.status === "available"
+                          ? "#1d4ed8"
                       : item.status === "planned"
                         ? "#92400e"
                         : item.status === "ready"
@@ -50867,7 +51339,9 @@ const SurfacesObjectPanel: React.FC<SurfacesObjectPanelProps> = ({
                   fontWeight: 700,
                 }}
               >
-                {item.label} · {item.status.toUpperCase()}
+                {item.label} · {item.status !== "missing" && GEOMETRY_DERIVED_STATUS_META[item.status].symbol
+                  ? `${GEOMETRY_DERIVED_STATUS_META[item.status].symbol} `
+                  : ""}{item.status.toUpperCase()}
               </span>
             ))}
           </div>
