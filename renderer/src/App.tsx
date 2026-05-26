@@ -326,6 +326,7 @@ type GeometryProceduralPanelTab =
   | "object"
   | "transform"
   | "view"
+  | "history"
   | "analysis"
   | "theory"
   | "script"
@@ -1698,13 +1699,34 @@ type GeometryMarkedEdgeEntry = {
   edgeVertexPair: [number, number];
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }];
 };
+type GeometryHistoryIntent = {
+  action: string;
+  label: string;
+  operationType: string;
+  target?: string | null;
+  parameters?: string | null;
+  destructive?: boolean;
+  warning?: string | null;
+};
+type GeometryQueuedHistoryIntent = GeometryHistoryIntent & {
+  queuedAt: number;
+};
 type GeometryObjectHistoryStep = {
   id: string;
   at: number;
   action: string;
   label: string;
+  operationType: string;
+  operationTarget: string | null;
+  operationParameters: string | null;
+  destructive: boolean;
+  warning: string | null;
   objectId: string;
   objectName: string;
+  beforeVertexCount: number | null;
+  afterVertexCount: number | null;
+  beforeFaceCount: number | null;
+  afterFaceCount: number | null;
   beforeSummary: string | null;
   afterSummary: string;
   changeSummary: string;
@@ -2846,6 +2868,111 @@ const formatHistoryNumber = (value: number): string => {
 
 const formatHistoryVec3 = (value: { x: number; y: number; z: number }): string =>
   `(${formatHistoryNumber(value.x)}, ${formatHistoryNumber(value.y)}, ${formatHistoryNumber(value.z)})`;
+
+const countTriangleMeshTopology = (mesh: {
+  positions: ArrayLike<number>;
+  indices?: ArrayLike<number> | null;
+}): { vertexCount: number; faceCount: number } => {
+  const vertexCount = Math.floor((mesh.positions?.length ?? 0) / 3);
+  const faceCount =
+    mesh.indices && mesh.indices.length >= 3
+      ? Math.floor(mesh.indices.length / 3)
+      : Math.floor((mesh.positions?.length ?? 0) / 9);
+  return { vertexCount, faceCount };
+};
+
+const countGeometrySnapshotTopology = (
+  snapshot: GeometryObject | GeometryDatasetMeshObject | null
+): { vertexCount: number; faceCount: number } | null => {
+  if (!snapshot || !("mesh" in snapshot)) return null;
+  return countTriangleMeshTopology(snapshot.mesh);
+};
+
+const inferGeometryHistoryIntent = (
+  before: GeometryObject | GeometryDatasetMeshObject | null,
+  after: GeometryObject | GeometryDatasetMeshObject
+): GeometryHistoryIntent => {
+  if (!before) {
+    return {
+      action: "created",
+      label: "Created object",
+      operationType: "Create",
+      target: after.name,
+      parameters: "new object",
+      destructive: false,
+    };
+  }
+  if (before.name !== after.name) {
+    return {
+      action: "rename",
+      label: "Renamed object",
+      operationType: "Identity",
+      target: "Name",
+      parameters: `${before.name} -> ${after.name}`,
+      destructive: false,
+    };
+  }
+  if (before.visible !== after.visible) {
+    return {
+      action: "visibility",
+      label: after.visible ? "Show object" : "Hide object",
+      operationType: "Visibility",
+      target: after.name,
+      parameters: `visible=${after.visible ? "true" : "false"}`,
+      destructive: false,
+    };
+  }
+  if (JSON.stringify(before.transform) !== JSON.stringify(after.transform)) {
+    return {
+      action: "transform",
+      label: "Transform updated",
+      operationType: "Transform",
+      target: after.name,
+      parameters: `position ${formatHistoryVec3(after.transform.position)} · scale ${formatHistoryVec3(after.transform.scale)}`,
+      destructive: false,
+    };
+  }
+  if (JSON.stringify(before.material) !== JSON.stringify(after.material)) {
+    return {
+      action: "material",
+      label: "Material updated",
+      operationType: "Material",
+      target: after.name,
+      parameters: "material patch",
+      destructive: false,
+    };
+  }
+  if (!("mesh" in before) && !("mesh" in after) && JSON.stringify(before.params) !== JSON.stringify(after.params)) {
+    return {
+      action: "params",
+      label: "Parameters updated",
+      operationType: "Parameters",
+      target: after.name,
+      parameters: "procedural parameter patch",
+      destructive: false,
+    };
+  }
+  if ("mesh" in before && "mesh" in after) {
+    const b = countTriangleMeshTopology(before.mesh);
+    const a = countTriangleMeshTopology(after.mesh);
+    return {
+      action: "mesh-edit",
+      label: "Mesh edited",
+      operationType: "Mesh edit",
+      target: after.name,
+      parameters: `vertices ${b.vertexCount} -> ${a.vertexCount}, faces ${b.faceCount} -> ${a.faceCount}`,
+      destructive: true,
+    };
+  }
+  return {
+    action: "updated",
+    label: "Updated object",
+    operationType: "Update",
+    target: after.name,
+    parameters: null,
+    destructive: false,
+  };
+};
 
 const summarizeGeometryHistorySnapshot = (snapshot: GeometryObject | GeometryDatasetMeshObject): string => {
   const transformSummary = `pos ${formatHistoryVec3(snapshot.transform.position)}`;
@@ -6517,6 +6644,7 @@ const App: React.FC = () => {
   const [geometryProceduralHoverPick, setGeometryProceduralHoverPick] = useState<GeometryProceduralPickInfo | null>(null);
   const [geometryObjectHistoryById, setGeometryObjectHistoryById] = useState<Record<string, GeometryObjectHistoryStep[]>>({});
   const [geometrySelectedHistoryStepId, setGeometrySelectedHistoryStepId] = useState<string | null>(null);
+  const [geometryHistoryCompareWithPreviousEnabled, setGeometryHistoryCompareWithPreviousEnabled] = useState(false);
   const [geometryObjectPresets, setGeometryObjectPresets] = useState<GeometryObjectPreset[]>([]);
   const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
@@ -6656,6 +6784,7 @@ const App: React.FC = () => {
   const [geometryProceduralScriptError, setGeometryProceduralScriptError] = useState<string | null>(null);
   const [geometryProceduralScriptStatus, setGeometryProceduralScriptStatus] = useState<string | null>(null);
   const [geometryBakeError, setGeometryBakeError] = useState<string | null>(null);
+  const geometryHistoryIntentQueueRef = useRef<Map<string, GeometryQueuedHistoryIntent[]>>(new Map());
   const [geometryGizmoEnabled, setGeometryGizmoEnabled] = useState(true);
   const [geometryGizmoMode, setGeometryGizmoMode] = useState<"translate" | "rotate" | "scale">("translate");
   const [geometryGizmoSpace, setGeometryGizmoSpace] = useState<GeometryGizmoSpace>("world");
@@ -6815,6 +6944,15 @@ const App: React.FC = () => {
     geometryCompareObjectOptions,
     geometrySelectedObjectId,
   ]);
+  const queueGeometryHistoryIntent = useCallback((objectId: string, intent: GeometryHistoryIntent) => {
+    if (!objectId) return;
+    const queueById = geometryHistoryIntentQueueRef.current;
+    const nextQueue: GeometryQueuedHistoryIntent[] = [
+      ...(queueById.get(objectId) ?? []),
+      { ...intent, queuedAt: Date.now() },
+    ];
+    queueById.set(objectId, nextQueue);
+  }, []);
   const allocateUniqueGeometryObjectId = useCallback(() => {
     let id = makeId();
     while (geometryObjectIdSet.has(id)) {
@@ -6863,15 +7001,40 @@ const App: React.FC = () => {
         changedObjectIds.push(obj.id);
         const history = next[obj.id] ?? [];
         const previousSnapshot = history.length ? history[0].snapshot : null;
-        const action = previous == null ? "created" : "updated";
+        const queuedIntents = geometryHistoryIntentQueueRef.current.get(obj.id) ?? [];
+        let queuedIntent: GeometryQueuedHistoryIntent | null = null;
+        const now = Date.now();
+        while (queuedIntents.length) {
+          const candidate = queuedIntents.shift() ?? null;
+          if (!candidate) break;
+          if (now - candidate.queuedAt <= 4000) {
+            queuedIntent = candidate;
+            break;
+          }
+        }
+        if (queuedIntents.length) geometryHistoryIntentQueueRef.current.set(obj.id, queuedIntents);
+        else geometryHistoryIntentQueueRef.current.delete(obj.id);
+        const inferredIntent = inferGeometryHistoryIntent(previousSnapshot, obj);
+        const intent = queuedIntent ?? inferredIntent;
         const afterSnapshot = cloneGeometrySceneObjectSnapshot(obj);
+        const beforeTopology = countGeometrySnapshotTopology(previousSnapshot);
+        const afterTopology = countGeometrySnapshotTopology(afterSnapshot);
         const step: GeometryObjectHistoryStep = {
           id: makeId(),
           at: Date.now(),
-          action,
-          label: action === "created" ? "Created object" : "Updated object",
+          action: intent.action,
+          label: intent.label,
+          operationType: intent.operationType,
+          operationTarget: intent.target ?? null,
+          operationParameters: intent.parameters ?? null,
+          destructive: !!intent.destructive,
+          warning: intent.warning ?? null,
           objectId: obj.id,
           objectName: obj.name,
+          beforeVertexCount: beforeTopology?.vertexCount ?? null,
+          afterVertexCount: afterTopology?.vertexCount ?? null,
+          beforeFaceCount: beforeTopology?.faceCount ?? null,
+          afterFaceCount: afterTopology?.faceCount ?? null,
           beforeSummary: previousSnapshot ? summarizeGeometryHistorySnapshot(previousSnapshot) : null,
           afterSummary: summarizeGeometryHistorySnapshot(afterSnapshot),
           changeSummary: summarizeGeometryHistoryChange(previousSnapshot, afterSnapshot),
@@ -6892,6 +7055,11 @@ const App: React.FC = () => {
       });
     }
     geometryHistoryFingerprintRef.current = nextFingerprint;
+    for (const queuedId of geometryHistoryIntentQueueRef.current.keys()) {
+      if (!nextFingerprint.has(queuedId)) {
+        geometryHistoryIntentQueueRef.current.delete(queuedId);
+      }
+    }
   }, [geometryDatasetMeshObjects, geometryObjects]);
   const geometrySelectedObjectHistory = useMemo(
     () => (geometrySelectedObjectId ? geometryObjectHistoryById[geometrySelectedObjectId] ?? [] : []),
@@ -6916,9 +7084,98 @@ const App: React.FC = () => {
       setGeometrySelectedHistoryStepId(geometrySelectedObjectHistory[0].id);
     }
   }, [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]);
+  const geometrySelectedHistoryStepIndex = useMemo(
+    () =>
+      geometrySelectedHistoryStepId
+        ? geometrySelectedObjectHistory.findIndex((entry) => entry.id === geometrySelectedHistoryStepId)
+        : -1,
+    [geometrySelectedHistoryStepId, geometrySelectedObjectHistory]
+  );
+  const geometrySelectedHistoryPreviousStep = useMemo(
+    () =>
+      geometrySelectedHistoryStepIndex >= 0
+        ? geometrySelectedObjectHistory[geometrySelectedHistoryStepIndex + 1] ?? null
+        : null,
+    [geometrySelectedHistoryStepIndex, geometrySelectedObjectHistory]
+  );
+  useEffect(() => {
+    setGeometryHistoryCompareWithPreviousEnabled(false);
+  }, [geometrySelectedObjectId, geometrySelectedHistoryStepId]);
+  const geometryHistoryCurrentVsPreviousRows = useMemo(() => {
+    if (
+      !geometryHistoryCompareWithPreviousEnabled ||
+      !geometrySelectedSceneObject ||
+      !geometrySelectedHistoryPreviousStep
+    ) {
+      return [];
+    }
+    const previousSnapshot = geometrySelectedHistoryPreviousStep.snapshot;
+    const currentSnapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+    const previousMetrics = "mesh" in previousSnapshot ? computeTriangleMeshGeometricMetrics(previousSnapshot.mesh) : null;
+    const currentMetrics = "mesh" in currentSnapshot ? computeTriangleMeshGeometricMetrics(currentSnapshot.mesh) : null;
+    const rows: Array<{ metric: string; previous: number; current: number; integer?: boolean }> = [];
+    const add = (metric: string, previous: number, current: number, integer = false) => {
+      rows.push({ metric, previous, current, integer });
+    };
+    if (previousMetrics && currentMetrics) {
+      add("Vertex count", previousMetrics.vertexCount, currentMetrics.vertexCount, true);
+      add("Face count", previousMetrics.faceCount, currentMetrics.faceCount, true);
+      add("Volume", previousMetrics.volume, currentMetrics.volume);
+      add("Surface area", previousMetrics.surfaceArea, currentMetrics.surfaceArea);
+    }
+    add("Position X", previousSnapshot.transform.position.x, currentSnapshot.transform.position.x);
+    add("Position Y", previousSnapshot.transform.position.y, currentSnapshot.transform.position.y);
+    add("Position Z", previousSnapshot.transform.position.z, currentSnapshot.transform.position.z);
+    add("Rotation X (deg)", previousSnapshot.transform.rotation.x, currentSnapshot.transform.rotation.x);
+    add("Rotation Y (deg)", previousSnapshot.transform.rotation.y, currentSnapshot.transform.rotation.y);
+    add("Rotation Z (deg)", previousSnapshot.transform.rotation.z, currentSnapshot.transform.rotation.z);
+    add("Scale X", previousSnapshot.transform.scale.x, currentSnapshot.transform.scale.x);
+    add("Scale Y", previousSnapshot.transform.scale.y, currentSnapshot.transform.scale.y);
+    add("Scale Z", previousSnapshot.transform.scale.z, currentSnapshot.transform.scale.z);
+    return rows;
+  }, [
+    geometryHistoryCompareWithPreviousEnabled,
+    geometrySelectedHistoryPreviousStep,
+    geometrySelectedSceneObject,
+  ]);
+  const handleToggleSelectedHistoryStepDestructive = useCallback(() => {
+    if (!geometrySelectedObjectId || !geometrySelectedHistoryStepId) return;
+    setGeometryObjectHistoryById((prev) => {
+      const history = prev[geometrySelectedObjectId] ?? [];
+      const index = history.findIndex((entry) => entry.id === geometrySelectedHistoryStepId);
+      if (index < 0) return prev;
+      const nextHistory = history.slice();
+      nextHistory[index] = {
+        ...nextHistory[index],
+        destructive: !nextHistory[index].destructive,
+      };
+      return {
+        ...prev,
+        [geometrySelectedObjectId]: nextHistory,
+      };
+    });
+  }, [geometrySelectedHistoryStepId, geometrySelectedObjectId]);
+  const handleSaveSelectedHistoryStepAsPreset = useCallback(() => {
+    if (!geometrySelectedHistoryStep) return;
+    const defaultName = `${geometrySelectedHistoryStep.objectName} · ${geometrySelectedHistoryStep.label}`;
+    const name = window.prompt("Preset name", defaultName);
+    if (!name?.trim()) return;
+    const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedHistoryStep.snapshot);
+    setGeometryObjectPresets((prev) =>
+      [{ id: makeId(), name: name.trim(), createdAt: Date.now(), snapshot }, ...prev].slice(0, 40)
+    );
+  }, [geometrySelectedHistoryStep]);
   const handleRestoreGeometryObjectFromHistoryStep = useCallback(() => {
     if (!geometrySelectedObjectId || !geometrySelectedHistoryStep) return;
     if (geometryLockedObjectIds.has(geometrySelectedObjectId)) return;
+    queueGeometryHistoryIntent(geometrySelectedObjectId, {
+      action: "history-rollback",
+      label: "Rollback to selected step",
+      operationType: "History",
+      target: geometrySelectedHistoryStep.label,
+      parameters: new Date(geometrySelectedHistoryStep.at).toLocaleTimeString(),
+      destructive: true,
+    });
     const snapshot = geometrySelectedHistoryStep.snapshot;
     if ("mesh" in snapshot) {
       const restored = cloneGeometryDatasetMeshObject(snapshot);
@@ -6931,7 +7188,7 @@ const App: React.FC = () => {
     restored.id = geometrySelectedObjectId;
     setGeometryObjects((prev) => prev.map((obj) => (obj.id === geometrySelectedObjectId ? restored : obj)));
     setGeometryDatasetMeshObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedObjectId));
-  }, [geometryLockedObjectIds, geometrySelectedHistoryStep, geometrySelectedObjectId]);
+  }, [geometryLockedObjectIds, geometrySelectedHistoryStep, geometrySelectedObjectId, queueGeometryHistoryIntent]);
   const handleDuplicateGeometryObjectFromHistoryStep = useCallback(() => {
     if (!geometrySelectedHistoryStep) return;
     const snapshot = geometrySelectedHistoryStep.snapshot;
@@ -6941,6 +7198,14 @@ const App: React.FC = () => {
       copy.id = copyId;
       copy.name = `${snapshot.name} history copy`;
       copy.transform.position.x += 0.25;
+      queueGeometryHistoryIntent(copyId, {
+        action: "history-duplicate",
+        label: "Duplicate object from selected step",
+        operationType: "History",
+        target: snapshot.name,
+        parameters: `source step ${geometrySelectedHistoryStep.label}`,
+        destructive: false,
+      });
       setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
       setGeometrySelectedObjectId(copyId);
       return;
@@ -6949,9 +7214,17 @@ const App: React.FC = () => {
     copy.id = copyId;
     copy.name = `${snapshot.name} history copy`;
     copy.transform.position.x += 0.25;
+    queueGeometryHistoryIntent(copyId, {
+      action: "history-duplicate",
+      label: "Duplicate object from selected step",
+      operationType: "History",
+      target: snapshot.name,
+      parameters: `source step ${geometrySelectedHistoryStep.label}`,
+      destructive: false,
+    });
     setGeometryObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
-  }, [allocateUniqueGeometryObjectId, geometrySelectedHistoryStep]);
+  }, [allocateUniqueGeometryObjectId, geometrySelectedHistoryStep, geometrySelectedObjectId, geometryLockedObjectIds, queueGeometryHistoryIntent]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -6989,16 +7262,32 @@ const App: React.FC = () => {
         const copy = cloneGeometryDatasetMeshObject(snapshot);
         copy.id = id;
         copy.name = `${preset.name}`;
+        queueGeometryHistoryIntent(id, {
+          action: "preset-apply",
+          label: "Apply object preset",
+          operationType: "Preset",
+          target: preset.name,
+          parameters: "snapshot preset applied",
+          destructive: false,
+        });
         setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
       } else {
         const copy = cloneGeometryObject(snapshot);
         copy.id = id;
         copy.name = `${preset.name}`;
+        queueGeometryHistoryIntent(id, {
+          action: "preset-apply",
+          label: "Apply object preset",
+          operationType: "Preset",
+          target: preset.name,
+          parameters: "snapshot preset applied",
+          destructive: false,
+        });
         setGeometryObjects((prev) => [copy, ...prev]);
       }
       setGeometrySelectedObjectId(id);
     },
-    [allocateUniqueGeometryObjectId, geometryObjectPresets]
+    [allocateUniqueGeometryObjectId, geometryObjectPresets, queueGeometryHistoryIntent]
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -7443,6 +7732,14 @@ const App: React.FC = () => {
         },
         material: normalizeGeometryMaterial((procedural as { material?: unknown })?.material),
       };
+      queueGeometryHistoryIntent(copyId, {
+        action: "duplicate",
+        label: "Duplicate object",
+        operationType: "Object",
+        target: procedural.name,
+        parameters: "scene duplicate",
+        destructive: false,
+      });
       setGeometryObjects((prev) => [copy, ...prev]);
       setGeometrySelectedObjectId(copyId);
       return;
@@ -7462,9 +7759,17 @@ const App: React.FC = () => {
       },
       material: normalizeGeometryMaterial((datasetObj as { material?: unknown })?.material),
     };
+    queueGeometryHistoryIntent(copyId, {
+      action: "duplicate",
+      label: "Duplicate object",
+      operationType: "Object",
+      target: datasetObj.name,
+      parameters: "scene duplicate",
+      destructive: false,
+    });
     setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
-  }, [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects]);
+  }, [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects, queueGeometryHistoryIntent]);
   const resolveGeometrySceneObjectById = useCallback(
     (id: string): GeometryObject | GeometryDatasetMeshObject | null =>
       geometryObjects.find((entry) => entry.id === id) ??
@@ -7474,26 +7779,64 @@ const App: React.FC = () => {
   );
   const handleRenameGeometryObject = useCallback((id: string, name: string) => {
     if (geometryLockedObjectIds.has(id)) return;
+    const before = resolveGeometrySceneObjectById(id);
+    const trimmed = name.trim();
+    if (before && trimmed && trimmed !== before.name) {
+      queueGeometryHistoryIntent(id, {
+        action: "rename",
+        label: "Renamed object",
+        operationType: "Identity",
+        target: "Name",
+        parameters: `${before.name} -> ${trimmed}`,
+        destructive: false,
+      });
+    }
     setGeometryObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
     setGeometryDatasetMeshObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
-  }, [geometryLockedObjectIds]);
+  }, [geometryLockedObjectIds, queueGeometryHistoryIntent, resolveGeometrySceneObjectById]);
 
   const handleToggleGeometryObjectVisible = useCallback((id: string) => {
     if (geometryLockedObjectIds.has(id)) return;
+    const before = resolveGeometrySceneObjectById(id);
+    if (before) {
+      const nextVisible = !before.visible;
+      queueGeometryHistoryIntent(id, {
+        action: "visibility",
+        label: nextVisible ? "Show object" : "Hide object",
+        operationType: "Visibility",
+        target: before.name,
+        parameters: `visible=${nextVisible ? "true" : "false"}`,
+        destructive: false,
+      });
+    }
     setGeometryObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
     );
     setGeometryDatasetMeshObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o))
     );
-  }, [geometryLockedObjectIds]);
+  }, [geometryLockedObjectIds, queueGeometryHistoryIntent, resolveGeometrySceneObjectById]);
 
   const handleUpdateGeometryParam = useCallback((id: string, key: string, value: number | boolean | string) => {
     if (geometryLockedObjectIds.has(id)) return;
+    const before = geometryObjects.find((o) => o.id === id) ?? null;
+    if (before) {
+      const previousValue = before.params[key];
+      if (previousValue !== value) {
+        queueGeometryHistoryIntent(id, {
+          action: "params",
+          label: "Updated procedural parameter",
+          operationType: "Parameters",
+          target: key,
+          parameters: `${key}: ${String(previousValue)} -> ${String(value)}`,
+          destructive: false,
+        });
+      }
+    }
     setGeometryObjects((prev) =>
       prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
     );
-  }, [geometryLockedObjectIds]);
+  }, [geometryLockedObjectIds, geometryObjects, queueGeometryHistoryIntent]);
   const geometryProbeSelectionDetailsRef = useRef<GeometryProbeSelectionDetails | null>(null);
   const handleUpdateGeometryObjectParam = useCallback(
     (id: string, key: string, value: number | boolean | string) => {
@@ -7560,6 +7903,19 @@ const App: React.FC = () => {
   const handleUpdateGeometryMaterial = useCallback(
     (id: string, patch: Partial<GeometryObject["material"]>) => {
       if (geometryLockedObjectIds.has(id)) return;
+      const keys = Object.keys(patch).filter((key) => key === "color" || key === "opacity" || key === "roughness" || key === "metalness");
+      if (keys.length) {
+        queueGeometryHistoryIntent(id, {
+          action: "material",
+          label: "Updated material",
+          operationType: "Material",
+          target: keys.join(", "),
+          parameters: keys
+            .map((key) => `${key}=${String((patch as Record<string, unknown>)[key])}`)
+            .join(" · "),
+          destructive: false,
+        });
+      }
       setGeometryObjects((prev) =>
         prev.map((o) =>
           o.id === id
@@ -7581,12 +7937,24 @@ const App: React.FC = () => {
         )
       );
     },
-    [geometryLockedObjectIds]
+    [geometryLockedObjectIds, queueGeometryHistoryIntent]
   );
 
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
       if (geometryLockedObjectIds.has(id)) return;
+      const axes: string[] = [];
+      if (patch.position) axes.push(...Object.keys(patch.position).map((axis) => `position.${axis}`));
+      if (patch.rotation) axes.push(...Object.keys(patch.rotation).map((axis) => `rotation.${axis}`));
+      if (patch.scale) axes.push(...Object.keys(patch.scale).map((axis) => `scale.${axis}`));
+      queueGeometryHistoryIntent(id, {
+        action: "transform",
+        label: "Transform edit",
+        operationType: "Transform",
+        target: axes.length ? axes.join(", ") : "transform",
+        parameters: axes.length ? axes.join(" · ") : "transform patch",
+        destructive: false,
+      });
       const probeSelectionDetails = geometryProbeSelectionDetailsRef.current;
       const applyTransformPatch = (transform: GeometryObjectTransform): GeometryObjectTransform => {
         const basePosition = transform.position;
@@ -7683,6 +8051,7 @@ const App: React.FC = () => {
       geometryLockYEnabled,
       geometryLockZEnabled,
       geometryLockedObjectIds,
+      queueGeometryHistoryIntent,
       geometryUniformScaleLock,
     ]
   );
@@ -7692,6 +8061,14 @@ const App: React.FC = () => {
     setGeometryObjects((prev) =>
       prev.map((o) => {
         if (geometryLockedObjectIds.has(o.id)) return o;
+        queueGeometryHistoryIntent(o.id, {
+          action: "transform-scale",
+          label: "Scaled object",
+          operationType: "Transform",
+          target: "scale.xyz",
+          parameters: `factor=${formatHistoryNumber(factor)}`,
+          destructive: false,
+        });
         const nextScale = {
           x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
           y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
@@ -7703,6 +8080,14 @@ const App: React.FC = () => {
     setGeometryDatasetMeshObjects((prev) =>
       prev.map((o) => {
         if (geometryLockedObjectIds.has(o.id)) return o;
+        queueGeometryHistoryIntent(o.id, {
+          action: "transform-scale",
+          label: "Scaled object",
+          operationType: "Transform",
+          target: "scale.xyz",
+          parameters: `factor=${formatHistoryNumber(factor)}`,
+          destructive: false,
+        });
         const nextScale = {
           x: clampNumber(o.transform.scale.x * factor, 0.05, 20),
           y: clampNumber(o.transform.scale.y * factor, 0.05, 20),
@@ -7711,7 +8096,7 @@ const App: React.FC = () => {
         return { ...o, transform: { ...o.transform, scale: nextScale } };
       })
     );
-  }, [geometryLockedObjectIds]);
+  }, [geometryLockedObjectIds, queueGeometryHistoryIntent]);
 
   const executeProceduralScript = useCallback(
     (options?: { switchToProcedural?: boolean }) => {
@@ -8757,7 +9142,12 @@ const App: React.FC = () => {
     []
   );
   const applyMeshEditToObject = useCallback(
-    (objectId: string, actionLabel: string, edit: (mesh: SurfaceMeshData) => SurfaceMeshData): boolean => {
+    (
+      objectId: string,
+      actionLabel: string,
+      edit: (mesh: SurfaceMeshData) => SurfaceMeshData,
+      intent?: Partial<GeometryHistoryIntent>
+    ): boolean => {
       if (!objectId) {
         setGeometryCreateActionStatus("Select an object first.");
         return false;
@@ -8772,6 +9162,15 @@ const App: React.FC = () => {
         return false;
       }
       try {
+        queueGeometryHistoryIntent(objectId, {
+          action: intent?.action ?? "mesh-edit",
+          label: intent?.label ?? actionLabel,
+          operationType: intent?.operationType ?? "Mesh edit",
+          target: intent?.target ?? null,
+          parameters: intent?.parameters ?? null,
+          destructive: intent?.destructive ?? true,
+          warning: intent?.warning ?? null,
+        });
         const edited = applySurfaceMeshOps(edit(cloneSurfaceMeshData(target.mesh, target.mesh.label)));
         setGeometryDatasetMeshObjects((prev) =>
           prev.map((entry) => (entry.id === objectId ? { ...entry, mesh: edited } : entry))
@@ -8791,6 +9190,7 @@ const App: React.FC = () => {
       geometryDatasetMeshObjects,
       geometryLockedObjectIds,
       geometrySelectedObjectId,
+      queueGeometryHistoryIntent,
       setGeometryCreateActionStatus,
     ]
   );
@@ -8802,7 +9202,14 @@ const App: React.FC = () => {
     const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
     applyMeshEditToObject(objectId, "Extruded face", (mesh) =>
       extrudeFace(mesh, geometryProbeSelectionDetails.faceIndex as number, geometryFaceExtrudeDistance)
-    );
+    , {
+      action: "face-extrude",
+      label: "Face extrude",
+      operationType: "Face edit",
+      target: `Face ${geometryProbeSelectionDetails.faceIndex}`,
+      parameters: `distance=${formatHistoryNumber(geometryFaceExtrudeDistance)}`,
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryFaceExtrudeDistance,
@@ -8819,7 +9226,14 @@ const App: React.FC = () => {
     const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
     applyMeshEditToObject(objectId, "Inset face applied", (mesh) =>
       insetFace(mesh, geometryProbeSelectionDetails.faceIndex as number, geometryFaceInsetRatio)
-    );
+    , {
+      action: "face-inset",
+      label: "Face inset",
+      operationType: "Face edit",
+      target: `Face ${geometryProbeSelectionDetails.faceIndex}`,
+      parameters: `ratio=${formatHistoryNumber(geometryFaceInsetRatio)}`,
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryFaceInsetRatio,
@@ -8836,7 +9250,14 @@ const App: React.FC = () => {
     const objectId = geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? "";
     applyMeshEditToObject(objectId, "Deleted face", (mesh) =>
       deleteFace(mesh, geometryProbeSelectionDetails.faceIndex as number)
-    );
+    , {
+      action: "face-delete",
+      label: "Delete face",
+      operationType: "Face edit",
+      target: `Face ${geometryProbeSelectionDetails.faceIndex}`,
+      parameters: "delete selected face",
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryProbeSelectionDetails,
@@ -8850,7 +9271,14 @@ const App: React.FC = () => {
       return;
     }
     const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
-    applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Split edge applied", (mesh) => splitEdge(mesh, a, b));
+    applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Split edge applied", (mesh) => splitEdge(mesh, a, b), {
+      action: "edge-split",
+      label: "Split edge",
+      operationType: "Edge edit",
+      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
+      parameters: "split midpoint",
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryMeasuredEdgeCandidate,
@@ -8865,7 +9293,14 @@ const App: React.FC = () => {
     const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
     applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Bevel edge applied", (mesh) =>
       bevelEdge(mesh, a, b, geometryEdgeBevelAmount)
-    );
+    , {
+      action: "edge-bevel",
+      label: "Bevel edge",
+      operationType: "Edge edit",
+      target: `Edge ${Math.min(a, b)}-${Math.max(a, b)}`,
+      parameters: `amount=${formatHistoryNumber(geometryEdgeBevelAmount)}`,
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryEdgeBevelAmount,
@@ -8886,7 +9321,14 @@ const App: React.FC = () => {
         geometryVertexMoveAmount,
         geometryProbeSelectionDetails.normal
       )
-    );
+    , {
+      action: "vertex-move",
+      label: "Move vertex",
+      operationType: "Vertex edit",
+      target: `Vertex ${geometryProbeSelectionDetails.vertexIndex}`,
+      parameters: `distance=${formatHistoryNumber(geometryVertexMoveAmount)}`,
+      destructive: true,
+    });
   }, [
     applyMeshEditToObject,
     geometryProbeSelectionDetails,
@@ -8898,7 +9340,14 @@ const App: React.FC = () => {
   const handleWeldVertices = useCallback(() => {
     if (geometryProbeSelectionMode === "edge" && geometryMeasuredEdgeCandidate?.edgeVertexPair) {
       const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
-      applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Welded vertices", (mesh) => weldVertices(mesh, a, b));
+      applyMeshEditToObject(geometryMeasuredEdgeCandidate.meshKey, "Welded vertices", (mesh) => weldVertices(mesh, a, b), {
+        action: "vertex-weld",
+        label: "Weld vertices",
+        operationType: "Vertex edit",
+        target: `Vertices ${a}, ${b}`,
+        parameters: "direct pair weld",
+        destructive: true,
+      });
       return;
     }
     if (geometryProbeSelectionMode !== "vertex" || geometryProbeSelectionDetails?.vertexIndex == null) {
@@ -8913,6 +9362,14 @@ const App: React.FC = () => {
         throw new Error("No nearby vertex found within weld distance.");
       }
       return weldVertices(mesh, sourceIndex, nearest);
+    }, {
+      action: "vertex-weld",
+      label: "Weld vertices",
+      operationType: "Vertex edit",
+      target: `Vertex ${sourceIndex}`,
+      parameters: `maxDistance=${formatHistoryNumber(geometryVertexWeldDistance)}`,
+      destructive: true,
+      warning: "Nearest neighbor depends on current topology.",
     });
   }, [
     applyMeshEditToObject,
@@ -9997,6 +10454,14 @@ const App: React.FC = () => {
   const handleBakeSelectedTransformToMesh = useCallback(() => {
     if (!geometrySelectedSceneObject) return;
     if (geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) return;
+    queueGeometryHistoryIntent(geometrySelectedSceneObject.id, {
+      action: "pipeline-bake-transform",
+      label: "Bake transform into mesh",
+      operationType: "Pipeline",
+      target: geometrySelectedSceneObject.name,
+      parameters: "apply object transform to mesh vertices",
+      destructive: true,
+    });
     const identity: GeometryObjectTransform = {
       position: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
@@ -10046,7 +10511,7 @@ const App: React.FC = () => {
     setGeometryDatasetMeshObjects((prev) => [replacement, ...prev.filter((obj) => obj.id !== geometrySelectedSceneObject.id)]);
     setGeometrySelectedObjectId(replacement.id);
     setGeometryBakeError(null);
-  }, [geometryLockedObjectIds, geometrySelectedSceneObject, proceduralMeshSet.meshes]);
+  }, [geometryLockedObjectIds, geometrySelectedSceneObject, proceduralMeshSet.meshes, queueGeometryHistoryIntent]);
   const geometryEulerSelectedMeshCounts = useMemo(
     () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
     [geometrySelectedSceneMesh]
@@ -12809,10 +13274,18 @@ const App: React.FC = () => {
       visible: resolved.object.visible,
       material: normalizeGeometryMaterial((resolved.object as { material?: unknown })?.material),
     };
+    queueGeometryHistoryIntent(duplicateId, {
+      action: "pipeline-duplicate-editable-mesh",
+      label: "Duplicate as editable mesh",
+      operationType: "Pipeline",
+      target: resolved.object.name,
+      parameters: "created editable mesh copy",
+      destructive: false,
+    });
     setGeometryDatasetMeshObjects((prev) => [duplicate, ...prev]);
     setGeometrySelectedObjectId(duplicateId);
     setGeometryCreateActionStatus("Editable mesh duplicate created.");
-  }, [geometrySelectedObjectId, resolveGeometrySceneMeshById]);
+  }, [geometrySelectedObjectId, queueGeometryHistoryIntent, resolveGeometrySceneMeshById]);
   const handleSendSelectedGeometryObjectToVolumeModule = useCallback(() => {
     if (!geometrySelectedObjectId) {
       setGeometryBakeError("Select an object first.");
@@ -32504,7 +32977,8 @@ case "mobius":
     if (
       geometryProceduralPanelTab === "object" ||
       geometryProceduralPanelTab === "transform" ||
-      geometryProceduralPanelTab === "view"
+      geometryProceduralPanelTab === "view" ||
+      geometryProceduralPanelTab === "history"
     ) {
       return "transform";
     }
@@ -35892,6 +36366,7 @@ case "mobius":
                     { id: "object" as const, label: "Object" },
                     { id: "transform" as const, label: "Transform" },
                     { id: "view" as const, label: "View" },
+                    { id: "history" as const, label: "History" },
                     { id: "analysis" as const, label: "Analysis" },
                     { id: "theory" as const, label: "Theory" },
                   ] as const).map((entry) => {
@@ -42984,6 +43459,13 @@ case "mobius":
                           >
                             Send to Compare
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("history")}
+                            style={{ fontSize: 11 }}
+                          >
+                            Open History
+                          </button>
                         </div>
                         <div style={{ marginTop: 6, fontSize: 10.5, color: "#475467" }}>
                           Convert freezes procedural parameters and creates a mesh object for vertex/edge/face workflows.
@@ -43069,6 +43551,22 @@ case "mobius":
                             style={{ fontSize: 11 }}
                           >
                             Duplicate object from selected step
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveSelectedHistoryStepAsPreset}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Save step as preset
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("history")}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Inspect step details
                           </button>
                         </div>
                       </>
@@ -43332,6 +43830,13 @@ case "mobius":
                           >
                             Send to Compare
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("history")}
+                            style={{ fontSize: 11 }}
+                          >
+                            Open History
+                          </button>
                         </div>
                         {geometryProceduralPick?.meshKey === geometrySelectedDatasetMeshObject.id && (
                           <div
@@ -43414,6 +43919,22 @@ case "mobius":
                           >
                             Duplicate object from selected step
                           </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveSelectedHistoryStepAsPreset}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Save step as preset
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setGeometryProceduralPanelTab("history")}
+                            disabled={!geometrySelectedHistoryStep}
+                            style={{ fontSize: 11 }}
+                          >
+                            Inspect step details
+                          </button>
                         </div>
                       </>
                       ) : (
@@ -43431,6 +43952,185 @@ case "mobius":
                           Select an object in the Scene tab to edit parameters and material.
                         </div>
                       ))}
+                    {geometryProceduralPanelTab === "history" && (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        {geometrySelectedSceneObject ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 10,
+                              gridTemplateColumns: "minmax(260px, 1fr) minmax(300px, 1.1fr)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fff",
+                                display: "grid",
+                                gap: 6,
+                              }}
+                            >
+                              <div style={{ fontSize: 12, fontWeight: 700 }}>Operation history · {geometrySelectedSceneObject.name}</div>
+                              {geometrySelectedObjectHistory.length ? (
+                                geometrySelectedObjectHistory.slice(0, 24).map((entry) => (
+                                  <button
+                                    key={`geometry-history-panel-step-${entry.id}`}
+                                    type="button"
+                                    onClick={() => setGeometrySelectedHistoryStepId(entry.id)}
+                                    title={`${entry.beforeSummary ? `Before: ${entry.beforeSummary}\n` : ""}After: ${entry.afterSummary}\n${entry.changeSummary}`}
+                                    style={{
+                                      textAlign: "left",
+                                      fontSize: 10.5,
+                                      borderRadius: 7,
+                                      border: "1px solid " + (geometrySelectedHistoryStepId === entry.id ? "#0a66c2" : "#dbe2ea"),
+                                      background: geometrySelectedHistoryStepId === entry.id ? "#eaf3ff" : "#fff",
+                                      padding: "6px 8px",
+                                      display: "grid",
+                                      gap: 2,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                      <span style={{ fontWeight: 700 }}>{entry.label}</span>
+                                      <span style={{ opacity: 0.72 }}>{new Date(entry.at).toLocaleTimeString()}</span>
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                      <span style={{ opacity: 0.82 }}>{entry.operationType}</span>
+                                      <span
+                                        style={{
+                                          border: "1px solid " + (entry.destructive ? "#ef4444" : "#16a34a"),
+                                          borderRadius: 999,
+                                          padding: "1px 6px",
+                                          fontSize: 9.5,
+                                          color: entry.destructive ? "#991b1b" : "#166534",
+                                          background: entry.destructive ? "#fef2f2" : "#ecfdf5",
+                                        }}
+                                      >
+                                        {entry.destructive ? "destructive" : "non-destructive"}
+                                      </span>
+                                    </div>
+                                    <div style={{ opacity: 0.78 }}>{entry.changeSummary}</div>
+                                  </button>
+                                ))
+                              ) : (
+                                <div style={{ fontSize: 10.5, opacity: 0.75 }}>No steps yet.</div>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fbfdff",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ fontSize: 12, fontWeight: 700 }}>Selected step</div>
+                              {geometrySelectedHistoryStep ? (
+                                <>
+                                  <div style={{ display: "grid", gap: 3, fontSize: 10.5 }}>
+                                    <div><strong>Type:</strong> {geometrySelectedHistoryStep.operationType}</div>
+                                    <div><strong>Target:</strong> {geometrySelectedHistoryStep.operationTarget ?? "n/a"}</div>
+                                    <div><strong>Parameters:</strong> {geometrySelectedHistoryStep.operationParameters ?? "n/a"}</div>
+                                    <div>
+                                      <strong>Result vertices:</strong>{" "}
+                                      {geometrySelectedHistoryStep.beforeVertexCount == null || geometrySelectedHistoryStep.afterVertexCount == null
+                                        ? "n/a"
+                                        : `${geometrySelectedHistoryStep.beforeVertexCount} -> ${geometrySelectedHistoryStep.afterVertexCount}`}
+                                    </div>
+                                    <div>
+                                      <strong>Result faces:</strong>{" "}
+                                      {geometrySelectedHistoryStep.beforeFaceCount == null || geometrySelectedHistoryStep.afterFaceCount == null
+                                        ? "n/a"
+                                        : `${geometrySelectedHistoryStep.beforeFaceCount} -> ${geometrySelectedHistoryStep.afterFaceCount}`}
+                                    </div>
+                                    <div><strong>Warnings:</strong> {geometrySelectedHistoryStep.warning ?? "none"}</div>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <button type="button" onClick={handleRestoreGeometryObjectFromHistoryStep} style={{ fontSize: 11 }}>
+                                      Rollback to selected step
+                                    </button>
+                                    <button type="button" onClick={handleDuplicateGeometryObjectFromHistoryStep} style={{ fontSize: 11 }}>
+                                      Duplicate object from selected step
+                                    </button>
+                                    <button type="button" onClick={handleSaveSelectedHistoryStepAsPreset} style={{ fontSize: 11 }}>
+                                      Save step as preset
+                                    </button>
+                                    <button type="button" onClick={handleToggleSelectedHistoryStepDestructive} style={{ fontSize: 11 }}>
+                                      Mark as {geometrySelectedHistoryStep.destructive ? "non-destructive" : "destructive"}
+                                    </button>
+                                    <button type="button" onClick={handleBakeSelectedTransformToMesh} style={{ fontSize: 11 }}>
+                                      Bake current state
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setGeometryHistoryCompareWithPreviousEnabled((prev) => !prev)}
+                                      disabled={!geometrySelectedHistoryPreviousStep}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      {geometryHistoryCompareWithPreviousEnabled ? "Hide step compare" : "Compare current with previous step"}
+                                    </button>
+                                  </div>
+                                  {geometryHistoryCompareWithPreviousEnabled && (
+                                    <div style={{ border: "1px solid #dbe2ea", borderRadius: 8, padding: "7px 8px", background: "#fff" }}>
+                                      {geometryHistoryCurrentVsPreviousRows.length ? (
+                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5 }}>
+                                          <thead>
+                                            <tr>
+                                              <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Metric</th>
+                                              <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Previous</th>
+                                              <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Current</th>
+                                              <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 6px" }}>Diff</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {geometryHistoryCurrentVsPreviousRows.map((row) => (
+                                              <tr key={`history-compare-row-${row.metric}`}>
+                                                <td style={{ borderBottom: "1px solid #eef2f7", padding: "4px 6px" }}>{row.metric}</td>
+                                                <td style={{ textAlign: "right", borderBottom: "1px solid #eef2f7", padding: "4px 6px" }}>
+                                                  {fmtCompareValue(row.previous, row.integer)}
+                                                </td>
+                                                <td style={{ textAlign: "right", borderBottom: "1px solid #eef2f7", padding: "4px 6px" }}>
+                                                  {fmtCompareValue(row.current, row.integer)}
+                                                </td>
+                                                <td style={{ textAlign: "right", borderBottom: "1px solid #eef2f7", padding: "4px 6px" }}>
+                                                  {fmtCompareDiff(row.previous, row.current, row.integer)}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      ) : (
+                                        <div style={{ fontSize: 10.5, opacity: 0.75 }}>
+                                          No comparable metrics for the selected baseline step.
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div style={{ fontSize: 10.5, opacity: 0.75 }}>Select a step to inspect operation details.</div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              border: "1px dashed #cbd5e1",
+                              borderRadius: 8,
+                              padding: "10px 12px",
+                              fontSize: 11,
+                              color: "#334155",
+                              background: "#f8fafc",
+                            }}
+                          >
+                            Select an object in the Scene tab to inspect operation history.
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {geometryProceduralPanelTab === "theory" && (
                       <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                         {geometryTheorySummary ? (
