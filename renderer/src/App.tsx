@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
+import { ADDITION, Brush, Evaluator, INTERSECTION, SUBTRACTION } from "three-bvh-csg";
 import { uiStyles as styles } from "./uiStyles";
 
 import MobiusScreen from "./screens/MobiusScreen";
@@ -189,6 +190,7 @@ import {
   formatSurfaceMeshSource,
   loadSurfaceMeshFromFile,
   mergeMeshData,
+  surfaceMeshToGeometry,
   weldSurfaceMeshVertices,
   type SurfaceMeshData,
   type SurfaceMeshSource,
@@ -1652,6 +1654,7 @@ type GeometryRepeatMode =
   | "circular-array"
   | "mirror-plane"
   | "mirror-axis";
+type GeometryBooleanOperation = "union" | "difference" | "intersection";
 type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
@@ -6581,6 +6584,11 @@ const App: React.FC = () => {
     useState<GeometryRepeatMirrorPlane>("xy");
   const [geometryRepeatMirrorAxis, setGeometryRepeatMirrorAxis] = useState<"x" | "y" | "z">("x");
   const [geometryRepeatPreviewStatus, setGeometryRepeatPreviewStatus] = useState<string | null>(null);
+  const [geometryBooleanObjectAId, setGeometryBooleanObjectAId] = useState<string | null>(null);
+  const [geometryBooleanObjectBId, setGeometryBooleanObjectBId] = useState<string | null>(null);
+  const [geometryBooleanOperation, setGeometryBooleanOperation] =
+    useState<GeometryBooleanOperation>("union");
+  const [geometryBooleanPreviewStatus, setGeometryBooleanPreviewStatus] = useState<string | null>(null);
   const [geometrySnapPreview, setGeometrySnapPreview] = useState<{
     point: SnapPoint3;
     kind: GeometrySnapPreviewKind;
@@ -6615,6 +6623,42 @@ const App: React.FC = () => {
     for (const obj of geometryDatasetMeshObjects) ids.add(obj.id);
     return ids;
   }, [geometryDatasetMeshObjects, geometryObjects]);
+  const geometryBooleanObjectOptions = useMemo(
+    () =>
+      [...geometryObjects, ...geometryDatasetMeshObjects].map((obj) => ({
+        id: obj.id,
+        name: obj.name,
+      })),
+    [geometryDatasetMeshObjects, geometryObjects]
+  );
+  useEffect(() => {
+    if (!geometryBooleanObjectOptions.length) {
+      if (geometryBooleanObjectAId !== null) setGeometryBooleanObjectAId(null);
+      if (geometryBooleanObjectBId !== null) setGeometryBooleanObjectBId(null);
+      return;
+    }
+    const optionIds = new Set(geometryBooleanObjectOptions.map((entry) => entry.id));
+    const selectedId = geometrySelectedSceneObject?.id ?? null;
+    if (selectedId && optionIds.has(selectedId) && geometryBooleanObjectAId !== selectedId) {
+      setGeometryBooleanObjectAId(selectedId);
+    } else if (!geometryBooleanObjectAId || !optionIds.has(geometryBooleanObjectAId)) {
+      setGeometryBooleanObjectAId(selectedId && optionIds.has(selectedId) ? selectedId : geometryBooleanObjectOptions[0].id);
+    }
+    if (!geometryBooleanObjectBId || !optionIds.has(geometryBooleanObjectBId) || geometryBooleanObjectBId === geometryBooleanObjectAId) {
+      const fallback =
+        geometryBooleanObjectOptions.find((entry) => entry.id !== (selectedId ?? geometryBooleanObjectAId)) ??
+        geometryBooleanObjectOptions.find((entry) => entry.id !== geometryBooleanObjectAId) ??
+        null;
+      if (fallback) {
+        setGeometryBooleanObjectBId(fallback.id);
+      }
+    }
+  }, [
+    geometryBooleanObjectAId,
+    geometryBooleanObjectBId,
+    geometryBooleanObjectOptions,
+    geometrySelectedSceneObject?.id,
+  ]);
   const allocateUniqueGeometryObjectId = useCallback(() => {
     let id = makeId();
     while (geometryObjectIdSet.has(id)) {
@@ -7261,7 +7305,13 @@ const App: React.FC = () => {
     setGeometryDatasetMeshObjects((prev) => [copy, ...prev]);
     setGeometrySelectedObjectId(copyId);
   }, [geometryDatasetMeshObjects, geometryLockedObjectIds, geometryObjects]);
-
+  const resolveGeometrySceneObjectById = useCallback(
+    (id: string): GeometryObject | GeometryDatasetMeshObject | null =>
+      geometryObjects.find((entry) => entry.id === id) ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === id) ??
+      null,
+    [geometryDatasetMeshObjects, geometryObjects]
+  );
   const handleRenameGeometryObject = useCallback((id: string, name: string) => {
     if (geometryLockedObjectIds.has(id)) return;
     setGeometryObjects((prev) => prev.map((o) => (o.id === id ? { ...o, name } : o)));
@@ -7284,6 +7334,7 @@ const App: React.FC = () => {
       prev.map((o) => (o.id === id ? { ...o, params: { ...o.params, [key]: value } } : o))
     );
   }, [geometryLockedObjectIds]);
+  const geometryProbeSelectionDetailsRef = useRef<GeometryProbeSelectionDetails | null>(null);
   const handleUpdateGeometryObjectParam = useCallback(
     (id: string, key: string, value: number | boolean | string) => {
       if (geometryObjectLiveRebuild) {
@@ -7376,6 +7427,7 @@ const App: React.FC = () => {
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
       if (geometryLockedObjectIds.has(id)) return;
+      const probeSelectionDetails = geometryProbeSelectionDetailsRef.current;
       const applyTransformPatch = (transform: GeometryObjectTransform): GeometryObjectTransform => {
         const basePosition = transform.position;
         const baseRotation = transform.rotation;
@@ -7384,14 +7436,14 @@ const App: React.FC = () => {
         const nextRotation: Vec3 = { ...baseRotation, ...(patch.rotation ?? {}) };
         let nextScale: Vec3 = { ...baseScale, ...(patch.scale ?? {}) };
 
-        if (geometryKeepOnSelectedPlaneEnabled && geometryProbeSelectionDetails?.mode === "face") {
-          const nRaw = geometryProbeSelectionDetails.normal;
+        if (geometryKeepOnSelectedPlaneEnabled && probeSelectionDetails?.mode === "face") {
+          const nRaw = probeSelectionDetails.normal;
           const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
           if (Number.isFinite(nLen) && nLen > 1e-9) {
             const nx = nRaw.x / nLen;
             const ny = nRaw.y / nLen;
             const nz = nRaw.z / nLen;
-            const p0 = geometryProbeSelectionDetails.point;
+            const p0 = probeSelectionDetails.point;
             const dx = nextPosition.x - p0.x;
             const dy = nextPosition.y - p0.y;
             const dz = nextPosition.z - p0.z;
@@ -7423,8 +7475,8 @@ const App: React.FC = () => {
           };
         }
 
-        if (geometryAlignToSelectedEdgeEnabled && geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints) {
-          const [a, b] = geometryProbeSelectionDetails.edgePoints;
+        if (geometryAlignToSelectedEdgeEnabled && probeSelectionDetails?.mode === "edge" && probeSelectionDetails.edgePoints) {
+          const [a, b] = probeSelectionDetails.edgePoints;
           const dir = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z);
           if (dir.lengthSq() > 1e-12) {
             dir.normalize();
@@ -7471,7 +7523,6 @@ const App: React.FC = () => {
       geometryLockYEnabled,
       geometryLockZEnabled,
       geometryLockedObjectIds,
-      geometryProbeSelectionDetails,
       geometryUniformScaleLock,
     ]
   );
@@ -7832,7 +7883,8 @@ const App: React.FC = () => {
           geometrySnapMoveEnabled ? geometrySnapMoveStep * 2.5 : 0.45
         );
         const snapDistanceLimitSq = snapDistanceLimit * snapDistanceLimit;
-        const snapCandidates = geometryAdvancedSnapCandidatesRef.current;
+      const snapCandidates = geometryAdvancedSnapCandidatesRef.current;
+      const probeSelectionDetails = geometryProbeSelectionDetailsRef.current;
 
         let bestCandidate: SnapPoint3 | null = null;
         let bestCandidateKind: GeometrySnapPreviewKind | null = null;
@@ -7891,14 +7943,14 @@ const App: React.FC = () => {
           snapPreviewCandidate = { point: { ...bestCandidate }, kind: bestCandidateKind };
         }
 
-        if (geometryFacePlaneSnapEnabled && geometryProbeSelectionDetails?.mode === "face") {
-          const nRaw = geometryProbeSelectionDetails.normal;
+        if (geometryFacePlaneSnapEnabled && probeSelectionDetails?.mode === "face") {
+          const nRaw = probeSelectionDetails.normal;
           const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
           if (Number.isFinite(nLen) && nLen > 1e-9) {
             const nx = nRaw.x / nLen;
             const ny = nRaw.y / nLen;
             const nz = nRaw.z / nLen;
-            const p0 = geometryProbeSelectionDetails.point;
+            const p0 = probeSelectionDetails.point;
             const dx = snappedPivot.x - p0.x;
             const dy = snappedPivot.y - p0.y;
             const dz = snappedPivot.z - p0.z;
@@ -7965,7 +8017,6 @@ const App: React.FC = () => {
       geometryObjectCenterSnapEnabled,
       geometryBboxCornerSnapEnabled,
       geometryFacePlaneSnapEnabled,
-      geometryProbeSelectionDetails,
       geometryUniformScaleLock,
       handleUpdateGeometryTransform,
     ]
@@ -8083,6 +8134,17 @@ const App: React.FC = () => {
 
     return { meshes, vertCount, triCount };
   }, [geometryObjects, geometryDatasetMeshObjects]);
+  const resolveGeometrySceneMeshById = useCallback(
+    (id: string): { object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } | null => {
+      const object = resolveGeometrySceneObjectById(id);
+      if (!object) return null;
+      const baseMesh = proceduralMeshSet.meshes.find((entry) => entry.id === id) ?? null;
+      if (!baseMesh) return null;
+      const transformed = transformSurfaceMeshByGeometryTransform(baseMesh, object.transform);
+      return { object, mesh: transformed };
+    },
+    [proceduralMeshSet.meshes, resolveGeometrySceneObjectById]
+  );
   const geometrySelectedSceneMeshInfo = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
@@ -8338,6 +8400,9 @@ const App: React.FC = () => {
     () => resolveGeometryProbeSelectionDetails(geometryProceduralPick),
     [geometryProceduralPick, resolveGeometryProbeSelectionDetails]
   );
+  useEffect(() => {
+    geometryProbeSelectionDetailsRef.current = geometryProbeSelectionDetails;
+  }, [geometryProbeSelectionDetails]);
   const geometryProbeHoverSelectionDetails = useMemo(
     () => resolveGeometryProbeSelectionDetails(geometryProceduralHoverPick),
     [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
@@ -9394,6 +9459,110 @@ const App: React.FC = () => {
     geometryRepeatMode,
     geometrySelectedSceneObject,
   ]);
+  const runGeometryBooleanOperation = useCallback(
+    (previewOnly: boolean) => {
+      const objectAId = geometryBooleanObjectAId;
+      const objectBId = geometryBooleanObjectBId;
+      if (!objectAId || !objectBId) {
+        const message = "Pick object A and object B first.";
+        setGeometryBooleanPreviewStatus(message);
+        if (!previewOnly) setGeometryCreateActionStatus(message);
+        return;
+      }
+      if (objectAId === objectBId) {
+        const message = "Object A and object B must be different.";
+        setGeometryBooleanPreviewStatus(message);
+        if (!previewOnly) setGeometryCreateActionStatus(message);
+        return;
+      }
+      const aData = resolveGeometrySceneMeshById(objectAId);
+      const bData = resolveGeometrySceneMeshById(objectBId);
+      if (!aData || !bData) {
+        const message = "Both operands must be visible mesh-backed objects.";
+        setGeometryBooleanPreviewStatus(message);
+        if (!previewOnly) setGeometryCreateActionStatus(message);
+        return;
+      }
+      try {
+        const geomA = surfaceMeshToGeometry(aData.mesh);
+        const geomB = surfaceMeshToGeometry(bData.mesh);
+        if (!geomA.getAttribute("normal")) geomA.computeVertexNormals();
+        if (!geomB.getAttribute("normal")) geomB.computeVertexNormals();
+        const brushA = new Brush(geomA);
+        const brushB = new Brush(geomB);
+        brushA.updateMatrixWorld(true);
+        brushB.updateMatrixWorld(true);
+        const evaluator = new Evaluator();
+        const operation = geometryBooleanOperation === "union" ? ADDITION : geometryBooleanOperation === "difference" ? SUBTRACTION : INTERSECTION;
+        const resultBrush = evaluator.evaluate(brushA, brushB, operation);
+        const resultGeometry = resultBrush.geometry.clone();
+        if (!resultGeometry.getAttribute("normal")) resultGeometry.computeVertexNormals();
+        const previewMesh = buildSurfaceMeshFromGeometry(
+          resultGeometry,
+          `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
+          { kind: "csg" },
+          { mergeVertices: true }
+        );
+        const previewVerts = Math.floor(previewMesh.positions.length / 3);
+        const previewTris = previewMesh.indices ? Math.floor(previewMesh.indices.length / 3) : 0;
+        const previewMessage = `Preview ${geometryBooleanOperation}: ${previewVerts.toLocaleString()} verts, ${previewTris.toLocaleString()} tris.`;
+        setGeometryBooleanPreviewStatus(previewMessage);
+        if (previewOnly) {
+          resultGeometry.dispose();
+          geomA.dispose();
+          geomB.dispose();
+          return;
+        }
+        const resultObjectId = makeId();
+        const nextObject: GeometryDatasetMeshObject = {
+          id: resultObjectId,
+          name: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
+          mesh: computeVertexNormals({
+            ...previewMesh,
+            label: `${aData.object.name} ${geometryBooleanOperation} ${bData.object.name}`,
+            source: { kind: "csg" },
+          }),
+          transform: {
+            position: { x: 0, y: 0, z: 0 },
+            rotation: { x: 0, y: 0, z: 0 },
+            scale: { x: 1, y: 1, z: 1 },
+          },
+          visible: true,
+          material: {
+            color: 0x14b8a6,
+            opacity: 0.95,
+            roughness: 0.25,
+            metalness: 0.1,
+          },
+        };
+        setGeometryDatasetMeshObjects((prev) => [nextObject, ...prev]);
+        setGeometrySelectedObjectId(resultObjectId);
+        setGeometryProceduralPanelTab("object");
+        const doneMessage = `Boolean result created (${previewVerts.toLocaleString()} verts, ${previewTris.toLocaleString()} tris).`;
+        setGeometryCreateActionStatus(doneMessage);
+        setGeometryBooleanPreviewStatus(doneMessage);
+        resultGeometry.dispose();
+        geomA.dispose();
+        geomB.dispose();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Boolean operation failed.";
+        setGeometryBooleanPreviewStatus(message);
+        if (!previewOnly) setGeometryCreateActionStatus(message);
+      }
+    },
+    [
+      geometryBooleanObjectAId,
+      geometryBooleanObjectBId,
+      geometryBooleanOperation,
+      resolveGeometrySceneMeshById,
+    ]
+  );
+  const handlePreviewGeometryBoolean = useCallback(() => {
+    runGeometryBooleanOperation(true);
+  }, [runGeometryBooleanOperation]);
+  const handleBakeGeometryBoolean = useCallback(() => {
+    runGeometryBooleanOperation(false);
+  }, [runGeometryBooleanOperation]);
   const handleFitSelectedToUnitBox = useCallback(() => {
     if (!geometrySelectedSceneObject || !geometrySelectedWorldBounds) return;
     const sizeX = geometrySelectedWorldBounds.max[0] - geometrySelectedWorldBounds.min[0];
@@ -12072,6 +12241,121 @@ const App: React.FC = () => {
     setSurfaceViewerKind("mesh");
     setMode("surfaces");
   }, [geometryObjects, geometryDatasetMeshObjects, proceduralMeshSet.meshes, setMeshDataset]);
+  const handleBakeVisibleGeometryObjectsAsMeshGroup = useCallback(() => {
+    setGeometryBakeError(null);
+    const visibleSceneMeshes = proceduralMeshSet.meshes
+      .map((entry) => {
+        const resolved = resolveGeometrySceneMeshById(entry.id);
+        return resolved ? { id: entry.id, ...resolved } : null;
+      })
+      .filter((entry): entry is { id: string; object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } => !!entry);
+    if (!visibleSceneMeshes.length) {
+      setGeometryBakeError("No visible objects to convert into mesh group.");
+      return;
+    }
+    const created: GeometryDatasetMeshObject[] = visibleSceneMeshes.map((entry, idx) => {
+      const mesh = computeVertexNormals(toDetachedMeshData(entry.mesh, `${entry.object.name} (mesh group)`));
+      return {
+        id: makeId(),
+        name: `${entry.object.name} mesh ${idx + 1}`,
+        mesh,
+        transform: {
+          position: { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+        },
+        visible: entry.object.visible,
+        material: normalizeGeometryMaterial((entry.object as { material?: unknown })?.material),
+      };
+    });
+    setGeometryDatasetMeshObjects((prev) => [...created, ...prev]);
+    setGeometryCreateActionStatus(`Mesh group created (${created.length} mesh object${created.length === 1 ? "" : "s"}).`);
+  }, [proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
+  const handleExportAllVisibleGeometryObjectsGlb = useCallback(async () => {
+    setGeometryBakeError(null);
+    const visibleSceneMeshes = proceduralMeshSet.meshes
+      .map((entry) => {
+        const resolved = resolveGeometrySceneMeshById(entry.id);
+        return resolved ? { id: entry.id, ...resolved } : null;
+      })
+      .filter((entry): entry is { id: string; object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } => !!entry);
+    if (!visibleSceneMeshes.length) {
+      setGeometryBakeError("No visible objects to export.");
+      return;
+    }
+    const merged = mergeMeshData(
+      visibleSceneMeshes.map((entry) => ({
+        positions: entry.mesh.positions,
+        indices: entry.mesh.indices,
+      }))
+    );
+    const exportMesh: SurfaceMeshData = {
+      label: "Scene visible objects",
+      positions: merged.positions,
+      indices: merged.indices,
+      source: { kind: "geometryObject" },
+    };
+    const base = sanitizeFileBase("geometry_scene_visible", "geometry_scene_visible");
+    await exportMeshToGLB(exportMesh, `${base}.glb`);
+    setGeometryCreateActionStatus(
+      `Exported ${visibleSceneMeshes.length} visible object${visibleSceneMeshes.length === 1 ? "" : "s"} to GLB.`
+    );
+  }, [proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
+  const handleSendSelectedGeometryObjectToMeshModule = useCallback(() => {
+    if (!geometrySelectedObjectId) {
+      setGeometryBakeError("Select an object first.");
+      return;
+    }
+    const ok = bakeGeometryObjectToDatasetById(geometrySelectedObjectId);
+    if (!ok) return;
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab("scene");
+    setSurfaceViewerKind("mesh");
+    setGeometryCreateActionStatus("Selected object sent to Mesh module.");
+  }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]);
+  const handleDuplicateSelectedAsEditableMesh = useCallback(() => {
+    if (!geometrySelectedObjectId) {
+      setGeometryBakeError("Select an object first.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedObjectId);
+    if (!resolved) {
+      setGeometryBakeError("Selected object has no visible mesh to duplicate.");
+      return;
+    }
+    const duplicateId = makeId();
+    const duplicate: GeometryDatasetMeshObject = {
+      id: duplicateId,
+      name: `${resolved.object.name} editable mesh`,
+      mesh: computeVertexNormals(toDetachedMeshData(resolved.mesh, `${resolved.object.name} editable mesh`)),
+      transform: {
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      visible: resolved.object.visible,
+      material: normalizeGeometryMaterial((resolved.object as { material?: unknown })?.material),
+    };
+    setGeometryDatasetMeshObjects((prev) => [duplicate, ...prev]);
+    setGeometrySelectedObjectId(duplicateId);
+    setGeometryCreateActionStatus("Editable mesh duplicate created.");
+  }, [geometrySelectedObjectId, resolveGeometrySceneMeshById]);
+  const handleSendSelectedGeometryObjectToVolumeModule = useCallback(() => {
+    if (!geometrySelectedObjectId) {
+      setGeometryBakeError("Select an object first.");
+      return;
+    }
+    const ok = bakeGeometryObjectToDatasetById(geometrySelectedObjectId);
+    if (!ok) return;
+    setSurfacesPanelState("work");
+    setSurfacesLeftTab("analysis");
+    setDatasetKind("volume");
+    setVolumeViewMode("3d");
+    setMode("surfaces");
+    setGeometryCreateActionStatus(
+      "Selected object routed to Volume module. Build distance field from mesh in Analysis -> Surface -> Volume."
+    );
+  }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]);
 
   function handleDatasetToGeometryScene() {
     setGeometryBakeError(null);
@@ -30535,6 +30819,8 @@ case "mobius":
       const meshSceneRole: UnifiedSceneRole =
         obj.mesh.source.kind === "import"
           ? "referenceObject"
+          : obj.mesh.source.kind === "csg"
+            ? "derivedResult"
           : "primaryObject";
       addRaw({
         id: `scene:${obj.id}`,
@@ -40419,14 +40705,30 @@ case "mobius":
                           onClick={handleBakeSelectedGeometryObject}
                           disabled={!geometrySelectedObjectId}
                         >
-                          Scene → Dataset (selected)
+                          Selected objects → Dataset
                         </button>
                         <button
                           type="button"
                           onClick={handleBakeAllGeometryObjects}
                           disabled={!proceduralMeshSet.meshes.length}
                         >
-                          Scene → Dataset (all visible)
+                          All visible → Dataset
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBakeVisibleGeometryObjectsAsMeshGroup}
+                          disabled={!proceduralMeshSet.meshes.length}
+                        >
+                          All visible → Mesh group
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleExportAllVisibleGeometryObjectsGlb();
+                          }}
+                          disabled={!proceduralMeshSet.meshes.length}
+                        >
+                          All visible → GLB
                         </button>
                         <button
                           type="button"
@@ -40437,7 +40739,7 @@ case "mobius":
                         </button>
                       </div>
                       <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
-                        Compose scene meshes as one dataset, analyze as SurfaceMesh, then detach into Mesh objects.
+                        Bake scene meshes into dataset output, create editable mesh groups, or export whole visible scene as one GLB.
                       </div>
                       {geometryBakeError && (
                         <div style={{ fontSize: 11, color: "#b42318", marginTop: 4 }}>{geometryBakeError}</div>
@@ -40589,6 +40891,77 @@ case "mobius":
                         <div style={{ fontSize: 11, color: "#475569" }}>
                           Move, rotate, scale, align, and snap selected objects.
                         </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Boolean / CSG (PR11)</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                          <label>
+                            Object A
+                            <select
+                              value={geometryBooleanObjectAId ?? ""}
+                              onChange={(e) => setGeometryBooleanObjectAId(e.target.value || null)}
+                              style={{ marginLeft: 6, minWidth: 180 }}
+                            >
+                              <option value="">Select</option>
+                              {geometryBooleanObjectOptions.map((entry) => (
+                                <option key={`boolean-op-a-${entry.id}`} value={entry.id}>
+                                  {entry.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Object B
+                            <select
+                              value={geometryBooleanObjectBId ?? ""}
+                              onChange={(e) => setGeometryBooleanObjectBId(e.target.value || null)}
+                              style={{ marginLeft: 6, minWidth: 180 }}
+                            >
+                              <option value="">Select</option>
+                              {geometryBooleanObjectOptions.map((entry) => (
+                                <option key={`boolean-op-b-${entry.id}`} value={entry.id}>
+                                  {entry.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Operation
+                            <select
+                              value={geometryBooleanOperation}
+                              onChange={(e) => setGeometryBooleanOperation(e.target.value as GeometryBooleanOperation)}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="union">Union</option>
+                              <option value="difference">Difference (A - B)</option>
+                              <option value="intersection">Intersection</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" onClick={handlePreviewGeometryBoolean}>
+                            Preview result
+                          </button>
+                          <button type="button" onClick={handleBakeGeometryBoolean}>
+                            Bake result as mesh
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          Output: Boolean result · Role: DerivedResult · Type: surface mesh · Pipeline stage: boolean mesh
+                        </div>
+                        {geometryBooleanPreviewStatus && (
+                          <div style={{ fontSize: 10, color: "#475569" }}>{geometryBooleanPreviewStatus}</div>
+                        )}
                       </div>
 
                       <div
@@ -42090,10 +42463,31 @@ case "mobius":
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDuplicateGeometryObject(geometrySelectedObject.id)}
+                            onClick={handleDuplicateSelectedAsEditableMesh}
                             style={{ fontSize: 11 }}
                           >
                             Duplicate as editable mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleBakeSelectedTransformToMesh}
+                            style={{ fontSize: 11 }}
+                          >
+                            Bake transform into mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSendSelectedGeometryObjectToMeshModule}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Mesh module
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSendSelectedGeometryObjectToVolumeModule}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Volume module
                           </button>
                           <button
                             type="button"
@@ -42102,7 +42496,7 @@ case "mobius":
                             }}
                             style={{ fontSize: 11 }}
                           >
-                            Export selected (.glb)
+                            Export selected
                           </button>
                           <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
                             Open Gaussian analysis
@@ -42413,10 +42807,31 @@ case "mobius":
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDuplicateGeometryObject(geometrySelectedDatasetMeshObject.id)}
+                            onClick={handleDuplicateSelectedAsEditableMesh}
                             style={{ fontSize: 11 }}
                           >
                             Duplicate as editable mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleBakeSelectedTransformToMesh}
+                            style={{ fontSize: 11 }}
+                          >
+                            Bake transform into mesh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSendSelectedGeometryObjectToMeshModule}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Mesh module
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSendSelectedGeometryObjectToVolumeModule}
+                            style={{ fontSize: 11 }}
+                          >
+                            Send to Volume module
                           </button>
                           <button
                             type="button"
@@ -42425,7 +42840,7 @@ case "mobius":
                             }}
                             style={{ fontSize: 11 }}
                           >
-                            Export selected (.glb)
+                            Export selected
                           </button>
                           <button type="button" onClick={() => openSelectedGeometryMeshAnalysis(false)} style={{ fontSize: 11 }}>
                             Open Gaussian analysis

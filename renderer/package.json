@@ -18,7 +18,8 @@
     "d3": "^7.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "three": "^0.181.2"
+    "three": "^0.181.2",
+    "three-bvh-csg": "^0.0.16"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
