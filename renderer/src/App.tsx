@@ -1699,6 +1699,34 @@ type GeometryMarkedEdgeEntry = {
   edgeVertexPair: [number, number];
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }];
 };
+type GeometryAnnotationKind =
+  | "distance-dimension"
+  | "edge-length-label"
+  | "angle-label"
+  | "radius-label"
+  | "diameter-label"
+  | "face-area-label"
+  | "bbox-dimensions"
+  | "volume-label"
+  | "custom-text"
+  | "normal-vector-marker"
+  | "entity-id-marker";
+type GeometryAnnotationEntityKind = "vertex" | "edge" | "face";
+type GeometryAnnotationEntry = {
+  id: string;
+  at: number;
+  kind: GeometryAnnotationKind;
+  objectId: string | null;
+  color?: number;
+  text?: string | null;
+  point?: { x: number; y: number; z: number } | null;
+  normal?: { x: number; y: number; z: number } | null;
+  magnitude?: number | null;
+  faceIndex?: number | null;
+  vertexIndex?: number | null;
+  edgeVertexPair?: [number, number] | null;
+  entityKind?: GeometryAnnotationEntityKind | null;
+};
 type GeometryHistoryIntent = {
   action: string;
   label: string;
@@ -6654,6 +6682,9 @@ const App: React.FC = () => {
     useState<GeometryProbeSelectionMode>("object");
   const [geometryMeasuredEdges, setGeometryMeasuredEdges] = useState<GeometryMeasuredEdgeEntry[]>([]);
   const [geometryMarkedEdges, setGeometryMarkedEdges] = useState<GeometryMarkedEdgeEntry[]>([]);
+  const [geometryAnnotations, setGeometryAnnotations] = useState<GeometryAnnotationEntry[]>([]);
+  const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
+  const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
@@ -9213,6 +9244,214 @@ const App: React.FC = () => {
   const handleDeleteMarkedEdge = useCallback((id: string) => {
     setGeometryMarkedEdges((prev) => prev.filter((entry) => entry.id !== id));
   }, []);
+  const pushGeometryAnnotation = useCallback((entry: Omit<GeometryAnnotationEntry, "id" | "at">) => {
+    setGeometryAnnotations((prev) => [{ ...entry, id: makeId(), at: Date.now() }, ...prev].slice(0, 240));
+  }, []);
+  const handleAddDistanceDimensionAnnotation = useCallback(() => {
+    if (!geometryMeasuredEdgeCandidate?.edgeVertexPair) {
+      setGeometryAnnotationStatus("Select an edge first (Probe mode: Edge).");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "distance-dimension",
+      objectId: geometryMeasuredEdgeCandidate.meshKey,
+      edgeVertexPair: geometryMeasuredEdgeCandidate.edgeVertexPair,
+      entityKind: "edge",
+      color: 0x0ea5e9,
+    });
+    setGeometryAnnotationStatus("Distance dimension annotation added.");
+  }, [geometryMeasuredEdgeCandidate, pushGeometryAnnotation]);
+  const handleAddEdgeLengthAnnotation = useCallback(() => {
+    if (!geometryMeasuredEdgeCandidate?.edgeVertexPair) {
+      setGeometryAnnotationStatus("Select an edge first (Probe mode: Edge).");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "edge-length-label",
+      objectId: geometryMeasuredEdgeCandidate.meshKey,
+      edgeVertexPair: geometryMeasuredEdgeCandidate.edgeVertexPair,
+      entityKind: "edge",
+      color: 0x0369a1,
+    });
+    setGeometryAnnotationStatus("Edge length label added.");
+  }, [geometryMeasuredEdgeCandidate, pushGeometryAnnotation]);
+  const handleAddAngleAnnotation = useCallback(() => {
+    if (geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null) {
+      setGeometryAnnotationStatus("Select a face first (Probe mode: Face).");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "angle-label",
+      objectId: geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? null,
+      faceIndex: geometryProbeSelectionDetails.faceIndex,
+      entityKind: "face",
+      color: 0x7c3aed,
+    });
+    setGeometryAnnotationStatus("Angle label added.");
+  }, [geometryProbeSelectionDetails, geometryProbeSelectionMode, geometrySelectedObjectId, pushGeometryAnnotation]);
+  const handleAddRadiusDiameterAnnotation = useCallback(
+    (kind: "radius-label" | "diameter-label") => {
+      if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) {
+        setGeometryAnnotationStatus("Select a procedural object first.");
+        return;
+      }
+      const type = geometrySelectedSceneObject.type;
+      if (!(type === "sphere" || type === "cylinder" || type === "cone" || type === "torus" || type === "polygon" || type === "polyhedron")) {
+        setGeometryAnnotationStatus("Selected object has no radius-style parameter.");
+        return;
+      }
+      pushGeometryAnnotation({
+        kind,
+        objectId: geometrySelectedSceneObject.id,
+        color: kind === "radius-label" ? 0xf59e0b : 0xd97706,
+      });
+      setGeometryAnnotationStatus(kind === "radius-label" ? "Radius label added." : "Diameter label added.");
+    },
+    [geometrySelectedSceneObject, pushGeometryAnnotation]
+  );
+  const handleAddFaceAreaAnnotation = useCallback(() => {
+    if (geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null) {
+      setGeometryAnnotationStatus("Select a face first (Probe mode: Face).");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "face-area-label",
+      objectId: geometryProbeSelectionDetails.meshKey ?? geometrySelectedObjectId ?? null,
+      faceIndex: geometryProbeSelectionDetails.faceIndex,
+      entityKind: "face",
+      color: 0x16a34a,
+    });
+    setGeometryAnnotationStatus("Face area label added.");
+  }, [geometryProbeSelectionDetails, geometryProbeSelectionMode, geometrySelectedObjectId, pushGeometryAnnotation]);
+  const handleAddBoundingBoxDimensionsAnnotation = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryAnnotationStatus("Select an object first.");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "bbox-dimensions",
+      objectId: geometrySelectedSceneObject.id,
+      color: 0x334155,
+    });
+    setGeometryAnnotationStatus("Bounding box dimensions label added.");
+  }, [geometrySelectedSceneObject, pushGeometryAnnotation]);
+  const handleAddVolumeAnnotation = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryAnnotationStatus("Select an object first.");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "volume-label",
+      objectId: geometrySelectedSceneObject.id,
+      color: 0x9333ea,
+    });
+    setGeometryAnnotationStatus("Volume label added.");
+  }, [geometrySelectedSceneObject, pushGeometryAnnotation]);
+  const handleAddCustomTextAnnotation = useCallback(() => {
+    const text = geometryAnnotationCustomText.trim();
+    if (!text) {
+      setGeometryAnnotationStatus("Enter custom text first.");
+      return;
+    }
+    const point =
+      geometryProbeSelectionDetails?.point ?? geometryProceduralPick?.point ?? geometrySelectedPivotPoint ?? null;
+    if (!point) {
+      setGeometryAnnotationStatus("Pick a point in the viewer first.");
+      return;
+    }
+    pushGeometryAnnotation({
+      kind: "custom-text",
+      objectId: geometrySelectedObjectId ?? null,
+      text,
+      point: { x: point.x, y: point.y, z: point.z },
+      color: 0x111827,
+    });
+    setGeometryAnnotationStatus("Custom text marker added.");
+  }, [
+    geometryAnnotationCustomText,
+    geometryProbeSelectionDetails?.point,
+    geometryProceduralPick?.point,
+    geometrySelectedObjectId,
+    geometrySelectedPivotPoint,
+    pushGeometryAnnotation,
+  ]);
+  const handleAddNormalVectorAnnotation = useCallback(() => {
+    const detail = geometryProbeSelectionDetails;
+    if (!detail || (detail.mode !== "face" && detail.mode !== "vertex")) {
+      setGeometryAnnotationStatus("Select a face or vertex first.");
+      return;
+    }
+    const normal = detail.normal;
+    const len = Math.hypot(normal.x, normal.y, normal.z);
+    if (!Number.isFinite(len) || len < 1e-9) {
+      setGeometryAnnotationStatus("Selected normal is invalid.");
+      return;
+    }
+    const n = { x: normal.x / len, y: normal.y / len, z: normal.z / len };
+    pushGeometryAnnotation({
+      kind: "normal-vector-marker",
+      objectId: detail.meshKey ?? geometrySelectedObjectId ?? null,
+      point: { x: detail.point.x, y: detail.point.y, z: detail.point.z },
+      normal: n,
+      magnitude: Math.max(0.08, (geometrySelectedSceneMeshInfo?.dimensions?.x ?? 1) * 0.12),
+      color: 0xdc2626,
+      faceIndex: detail.faceIndex,
+      vertexIndex: detail.vertexIndex,
+      entityKind: detail.mode === "face" ? "face" : "vertex",
+    });
+    setGeometryAnnotationStatus("Normal vector marker added.");
+  }, [geometryProbeSelectionDetails, geometrySelectedObjectId, geometrySelectedSceneMeshInfo?.dimensions?.x, pushGeometryAnnotation]);
+  const handleAddEntityIdAnnotation = useCallback(() => {
+    const detail = geometryProbeSelectionDetails;
+    if (!detail) {
+      setGeometryAnnotationStatus("Pick a mesh element first.");
+      return;
+    }
+    if (detail.mode === "vertex" && detail.vertexIndex != null) {
+      pushGeometryAnnotation({
+        kind: "entity-id-marker",
+        objectId: detail.meshKey ?? geometrySelectedObjectId ?? null,
+        vertexIndex: detail.vertexIndex,
+        point: detail.point,
+        entityKind: "vertex",
+        color: 0x0f172a,
+      });
+      setGeometryAnnotationStatus("Vertex ID marker added.");
+      return;
+    }
+    if (detail.mode === "edge" && detail.edgeVertexPair) {
+      pushGeometryAnnotation({
+        kind: "entity-id-marker",
+        objectId: detail.meshKey ?? geometrySelectedObjectId ?? null,
+        edgeVertexPair: detail.edgeVertexPair,
+        point: detail.point,
+        entityKind: "edge",
+        color: 0x0f172a,
+      });
+      setGeometryAnnotationStatus("Edge ID marker added.");
+      return;
+    }
+    if (detail.mode === "face" && detail.faceIndex != null) {
+      pushGeometryAnnotation({
+        kind: "entity-id-marker",
+        objectId: detail.meshKey ?? geometrySelectedObjectId ?? null,
+        faceIndex: detail.faceIndex,
+        point: detail.point,
+        entityKind: "face",
+        color: 0x0f172a,
+      });
+      setGeometryAnnotationStatus("Face ID marker added.");
+      return;
+    }
+    setGeometryAnnotationStatus("No valid vertex/edge/face selection for ID marker.");
+  }, [geometryProbeSelectionDetails, geometrySelectedObjectId, pushGeometryAnnotation]);
+  const handleDeleteGeometryAnnotation = useCallback((id: string) => {
+    setGeometryAnnotations((prev) => prev.filter((entry) => entry.id !== id));
+  }, []);
+  const handleClearGeometryAnnotations = useCallback(() => {
+    setGeometryAnnotations([]);
+    setGeometryAnnotationStatus("Cleared all annotations.");
+  }, []);
   const findNearestVertexIndexWithinDistance = useCallback(
     (mesh: SurfaceMeshData, sourceIndex: number, maxDistance: number): number | null => {
       const vertexCount = Math.floor(mesh.positions.length / 3);
@@ -11486,6 +11725,242 @@ const App: React.FC = () => {
     }
     return sets.length ? sets : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryProceduralAnnotationOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    labelSets: OverlayLabelSet[] | null;
+  }>(() => {
+    if (geometryMode !== "procedural" || !geometryAnnotations.length) {
+      return { groups: null, pointSets: null, labelSets: null };
+    }
+    const groups: OverlayPolylineGroup[] = [];
+    const pointSets: OverlayPointSet[] = [];
+    const labels: OverlayLabelSet["labels"] = [];
+    const resolvedCache = new Map<string, { object: GeometryObject | GeometryDatasetMeshObject; mesh: SurfaceMeshData } | null>();
+
+    const getResolved = (objectId: string | null | undefined) => {
+      if (!objectId) return null;
+      if (resolvedCache.has(objectId)) return resolvedCache.get(objectId) ?? null;
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      resolvedCache.set(objectId, resolved);
+      return resolved;
+    };
+    const getVertex = (mesh: SurfaceMeshData, index: number): { x: number; y: number; z: number } | null => {
+      const count = Math.floor(mesh.positions.length / 3);
+      if (!Number.isInteger(index) || index < 0 || index >= count) return null;
+      const i = index * 3;
+      return {
+        x: Number(mesh.positions[i] ?? 0),
+        y: Number(mesh.positions[i + 1] ?? 0),
+        z: Number(mesh.positions[i + 2] ?? 0),
+      };
+    };
+    const getFaceIndices = (mesh: SurfaceMeshData, faceIndex: number): [number, number, number] | null => {
+      if (!Number.isInteger(faceIndex) || faceIndex < 0) return null;
+      if (mesh.indices && mesh.indices.length >= 3) {
+        const base = faceIndex * 3;
+        if (base + 2 >= mesh.indices.length) return null;
+        return [Number(mesh.indices[base]), Number(mesh.indices[base + 1]), Number(mesh.indices[base + 2])];
+      }
+      const base = faceIndex * 3;
+      const count = Math.floor(mesh.positions.length / 3);
+      if (base + 2 >= count) return null;
+      return [base, base + 1, base + 2];
+    };
+    const addLabel = (
+      text: string,
+      position: { x: number; y: number; z: number },
+      color = 0x1f2937,
+      size = 0.9,
+      opacity = 0.95
+    ) => {
+      labels.push({ text, position, color, size, opacity });
+    };
+    const addLine = (
+      a: { x: number; y: number; z: number },
+      b: { x: number; y: number; z: number },
+      color = 0x334155,
+      opacity = 0.92,
+      radiusScale = 1.8
+    ) => {
+      groups.push({
+        lines: [[a, b]],
+        color,
+        opacity,
+        radiusScale,
+      });
+    };
+    const faceArea = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }, c: { x: number; y: number; z: number }) => {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const abz = b.z - a.z;
+      const acx = c.x - a.x;
+      const acy = c.y - a.y;
+      const acz = c.z - a.z;
+      const cx = aby * acz - abz * acy;
+      const cy = abz * acx - abx * acz;
+      const cz = abx * acy - aby * acx;
+      return 0.5 * Math.hypot(cx, cy, cz);
+    };
+
+    for (const entry of geometryAnnotations) {
+      const color = entry.color ?? 0x1f2937;
+      if (entry.kind === "custom-text") {
+        if (entry.point && entry.text?.trim()) {
+          pointSets.push({ points: [entry.point], color, size: 0.07, opacity: 0.96 });
+          addLabel(entry.text.trim(), entry.point, color, 0.95, 0.96);
+        }
+        continue;
+      }
+      if (entry.kind === "normal-vector-marker") {
+        if (!entry.point || !entry.normal) continue;
+        const mag = Number.isFinite(entry.magnitude ?? NaN) ? Math.max(0.02, Number(entry.magnitude)) : 0.24;
+        const end = {
+          x: entry.point.x + entry.normal.x * mag,
+          y: entry.point.y + entry.normal.y * mag,
+          z: entry.point.z + entry.normal.z * mag,
+        };
+        addLine(entry.point, end, color, 0.95, 2);
+        addLabel("n", end, color, 0.9, 0.96);
+        continue;
+      }
+
+      const resolved = getResolved(entry.objectId);
+      if (!resolved) continue;
+      const mesh = resolved.mesh;
+      const objectName = resolved.object.name;
+      const metrics = computeTriangleMeshGeometricMetrics(mesh);
+      const bounds = metrics.bounds;
+      const dims = metrics.dimensions;
+
+      if (entry.kind === "distance-dimension" || entry.kind === "edge-length-label") {
+        if (!entry.edgeVertexPair) continue;
+        const a = getVertex(mesh, entry.edgeVertexPair[0]);
+        const b = getVertex(mesh, entry.edgeVertexPair[1]);
+        if (!a || !b) continue;
+        const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+        addLine(a, b, color, 0.95, 2.1);
+        addLabel(
+          entry.kind === "distance-dimension"
+            ? `Distance = ${formatHistoryNumber(len)}`
+            : `Edge = ${formatHistoryNumber(len)}`,
+          { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
+          color
+        );
+        continue;
+      }
+      if (entry.kind === "angle-label") {
+        if (entry.faceIndex == null) continue;
+        const tri = getFaceIndices(mesh, entry.faceIndex);
+        if (!tri) continue;
+        const pa = getVertex(mesh, tri[0]);
+        const pb = getVertex(mesh, tri[1]);
+        const pc = getVertex(mesh, tri[2]);
+        if (!pa || !pb || !pc) continue;
+        const v1 = new THREE.Vector3(pb.x - pa.x, pb.y - pa.y, pb.z - pa.z);
+        const v2 = new THREE.Vector3(pc.x - pa.x, pc.y - pa.y, pc.z - pa.z);
+        if (v1.lengthSq() < 1e-12 || v2.lengthSq() < 1e-12) continue;
+        const angle = THREE.MathUtils.radToDeg(v1.angleTo(v2));
+        addLabel(`Angle = ${formatHistoryNumber(angle)}deg`, pa, color);
+        continue;
+      }
+      if (entry.kind === "radius-label" || entry.kind === "diameter-label") {
+        if (!("type" in resolved.object) || !dims || !bounds) continue;
+        const obj = resolved.object;
+        const radiusByType =
+          obj.type === "sphere" || obj.type === "cone" || obj.type === "polygon" || obj.type === "polyhedron"
+            ? Number(obj.params.radius ?? NaN)
+            : obj.type === "torus"
+              ? Number(obj.params.tube ?? obj.params.radius ?? NaN)
+              : obj.type === "cylinder"
+                ? 0.5 * (Math.abs(Number(obj.params.radiusTop ?? NaN)) + Math.abs(Number(obj.params.radiusBottom ?? NaN)))
+                : Math.max(dims.x, dims.y, dims.z) * 0.5;
+        if (!Number.isFinite(radiusByType)) continue;
+        const value = entry.kind === "radius-label" ? radiusByType : radiusByType * 2;
+        const text = entry.kind === "radius-label" ? `Radius = ${formatHistoryNumber(value)}` : `Diameter = ${formatHistoryNumber(value)}`;
+        addLabel(
+          text,
+          { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] },
+          color
+        );
+        continue;
+      }
+      if (entry.kind === "face-area-label") {
+        if (entry.faceIndex == null) continue;
+        const tri = getFaceIndices(mesh, entry.faceIndex);
+        if (!tri) continue;
+        const pa = getVertex(mesh, tri[0]);
+        const pb = getVertex(mesh, tri[1]);
+        const pc = getVertex(mesh, tri[2]);
+        if (!pa || !pb || !pc) continue;
+        const area = faceArea(pa, pb, pc);
+        addLabel(
+          `Face area = ${formatHistoryNumber(area)}`,
+          { x: (pa.x + pb.x + pc.x) / 3, y: (pa.y + pb.y + pc.y) / 3, z: (pa.z + pb.z + pc.z) / 3 },
+          color
+        );
+        continue;
+      }
+      if (entry.kind === "bbox-dimensions") {
+        if (!dims || !bounds) continue;
+        addLabel(
+          `W=${formatHistoryNumber(dims.x)} H=${formatHistoryNumber(dims.y)} D=${formatHistoryNumber(dims.z)}`,
+          { x: bounds.max[0], y: bounds.min[1], z: bounds.max[2] },
+          color
+        );
+        continue;
+      }
+      if (entry.kind === "volume-label") {
+        if (!bounds) continue;
+        addLabel(
+          `Volume = ${formatHistoryNumber(metrics.volume)}`,
+          { x: (bounds.min[0] + bounds.max[0]) * 0.5, y: bounds.max[1], z: (bounds.min[2] + bounds.max[2]) * 0.5 },
+          color
+        );
+        continue;
+      }
+      if (entry.kind === "entity-id-marker") {
+        if (entry.entityKind === "vertex" && entry.vertexIndex != null) {
+          const p = getVertex(mesh, entry.vertexIndex);
+          if (!p) continue;
+          pointSets.push({ points: [p], color, size: 0.07, opacity: 0.98 });
+          addLabel(`V#${entry.vertexIndex}`, p, color);
+          continue;
+        }
+        if (entry.entityKind === "edge" && entry.edgeVertexPair) {
+          const a = getVertex(mesh, entry.edgeVertexPair[0]);
+          const b = getVertex(mesh, entry.edgeVertexPair[1]);
+          if (!a || !b) continue;
+          const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 };
+          addLabel(`E[${entry.edgeVertexPair[0]},${entry.edgeVertexPair[1]}]`, mid, color);
+          continue;
+        }
+        if (entry.entityKind === "face" && entry.faceIndex != null) {
+          const tri = getFaceIndices(mesh, entry.faceIndex);
+          if (!tri) continue;
+          const pa = getVertex(mesh, tri[0]);
+          const pb = getVertex(mesh, tri[1]);
+          const pc = getVertex(mesh, tri[2]);
+          if (!pa || !pb || !pc) continue;
+          addLabel(
+            `F#${entry.faceIndex}`,
+            { x: (pa.x + pb.x + pc.x) / 3, y: (pa.y + pb.y + pc.y) / 3, z: (pa.z + pb.z + pc.z) / 3 },
+            color
+          );
+          continue;
+        }
+      }
+      addLabel(entry.text?.trim() || entry.kind, bounds ? { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] } : { x: 0, y: 0, z: 0 }, color);
+      addLabel(objectName, bounds ? { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] } : { x: 0, y: 0, z: 0 }, color, 0.7, 0.6);
+    }
+
+    const labelSets: OverlayLabelSet[] | null = labels.length ? [{ labels, size: 0.9 }] : null;
+    return {
+      groups: groups.length ? groups : null,
+      pointSets: pointSets.length ? pointSets : null,
+      labelSets,
+    };
+  }, [geometryAnnotations, geometryMode, resolveGeometrySceneMeshById]);
   const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
     const colorByKind: Record<GeometrySnapPreviewKind, number> = {
@@ -11515,6 +11990,9 @@ const App: React.FC = () => {
     if (geometryProceduralFeatureOverlays.pointSets?.length) {
       sets.push(...geometryProceduralFeatureOverlays.pointSets);
     }
+    if (geometryProceduralAnnotationOverlays.pointSets?.length) {
+      sets.push(...geometryProceduralAnnotationOverlays.pointSets);
+    }
     if (geometryProceduralSelectionPointSets?.length) {
       sets.push(...geometryProceduralSelectionPointSets);
     }
@@ -11525,6 +12003,7 @@ const App: React.FC = () => {
   }, [
     geometryMode,
     geometryProceduralFeatureOverlays.pointSets,
+    geometryProceduralAnnotationOverlays.pointSets,
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -45081,6 +45560,116 @@ case "mobius":
                             fontSize: 11,
                           }}
                         >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Dimensioning + annotation layer (PR18)</div>
+                          <div style={{ color: "#475467" }}>
+                            Persistent viewport overlays for teaching/debugging/documentation. Use Probe mode to target face/edge/vertex entities.
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={handleAddDistanceDimensionAnnotation} disabled={!geometryMeasuredEdgeCandidate}>
+                              Distance dimension
+                            </button>
+                            <button type="button" onClick={handleAddEdgeLengthAnnotation} disabled={!geometryMeasuredEdgeCandidate}>
+                              Edge length label
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddAngleAnnotation}
+                              disabled={geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null}
+                            >
+                              Angle label
+                            </button>
+                            <button type="button" onClick={() => handleAddRadiusDiameterAnnotation("radius-label")} disabled={!geometrySelectedSceneObject}>
+                              Radius label
+                            </button>
+                            <button type="button" onClick={() => handleAddRadiusDiameterAnnotation("diameter-label")} disabled={!geometrySelectedSceneObject}>
+                              Diameter label
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleAddFaceAreaAnnotation}
+                              disabled={geometryProbeSelectionMode !== "face" || geometryProbeSelectionDetails?.faceIndex == null}
+                            >
+                              Face area label
+                            </button>
+                            <button type="button" onClick={handleAddBoundingBoxDimensionsAnnotation} disabled={!geometrySelectedSceneObject}>
+                              Bounding box dimensions
+                            </button>
+                            <button type="button" onClick={handleAddVolumeAnnotation} disabled={!geometrySelectedSceneObject}>
+                              Volume label
+                            </button>
+                            <button type="button" onClick={handleAddNormalVectorAnnotation} disabled={!geometryProbeSelectionDetails}>
+                              Normal vector marker
+                            </button>
+                            <button type="button" onClick={handleAddEntityIdAnnotation} disabled={!geometryProbeSelectionDetails}>
+                              Vertex/edge/face ID marker
+                            </button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                              Custom text
+                              <input
+                                type="text"
+                                value={geometryAnnotationCustomText}
+                                onChange={(e) => setGeometryAnnotationCustomText(e.target.value)}
+                                style={{ minWidth: 220 }}
+                              />
+                            </label>
+                            <button type="button" onClick={handleAddCustomTextAnnotation}>
+                              Add text marker
+                            </button>
+                            <button type="button" onClick={handleClearGeometryAnnotations} disabled={!geometryAnnotations.length}>
+                              Clear all
+                            </button>
+                          </div>
+                          {geometryAnnotationStatus && (
+                            <div style={{ fontSize: 10.5, color: "#475569" }}>{geometryAnnotationStatus}</div>
+                          )}
+                          {geometryAnnotations.length ? (
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 6,
+                                padding: "6px 8px",
+                                background: "#fff",
+                                display: "grid",
+                                gap: 4,
+                                fontSize: 10.5,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                <div style={{ fontWeight: 700 }}>Active annotations ({geometryAnnotations.length})</div>
+                              </div>
+                              {geometryAnnotations.slice(0, 16).map((entry) => (
+                                <div
+                                  key={`geometry-annotation-row-${entry.id}`}
+                                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}
+                                >
+                                  <div>
+                                    {entry.kind}
+                                    {entry.objectId ? ` · ${entry.objectId}` : ""}
+                                    {entry.text ? ` · ${entry.text}` : ""}
+                                  </div>
+                                  <button type="button" onClick={() => handleDeleteGeometryAnnotation(entry.id)} style={{ fontSize: 10 }}>
+                                    Remove
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 10, color: "#667085" }}>No annotations yet.</div>
+                          )}
+                        </div>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 6,
+                            fontSize: 11,
+                          }}
+                        >
                           <div style={{ fontSize: 12, fontWeight: 700 }}>Analysis tools / mesh quality</div>
                           <div style={{ color: "#475467" }}>
                             Measurement and computation actions live here. See Inspector &gt; Probe for live picked entity details.
@@ -47035,6 +47624,7 @@ case "mobius":
                           ...(geometryProceduralOverlayGroups ?? []),
                           ...(geometryProceduralSelectionOverlayGroups ?? []),
                           ...(geometryProceduralFeatureOverlays.groups ?? []),
+                          ...(geometryProceduralAnnotationOverlays.groups ?? []),
                         ]
                       : null
                   }
@@ -47073,7 +47663,10 @@ case "mobius":
                       ? geometryLabelSets
                       : geometryMode === "scratch" || geometryMode === "workbook"
                         ? geometryConstructionState?.labels ?? null
-                        : geometryProceduralFeatureOverlays.labelSets
+                        : [
+                            ...(geometryProceduralFeatureOverlays.labelSets ?? []),
+                            ...(geometryProceduralAnnotationOverlays.labelSets ?? []),
+                          ]
                   }
                   dragEnabled={geometryMode === "procedural" && !geometryGizmoEnabled}
                   onDragStart={geometryMode === "procedural" ? handleProceduralDragStart : undefined}
