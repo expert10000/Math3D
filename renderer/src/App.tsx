@@ -1645,6 +1645,16 @@ type GeometryTransformPatch = {
 type GeometryGizmoSpace = "world" | "local" | "parent";
 type GeometryTransformPivotMode = "center" | "origin" | "bboxCenter" | "bottomCenter" | "custom";
 type GeometryProbeSelectionMode = "object" | "face" | "edge" | "vertex";
+type GeometryRepeatMode =
+  | "duplicate"
+  | "linear-array"
+  | "grid-array"
+  | "circular-array"
+  | "mirror-plane"
+  | "mirror-axis";
+type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
+type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
+type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelTab = "inspector" | "scene";
 type GeometryInspectorPanelTab = "probe";
 type GeometryProceduralPickInfo = {
@@ -1666,6 +1676,23 @@ type GeometryProbeSelectionDetails = {
   edgeVertexPair: [number, number] | null;
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
   faceVertices: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+};
+type GeometryMeasuredEdgeEntry = {
+  id: string;
+  at: number;
+  meshKey: string;
+  objectName: string;
+  edgeVertexPair: [number, number];
+  length: number;
+  edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+};
+type GeometryMarkedEdgeEntry = {
+  id: string;
+  at: number;
+  meshKey: string;
+  objectName: string;
+  edgeVertexPair: [number, number];
+  edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }];
 };
 type GeometryObjectHistoryStep = {
   id: string;
@@ -2926,11 +2953,21 @@ const MAX_ADVANCED_SNAP_VERTICES = 24000;
 const MAX_ADVANCED_SNAP_EDGE_POINTS = 24000;
 const MAX_ADVANCED_SNAP_FACE_POINTS = 24000;
 const MAX_ADVANCED_SNAP_TRIANGLES = 14000;
+const MAX_ADVANCED_SNAP_OBJECT_CENTERS = 6000;
+const MAX_ADVANCED_SNAP_BBOX_CORNERS = 24000;
 
 type SnapPoint3 = { x: number; y: number; z: number };
 type SnapTriangle3 = { a: SnapPoint3; b: SnapPoint3; c: SnapPoint3 };
 type SnapSegment3 = { a: SnapPoint3; b: SnapPoint3 };
-type GeometrySnapPreviewKind = "grid" | "vertex" | "edge" | "face_center" | "surface";
+type GeometrySnapPreviewKind =
+  | "grid"
+  | "vertex"
+  | "edge"
+  | "face_center"
+  | "surface"
+  | "object_center"
+  | "bbox_corner"
+  | "face_plane";
 
 const vecDistSq3 = (a: SnapPoint3, b: SnapPoint3) => {
   const dx = a.x - b.x;
@@ -6367,6 +6404,8 @@ const App: React.FC = () => {
   const [geometryOperationPresets, setGeometryOperationPresets] = useState<GeometryOperationPreset[]>([]);
   const [geometryProbeSelectionMode, setGeometryProbeSelectionMode] =
     useState<GeometryProbeSelectionMode>("object");
+  const [geometryMeasuredEdges, setGeometryMeasuredEdges] = useState<GeometryMeasuredEdgeEntry[]>([]);
+  const [geometryMarkedEdges, setGeometryMarkedEdges] = useState<GeometryMarkedEdgeEntry[]>([]);
   const handleGeometryPick = useCallback(
     (info: {
       point: { x: number; y: number; z: number };
@@ -6499,6 +6538,12 @@ const App: React.FC = () => {
   const [geometryTransformPivotMode, setGeometryTransformPivotMode] = useState<GeometryTransformPivotMode>("center");
   const [geometryTransformPivotCustom, setGeometryTransformPivotCustom] = useState<Vec3>({ x: 0, y: 0, z: 0 });
   const [geometryUniformScaleLock, setGeometryUniformScaleLock] = useState(true);
+  const [geometryLockXEnabled, setGeometryLockXEnabled] = useState(false);
+  const [geometryLockYEnabled, setGeometryLockYEnabled] = useState(false);
+  const [geometryLockZEnabled, setGeometryLockZEnabled] = useState(false);
+  const [geometryKeepOnXYPlaneEnabled, setGeometryKeepOnXYPlaneEnabled] = useState(false);
+  const [geometryKeepOnSelectedPlaneEnabled, setGeometryKeepOnSelectedPlaneEnabled] = useState(false);
+  const [geometryAlignToSelectedEdgeEnabled, setGeometryAlignToSelectedEdgeEnabled] = useState(false);
   const [geometrySnapMoveEnabled, setGeometrySnapMoveEnabled] = useState(false);
   const [geometrySnapMoveStep, setGeometrySnapMoveStep] = useState(0.25);
   const [geometrySnapRotateEnabled, setGeometrySnapRotateEnabled] = useState(false);
@@ -6511,6 +6556,31 @@ const App: React.FC = () => {
   const [geometryVertexSnapEnabled, setGeometryVertexSnapEnabled] = useState(false);
   const [geometryEdgeSnapEnabled, setGeometryEdgeSnapEnabled] = useState(false);
   const [geometryFaceCenterSnapEnabled, setGeometryFaceCenterSnapEnabled] = useState(false);
+  const [geometryFacePlaneSnapEnabled, setGeometryFacePlaneSnapEnabled] = useState(false);
+  const [geometryObjectCenterSnapEnabled, setGeometryObjectCenterSnapEnabled] = useState(false);
+  const [geometryBboxCornerSnapEnabled, setGeometryBboxCornerSnapEnabled] = useState(false);
+  const [geometryRepeatMode, setGeometryRepeatMode] = useState<GeometryRepeatMode>("duplicate");
+  const [geometryRepeatLinearCopies, setGeometryRepeatLinearCopies] = useState(5);
+  const [geometryRepeatLinearDirectionMode, setGeometryRepeatLinearDirectionMode] = useState<GeometryRepeatAxis>("x");
+  const [geometryRepeatLinearCustomDirection, setGeometryRepeatLinearCustomDirection] = useState<Vec3>({
+    x: 1,
+    y: 0,
+    z: 0,
+  });
+  const [geometryRepeatLinearSpacing, setGeometryRepeatLinearSpacing] = useState(1);
+  const [geometryRepeatGridRows, setGeometryRepeatGridRows] = useState(4);
+  const [geometryRepeatGridColumns, setGeometryRepeatGridColumns] = useState(4);
+  const [geometryRepeatGridPlane, setGeometryRepeatGridPlane] = useState<GeometryRepeatGridPlane>("xy");
+  const [geometryRepeatGridSpacingX, setGeometryRepeatGridSpacingX] = useState(1);
+  const [geometryRepeatGridSpacingY, setGeometryRepeatGridSpacingY] = useState(1);
+  const [geometryRepeatCircularCopies, setGeometryRepeatCircularCopies] = useState(12);
+  const [geometryRepeatCircularAxis, setGeometryRepeatCircularAxis] = useState<"x" | "y" | "z">("z");
+  const [geometryRepeatCircularRadius, setGeometryRepeatCircularRadius] = useState(2);
+  const [geometryRepeatCircularAngleDeg, setGeometryRepeatCircularAngleDeg] = useState(360);
+  const [geometryRepeatMirrorPlane, setGeometryRepeatMirrorPlane] =
+    useState<GeometryRepeatMirrorPlane>("xy");
+  const [geometryRepeatMirrorAxis, setGeometryRepeatMirrorAxis] = useState<"x" | "y" | "z">("x");
+  const [geometryRepeatPreviewStatus, setGeometryRepeatPreviewStatus] = useState<string | null>(null);
   const [geometrySnapPreview, setGeometrySnapPreview] = useState<{
     point: SnapPoint3;
     kind: GeometrySnapPreviewKind;
@@ -7306,16 +7376,78 @@ const App: React.FC = () => {
   const handleUpdateGeometryTransform = useCallback(
     (id: string, patch: GeometryTransformPatch) => {
       if (geometryLockedObjectIds.has(id)) return;
+      const applyTransformPatch = (transform: GeometryObjectTransform): GeometryObjectTransform => {
+        const basePosition = transform.position;
+        const baseRotation = transform.rotation;
+        const baseScale = transform.scale;
+        let nextPosition: Vec3 = { ...basePosition, ...(patch.position ?? {}) };
+        const nextRotation: Vec3 = { ...baseRotation, ...(patch.rotation ?? {}) };
+        let nextScale: Vec3 = { ...baseScale, ...(patch.scale ?? {}) };
+
+        if (geometryKeepOnSelectedPlaneEnabled && geometryProbeSelectionDetails?.mode === "face") {
+          const nRaw = geometryProbeSelectionDetails.normal;
+          const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
+          if (Number.isFinite(nLen) && nLen > 1e-9) {
+            const nx = nRaw.x / nLen;
+            const ny = nRaw.y / nLen;
+            const nz = nRaw.z / nLen;
+            const p0 = geometryProbeSelectionDetails.point;
+            const dx = nextPosition.x - p0.x;
+            const dy = nextPosition.y - p0.y;
+            const dz = nextPosition.z - p0.z;
+            const signed = dx * nx + dy * ny + dz * nz;
+            nextPosition = {
+              x: nextPosition.x - signed * nx,
+              y: nextPosition.y - signed * ny,
+              z: nextPosition.z - signed * nz,
+            };
+          }
+        }
+        if (geometryKeepOnXYPlaneEnabled) {
+          nextPosition = { ...nextPosition, z: basePosition.z };
+        }
+        if (geometryLockXEnabled) nextPosition = { ...nextPosition, x: basePosition.x };
+        if (geometryLockYEnabled) nextPosition = { ...nextPosition, y: basePosition.y };
+        if (geometryLockZEnabled) nextPosition = { ...nextPosition, z: basePosition.z };
+
+        if (geometryUniformScaleLock && patch.scale) {
+          const explicit =
+            patch.scale.x ?? patch.scale.y ?? patch.scale.z ?? ((nextScale.x + nextScale.y + nextScale.z) / 3);
+          const uniform = Math.max(1e-6, Number(explicit));
+          nextScale = { x: uniform, y: uniform, z: uniform };
+        } else {
+          nextScale = {
+            x: Math.max(1e-6, nextScale.x),
+            y: Math.max(1e-6, nextScale.y),
+            z: Math.max(1e-6, nextScale.z),
+          };
+        }
+
+        if (geometryAlignToSelectedEdgeEnabled && geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints) {
+          const [a, b] = geometryProbeSelectionDetails.edgePoints;
+          const dir = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z);
+          if (dir.lengthSq() > 1e-12) {
+            dir.normalize();
+            const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+            const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+            nextRotation.x = e.x;
+            nextRotation.y = e.y;
+            nextRotation.z = e.z;
+          }
+        }
+
+        return {
+          position: nextPosition,
+          rotation: nextRotation,
+          scale: nextScale,
+        };
+      };
       setGeometryObjects((prev) =>
         prev.map((o) =>
           o.id === id
             ? {
                 ...o,
-                transform: {
-                  position: { ...o.transform.position, ...(patch.position ?? {}) },
-                  rotation: { ...o.transform.rotation, ...(patch.rotation ?? {}) },
-                  scale: { ...o.transform.scale, ...(patch.scale ?? {}) },
-                },
+                transform: applyTransformPatch(o.transform),
               }
             : o
         )
@@ -7325,17 +7457,23 @@ const App: React.FC = () => {
           o.id === id
             ? {
                 ...o,
-                transform: {
-                  position: { ...o.transform.position, ...(patch.position ?? {}) },
-                  rotation: { ...o.transform.rotation, ...(patch.rotation ?? {}) },
-                  scale: { ...o.transform.scale, ...(patch.scale ?? {}) },
-                },
+                transform: applyTransformPatch(o.transform),
               }
             : o
         )
       );
     },
-    [geometryLockedObjectIds]
+    [
+      geometryAlignToSelectedEdgeEnabled,
+      geometryKeepOnSelectedPlaneEnabled,
+      geometryKeepOnXYPlaneEnabled,
+      geometryLockXEnabled,
+      geometryLockYEnabled,
+      geometryLockZEnabled,
+      geometryLockedObjectIds,
+      geometryProbeSelectionDetails,
+      geometryUniformScaleLock,
+    ]
   );
 
   const handleScaleAllGeometryObjects = useCallback((factor: number) => {
@@ -7575,11 +7713,15 @@ const App: React.FC = () => {
     edgePoints: SnapPoint3[];
     facePoints: SnapPoint3[];
     surfaceTriangles: SnapTriangle3[];
+    objectCenters: SnapPoint3[];
+    bboxCorners: SnapPoint3[];
   }>({
     vertices: [],
     edgePoints: [],
     facePoints: [],
     surfaceTriangles: [],
+    objectCenters: [],
+    bboxCorners: [],
   });
   const geometrySelectedPivotPointRef = useRef<SnapPoint3 | null>(null);
   const handleProceduralDragStart = useCallback(
@@ -7727,10 +7869,49 @@ const App: React.FC = () => {
             bestCandidateKind = "surface";
           }
         }
+        if (geometryObjectCenterSnapEnabled && snapCandidates.objectCenters.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.objectCenters);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "object_center";
+          }
+        }
+        if (geometryBboxCornerSnapEnabled && snapCandidates.bboxCorners.length) {
+          const nearest = nearestPointFromList(nextPivot, snapCandidates.bboxCorners);
+          if (nearest.point && nearest.distSq < bestDistSq) {
+            bestDistSq = nearest.distSq;
+            bestCandidate = nearest.point;
+            bestCandidateKind = "bbox_corner";
+          }
+        }
 
         if (bestCandidate && bestCandidateKind && bestDistSq <= snapDistanceLimitSq) {
           snappedPivot = bestCandidate;
           snapPreviewCandidate = { point: { ...bestCandidate }, kind: bestCandidateKind };
+        }
+
+        if (geometryFacePlaneSnapEnabled && geometryProbeSelectionDetails?.mode === "face") {
+          const nRaw = geometryProbeSelectionDetails.normal;
+          const nLen = Math.hypot(nRaw.x, nRaw.y, nRaw.z);
+          if (Number.isFinite(nLen) && nLen > 1e-9) {
+            const nx = nRaw.x / nLen;
+            const ny = nRaw.y / nLen;
+            const nz = nRaw.z / nLen;
+            const p0 = geometryProbeSelectionDetails.point;
+            const dx = snappedPivot.x - p0.x;
+            const dy = snappedPivot.y - p0.y;
+            const dz = snappedPivot.z - p0.z;
+            const signed = dx * nx + dy * ny + dz * nz;
+            if (Math.abs(signed) > 1e-9) {
+              snappedPivot = {
+                x: snappedPivot.x - signed * nx,
+                y: snappedPivot.y - signed * ny,
+                z: snappedPivot.z - signed * nz,
+              };
+              snapPreviewCandidate = { point: { ...snappedPivot }, kind: "face_plane" };
+            }
+          }
         }
 
         nextPosition = {
@@ -7781,6 +7962,10 @@ const App: React.FC = () => {
       geometryEdgeSnapEnabled,
       geometryFaceCenterSnapEnabled,
       geometrySurfaceSnapEnabled,
+      geometryObjectCenterSnapEnabled,
+      geometryBboxCornerSnapEnabled,
+      geometryFacePlaneSnapEnabled,
+      geometryProbeSelectionDetails,
       geometryUniformScaleLock,
       handleUpdateGeometryTransform,
     ]
@@ -8157,6 +8342,415 @@ const App: React.FC = () => {
     () => resolveGeometryProbeSelectionDetails(geometryProceduralHoverPick),
     [geometryProceduralHoverPick, resolveGeometryProbeSelectionDetails]
   );
+  const geometryMeasuredEdgeCandidate = useMemo(() => {
+    if (geometryProbeSelectionMode !== "edge") return null;
+    if (!geometryProbeSelectionDetails?.meshKey) return null;
+    if (!geometryProbeSelectionDetails.edgeVertexPair) return null;
+    if (geometryProbeSelectionDetails.edgeLength == null || !Number.isFinite(geometryProbeSelectionDetails.edgeLength)) {
+      return null;
+    }
+    return {
+      meshKey: geometryProbeSelectionDetails.meshKey,
+      edgeVertexPair: geometryProbeSelectionDetails.edgeVertexPair,
+      edgeLength: geometryProbeSelectionDetails.edgeLength,
+      edgePoints: geometryProbeSelectionDetails.edgePoints,
+    };
+  }, [geometryProbeSelectionDetails, geometryProbeSelectionMode]);
+  const handleMeasureSelectedProbeEdge = useCallback(() => {
+    if (geometryProbeSelectionMode !== "edge") {
+      setGeometryCreateActionStatus("Set selection mode to Edge first.");
+      return;
+    }
+    if (!geometryMeasuredEdgeCandidate) {
+      setGeometryCreateActionStatus("No edge selected. Click a mesh edge in the viewport first.");
+      return;
+    }
+    const objectName =
+      geometryObjects.find((entry) => entry.id === geometryMeasuredEdgeCandidate.meshKey)?.name ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === geometryMeasuredEdgeCandidate.meshKey)?.name ??
+      geometryMeasuredEdgeCandidate.meshKey;
+    const nextEntry: GeometryMeasuredEdgeEntry = {
+      id: makeId(),
+      at: Date.now(),
+      meshKey: geometryMeasuredEdgeCandidate.meshKey,
+      objectName,
+      edgeVertexPair: geometryMeasuredEdgeCandidate.edgeVertexPair,
+      length: geometryMeasuredEdgeCandidate.edgeLength,
+      edgePoints: geometryMeasuredEdgeCandidate.edgePoints ?? null,
+    };
+    setGeometryMeasuredEdges((prev) => [nextEntry, ...prev].slice(0, 24));
+    setGeometryCreateActionStatus(
+      `Measured edge [${nextEntry.edgeVertexPair[0]}, ${nextEntry.edgeVertexPair[1]}] on ${objectName}: ${fmt(nextEntry.length)}`
+    );
+  }, [
+    fmt,
+    geometryDatasetMeshObjects,
+    geometryMeasuredEdgeCandidate,
+    geometryObjects,
+    geometryProbeSelectionMode,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleToggleMarkSelectedProbeEdge = useCallback(() => {
+    if (geometryProbeSelectionMode !== "edge") {
+      setGeometryCreateActionStatus("Set selection mode to Edge first.");
+      return;
+    }
+    if (!geometryMeasuredEdgeCandidate?.edgePoints || !geometryMeasuredEdgeCandidate.edgeVertexPair) {
+      setGeometryCreateActionStatus("No edge selected. Click a mesh edge in the viewport first.");
+      return;
+    }
+    const objectName =
+      geometryObjects.find((entry) => entry.id === geometryMeasuredEdgeCandidate.meshKey)?.name ??
+      geometryDatasetMeshObjects.find((entry) => entry.id === geometryMeasuredEdgeCandidate.meshKey)?.name ??
+      geometryMeasuredEdgeCandidate.meshKey;
+    const [a, b] = geometryMeasuredEdgeCandidate.edgeVertexPair;
+    const pairKey = `${Math.min(a, b)}|${Math.max(a, b)}`;
+    let toggledToMarked = false;
+    setGeometryMarkedEdges((prev) => {
+      const existingIndex = prev.findIndex((entry) => {
+        const [ea, eb] = entry.edgeVertexPair;
+        return (
+          entry.meshKey === geometryMeasuredEdgeCandidate.meshKey &&
+          `${Math.min(ea, eb)}|${Math.max(ea, eb)}` === pairKey
+        );
+      });
+      if (existingIndex >= 0) {
+        const next = prev.slice();
+        next.splice(existingIndex, 1);
+        return next;
+      }
+      toggledToMarked = true;
+      const nextEntry: GeometryMarkedEdgeEntry = {
+        id: makeId(),
+        at: Date.now(),
+        meshKey: geometryMeasuredEdgeCandidate.meshKey,
+        objectName,
+        edgeVertexPair: geometryMeasuredEdgeCandidate.edgeVertexPair,
+        edgePoints: geometryMeasuredEdgeCandidate.edgePoints,
+      };
+      return [nextEntry, ...prev].slice(0, 64);
+    });
+    if (toggledToMarked) {
+      setGeometryCreateActionStatus(`Marked edge [${a}, ${b}] on ${objectName}.`);
+    } else {
+      setGeometryCreateActionStatus(`Unmarked edge [${a}, ${b}] on ${objectName}.`);
+    }
+  }, [
+    geometryDatasetMeshObjects,
+    geometryMeasuredEdgeCandidate,
+    geometryObjects,
+    geometryProbeSelectionMode,
+    setGeometryCreateActionStatus,
+  ]);
+  const handleDeleteMarkedEdge = useCallback((id: string) => {
+    setGeometryMarkedEdges((prev) => prev.filter((entry) => entry.id !== id));
+  }, []);
+  const createGeometryHelperObject = useCallback(
+    (args: {
+      type: GeometryObjectType;
+      name: string;
+      params?: Record<string, number | boolean | string>;
+      position?: { x: number; y: number; z: number };
+      rotation?: { x: number; y: number; z: number };
+      scale?: { x: number; y: number; z: number };
+      color?: number;
+      opacity?: number;
+    }) => {
+      const id = makeId();
+      const next = createGeometryObject(args.type, id);
+      next.name = args.name;
+      next.group = "helper";
+      if (args.params) next.params = { ...next.params, ...args.params };
+      if (args.position) next.transform.position = { ...next.transform.position, ...args.position };
+      if (args.rotation) next.transform.rotation = { ...next.transform.rotation, ...args.rotation };
+      if (args.scale) next.transform.scale = { ...next.transform.scale, ...args.scale };
+      const material = normalizeGeometryMaterial((next as { material?: unknown })?.material);
+      next.material = {
+        ...material,
+        color: args.color ?? material.color,
+        opacity: args.opacity ?? Math.min(Number(material.opacity ?? 1), 0.72),
+      };
+      setGeometryObjects((prev) => [next, ...prev]);
+      setGeometrySelectedObjectId(id);
+      setGeometryProceduralPanelTab("object");
+      return id;
+    },
+    []
+  );
+  const resolveDirectionEuler = useCallback(
+    (dir: { x: number; y: number; z: number }, sourceAxis: "y" | "z" = "y") => {
+      const target = new THREE.Vector3(dir.x, dir.y, dir.z);
+      if (target.lengthSq() < 1e-12 || !Number.isFinite(target.lengthSq())) {
+        return { x: 0, y: 0, z: 0 };
+      }
+      target.normalize();
+      const base = sourceAxis === "z" ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+      const q = new THREE.Quaternion().setFromUnitVectors(base, target);
+      const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+      return { x: e.x, y: e.y, z: e.z };
+    },
+    []
+  );
+  const resolveHelperTangentBasis = useCallback((normal: { x: number; y: number; z: number }) => {
+    const n = new THREE.Vector3(normal.x, normal.y, normal.z);
+    if (!Number.isFinite(n.lengthSq()) || n.lengthSq() < 1e-12) {
+      return {
+        n: { x: 0, y: 1, z: 0 },
+        u: { x: 1, y: 0, z: 0 },
+        v: { x: 0, y: 0, z: 1 },
+      };
+    }
+    n.normalize();
+    const ref = Math.abs(n.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    const u = new THREE.Vector3().crossVectors(ref, n).normalize();
+    const v = new THREE.Vector3().crossVectors(n, u).normalize();
+    return {
+      n: { x: n.x, y: n.y, z: n.z },
+      u: { x: u.x, y: u.y, z: u.z },
+      v: { x: v.x, y: v.y, z: v.z },
+    };
+  }, []);
+  const handleCreateHelperFromFaceSelection = useCallback(
+    (kind: "face-plane" | "face-normal" | "face-centroid" | "face-frame") => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "face" || !detail.faceVertices) {
+        setGeometryCreateActionStatus("Select a face first (Probe mode: Face).");
+        return;
+      }
+      const [a, b, c] = detail.faceVertices;
+      const centroid = {
+        x: (a.x + b.x + c.x) / 3,
+        y: (a.y + b.y + c.y) / 3,
+        z: (a.z + b.z + c.z) / 3,
+      };
+      const ab = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+      const bc = Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z);
+      const ca = Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z);
+      const faceScale = Math.max(0.12, ab, bc, ca);
+      const basis = resolveHelperTangentBasis(detail.normal);
+      if (kind === "face-plane") {
+        createGeometryHelperObject({
+          type: "plane",
+          name: "Face plane",
+          params: { width: faceScale * 1.25, height: faceScale * 1.25, axis: "xy" },
+          position: centroid,
+          rotation: resolveDirectionEuler(basis.n, "z"),
+          color: 0x2563eb,
+          opacity: 0.3,
+        });
+        setGeometryCreateActionStatus("Face plane helper created.");
+        return;
+      }
+      if (kind === "face-normal") {
+        const length = faceScale * 0.7;
+        createGeometryHelperObject({
+          type: "cylinder",
+          name: "Face normal",
+          params: {
+            radiusTop: Math.max(0.01, length * 0.03),
+            radiusBottom: Math.max(0.01, length * 0.03),
+            height: length,
+            radialSegments: 14,
+          },
+          position: {
+            x: centroid.x + basis.n.x * (length * 0.5),
+            y: centroid.y + basis.n.y * (length * 0.5),
+            z: centroid.z + basis.n.z * (length * 0.5),
+          },
+          rotation: resolveDirectionEuler(basis.n, "y"),
+          color: 0x16a34a,
+          opacity: 0.85,
+        });
+        setGeometryCreateActionStatus("Face normal helper created.");
+        return;
+      }
+      if (kind === "face-centroid") {
+        createGeometryHelperObject({
+          type: "sphere",
+          name: "Face centroid point",
+          params: { radius: Math.max(0.02, faceScale * 0.06), widthSegments: 20, heightSegments: 14 },
+          position: centroid,
+          color: 0x0ea5e9,
+          opacity: 0.9,
+        });
+        setGeometryCreateActionStatus("Face centroid helper created.");
+        return;
+      }
+      const axisLen = faceScale * 0.6;
+      const radius = Math.max(0.01, axisLen * 0.025);
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Face frame X",
+        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
+        position: { x: centroid.x + basis.u.x * (axisLen * 0.5), y: centroid.y + basis.u.y * (axisLen * 0.5), z: centroid.z + basis.u.z * (axisLen * 0.5) },
+        rotation: resolveDirectionEuler(basis.u, "y"),
+        color: 0xef4444,
+        opacity: 0.9,
+      });
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Face frame Y",
+        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
+        position: { x: centroid.x + basis.v.x * (axisLen * 0.5), y: centroid.y + basis.v.y * (axisLen * 0.5), z: centroid.z + basis.v.z * (axisLen * 0.5) },
+        rotation: resolveDirectionEuler(basis.v, "y"),
+        color: 0x22c55e,
+        opacity: 0.9,
+      });
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Face frame Z",
+        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
+        position: { x: centroid.x + basis.n.x * (axisLen * 0.5), y: centroid.y + basis.n.y * (axisLen * 0.5), z: centroid.z + basis.n.z * (axisLen * 0.5) },
+        rotation: resolveDirectionEuler(basis.n, "y"),
+        color: 0x3b82f6,
+        opacity: 0.9,
+      });
+      setGeometryCreateActionStatus("Face local coordinate frame helpers created.");
+    },
+    [createGeometryHelperObject, geometryProbeSelectionDetails, resolveDirectionEuler, resolveHelperTangentBasis]
+  );
+  const handleCreateHelperFromEdgeSelection = useCallback(
+    (kind: "edge-midpoint" | "edge-direction" | "edge-perp-plane" | "edge-ruler") => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "edge" || !detail.edgePoints || !detail.edgeLength || !Number.isFinite(detail.edgeLength)) {
+        setGeometryCreateActionStatus("Select an edge first (Probe mode: Edge).");
+        return;
+      }
+      const [p0, p1] = detail.edgePoints;
+      const midpoint = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5, z: (p0.z + p1.z) * 0.5 };
+      const length = Math.max(0.12, detail.edgeLength);
+      const dir = {
+        x: (p1.x - p0.x) / length,
+        y: (p1.y - p0.y) / length,
+        z: (p1.z - p0.z) / length,
+      };
+      if (kind === "edge-midpoint") {
+        createGeometryHelperObject({
+          type: "sphere",
+          name: "Edge midpoint",
+          params: { radius: Math.max(0.02, length * 0.06), widthSegments: 18, heightSegments: 12 },
+          position: midpoint,
+          color: 0x0ea5e9,
+          opacity: 0.92,
+        });
+        setGeometryCreateActionStatus("Edge midpoint helper created.");
+        return;
+      }
+      if (kind === "edge-direction") {
+        createGeometryHelperObject({
+          type: "cylinder",
+          name: "Edge direction vector",
+          params: {
+            radiusTop: Math.max(0.01, length * 0.03),
+            radiusBottom: Math.max(0.01, length * 0.03),
+            height: length,
+            radialSegments: 14,
+          },
+          position: midpoint,
+          rotation: resolveDirectionEuler(dir, "y"),
+          color: 0x22c55e,
+          opacity: 0.88,
+        });
+        setGeometryCreateActionStatus("Edge direction helper created.");
+        return;
+      }
+      if (kind === "edge-perp-plane") {
+        createGeometryHelperObject({
+          type: "plane",
+          name: "Perpendicular plane",
+          params: { width: length, height: length, axis: "xy" },
+          position: midpoint,
+          rotation: resolveDirectionEuler(dir, "z"),
+          color: 0x6366f1,
+          opacity: 0.32,
+        });
+        setGeometryCreateActionStatus("Perpendicular plane helper created.");
+        return;
+      }
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Ruler",
+        params: {
+          radiusTop: Math.max(0.008, length * 0.022),
+          radiusBottom: Math.max(0.008, length * 0.022),
+          height: length,
+          radialSegments: 10,
+        },
+        position: midpoint,
+        rotation: resolveDirectionEuler(dir, "y"),
+        color: 0xf59e0b,
+        opacity: 0.9,
+      });
+      setGeometryCreateActionStatus(`Ruler helper created (length ${fmt(length)}).`);
+    },
+    [createGeometryHelperObject, fmt, geometryProbeSelectionDetails, resolveDirectionEuler]
+  );
+  const handleCreateHelperFromVertexSelection = useCallback(
+    (kind: "vertex-point" | "vertex-normal" | "vertex-frame") => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "vertex") {
+        setGeometryCreateActionStatus("Select a vertex first (Probe mode: Vertex).");
+        return;
+      }
+      const origin = detail.point;
+      const basis = resolveHelperTangentBasis(detail.normal);
+      const scale = 0.35;
+      if (kind === "vertex-point") {
+        createGeometryHelperObject({
+          type: "sphere",
+          name: "Point marker",
+          params: { radius: 0.04, widthSegments: 16, heightSegments: 12 },
+          position: origin,
+          color: 0x06b6d4,
+          opacity: 0.94,
+        });
+        setGeometryCreateActionStatus("Vertex point helper created.");
+        return;
+      }
+      if (kind === "vertex-normal") {
+        createGeometryHelperObject({
+          type: "cylinder",
+          name: "Vertex normal",
+          params: { radiusTop: 0.012, radiusBottom: 0.012, height: scale, radialSegments: 12 },
+          position: { x: origin.x + basis.n.x * (scale * 0.5), y: origin.y + basis.n.y * (scale * 0.5), z: origin.z + basis.n.z * (scale * 0.5) },
+          rotation: resolveDirectionEuler(basis.n, "y"),
+          color: 0x22c55e,
+          opacity: 0.9,
+        });
+        setGeometryCreateActionStatus("Vertex normal helper created.");
+        return;
+      }
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Vertex frame X",
+        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
+        position: { x: origin.x + basis.u.x * (scale * 0.5), y: origin.y + basis.u.y * (scale * 0.5), z: origin.z + basis.u.z * (scale * 0.5) },
+        rotation: resolveDirectionEuler(basis.u, "y"),
+        color: 0xef4444,
+        opacity: 0.9,
+      });
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Vertex frame Y",
+        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
+        position: { x: origin.x + basis.v.x * (scale * 0.5), y: origin.y + basis.v.y * (scale * 0.5), z: origin.z + basis.v.z * (scale * 0.5) },
+        rotation: resolveDirectionEuler(basis.v, "y"),
+        color: 0x22c55e,
+        opacity: 0.9,
+      });
+      createGeometryHelperObject({
+        type: "cylinder",
+        name: "Vertex frame Z",
+        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
+        position: { x: origin.x + basis.n.x * (scale * 0.5), y: origin.y + basis.n.y * (scale * 0.5), z: origin.z + basis.n.z * (scale * 0.5) },
+        rotation: resolveDirectionEuler(basis.n, "y"),
+        color: 0x3b82f6,
+        opacity: 0.9,
+      });
+      setGeometryCreateActionStatus("Vertex local frame helpers created.");
+    },
+    [createGeometryHelperObject, geometryProbeSelectionDetails, resolveDirectionEuler, resolveHelperTangentBasis]
+  );
   const resolveGeometryPlacementTarget = useCallback(
     (pick: {
       point: { x: number; y: number; z: number };
@@ -8293,8 +8887,19 @@ const App: React.FC = () => {
       geometrySurfaceSnapEnabled ||
       geometryVertexSnapEnabled ||
       geometryEdgeSnapEnabled ||
+      geometryFaceCenterSnapEnabled ||
+      geometryObjectCenterSnapEnabled ||
+      geometryBboxCornerSnapEnabled ||
+      geometryFacePlaneSnapEnabled,
+    [
+      geometryBboxCornerSnapEnabled,
+      geometryEdgeSnapEnabled,
       geometryFaceCenterSnapEnabled,
-    [geometryEdgeSnapEnabled, geometryFaceCenterSnapEnabled, geometrySurfaceSnapEnabled, geometryVertexSnapEnabled]
+      geometryFacePlaneSnapEnabled,
+      geometryObjectCenterSnapEnabled,
+      geometrySurfaceSnapEnabled,
+      geometryVertexSnapEnabled,
+    ]
   );
   const geometryAdvancedSnapCandidates = useMemo(() => {
     const empty = {
@@ -8302,6 +8907,8 @@ const App: React.FC = () => {
       edgePoints: [] as SnapPoint3[],
       facePoints: [] as SnapPoint3[],
       surfaceTriangles: [] as SnapTriangle3[],
+      objectCenters: [] as SnapPoint3[],
+      bboxCorners: [] as SnapPoint3[],
     };
     if (!geometryAdvancedSnapActive) return empty;
 
@@ -8309,6 +8916,8 @@ const App: React.FC = () => {
     const edgePoints: SnapPoint3[] = [];
     const facePoints: SnapPoint3[] = [];
     const surfaceTriangles: SnapTriangle3[] = [];
+    const objectCenters: SnapPoint3[] = [];
+    const bboxCorners: SnapPoint3[] = [];
     const identityTransform: GeometryObjectTransform = {
       position: { x: 0, y: 0, z: 0 },
       rotation: { x: 0, y: 0, z: 0 },
@@ -8325,6 +8934,30 @@ const App: React.FC = () => {
       if (!positions?.length) continue;
       const vertCount = Math.floor(positions.length / 3);
       if (vertCount < 3) continue;
+
+      const bounds = boundsFromPositions(positions);
+      if (bounds) {
+        if (geometryObjectCenterSnapEnabled && objectCenters.length < MAX_ADVANCED_SNAP_OBJECT_CENTERS) {
+          objectCenters.push({
+            x: (bounds.min[0] + bounds.max[0]) * 0.5,
+            y: (bounds.min[1] + bounds.max[1]) * 0.5,
+            z: (bounds.min[2] + bounds.max[2]) * 0.5,
+          });
+        }
+        if (geometryBboxCornerSnapEnabled && bboxCorners.length < MAX_ADVANCED_SNAP_BBOX_CORNERS) {
+          const xs = [bounds.min[0], bounds.max[0]];
+          const ys = [bounds.min[1], bounds.max[1]];
+          const zs = [bounds.min[2], bounds.max[2]];
+          for (const x of xs) {
+            for (const y of ys) {
+              for (const z of zs) {
+                if (bboxCorners.length >= MAX_ADVANCED_SNAP_BBOX_CORNERS) break;
+                bboxCorners.push({ x, y, z });
+              }
+            }
+          }
+        }
+      }
 
       if (geometryVertexSnapEnabled && vertices.length < MAX_ADVANCED_SNAP_VERTICES) {
         for (let vi = 0; vi < vertCount && vertices.length < MAX_ADVANCED_SNAP_VERTICES; vi++) {
@@ -8401,11 +9034,13 @@ const App: React.FC = () => {
       }
     }
 
-    return { vertices, edgePoints, facePoints, surfaceTriangles };
+    return { vertices, edgePoints, facePoints, surfaceTriangles, objectCenters, bboxCorners };
   }, [
     geometryAdvancedSnapActive,
+    geometryBboxCornerSnapEnabled,
     geometryEdgeSnapEnabled,
     geometryFaceCenterSnapEnabled,
+    geometryObjectCenterSnapEnabled,
     geometrySelectedObjectId,
     geometrySurfaceSnapEnabled,
     geometryVertexSnapEnabled,
@@ -8494,6 +9129,271 @@ const App: React.FC = () => {
     },
     [applySelectedPivotDelta, geometrySelectedPivotPoint]
   );
+  const handleDropSelectedToXYPlane = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedWorldBounds) return;
+    const deltaZ = -geometrySelectedWorldBounds.min[2];
+    if (!Number.isFinite(deltaZ)) return;
+    setGeometryKeepOnXYPlaneEnabled(true);
+    const current = geometrySelectedSceneObject.transform.position;
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      position: { x: current.x, y: current.y, z: current.z + deltaZ },
+    });
+  }, [geometrySelectedSceneObject, geometrySelectedWorldBounds, handleUpdateGeometryTransform]);
+  const handleAlignSelectedToSelectedEdge = useCallback(() => {
+    if (!geometrySelectedSceneObject) return;
+    if (geometryProbeSelectionDetails?.mode !== "edge" || !geometryProbeSelectionDetails.edgePoints) return;
+    const [a, b] = geometryProbeSelectionDetails.edgePoints;
+    const dir = new THREE.Vector3(b.x - a.x, b.y - a.y, b.z - a.z);
+    if (dir.lengthSq() <= 1e-12) return;
+    dir.normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+    setGeometryAlignToSelectedEdgeEnabled(true);
+    handleUpdateGeometryTransform(geometrySelectedSceneObject.id, {
+      rotation: { x: e.x, y: e.y, z: e.z },
+    });
+  }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const buildGeometryRepeatOffsets = useCallback((): { offsets: Vec3[]; error: string | null } => {
+    if (!geometrySelectedSceneObject) {
+      return { offsets: [], error: "Select an object in Scene first." };
+    }
+    const base = geometrySelectedSceneObject.transform.position;
+    const clampCopies = (value: number) => Math.max(1, Math.min(256, Math.floor(value)));
+    if (geometryRepeatMode === "duplicate") {
+      return { offsets: [{ x: 0.25, y: 0, z: 0 }], error: null };
+    }
+    if (geometryRepeatMode === "linear-array") {
+      const copies = clampCopies(geometryRepeatLinearCopies);
+      const dir =
+        geometryRepeatLinearDirectionMode === "x"
+          ? { x: 1, y: 0, z: 0 }
+          : geometryRepeatLinearDirectionMode === "y"
+            ? { x: 0, y: 1, z: 0 }
+            : geometryRepeatLinearDirectionMode === "z"
+              ? { x: 0, y: 0, z: 1 }
+              : geometryRepeatLinearCustomDirection;
+      const len = Math.hypot(dir.x, dir.y, dir.z);
+      if (!Number.isFinite(len) || len < 1e-9) {
+        return { offsets: [], error: "Linear array direction is invalid." };
+      }
+      const ux = dir.x / len;
+      const uy = dir.y / len;
+      const uz = dir.z / len;
+      const spacing = Number.isFinite(geometryRepeatLinearSpacing) ? geometryRepeatLinearSpacing : 1;
+      const offsets: Vec3[] = [];
+      for (let i = 1; i <= copies; i += 1) {
+        const d = spacing * i;
+        offsets.push({ x: ux * d, y: uy * d, z: uz * d });
+      }
+      return { offsets, error: null };
+    }
+    if (geometryRepeatMode === "grid-array") {
+      const rows = clampCopies(geometryRepeatGridRows);
+      const cols = clampCopies(geometryRepeatGridColumns);
+      const spacingX = Number.isFinite(geometryRepeatGridSpacingX) ? geometryRepeatGridSpacingX : 1;
+      const spacingY = Number.isFinite(geometryRepeatGridSpacingY) ? geometryRepeatGridSpacingY : 1;
+      const u =
+        geometryRepeatGridPlane === "xy"
+          ? { x: 1, y: 0, z: 0 }
+          : geometryRepeatGridPlane === "xz"
+            ? { x: 1, y: 0, z: 0 }
+            : { x: 0, y: 1, z: 0 };
+      const v =
+        geometryRepeatGridPlane === "xy"
+          ? { x: 0, y: 1, z: 0 }
+          : geometryRepeatGridPlane === "xz"
+            ? { x: 0, y: 0, z: 1 }
+            : { x: 0, y: 0, z: 1 };
+      const offsets: Vec3[] = [];
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols; c += 1) {
+          if (r === 0 && c === 0) continue;
+          offsets.push({
+            x: u.x * spacingX * c + v.x * spacingY * r,
+            y: u.y * spacingX * c + v.y * spacingY * r,
+            z: u.z * spacingX * c + v.z * spacingY * r,
+          });
+        }
+      }
+      return { offsets, error: null };
+    }
+    if (geometryRepeatMode === "circular-array") {
+      const copies = clampCopies(geometryRepeatCircularCopies);
+      const radius = Number.isFinite(geometryRepeatCircularRadius) ? geometryRepeatCircularRadius : 1;
+      const angleDeg = Number.isFinite(geometryRepeatCircularAngleDeg) ? geometryRepeatCircularAngleDeg : 360;
+      const axis =
+        geometryRepeatCircularAxis === "x"
+          ? new THREE.Vector3(1, 0, 0)
+          : geometryRepeatCircularAxis === "y"
+            ? new THREE.Vector3(0, 1, 0)
+            : new THREE.Vector3(0, 0, 1);
+      const ref = Math.abs(axis.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+      const u = new THREE.Vector3().crossVectors(ref, axis).normalize();
+      const v = new THREE.Vector3().crossVectors(axis, u).normalize();
+      const angleRad = THREE.MathUtils.degToRad(angleDeg);
+      const full = Math.abs(angleDeg) >= 359.999;
+      const offsets: Vec3[] = [];
+      for (let i = 0; i < copies; i += 1) {
+        const t = full ? i / copies : copies === 1 ? 0 : i / (copies - 1);
+        const theta = angleRad * t;
+        const rx = radius * (u.x * Math.cos(theta) + v.x * Math.sin(theta));
+        const ry = radius * (u.y * Math.cos(theta) + v.y * Math.sin(theta));
+        const rz = radius * (u.z * Math.cos(theta) + v.z * Math.sin(theta));
+        offsets.push({ x: rx, y: ry, z: rz });
+      }
+      return { offsets, error: null };
+    }
+    if (geometryRepeatMode === "mirror-plane") {
+      let normal = { x: 0, y: 0, z: 1 };
+      let point = { x: 0, y: 0, z: 0 };
+      if (geometryRepeatMirrorPlane === "xz") normal = { x: 0, y: 1, z: 0 };
+      if (geometryRepeatMirrorPlane === "yz") normal = { x: 1, y: 0, z: 0 };
+      if (geometryRepeatMirrorPlane === "selected-face") {
+        if (geometryProbeSelectionDetails?.mode !== "face") {
+          return { offsets: [], error: "Mirror across selected face requires Probe mode Face selection." };
+        }
+        normal = geometryProbeSelectionDetails.normal;
+        point = geometryProbeSelectionDetails.point;
+      }
+      const nLen = Math.hypot(normal.x, normal.y, normal.z);
+      if (!Number.isFinite(nLen) || nLen < 1e-9) {
+        return { offsets: [], error: "Mirror plane normal is invalid." };
+      }
+      const nx = normal.x / nLen;
+      const ny = normal.y / nLen;
+      const nz = normal.z / nLen;
+      const dx = base.x - point.x;
+      const dy = base.y - point.y;
+      const dz = base.z - point.z;
+      const signed = dx * nx + dy * ny + dz * nz;
+      const reflected = {
+        x: base.x - 2 * signed * nx,
+        y: base.y - 2 * signed * ny,
+        z: base.z - 2 * signed * nz,
+      };
+      return {
+        offsets: [{ x: reflected.x - base.x, y: reflected.y - base.y, z: reflected.z - base.z }],
+        error: null,
+      };
+    }
+    if (geometryRepeatMode === "mirror-axis") {
+      const reflected =
+        geometryRepeatMirrorAxis === "x"
+          ? { x: base.x, y: -base.y, z: -base.z }
+          : geometryRepeatMirrorAxis === "y"
+            ? { x: -base.x, y: base.y, z: -base.z }
+            : { x: -base.x, y: -base.y, z: base.z };
+      return {
+        offsets: [{ x: reflected.x - base.x, y: reflected.y - base.y, z: reflected.z - base.z }],
+        error: null,
+      };
+    }
+    return { offsets: [], error: "Unknown repeat mode." };
+  }, [
+    geometryProbeSelectionDetails,
+    geometryRepeatCircularAngleDeg,
+    geometryRepeatCircularAxis,
+    geometryRepeatCircularCopies,
+    geometryRepeatCircularRadius,
+    geometryRepeatGridColumns,
+    geometryRepeatGridPlane,
+    geometryRepeatGridRows,
+    geometryRepeatGridSpacingX,
+    geometryRepeatGridSpacingY,
+    geometryRepeatLinearCopies,
+    geometryRepeatLinearCustomDirection,
+    geometryRepeatLinearDirectionMode,
+    geometryRepeatLinearSpacing,
+    geometryRepeatMirrorAxis,
+    geometryRepeatMirrorPlane,
+    geometryRepeatMode,
+    geometrySelectedSceneObject,
+  ]);
+  const handlePreviewGeometryRepeat = useCallback(() => {
+    const { offsets, error } = buildGeometryRepeatOffsets();
+    if (error) {
+      setGeometryRepeatPreviewStatus(error);
+      return;
+    }
+    const labels: Record<GeometryRepeatMode, string> = {
+      duplicate: "Duplicate",
+      "linear-array": "Linear array",
+      "grid-array": "Grid array",
+      "circular-array": "Circular array",
+      "mirror-plane": "Mirror across plane",
+      "mirror-axis": "Mirror across axis",
+    };
+    setGeometryRepeatPreviewStatus(`${labels[geometryRepeatMode]} preview: ${offsets.length} object copy/copies.`);
+  }, [buildGeometryRepeatOffsets, geometryRepeatMode]);
+  const handleCreateGeometryRepeat = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select an object in Scene first.");
+      return;
+    }
+    if (geometryLockedObjectIds.has(geometrySelectedSceneObject.id)) {
+      setGeometryCreateActionStatus("Selected object is locked.");
+      return;
+    }
+    const { offsets, error } = buildGeometryRepeatOffsets();
+    if (error) {
+      setGeometryCreateActionStatus(error);
+      setGeometryRepeatPreviewStatus(error);
+      return;
+    }
+    if (!offsets.length) {
+      setGeometryCreateActionStatus("No copies generated. Increase count/rows/columns.");
+      return;
+    }
+    const base = geometrySelectedSceneObject.transform.position;
+    const proceduralCopies: GeometryObject[] = [];
+    const datasetCopies: GeometryDatasetMeshObject[] = [];
+    const modeLabel =
+      geometryRepeatMode === "duplicate"
+        ? "copy"
+        : geometryRepeatMode === "linear-array"
+          ? "linear"
+          : geometryRepeatMode === "grid-array"
+            ? "grid"
+            : geometryRepeatMode === "circular-array"
+              ? "circular"
+              : geometryRepeatMode === "mirror-plane"
+                ? "mirror-plane"
+                : "mirror-axis";
+    offsets.forEach((offset, idx) => {
+      const copyId = makeId();
+      const position = { x: base.x + offset.x, y: base.y + offset.y, z: base.z + offset.z };
+      const suffix = `${modeLabel} ${idx + 1}`;
+      if ("mesh" in geometrySelectedSceneObject) {
+        const copy = cloneGeometryDatasetMeshObject(geometrySelectedSceneObject);
+        copy.id = copyId;
+        copy.name = `${geometrySelectedSceneObject.name} ${suffix}`;
+        copy.transform.position = position;
+        datasetCopies.push(copy);
+      } else {
+        const copy = cloneGeometryObject(geometrySelectedSceneObject);
+        copy.id = copyId;
+        copy.name = `${geometrySelectedSceneObject.name} ${suffix}`;
+        copy.transform.position = position;
+        proceduralCopies.push(copy);
+      }
+    });
+    if (proceduralCopies.length) {
+      setGeometryObjects((prev) => [...proceduralCopies, ...prev]);
+    }
+    if (datasetCopies.length) {
+      setGeometryDatasetMeshObjects((prev) => [...datasetCopies, ...prev]);
+    }
+    const firstId = proceduralCopies[0]?.id ?? datasetCopies[0]?.id ?? null;
+    if (firstId) setGeometrySelectedObjectId(firstId);
+    const message = `Created ${offsets.length} object copy/copies (${modeLabel}).`;
+    setGeometryCreateActionStatus(message);
+    setGeometryRepeatPreviewStatus(message);
+  }, [
+    buildGeometryRepeatOffsets,
+    geometryLockedObjectIds,
+    geometryRepeatMode,
+    geometrySelectedSceneObject,
+  ]);
   const handleFitSelectedToUnitBox = useCallback(() => {
     if (!geometrySelectedSceneObject || !geometrySelectedWorldBounds) return;
     const sizeX = geometrySelectedWorldBounds.max[0] - geometrySelectedWorldBounds.min[0];
@@ -8619,44 +9519,73 @@ const App: React.FC = () => {
     if (!geometrySelectedSceneObject || !("type" in geometrySelectedSceneObject)) return null;
     const selected = geometrySelectedSceneObject;
     const typeLabel = GEOMETRY_OBJECT_REGISTRY[selected.type]?.label ?? selected.type;
+    const formatTheoryNumber = (value: number, digits = 4) =>
+      Number.isFinite(value) ? value.toFixed(digits).replace(/\.?0+$/, "") : "n/a";
     const params = Object.entries(selected.params).map(([key, raw]) => ({
       key,
-      value: typeof raw === "number" ? (Number.isFinite(raw) ? raw.toFixed(3).replace(/\.?0+$/, "") : "n/a") : String(raw),
+      value: typeof raw === "number" ? formatTheoryNumber(raw, 3) : String(raw),
     }));
     const formulas: string[] = [];
+    const combinatorics: string[] = [];
+    const notes: string[] = [];
     const related: string[] = [];
+    let eulerLine: string | null = null;
     if (selected.type === "box") {
       const w = Number(selected.params.width ?? 0);
       const h = Number(selected.params.height ?? 0);
       const d = Number(selected.params.depth ?? 0);
+      formulas.push("Volume: V = w*h*d");
+      formulas.push("Surface area: A = 2(wh + wd + hd)");
       if (Number.isFinite(w) && Number.isFinite(h) && Number.isFinite(d)) {
-        formulas.push(`Volume = w*h*d = ${(w * h * d).toFixed(4).replace(/\.?0+$/, "")}`);
-        formulas.push(`Surface area = 2(wh + wd + hd) = ${(2 * (w * h + w * d + h * d)).toFixed(4).replace(/\.?0+$/, "")}`);
-      } else {
-        formulas.push("Volume = w*h*d");
-        formulas.push("Surface area = 2(wh + wd + hd)");
+        formulas.push(`Current V = ${formatTheoryNumber(w * h * d)}`);
+        formulas.push(`Current A = ${formatTheoryNumber(2 * (w * h + w * d + h * d))}`);
       }
+      combinatorics.push("Vertices: 8");
+      combinatorics.push("Edges: 12");
+      combinatorics.push("Faces: 6");
+      eulerLine = "chi = V - E + F = 8 - 12 + 6 = 2";
       related.push("cube", "cuboid", "rectangular prism");
     } else if (selected.type === "sphere") {
       const r = Number(selected.params.radius ?? 0);
-      formulas.push(`Volume = 4/3*pi*r^3${Number.isFinite(r) ? ` = ${((4 / 3) * Math.PI * r * r * r).toFixed(4).replace(/\.?0+$/, "")}` : ""}`);
-      formulas.push(`Surface area = 4*pi*r^2${Number.isFinite(r) ? ` = ${(4 * Math.PI * r * r).toFixed(4).replace(/\.?0+$/, "")}` : ""}`);
+      formulas.push(`Volume = 4/3*pi*r^3${Number.isFinite(r) ? ` = ${formatTheoryNumber((4 / 3) * Math.PI * r * r * r)}` : ""}`);
+      formulas.push(`Surface area = 4*pi*r^2${Number.isFinite(r) ? ` = ${formatTheoryNumber(4 * Math.PI * r * r)}` : ""}`);
       related.push("ball", "ellipsoid", "icosphere");
     } else if (selected.type === "cylinder") {
-      const r = Number(selected.params.radiusTop ?? selected.params.radiusBottom ?? 0);
+      const rTop = Number(selected.params.radiusTop ?? 0);
+      const rBottom = Number(selected.params.radiusBottom ?? 0);
       const h = Number(selected.params.height ?? 0);
-      formulas.push("Volume ≈ pi*r^2*h (for equal top/bottom radii)");
+      const radialSegments = Math.max(3, Math.round(Number(selected.params.radialSegments ?? 24)));
+      const isRightCylinder = Number.isFinite(rTop) && Number.isFinite(rBottom) && Math.abs(rTop - rBottom) < 1e-9;
+      const r = isRightCylinder ? rTop : (rTop + rBottom) * 0.5;
+      formulas.push("Volume: V = pi*r^2*h");
+      formulas.push("Surface area: A = 2*pi*r^2 + 2*pi*r*h");
       if (Number.isFinite(r) && Number.isFinite(h)) {
-        formulas.push(`Approx volume = ${(Math.PI * r * r * h).toFixed(4).replace(/\.?0+$/, "")}`);
+        formulas.push(`Current V (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(Math.PI * r * r * h)}`);
+        formulas.push(
+          `Current A (r=${formatTheoryNumber(r, 3)}) = ${formatTheoryNumber(2 * Math.PI * r * r + 2 * Math.PI * r * h)}`
+        );
+      }
+      notes.push(`Mesh approximation: radial segments = ${radialSegments} (controls circular approximation).`);
+      if (!isRightCylinder) {
+        notes.push(
+          `Current primitive has radiusTop=${formatTheoryNumber(rTop, 3)} and radiusBottom=${formatTheoryNumber(rBottom, 3)}.`
+        );
       }
       related.push("cone", "prism", "tube");
     } else if (selected.type === "cone") {
       const r = Number(selected.params.radius ?? 0);
       const h = Number(selected.params.height ?? 0);
-      formulas.push("Volume = (1/3)*pi*r^2*h");
+      const radialSegments = Math.max(3, Math.round(Number(selected.params.radialSegments ?? 24)));
+      formulas.push("Volume: V = (1/3)*pi*r^2*h");
+      formulas.push("Slant height: l = sqrt(r^2 + h^2)");
+      formulas.push("Surface area: A = pi*r^2 + pi*r*l");
       if (Number.isFinite(r) && Number.isFinite(h)) {
-        formulas.push(`Volume = ${((Math.PI * r * r * h) / 3).toFixed(4).replace(/\.?0+$/, "")}`);
+        const slant = Math.sqrt(r * r + h * h);
+        formulas.push(`Current l = ${formatTheoryNumber(slant)}`);
+        formulas.push(`Current V = ${formatTheoryNumber((Math.PI * r * r * h) / 3)}`);
+        formulas.push(`Current A = ${formatTheoryNumber(Math.PI * r * r + Math.PI * r * slant)}`);
       }
+      notes.push(`Mesh approximation: radial segments = ${radialSegments} (controls circular approximation).`);
       related.push("cylinder", "pyramid");
     } else if (selected.type === "torus") {
       const R = Number(selected.params.radius ?? 0);
@@ -8664,13 +9593,22 @@ const App: React.FC = () => {
       formulas.push("Volume = 2*pi^2*R*r^2");
       formulas.push("Surface area = 4*pi^2*R*r");
       if (Number.isFinite(R) && Number.isFinite(r)) {
-        formulas.push(`Volume = ${(2 * Math.PI * Math.PI * R * r * r).toFixed(4).replace(/\.?0+$/, "")}`);
+        formulas.push(`Volume = ${formatTheoryNumber(2 * Math.PI * Math.PI * R * r * r)}`);
       }
       related.push("ring torus", "spindle torus");
     } else if (selected.type === "polygon") {
       formulas.push("Area (full disk) = pi*r^2 · (thetaLength / 2pi)");
       formulas.push("Perimeter (regular n-gon, full turn) ≈ 2*n*r*sin(pi/n)");
       related.push("circle sector", "regular polygon");
+    } else if (selected.type === "plane") {
+      const w = Number(selected.params.width ?? 0);
+      const h = Number(selected.params.height ?? 0);
+      formulas.push("Area: A = w*h");
+      if (Number.isFinite(w) && Number.isFinite(h)) {
+        formulas.push(`Current A = ${formatTheoryNumber(w * h)}`);
+      }
+      notes.push("A plane primitive is finite in this editor (rectangular patch), even though mathematical planes are unbounded.");
+      related.push("coordinate plane", "rectangle patch");
     } else if (selected.type === "polyhedron") {
       formulas.push("Euler characteristic (closed orientable): chi = V - E + F");
       formulas.push("Genus relation: chi = 2 - 2g");
@@ -8681,6 +9619,9 @@ const App: React.FC = () => {
       definition: `${typeLabel} procedural primitive in the Geometry scene.`,
       params,
       formulas,
+      combinatorics,
+      eulerLine,
+      notes,
       related,
     };
   }, [geometrySelectedSceneObject]);
@@ -9031,6 +9972,15 @@ const App: React.FC = () => {
   const geometryProceduralSelectionOverlayGroups = useMemo<OverlayPolylineGroup[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const groups: OverlayPolylineGroup[] = [];
+    const markedEdges: PolylineSet = geometryMarkedEdges.map((entry) => [entry.edgePoints[0], entry.edgePoints[1]]);
+    if (markedEdges.length) {
+      groups.push({
+        lines: markedEdges,
+        color: 0x0ea5e9,
+        opacity: 0.9,
+        radiusScale: 2.2,
+      });
+    }
     const edgeFrom = (detail: GeometryProbeSelectionDetails | null) => {
       if (!detail || detail.mode !== "edge" || !detail.edgePoints) return null;
       return [[detail.edgePoints[0], detail.edgePoints[1]]] as PolylineSet;
@@ -9054,7 +10004,7 @@ const App: React.FC = () => {
       });
     }
     return groups.length ? groups : null;
-  }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  }, [geometryMarkedEdges, geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
   const geometryProceduralSelectionPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -9084,6 +10034,9 @@ const App: React.FC = () => {
       edge: 0xf59e0b,
       face_center: 0x7c3aed,
       surface: 0xdc2626,
+      object_center: 0x0f766e,
+      bbox_corner: 0x0891b2,
+      face_plane: 0x9333ea,
     };
     return [
       {
@@ -29515,6 +30468,10 @@ case "mobius":
       };
     });
   }, [geometryObjectHistoryById, geometrySelectedSceneObject, unifiedManualDerived]);
+  const geometrySelectedConvexHullProduct = useMemo(
+    () => geometrySelectedDerivedProducts.find((product) => product.operation === "convex-hull") ?? null,
+    [geometrySelectedDerivedProducts]
+  );
   const geometryStaleDerivedProducts = useMemo(
     () =>
       unifiedManualDerived.filter(
@@ -39160,11 +40117,24 @@ case "mobius":
                                 >
                                   Point cloud
                                 </button>
-                                <button type="button" onClick={handlePlanGeometryConvexHull} disabled={!geometrySelectedSceneObject}>
-                                  Plan convex hull
-                                </button>
-                                <button type="button" onClick={() => generateGeometryDerivedProduct("convex-hull")} disabled={!geometrySelectedSceneObject}>
-                                  Generate hull mesh
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const status = geometrySelectedConvexHullProduct?.status ?? "available";
+                                    if (status === "planned" || status === "ready" || status === "stale" || status === "failed") {
+                                      generateGeometryDerivedProduct("convex-hull");
+                                      return;
+                                    }
+                                    handlePlanGeometryConvexHull();
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                >
+                                  {(() => {
+                                    const status = geometrySelectedConvexHullProduct?.status ?? "available";
+                                    if (status === "planned") return "Generate hull mesh";
+                                    if (status === "ready" || status === "stale" || status === "failed") return "Regenerate hull mesh";
+                                    return "Plan convex hull";
+                                  })()}
                                 </button>
                                 <button
                                   type="button"
@@ -39228,6 +40198,66 @@ case "mobius":
                                 >
                                   Regenerate stale (all)
                                 </button>
+                                <div
+                                  style={{
+                                    width: "100%",
+                                    border: "1px solid #dbe4f0",
+                                    borderRadius: 8,
+                                    padding: "8px 9px",
+                                    background: "#f8fbff",
+                                    display: "grid",
+                                    gap: 6,
+                                  }}
+                                >
+                                  <div style={{ fontSize: 10.5, fontWeight: 700 }}>Construction helpers (PR8)</div>
+                                  <div style={{ fontSize: 10, color: "#475467" }}>
+                                    Helpers are created as ReferenceObject/Overlay-style scene objects. Use Probe mode Face/Edge/Vertex, then create.
+                                  </div>
+                                  <div style={{ fontSize: 10, color: "#475467" }}>
+                                    Catalog: Point, Axis, Plane, Coordinate frame, Grid plane, Ruler, Angle marker, Section plane, Normal marker, Tangent marker.
+                                  </div>
+                                  <div style={{ fontSize: 10, color: "#334155" }}>
+                                    Active probe:{" "}
+                                    {geometryProbeSelectionDetails
+                                      ? `${geometryProbeSelectionDetails.mode}${
+                                          geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                                        }${
+                                          geometryProbeSelectionDetails.edgeVertexPair
+                                            ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                            : ""
+                                        }${
+                                          geometryProbeSelectionDetails.vertexIndex != null
+                                            ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}`
+                                            : ""
+                                        }`
+                                      : "none"}
+                                  </div>
+                                  {geometryProbeSelectionDetails?.mode === "face" && geometryProbeSelectionDetails.faceVertices ? (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-plane")}>Face plane</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-normal")}>Face normal</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-centroid")}>Face centroid point</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromFaceSelection("face-frame")}>Local coordinate frame</button>
+                                    </div>
+                                  ) : geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints ? (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-midpoint")}>Edge midpoint</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-direction")}>Edge direction vector</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-perp-plane")}>Perpendicular plane</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromEdgeSelection("edge-ruler")}>Ruler</button>
+                                    </div>
+                                  ) : geometryProbeSelectionDetails?.mode === "vertex" ? (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-point")}>Point marker</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-normal")}>Vertex normal</button>
+                                      <button type="button" onClick={() => handleCreateHelperFromVertexSelection("vertex-frame")}>Local frame</button>
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 10, color: "#667085" }}>
+                                      Select a face/edge/vertex using Probe mode to enable contextual helper creation.
+                                    </div>
+                                  )}
+                                </div>
                                 {geometryCreateActionStatus && (
                                   <div style={{ fontSize: 10, color: "#334155", width: "100%" }}>{geometryCreateActionStatus}</div>
                                 )}
@@ -39571,6 +40601,326 @@ case "mobius":
                           gap: 6,
                         }}
                       >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Quick workflows</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={handleDropSelectedToXYPlane}
+                            disabled={!geometrySelectedSceneObject || !geometrySelectedWorldBounds}
+                            title={geometrySelectedWorldBounds ? "Move selected object base to Z=0 and enable XY plane constraint." : "Requires selected object bounds."}
+                          >
+                            Drop to XY
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCenterSelectedAtOrigin}
+                            disabled={!geometrySelectedSceneObject || !geometrySelectedPivotPoint}
+                            title={geometrySelectedPivotPoint ? "Move selected object pivot to world origin." : "Requires selected object pivot."}
+                          >
+                            Center at origin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleAlignSelectedToSelectedEdge}
+                            disabled={
+                              !geometrySelectedSceneObject ||
+                              geometryProbeSelectionDetails?.mode !== "edge" ||
+                              !geometryProbeSelectionDetails.edgePoints
+                            }
+                            title={
+                              geometryProbeSelectionDetails?.mode === "edge" && geometryProbeSelectionDetails.edgePoints
+                                ? "Align selected object Y axis to selected edge and keep edge alignment enabled."
+                                : "Requires an edge selection target."
+                            }
+                          >
+                            Align to selected edge
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          Presets apply immediate placement and enable related PR9 constraints for follow-up edits.
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Construct / Repeat (PR10)</div>
+                        <label style={{ fontSize: 11 }}>
+                          Tool
+                          <select
+                            value={geometryRepeatMode}
+                            onChange={(e) => setGeometryRepeatMode(e.target.value as GeometryRepeatMode)}
+                            style={{ marginLeft: 6 }}
+                          >
+                            <option value="duplicate">Duplicate</option>
+                            <option value="linear-array">Linear array</option>
+                            <option value="grid-array">Grid array</option>
+                            <option value="circular-array">Circular array</option>
+                            <option value="mirror-plane">Mirror across plane</option>
+                            <option value="mirror-axis">Mirror across coordinate axis</option>
+                          </select>
+                        </label>
+                        {geometryRepeatMode === "linear-array" && (
+                          <>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, alignItems: "center" }}>
+                              <label>
+                                Copies
+                                <input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={geometryRepeatLinearCopies}
+                                  onChange={(e) => setGeometryRepeatLinearCopies(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                                  style={{ marginLeft: 6, width: 72 }}
+                                />
+                              </label>
+                              <label>
+                                Direction
+                                <select
+                                  value={geometryRepeatLinearDirectionMode}
+                                  onChange={(e) => setGeometryRepeatLinearDirectionMode(e.target.value as GeometryRepeatAxis)}
+                                  style={{ marginLeft: 6 }}
+                                >
+                                  <option value="x">X</option>
+                                  <option value="y">Y</option>
+                                  <option value="z">Z</option>
+                                  <option value="custom">Custom vector</option>
+                                </select>
+                              </label>
+                              <label>
+                                Spacing
+                                <input
+                                  type="number"
+                                  step={0.1}
+                                  value={geometryRepeatLinearSpacing}
+                                  onChange={(e) => setGeometryRepeatLinearSpacing(Number(e.target.value) || 0)}
+                                  style={{ marginLeft: 6, width: 80 }}
+                                />
+                              </label>
+                            </div>
+                            {geometryRepeatLinearDirectionMode === "custom" && (
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, alignItems: "center" }}>
+                                <span>Custom dir</span>
+                                {(["x", "y", "z"] as const).map((axis) => (
+                                  <label key={`repeat-linear-dir-${axis}`}>
+                                    {axis.toUpperCase()}
+                                    <input
+                                      type="number"
+                                      step={0.1}
+                                      value={geometryRepeatLinearCustomDirection[axis]}
+                                      onChange={(e) => {
+                                        const v = Number(e.target.value);
+                                        if (!Number.isFinite(v)) return;
+                                        setGeometryRepeatLinearCustomDirection((prev) => ({ ...prev, [axis]: v }));
+                                      }}
+                                      style={{ marginLeft: 6, width: 70 }}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {geometryRepeatMode === "grid-array" && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, alignItems: "center" }}>
+                            <label>
+                              Rows
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={geometryRepeatGridRows}
+                                onChange={(e) => setGeometryRepeatGridRows(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                                style={{ marginLeft: 6, width: 66 }}
+                              />
+                            </label>
+                            <label>
+                              Columns
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={geometryRepeatGridColumns}
+                                onChange={(e) => setGeometryRepeatGridColumns(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                                style={{ marginLeft: 6, width: 66 }}
+                              />
+                            </label>
+                            <label>
+                              Plane
+                              <select
+                                value={geometryRepeatGridPlane}
+                                onChange={(e) => setGeometryRepeatGridPlane(e.target.value as GeometryRepeatGridPlane)}
+                                style={{ marginLeft: 6 }}
+                              >
+                                <option value="xy">XY</option>
+                                <option value="xz">XZ</option>
+                                <option value="yz">YZ</option>
+                              </select>
+                            </label>
+                            <label>
+                              Spacing X
+                              <input
+                                type="number"
+                                step={0.1}
+                                value={geometryRepeatGridSpacingX}
+                                onChange={(e) => setGeometryRepeatGridSpacingX(Number(e.target.value) || 0)}
+                                style={{ marginLeft: 6, width: 72 }}
+                              />
+                            </label>
+                            <label>
+                              Spacing Y
+                              <input
+                                type="number"
+                                step={0.1}
+                                value={geometryRepeatGridSpacingY}
+                                onChange={(e) => setGeometryRepeatGridSpacingY(Number(e.target.value) || 0)}
+                                style={{ marginLeft: 6, width: 72 }}
+                              />
+                            </label>
+                          </div>
+                        )}
+                        {geometryRepeatMode === "circular-array" && (
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, alignItems: "center" }}>
+                            <label>
+                              Copies
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={geometryRepeatCircularCopies}
+                                onChange={(e) => setGeometryRepeatCircularCopies(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                                style={{ marginLeft: 6, width: 66 }}
+                              />
+                            </label>
+                            <label>
+                              Axis
+                              <select
+                                value={geometryRepeatCircularAxis}
+                                onChange={(e) => setGeometryRepeatCircularAxis(e.target.value as "x" | "y" | "z")}
+                                style={{ marginLeft: 6 }}
+                              >
+                                <option value="x">X</option>
+                                <option value="y">Y</option>
+                                <option value="z">Z</option>
+                              </select>
+                            </label>
+                            <label>
+                              Radius
+                              <input
+                                type="number"
+                                step={0.1}
+                                value={geometryRepeatCircularRadius}
+                                onChange={(e) => setGeometryRepeatCircularRadius(Number(e.target.value) || 0)}
+                                style={{ marginLeft: 6, width: 72 }}
+                              />
+                            </label>
+                            <label>
+                              Angle
+                              <input
+                                type="number"
+                                step={1}
+                                value={geometryRepeatCircularAngleDeg}
+                                onChange={(e) => setGeometryRepeatCircularAngleDeg(Number(e.target.value) || 0)}
+                                style={{ marginLeft: 6, width: 72 }}
+                              />
+                              °
+                            </label>
+                          </div>
+                        )}
+                        {geometryRepeatMode === "mirror-plane" && (
+                          <label style={{ fontSize: 11 }}>
+                            Plane
+                            <select
+                              value={geometryRepeatMirrorPlane}
+                              onChange={(e) => setGeometryRepeatMirrorPlane(e.target.value as GeometryRepeatMirrorPlane)}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="xy">XY plane</option>
+                              <option value="xz">XZ plane</option>
+                              <option value="yz">YZ plane</option>
+                              <option value="selected-face">Selected face plane</option>
+                            </select>
+                          </label>
+                        )}
+                        {geometryRepeatMode === "mirror-axis" && (
+                          <label style={{ fontSize: 11 }}>
+                            Axis
+                            <select
+                              value={geometryRepeatMirrorAxis}
+                              onChange={(e) => setGeometryRepeatMirrorAxis(e.target.value as "x" | "y" | "z")}
+                              style={{ marginLeft: 6 }}
+                            >
+                              <option value="x">X axis</option>
+                              <option value="y">Y axis</option>
+                              <option value="z">Z axis</option>
+                            </select>
+                          </label>
+                        )}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          <button type="button" onClick={handlePreviewGeometryRepeat} disabled={!geometrySelectedSceneObject}>
+                            Preview
+                          </button>
+                          <button type="button" onClick={handleCreateGeometryRepeat} disabled={!geometrySelectedSceneObject}>
+                            Create
+                          </button>
+                        </div>
+                        {geometryRepeatPreviewStatus && (
+                          <div style={{ fontSize: 10, color: "#475569" }}>{geometryRepeatPreviewStatus}</div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 700 }}>Constraints</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                          <label><input type="checkbox" checked={geometryLockXEnabled} onChange={(e) => setGeometryLockXEnabled(e.target.checked)} style={{ marginRight: 6 }} />Lock X</label>
+                          <label><input type="checkbox" checked={geometryLockYEnabled} onChange={(e) => setGeometryLockYEnabled(e.target.checked)} style={{ marginRight: 6 }} />Lock Y</label>
+                          <label><input type="checkbox" checked={geometryLockZEnabled} onChange={(e) => setGeometryLockZEnabled(e.target.checked)} style={{ marginRight: 6 }} />Lock Z</label>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11 }}>
+                          <label><input type="checkbox" checked={geometryKeepOnXYPlaneEnabled} onChange={(e) => setGeometryKeepOnXYPlaneEnabled(e.target.checked)} style={{ marginRight: 6 }} />Keep on XY plane</label>
+                          <label><input type="checkbox" checked={geometryKeepOnSelectedPlaneEnabled} onChange={(e) => setGeometryKeepOnSelectedPlaneEnabled(e.target.checked)} style={{ marginRight: 6 }} />Keep on selected plane</label>
+                          <label><input type="checkbox" checked={geometryAlignToSelectedEdgeEnabled} onChange={(e) => setGeometryAlignToSelectedEdgeEnabled(e.target.checked)} style={{ marginRight: 6 }} />Keep aligned to selected edge</label>
+                        </div>
+                        <div style={{ fontSize: 10, color: "#64748b" }}>
+                          Selected plane/edge source:{" "}
+                          {geometryProbeSelectionDetails
+                            ? `${geometryProbeSelectionDetails.mode}${
+                                geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""
+                              }${
+                                geometryProbeSelectionDetails.edgeVertexPair
+                                  ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]`
+                                  : ""
+                              }`
+                            : "none"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
                         <div style={{ fontSize: 11, fontWeight: 700 }}>Selected object</div>
                         {geometrySelectedSceneObject ? (
                           <>
@@ -39757,8 +41107,11 @@ case "mobius":
                             <label><input type="checkbox" checked={geometryVertexSnapEnabled} onChange={(e) => setGeometryVertexSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Vertex snap</label>
                             <label><input type="checkbox" checked={geometryEdgeSnapEnabled} onChange={(e) => setGeometryEdgeSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Edge snap</label>
                             <label><input type="checkbox" checked={geometryFaceCenterSnapEnabled} onChange={(e) => setGeometryFaceCenterSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Face center snap</label>
+                            <label><input type="checkbox" checked={geometryFacePlaneSnapEnabled} onChange={(e) => setGeometryFacePlaneSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Face plane snap</label>
+                            <label><input type="checkbox" checked={geometryObjectCenterSnapEnabled} onChange={(e) => setGeometryObjectCenterSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Object center snap</label>
+                            <label><input type="checkbox" checked={geometryBboxCornerSnapEnabled} onChange={(e) => setGeometryBboxCornerSnapEnabled(e.target.checked)} style={{ marginRight: 6 }} />Bounding box corner snap</label>
                             <div style={{ fontSize: 10, color: "#64748b" }}>
-                              Advanced snap modes are staged controls for upcoming interactive snapping.
+                              Snap candidates are computed from visible scene objects (excluding the selected object).
                             </div>
                           </div>
                         </details>
@@ -41244,9 +42597,181 @@ case "mobius":
                                 <div>No formulas available for this object.</div>
                               )}
                             </div>
+                            {(geometryTheorySummary.combinatorics.length > 0 || geometryTheorySummary.eulerLine) && (
+                              <>
+                                <div style={{ fontSize: 12, fontWeight: 700 }}>Combinatorics / topology</div>
+                                <div
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 8,
+                                    padding: "8px 10px",
+                                    background: "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  {geometryTheorySummary.combinatorics.map((line, idx) => (
+                                    <div key={`geometry-theory-combinatorics-${idx}`}>{line}</div>
+                                  ))}
+                                  {geometryTheorySummary.eulerLine && (
+                                    <div>
+                                      <strong>Euler characteristic:</strong> {geometryTheorySummary.eulerLine}
+                                    </div>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                            {geometryTheorySummary.notes.length > 0 && (
+                              <>
+                                <div style={{ fontSize: 12, fontWeight: 700 }}>Notes</div>
+                                <div
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 8,
+                                    padding: "8px 10px",
+                                    background: "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                    fontSize: 11,
+                                  }}
+                                >
+                                  {geometryTheorySummary.notes.map((line, idx) => (
+                                    <div key={`geometry-theory-note-${idx}`}>{line}</div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
                             <div style={{ fontSize: 12, fontWeight: 700 }}>Related objects</div>
                             <div style={{ fontSize: 11, color: "#475467" }}>
                               {geometryTheorySummary.related.length ? geometryTheorySummary.related.join(" · ") : "n/a"}
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>PR14 preview: local editing</div>
+                            <div
+                              style={{
+                                border: "1px solid #dbe2ea",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                                background: "#fbfdff",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div style={{ fontSize: 11, color: "#334155" }}>
+                                Geometry focuses on simple construction editing. Deep mesh editing should route to Mesh module.
+                              </div>
+                              <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                                <div><strong>Face tools:</strong> extrude face, inset face, delete face, create face normal marker</div>
+                                <div><strong>Edge tools:</strong> bevel edge, split edge, mark edge, measure edge</div>
+                                <div><strong>Vertex tools:</strong> move vertex, weld vertices, create vertex marker</div>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                <button type="button" disabled title="Planned in PR14">Face tools (planned)</button>
+                                <button
+                                  type="button"
+                                  onClick={handleMeasureSelectedProbeEdge}
+                                  disabled={!geometryMeasuredEdgeCandidate}
+                                  title={
+                                    geometryProbeSelectionMode !== "edge"
+                                      ? "Set selection mode to Edge, then click an edge in the viewport."
+                                      : "Measure selected edge"
+                                  }
+                                >
+                                  Measure edge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleToggleMarkSelectedProbeEdge}
+                                  disabled={!geometryMeasuredEdgeCandidate?.edgePoints}
+                                  title={
+                                    geometryProbeSelectionMode !== "edge"
+                                      ? "Set selection mode to Edge, then click an edge in the viewport."
+                                      : "Mark/unmark selected edge"
+                                  }
+                                >
+                                  Mark edge
+                                </button>
+                                <button type="button" disabled title="Planned in PR14">Edge tools (other planned)</button>
+                                <button type="button" disabled title="Planned in PR14">Vertex tools (planned)</button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!geometrySelectedSceneObject) return;
+                                    const ok = bakeGeometryObjectToDatasetById(geometrySelectedSceneObject.id);
+                                    if (!ok) return;
+                                    setSurfacesLeftTab("scene");
+                                  }}
+                                  disabled={!geometrySelectedSceneObject}
+                                  title="Bake selected geometry object to mesh dataset and open Mesh module."
+                                >
+                                  Open in Mesh module
+                                </button>
+                              </div>
+                              <div style={{ fontSize: 10, color: "#475467" }}>
+                                Edge tools use the current Probe selection in Edge mode.
+                              </div>
+                              {geometryMarkedEdges.length > 0 ? (
+                                <div
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 6,
+                                    padding: "6px 8px",
+                                    background: "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                    fontSize: 10.5,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <div style={{ fontWeight: 700 }}>Marked edges</div>
+                                    <button type="button" onClick={() => setGeometryMarkedEdges([])} style={{ fontSize: 10 }}>
+                                      Clear marks
+                                    </button>
+                                  </div>
+                                  {geometryMarkedEdges.slice(0, 8).map((entry) => (
+                                    <div
+                                      key={`geometry-edge-mark-${entry.id}`}
+                                      style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}
+                                    >
+                                      <div>
+                                        {entry.objectName} · [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}]
+                                      </div>
+                                      <button type="button" onClick={() => handleDeleteMarkedEdge(entry.id)} style={{ fontSize: 10 }}>
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 10, color: "#667085" }}>
+                                  No marked edges yet.
+                                </div>
+                              )}
+                              {geometryMeasuredEdges.length > 0 ? (
+                                <div
+                                  style={{
+                                    border: "1px solid #dbe2ea",
+                                    borderRadius: 6,
+                                    padding: "6px 8px",
+                                    background: "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                    fontSize: 10.5,
+                                  }}
+                                >
+                                  <div style={{ fontWeight: 700 }}>Recent edge measurements</div>
+                                  {geometryMeasuredEdges.slice(0, 6).map((entry) => (
+                                    <div key={`geometry-edge-measure-${entry.id}`}>
+                                      {entry.objectName} · edge [{entry.edgeVertexPair[0]}, {entry.edgeVertexPair[1]}] · L={fmt(entry.length)} ·{" "}
+                                      {new Date(entry.at).toLocaleTimeString()}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ fontSize: 10, color: "#667085" }}>
+                                  No edge measurements yet.
+                                </div>
+                              )}
                             </div>
                           </>
                         ) : (
