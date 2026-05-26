@@ -41019,6 +41019,7 @@ case "mobius":
                       vtkPreviewUseDecimate={vtkPreviewUseDecimate}
                       vtkLastResult={vtkLastResult}
                       vtkError={vtkError}
+                      onSaveVtkOperationPreset={handleSaveGeometryOperationPreset}
                       onChangeVtkPreviewTargetFaces={setVtkPreviewTargetFaces}
                       onChangeVtkPreviewUseDecimate={setVtkPreviewUseDecimate}
                       onRunVtkPreview={handleVtkPreviewImplicit}
@@ -65650,6 +65651,7 @@ type SurfacesRightPanelProps = {
   vtkPreviewUseDecimate: boolean;
   vtkLastResult: VtkResultSummary | null;
   vtkError: string | null;
+  onSaveVtkOperationPreset: () => void;
   onChangeVtkPreviewTargetFaces: (v: number) => void;
   onChangeVtkPreviewUseDecimate: (v: boolean) => void;
   onRunVtkPreview: () => void;
@@ -65826,6 +65828,7 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   vtkPreviewUseDecimate,
   vtkLastResult,
   vtkError,
+  onSaveVtkOperationPreset,
   onChangeVtkPreviewTargetFaces,
   onChangeVtkPreviewUseDecimate,
   onRunVtkPreview,
