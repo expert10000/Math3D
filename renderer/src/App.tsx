@@ -9353,8 +9353,9 @@ const App: React.FC = () => {
       setGeometryAnnotationStatus("Enter custom text first.");
       return;
     }
+    const selectedPivotPoint = geometrySelectedPivotPointRef.current;
     const point =
-      geometryProbeSelectionDetails?.point ?? geometryProceduralPick?.point ?? geometrySelectedPivotPoint ?? null;
+      geometryProbeSelectionDetails?.point ?? geometryProceduralPick?.point ?? selectedPivotPoint ?? null;
     if (!point) {
       setGeometryAnnotationStatus("Pick a point in the viewer first.");
       return;
@@ -9372,7 +9373,6 @@ const App: React.FC = () => {
     geometryProbeSelectionDetails?.point,
     geometryProceduralPick?.point,
     geometrySelectedObjectId,
-    geometrySelectedPivotPoint,
     pushGeometryAnnotation,
   ]);
   const handleAddNormalVectorAnnotation = useCallback(() => {

@@ -290,3 +290,41 @@ Actions
 [Clear]
 [Save vector field]
 
+PR19 — Geometry Validity / Mesh Readiness Check
+
+Before sending objects deeper into Mesh, CGAL, VTK, slicing, volume, or analysis, Geometry should tell whether the object is healthy.
+
+Goal
+
+Add a lightweight “Can this object safely become a mesh object?” validator.
+
+Checks
+Geometry Validity
+├── vertices valid
+├── faces valid
+├── normals valid
+├── manifold check
+├── duplicate vertices
+├── degenerate triangles
+├── open boundaries
+├── inverted normals
+├── self-intersection warning
+└── scale warning
+Actions
+fix normals
+weld close vertices
+remove duplicate vertices
+triangulate faces
+center object
+apply transform
+bake to mesh
+send to Mesh module
+Important rule
+
+Geometry should show problems early, but deep repair belongs to Mesh.
+
+So Geometry can say:
+
+Warning: object has open boundary.
+Quick fix available: fill simple hole.
+Advanced repair: open in Mesh module.
