@@ -85,6 +85,12 @@ import { buildGeometryRenderData } from "./geometry/render";
 import type { GeometryScene, Point3, Polygon3, Segment3 } from "./geometry/types";
 import { evaluateConstraints, formatConstraintValue } from "./geometry/analysis";
 import { evaluateGeometryMeshReadiness } from "./geometry/meshReadiness";
+import {
+  GEOMETRY_TO_MESH_PROMOTION_MODES,
+  promoteGeometryToMesh,
+  type GeometryToMeshPromotionMetadata,
+  type GeometryToMeshPromotionMode,
+} from "./geometry/meshPromotionContract";
 import { computeMeshSection, sectionPlaneNormalFromPreset, type SectionPlanePreset } from "./geometry/meshSection";
 import { pointInPolygonOnPlane } from "./geometry/polyhedra";
 import {
@@ -447,6 +453,17 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "theory"] as const;
 const MOBIUS_SUB_TAB_VALUES: MobiusSubTab[] = ["map", "decompose", "invariants", "circles", "riemann", "animation"];
+const VARIANT_GHOST_MESH_KEY_PREFIX = "variant-ghost:";
+const isVariantGhostMeshKey = (meshKey: string | null | undefined): boolean =>
+  !!meshKey && meshKey.startsWith(VARIANT_GHOST_MESH_KEY_PREFIX);
+const GEOMETRY_PROMOTION_MODE_LABELS: Record<GeometryToMeshPromotionMode, string> = {
+  raw_mesh: "Raw mesh",
+  triangulated_mesh: "Triangulated mesh",
+  repaired_mesh: "Repaired mesh",
+  analysis_ready_mesh: "Analysis-ready mesh",
+  frozen_baked_object: "Frozen/baked object",
+  editable_mesh_object: "Editable mesh object",
+};
 const PLANIMETRY_PRESET_VALUES: PlanimetryPresetId[] = ["task", "euler", "tangent", "incircle_reflection"];
 const isGeometryModeValue = (value: string | undefined): value is GeometryMode =>
   !!value && GEOMETRY_MODE_VALUES.includes(value as GeometryMode);
@@ -1000,6 +1017,41 @@ type WorkbookEmbeddedMesh = {
   uvs?: number[] | null;
   source: SurfaceMeshSource;
 };
+type WorkbookGeometryDatasetMeshObject = {
+  id: string;
+  name: string;
+  mesh: WorkbookEmbeddedMesh;
+  transform: GeometryObjectTransform;
+  visible: boolean;
+  material: GeometryObject["material"];
+  promotion?: GeometryToMeshPromotionMetadata | null;
+};
+type GeometryObjectVariant = {
+  id: string;
+  name: string;
+  createdAt: number;
+  snapshot: GeometryObject | GeometryDatasetMeshObject;
+};
+type WorkbookGeometryObjectVariant = {
+  id: string;
+  name: string;
+  createdAt: number;
+  snapshot: GeometryObject | WorkbookGeometryDatasetMeshObject;
+};
+type GeometryVariantSet = {
+  objectId: string;
+  objectName: string;
+  activeVariantId: string | null;
+  variants: GeometryObjectVariant[];
+  updatedAt: number;
+};
+type WorkbookGeometryVariantSet = {
+  objectId: string;
+  objectName: string;
+  activeVariantId: string | null;
+  variants: WorkbookGeometryObjectVariant[];
+  updatedAt: number;
+};
 type WorkbookDatasetRecipe = {
   id: string;
   kind: "surface" | "mesh" | "volume";
@@ -1033,6 +1085,12 @@ type WorkbookWorkspaceState = {
   geometry: {
     mode: GeometryMode;
     objects: GeometryObject[];
+    datasetMeshObjects?: WorkbookGeometryDatasetMeshObject[];
+    variantSets?: WorkbookGeometryVariantSet[];
+    showGhostedVariants?: boolean;
+    selectedVariantId?: string | null;
+    selectedVariantCompareId?: string | null;
+    promotionModeDefault?: GeometryToMeshPromotionMode;
     selectedObjectId: string | null;
     scratchScene?: ConstructionLabSeed | null;
     workbookScenes?: Record<string, ConstructionLabSeed>;
@@ -1373,6 +1431,164 @@ const deserializeSurfaceMeshData = (mesh: WorkbookEmbeddedMesh): SurfaceMeshData
   uvs: mesh.uvs ? Float32Array.from(mesh.uvs) : null,
   source: mesh.source,
 });
+
+const cloneGeometryPromotionMetadata = (
+  promotion: GeometryToMeshPromotionMetadata | null | undefined
+): GeometryToMeshPromotionMetadata | null => {
+  if (!promotion) return null;
+  return {
+    ...promotion,
+    sourceOperationHistory: [...(promotion.sourceOperationHistory ?? [])],
+    bounds: promotion.bounds
+      ? { min: [...promotion.bounds.min] as [number, number, number], max: [...promotion.bounds.max] as [number, number, number] }
+      : null,
+    validityReport: {
+      ...promotion.validityReport,
+      checks: promotion.validityReport.checks.map((check) => ({ ...check })),
+      stats: { ...promotion.validityReport.stats },
+      suggestions: { ...promotion.validityReport.suggestions },
+      notes: [...promotion.validityReport.notes],
+    },
+  };
+};
+
+const serializeGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): WorkbookGeometryDatasetMeshObject => ({
+  id: obj.id,
+  name: obj.name,
+  mesh: serializeSurfaceMeshData(obj.mesh),
+  transform: {
+    position: { ...obj.transform.position },
+    rotation: { ...obj.transform.rotation },
+    scale: { ...obj.transform.scale },
+  },
+  visible: obj.visible,
+  material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
+  promotion: cloneGeometryPromotionMetadata(obj.promotion),
+});
+
+const deserializeGeometryDatasetMeshObject = (
+  obj: WorkbookGeometryDatasetMeshObject
+): GeometryDatasetMeshObject => ({
+  id: obj.id,
+  name: obj.name,
+  mesh: deserializeSurfaceMeshData(obj.mesh),
+  transform: {
+    position: {
+      x: Number(obj.transform?.position?.x ?? 0),
+      y: Number(obj.transform?.position?.y ?? 0),
+      z: Number(obj.transform?.position?.z ?? 0),
+    },
+    rotation: {
+      x: Number(obj.transform?.rotation?.x ?? 0),
+      y: Number(obj.transform?.rotation?.y ?? 0),
+      z: Number(obj.transform?.rotation?.z ?? 0),
+    },
+    scale: {
+      x: Number(obj.transform?.scale?.x ?? 1),
+      y: Number(obj.transform?.scale?.y ?? 1),
+      z: Number(obj.transform?.scale?.z ?? 1),
+    },
+  },
+  visible: Boolean(obj.visible ?? true),
+  material: normalizeGeometryMaterial(obj.material),
+  promotion: cloneGeometryPromotionMetadata(obj.promotion),
+});
+
+const cloneVariantSnapshot = (
+  snapshot: GeometryObject | GeometryDatasetMeshObject
+): GeometryObject | GeometryDatasetMeshObject => ("mesh" in snapshot ? cloneGeometryDatasetMeshObject(snapshot) : cloneGeometryObject(snapshot));
+
+const serializeVariantSnapshot = (
+  snapshot: GeometryObject | GeometryDatasetMeshObject
+): GeometryObject | WorkbookGeometryDatasetMeshObject =>
+  "mesh" in snapshot
+    ? serializeGeometryDatasetMeshObject(snapshot)
+    : {
+        ...snapshot,
+        params: { ...snapshot.params },
+        transform: {
+          position: { ...snapshot.transform.position },
+          rotation: { ...snapshot.transform.rotation },
+          scale: { ...snapshot.transform.scale },
+        },
+        visible: Boolean(snapshot.visible),
+        material: normalizeGeometryMaterial(snapshot.material),
+      };
+
+const deserializeVariantSnapshot = (
+  snapshot: GeometryObject | WorkbookGeometryDatasetMeshObject
+): GeometryObject | GeometryDatasetMeshObject =>
+  "mesh" in snapshot
+    ? deserializeGeometryDatasetMeshObject(snapshot)
+    : {
+        ...snapshot,
+        params: { ...(snapshot.params ?? {}) },
+        transform: {
+          position: {
+            x: Number(snapshot.transform?.position?.x ?? 0),
+            y: Number(snapshot.transform?.position?.y ?? 0),
+            z: Number(snapshot.transform?.position?.z ?? 0),
+          },
+          rotation: {
+            x: Number(snapshot.transform?.rotation?.x ?? 0),
+            y: Number(snapshot.transform?.rotation?.y ?? 0),
+            z: Number(snapshot.transform?.rotation?.z ?? 0),
+          },
+          scale: {
+            x: Number(snapshot.transform?.scale?.x ?? 1),
+            y: Number(snapshot.transform?.scale?.y ?? 1),
+            z: Number(snapshot.transform?.scale?.z ?? 1),
+          },
+        },
+        visible: Boolean(snapshot.visible ?? true),
+        material: normalizeGeometryMaterial(snapshot.material),
+      };
+
+const serializeGeometryVariantSets = (sets: Record<string, GeometryVariantSet>): WorkbookGeometryVariantSet[] =>
+  Object.values(sets).map((set) => ({
+    objectId: set.objectId,
+    objectName: set.objectName,
+    activeVariantId: set.activeVariantId,
+    updatedAt: set.updatedAt,
+    variants: set.variants.map((variant) => ({
+      id: variant.id,
+      name: variant.name,
+      createdAt: variant.createdAt,
+      snapshot: serializeVariantSnapshot(variant.snapshot),
+    })),
+  }));
+
+const deserializeGeometryVariantSets = (items: WorkbookGeometryVariantSet[] | undefined): Record<string, GeometryVariantSet> => {
+  const result: Record<string, GeometryVariantSet> = {};
+  if (!Array.isArray(items)) return result;
+  for (const item of items) {
+    if (!item || typeof item.objectId !== "string") continue;
+    const variants = Array.isArray(item.variants)
+      ? item.variants
+          .filter((entry) => entry && typeof entry.id === "string")
+          .map((variant) => ({
+            id: variant.id,
+            name: String(variant.name ?? variant.id),
+            createdAt: Number.isFinite(variant.createdAt) ? Number(variant.createdAt) : Date.now(),
+            snapshot: deserializeVariantSnapshot(variant.snapshot),
+          }))
+      : [];
+    result[item.objectId] = {
+      objectId: item.objectId,
+      objectName: String(item.objectName ?? item.objectId),
+      activeVariantId: typeof item.activeVariantId === "string" ? item.activeVariantId : variants[0]?.id ?? null,
+      variants,
+      updatedAt: Number.isFinite(item.updatedAt) ? Number(item.updatedAt) : Date.now(),
+    };
+  }
+  return result;
+};
+
+const nextVariantLabel = (index: number): string => {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  if (index < letters.length) return `Variant ${letters[index]}`;
+  return `Variant ${index + 1}`;
+};
 
 /* ---------------- constants ---------------- */
 
@@ -1837,6 +2053,7 @@ type GeometryDatasetMeshObject = {
   transform: GeometryObjectTransform;
   visible: boolean;
   material: GeometryObject["material"];
+  promotion?: GeometryToMeshPromotionMetadata | null;
 };
 
 const DEFAULT_GEOMETRY_MATERIAL_COLOR = 0x8aa4ff;
@@ -2924,6 +3141,7 @@ const cloneGeometryDatasetMeshObject = (obj: GeometryDatasetMeshObject): Geometr
     scale: { ...obj.transform.scale },
   },
   material: normalizeGeometryMaterial((obj as { material?: unknown })?.material),
+  promotion: cloneGeometryPromotionMetadata(obj.promotion),
 });
 const cloneGeometrySceneObjectSnapshot = (
   obj: GeometryObject | GeometryDatasetMeshObject
@@ -6877,6 +7095,7 @@ const App: React.FC = () => {
     [geometryDemoFamily, geometryFaces, geometryPlanimetryDemo.points, geometryPlanimetryVisiblePointIds]
   );
   const handleProceduralPickHover = useCallback((info: GeometryProceduralPickInfo) => {
+    if (isVariantGhostMeshKey(info.meshKey)) return;
     setGeometryProceduralHoverPick({
       point: info.point,
       normal: info.normal,
@@ -6921,6 +7140,11 @@ const App: React.FC = () => {
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
+  const [geometryVariantSets, setGeometryVariantSets] = useState<Record<string, GeometryVariantSet>>({});
+  const [geometrySelectedVariantId, setGeometrySelectedVariantId] = useState<string | null>(null);
+  const [geometrySelectedVariantCompareId, setGeometrySelectedVariantCompareId] = useState<string | null>(null);
+  const [geometryShowAllVariantsGhosted, setGeometryShowAllVariantsGhosted] = useState(false);
+  const [geometryPromotionMode, setGeometryPromotionMode] = useState<GeometryToMeshPromotionMode>("editable_mesh_object");
   const [geometryObjectLiveRebuild, setGeometryObjectLiveRebuild] = useState(true);
   const [geometryObjectParamDrafts, setGeometryObjectParamDrafts] = useState<
     Record<string, Record<string, number | boolean | string>>
@@ -6958,6 +7182,7 @@ const App: React.FC = () => {
   const [geometryCreatePlacementStatus, setGeometryCreatePlacementStatus] = useState<string | null>(null);
   const [geometryPendingPlacementObjectId, setGeometryPendingPlacementObjectId] = useState<string | null>(null);
   const handleProceduralPick = useCallback((info: GeometryProceduralPickInfo) => {
+    if (isVariantGhostMeshKey(info.meshKey)) return;
     setGeometryProceduralPick({
       point: info.point,
       normal: info.normal,
@@ -7080,12 +7305,239 @@ const App: React.FC = () => {
     () => geometryDatasetMeshObjects.find((obj) => obj.id === geometrySelectedObjectId) ?? null,
     [geometryDatasetMeshObjects, geometrySelectedObjectId]
   );
+  const geometrySelectedVariantSet = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    return geometryVariantSets[geometrySelectedSceneObject.id] ?? null;
+  }, [geometrySelectedSceneObject, geometryVariantSets]);
+  const geometrySelectedActiveVariant = useMemo(() => {
+    if (!geometrySelectedVariantSet) return null;
+    const preferredId = geometrySelectedVariantId ?? geometrySelectedVariantSet.activeVariantId;
+    if (preferredId) {
+      const hit = geometrySelectedVariantSet.variants.find((entry) => entry.id === preferredId) ?? null;
+      if (hit) return hit;
+    }
+    return geometrySelectedVariantSet.variants[0] ?? null;
+  }, [geometrySelectedVariantId, geometrySelectedVariantSet]);
+  const geometrySelectedCompareVariant = useMemo(() => {
+    if (!geometrySelectedVariantSet) return null;
+    const selectedId = geometrySelectedVariantCompareId;
+    if (selectedId) {
+      const hit = geometrySelectedVariantSet.variants.find((entry) => entry.id === selectedId) ?? null;
+      if (hit) return hit;
+    }
+    return (
+      geometrySelectedVariantSet.variants.find((entry) => entry.id !== geometrySelectedActiveVariant?.id) ??
+      null
+    );
+  }, [geometrySelectedActiveVariant?.id, geometrySelectedVariantCompareId, geometrySelectedVariantSet]);
+  const geometrySelectedVariantCompareRows = useMemo(() => {
+    if (!geometrySelectedActiveVariant || !geometrySelectedCompareVariant) return [];
+    const activeMetrics =
+      "mesh" in geometrySelectedActiveVariant.snapshot
+        ? computeTriangleMeshGeometricMetrics(geometrySelectedActiveVariant.snapshot.mesh)
+        : null;
+    const compareMetrics =
+      "mesh" in geometrySelectedCompareVariant.snapshot
+        ? computeTriangleMeshGeometricMetrics(geometrySelectedCompareVariant.snapshot.mesh)
+        : null;
+    if (!activeMetrics || !compareMetrics) return [];
+    const heightA = activeMetrics.dimensions?.z ?? 0;
+    const heightB = compareMetrics.dimensions?.z ?? 0;
+    return [
+      { metric: "Volume", base: activeMetrics.volume, compare: compareMetrics.volume, digits: 3 },
+      { metric: "Faces", base: activeMetrics.faceCount, compare: compareMetrics.faceCount, digits: 0 },
+      { metric: "Vertices", base: activeMetrics.vertexCount, compare: compareMetrics.vertexCount, digits: 0 },
+      { metric: "Height", base: heightA, compare: heightB, digits: 3 },
+    ].map((row) => ({
+      ...row,
+      difference: row.compare - row.base,
+    }));
+  }, [geometrySelectedActiveVariant, geometrySelectedCompareVariant]);
   const geometryObjectIdSet = useMemo(() => {
     const ids = new Set<string>();
     for (const obj of geometryObjects) ids.add(obj.id);
     for (const obj of geometryDatasetMeshObjects) ids.add(obj.id);
     return ids;
   }, [geometryDatasetMeshObjects, geometryObjects]);
+  const applyVariantSnapshotToObject = useCallback(
+    (objectId: string, snapshot: GeometryObject | GeometryDatasetMeshObject) => {
+      if ("mesh" in snapshot) {
+        const restored = cloneGeometryDatasetMeshObject(snapshot);
+        restored.id = objectId;
+        setGeometryObjects((prev) => prev.filter((entry) => entry.id !== objectId));
+        setGeometryDatasetMeshObjects((prev) => [restored, ...prev.filter((entry) => entry.id !== objectId)]);
+        setGeometryLockedObjectIds((prev) => {
+          const next = new Set(prev);
+          if (restored.promotion?.promotionMode === "frozen_baked_object") next.add(objectId);
+          else next.delete(objectId);
+          return next;
+        });
+        return;
+      }
+      const restored = cloneGeometryObject(snapshot);
+      restored.id = objectId;
+      setGeometryDatasetMeshObjects((prev) => prev.filter((entry) => entry.id !== objectId));
+      setGeometryObjects((prev) => [restored, ...prev.filter((entry) => entry.id !== objectId)]);
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.delete(objectId);
+        return next;
+      });
+    },
+    []
+  );
+  const handleCreateVariantFromCurrentObject = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select an object first.");
+      return;
+    }
+    const objectId = geometrySelectedSceneObject.id;
+    const snapshot = cloneGeometrySceneObjectSnapshot(geometrySelectedSceneObject);
+    const createdAt = Date.now();
+    setGeometryVariantSets((prev) => {
+      const existing = prev[objectId] ?? {
+        objectId,
+        objectName: geometrySelectedSceneObject.name,
+        activeVariantId: null,
+        variants: [],
+        updatedAt: createdAt,
+      };
+      const variantId = makeId();
+      const variant: GeometryObjectVariant = {
+        id: variantId,
+        name: nextVariantLabel(existing.variants.length),
+        createdAt,
+        snapshot,
+      };
+      const nextSet: GeometryVariantSet = {
+        ...existing,
+        objectName: geometrySelectedSceneObject.name,
+        activeVariantId: variantId,
+        variants: [variant, ...existing.variants],
+        updatedAt: createdAt,
+      };
+      return { ...prev, [objectId]: nextSet };
+    });
+    setGeometrySelectedVariantId(null);
+    setGeometrySelectedVariantCompareId(null);
+    setGeometryCreateActionStatus("Variant created from current object.");
+  }, [geometrySelectedSceneObject]);
+  const handleDuplicateVariant = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedVariantSet || !geometrySelectedActiveVariant) {
+      setGeometryCreateActionStatus("Select an object variant first.");
+      return;
+    }
+    const createdAt = Date.now();
+    const duplicateId = makeId();
+    const duplicate: GeometryObjectVariant = {
+      id: duplicateId,
+      name: `${geometrySelectedActiveVariant.name} copy`,
+      createdAt,
+      snapshot: cloneVariantSnapshot(geometrySelectedActiveVariant.snapshot),
+    };
+    setGeometryVariantSets((prev) => {
+      const current = prev[geometrySelectedSceneObject.id];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [geometrySelectedSceneObject.id]: {
+          ...current,
+          activeVariantId: duplicateId,
+          variants: [duplicate, ...current.variants],
+          updatedAt: createdAt,
+        },
+      };
+    });
+    setGeometrySelectedVariantId(duplicateId);
+    setGeometryCreateActionStatus("Variant duplicated.");
+  }, [geometrySelectedActiveVariant, geometrySelectedSceneObject, geometrySelectedVariantSet]);
+  const handleSwitchActiveVariant = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedVariantSet || !geometrySelectedVariantId) {
+      setGeometryCreateActionStatus("Pick a variant to activate.");
+      return;
+    }
+    const variant = geometrySelectedVariantSet.variants.find((entry) => entry.id === geometrySelectedVariantId) ?? null;
+    if (!variant) {
+      setGeometryCreateActionStatus("Selected variant not found.");
+      return;
+    }
+    applyVariantSnapshotToObject(geometrySelectedSceneObject.id, variant.snapshot);
+    setGeometryVariantSets((prev) => {
+      const current = prev[geometrySelectedSceneObject.id];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [geometrySelectedSceneObject.id]: {
+          ...current,
+          activeVariantId: variant.id,
+          updatedAt: Date.now(),
+        },
+      };
+    });
+    setGeometryCreateActionStatus(`Switched active variant to ${variant.name}.`);
+  }, [applyVariantSnapshotToObject, geometrySelectedSceneObject, geometrySelectedVariantId, geometrySelectedVariantSet]);
+  const handleSaveVariantSet = useCallback(() => {
+    if (!geometrySelectedSceneObject) {
+      setGeometryCreateActionStatus("Select an object first.");
+      return;
+    }
+    const set = geometryVariantSets[geometrySelectedSceneObject.id];
+    if (!set || !set.variants.length) {
+      setGeometryCreateActionStatus("No variants to save.");
+      return;
+    }
+    const payload = {
+      objectId: set.objectId,
+      objectName: set.objectName,
+      activeVariantId: set.activeVariantId,
+      updatedAt: new Date(set.updatedAt).toISOString(),
+      variants: set.variants.map((variant) => ({
+        id: variant.id,
+        name: variant.name,
+        createdAt: new Date(variant.createdAt).toISOString(),
+        snapshot: serializeVariantSnapshot(variant.snapshot),
+      })),
+    };
+    const base = sanitizeFileBase(`${set.objectName}_variants`, "geometry_variants");
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      `${base}-${new Date().toISOString().slice(0, 10)}.json`,
+      "application/json"
+    );
+    setGeometryCreateActionStatus("Variant set saved.");
+  }, [geometrySelectedSceneObject, geometryVariantSets]);
+  const handleExportSelectedVariant = useCallback(() => {
+    if (!geometrySelectedSceneObject || !geometrySelectedVariantSet) {
+      setGeometryCreateActionStatus("Select an object variant first.");
+      return;
+    }
+    const variant =
+      (geometrySelectedVariantId
+        ? geometrySelectedVariantSet.variants.find((entry) => entry.id === geometrySelectedVariantId)
+        : geometrySelectedActiveVariant) ?? null;
+    if (!variant) {
+      setGeometryCreateActionStatus("Selected variant not found.");
+      return;
+    }
+    const payload = {
+      objectId: geometrySelectedVariantSet.objectId,
+      objectName: geometrySelectedVariantSet.objectName,
+      variant: {
+        id: variant.id,
+        name: variant.name,
+        createdAt: new Date(variant.createdAt).toISOString(),
+        snapshot: serializeVariantSnapshot(variant.snapshot),
+      },
+      exportedAt: new Date().toISOString(),
+    };
+    const base = sanitizeFileBase(`${geometrySelectedVariantSet.objectName}_${variant.name}`, "geometry_variant");
+    downloadTextFile(
+      JSON.stringify(payload, null, 2),
+      `${base}.json`,
+      "application/json"
+    );
+    setGeometryCreateActionStatus("Selected variant exported.");
+  }, [geometrySelectedActiveVariant, geometrySelectedSceneObject, geometrySelectedVariantId, geometrySelectedVariantSet]);
   const geometryBooleanObjectOptions = useMemo(
     () =>
       [...geometryObjects, ...geometryDatasetMeshObjects].map((obj) => ({
@@ -7166,6 +7618,70 @@ const App: React.FC = () => {
     geometryCompareObjectOptions,
     geometrySelectedObjectId,
   ]);
+  useEffect(() => {
+    if (!geometrySelectedSceneObject) {
+      if (geometrySelectedVariantId !== null) setGeometrySelectedVariantId(null);
+      if (geometrySelectedVariantCompareId !== null) setGeometrySelectedVariantCompareId(null);
+      return;
+    }
+    const set = geometryVariantSets[geometrySelectedSceneObject.id];
+    if (!set || !set.variants.length) {
+      if (geometrySelectedVariantId !== null) setGeometrySelectedVariantId(null);
+      if (geometrySelectedVariantCompareId !== null) setGeometrySelectedVariantCompareId(null);
+      return;
+    }
+    const activeId = set.activeVariantId ?? set.variants[0].id;
+    if (!geometrySelectedVariantId || !set.variants.some((entry) => entry.id === geometrySelectedVariantId)) {
+      setGeometrySelectedVariantId(activeId);
+    }
+    if (
+      !geometrySelectedVariantCompareId ||
+      geometrySelectedVariantCompareId === activeId ||
+      !set.variants.some((entry) => entry.id === geometrySelectedVariantCompareId)
+    ) {
+      const nextCompare = set.variants.find((entry) => entry.id !== activeId)?.id ?? null;
+      setGeometrySelectedVariantCompareId(nextCompare);
+    }
+  }, [
+    geometrySelectedSceneObject,
+    geometrySelectedVariantCompareId,
+    geometrySelectedVariantId,
+    geometryVariantSets,
+  ]);
+  useEffect(() => {
+    const validIds = new Set<string>([...geometryObjects.map((entry) => entry.id), ...geometryDatasetMeshObjects.map((entry) => entry.id)]);
+    const nameById = new Map<string, string>([
+      ...geometryObjects.map((entry) => [entry.id, entry.name] as const),
+      ...geometryDatasetMeshObjects.map((entry) => [entry.id, entry.name] as const),
+    ]);
+    setGeometryVariantSets((prev) => {
+      let changed = false;
+      const next: Record<string, GeometryVariantSet> = {};
+      for (const [objectId, set] of Object.entries(prev)) {
+        if (!validIds.has(objectId)) {
+          changed = true;
+          continue;
+        }
+        const variants = set.variants.filter((entry) => !!entry && typeof entry.id === "string");
+        const activeVariantId =
+          set.activeVariantId && variants.some((entry) => entry.id === set.activeVariantId)
+            ? set.activeVariantId
+            : variants[0]?.id ?? null;
+        if (activeVariantId !== set.activeVariantId || variants.length !== set.variants.length) {
+          changed = true;
+        }
+        const objectName = nameById.get(objectId) ?? set.objectName;
+        if (objectName !== set.objectName) changed = true;
+        next[objectId] = {
+          ...set,
+          objectName,
+          variants,
+          activeVariantId,
+        };
+      }
+      return changed ? next : prev;
+    });
+  }, [geometryDatasetMeshObjects, geometryObjects]);
   const geometryTransformReferenceOptions = useMemo(
     () =>
       geometryCompareObjectOptions.filter(
@@ -8611,6 +9127,7 @@ const App: React.FC = () => {
   const handleProceduralDragStart = useCallback(
     (info: { meshKey?: string }) => {
       if (!info.meshKey) return;
+      if (isVariantGhostMeshKey(info.meshKey)) return;
       if (geometryLockedObjectIds.has(info.meshKey)) return;
       const obj =
         geometryObjects.find((o) => o.id === info.meshKey) ??
@@ -8627,6 +9144,7 @@ const App: React.FC = () => {
   const handleProceduralDrag = useCallback(
     (info: { meshKey?: string; delta: { x: number; y: number; z: number } }) => {
       const drag = geometryDragRef.current;
+      if (isVariantGhostMeshKey(info.meshKey)) return;
       if (!drag || !info.meshKey || info.meshKey !== drag.id) return;
       const nextPos = {
         x: drag.startPosition.x + info.delta.x,
@@ -8658,6 +9176,10 @@ const App: React.FC = () => {
       scale: { x: number; y: number; z: number };
     }) => {
       if (!info.meshKey) {
+        setGeometrySnapPreview(null);
+        return;
+      }
+      if (isVariantGhostMeshKey(info.meshKey)) {
         setGeometrySnapPreview(null);
         return;
       }
@@ -12096,9 +12618,41 @@ const App: React.FC = () => {
   }, [geometryBooleanPreviewCurveLines, geometryMode]);
   const geometryProceduralMeshOverrides = useMemo(() => {
     if (geometryMode !== "procedural") return null;
-    if (!geometryBooleanPreviewMeshes.length) return proceduralMeshSet.meshes;
-    return [...proceduralMeshSet.meshes, ...geometryBooleanPreviewMeshes];
-  }, [geometryBooleanPreviewMeshes, geometryMode, proceduralMeshSet.meshes]);
+    const base =
+      geometryBooleanPreviewMeshes.length > 0
+        ? [...proceduralMeshSet.meshes, ...geometryBooleanPreviewMeshes]
+        : proceduralMeshSet.meshes;
+    if (!geometryShowAllVariantsGhosted || !geometrySelectedVariantSet?.variants.length) return base;
+    const activeVariantId =
+      geometrySelectedVariantId ?? geometrySelectedVariantSet.activeVariantId ?? geometrySelectedVariantSet.variants[0]?.id ?? null;
+    const ghostMeshes = geometrySelectedVariantSet.variants
+      .filter((entry) => entry.id !== activeVariantId && "mesh" in entry.snapshot)
+      .map((entry) => {
+        const snapshot = entry.snapshot as GeometryDatasetMeshObject;
+        return {
+          ...cloneSurfaceMeshData(snapshot.mesh, `${entry.name} (ghost)`),
+          id: `${VARIANT_GHOST_MESH_KEY_PREFIX}${entry.id}`,
+          color: 0x94a3b8,
+          opacity: 0.22,
+          roughness: 0.95,
+          metalness: 0,
+          flatShading: false,
+          transform: {
+            position: { ...snapshot.transform.position },
+            rotation: { ...snapshot.transform.rotation },
+            scale: { ...snapshot.transform.scale },
+          },
+        };
+      });
+    return ghostMeshes.length ? [...base, ...ghostMeshes] : base;
+  }, [
+    geometryBooleanPreviewMeshes,
+    geometryMode,
+    geometrySelectedVariantId,
+    geometrySelectedVariantSet,
+    geometryShowAllVariantsGhosted,
+    proceduralMeshSet.meshes,
+  ]);
   const geometryProceduralSelectionPointSets = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural") return null;
     const sets: OverlayPointSet[] = [];
@@ -14508,10 +15062,17 @@ const App: React.FC = () => {
       return;
     }
     const duplicateId = makeId();
+    const promoted = promoteGeometryToMesh({
+      mesh: toDetachedMeshData(resolved.mesh, `${resolved.object.name} editable mesh`),
+      sourceGeometryId: resolved.object.id,
+      sourceOperationHistory: buildPromotionOperationHistory(resolved.object.id, ["Duplicate as editable mesh"]),
+      promotionMode: "editable_mesh_object",
+      labelOverride: `${resolved.object.name} editable mesh`,
+    });
     const duplicate: GeometryDatasetMeshObject = {
       id: duplicateId,
       name: `${resolved.object.name} editable mesh`,
-      mesh: computeVertexNormals(toDetachedMeshData(resolved.mesh, `${resolved.object.name} editable mesh`)),
+      mesh: promoted.mesh,
       transform: {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
@@ -14519,6 +15080,7 @@ const App: React.FC = () => {
       },
       visible: resolved.object.visible,
       material: normalizeGeometryMaterial((resolved.object as { material?: unknown })?.material),
+      promotion: promoted.metadata,
     };
     queueGeometryHistoryIntent(duplicateId, {
       action: "pipeline-duplicate-editable-mesh",
@@ -14531,7 +15093,7 @@ const App: React.FC = () => {
     setGeometryDatasetMeshObjects((prev) => [duplicate, ...prev]);
     setGeometrySelectedObjectId(duplicateId);
     setGeometryCreateActionStatus("Editable mesh duplicate created.");
-  }, [geometrySelectedObjectId, queueGeometryHistoryIntent, resolveGeometrySceneMeshById]);
+  }, [buildPromotionOperationHistory, geometrySelectedObjectId, queueGeometryHistoryIntent, resolveGeometrySceneMeshById]);
   const handleSaveSectionCurve = useCallback(() => {
     if (!geometrySelectedSceneObject || !geometrySectionPreview) {
       setGeometrySectionSaveStatus("Select a mesh-backed object to save section.");
@@ -14706,6 +15268,15 @@ const App: React.FC = () => {
     setMode("curves");
     setGeometryCreateActionStatus("Section sent to Curves module.");
   }, [geometrySectionPreview, geometrySelectedSceneObject]);
+  const buildPromotionOperationHistory = useCallback(
+    (objectId: string | null | undefined, fallback: string[] = []): string[] => {
+      if (!objectId) return fallback;
+      const history = geometryObjectHistoryById[objectId] ?? [];
+      if (!history.length) return fallback;
+      return history.slice(0, 20).map((step) => `${step.operationType}: ${step.label}`);
+    },
+    [geometryObjectHistoryById]
+  );
   const handleBakeSelectedToMeshObject = useCallback(() => {
     if (!geometrySelectedSceneObject) {
       setGeometryCreateActionStatus("Select an object first.");
@@ -14732,12 +15303,17 @@ const App: React.FC = () => {
       parameters: "convert procedural object to detached mesh object",
       destructive: false,
     });
+    const promoted = promoteGeometryToMesh({
+      mesh: cloneSurfaceMeshData(sourceMesh, `${geometrySelectedSceneObject.name} (mesh)`),
+      sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceOperationHistory: buildPromotionOperationHistory(geometrySelectedSceneObject.id, ["Bake to mesh object"]),
+      promotionMode: geometryPromotionMode,
+      labelOverride: `${geometrySelectedSceneObject.name} (mesh)`,
+    });
     const replacement: GeometryDatasetMeshObject = {
       id: geometrySelectedSceneObject.id,
       name: `${geometrySelectedSceneObject.name} mesh`,
-      mesh: computeVertexNormals(
-        toDetachedMeshData(cloneSurfaceMeshData(sourceMesh, `${geometrySelectedSceneObject.name} (mesh)`))
-      ),
+      mesh: toDetachedMeshData(promoted.mesh),
       transform: {
         position: { ...geometrySelectedSceneObject.transform.position },
         rotation: { ...geometrySelectedSceneObject.transform.rotation },
@@ -14745,13 +15321,25 @@ const App: React.FC = () => {
       },
       visible: geometrySelectedSceneObject.visible,
       material: normalizeGeometryMaterial((geometrySelectedSceneObject as { material?: unknown })?.material),
+      promotion: promoted.metadata,
     };
     setGeometryObjects((prev) => prev.filter((entry) => entry.id !== geometrySelectedSceneObject.id));
     setGeometryDatasetMeshObjects((prev) => [replacement, ...prev.filter((entry) => entry.id !== replacement.id)]);
+    if (promoted.frozen) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.add(replacement.id);
+        return next;
+      });
+    }
     setGeometrySelectedObjectId(replacement.id);
-    setGeometryCreateActionStatus("Baked to mesh object.");
+    setGeometryCreateActionStatus(
+      `Baked to mesh object (${replacement.promotion?.promotionMode ?? geometryPromotionMode}).`
+    );
   }, [
+    buildPromotionOperationHistory,
     geometryLockedObjectIds,
+    geometryPromotionMode,
     geometrySelectedSceneObject,
     proceduralMeshSet.meshes,
     queueGeometryHistoryIntent,
@@ -14955,11 +15543,18 @@ const App: React.FC = () => {
       return;
     }
     setMeshDataset(meshForConversion);
+    const promoted = promoteGeometryToMesh({
+      mesh: meshForConversion,
+      sourceGeometryId: null,
+      sourceOperationHistory: [`surface-viewer:${surfaceViewerKind}`, buildActiveMeshLabel()],
+      promotionMode: geometryPromotionMode,
+      labelOverride: meshForConversion.label ?? "Surface mesh",
+    });
     const id = makeId();
     const obj: GeometryDatasetMeshObject = {
       id,
       name: `${meshForConversion.label ?? "Surface mesh"} (mesh object)`,
-      mesh: toDetachedMeshData(meshForConversion),
+      mesh: toDetachedMeshData(promoted.mesh),
       transform: {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
@@ -14967,9 +15562,17 @@ const App: React.FC = () => {
       },
       visible: true,
       material: { color: 0x8aa4ff, opacity: 1 },
+      promotion: promoted.metadata,
     };
     setGeometryObjects((prev) => (prev.length === 1 && isSeedGeometryBoxObject(prev[0]) ? [] : prev));
     setGeometryDatasetMeshObjects((prev) => [obj, ...prev]);
+    if (promoted.frozen) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+    }
     setGeometrySelectedObjectId(id);
     setGeometryProceduralPanelTab("object");
     setGeometryMode("procedural");
@@ -25633,6 +26236,12 @@ case "mobius":
           name: obj.name,
           group: obj.group,
         })),
+        datasetMeshObjects: geometryDatasetMeshObjects.map((obj) => serializeGeometryDatasetMeshObject(obj)),
+        variantSets: serializeGeometryVariantSets(geometryVariantSets),
+        showGhostedVariants: geometryShowAllVariantsGhosted,
+        selectedVariantId: geometrySelectedVariantId,
+        selectedVariantCompareId: geometrySelectedVariantCompareId,
+        promotionModeDefault: geometryPromotionMode,
         selectedObjectId: geometrySelectedObjectId,
         scratchScene: geometryScratchSceneSeed,
         workbookScenes: geometryWorkbookSceneSeeds,
@@ -25735,6 +26344,12 @@ case "mobius":
       workbooks,
       geometryMode,
       geometryObjects,
+      geometryDatasetMeshObjects,
+      geometryVariantSets,
+      geometryShowAllVariantsGhosted,
+      geometrySelectedVariantId,
+      geometrySelectedVariantCompareId,
+      geometryPromotionMode,
       geometrySelectedObjectId,
       geometryScratchSceneSeed,
       geometryWorkbookSceneSeeds,
@@ -25900,9 +26515,46 @@ case "mobius":
           name: String(obj.name ?? obj.id),
           group: typeof obj.group === "string" ? obj.group : "default",
         })) as GeometryObject[];
+      const datasetMeshObjectsRaw = Array.isArray((geometry as any).datasetMeshObjects)
+        ? ((geometry as any).datasetMeshObjects as WorkbookGeometryDatasetMeshObject[])
+        : [];
+      const normalizedDatasetMeshObjects = datasetMeshObjectsRaw
+        .filter((entry) => entry && typeof entry.id === "string" && entry.mesh && typeof entry.mesh === "object")
+        .map((entry) => deserializeGeometryDatasetMeshObject(entry));
+      setGeometryObjects(normalized);
       if (normalized.length) {
-        setGeometryObjects(normalized);
         setGeometrySelectedObjectId(geometry.selectedObjectId ?? normalized[0].id);
+      } else if (normalizedDatasetMeshObjects.length) {
+        const preferredId = typeof geometry.selectedObjectId === "string" ? geometry.selectedObjectId : null;
+        const fallbackId = normalizedDatasetMeshObjects[0]?.id ?? null;
+        const resolvedId =
+          preferredId && normalizedDatasetMeshObjects.some((entry) => entry.id === preferredId)
+            ? preferredId
+            : fallbackId;
+        setGeometrySelectedObjectId(resolvedId);
+      } else {
+        setGeometrySelectedObjectId(null);
+      }
+      setGeometryDatasetMeshObjects(normalizedDatasetMeshObjects);
+      const promotedFrozenIds = normalizedDatasetMeshObjects
+        .filter((entry) => entry.promotion?.promotionMode === "frozen_baked_object")
+        .map((entry) => entry.id);
+      if (promotedFrozenIds.length) {
+        setGeometryLockedObjectIds(new Set(promotedFrozenIds));
+      } else {
+        setGeometryLockedObjectIds(new Set());
+      }
+      setGeometryVariantSets(deserializeGeometryVariantSets((geometry as any).variantSets));
+      setGeometryShowAllVariantsGhosted(Boolean((geometry as any).showGhostedVariants));
+      const selectedVariantIdRaw = (geometry as any).selectedVariantId;
+      setGeometrySelectedVariantId(typeof selectedVariantIdRaw === "string" ? selectedVariantIdRaw : null);
+      const selectedVariantCompareIdRaw = (geometry as any).selectedVariantCompareId;
+      setGeometrySelectedVariantCompareId(
+        typeof selectedVariantCompareIdRaw === "string" ? selectedVariantCompareIdRaw : null
+      );
+      const promotionModeRaw = (geometry as any).promotionModeDefault;
+      if (GEOMETRY_TO_MESH_PROMOTION_MODES.includes(promotionModeRaw)) {
+        setGeometryPromotionMode(promotionModeRaw as GeometryToMeshPromotionMode);
       }
       setGeometryScratchSceneSeed(normalizeConstructionLabSeed((geometry as any).scratchScene));
       setGeometryWorkbookSceneSeeds(normalizeConstructionLabSeedRecord((geometry as any).workbookScenes));
@@ -45455,6 +46107,22 @@ case "mobius":
                           />
                         </div>
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Pipeline actions</div>
+                        <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                          <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                            Promotion mode
+                            <select
+                              value={geometryPromotionMode}
+                              onChange={(e) => setGeometryPromotionMode(e.target.value as GeometryToMeshPromotionMode)}
+                              style={{ width: "100%" }}
+                            >
+                              {GEOMETRY_TO_MESH_PROMOTION_MODES.map((modeValue) => (
+                                <option key={`promotion-mode-procedural-${modeValue}`} value={modeValue}>
+                                  {GEOMETRY_PROMOTION_MODE_LABELS[modeValue]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                         <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
                             Convert to Mesh object
@@ -45517,6 +46185,105 @@ case "mobius":
                             Open History
                           </button>
                         </div>
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Variants / versions</div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={handleCreateVariantFromCurrentObject} style={{ fontSize: 11 }}>
+                            Create variant from current object
+                          </button>
+                          <button type="button" onClick={handleDuplicateVariant} style={{ fontSize: 11 }}>
+                            Duplicate variant
+                          </button>
+                          <button type="button" onClick={handleSwitchActiveVariant} style={{ fontSize: 11 }}>
+                            Switch active variant
+                          </button>
+                          <button type="button" onClick={handleSaveVariantSet} style={{ fontSize: 11 }}>
+                            Save variant set
+                          </button>
+                          <button type="button" onClick={handleExportSelectedVariant} style={{ fontSize: 11 }}>
+                            Export selected variant
+                          </button>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryShowAllVariantsGhosted}
+                              onChange={(e) => setGeometryShowAllVariantsGhosted(e.target.checked)}
+                            />
+                            Show all variants ghosted
+                          </label>
+                        </div>
+                        {geometrySelectedVariantSet?.variants?.length ? (
+                          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                              <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                                Active variant
+                                <select
+                                  value={geometrySelectedVariantId ?? ""}
+                                  onChange={(e) => setGeometrySelectedVariantId(e.target.value || null)}
+                                  style={{ width: "100%" }}
+                                >
+                                  {geometrySelectedVariantSet.variants.map((variant) => (
+                                    <option key={`active-variant-${variant.id}`} value={variant.id}>
+                                      {variant.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                                Compare with
+                                <select
+                                  value={geometrySelectedVariantCompareId ?? ""}
+                                  onChange={(e) => setGeometrySelectedVariantCompareId(e.target.value || null)}
+                                  style={{ width: "100%" }}
+                                >
+                                  <option value="">(none)</option>
+                                  {geometrySelectedVariantSet.variants
+                                    .filter((variant) => variant.id !== (geometrySelectedVariantId ?? geometrySelectedActiveVariant?.id))
+                                    .map((variant) => (
+                                      <option key={`compare-variant-${variant.id}`} value={variant.id}>
+                                        {variant.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                            </div>
+                            {geometrySelectedVariantCompareRows.length > 0 && (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>Metric</th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>
+                                      {geometrySelectedActiveVariant?.name ?? "Active"}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>
+                                      {geometrySelectedCompareVariant?.name ?? "Compare"}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>Difference</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {geometrySelectedVariantCompareRows.map((row) => (
+                                    <tr key={`variant-compare-row-${row.metric}`}>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7" }}>{row.metric}</td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {row.base.toFixed(row.digits)}
+                                      </td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {row.compare.toFixed(row.digits)}
+                                      </td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {(row.difference >= 0 ? "+" : "") + row.difference.toFixed(row.digits)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 6, fontSize: 10.5, color: "#64748b" }}>
+                            No variants saved for this object yet.
+                          </div>
+                        )}
                         <div style={{ marginTop: 6, fontSize: 10.5, color: "#475467" }}>
                           Convert freezes procedural parameters and creates a mesh object for vertex/edge/face workflows.
                           {" "}Box width/height/depth become frozen after conversion; mesh vertices become editable/analyzable.
@@ -45886,6 +46653,22 @@ case "mobius":
                           />
                         </div>
                         <div style={{ marginTop: 12, fontSize: 12, fontWeight: 700 }}>Pipeline actions</div>
+                        <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                          <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                            Promotion mode
+                            <select
+                              value={geometryPromotionMode}
+                              onChange={(e) => setGeometryPromotionMode(e.target.value as GeometryToMeshPromotionMode)}
+                              style={{ width: "100%" }}
+                            >
+                              {GEOMETRY_TO_MESH_PROMOTION_MODES.map((modeValue) => (
+                                <option key={`promotion-mode-dataset-${modeValue}`} value={modeValue}>
+                                  {GEOMETRY_PROMOTION_MODE_LABELS[modeValue]}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
                         <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <button type="button" onClick={() => runUnifiedPipelineAction("convertMesh")} style={{ fontSize: 11 }}>
                             Convert to Mesh object
@@ -45948,6 +46731,125 @@ case "mobius":
                             Open History
                           </button>
                         </div>
+                        <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700 }}>Variants / versions</div>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" onClick={handleCreateVariantFromCurrentObject} style={{ fontSize: 11 }}>
+                            Create variant from current object
+                          </button>
+                          <button type="button" onClick={handleDuplicateVariant} style={{ fontSize: 11 }}>
+                            Duplicate variant
+                          </button>
+                          <button type="button" onClick={handleSwitchActiveVariant} style={{ fontSize: 11 }}>
+                            Switch active variant
+                          </button>
+                          <button type="button" onClick={handleSaveVariantSet} style={{ fontSize: 11 }}>
+                            Save variant set
+                          </button>
+                          <button type="button" onClick={handleExportSelectedVariant} style={{ fontSize: 11 }}>
+                            Export selected variant
+                          </button>
+                          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+                            <input
+                              type="checkbox"
+                              checked={geometryShowAllVariantsGhosted}
+                              onChange={(e) => setGeometryShowAllVariantsGhosted(e.target.checked)}
+                            />
+                            Show all variants ghosted
+                          </label>
+                        </div>
+                        {geometrySelectedVariantSet?.variants?.length ? (
+                          <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                              <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                                Active variant
+                                <select
+                                  value={geometrySelectedVariantId ?? ""}
+                                  onChange={(e) => setGeometrySelectedVariantId(e.target.value || null)}
+                                  style={{ width: "100%" }}
+                                >
+                                  {geometrySelectedVariantSet.variants.map((variant) => (
+                                    <option key={`active-variant-dataset-${variant.id}`} value={variant.id}>
+                                      {variant.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={{ fontSize: 11, display: "grid", gap: 4 }}>
+                                Compare with
+                                <select
+                                  value={geometrySelectedVariantCompareId ?? ""}
+                                  onChange={(e) => setGeometrySelectedVariantCompareId(e.target.value || null)}
+                                  style={{ width: "100%" }}
+                                >
+                                  <option value="">(none)</option>
+                                  {geometrySelectedVariantSet.variants
+                                    .filter((variant) => variant.id !== (geometrySelectedVariantId ?? geometrySelectedActiveVariant?.id))
+                                    .map((variant) => (
+                                      <option key={`compare-variant-dataset-${variant.id}`} value={variant.id}>
+                                        {variant.name}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                            </div>
+                            {geometrySelectedVariantCompareRows.length > 0 && (
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5 }}>
+                                <thead>
+                                  <tr>
+                                    <th style={{ textAlign: "left", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>Metric</th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>
+                                      {geometrySelectedActiveVariant?.name ?? "Active"}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>
+                                      {geometrySelectedCompareVariant?.name ?? "Compare"}
+                                    </th>
+                                    <th style={{ textAlign: "right", borderBottom: "1px solid #dbe2ea", padding: "4px 2px" }}>Difference</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {geometrySelectedVariantCompareRows.map((row) => (
+                                    <tr key={`variant-compare-row-dataset-${row.metric}`}>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7" }}>{row.metric}</td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {row.base.toFixed(row.digits)}
+                                      </td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {row.compare.toFixed(row.digits)}
+                                      </td>
+                                      <td style={{ padding: "4px 2px", borderBottom: "1px solid #eef2f7", textAlign: "right" }}>
+                                        {(row.difference >= 0 ? "+" : "") + row.difference.toFixed(row.digits)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: 6, fontSize: 10.5, color: "#64748b" }}>
+                            No variants saved for this object yet.
+                          </div>
+                        )}
+                        {geometrySelectedDatasetMeshObject.promotion && (
+                          <div style={{ marginTop: 8, fontSize: 10.5, color: "#334155", display: "grid", gap: 2 }}>
+                            <div style={{ fontWeight: 700 }}>Promotion contract</div>
+                            <div>Mode: {GEOMETRY_PROMOTION_MODE_LABELS[geometrySelectedDatasetMeshObject.promotion.promotionMode]}</div>
+                            <div>Source geometry id: {geometrySelectedDatasetMeshObject.promotion.sourceGeometryId ?? "n/a"}</div>
+                            <div>
+                              Counts: {geometrySelectedDatasetMeshObject.promotion.vertexCount.toLocaleString()} verts ·{" "}
+                              {geometrySelectedDatasetMeshObject.promotion.faceCount.toLocaleString()} faces
+                            </div>
+                            <div>
+                              Bounds:{" "}
+                              {geometrySelectedDatasetMeshObject.promotion.bounds
+                                ? `min (${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.min[0])}, ${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.min[1])}, ${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.min[2])}) max (${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.max[0])}, ${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.max[1])}, ${fmt(geometrySelectedDatasetMeshObject.promotion.bounds.max[2])})`
+                                : "n/a"}
+                            </div>
+                            <div>
+                              Created: {new Date(geometrySelectedDatasetMeshObject.promotion.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                        )}
                         {geometryProceduralPick?.meshKey === geometrySelectedDatasetMeshObject.id && (
                           <div
                             style={{
