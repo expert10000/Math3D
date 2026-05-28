@@ -100,6 +100,18 @@ async function downloadElectronArtifactWithTimeout(paths) {
     : 10 * 60_000;
 
   let timeoutHandle;
+  const startMs = Date.now();
+  process.stderr.write(
+    `[ensure-electron] Downloading Electron (${getTargetPlatform()}/${getTargetArch()}); timeout=${timeoutMs}ms\n`
+  );
+  const heartbeatHandle = setInterval(() => {
+    const elapsedMs = Date.now() - startMs;
+    process.stderr.write(`[ensure-electron] Download in progress... elapsed=${elapsedMs}ms\n`);
+  }, 15_000);
+  if (typeof heartbeatHandle?.unref === "function") {
+    heartbeatHandle.unref();
+  }
+
   try {
     await Promise.race([
       downloadElectronArtifact(paths),
@@ -110,6 +122,7 @@ async function downloadElectronArtifactWithTimeout(paths) {
       }),
     ]);
   } finally {
+    clearInterval(heartbeatHandle);
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }
 }
