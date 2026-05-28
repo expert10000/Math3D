@@ -3469,6 +3469,71 @@ const transformSurfaceMeshByGeometryTransform = (
   };
 };
 
+type GeometryVariantResolvedMesh = {
+  mesh: SurfaceMeshData;
+  transform: GeometryObjectTransform;
+  flatShading?: boolean;
+};
+
+const buildSurfaceMeshFromGeometryObjectSnapshot = (
+  obj: GeometryObject,
+  labelOverride?: string
+): GeometryVariantResolvedMesh | null => {
+  const entry = GEOMETRY_OBJECT_REGISTRY[obj.type];
+  if (!entry) return null;
+  const geom = entry.build(obj.params);
+  try {
+    const mesh = computeVertexNormals(
+      buildSurfaceMeshFromGeometry(
+        geom,
+        labelOverride ?? obj.name,
+        { kind: "proceduralObjects" },
+        { mergeVertices: false }
+      )
+    );
+    if (!mesh.positions.length) return null;
+    return {
+      mesh,
+      transform: {
+        position: { ...obj.transform.position },
+        rotation: { ...obj.transform.rotation },
+        scale: { ...obj.transform.scale },
+      },
+      flatShading: obj.type === "polyhedron" ? !Boolean(obj.params.smoothNormals ?? true) : false,
+    };
+  } finally {
+    geom.dispose();
+  }
+};
+
+const resolveVariantSnapshotMesh = (
+  snapshot: GeometryObject | GeometryDatasetMeshObject,
+  labelOverride?: string
+): GeometryVariantResolvedMesh | null => {
+  if ("mesh" in snapshot) {
+    return {
+      mesh: cloneSurfaceMeshData(snapshot.mesh, labelOverride ?? snapshot.name),
+      transform: {
+        position: { ...snapshot.transform.position },
+        rotation: { ...snapshot.transform.rotation },
+        scale: { ...snapshot.transform.scale },
+      },
+      flatShading: false,
+    };
+  }
+  return buildSurfaceMeshFromGeometryObjectSnapshot(snapshot, labelOverride ?? snapshot.name);
+};
+
+const computeVariantSnapshotMetrics = (
+  snapshot: GeometryObject | GeometryDatasetMeshObject
+): TriangleMeshGeometricMetrics | null => {
+  const resolved = resolveVariantSnapshotMesh(snapshot);
+  if (!resolved) return null;
+  return computeTriangleMeshGeometricMetrics(
+    transformSurfaceMeshByGeometryTransform(resolved.mesh, resolved.transform)
+  );
+};
+
 const MAX_ADVANCED_SNAP_VERTICES = 24000;
 const MAX_ADVANCED_SNAP_EDGE_POINTS = 24000;
 const MAX_ADVANCED_SNAP_FACE_POINTS = 24000;
@@ -7332,14 +7397,8 @@ const App: React.FC = () => {
   }, [geometrySelectedActiveVariant?.id, geometrySelectedVariantCompareId, geometrySelectedVariantSet]);
   const geometrySelectedVariantCompareRows = useMemo(() => {
     if (!geometrySelectedActiveVariant || !geometrySelectedCompareVariant) return [];
-    const activeMetrics =
-      "mesh" in geometrySelectedActiveVariant.snapshot
-        ? computeTriangleMeshGeometricMetrics(geometrySelectedActiveVariant.snapshot.mesh)
-        : null;
-    const compareMetrics =
-      "mesh" in geometrySelectedCompareVariant.snapshot
-        ? computeTriangleMeshGeometricMetrics(geometrySelectedCompareVariant.snapshot.mesh)
-        : null;
+    const activeMetrics = computeVariantSnapshotMetrics(geometrySelectedActiveVariant.snapshot);
+    const compareMetrics = computeVariantSnapshotMetrics(geometrySelectedCompareVariant.snapshot);
     if (!activeMetrics || !compareMetrics) return [];
     const heightA = activeMetrics.dimensions?.z ?? 0;
     const heightB = compareMetrics.dimensions?.z ?? 0;
@@ -12626,21 +12685,22 @@ const App: React.FC = () => {
     const activeVariantId =
       geometrySelectedVariantId ?? geometrySelectedVariantSet.activeVariantId ?? geometrySelectedVariantSet.variants[0]?.id ?? null;
     const ghostMeshes = geometrySelectedVariantSet.variants
-      .filter((entry) => entry.id !== activeVariantId && "mesh" in entry.snapshot)
-      .map((entry) => {
-        const snapshot = entry.snapshot as GeometryDatasetMeshObject;
+      .filter((entry) => entry.id !== activeVariantId)
+      .flatMap((entry) => {
+        const resolved = resolveVariantSnapshotMesh(entry.snapshot, `${entry.name} (ghost)`);
+        if (!resolved) return [];
         return {
-          ...cloneSurfaceMeshData(snapshot.mesh, `${entry.name} (ghost)`),
+          ...resolved.mesh,
           id: `${VARIANT_GHOST_MESH_KEY_PREFIX}${entry.id}`,
           color: 0x94a3b8,
           opacity: 0.22,
           roughness: 0.95,
           metalness: 0,
-          flatShading: false,
+          flatShading: resolved.flatShading ?? false,
           transform: {
-            position: { ...snapshot.transform.position },
-            rotation: { ...snapshot.transform.rotation },
-            scale: { ...snapshot.transform.scale },
+            position: { ...resolved.transform.position },
+            rotation: { ...resolved.transform.rotation },
+            scale: { ...resolved.transform.scale },
           },
         };
       });
