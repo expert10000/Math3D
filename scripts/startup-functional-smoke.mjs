@@ -4,11 +4,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import "./ensure-electron-install.mjs";
+import { ensureElectronInstalled } from "./ensure-electron-install.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const electronBinary = require("electron");
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,6 +43,9 @@ function normalizeOutput(text) {
 }
 
 async function run() {
+  await ensureElectronInstalled();
+  const electronBinary = require("electron");
+
   const childEnv = {
     ...process.env,
     MATH3D_STARTUP_SMOKE: "1",

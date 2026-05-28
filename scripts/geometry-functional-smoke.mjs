@@ -4,11 +4,10 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import "./ensure-electron-install.mjs";
+import { ensureElectronInstalled } from "./ensure-electron-install.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const electronBinary = require("electron");
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const timeoutMs = Number(process.env.MATH3D_GEOMETRY_SMOKE_TIMEOUT_MS || 150000);
 
@@ -36,6 +35,9 @@ const requiredMarkers = [
 const normalize = (text) => String(text || "").replace(/\r\n/g, "\n");
 
 async function run() {
+  await ensureElectronInstalled();
+  const electronBinary = require("electron");
+
   const childEnv = {
     ...process.env,
     MATH3D_GEOMETRY_SMOKE: "1",

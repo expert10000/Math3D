@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
@@ -92,6 +93,27 @@ async function downloadElectronArtifact(paths) {
   fs.writeFileSync(paths.pathFile, paths.platformPath);
 }
 
+async function downloadElectronArtifactWithTimeout(paths) {
+  const timeoutMsRaw = Number(process.env.MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(timeoutMsRaw)
+    ? Math.max(30_000, Math.min(30 * 60_000, Math.floor(timeoutMsRaw)))
+    : 10 * 60_000;
+
+  let timeoutHandle;
+  try {
+    await Promise.race([
+      downloadElectronArtifact(paths),
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`Electron download timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
 function listDist(paths) {
   const distDir = path.join(paths.electronDir, "dist");
   try {
@@ -101,23 +123,38 @@ function listDist(paths) {
   }
 }
 
-const paths = getElectronPaths();
-if (!markerMatches(paths)) {
+export async function ensureElectronInstalled() {
+  const paths = getElectronPaths();
+  if (markerMatches(paths)) return;
+
   if (writeMarkerIfExecutableExists(paths)) {
     process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
-  } else {
-    process.stderr.write("[ensure-electron] Electron executable missing; downloading Electron artifact\n");
-    await downloadElectronArtifact(paths);
-
-    if (!markerMatches(paths) && !writeMarkerIfExecutableExists(paths)) {
-      throw new Error(
-        [
-          "Electron failed to install correctly after repair.",
-          `Expected executable: ${paths.executablePath}`,
-          `Expected marker: ${paths.pathFile}`,
-          `electron/dist entries: ${listDist(paths)}`,
-        ].join("\n")
-      );
-    }
+    return;
   }
+
+  process.stderr.write("[ensure-electron] Electron executable missing; downloading Electron artifact\n");
+  await downloadElectronArtifactWithTimeout(paths);
+
+  if (!markerMatches(paths) && !writeMarkerIfExecutableExists(paths)) {
+    throw new Error(
+      [
+        "Electron failed to install correctly after repair.",
+        `Expected executable: ${paths.executablePath}`,
+        `Expected marker: ${paths.pathFile}`,
+        `electron/dist entries: ${listDist(paths)}`,
+      ].join("\n")
+    );
+  }
+}
+
+async function main() {
+  await ensureElectronInstalled();
+}
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  main().catch((error) => {
+    process.stderr.write(`${String(error?.stack ?? error?.message ?? error)}\n`);
+    process.exit(1);
+  });
 }
