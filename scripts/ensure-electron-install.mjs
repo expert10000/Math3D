@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,8 +12,16 @@ function getElectronDir() {
   return path.dirname(require.resolve("electron/package.json"));
 }
 
+function getTargetPlatform() {
+  return process.env.npm_config_platform || os.platform();
+}
+
+function getTargetArch() {
+  return process.env.npm_config_arch || process.arch;
+}
+
 function getPlatformPath() {
-  const platform = process.env.npm_config_platform || os.platform();
+  const platform = getTargetPlatform();
   switch (platform) {
     case "mas":
     case "darwin":
@@ -55,21 +62,34 @@ function writeMarkerIfExecutableExists(paths) {
   return true;
 }
 
-function runElectronInstall(paths) {
-  const installScript = path.join(paths.electronDir, "install.js");
-  const env = { ...process.env };
-  delete env.ELECTRON_SKIP_BINARY_DOWNLOAD;
-  delete env.npm_config_electron_skip_binary_download;
-  delete env.NPM_CONFIG_ELECTRON_SKIP_BINARY_DOWNLOAD;
-  const result = spawnSync(process.execPath, [installScript], {
-    cwd: paths.electronDir,
-    env,
-    stdio: "inherit",
+async function downloadElectronArtifact(paths) {
+  const { downloadArtifact } = require("@electron/get");
+  const extract = require("extract-zip");
+  const { version } = require("electron/package.json");
+  const distPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || path.join(paths.electronDir, "dist");
+  fs.rmSync(distPath, { recursive: true, force: true });
+  fs.mkdirSync(distPath, { recursive: true });
+
+  const zipPath = await downloadArtifact({
+    version,
+    artifactName: "electron",
+    force: process.env.force_no_cache === "true",
+    cacheRoot: process.env.electron_config_cache,
+    checksums:
+      process.env.electron_use_remote_checksums || process.env.npm_config_electron_use_remote_checksums
+        ? undefined
+        : require("electron/checksums.json"),
+    platform: getTargetPlatform(),
+    arch: getTargetArch(),
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`Electron install repair failed with exit code ${result.status ?? "unknown"}.`);
+
+  await extract(zipPath, { dir: distPath });
+  const srcTypeDefPath = path.join(distPath, "electron.d.ts");
+  const targetTypeDefPath = path.join(paths.electronDir, "electron.d.ts");
+  if (fs.existsSync(srcTypeDefPath)) {
+    fs.renameSync(srcTypeDefPath, targetTypeDefPath);
   }
+  fs.writeFileSync(paths.pathFile, paths.platformPath);
 }
 
 function listDist(paths) {
@@ -86,8 +106,8 @@ if (!markerMatches(paths)) {
   if (writeMarkerIfExecutableExists(paths)) {
     process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
   } else {
-    process.stderr.write("[ensure-electron] Electron binary marker missing; running electron/install.js\n");
-    runElectronInstall(paths);
+    process.stderr.write("[ensure-electron] Electron executable missing; downloading Electron artifact\n");
+    await downloadElectronArtifact(paths);
 
     if (!markerMatches(paths) && !writeMarkerIfExecutableExists(paths)) {
       throw new Error(
