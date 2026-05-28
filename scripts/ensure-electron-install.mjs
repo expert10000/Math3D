@@ -30,20 +30,40 @@ function getPlatformPath() {
   }
 }
 
-function resolveElectronBinary() {
-  return require("electron");
+function getElectronPaths() {
+  const electronDir = getElectronDir();
+  const platformPath = getPlatformPath();
+  return {
+    electronDir,
+    platformPath,
+    pathFile: path.join(electronDir, "path.txt"),
+    executablePath: process.env.ELECTRON_OVERRIDE_DIST_PATH
+      ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, platformPath)
+      : path.join(electronDir, "dist", platformPath),
+  };
 }
 
-function runElectronInstall() {
-  const electronDir = getElectronDir();
-  const installScript = path.join(electronDir, "install.js");
+function markerMatches(paths) {
+  if (!fs.existsSync(paths.pathFile)) return false;
+  const marker = fs.readFileSync(paths.pathFile, "utf8").trim();
+  return marker === paths.platformPath && fs.existsSync(paths.executablePath);
+}
+
+function writeMarkerIfExecutableExists(paths) {
+  if (!fs.existsSync(paths.executablePath)) return false;
+  fs.writeFileSync(paths.pathFile, paths.platformPath);
+  return true;
+}
+
+function runElectronInstall(paths) {
+  const installScript = path.join(paths.electronDir, "install.js");
+  const env = { ...process.env };
+  delete env.ELECTRON_SKIP_BINARY_DOWNLOAD;
+  delete env.npm_config_electron_skip_binary_download;
+  delete env.NPM_CONFIG_ELECTRON_SKIP_BINARY_DOWNLOAD;
   const result = spawnSync(process.execPath, [installScript], {
-    cwd: electronDir,
-    env: {
-      ...process.env,
-      ELECTRON_SKIP_BINARY_DOWNLOAD: "",
-      npm_config_electron_skip_binary_download: "",
-    },
+    cwd: paths.electronDir,
+    env,
     stdio: "inherit",
   });
   if (result.error) throw result.error;
@@ -52,31 +72,32 @@ function runElectronInstall() {
   }
 }
 
-function repairPathMarkerIfPossible() {
-  const electronDir = getElectronDir();
-  const platformPath = getPlatformPath();
-  const executablePath = process.env.ELECTRON_OVERRIDE_DIST_PATH
-    ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, platformPath)
-    : path.join(electronDir, "dist", platformPath);
-  if (!fs.existsSync(executablePath)) return false;
-  fs.writeFileSync(path.join(electronDir, "path.txt"), platformPath);
-  return true;
+function listDist(paths) {
+  const distDir = path.join(paths.electronDir, "dist");
+  try {
+    return fs.readdirSync(distDir).slice(0, 20).join(", ");
+  } catch {
+    return "(dist folder missing)";
+  }
 }
 
-try {
-  resolveElectronBinary();
-} catch (error) {
-  const message = String(error?.message ?? error);
-  if (!message.includes("Electron failed to install correctly")) {
-    throw error;
-  }
-  process.stderr.write("[ensure-electron] Electron binary marker missing; running electron/install.js\n");
-  runElectronInstall();
-  try {
-    resolveElectronBinary();
-  } catch (secondError) {
-    const repaired = repairPathMarkerIfPossible();
-    if (!repaired) throw secondError;
-    resolveElectronBinary();
+const paths = getElectronPaths();
+if (!markerMatches(paths)) {
+  if (writeMarkerIfExecutableExists(paths)) {
+    process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
+  } else {
+    process.stderr.write("[ensure-electron] Electron binary marker missing; running electron/install.js\n");
+    runElectronInstall(paths);
+
+    if (!markerMatches(paths) && !writeMarkerIfExecutableExists(paths)) {
+      throw new Error(
+        [
+          "Electron failed to install correctly after repair.",
+          `Expected executable: ${paths.executablePath}`,
+          `Expected marker: ${paths.pathFile}`,
+          `electron/dist entries: ${listDist(paths)}`,
+        ].join("\n")
+      );
+    }
   }
 }
