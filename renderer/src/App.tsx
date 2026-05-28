@@ -15051,6 +15051,15 @@ const App: React.FC = () => {
     setSurfaceViewerKind("mesh");
     setGeometryCreateActionStatus("Selected object sent to Mesh module.");
   }, [bakeGeometryObjectToDatasetById, geometrySelectedObjectId]);
+  const buildPromotionOperationHistory = useCallback(
+    (objectId: string | null | undefined, fallback: string[] = []): string[] => {
+      if (!objectId) return fallback;
+      const history = geometryObjectHistoryById[objectId] ?? [];
+      if (!history.length) return fallback;
+      return history.slice(0, 20).map((step) => `${step.operationType}: ${step.label}`);
+    },
+    [geometryObjectHistoryById]
+  );
   const handleDuplicateSelectedAsEditableMesh = useCallback(() => {
     if (!geometrySelectedObjectId) {
       setGeometryBakeError("Select an object first.");
@@ -15268,15 +15277,6 @@ const App: React.FC = () => {
     setMode("curves");
     setGeometryCreateActionStatus("Section sent to Curves module.");
   }, [geometrySectionPreview, geometrySelectedSceneObject]);
-  const buildPromotionOperationHistory = useCallback(
-    (objectId: string | null | undefined, fallback: string[] = []): string[] => {
-      if (!objectId) return fallback;
-      const history = geometryObjectHistoryById[objectId] ?? [];
-      if (!history.length) return fallback;
-      return history.slice(0, 20).map((step) => `${step.operationType}: ${step.label}`);
-    },
-    [geometryObjectHistoryById]
-  );
   const handleBakeSelectedToMeshObject = useCallback(() => {
     if (!geometrySelectedSceneObject) {
       setGeometryCreateActionStatus("Select an object first.");
