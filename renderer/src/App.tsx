@@ -9933,9 +9933,11 @@ const App: React.FC = () => {
   const resolveGeometryProbeSelectionDetails = useCallback(
     (pick: GeometryProceduralPickInfo | null): GeometryProbeSelectionDetails | null => {
       if (!pick) return null;
+      const pickedMeshKey = pick.meshKey ?? null;
+      const selectedMeshKey = geometrySelectedObjectId ?? null;
       const fallback: GeometryProbeSelectionDetails = {
         mode: geometryProbeSelectionMode,
-        meshKey: pick.meshKey ?? null,
+        meshKey: pickedMeshKey ?? selectedMeshKey ?? null,
         point: pick.point,
         normal: pick.normal,
         edgeLength: null,
@@ -9948,10 +9950,41 @@ const App: React.FC = () => {
       };
       if (geometryProbeSelectionMode === "object") return fallback;
 
-      const meshKey = pick.meshKey ?? geometrySelectedObjectId ?? null;
-      if (!meshKey) return fallback;
-      const sourceMesh = proceduralMeshSet.meshes.find((entry) => entry.id === meshKey);
-      if (!sourceMesh) return fallback;
+      const meshKeyCandidates = Array.from(new Set([pickedMeshKey, selectedMeshKey].filter((value): value is string => !!value)));
+      let meshKey: string | null = null;
+      let sourceMesh:
+        | (SurfaceMeshData & {
+            id: string;
+            color?: number;
+            opacity?: number;
+            roughness?: number;
+            metalness?: number;
+            flatShading?: boolean;
+            transform: GeometryObjectTransform;
+          })
+        | null = null;
+      for (const candidate of meshKeyCandidates) {
+        const found = proceduralMeshSet.meshes.find((entry) => entry.id === candidate);
+        if (!found) continue;
+        meshKey = candidate;
+        sourceMesh = found;
+        break;
+      }
+      if (!sourceMesh) {
+        if (geometryProbeSelectionMode === "face" && Number.isInteger(pick.faceIndex)) {
+          return {
+            ...fallback,
+            faceIndex: Number(pick.faceIndex),
+          };
+        }
+        if (geometryProbeSelectionMode === "vertex" && Number.isInteger(pick.vertexIndex)) {
+          return {
+            ...fallback,
+            vertexIndex: Number(pick.vertexIndex),
+          };
+        }
+        return fallback;
+      }
 
       const identityTransform: GeometryObjectTransform = {
         position: { x: 0, y: 0, z: 0 },
@@ -34881,6 +34914,7 @@ case "mobius":
 
   const [unifiedManualDerived, setUnifiedManualDerived] = useState<UnifiedManualDerived[]>([]);
   const [unifiedTreeSelectedId, setUnifiedTreeSelectedId] = useState<string | null>(null);
+  const [unifiedSuppressedNodeIds, setUnifiedSuppressedNodeIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     setUnifiedManualDerived((prev) => {
       const next = filterGeometryDerivedProducts(prev, geometryObjectIdSet);
@@ -35164,7 +35198,20 @@ case "mobius":
     const entry = unifiedManualDerived.find((candidate) => candidate.id === entryId);
     if (!entry) return;
     if (entry.resultObjectId) {
+      setGeometryObjects((prev) => prev.filter((candidate) => candidate.id !== entry.resultObjectId));
       setGeometryDatasetMeshObjects((prev) => prev.filter((candidate) => candidate.id !== entry.resultObjectId));
+      setGeometryLockedObjectIds((prev) => {
+        if (!prev.has(entry.resultObjectId as string)) return prev;
+        const next = new Set(prev);
+        next.delete(entry.resultObjectId as string);
+        return next;
+      });
+      setGeometryVariantSets((prev) => {
+        if (!prev[entry.resultObjectId as string]) return prev;
+        const next = { ...prev };
+        delete next[entry.resultObjectId as string];
+        return next;
+      });
       if (geometrySelectedObjectId === entry.resultObjectId) {
         setGeometrySelectedObjectId(entry.linkedObjectIds?.[0] ?? null);
       }
@@ -35182,7 +35229,28 @@ case "mobius":
     const resultObjectIds = new Set(stale.map((entry) => entry.resultObjectId).filter((id): id is string => !!id));
     setUnifiedManualDerived((prev) => prev.filter((entry) => !removedIds.has(entry.id)));
     if (resultObjectIds.size) {
+      setGeometryObjects((prev) => prev.filter((entry) => !resultObjectIds.has(entry.id)));
       setGeometryDatasetMeshObjects((prev) => prev.filter((entry) => !resultObjectIds.has(entry.id)));
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        let changed = false;
+        for (const objectId of resultObjectIds) {
+          if (!next.has(objectId)) continue;
+          next.delete(objectId);
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+      setGeometryVariantSets((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const objectId of resultObjectIds) {
+          if (!(objectId in next)) continue;
+          delete next[objectId];
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
       if (geometrySelectedObjectId && resultObjectIds.has(geometrySelectedObjectId)) {
         setGeometrySelectedObjectId(selectedSourceId ?? null);
       }
@@ -35700,11 +35768,23 @@ case "mobius":
       if (prev) prev.push(node.id);
       else childrenByParent.set(node.parentId, [node.id]);
     }
-    const nodes: UnifiedObjectNode[] = normalized.map((node) => ({
+    const nodesAll: UnifiedObjectNode[] = normalized.map((node) => ({
       ...node,
       sceneRole: node.sceneRole ?? inferUnifiedSceneRole(node.category, node.type, node.sourceDefinition),
       derivedProductIds: childrenByParent.get(node.id) ?? [],
     }));
+    const nodes =
+      unifiedSuppressedNodeIds.size > 0
+        ? (() => {
+            const visible = nodesAll.filter((node) => !unifiedSuppressedNodeIds.has(node.id));
+            const visibleIdSet = new Set(visible.map((node) => node.id));
+            return visible.map((node) => ({
+              ...node,
+              parentId: node.parentId && visibleIdSet.has(node.parentId) ? node.parentId : null,
+              derivedProductIds: (node.derivedProductIds ?? []).filter((id) => visibleIdSet.has(id)),
+            }));
+          })()
+        : nodesAll;
     const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const preferredId =
       datasetKind === "volume"
@@ -35783,6 +35863,7 @@ case "mobius":
     compareSurfaceId,
     compareParamId,
     unifiedManualDerived,
+    unifiedSuppressedNodeIds,
   ]);
 
   const unifiedObjectNodes = unifiedObjectModel.nodes;
@@ -36086,9 +36167,173 @@ case "mobius":
         handleDeleteGeometryDerivedProduct(manualId);
         return;
       }
-      handleToggleUnifiedNodeVisibility(nodeId);
+      setGeometryCreateActionStatus(`Delete is not available for ${node.name} (${node.type}).`);
     },
-    [handleDeleteGeometryDerivedProduct, handleRemoveGeometryObject, handleToggleUnifiedNodeVisibility, unifiedObjectModel.nodeById]
+    [handleDeleteGeometryDerivedProduct, handleRemoveGeometryObject, unifiedObjectModel.nodeById]
+  );
+  const handleForceRemoveUnifiedNode = useCallback(
+    (nodeId: string) => {
+      const node = unifiedObjectModel.nodeById.get(nodeId);
+      if (!node) return;
+
+      const childrenByParent = new Map<string, string[]>();
+      for (const entry of unifiedObjectModel.nodes) {
+        if (!entry.parentId) continue;
+        const bucket = childrenByParent.get(entry.parentId);
+        if (bucket) bucket.push(entry.id);
+        else childrenByParent.set(entry.parentId, [entry.id]);
+      }
+      const subtreeIds = new Set<string>();
+      const stack = [nodeId];
+      while (stack.length) {
+        const current = stack.pop() as string;
+        if (subtreeIds.has(current)) continue;
+        subtreeIds.add(current);
+        const children = childrenByParent.get(current) ?? [];
+        for (const child of children) stack.push(child);
+      }
+
+      const removedObjectIds = new Set<string>();
+      const removedDerivedEntryIds = new Set<string>();
+      for (const subtreeId of subtreeIds) {
+        const entry = unifiedObjectModel.nodeById.get(subtreeId);
+        if (!entry) continue;
+        if (entry.category === "sceneObject" && entry.objectRefId) {
+          removedObjectIds.add(entry.objectRefId);
+        }
+        if (subtreeId.startsWith("derived:manual:")) {
+          removedDerivedEntryIds.add(subtreeId.slice("derived:manual:".length));
+        }
+      }
+      if (node.category === "sceneObject" && node.objectRefId) {
+        removedObjectIds.add(node.objectRefId);
+      }
+      if (node.id.startsWith("derived:manual:")) {
+        removedDerivedEntryIds.add(node.id.slice("derived:manual:".length));
+      }
+
+      if (removedObjectIds.size) {
+        let expanded = true;
+        while (expanded) {
+          expanded = false;
+          for (const entry of unifiedManualDerived) {
+            if (removedDerivedEntryIds.has(entry.id)) continue;
+            const linked = entry.linkedObjectIds ?? [];
+            if (!linked.some((id) => removedObjectIds.has(id))) continue;
+            removedDerivedEntryIds.add(entry.id);
+            if (entry.resultObjectId && !removedObjectIds.has(entry.resultObjectId)) {
+              removedObjectIds.add(entry.resultObjectId);
+            }
+            expanded = true;
+          }
+        }
+      }
+
+      if (removedDerivedEntryIds.size) {
+        for (const entry of unifiedManualDerived) {
+          if (!removedDerivedEntryIds.has(entry.id)) continue;
+          if (entry.resultObjectId) removedObjectIds.add(entry.resultObjectId);
+        }
+        setUnifiedManualDerived((prev) => prev.filter((entry) => !removedDerivedEntryIds.has(entry.id)));
+      }
+
+      if (removedObjectIds.size) {
+        setGeometryObjects((prev) => prev.filter((entry) => !removedObjectIds.has(entry.id)));
+        setGeometryDatasetMeshObjects((prev) => prev.filter((entry) => !removedObjectIds.has(entry.id)));
+        setGeometryLockedObjectIds((prev) => {
+          let changed = false;
+          const next = new Set(prev);
+          for (const objectId of removedObjectIds) {
+            if (!next.has(objectId)) continue;
+            next.delete(objectId);
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+        setGeometryVariantSets((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const objectId of removedObjectIds) {
+            if (!(objectId in next)) continue;
+            delete next[objectId];
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+        setGeometrySelectedObjectId((prev) => (prev && removedObjectIds.has(prev) ? null : prev));
+      }
+
+      let changedSuppress = false;
+      setUnifiedSuppressedNodeIds((prev) => {
+        const next = new Set(prev);
+        for (const id of subtreeIds) {
+          if (next.has(id)) continue;
+          next.add(id);
+          changedSuppress = true;
+        }
+        return changedSuppress ? next : prev;
+      });
+
+      if (!removedObjectIds.size && !removedDerivedEntryIds.size) {
+        if (node.category === "surfaceDefinition" || node.category === "dataset") {
+          setSurfaceViewerKind("mesh");
+          setDatasetKind("mesh");
+          setMeshDataset(null);
+          setCompareEnabled(false);
+        } else if (node.id === "derived:auto:coordinate-planes") {
+          setCoordinatePlanesVisible(false);
+        } else if (node.id === "derived:auto:wireframe") {
+          setShowWireframe(false);
+        } else if (node.id === "derived:auto:bounding-box") {
+          setShowBoundingBox(false);
+        } else if (node.id === "derived:auto:chart-grid") {
+          setSurfaceChartGridVisible(false);
+        } else if (node.id === "derived:auto:curvature-field") {
+          setColorMode("solid");
+        } else if (node.id === "derived:auto:principal-directions") {
+          setShowPrincipalDirections(false);
+        } else if (node.id === "derived:auto:principal-lines") {
+          setShowPrincipalLines(false);
+        } else if (node.id === "derived:auto:curvature-lines") {
+          setShowCurvatureLines(false);
+        } else if (node.id === "derived:auto:ridge-valley") {
+          setShowRidges(false);
+          setShowValleys(false);
+        } else if (node.id === "derived:auto:geodesics") {
+          setGeodesicPathEnabled(false);
+          setGeodesicHeatEnabled(false);
+          setGeodesicDiskEnabled(false);
+        }
+      }
+
+      setGeometryCreateActionStatus(
+        removedObjectIds.size || removedDerivedEntryIds.size
+          ? `Force removed ${removedObjectIds.size} object(s) and ${removedDerivedEntryIds.size} derived item(s).`
+          : `Force removed ${node.name} from Scene contents.`
+      );
+    },
+    [
+      setColorMode,
+      setCompareEnabled,
+      setCoordinatePlanesVisible,
+      setDatasetKind,
+      setGeodesicDiskEnabled,
+      setGeodesicHeatEnabled,
+      setGeodesicPathEnabled,
+      setMeshDataset,
+      setShowBoundingBox,
+      setShowCurvatureLines,
+      setShowPrincipalDirections,
+      setShowPrincipalLines,
+      setShowRidges,
+      setShowValleys,
+      setShowWireframe,
+      setSurfaceChartGridVisible,
+      setSurfaceViewerKind,
+      unifiedManualDerived,
+      unifiedObjectModel.nodeById,
+      unifiedObjectModel.nodes,
+    ]
   );
   const handleSendUnifiedObjectToCompare = useCallback(() => {
     if (!isSurfaceDatasetKind(datasetKind) || !unifiedSelectedNode) return;
@@ -36122,6 +36367,22 @@ case "mobius":
       setUnifiedTreeSelectedId(unifiedObjectModel.preferredId ?? unifiedObjectNodes[0].id);
     }
   }, [unifiedObjectNodes, unifiedTreeSelectedId, unifiedObjectModel.nodeById, unifiedObjectModel.preferredId]);
+  useEffect(() => {
+    if (!unifiedSuppressedNodeIds.size) return;
+    const knownNodeIds = new Set(unifiedObjectNodes.map((node) => node.id));
+    setUnifiedSuppressedNodeIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (!knownNodeIds.has(id)) {
+          changed = true;
+          continue;
+        }
+        next.add(id);
+      }
+      return changed ? next : prev;
+    });
+  }, [unifiedObjectNodes, unifiedSuppressedNodeIds.size]);
 
   useEffect(() => {
     if (unifiedSelectedNode?.category !== "sceneObject" || !unifiedSelectedNode.objectRefId) return;
@@ -40403,6 +40664,7 @@ case "mobius":
                     onFocus={handleFocusUnifiedNode}
                     onToggleVisibility={handleToggleUnifiedNodeVisibility}
                     onDeleteNode={handleDeleteUnifiedNode}
+                    onForceRemoveNode={handleForceRemoveUnifiedNode}
                     onDuplicateNode={handleDuplicateUnifiedNode}
                     onRenameNode={handleRenameUnifiedNode}
                     onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
@@ -45244,6 +45506,7 @@ case "mobius":
                       onFocus={handleFocusUnifiedNode}
                       onToggleVisibility={handleToggleUnifiedNodeVisibility}
                       onDeleteNode={handleDeleteUnifiedNode}
+                      onForceRemoveNode={handleForceRemoveUnifiedNode}
                       onDuplicateNode={handleDuplicateUnifiedNode}
                       onRenameNode={handleRenameUnifiedNode}
                       onToggleSelectedLocked={handleToggleUnifiedSelectedLocked}
@@ -51266,6 +51529,7 @@ case "mobius":
                           : undefined
                   }
                   onPickHover={geometryMode === "procedural" ? handleProceduralPickHover : undefined}
+                  inspectSelectionMeshKey={geometryMode === "procedural" ? geometrySelectedObjectId : null}
                 />
                 </div>
                 {showGeometryRightPanel && !isPhoneLandscapeLayout && <div onMouseDown={startDragRight} style={splitterStyle} />}
@@ -58107,6 +58371,7 @@ type UnifiedObjectTreePanelProps = {
   onFocus?: (id: string) => void;
   onToggleVisibility?: (id: string) => void;
   onDeleteNode?: (id: string) => void;
+  onForceRemoveNode?: (id: string) => void;
   onDuplicateNode?: (id: string) => void;
   onRenameNode?: (id: string, name: string) => void;
   onToggleSelectedLocked?: () => void;
@@ -58126,6 +58391,7 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   onFocus,
   onToggleVisibility,
   onDeleteNode,
+  onForceRemoveNode,
   onDuplicateNode,
   onRenameNode,
   onToggleSelectedLocked,
@@ -58219,6 +58485,11 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
   const selectedIsSceneObject = selected?.category === "sceneObject";
   const selectedCanToggleVisibility =
     !!selected && !!selected.canToggleVisibility && typeof selected.visible === "boolean" && !!onToggleVisibility;
+  const selectedCanDelete =
+    !!selected &&
+    !!onDeleteNode &&
+    (selected.category === "sceneObject" || selected.id.startsWith("derived:manual:"));
+  const selectedCanForceRemove = !!selected && !!onForceRemoveNode;
   const selectedQuickToggleLabel =
     selected && typeof selected.visible === "boolean" && selected.visible ? "Hide" : "Show";
 
@@ -58628,6 +58899,24 @@ const UnifiedObjectTreePanel: React.FC<UnifiedObjectTreePanelProps> = ({
               >
                 {selectedQuickToggleLabel}
               </button>
+              {selectedCanDelete && (
+                <button
+                  type="button"
+                  onClick={() => onDeleteNode?.(selected.id)}
+                  style={{ padding: "4px 8px", fontSize: 11 }}
+                >
+                  Delete
+                </button>
+              )}
+              {selectedCanForceRemove && (
+                <button
+                  type="button"
+                  onClick={() => onForceRemoveNode?.(selected.id)}
+                  style={{ padding: "4px 8px", fontSize: 11 }}
+                >
+                  Force remove
+                </button>
+              )}
             </div>
           </div>
         ) : (

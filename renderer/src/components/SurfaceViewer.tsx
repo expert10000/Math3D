@@ -1268,6 +1268,7 @@ type Props = {
     uv?: { u: number; v: number };
     xy?: { x: number; y: number };
   }) => void;
+  inspectSelectionMeshKey?: string | null;
   inspectPoint?: { x: number; y: number; z: number } | null;
   selectionOverlayVisible?: boolean;
   selectionOverlayOnTop?: boolean;
@@ -1317,6 +1318,7 @@ type Props = {
   contourCount?: number;
   suspendPointerInteractions?: boolean;
   suspendRendering?: boolean;
+  surfaceMeshFallbackMode?: "sphere" | "none";
 };
 
 type PrincipalField = {
@@ -1466,6 +1468,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     inspectEnabled = false,
     onInspectPick,
     onInspectHover,
+    inspectSelectionMeshKey = null,
     inspectPoint = null,
     selectionOverlayVisible = true,
     selectionOverlayOnTop = false,
@@ -1496,6 +1499,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     contourCount = 12,
     suspendPointerInteractions = false,
     suspendRendering = false,
+    surfaceMeshFallbackMode = "sphere",
   } = props;
   const planeGridShowGrid = planeGridSettings.showGrid;
   const planeGridShowMinor = planeGridSettings.showMinorGrid;
@@ -1546,6 +1550,7 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const selectRegionEnabledRef = useRef(selectRegionEnabled);
   const onSelectionPickRef = useRef(onSelectionPick);
   const inspectEnabledRef = useRef(inspectEnabled);
+  const inspectSelectionMeshKeyRef = useRef<string | null>(inspectSelectionMeshKey);
   const dragEnabledRef = useRef(dragEnabled);
   const geodesicPathEnabledRef = useRef(geodesicPathEnabled);
   const geodesicHeatEnabledRef = useRef(geodesicHeatEnabled);
@@ -1830,6 +1835,9 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   useEffect(() => {
     inspectEnabledRef.current = inspectEnabled;
   }, [inspectEnabled]);
+  useEffect(() => {
+    inspectSelectionMeshKeyRef.current = inspectSelectionMeshKey;
+  }, [inspectSelectionMeshKey]);
   useEffect(() => {
     onInspectPickRef.current = onInspectPick;
   }, [onInspectPick]);
@@ -3513,13 +3521,14 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
 
       const makeSurface = (id: SurfaceId): THREE.Object3D => {
         switch (id) {
-          case "surface_mesh": {
-            if (useSurfaceMeshOverrides) return makeSurfaceMeshOverrideGroup();
-            if (useSurfaceMeshOverride && surfaceMeshOverride) return makeSurfaceMeshOverrideMesh(surfaceMeshOverride);
-            const geo = new THREE.SphereGeometry(1, 32, 24);
-            if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
-            return new THREE.Mesh(geo, makeMaterial());
-          }
+        case "surface_mesh": {
+          if (useSurfaceMeshOverrides) return makeSurfaceMeshOverrideGroup();
+          if (useSurfaceMeshOverride && surfaceMeshOverride) return makeSurfaceMeshOverrideMesh(surfaceMeshOverride);
+          if (surfaceMeshFallbackMode === "none") return new THREE.Group();
+          const geo = new THREE.SphereGeometry(1, 32, 24);
+          if (colorMode !== "solid") applyVertexColors(geo, colorMode, colorPalette);
+          return new THREE.Mesh(geo, makeMaterial());
+        }
           case "sphere": {
             const f = (x: number, y: number, z: number) => x * x + y * y + z * z - 1;
             if (useImplicitOverride) return makeImplicitOverrideMesh(f, 2.2);
@@ -4265,6 +4274,10 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       }
       const intersects = raycaster.intersectObjects([surfaceObj], true);
       if (!intersects.length) return;
+      const resolveHitMeshKey = (candidate: THREE.Intersection<THREE.Object3D>) => {
+        const key = (candidate.object as any)?.userData?.__surfaceMeshOverrideId;
+        return key == null ? null : String(key);
+      };
 
       const isGraphSurface = isGraphId(surfaceId);
       const allowMeshPick = isGraphSurface || surfaceId === "surface_mesh";
@@ -4279,6 +4292,16 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           });
         if (!heatHit) return;
         hit = heatHit;
+      } else if (inspectEnabledRef.current && !dragEnabledRef.current && intersects.length > 1) {
+        const selectedMeshKey = inspectSelectionMeshKeyRef.current;
+        const firstHitMeshKey = resolveHitMeshKey(intersects[0]);
+        if (selectedMeshKey && firstHitMeshKey === selectedMeshKey) {
+          const alternate = intersects.find((candidate) => {
+            const candidateKey = resolveHitMeshKey(candidate);
+            return !!candidateKey && candidateKey !== selectedMeshKey;
+          });
+          if (alternate) hit = alternate;
+        }
       }
       const point = hit.point.clone();
       const hitMeshKey = (hit.object as any)?.userData?.__surfaceMeshOverrideId;
