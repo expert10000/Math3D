@@ -11538,76 +11538,6 @@ const App: React.FC = () => {
       rotation: { x: e.x, y: e.y, z: e.z },
     });
   }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
-  const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
-    const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
-    if (!selected) {
-      setGeometryCreateActionStatus("Select a derived construction object first.");
-      return;
-    }
-    if (selected.status !== "valid" || !selected.origin || !selected.direction) {
-      setGeometryCreateActionStatus("Selected derived object is not a valid plane reference.");
-      return;
-    }
-    const allowedPlaneTypes: GeometryDerivedConstructionType[] = [
-      "face-tangent-plane-preview",
-      "face-offset-plane",
-      "face-parallel-face-plane",
-      "object-symmetry-plane-preview",
-    ];
-    if (!allowedPlaneTypes.includes(selected.object.type)) {
-      setGeometryCreateActionStatus("Selected derived object is not a plane.");
-      return;
-    }
-    const resolved = resolveGeometrySceneMeshById(selected.object.sourceObjectId);
-    if (!resolved) {
-      setGeometryCreateActionStatus("Source object mesh is unavailable for section slicing.");
-      return;
-    }
-    const bounds = boundsFromPositions(resolved.mesh.positions);
-    const center = bounds
-      ? {
-          x: 0.5 * (bounds.min[0] + bounds.max[0]),
-          y: 0.5 * (bounds.min[1] + bounds.max[1]),
-          z: 0.5 * (bounds.min[2] + bounds.max[2]),
-        }
-      : { x: 0, y: 0, z: 0 };
-    const dirLen = Math.hypot(
-      selected.direction.x,
-      selected.direction.y,
-      selected.direction.z
-    );
-    if (!Number.isFinite(dirLen) || dirLen < 1e-9) {
-      setGeometryCreateActionStatus("Derived plane direction is invalid.");
-      return;
-    }
-    const normal = {
-      x: selected.direction.x / dirLen,
-      y: selected.direction.y / dirLen,
-      z: selected.direction.z / dirLen,
-    };
-    const offset =
-      (selected.origin.x - center.x) * normal.x +
-      (selected.origin.y - center.y) * normal.y +
-      (selected.origin.z - center.z) * normal.z;
-
-    setGeometrySelectedObjectId(selected.object.sourceObjectId);
-    setGeometrySectionPlanePreset("custom");
-    setGeometrySectionCustomNormal(normal);
-    setGeometrySectionPlaneOffset(offset);
-    setGeometrySectionShowCurve(true);
-    setGeometryProceduralPanelTab("analysis");
-    setGeometryCreateActionStatus(
-      `Section plane set from derived object "${selected.typeLabel}" on ${selected.sourceObjectName}.`
-    );
-  }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
-  const handleUseSelectedDerivedPlaneForSectionSlice = useCallback(() => {
-    const selectedId = geometrySelectedDerivedConstructionId;
-    if (!selectedId) {
-      setGeometryCreateActionStatus("Select a derived construction object first.");
-      return;
-    }
-    handleUseDerivedPlaneForSectionSliceById(selectedId);
-  }, [geometrySelectedDerivedConstructionId, handleUseDerivedPlaneForSectionSliceById]);
   const handleDistributeVisibleObjectsEvenly = useCallback(() => {
     const axis = geometryDistributeAxis;
     const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
@@ -13772,6 +13702,72 @@ const App: React.FC = () => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
+    const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
+    if (!selected) {
+      setGeometryCreateActionStatus("Select a derived construction object first.");
+      return;
+    }
+    if (selected.status !== "valid" || !selected.origin || !selected.direction) {
+      setGeometryCreateActionStatus("Selected derived object is not a valid plane reference.");
+      return;
+    }
+    const allowedPlaneTypes: GeometryDerivedConstructionType[] = [
+      "face-tangent-plane-preview",
+      "face-offset-plane",
+      "face-parallel-face-plane",
+      "object-symmetry-plane-preview",
+    ];
+    if (!allowedPlaneTypes.includes(selected.object.type)) {
+      setGeometryCreateActionStatus("Selected derived object is not a plane.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(selected.object.sourceObjectId);
+    if (!resolved) {
+      setGeometryCreateActionStatus("Source object mesh is unavailable for section slicing.");
+      return;
+    }
+    const bounds = boundsFromPositions(resolved.mesh.positions);
+    const center = bounds
+      ? {
+          x: 0.5 * (bounds.min[0] + bounds.max[0]),
+          y: 0.5 * (bounds.min[1] + bounds.max[1]),
+          z: 0.5 * (bounds.min[2] + bounds.max[2]),
+        }
+      : { x: 0, y: 0, z: 0 };
+    const dirLen = Math.hypot(selected.direction.x, selected.direction.y, selected.direction.z);
+    if (!Number.isFinite(dirLen) || dirLen < 1e-9) {
+      setGeometryCreateActionStatus("Derived plane direction is invalid.");
+      return;
+    }
+    const normal = {
+      x: selected.direction.x / dirLen,
+      y: selected.direction.y / dirLen,
+      z: selected.direction.z / dirLen,
+    };
+    const offset =
+      (selected.origin.x - center.x) * normal.x +
+      (selected.origin.y - center.y) * normal.y +
+      (selected.origin.z - center.z) * normal.z;
+
+    setGeometrySelectedObjectId(selected.object.sourceObjectId);
+    setGeometrySectionPlanePreset("custom");
+    setGeometrySectionCustomNormal(normal);
+    setGeometrySectionPlaneOffset(offset);
+    setGeometrySectionShowCurve(true);
+    setGeometryProceduralPanelTab("analysis");
+    setGeometryCreateActionStatus(
+      `Section plane set from derived object "${selected.typeLabel}" on ${selected.sourceObjectName}.`
+    );
+  }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
+  const handleUseSelectedDerivedPlaneForSectionSlice = useCallback(() => {
+    const selectedId = geometrySelectedDerivedConstructionId;
+    if (!selectedId) {
+      setGeometryCreateActionStatus("Select a derived construction object first.");
+      return;
+    }
+    handleUseDerivedPlaneForSectionSliceById(selectedId);
+  }, [geometrySelectedDerivedConstructionId, handleUseDerivedPlaneForSectionSliceById]);
   const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
     const colorByKind: Record<GeometrySnapPreviewKind, number> = {
