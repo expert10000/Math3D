@@ -21,6 +21,10 @@ function getElectronDir() {
   return path.dirname(require.resolve("electron/package.json"));
 }
 
+function resolveElectronBinary() {
+  return require("electron");
+}
+
 function getTargetPlatform() {
   return process.env.npm_config_platform || os.platform();
 }
@@ -125,16 +129,21 @@ async function downloadElectronArtifactWithTimeout(paths) {
     process.stderr.write(
       `[ensure-electron] Downloading Electron (${getTargetPlatform()}/${getTargetArch()}); timeout=${timeoutMs}ms; attempt=${attempt}/${totalAttempts}\n`
     );
+    let timeoutHandle;
     const heartbeatHandle = setInterval(() => {
       const elapsedMs = Date.now() - startMs;
       process.stderr.write(`[ensure-electron] Download in progress... elapsed=${elapsedMs}ms\n`);
     }, 15_000);
-    if (typeof heartbeatHandle?.unref === "function") {
-      heartbeatHandle.unref();
-    }
 
     try {
-      await downloadElectronArtifact(paths, timeoutMs);
+      await Promise.race([
+        downloadElectronArtifact(paths, timeoutMs),
+        new Promise((_, reject) => {
+          timeoutHandle = setTimeout(() => {
+            reject(new Error(`Electron download timed out after ${timeoutMs}ms.`));
+          }, timeoutMs);
+        }),
+      ]);
       const totalMs = Date.now() - startMs;
       process.stderr.write(`[ensure-electron] Download completed in ${totalMs}ms\n`);
       return;
@@ -151,6 +160,7 @@ async function downloadElectronArtifactWithTimeout(paths) {
       continue;
     } finally {
       clearInterval(heartbeatHandle);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
     }
   }
 
@@ -168,10 +178,14 @@ function listDist(paths) {
 
 export async function ensureElectronInstalled() {
   const paths = getElectronPaths();
-  if (markerMatches(paths)) return;
+  if (markerMatches(paths)) {
+    resolveElectronBinary();
+    return;
+  }
 
   if (writeMarkerIfExecutableExists(paths)) {
     process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
+    resolveElectronBinary();
     return;
   }
 
@@ -188,6 +202,9 @@ export async function ensureElectronInstalled() {
       ].join("\n")
     );
   }
+
+  // Validate against Electron's own path resolution before returning success.
+  resolveElectronBinary();
 }
 
 async function main() {
