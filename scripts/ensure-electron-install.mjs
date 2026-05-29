@@ -24,10 +24,19 @@ function runElectronInstall(timeoutMs) {
   const packageJsonPath = require.resolve("electron/package.json");
   const electronDir = path.dirname(packageJsonPath);
   const installScript = path.join(electronDir, "install.js");
+  const childEnv = { ...process.env };
+  const skipDownloadFlag = childEnv.ELECTRON_SKIP_BINARY_DOWNLOAD;
+  if (skipDownloadFlag != null && skipDownloadFlag !== "") {
+    // The ensure script is an explicit repair path; always allow binary download here.
+    delete childEnv.ELECTRON_SKIP_BINARY_DOWNLOAD;
+    process.stderr.write(
+      `[ensure-electron] Ignoring ELECTRON_SKIP_BINARY_DOWNLOAD=${skipDownloadFlag} during repair\n`
+    );
+  }
 
   const result = spawnSync(process.execPath, [installScript], {
     cwd: electronDir,
-    env: process.env,
+    env: childEnv,
     stdio: "inherit",
     timeout: timeoutMs,
   });
