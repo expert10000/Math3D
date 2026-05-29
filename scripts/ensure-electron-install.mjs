@@ -95,6 +95,36 @@ function describeElectronState(paths) {
   ].join("; ");
 }
 
+function listDistEntries(paths) {
+  const distPath = path.join(paths.electronDir, "dist");
+  try {
+    return fs.readdirSync(distPath).slice(0, 50).join(", ");
+  } catch {
+    return "(dist folder missing)";
+  }
+}
+
+async function withHardTimeout(label, timeoutMs, operation) {
+  let timeoutHandle;
+  const heartbeatHandle = setInterval(() => {
+    process.stderr.write(`[ensure-electron] ${label} in progress...\n`);
+  }, 15_000);
+
+  try {
+    await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearInterval(heartbeatHandle);
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
 function runElectronInstall(timeoutMs) {
   const { electronDir } = getElectronPaths();
   const installScript = path.join(electronDir, "install.js");
@@ -129,7 +159,7 @@ function runElectronInstall(timeoutMs) {
   }
 }
 
-async function downloadElectronArtifactDirect(paths, timeoutMs) {
+async function downloadElectronArtifactDirect(paths, timeoutMs, forceFreshDownload) {
   const { downloadArtifact } = require("@electron/get");
   const extract = require("extract-zip");
   const { version } = require("electron/package.json");
@@ -137,10 +167,13 @@ async function downloadElectronArtifactDirect(paths, timeoutMs) {
   fs.rmSync(distPath, { recursive: true, force: true });
   fs.mkdirSync(distPath, { recursive: true });
 
+  process.stderr.write(
+    `[ensure-electron] Direct artifact download start version=${version} platform=${getTargetPlatform()} arch=${getTargetArch()} force=${forceFreshDownload}\n`
+  );
   const zipPath = await downloadArtifact({
     version,
     artifactName: "electron",
-    force: process.env.force_no_cache === "true",
+    force: forceFreshDownload,
     cacheRoot: process.env.electron_config_cache,
     checksums:
       process.env.electron_use_remote_checksums || process.env.npm_config_electron_use_remote_checksums
@@ -154,8 +187,11 @@ async function downloadElectronArtifactDirect(paths, timeoutMs) {
       },
     },
   });
+  const zipBytes = fs.statSync(zipPath).size;
+  process.stderr.write(`[ensure-electron] Downloaded Electron artifact: ${zipPath} (${zipBytes} bytes)\n`);
 
   await extract(zipPath, { dir: distPath });
+  process.stderr.write(`[ensure-electron] Dist entries after extract: ${listDistEntries(paths)}\n`);
   const srcTypeDefPath = path.join(distPath, "electron.d.ts");
   const targetTypeDefPath = path.join(paths.electronDir, "electron.d.ts");
   if (fs.existsSync(srcTypeDefPath)) {
@@ -213,18 +249,23 @@ export async function ensureElectronInstalled() {
         process.stderr.write(
           "[ensure-electron] electron/install.js finished without binary; trying direct artifact download\n"
         );
-        await downloadElectronArtifactDirect(paths, timeoutMs);
+        await withHardTimeout("direct artifact download", timeoutMs, async () => {
+          const forceFreshDownload = process.env.force_no_cache === "true" || attempt > 1;
+          await downloadElectronArtifactDirect(paths, timeoutMs, forceFreshDownload);
+        });
       }
       if (writeMarkerIfExecutableExists(paths) && markerMatches(paths)) {
         process.stderr.write("[ensure-electron] Restored electron/path.txt after repair\n");
         process.stderr.write("[ensure-electron] Electron install repair succeeded\n");
         return;
       }
-      throw new Error("Repair completed but marker/binary validation still failed.");
+      throw new Error(
+        `Repair completed but marker/binary validation still failed. Dist entries: ${listDistEntries(paths)}`
+      );
     } catch (error) {
       lastError = error;
       process.stderr.write(
-        `[ensure-electron] Electron repair attempt ${attempt}/${totalAttempts} failed: ${String(error?.message ?? error)}\n`
+        `[ensure-electron] Electron repair attempt ${attempt}/${totalAttempts} failed: ${String(error?.stack ?? error?.message ?? error)}\n`
       );
       if (attempt < totalAttempts) {
         const backoffMs = Math.min(60_000, attempt * 15_000);
