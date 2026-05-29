@@ -2,6 +2,8 @@
 
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -20,9 +22,57 @@ function resolveElectronBinary() {
   return require("electron");
 }
 
-function runElectronInstall(timeoutMs) {
+function getPlatformPath() {
+  const platform = process.env.npm_config_platform || os.platform();
+  switch (platform) {
+    case "mas":
+    case "darwin":
+      return "Electron.app/Contents/MacOS/Electron";
+    case "freebsd":
+    case "openbsd":
+    case "linux":
+      return "electron";
+    case "win32":
+      return "electron.exe";
+    default:
+      throw new Error(`Electron builds are not available on platform: ${platform}`);
+  }
+}
+
+function getElectronPaths() {
   const packageJsonPath = require.resolve("electron/package.json");
   const electronDir = path.dirname(packageJsonPath);
+  const platformPath = getPlatformPath();
+  return {
+    electronDir,
+    platformPath,
+    pathFile: path.join(electronDir, "path.txt"),
+    executablePath: process.env.ELECTRON_OVERRIDE_DIST_PATH
+      ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, platformPath)
+      : path.join(electronDir, "dist", platformPath),
+  };
+}
+
+function writeMarkerIfExecutableExists(paths) {
+  if (!fs.existsSync(paths.executablePath)) return false;
+  fs.writeFileSync(paths.pathFile, paths.platformPath);
+  return true;
+}
+
+function describeElectronState(paths) {
+  const pathFileExists = fs.existsSync(paths.pathFile);
+  const pathFileValue = pathFileExists ? fs.readFileSync(paths.pathFile, "utf8") : "(missing)";
+  const executableExists = fs.existsSync(paths.executablePath);
+  return [
+    `path.txt exists: ${pathFileExists}`,
+    `path.txt value: ${JSON.stringify(pathFileValue)}`,
+    `executable exists: ${executableExists}`,
+    `expected executable: ${paths.executablePath}`,
+  ].join("; ");
+}
+
+function runElectronInstall(timeoutMs) {
+  const { electronDir } = getElectronPaths();
   const installScript = path.join(electronDir, "install.js");
   const childEnv = { ...process.env };
   const skipDownloadFlag = childEnv.ELECTRON_SKIP_BINARY_DOWNLOAD;
@@ -62,6 +112,8 @@ function canRepair(message) {
 }
 
 export async function ensureElectronInstalled() {
+  const paths = getElectronPaths();
+
   try {
     resolveElectronBinary();
     return;
@@ -70,6 +122,12 @@ export async function ensureElectronInstalled() {
     if (!canRepair(message)) {
       throw error;
     }
+  }
+
+  if (writeMarkerIfExecutableExists(paths)) {
+    process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
+    resolveElectronBinary();
+    return;
   }
 
   const timeoutMs = readBoundedIntegerEnv("MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS", {
@@ -91,6 +149,9 @@ export async function ensureElectronInstalled() {
     );
     try {
       runElectronInstall(timeoutMs);
+      if (writeMarkerIfExecutableExists(paths)) {
+        process.stderr.write("[ensure-electron] Restored electron/path.txt after repair\n");
+      }
       resolveElectronBinary();
       process.stderr.write("[ensure-electron] Electron install repair succeeded\n");
       return;
@@ -107,7 +168,11 @@ export async function ensureElectronInstalled() {
     }
   }
 
-  throw lastError ?? new Error("Electron install repair failed.");
+  const stateDetails = describeElectronState(paths);
+  if (lastError) {
+    throw new Error(`${String(lastError?.message ?? lastError)}\n[ensure-electron] ${stateDetails}`);
+  }
+  throw new Error(`Electron install repair failed.\n[ensure-electron] ${stateDetails}`);
 }
 
 async function main() {
