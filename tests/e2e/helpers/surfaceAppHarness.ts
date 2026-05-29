@@ -1,8 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { launchRepoElectron } from "./electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
@@ -25,7 +26,7 @@ export async function launchSurfaceApp(
   };
   delete launchEnv.ELECTRON_RUN_AS_NODE;
 
-  const app = await electron.launch({
+  const app = await launchRepoElectron({
     args: ["."],
     cwd: repoRoot,
     env: launchEnv,

@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { _electron as electron, type ElectronApplication } from "playwright";
+import type { ElectronApplication } from "playwright";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clickFirstVisible, clickFirstVisibleButton } from "./helpers/uiActions";
+import { launchRepoElectron } from "./helpers/electronLauncher";
 
 const repoRoot = path.resolve(__dirname, "..", "..");
 const E2E_VIEWPORT = { width: 1280, height: 900 };
@@ -205,7 +206,7 @@ const launchApp = async (profileDir: string): Promise<{ app: ElectronApplication
   };
   delete env.ELECTRON_RUN_AS_NODE;
 
-  const app = await electron.launch({
+  const app = await launchRepoElectron({
     args: [".", "--force-device-scale-factor=1"],
     cwd: repoRoot,
     env,
