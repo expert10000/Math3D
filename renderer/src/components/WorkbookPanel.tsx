@@ -12,6 +12,7 @@ import type {
   WorkbookSnapshotSlot,
   WorkbookTemplateSpec,
   WorkbookProblemPack,
+  WorkbookGeometryTaskSpec,
 } from "@math3d/workbook";
 import { WORKBOOK_STAGE_ORDER, WORKBOOK_OPERATOR_CATALOG } from "@math3d/workbook";
 import { bakeGraphSurface, bakeParamSurface, bakeWeierstrassSurface } from "../math/bakeSurface";
@@ -28,8 +29,10 @@ type WorkbookPanelProps = {
   paramCatalog: WorkbookParamDef[];
   onSelectWorkbook: (id: string) => void;
   onCreateWorkbook: () => void;
+  onCreateStarterWorkbooks: () => void;
   onCreateWorkbookFromTemplate: (templateId: string) => void;
   onCreateWorkbooksFromPack: (packId: string) => void;
+  onCreateWorkbookFromGeometryTask: (taskId: string) => void;
   onDuplicateWorkbook: (id: string) => void;
   onDeleteWorkbook: (id: string) => void;
   onRenameWorkbook: (id: string, title: string) => void;
@@ -95,6 +98,8 @@ type WorkbookPanelProps = {
   onRestoreSnapshot: () => void;
   onRestoreSnapshotById: (id: string) => void;
   onDeleteSnapshot: (id: string) => void;
+  onValidateGeometryTask: () => void;
+  onSaveGeometryTaskSolutionSnapshot: () => void;
   readOnly: boolean;
   currentDatasetRef: string;
   cameraReady: boolean;
@@ -102,6 +107,7 @@ type WorkbookPanelProps = {
   onToggleGhostOverlays: (enabled: boolean) => void;
   templates: WorkbookTemplateSpec[];
   problemPacks: WorkbookProblemPack[];
+  geometryTasks: WorkbookGeometryTaskSpec[];
 };
 
 const BLOCK_TYPE_LABELS: Record<WorkbookBlockType, string> = {
@@ -455,8 +461,10 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   activeStageId,
   onSelectWorkbook,
   onCreateWorkbook,
+  onCreateStarterWorkbooks,
   onCreateWorkbookFromTemplate,
   onCreateWorkbooksFromPack,
+  onCreateWorkbookFromGeometryTask,
   onDuplicateWorkbook,
   onDeleteWorkbook,
   onRenameWorkbook,
@@ -512,6 +520,8 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onRestoreSnapshot,
   onRestoreSnapshotById,
   onDeleteSnapshot,
+  onValidateGeometryTask,
+  onSaveGeometryTaskSolutionSnapshot,
   readOnly,
   currentDatasetRef,
   cameraReady,
@@ -522,6 +532,7 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
   onToggleGhostOverlays,
   templates,
   problemPacks,
+  geometryTasks,
 }) => {
   const activeWorkbook = useMemo(
     () => workbooks.find((w) => w.id === activeWorkbookId) ?? null,
@@ -589,6 +600,20 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
     [outlineItems]
   );
   const templateById = useMemo(() => new Map(templates.map((t) => [t.id, t])), [templates]);
+  const filteredGeometryTasks = useMemo(
+    () =>
+      geometryTasks.filter((task) => {
+        const haystack = `${task.title} ${task.description} ${task.allowedTools.join(" ")} ${task.hints.join(" ")}`.toLowerCase();
+        const searchMatch = !libraryQuery || haystack.includes(libraryQuery.toLowerCase());
+        const tagsMatch =
+          !libraryTags.length ||
+          libraryTags.every((tag) =>
+            `${task.measurementTargets.join(" ")} ${task.allowedTools.join(" ")}`.toLowerCase().includes(tag.toLowerCase())
+          );
+        return searchMatch && tagsMatch;
+      }),
+    [geometryTasks, libraryQuery, libraryTags]
+  );
   const allLibraryTags = useMemo(() => {
     const set = new Set<string>();
     templates.forEach((t) => t.tags.forEach((tag) => set.add(tag)));
@@ -803,6 +828,9 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button type="button" onClick={onCreateWorkbook} disabled={readOnly} style={{ padding: "4px 8px" }}>
               New Workbook
+            </button>
+            <button type="button" onClick={onCreateStarterWorkbooks} disabled={readOnly} style={{ padding: "4px 8px" }}>
+              Add Starter Workbooks
             </button>
             <button
               type="button"
@@ -1303,8 +1331,103 @@ export const WorkbookPanel: React.FC<WorkbookPanelProps> = ({
           ) : (
             <div style={{ fontSize: 11, opacity: 0.65 }}>No problem packs match the filter.</div>
           )}
+
+          <div style={{ fontSize: 11, fontWeight: 700, marginTop: 6 }}>Geometry tasks</div>
+          {filteredGeometryTasks.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filteredGeometryTasks.map((task) => (
+                <div
+                  key={task.id}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 8,
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>{task.title}</div>
+                    <button
+                      type="button"
+                      onClick={() => onCreateWorkbookFromGeometryTask(task.id)}
+                      disabled={readOnly}
+                      style={{ padding: "2px 8px", fontSize: 11 }}
+                    >
+                      Start task
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.8 }}>{task.description}</div>
+                  <div style={{ fontSize: 10, opacity: 0.7, marginTop: 4 }}>
+                    Expected: {task.expectedResult}
+                  </div>
+                  <div style={{ fontSize: 10, opacity: 0.7 }}>
+                    Targets: {task.measurementTargets.join(", ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, opacity: 0.65 }}>No geometry tasks match the filter.</div>
+          )}
         </div>
       </details>
+
+      {activeWorkbook?.geometryTask && (
+        <div
+          style={{
+            marginBottom: 10,
+            border: "1px solid #dbeafe",
+            borderRadius: 10,
+            padding: 8,
+            background: "#f8fbff",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800 }}>Geometry Task</div>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{activeWorkbook.geometryTask.spec.title}</div>
+          <div style={{ fontSize: 11, opacity: 0.78 }}>{activeWorkbook.geometryTask.spec.startingScene}</div>
+          <div style={{ fontSize: 11, opacity: 0.9 }}>
+            Allowed tools: {activeWorkbook.geometryTask.spec.allowedTools.join(", ")}
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={onValidateGeometryTask} disabled={readOnly} style={{ padding: "2px 8px", fontSize: 11 }}>
+              Validate task
+            </button>
+            <button
+              type="button"
+              onClick={onSaveGeometryTaskSolutionSnapshot}
+              disabled={readOnly}
+              style={{ padding: "2px 8px", fontSize: 11 }}
+            >
+              Save solution snapshot
+            </button>
+          </div>
+          {activeWorkbook.geometryTask.lastValidation && (
+            <div
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                padding: 6,
+                fontSize: 11,
+                background: "#fff",
+                display: "grid",
+                gap: 4,
+              }}
+            >
+              <div>
+                Status: <strong>{activeWorkbook.geometryTask.lastValidation.status}</strong> ·{" "}
+                {activeWorkbook.geometryTask.lastValidation.summary}
+              </div>
+              {activeWorkbook.geometryTask.lastValidation.checkResults.map((check) => (
+                <div key={check.id} style={{ color: check.passed ? "#166534" : "#991b1b" }}>
+                  {check.passed ? "PASS" : "FAIL"} - {check.description}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 6 }}>Pages</div>

@@ -281,7 +281,10 @@ import {
 } from "./math/splineSurface";
 import {
   createDefaultWorkbook,
+  createWorkbookFromGeometryTask,
   createWorkbookFromTemplate,
+  evaluateWorkbookGeometryTask,
+  WORKBOOK_GEOMETRY_TASKS,
   WORKBOOK_STAGE_ORDER,
   WORKBOOK_TEMPLATES,
   WORKBOOK_PROBLEM_PACKS,
@@ -304,6 +307,8 @@ import {
   type WorkbookParamDef,
   type WorkbookParamValue,
   type WorkbookCurveOutput,
+  type WorkbookGeometryTaskMeasuredObject,
+  type WorkbookGeometryTaskValidationContext,
   type WorkbookPointOutput,
   type WorkbookSnapshotSlot,
 } from "@math3d/workbook";
@@ -5379,7 +5384,38 @@ function loadWorkbooks(): Workbook[] {
   if (REPLAY_PAYLOAD?.workbooks?.length) return normalizeWorkbooks(REPLAY_PAYLOAD.workbooks);
   const raw = safeParseArray<Workbook>(localStorage.getItem(WORKBOOK_STORAGE_KEY));
   if (raw.length > 0) return normalizeWorkbooks(raw);
+  const starters = createStarterWorkbooks(makeId);
+  if (starters.length) return normalizeWorkbooks(starters);
   return [createDefaultWorkbook(makeId)];
+}
+
+const STARTER_WORKBOOK_TEMPLATE_IDS = [
+  "compute_curvature",
+  "geodesics_from_point",
+  "chart_and_basis",
+  "selection_stats",
+  "principal_directions",
+];
+
+const STARTER_WORKBOOK_GEOMETRY_TASK_IDS = [
+  "geometry_box_volume_2",
+  "geometry_extrude_volume_compare",
+  "geometry_equal_volume_diff_area",
+  "geometry_slice_cone_section_curve",
+  "geometry_bevel_topology_change",
+];
+
+function createStarterWorkbooks(makeIdFn: () => string): Workbook[] {
+  const created: Workbook[] = [];
+  for (const templateId of STARTER_WORKBOOK_TEMPLATE_IDS) {
+    const workbook = createWorkbookFromTemplate(templateId, makeIdFn);
+    if (workbook) created.push(workbook);
+  }
+  for (const taskId of STARTER_WORKBOOK_GEOMETRY_TASK_IDS) {
+    const workbook = createWorkbookFromGeometryTask(taskId, makeIdFn);
+    if (workbook) created.push(workbook);
+  }
+  return created;
 }
 
 function autoLabelGraphDomain(xSpan: number, ySpan: number) {
@@ -25191,6 +25227,15 @@ case "mobius":
     setActiveStageId("define");
   }, []);
 
+  const handleCreateWorkbookFromGeometryTask = useCallback((taskId: string) => {
+    if (IS_REPLAY_MODE) return;
+    const wb = createWorkbookFromGeometryTask(taskId, makeId);
+    if (!wb) return;
+    setWorkbooks((prev) => [wb, ...prev]);
+    setActiveWorkbookId(wb.id);
+    setActiveStageId("define");
+  }, []);
+
   const handleCreateWorkbooksFromPack = useCallback((packId: string) => {
     if (IS_REPLAY_MODE) return;
     const pack = WORKBOOK_PROBLEM_PACKS.find((p) => p.id === packId);
@@ -25205,6 +25250,48 @@ case "mobius":
     setActiveWorkbookId(created[0].id);
     setActiveStageId("define");
   }, []);
+
+  const handleCreateStarterWorkbooks = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    const existingTitles = new Set(
+      workbooks.map((entry) => entry.title.trim().toLowerCase()).filter((value) => value.length > 0)
+    );
+    const existingTaskIds = new Set(
+      workbooks
+        .map((entry) => entry.geometryTask?.taskId ?? null)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    );
+    const created: Workbook[] = [];
+
+    for (const templateId of STARTER_WORKBOOK_TEMPLATE_IDS) {
+      const workbook = createWorkbookFromTemplate(templateId, makeId);
+      if (!workbook) continue;
+      const titleKey = workbook.title.trim().toLowerCase();
+      if (existingTitles.has(titleKey)) continue;
+      created.push(workbook);
+      existingTitles.add(titleKey);
+    }
+
+    for (const taskId of STARTER_WORKBOOK_GEOMETRY_TASK_IDS) {
+      if (existingTaskIds.has(taskId)) continue;
+      const workbook = createWorkbookFromGeometryTask(taskId, makeId);
+      if (!workbook) continue;
+      const titleKey = workbook.title.trim().toLowerCase();
+      if (existingTitles.has(titleKey)) continue;
+      created.push(workbook);
+      existingTitles.add(titleKey);
+      existingTaskIds.add(taskId);
+    }
+
+    if (!created.length) return;
+    setWorkbooks((prev) => [...created, ...prev]);
+    setActiveWorkbookId(created[0].id);
+    setActiveStageId("define");
+    setMode("geometry");
+    setGeometryMode("workbook");
+    setGeometryWorkbookUiMode("full");
+    setRightPanelTab("workbook");
+  }, [workbooks]);
 
   const handleDuplicateWorkbook = useCallback(
     (id: string) => {
@@ -27145,6 +27232,135 @@ case "mobius":
       normalizeSnapshotHistory([named, ...workbookSnapshots]).slice(0, WORKBOOK_SNAPSHOT_HISTORY_LIMIT)
     );
   }, [persistWorkbookSnapshots, workbookSessionPayloadWithWorkspace, workbookSnapshots]);
+
+  const resolveTaskMeasuredObjectById = useCallback(
+    (objectId: string): WorkbookGeometryTaskMeasuredObject | null => {
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (!resolved) return null;
+      const metrics = computeTriangleMeshGeometricMetrics(resolved.mesh);
+      return {
+        label: resolved.object.name,
+        volume: metrics.volume,
+        surfaceArea: metrics.surfaceArea,
+        vertexCount: metrics.vertexCount,
+        faceCount: metrics.faceCount,
+        width: metrics.dimensions?.x ?? 0,
+        height: metrics.dimensions?.y ?? 0,
+        depth: metrics.dimensions?.z ?? 0,
+      };
+    },
+    [resolveGeometrySceneMeshById]
+  );
+
+  const resolveWorkbookGeometryTaskValidationContext = useCallback((): WorkbookGeometryTaskValidationContext => {
+    const selectedId = geometrySelectedSceneObject?.id ?? null;
+    const primary =
+      (selectedId ? resolveTaskMeasuredObjectById(selectedId) : null) ??
+      (geometryCompareObjectAId ? resolveTaskMeasuredObjectById(geometryCompareObjectAId) : null);
+
+    let comparison: WorkbookGeometryTaskMeasuredObject | null = null;
+    if (geometryCompareObjectBId && geometryCompareObjectBId !== selectedId) {
+      comparison = resolveTaskMeasuredObjectById(geometryCompareObjectBId);
+    }
+    if (!comparison && geometryCompareObjectAId && geometryCompareObjectAId !== selectedId) {
+      comparison = resolveTaskMeasuredObjectById(geometryCompareObjectAId);
+    }
+
+    return { primary, comparison };
+  }, [
+    geometryCompareObjectAId,
+    geometryCompareObjectBId,
+    geometrySelectedSceneObject?.id,
+    resolveTaskMeasuredObjectById,
+  ]);
+
+  const handleValidateWorkbookGeometryTask = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    if (!activeWorkbookId) return;
+    if (!activeWorkbook?.geometryTask) return;
+    const report = evaluateWorkbookGeometryTask(
+      activeWorkbook.geometryTask.spec,
+      resolveWorkbookGeometryTaskValidationContext()
+    );
+    const nextAssertStatus: NonNullable<WorkbookBlock["assert"]>["status"] =
+      report.status === "pass" ? "pass" : report.status === "fail" ? "fail" : "pending";
+    setWorkbooks((prev) =>
+      prev.map((workbook) => {
+        if (workbook.id !== activeWorkbookId) return workbook;
+        let patchedAssert = false;
+        return {
+          ...workbook,
+          updatedAt: Date.now(),
+          geometryTask: {
+            ...(workbook.geometryTask ?? activeWorkbook.geometryTask),
+            lastValidation: report,
+          },
+          stages: workbook.stages.map((stage) =>
+            stage.id !== "explain"
+              ? stage
+              : {
+                  ...stage,
+                  blocks: stage.blocks.map((block) => {
+                    if (patchedAssert || block.type !== "assert") return block;
+                    patchedAssert = true;
+                    return {
+                      ...block,
+                      assert: {
+                        ...(block.assert ?? { expected: "", status: "pending" }),
+                        status: nextAssertStatus,
+                      },
+                    };
+                  }),
+                }
+          ),
+        };
+      })
+    );
+    setGeometryCreateActionStatus(`Task validation: ${report.summary}`);
+  }, [
+    activeWorkbook,
+    activeWorkbookId,
+    resolveWorkbookGeometryTaskValidationContext,
+  ]);
+
+  const handleSaveWorkbookGeometryTaskSolutionSnapshot = useCallback(() => {
+    if (IS_REPLAY_MODE) return;
+    if (!activeWorkbookId) return;
+    const taskTitle = activeWorkbook?.geometryTask?.spec.title ?? "Geometry task";
+    const snapshotName = `Solution - ${taskTitle}`;
+    const savedAt = Date.now();
+    const namedId = makeId();
+    const named: WorkbookNamedSnapshot = {
+      id: namedId,
+      name: snapshotName,
+      savedAt,
+      payload: workbookSessionPayloadWithWorkspace,
+    };
+    setSelectedWorkbookSnapshotId(named.id);
+    persistWorkbookSnapshots(
+      normalizeSnapshotHistory([named, ...workbookSnapshots]).slice(0, WORKBOOK_SNAPSHOT_HISTORY_LIMIT)
+    );
+    setWorkbooks((prev) =>
+      prev.map((workbook) => {
+        if (workbook.id !== activeWorkbookId) return workbook;
+        const existing = workbook.geometryTask?.solutionSnapshotIds ?? [];
+        const deduped = [namedId, ...existing.filter((id) => id !== namedId)].slice(0, 24);
+        return {
+          ...workbook,
+          updatedAt: Date.now(),
+          geometryTask: workbook.geometryTask
+            ? { ...workbook.geometryTask, solutionSnapshotIds: deduped }
+            : workbook.geometryTask,
+        };
+      })
+    );
+  }, [
+    activeWorkbook?.geometryTask?.spec.title,
+    activeWorkbookId,
+    persistWorkbookSnapshots,
+    workbookSessionPayloadWithWorkspace,
+    workbookSnapshots,
+  ]);
 
   const handleRestoreWorkbookSnapshotById = useCallback(
     (snapshotId: string) => {
@@ -41958,8 +42174,10 @@ case "mobius":
                       workbookStatus={workbookStatus}
                       onSelectWorkbook={setActiveWorkbookId}
                       onCreateWorkbook={handleCreateWorkbook}
+                      onCreateStarterWorkbooks={handleCreateStarterWorkbooks}
                       onCreateWorkbookFromTemplate={handleCreateWorkbookFromTemplate}
                       onCreateWorkbooksFromPack={handleCreateWorkbooksFromPack}
+                      onCreateWorkbookFromGeometryTask={handleCreateWorkbookFromGeometryTask}
                       onDuplicateWorkbook={handleDuplicateWorkbook}
                       onDeleteWorkbook={handleDeleteWorkbook}
                       onRenameWorkbook={handleRenameWorkbook}
@@ -42025,6 +42243,8 @@ case "mobius":
                       onRestoreSnapshot={handleRestoreWorkbookSnapshot}
                       onRestoreSnapshotById={handleRestoreWorkbookSnapshotById}
                       onDeleteSnapshot={handleDeleteWorkbookSnapshot}
+                      onValidateGeometryTask={handleValidateWorkbookGeometryTask}
+                      onSaveGeometryTaskSolutionSnapshot={handleSaveWorkbookGeometryTaskSolutionSnapshot}
                       readOnly={IS_REPLAY_MODE}
                       currentDatasetRef={currentDatasetRef}
                       cameraReady={!!cameraSync}
@@ -42032,6 +42252,7 @@ case "mobius":
                       onToggleGhostOverlays={(next) => setWorkbookGhostOverlaysEnabled(next)}
                       templates={WORKBOOK_TEMPLATES}
                       problemPacks={WORKBOOK_PROBLEM_PACKS}
+                      geometryTasks={WORKBOOK_GEOMETRY_TASKS}
                     />
                   )}
                 </>
@@ -42526,6 +42747,28 @@ case "mobius":
               <div style={{ fontSize: 11, color: workbookDirty ? "#92400e" : "#166534" }}>
                 Status: {workbookDirty ? "unsaved changes" : "saved"}
               </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#0f172a" }}>
+                Workbook
+                <select
+                  value={activeWorkbookId ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) return;
+                    setActiveWorkbookId(id);
+                    setActiveStageId("define");
+                  }}
+                  style={{ fontSize: 11, minWidth: 220, maxWidth: 360 }}
+                >
+                  <option value="" disabled>
+                    Select workbook...
+                  </option>
+                  {workbooks.map((wb) => (
+                    <option key={`workbook-select-${wb.id}`} value={wb.id}>
+                      {wb.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button type="button" onClick={handleSaveWorkbook} disabled={IS_REPLAY_MODE} style={{ fontSize: 11 }}>
                   Save
@@ -42574,6 +42817,9 @@ case "mobius":
                   >
                     <button type="button" onClick={handleCreateWorkbook} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
                       New workbook
+                    </button>
+                    <button type="button" onClick={handleCreateStarterWorkbooks} disabled={IS_REPLAY_MODE} style={{ fontSize: 11, textAlign: "left" }}>
+                      Add starter workbooks
                     </button>
                     <button
                       type="button"

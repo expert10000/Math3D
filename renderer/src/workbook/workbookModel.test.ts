@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Workbook, WorkbookComputeSavedRun } from "./workbookModel";
-import { WORKBOOK_STAGE_ORDER, createDefaultWorkbook, createWorkbookFromTemplate } from "./workbookModel";
+import {
+  WORKBOOK_GEOMETRY_TASKS,
+  WORKBOOK_STAGE_ORDER,
+  createDefaultWorkbook,
+  createWorkbookFromGeometryTask,
+  createWorkbookFromTemplate,
+  evaluateWorkbookGeometryTask,
+} from "./workbookModel";
 
 function makeIdFactory() {
   let n = 0;
@@ -51,6 +58,49 @@ describe("workbook model functional behavior", () => {
   it("returns null for unknown template ids", () => {
     const workbook = createWorkbookFromTemplate("missing-template", makeIdFactory());
     expect(workbook).toBeNull();
+  });
+
+  it("builds geometry workbook task with task metadata", () => {
+    const workbook = createWorkbookFromGeometryTask("geometry_box_volume_2", makeIdFactory());
+    expect(workbook).not.toBeNull();
+    if (!workbook) return;
+    expect(workbook.geometryTask?.taskId).toBe("geometry_box_volume_2");
+    expect(workbook.geometryTask?.spec.validationChecks.length).toBeGreaterThan(0);
+  });
+
+  it("evaluates geometry workbook task checks against measured metrics", () => {
+    const task = WORKBOOK_GEOMETRY_TASKS.find((entry) => entry.id === "geometry_box_volume_2");
+    expect(task).toBeTruthy();
+    if (!task) return;
+    const passReport = evaluateWorkbookGeometryTask(task, {
+      primary: {
+        label: "box",
+        volume: 2,
+        surfaceArea: 10,
+        vertexCount: 8,
+        faceCount: 12,
+        width: 2,
+        height: 1,
+        depth: 1,
+      },
+    });
+    expect(passReport.status).toBe("pass");
+    expect(passReport.checkResults.every((entry) => entry.passed)).toBe(true);
+
+    const failReport = evaluateWorkbookGeometryTask(task, {
+      primary: {
+        label: "bad-box",
+        volume: 3,
+        surfaceArea: 10,
+        vertexCount: 6,
+        faceCount: 8,
+        width: 0.8,
+        height: 1.1,
+        depth: 1,
+      },
+    });
+    expect(failReport.status).toBe("fail");
+    expect(failReport.checkResults.some((entry) => !entry.passed)).toBe(true);
   });
 
   it("builds geodesic template with expected interaction and compute defaults", () => {

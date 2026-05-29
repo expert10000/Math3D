@@ -342,6 +342,98 @@ export type Workbook = {
   title: string;
   updatedAt: number;
   stages: WorkbookStage[];
+  geometryTask?: WorkbookGeometryTaskAssignment;
+};
+
+export type WorkbookGeometryTaskMetric =
+  | "volume"
+  | "surfaceArea"
+  | "vertexCount"
+  | "faceCount"
+  | "width"
+  | "height"
+  | "depth";
+
+export type WorkbookGeometryTaskTarget = "primary" | "comparison";
+
+export type WorkbookGeometryTaskMeasuredObject = {
+  label: string;
+  volume: number;
+  surfaceArea: number;
+  vertexCount: number;
+  faceCount: number;
+  width: number;
+  height: number;
+  depth: number;
+};
+
+export type WorkbookGeometryTaskValidationCheck =
+  | {
+      id: string;
+      description: string;
+      kind: "metric_between";
+      target: WorkbookGeometryTaskTarget;
+      metric: WorkbookGeometryTaskMetric;
+      min: number;
+      max: number;
+    }
+  | {
+      id: string;
+      description: string;
+      kind: "metric_equals";
+      target: WorkbookGeometryTaskTarget;
+      metric: WorkbookGeometryTaskMetric;
+      expected: number;
+      tolerance?: number;
+    }
+  | {
+      id: string;
+      description: string;
+      kind: "metric_relation";
+      leftTarget: WorkbookGeometryTaskTarget;
+      leftMetric: WorkbookGeometryTaskMetric;
+      operator: ">" | ">=" | "<" | "<=" | "==" | "!=";
+      rightTarget: WorkbookGeometryTaskTarget;
+      rightMetric: WorkbookGeometryTaskMetric;
+      tolerance?: number;
+    };
+
+export type WorkbookGeometryTaskSpec = {
+  id: string;
+  title: string;
+  description: string;
+  startingScene: string;
+  expectedResult: string;
+  allowedTools: string[];
+  hints: string[];
+  measurementTargets: string[];
+  validationChecks: WorkbookGeometryTaskValidationCheck[];
+};
+
+export type WorkbookGeometryTaskValidationCheckResult = {
+  id: string;
+  description: string;
+  passed: boolean;
+  message: string;
+};
+
+export type WorkbookGeometryTaskValidationReport = {
+  status: "pass" | "fail" | "insufficient_data";
+  summary: string;
+  evaluatedAt: number;
+  checkResults: WorkbookGeometryTaskValidationCheckResult[];
+};
+
+export type WorkbookGeometryTaskAssignment = {
+  taskId: string;
+  spec: WorkbookGeometryTaskSpec;
+  lastValidation?: WorkbookGeometryTaskValidationReport | null;
+  solutionSnapshotIds?: string[];
+};
+
+export type WorkbookGeometryTaskValidationContext = {
+  primary?: WorkbookGeometryTaskMeasuredObject | null;
+  comparison?: WorkbookGeometryTaskMeasuredObject | null;
 };
 
 export type WorkbookTemplateBlockSpec = {
@@ -1100,6 +1192,370 @@ export const WORKBOOK_TEMPLATES: WorkbookTemplateSpec[] = [
     ],
   },
 ];
+
+const getTaskMetricValue = (
+  obj: WorkbookGeometryTaskMeasuredObject | null | undefined,
+  metric: WorkbookGeometryTaskMetric
+): number | null => {
+  if (!obj) return null;
+  const value = obj[metric];
+  return Number.isFinite(value) ? value : null;
+};
+
+const resolveTaskTarget = (
+  ctx: WorkbookGeometryTaskValidationContext,
+  target: WorkbookGeometryTaskTarget
+): WorkbookGeometryTaskMeasuredObject | null => (target === "primary" ? ctx.primary ?? null : ctx.comparison ?? null);
+
+const compareNumbers = (
+  left: number,
+  right: number,
+  operator: ">" | ">=" | "<" | "<=" | "==" | "!=",
+  tolerance = 0
+): boolean => {
+  if (operator === ">") return left > right;
+  if (operator === ">=") return left >= right;
+  if (operator === "<") return left < right;
+  if (operator === "<=") return left <= right;
+  if (operator === "==") return Math.abs(left - right) <= Math.max(0, tolerance);
+  return Math.abs(left - right) > Math.max(0, tolerance);
+};
+
+export const evaluateWorkbookGeometryTask = (
+  task: WorkbookGeometryTaskSpec,
+  ctx: WorkbookGeometryTaskValidationContext
+): WorkbookGeometryTaskValidationReport => {
+  const results: WorkbookGeometryTaskValidationCheckResult[] = [];
+  let missingData = false;
+  let failedCount = 0;
+
+  for (const check of task.validationChecks) {
+    if (check.kind === "metric_between") {
+      const target = resolveTaskTarget(ctx, check.target);
+      const value = getTaskMetricValue(target, check.metric);
+      if (value == null) {
+        missingData = true;
+        results.push({
+          id: check.id,
+          description: check.description,
+          passed: false,
+          message: `Missing ${check.target} metric ${check.metric}.`,
+        });
+        continue;
+      }
+      const passed = value >= check.min && value <= check.max;
+      if (!passed) failedCount += 1;
+      results.push({
+        id: check.id,
+        description: check.description,
+        passed,
+        message: `${check.metric}=${value.toFixed(4)} expected in [${check.min.toFixed(4)}, ${check.max.toFixed(4)}].`,
+      });
+      continue;
+    }
+
+    if (check.kind === "metric_equals") {
+      const target = resolveTaskTarget(ctx, check.target);
+      const value = getTaskMetricValue(target, check.metric);
+      if (value == null) {
+        missingData = true;
+        results.push({
+          id: check.id,
+          description: check.description,
+          passed: false,
+          message: `Missing ${check.target} metric ${check.metric}.`,
+        });
+        continue;
+      }
+      const tolerance = Math.max(0, check.tolerance ?? 0);
+      const passed = Math.abs(value - check.expected) <= tolerance;
+      if (!passed) failedCount += 1;
+      results.push({
+        id: check.id,
+        description: check.description,
+        passed,
+        message: `${check.metric}=${value.toFixed(4)} expected ${check.expected.toFixed(4)} ± ${tolerance.toFixed(4)}.`,
+      });
+      continue;
+    }
+
+    const leftTarget = resolveTaskTarget(ctx, check.leftTarget);
+    const rightTarget = resolveTaskTarget(ctx, check.rightTarget);
+    const left = getTaskMetricValue(leftTarget, check.leftMetric);
+    const right = getTaskMetricValue(rightTarget, check.rightMetric);
+    if (left == null || right == null) {
+      missingData = true;
+      results.push({
+        id: check.id,
+        description: check.description,
+        passed: false,
+        message: `Missing metric for ${check.leftTarget}.${check.leftMetric} or ${check.rightTarget}.${check.rightMetric}.`,
+      });
+      continue;
+    }
+    const passed = compareNumbers(left, right, check.operator, check.tolerance ?? 0);
+    if (!passed) failedCount += 1;
+    results.push({
+      id: check.id,
+      description: check.description,
+      passed,
+      message: `${check.leftTarget}.${check.leftMetric}=${left.toFixed(4)} ${check.operator} ${check.rightTarget}.${check.rightMetric}=${right.toFixed(4)}.`,
+    });
+  }
+
+  const status: WorkbookGeometryTaskValidationReport["status"] =
+    missingData && !results.some((r) => r.passed)
+      ? "insufficient_data"
+      : failedCount > 0
+        ? "fail"
+        : "pass";
+
+  const summary =
+    status === "pass"
+      ? `All ${results.length} checks passed.`
+      : status === "fail"
+        ? `${failedCount} / ${results.length} checks failed.`
+        : "Insufficient data: select required objects/metrics.";
+
+  return {
+    status,
+    summary,
+    evaluatedAt: Date.now(),
+    checkResults: results,
+  };
+};
+
+export const WORKBOOK_GEOMETRY_TASKS: WorkbookGeometryTaskSpec[] = [
+  {
+    id: "geometry_box_volume_2",
+    title: "Build A Rectangular Box With Volume 2",
+    description: "Create a rectangular box and tune dimensions to hit volume 2 while preserving clean box topology.",
+    startingScene: "Start with a single default box object at world origin.",
+    expectedResult: "A box-like mesh with volume close to 2 and classic box topology.",
+    allowedTools: ["Create > Box", "Transform > Scale", "Object > Convert to Mesh object"],
+    hints: ["Use unit box first, then adjust one axis at a time.", "Keep object axis-aligned for easier measurement."],
+    measurementTargets: ["Volume", "Vertex count", "Face count", "Width vs height"],
+    validationChecks: [
+      { id: "vol", description: "Volume between 1.95 and 2.05", kind: "metric_between", target: "primary", metric: "volume", min: 1.95, max: 2.05 },
+      { id: "verts", description: "Object has 8 vertices", kind: "metric_equals", target: "primary", metric: "vertexCount", expected: 8, tolerance: 0 },
+      { id: "faces", description: "Object has 12 triangular faces", kind: "metric_equals", target: "primary", metric: "faceCount", expected: 12, tolerance: 0 },
+      {
+        id: "shape",
+        description: "Width greater than height",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "width",
+        operator: ">",
+        rightTarget: "primary",
+        rightMetric: "height",
+      },
+    ],
+  },
+  {
+    id: "geometry_extrude_volume_compare",
+    title: "Extrude One Face And Compare Volume",
+    description: "Duplicate your base object, extrude one face on the working object, and verify volume increased.",
+    startingScene: "Create a base box, duplicate it. Keep one copy unchanged as comparison.",
+    expectedResult: "Primary object has larger volume than comparison object after extrusion.",
+    allowedTools: ["Duplicate object", "Mesh edit > Extrude face", "Compare panel A/B"],
+    hints: ["Set selected object to extruded result.", "Assign original object as comparison target."],
+    measurementTargets: ["Volume before/after", "Face count after extrusion"],
+    validationChecks: [
+      {
+        id: "vol_up",
+        description: "Extruded object volume is greater than original",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "volume",
+        operator: ">",
+        rightTarget: "comparison",
+        rightMetric: "volume",
+      },
+      {
+        id: "faces_up",
+        description: "Extruded object has at least as many faces as original",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "faceCount",
+        operator: ">=",
+        rightTarget: "comparison",
+        rightMetric: "faceCount",
+      },
+    ],
+  },
+  {
+    id: "geometry_equal_volume_diff_area",
+    title: "Equal Volume, Different Surface Area",
+    description: "Build two objects with nearly equal volume but visibly different surface area.",
+    startingScene: "Create two independent mesh objects and set one as comparison object.",
+    expectedResult: "Volumes match within tolerance while surface areas differ.",
+    allowedTools: ["Create primitives", "Transform", "Compare panel A/B"],
+    hints: ["A cube and a stretched box can help.", "Tune one dimension while compensating another to keep volume."],
+    measurementTargets: ["Volume difference", "Surface area difference"],
+    validationChecks: [
+      {
+        id: "vol_match",
+        description: "Volumes match within ±0.05",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "volume",
+        operator: "==",
+        rightTarget: "comparison",
+        rightMetric: "volume",
+        tolerance: 0.05,
+      },
+      {
+        id: "area_diff",
+        description: "Surface areas differ by more than 0.1",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "surfaceArea",
+        operator: "!=",
+        rightTarget: "comparison",
+        rightMetric: "surfaceArea",
+        tolerance: 0.1,
+      },
+    ],
+  },
+  {
+    id: "geometry_slice_cone_section_curve",
+    title: "Slice A Cone And Identify Section Curve",
+    description: "Create a cone, slice with a section plane, and promote the section curve object.",
+    startingScene: "Start with one cone object and enable section plane tools.",
+    expectedResult: "A section-curve mesh object is created with non-zero curve geometry.",
+    allowedTools: ["Create > Cone", "Section plane", "Promote section to curve object"],
+    hints: ["Tilt/offset section plane away from apex.", "Promoted curve object should have measurable geometry."],
+    measurementTargets: ["Section object face count", "Section object dimensions"],
+    validationChecks: [
+      { id: "curve_faces", description: "Section curve object has at least 1 face", kind: "metric_between", target: "primary", metric: "faceCount", min: 1, max: 1000000 },
+      { id: "curve_vertices", description: "Section curve object has at least 3 vertices", kind: "metric_between", target: "primary", metric: "vertexCount", min: 3, max: 1000000 },
+    ],
+  },
+  {
+    id: "geometry_bevel_topology_change",
+    title: "Bevel An Edge And Observe Topology Changes",
+    description: "Duplicate object, bevel one edge on the working copy, and compare topology with original.",
+    startingScene: "Create a box, duplicate it, keep original as comparison.",
+    expectedResult: "Beveled object has increased vertex/face counts compared to original.",
+    allowedTools: ["Duplicate object", "Mesh edit > Bevel edge", "Compare panel A/B"],
+    hints: ["Use a clearly visible bevel amount.", "Validate with selected object as beveled copy."],
+    measurementTargets: ["Vertex count delta", "Face count delta"],
+    validationChecks: [
+      {
+        id: "verts_up",
+        description: "Beveled object has more vertices",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "vertexCount",
+        operator: ">",
+        rightTarget: "comparison",
+        rightMetric: "vertexCount",
+      },
+      {
+        id: "faces_up",
+        description: "Beveled object has more faces",
+        kind: "metric_relation",
+        leftTarget: "primary",
+        leftMetric: "faceCount",
+        operator: ">",
+        rightTarget: "comparison",
+        rightMetric: "faceCount",
+      },
+    ],
+  },
+];
+
+const createWorkbookFromGeometryTaskSpec = (
+  task: WorkbookGeometryTaskSpec,
+  makeId: () => string
+): Workbook => {
+  const now = Date.now();
+  return {
+    id: makeId(),
+    title: `Task: ${task.title}`,
+    updatedAt: now,
+    geometryTask: {
+      taskId: task.id,
+      spec: task,
+      lastValidation: null,
+      solutionSnapshotIds: [],
+    },
+    stages: [
+      {
+        id: "define",
+        title: "Define",
+        blocks: [
+          {
+            id: makeId(),
+            type: "text",
+            title: "Task",
+            text: `${task.description}\n\nStarting scene: ${task.startingScene}\n\nExpected result: ${task.expectedResult}`,
+            outputs: [{ id: "text", label: "Text", type: "text" }],
+          },
+        ],
+      },
+      {
+        id: "compute",
+        title: "Compute",
+        blocks: [
+          {
+            id: makeId(),
+            type: "text",
+            title: "Allowed tools + hints",
+            text: `Allowed tools:\n- ${task.allowedTools.join("\n- ")}\n\nHints:\n- ${task.hints.join("\n- ")}`,
+            outputs: [{ id: "text", label: "Text", type: "text" }],
+          },
+        ],
+      },
+      {
+        id: "visualize",
+        title: "Visualize",
+        blocks: [
+          {
+            id: makeId(),
+            type: "visualize",
+            title: "Solution view",
+            inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+            outputs: [{ id: "snapshot", label: "Snapshot", type: "snapshot" }],
+            visualize: { live: true, snapshotA: null, snapshotB: null, notes: "Capture your final task solution view." },
+          },
+        ],
+      },
+      {
+        id: "explain",
+        title: "Explain / Check",
+        blocks: [
+          {
+            id: makeId(),
+            type: "assert",
+            title: "Validation checks",
+            inputs: [{ id: "dataset", label: "Dataset", type: "dataset" }],
+            assert: {
+              expected: task.validationChecks.map((check) => `- ${check.description}`).join("\n"),
+              status: "pending",
+            },
+          },
+          {
+            id: makeId(),
+            type: "text",
+            title: "Measurements to report",
+            text: task.measurementTargets.map((target) => `- ${target}`).join("\n"),
+            outputs: [{ id: "text", label: "Text", type: "text" }],
+          },
+        ],
+      },
+    ],
+  };
+};
+
+export function createWorkbookFromGeometryTask(
+  taskId: string,
+  makeId: () => string
+): Workbook | null {
+  const task = WORKBOOK_GEOMETRY_TASKS.find((entry) => entry.id === taskId);
+  if (!task) return null;
+  return createWorkbookFromGeometryTaskSpec(task, makeId);
+}
 
 export const WORKBOOK_PROBLEM_PACKS: WorkbookProblemPack[] = [
   {
