@@ -11988,17 +11988,37 @@ const App: React.FC = () => {
         ),
         geometrySelectedSceneObject.mesh.label
       );
+      const promotionHistory = [
+        ...(geometrySelectedSceneObject.promotion?.sourceOperationHistory ?? []),
+        "Pipeline: Bake transform into mesh",
+      ].slice(-20);
+      const promoted = promoteGeometryToMesh({
+        mesh: bakedMesh,
+        sourceGeometryId: geometrySelectedSceneObject.promotion?.sourceGeometryId ?? geometrySelectedSceneObject.id,
+        sourceOperationHistory: promotionHistory,
+        promotionMode: geometrySelectedSceneObject.promotion?.promotionMode ?? geometryPromotionMode,
+        createdAt: geometrySelectedSceneObject.promotion?.createdAt,
+        labelOverride: bakedMesh.label,
+      });
       setGeometryDatasetMeshObjects((prev) =>
         prev.map((obj) =>
           obj.id === geometrySelectedSceneObject.id
             ? {
                 ...obj,
-                mesh: bakedMesh,
+                mesh: toDetachedMeshData(promoted.mesh, bakedMesh.label),
                 transform: identity,
+                promotion: promoted.metadata,
               }
             : obj
         )
       );
+      if (promoted.frozen) {
+        setGeometryLockedObjectIds((prev) => {
+          const next = new Set(prev);
+          next.add(geometrySelectedSceneObject.id);
+          return next;
+        });
+      }
       setGeometryBakeError(null);
       return;
     }
@@ -12008,22 +12028,43 @@ const App: React.FC = () => {
       setGeometryBakeError("Selected object has no mesh to bake.");
       return;
     }
-    const replacement: GeometryDatasetMeshObject = {
-      id: geometrySelectedSceneObject.id,
-      name: geometrySelectedSceneObject.name,
+    const promoted = promoteGeometryToMesh({
       mesh: toDetachedMeshData(
         transformSurfaceMeshByGeometryTransform(sourceMesh, geometrySelectedSceneObject.transform),
         `${geometrySelectedSceneObject.name} (baked mesh)`
       ),
+      sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceOperationHistory: ["Pipeline: Bake transform into mesh"],
+      promotionMode: geometryPromotionMode,
+      labelOverride: `${geometrySelectedSceneObject.name} (baked mesh)`,
+    });
+    const replacement: GeometryDatasetMeshObject = {
+      id: geometrySelectedSceneObject.id,
+      name: geometrySelectedSceneObject.name,
+      mesh: toDetachedMeshData(promoted.mesh, `${geometrySelectedSceneObject.name} (baked mesh)`),
       transform: identity,
       visible: geometrySelectedSceneObject.visible,
       material: normalizeGeometryMaterial((geometrySelectedSceneObject as { material?: unknown })?.material),
+      promotion: promoted.metadata,
     };
     setGeometryObjects((prev) => prev.filter((obj) => obj.id !== geometrySelectedSceneObject.id));
     setGeometryDatasetMeshObjects((prev) => [replacement, ...prev.filter((obj) => obj.id !== geometrySelectedSceneObject.id)]);
+    if (promoted.frozen) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.add(replacement.id);
+        return next;
+      });
+    }
     setGeometrySelectedObjectId(replacement.id);
     setGeometryBakeError(null);
-  }, [geometryLockedObjectIds, geometrySelectedSceneObject, proceduralMeshSet.meshes, queueGeometryHistoryIntent]);
+  }, [
+    geometryLockedObjectIds,
+    geometryPromotionMode,
+    geometrySelectedSceneObject,
+    proceduralMeshSet.meshes,
+    queueGeometryHistoryIntent,
+  ]);
   const geometryEulerSelectedMeshCounts = useMemo(
     () => (geometrySelectedSceneMesh ? computeTriangleMeshCellCounts(geometrySelectedSceneMesh) : null),
     [geometrySelectedSceneMesh]
@@ -15052,11 +15093,22 @@ const App: React.FC = () => {
       return;
     }
     const created: GeometryDatasetMeshObject[] = visibleSceneMeshes.map((entry, idx) => {
-      const mesh = computeVertexNormals(toDetachedMeshData(entry.mesh, `${entry.object.name} (mesh group)`));
+      const sourceMesh = computeVertexNormals(toDetachedMeshData(entry.mesh, `${entry.object.name} (mesh group)`));
+      const sourceHistory =
+        "mesh" in entry.object
+          ? [...(entry.object.promotion?.sourceOperationHistory ?? []), "Pipeline: Bake visible as mesh group"].slice(-20)
+          : ["Pipeline: Bake visible as mesh group"];
+      const promoted = promoteGeometryToMesh({
+        mesh: sourceMesh,
+        sourceGeometryId: entry.object.id,
+        sourceOperationHistory: sourceHistory,
+        promotionMode: geometryPromotionMode,
+        labelOverride: `${entry.object.name} (mesh group)`,
+      });
       return {
         id: makeId(),
         name: `${entry.object.name} mesh ${idx + 1}`,
-        mesh,
+        mesh: toDetachedMeshData(promoted.mesh, `${entry.object.name} (mesh group)`),
         transform: {
           position: { x: 0, y: 0, z: 0 },
           rotation: { x: 0, y: 0, z: 0 },
@@ -15064,11 +15116,22 @@ const App: React.FC = () => {
         },
         visible: entry.object.visible,
         material: normalizeGeometryMaterial((entry.object as { material?: unknown })?.material),
+        promotion: promoted.metadata,
       };
     });
     setGeometryDatasetMeshObjects((prev) => [...created, ...prev]);
+    const frozenIds = created
+      .filter((entry) => entry.promotion?.promotionMode === "frozen_baked_object")
+      .map((entry) => entry.id);
+    if (frozenIds.length) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        frozenIds.forEach((id) => next.add(id));
+        return next;
+      });
+    }
     setGeometryCreateActionStatus(`Mesh group created (${created.length} mesh object${created.length === 1 ? "" : "s"}).`);
-  }, [proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
+  }, [geometryPromotionMode, proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
   const handleExportAllVisibleGeometryObjectsGlb = useCallback(async () => {
     setGeometryBakeError(null);
     const visibleSceneMeshes = proceduralMeshSet.meshes
@@ -15259,24 +15322,32 @@ const App: React.FC = () => {
         indices: mesh.indices,
       }))
     );
+    const sectionMesh = computeVertexNormals(
+      toDetachedMeshData(
+        {
+          label: `${geometrySelectedSceneObject.name} section curve`,
+          positions: merged.positions,
+          indices: merged.indices,
+          source: {
+            kind: "geometryObject",
+            objectId: geometrySelectedSceneObject.id,
+            objectName: geometrySelectedSceneObject.name,
+          },
+        },
+        `${geometrySelectedSceneObject.name} section curve`
+      )
+    );
+    const promoted = promoteGeometryToMesh({
+      mesh: sectionMesh,
+      sourceGeometryId: geometrySelectedSceneObject.id,
+      sourceOperationHistory: ["Pipeline: Promote section as mesh object"],
+      promotionMode: geometryPromotionMode,
+      labelOverride: `${geometrySelectedSceneObject.name} section curve`,
+    });
     const sectionObject: GeometryDatasetMeshObject = {
       id: makeId(),
       name: `${geometrySelectedSceneObject.name} section curve`,
-      mesh: computeVertexNormals(
-        toDetachedMeshData(
-          {
-            label: `${geometrySelectedSceneObject.name} section curve`,
-            positions: merged.positions,
-            indices: merged.indices,
-            source: {
-              kind: "geometryObject",
-              objectId: geometrySelectedSceneObject.id,
-              objectName: geometrySelectedSceneObject.name,
-            },
-          },
-          `${geometrySelectedSceneObject.name} section curve`
-        )
-      ),
+      mesh: toDetachedMeshData(promoted.mesh, `${geometrySelectedSceneObject.name} section curve`),
       transform: {
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
@@ -15289,8 +15360,16 @@ const App: React.FC = () => {
         roughness: 0.45,
         metalness: 0.05,
       },
+      promotion: promoted.metadata,
     };
     setGeometryDatasetMeshObjects((prev) => [sectionObject, ...prev]);
+    if (promoted.frozen) {
+      setGeometryLockedObjectIds((prev) => {
+        const next = new Set(prev);
+        next.add(sectionObject.id);
+        return next;
+      });
+    }
     setGeometrySelectedObjectId(sectionObject.id);
     upsertGeometryDerivedProduct(geometrySelectedSceneObject, "section", {
       status: "ready",
@@ -15300,6 +15379,7 @@ const App: React.FC = () => {
     });
     setGeometryCreateActionStatus("Section promoted to curve object.");
   }, [
+    geometryPromotionMode,
     geometrySectionPreview,
     geometrySelectedSceneMesh?.positions,
     geometrySelectedSceneObject,
@@ -15817,10 +15897,17 @@ const App: React.FC = () => {
       let meshObject: GeometryDatasetMeshObject | null = null;
       if (renderData.mesh?.positions?.length) {
         const meshId = makeId();
+        const promoted = promoteGeometryToMesh({
+          mesh: cloneSurfaceMeshData(renderData.mesh, `${sceneLabel} (faces)`),
+          sourceGeometryId: null,
+          sourceOperationHistory: [`problem-scene:${sceneLabel}`, "Clone into Geometry 3D"],
+          promotionMode: geometryPromotionMode,
+          labelOverride: `${sceneLabel} (faces)`,
+        });
         meshObject = {
           id: meshId,
           name: `${sceneLabel} (faces)`,
-          mesh: cloneSurfaceMeshData(renderData.mesh, `${sceneLabel} (faces)`),
+          mesh: toDetachedMeshData(promoted.mesh, `${sceneLabel} (faces)`),
           transform: {
             position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
@@ -15828,6 +15915,7 @@ const App: React.FC = () => {
           },
           visible: true,
           material: { color: 0x8aa4ff, opacity: 0.95 },
+          promotion: promoted.metadata,
         };
       }
 
@@ -15840,7 +15928,14 @@ const App: React.FC = () => {
         setGeometryObjects((prev) => [...clonedObjects, ...prev]);
       }
       if (meshObject) {
-        setGeometryDatasetMeshObjects((prev) => [meshObject as GeometryDatasetMeshObject, ...prev]);
+        setGeometryDatasetMeshObjects((prev) => [meshObject, ...prev]);
+        if (meshObject.promotion?.promotionMode === "frozen_baked_object") {
+          setGeometryLockedObjectIds((prev) => {
+            const next = new Set(prev);
+            next.add(meshObject.id);
+            return next;
+          });
+        }
       }
 
       const selectedId = clonedObjects[0]?.id ?? meshObject?.id ?? null;
@@ -15870,7 +15965,7 @@ const App: React.FC = () => {
         onCloneProblemScene as EventListener
       );
     };
-  }, []);
+  }, [geometryPromotionMode]);
 
   // complex map sweep
   const [complexMapSpec, setComplexMapSpec] = useState<ComplexMapSweepSpec>(COMPLEX_MAP_DEFAULT_SPEC);
@@ -34015,6 +34110,13 @@ case "mobius":
           buildSurfaceMeshFromGeometry(hullGeometry, `${source.name} convex hull`, { kind: "convexHull" }, { mergeVertices: true })
         );
         hullGeometry.dispose();
+        const promoted = promoteGeometryToMesh({
+          mesh: hullMesh,
+          sourceGeometryId: source.id,
+          sourceOperationHistory: ["Derived: Convex hull"],
+          promotionMode: geometryPromotionMode,
+          labelOverride: `${source.name} convex hull`,
+        });
         const existing = unifiedManualDerived.find(
           (entry) =>
             (entry.operation ?? geometryDerivedOperationFromType(entry.type)) === "convex-hull" &&
@@ -34024,7 +34126,7 @@ case "mobius":
         const nextObject: GeometryDatasetMeshObject = {
           id: resultObjectId,
           name: `${source.name} convex hull`,
-          mesh: hullMesh,
+          mesh: toDetachedMeshData(promoted.mesh, `${source.name} convex hull`),
           transform: {
             position: { x: 0, y: 0, z: 0 },
             rotation: { x: 0, y: 0, z: 0 },
@@ -34037,12 +34139,20 @@ case "mobius":
             roughness: 0.28,
             metalness: 0.12,
           },
+          promotion: promoted.metadata,
         };
         setGeometryDatasetMeshObjects((prev) =>
           prev.some((entry) => entry.id === resultObjectId)
             ? prev.map((entry) => (entry.id === resultObjectId ? nextObject : entry))
             : [nextObject, ...prev]
         );
+        if (promoted.frozen) {
+          setGeometryLockedObjectIds((prev) => {
+            const next = new Set(prev);
+            next.add(resultObjectId);
+            return next;
+          });
+        }
         upsertGeometryDerivedProduct(source, operation, {
           status: "ready",
           displayState: "ready",
@@ -34064,6 +34174,7 @@ case "mobius":
     },
     [
       geometryDatasetMeshObjects,
+      geometryPromotionMode,
       geometryObjects,
       geometrySelectedSceneObject?.id,
       geometrySectionPreview,
