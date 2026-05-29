@@ -39,6 +39,14 @@ function getPlatformPath() {
   }
 }
 
+function getTargetPlatform() {
+  return process.env.npm_config_platform || os.platform();
+}
+
+function getTargetArch() {
+  return process.env.npm_config_arch || process.arch;
+}
+
 function getElectronPaths() {
   const packageJsonPath = require.resolve("electron/package.json");
   const electronDir = path.dirname(packageJsonPath);
@@ -51,6 +59,18 @@ function getElectronPaths() {
       ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, platformPath)
       : path.join(electronDir, "dist", platformPath),
   };
+}
+
+function unsetEnvKeyCaseInsensitive(target, key) {
+  const needle = key.toLowerCase();
+  const removed = [];
+  for (const name of Object.keys(target)) {
+    if (name.toLowerCase() === needle) {
+      removed.push(`${name}=${target[name]}`);
+      delete target[name];
+    }
+  }
+  return removed;
 }
 
 function writeMarkerIfExecutableExists(paths) {
@@ -75,13 +95,10 @@ function runElectronInstall(timeoutMs) {
   const { electronDir } = getElectronPaths();
   const installScript = path.join(electronDir, "install.js");
   const childEnv = { ...process.env };
-  const skipDownloadFlag = childEnv.ELECTRON_SKIP_BINARY_DOWNLOAD;
-  if (skipDownloadFlag != null && skipDownloadFlag !== "") {
+  const removedSkipFlags = unsetEnvKeyCaseInsensitive(childEnv, "ELECTRON_SKIP_BINARY_DOWNLOAD");
+  if (removedSkipFlags.length > 0) {
     // The ensure script is an explicit repair path; always allow binary download here.
-    delete childEnv.ELECTRON_SKIP_BINARY_DOWNLOAD;
-    process.stderr.write(
-      `[ensure-electron] Ignoring ELECTRON_SKIP_BINARY_DOWNLOAD=${skipDownloadFlag} during repair\n`
-    );
+    process.stderr.write(`[ensure-electron] Ignoring ${removedSkipFlags.join(", ")} during repair\n`);
   }
 
   const result = spawnSync(process.execPath, [installScript], {
@@ -100,6 +117,40 @@ function runElectronInstall(timeoutMs) {
 
   if (result.status !== 0) {
     throw new Error(`Electron install repair failed with exit code ${result.status ?? "unknown"}.`);
+  }
+}
+
+async function downloadElectronArtifactDirect(paths, timeoutMs) {
+  const { downloadArtifact } = require("@electron/get");
+  const extract = require("extract-zip");
+  const { version } = require("electron/package.json");
+  const distPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || path.join(paths.electronDir, "dist");
+  fs.rmSync(distPath, { recursive: true, force: true });
+  fs.mkdirSync(distPath, { recursive: true });
+
+  const zipPath = await downloadArtifact({
+    version,
+    artifactName: "electron",
+    force: process.env.force_no_cache === "true",
+    cacheRoot: process.env.electron_config_cache,
+    checksums:
+      process.env.electron_use_remote_checksums || process.env.npm_config_electron_use_remote_checksums
+        ? undefined
+        : require("electron/checksums.json"),
+    platform: getTargetPlatform(),
+    arch: getTargetArch(),
+    downloadOptions: {
+      timeout: {
+        request: timeoutMs,
+      },
+    },
+  });
+
+  await extract(zipPath, { dir: distPath });
+  const srcTypeDefPath = path.join(distPath, "electron.d.ts");
+  const targetTypeDefPath = path.join(paths.electronDir, "electron.d.ts");
+  if (fs.existsSync(srcTypeDefPath)) {
+    fs.renameSync(srcTypeDefPath, targetTypeDefPath);
   }
 }
 
@@ -149,6 +200,12 @@ export async function ensureElectronInstalled() {
     );
     try {
       runElectronInstall(timeoutMs);
+      if (!fs.existsSync(paths.executablePath)) {
+        process.stderr.write(
+          "[ensure-electron] electron/install.js finished without binary; trying direct artifact download\n"
+        );
+        await downloadElectronArtifactDirect(paths, timeoutMs);
+      }
       if (writeMarkerIfExecutableExists(paths)) {
         process.stderr.write("[ensure-electron] Restored electron/path.txt after repair\n");
       }
