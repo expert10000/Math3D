@@ -198,9 +198,72 @@ function runElectronInstall(timeoutMs) {
   }
 }
 
+async function extractElectronZip(paths, zipPath, distPath, timeoutMs) {
+  const extract = require("extract-zip");
+  let entryCount = 0;
+  const startedAt = Date.now();
+
+  try {
+    await withHardTimeout("zip extract (node)", timeoutMs, async () => {
+      await extract(zipPath, {
+        dir: distPath,
+        onEntry: () => {
+          entryCount += 1;
+          if (entryCount % 250 === 0) {
+            process.stderr.write(
+              `[ensure-electron] zip extract progress (node): entries=${entryCount} elapsed=${formatDurationMs(startedAt)}\n`
+            );
+          }
+        },
+      });
+    });
+    process.stderr.write(
+      `[ensure-electron] zip extract (node) completed entries=${entryCount} elapsed=${formatDurationMs(startedAt)}\n`
+    );
+    return;
+  } catch (error) {
+    process.stderr.write(
+      `[ensure-electron] zip extract (node) failed after ${formatDurationMs(startedAt)}: ${String(error?.message ?? error)}\n`
+    );
+    if (getTargetPlatform() !== "win32") {
+      throw error;
+    }
+  }
+
+  const psStart = Date.now();
+  const psCommand = [
+    "$ErrorActionPreference='Stop'",
+    `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${distPath.replace(/'/g, "''")}' -Force`,
+  ].join("; ");
+  const result = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", psCommand], {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+
+  const psStdout = tailText(result.stdout);
+  const psStderr = tailText(result.stderr);
+  process.stderr.write(
+    `[ensure-electron] zip extract (powershell) finished in ${formatDurationMs(psStart)} status=${result.status} signal=${result.signal ?? "none"}\n`
+  );
+  process.stderr.write(`[ensure-electron] zip extract (powershell) stdout (tail):\n${psStdout}\n`);
+  process.stderr.write(`[ensure-electron] zip extract (powershell) stderr (tail):\n${psStderr}\n`);
+
+  if (result.error) {
+    if (result.error.code === "ETIMEDOUT") {
+      throw new Error(`zip extract (powershell) timed out after ${timeoutMs}ms.`);
+    }
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `zip extract (powershell) failed with exit code ${result.status ?? "unknown"}.\n${psStderr}`
+    );
+  }
+}
+
 async function downloadElectronArtifactDirect(paths, timeoutMs, forceFreshDownload) {
   const { downloadArtifact } = require("@electron/get");
-  const extract = require("extract-zip");
   const { version } = require("electron/package.json");
   const distPath = path.join(paths.electronDir, "dist");
   const startedAt = Date.now();
@@ -234,7 +297,7 @@ async function downloadElectronArtifactDirect(paths, timeoutMs, forceFreshDownlo
   process.stderr.write(`[ensure-electron] Downloaded Electron artifact: ${zipPath} (${zipBytes} bytes)\n`);
 
   const extractStartedAt = Date.now();
-  await extract(zipPath, { dir: distPath });
+  await extractElectronZip(paths, zipPath, distPath, timeoutMs);
   process.stderr.write(`[ensure-electron] Extract completed in ${formatDurationMs(extractStartedAt)}\n`);
   const srcTypeDefPath = path.join(distPath, "electron.d.ts");
   const targetTypeDefPath = path.join(paths.electronDir, "electron.d.ts");
