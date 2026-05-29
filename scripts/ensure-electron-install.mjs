@@ -241,6 +241,21 @@ export async function ensureElectronInstalled() {
   throw new Error(`Electron install repair failed.\n[ensure-electron] ${stateDetails}`);
 }
 
+export function getElectronExecutablePath() {
+  return getElectronPaths().executablePath;
+}
+
+export async function ensureElectronExecutablePath() {
+  await ensureElectronInstalled();
+  const executablePath = getElectronExecutablePath();
+  if (!fs.existsSync(executablePath)) {
+    throw new Error(
+      `[ensure-electron] executable missing after ensure: ${executablePath}`
+    );
+  }
+  return executablePath;
+}
+
 async function main() {
   await ensureElectronInstalled();
 }
