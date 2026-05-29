@@ -25,6 +25,10 @@ jobs:
   build-and-test:
     runs-on: windows-2022
     timeout-minutes: 90
+    env:
+      electron_config_cache: ${{ github.workspace }}\.cache\electron
+      MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS: "600000"
+      MATH3D_ELECTRON_DOWNLOAD_RETRIES: "2"
 
     steps:
       - name: Checkout
@@ -45,6 +49,14 @@ jobs:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: python/worker/requirements.freeze.txt
+
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.electron_config_cache }}
+          key: ${{ runner.os }}-electron-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-cache-
 
       - name: Install npm dependencies (root + renderer, retry)
         shell: pwsh

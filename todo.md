@@ -291,3 +291,16 @@ Actions
 [Save vector field]
 
 PR21, 22, 23 - shuul imp[lement full
+
+Exactly: previously it was mostly not explicitly checked before tests.
+
+What changed:
+
+Until May 28, 2026 (07d6c05), test:app:* scripts did not run a dedicated Electron repair/check step first.
+From May 28, 2026, pretest:... runs ensure:electron.
+From May 29, 2026 (9e2fbdd), that check got a hard 10-minute timeout.
+Why tests still used to pass:
+
+npm ci usually installs Electron correctly, so no extra check was needed.
+On runners where install was partial/corrupted/cache-odd, tests could still pass sometimes if Electron happened to be present enough.
+The new ensure:electron made this explicit and deterministic, so now CI fails early instead of failing later or passing by luck
