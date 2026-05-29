@@ -112,6 +112,15 @@ import {
   type GeometryGalleryCategoryFilter,
   type GeometryGalleryRecipe,
 } from "./geometry/objectGalleryCatalog";
+import {
+  filterGeometryDerivedProducts,
+  filterGeometryMeshKeyRefs,
+  filterGeometryObjectIdRefs,
+  filterGeometryRecordByObjectIds,
+  filterGeometrySavedSectionCurves,
+  sanitizeGeometryComparePair,
+  sanitizeGeometryPickRef,
+} from "./geometry/stabilityGuards";
 
 import type { GaussPoint, GaussColorMode } from "./components/gaussMapUtils";
 import type { SurfaceSampleSet } from "./math/sampling/surfaceSampling";
@@ -7694,24 +7703,14 @@ const App: React.FC = () => {
       if (geometryCompareObjectBId !== null) setGeometryCompareObjectBId(null);
       return;
     }
-    const ids = geometryCompareObjectOptions.map((entry) => entry.id);
-    const first = ids[0] ?? null;
-    const second = ids.find((id) => id !== first) ?? first;
-    if (!geometryCompareObjectAId || !ids.includes(geometryCompareObjectAId)) {
-      setGeometryCompareObjectAId(geometrySelectedObjectId && ids.includes(geometrySelectedObjectId) ? geometrySelectedObjectId : first);
-    }
-    if (!geometryCompareObjectBId || !ids.includes(geometryCompareObjectBId) || geometryCompareObjectBId === geometryCompareObjectAId) {
-      const preferredSecond =
-        geometrySelectedObjectId && geometrySelectedObjectId !== (geometryCompareObjectAId ?? first) && ids.includes(geometrySelectedObjectId)
-          ? geometrySelectedObjectId
-          : ids.find((id) => id !== (geometryCompareObjectAId ?? first)) ?? second;
-      setGeometryCompareObjectBId(preferredSecond);
-    }
+    const ids = new Set(geometryCompareObjectOptions.map((entry) => entry.id));
+    const sanitized = sanitizeGeometryComparePair(geometryCompareObjectAId, geometryCompareObjectBId, ids);
+    if (sanitized.aId !== geometryCompareObjectAId) setGeometryCompareObjectAId(sanitized.aId);
+    if (sanitized.bId !== geometryCompareObjectBId) setGeometryCompareObjectBId(sanitized.bId);
   }, [
     geometryCompareObjectAId,
     geometryCompareObjectBId,
     geometryCompareObjectOptions,
-    geometrySelectedObjectId,
   ]);
   useEffect(() => {
     if (!geometrySelectedSceneObject) {
@@ -7820,6 +7819,88 @@ const App: React.FC = () => {
     return id;
   }, [geometryObjectIdSet]);
   const [geometryObjectRevisionById, setGeometryObjectRevisionById] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (geometrySelectedObjectId && !geometryObjectIdSet.has(geometrySelectedObjectId)) {
+      setGeometrySelectedObjectId(null);
+    }
+    const sanitizedCompare = sanitizeGeometryComparePair(
+      geometryCompareObjectAId,
+      geometryCompareObjectBId,
+      geometryObjectIdSet
+    );
+    if (sanitizedCompare.aId !== geometryCompareObjectAId) setGeometryCompareObjectAId(sanitizedCompare.aId);
+    if (sanitizedCompare.bId !== geometryCompareObjectBId) setGeometryCompareObjectBId(sanitizedCompare.bId);
+
+    const sanitizedBooleanPair = sanitizeGeometryComparePair(
+      geometryBooleanObjectAId,
+      geometryBooleanObjectBId,
+      geometryObjectIdSet
+    );
+    if (sanitizedBooleanPair.aId !== geometryBooleanObjectAId) setGeometryBooleanObjectAId(sanitizedBooleanPair.aId);
+    if (sanitizedBooleanPair.bId !== geometryBooleanObjectBId) setGeometryBooleanObjectBId(sanitizedBooleanPair.bId);
+    if (sanitizedBooleanPair.aId !== geometryBooleanObjectAId || sanitizedBooleanPair.bId !== geometryBooleanObjectBId) {
+      setGeometryBooleanPreviewMeshes([]);
+      setGeometryBooleanPreviewCurveLines([]);
+      setGeometryBooleanPreviewWarnings([]);
+      setGeometryBooleanPreviewStatus(null);
+    }
+
+    const sanitizedPick = sanitizeGeometryPickRef(geometryProceduralPick, geometryObjectIdSet);
+    if (sanitizedPick !== geometryProceduralPick) setGeometryProceduralPick(null);
+    const sanitizedHoverPick = sanitizeGeometryPickRef(geometryProceduralHoverPick, geometryObjectIdSet);
+    if (sanitizedHoverPick !== geometryProceduralHoverPick) setGeometryProceduralHoverPick(null);
+
+    if (
+      geometryPendingPlacementObjectId &&
+      !geometryObjectIdSet.has(geometryPendingPlacementObjectId)
+    ) {
+      setGeometryPendingPlacementObjectId(null);
+      setGeometryCreatePlacementModeActive(false);
+      setGeometryCreatePlacementStatus(null);
+      setGeometrySnapPreview(null);
+    }
+    if (geometryMeshInfoAccentObjectId && !geometryObjectIdSet.has(geometryMeshInfoAccentObjectId)) {
+      setGeometryMeshInfoAccentObjectId(null);
+    }
+
+    setGeometryMeasuredEdges((prev) => {
+      const next = filterGeometryMeshKeyRefs(prev, geometryObjectIdSet);
+      return next.length === prev.length ? prev : next;
+    });
+    setGeometryMarkedEdges((prev) => {
+      const next = filterGeometryMeshKeyRefs(prev, geometryObjectIdSet);
+      return next.length === prev.length ? prev : next;
+    });
+    setGeometryAnnotations((prev) => {
+      const next = filterGeometryObjectIdRefs(prev, geometryObjectIdSet);
+      return next.length === prev.length ? prev : next;
+    });
+    setGeometrySavedSectionCurves((prev) => {
+      const next = filterGeometrySavedSectionCurves(prev, geometryObjectIdSet);
+      return next.length === prev.length ? prev : next;
+    });
+    setGeometryObjectHistoryById((prev) => {
+      const prevKeys = Object.keys(prev);
+      if (!prevKeys.some((key) => !geometryObjectIdSet.has(key))) return prev;
+      return filterGeometryRecordByObjectIds(prev, geometryObjectIdSet);
+    });
+    setGeometryObjectRevisionById((prev) => {
+      const prevKeys = Object.keys(prev);
+      if (!prevKeys.some((key) => !geometryObjectIdSet.has(key))) return prev;
+      return filterGeometryRecordByObjectIds(prev, geometryObjectIdSet);
+    });
+  }, [
+    geometryBooleanObjectAId,
+    geometryBooleanObjectBId,
+    geometryCompareObjectAId,
+    geometryCompareObjectBId,
+    geometryMeshInfoAccentObjectId,
+    geometryObjectIdSet,
+    geometryPendingPlacementObjectId,
+    geometryProceduralHoverPick,
+    geometryProceduralPick,
+    geometrySelectedObjectId,
+  ]);
   const geometryHistoryFingerprintRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     const nextFingerprint = new Map<string, string>();
@@ -34156,6 +34237,12 @@ case "mobius":
 
   const [unifiedManualDerived, setUnifiedManualDerived] = useState<UnifiedManualDerived[]>([]);
   const [unifiedTreeSelectedId, setUnifiedTreeSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    setUnifiedManualDerived((prev) => {
+      const next = filterGeometryDerivedProducts(prev, geometryObjectIdSet);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [geometryObjectIdSet]);
 
   const addUnifiedDerivedNode = useCallback(
     (
