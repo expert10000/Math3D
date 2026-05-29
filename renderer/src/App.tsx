@@ -346,6 +346,7 @@ type GeometryProceduralPanelTab =
   | "create"
   | "scene"
   | "object"
+  | "construct"
   | "transform"
   | "view"
   | "history"
@@ -457,8 +458,10 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
   "create",
   "scene",
   "object",
+  "construct",
   "transform",
   "view",
+  "history",
   "analysis",
   "theory",
   "script",
@@ -1954,6 +1957,83 @@ type GeometryProbeSelectionDetails = {
   edgeVertexPair: [number, number] | null;
   edgePoints: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
   faceVertices: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] | null;
+};
+type GeometryDerivedConstructionType =
+  | "vertex-point-marker"
+  | "vertex-coordinate-label"
+  | "vertex-normal-endpoint"
+  | "vertex-translated-copy-point"
+  | "edge-midpoint"
+  | "edge-direction-vector"
+  | "edge-perpendicular-bisector-line"
+  | "edge-aligned-axis"
+  | "edge-equal-length-copied-segment"
+  | "face-centroid"
+  | "face-normal-line"
+  | "face-tangent-plane-preview"
+  | "face-offset-plane"
+  | "face-parallel-face-plane"
+  | "object-centroid"
+  | "object-bounding-box"
+  | "object-principal-axes-preview"
+  | "object-symmetry-plane-preview"
+  | "object-circumscribed-sphere-preview"
+  | "object-inscribed-reference-sphere";
+type GeometryDerivedConstructionSourceKind = "vertex" | "edge" | "face" | "object";
+type GeometryDerivedConstructionStatus = "valid" | "stale" | "invalid";
+type GeometryDerivedConstructionObject = {
+  id: string;
+  type: GeometryDerivedConstructionType;
+  sourceKind: GeometryDerivedConstructionSourceKind;
+  sourceObjectId: string;
+  sourceFaceIndex?: number | null;
+  sourceVertexIndex?: number | null;
+  sourceEdgeVertexPair?: [number, number] | null;
+  sourcePoint?: { x: number; y: number; z: number } | null;
+  sourceNormal?: { x: number; y: number; z: number } | null;
+  params?: {
+    distance?: number;
+    length?: number;
+  };
+  dependent: boolean;
+  visible: boolean;
+  createdAt: number;
+};
+type GeometryDerivedConstructionEvaluation = {
+  object: GeometryDerivedConstructionObject;
+  status: GeometryDerivedConstructionStatus;
+  sourceObjectName: string;
+  typeLabel: string;
+  origin: { x: number; y: number; z: number } | null;
+  direction: { x: number; y: number; z: number } | null;
+  sourceFaceIndex: number | null;
+  sourceVertexIndex: number | null;
+  sourceEdgeVertexPair: [number, number] | null;
+  groups: OverlayPolylineGroup[];
+  pointSets: OverlayPointSet[];
+  labelSets: OverlayLabelSet[];
+};
+const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstructionType, string> = {
+  "vertex-point-marker": "Point Marker",
+  "vertex-coordinate-label": "Coordinate Label",
+  "vertex-normal-endpoint": "Normal Endpoint",
+  "vertex-translated-copy-point": "Translated Copy Point",
+  "edge-midpoint": "Midpoint",
+  "edge-direction-vector": "Direction Vector",
+  "edge-perpendicular-bisector-line": "Perpendicular Bisector Line",
+  "edge-aligned-axis": "Edge-Aligned Axis",
+  "edge-equal-length-copied-segment": "Equal-Length Copied Segment",
+  "face-centroid": "Face Centroid",
+  "face-normal-line": "Face Normal Line",
+  "face-tangent-plane-preview": "Tangent Plane Preview",
+  "face-offset-plane": "Offset Plane",
+  "face-parallel-face-plane": "Parallel Face Plane",
+  "object-centroid": "Centroid",
+  "object-bounding-box": "Bounding Box",
+  "object-principal-axes-preview": "Principal Axes Preview",
+  "object-symmetry-plane-preview": "Symmetry Plane Preview",
+  "object-circumscribed-sphere-preview": "Circumscribed Sphere Preview",
+  "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
 };
 type GeometryMeasuredEdgeEntry = {
   id: string;
@@ -7168,6 +7248,11 @@ const App: React.FC = () => {
   const [geometryAnnotations, setGeometryAnnotations] = useState<GeometryAnnotationEntry[]>([]);
   const [geometryAnnotationCustomText, setGeometryAnnotationCustomText] = useState("Label");
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
+  const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
+  const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
+  const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
+  const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
+  const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
   const [geometryFaceExtrudeDistance, setGeometryFaceExtrudeDistance] = useState(0.15);
   const [geometryFaceInsetRatio, setGeometryFaceInsetRatio] = useState(0.2);
   const [geometryEdgeBevelAmount, setGeometryEdgeBevelAmount] = useState(0.06);
@@ -10644,38 +10729,157 @@ const App: React.FC = () => {
     geometryVertexWeldDistance,
     setGeometryCreateActionStatus,
   ]);
-  const createGeometryHelperObject = useCallback(
-    (args: {
-      type: GeometryObjectType;
-      name: string;
-      params?: Record<string, number | boolean | string>;
-      position?: { x: number; y: number; z: number };
-      rotation?: { x: number; y: number; z: number };
-      scale?: { x: number; y: number; z: number };
-      color?: number;
-      opacity?: number;
-    }) => {
-      const id = makeId();
-      const next = createGeometryObject(args.type, id);
-      next.name = args.name;
-      next.group = "helper";
-      if (args.params) next.params = { ...next.params, ...args.params };
-      if (args.position) next.transform.position = { ...next.transform.position, ...args.position };
-      if (args.rotation) next.transform.rotation = { ...next.transform.rotation, ...args.rotation };
-      if (args.scale) next.transform.scale = { ...next.transform.scale, ...args.scale };
-      const material = normalizeGeometryMaterial((next as { material?: unknown })?.material);
-      next.material = {
-        ...material,
-        color: args.color ?? material.color,
-        opacity: args.opacity ?? Math.min(Number(material.opacity ?? 1), 0.72),
+  const appendDerivedConstruction = useCallback(
+    (
+      draft: Omit<GeometryDerivedConstructionObject, "id" | "dependent" | "visible" | "createdAt">
+    ) => {
+      const next: GeometryDerivedConstructionObject = {
+        ...draft,
+        id: makeId(),
+        dependent: true,
+        visible: true,
+        createdAt: Date.now(),
       };
-      setGeometryObjects((prev) => [next, ...prev]);
-      setGeometrySelectedObjectId(id);
-      setGeometryProceduralPanelTab("object");
-      return id;
+      setGeometryDerivedConstructions((prev) => [next, ...prev]);
+      setGeometrySelectedDerivedConstructionId(next.id);
+      setGeometryProceduralPanelTab("construct");
+      setGeometryCreateActionStatus(
+        `Derived object created: ${GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[next.type]}.`
+      );
     },
     []
   );
+  const handleCreateDerivedFromVertex = useCallback(
+    (
+      type:
+        | "vertex-point-marker"
+        | "vertex-coordinate-label"
+        | "vertex-normal-endpoint"
+        | "vertex-translated-copy-point"
+    ) => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "vertex" || !detail.meshKey) {
+        setGeometryCreateActionStatus("Select a vertex first (Probe mode: Vertex).");
+        return;
+      }
+      appendDerivedConstruction({
+        type,
+        sourceKind: "vertex",
+        sourceObjectId: detail.meshKey,
+        sourceVertexIndex: detail.vertexIndex,
+        sourcePoint: { ...detail.point },
+        sourceNormal: { ...detail.normal },
+        params:
+          type === "vertex-translated-copy-point"
+            ? { distance: Math.max(0.01, Number(geometryConstructTranslateDistance) || 0.5) }
+            : undefined,
+      });
+    },
+    [appendDerivedConstruction, geometryConstructTranslateDistance, geometryProbeSelectionDetails]
+  );
+  const handleCreateDerivedFromEdge = useCallback(
+    (
+      type:
+        | "edge-midpoint"
+        | "edge-direction-vector"
+        | "edge-perpendicular-bisector-line"
+        | "edge-aligned-axis"
+        | "edge-equal-length-copied-segment"
+    ) => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "edge" || !detail.meshKey || !detail.edgeVertexPair) {
+        setGeometryCreateActionStatus("Select an edge first (Probe mode: Edge).");
+        return;
+      }
+      appendDerivedConstruction({
+        type,
+        sourceKind: "edge",
+        sourceObjectId: detail.meshKey,
+        sourceEdgeVertexPair: detail.edgeVertexPair,
+        sourcePoint: { ...detail.point },
+        sourceNormal: { ...detail.normal },
+        params:
+          type === "edge-equal-length-copied-segment"
+            ? {
+                length: Math.max(
+                  0.01,
+                  Number(geometryConstructCopiedLength) ||
+                    (detail.edgeLength != null && Number.isFinite(detail.edgeLength)
+                      ? detail.edgeLength
+                      : 0.5)
+                ),
+              }
+            : undefined,
+      });
+    },
+    [appendDerivedConstruction, geometryConstructCopiedLength, geometryProbeSelectionDetails]
+  );
+  const handleCreateDerivedFromFace = useCallback(
+    (
+      type:
+        | "face-centroid"
+        | "face-normal-line"
+        | "face-tangent-plane-preview"
+        | "face-offset-plane"
+        | "face-parallel-face-plane"
+    ) => {
+      const detail = geometryProbeSelectionDetails;
+      if (!detail || detail.mode !== "face" || !detail.meshKey || detail.faceIndex == null) {
+        setGeometryCreateActionStatus("Select a face first (Probe mode: Face).");
+        return;
+      }
+      appendDerivedConstruction({
+        type,
+        sourceKind: "face",
+        sourceObjectId: detail.meshKey,
+        sourceFaceIndex: detail.faceIndex,
+        sourcePoint: { ...detail.point },
+        sourceNormal: { ...detail.normal },
+        params:
+          type === "face-offset-plane"
+            ? { distance: Math.max(0.01, Number(geometryConstructOffsetDistance) || 0.5) }
+            : undefined,
+      });
+    },
+    [appendDerivedConstruction, geometryConstructOffsetDistance, geometryProbeSelectionDetails]
+  );
+  const handleCreateDerivedFromObject = useCallback(
+    (
+      type:
+        | "object-centroid"
+        | "object-bounding-box"
+        | "object-principal-axes-preview"
+        | "object-symmetry-plane-preview"
+        | "object-circumscribed-sphere-preview"
+        | "object-inscribed-reference-sphere"
+    ) => {
+      const sourceObjectId = geometrySelectedObjectId;
+      if (!sourceObjectId) {
+        setGeometryCreateActionStatus("Select an object first.");
+        return;
+      }
+      appendDerivedConstruction({
+        type,
+        sourceKind: "object",
+        sourceObjectId,
+      });
+    },
+    [appendDerivedConstruction, geometrySelectedObjectId]
+  );
+  const handleDeleteDerivedConstruction = useCallback((id: string) => {
+    setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
+    setGeometrySelectedDerivedConstructionId((prev) => (prev === id ? null : prev));
+  }, []);
+  const handleClearDerivedConstructions = useCallback(() => {
+    setGeometryDerivedConstructions([]);
+    setGeometrySelectedDerivedConstructionId(null);
+    setGeometryCreateActionStatus("Cleared derived construction objects.");
+  }, []);
+  const handleToggleDerivedConstructionVisibility = useCallback((id: string) => {
+    setGeometryDerivedConstructions((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry))
+    );
+  }, []);
   const resolveDirectionEuler = useCallback(
     (dir: { x: number; y: number; z: number }, sourceAxis: "y" | "z" = "y") => {
       const target = new THREE.Vector3(dir.x, dir.y, dir.z);
@@ -10711,244 +10915,56 @@ const App: React.FC = () => {
   }, []);
   const handleCreateHelperFromFaceSelection = useCallback(
     (kind: "face-plane" | "face-normal" | "face-centroid" | "face-frame") => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "face" || !detail.faceVertices) {
-        setGeometryCreateActionStatus("Select a face first (Probe mode: Face).");
-        return;
-      }
-      const [a, b, c] = detail.faceVertices;
-      const centroid = {
-        x: (a.x + b.x + c.x) / 3,
-        y: (a.y + b.y + c.y) / 3,
-        z: (a.z + b.z + c.z) / 3,
-      };
-      const ab = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
-      const bc = Math.hypot(b.x - c.x, b.y - c.y, b.z - c.z);
-      const ca = Math.hypot(c.x - a.x, c.y - a.y, c.z - a.z);
-      const faceScale = Math.max(0.12, ab, bc, ca);
-      const basis = resolveHelperTangentBasis(detail.normal);
       if (kind === "face-plane") {
-        createGeometryHelperObject({
-          type: "plane",
-          name: "Face plane",
-          params: { width: faceScale * 1.25, height: faceScale * 1.25, axis: "xy" },
-          position: centroid,
-          rotation: resolveDirectionEuler(basis.n, "z"),
-          color: 0x2563eb,
-          opacity: 0.3,
-        });
-        setGeometryCreateActionStatus("Face plane helper created.");
+        handleCreateDerivedFromFace("face-tangent-plane-preview");
         return;
       }
       if (kind === "face-normal") {
-        const length = faceScale * 0.7;
-        createGeometryHelperObject({
-          type: "cylinder",
-          name: "Face normal",
-          params: {
-            radiusTop: Math.max(0.01, length * 0.03),
-            radiusBottom: Math.max(0.01, length * 0.03),
-            height: length,
-            radialSegments: 14,
-          },
-          position: {
-            x: centroid.x + basis.n.x * (length * 0.5),
-            y: centroid.y + basis.n.y * (length * 0.5),
-            z: centroid.z + basis.n.z * (length * 0.5),
-          },
-          rotation: resolveDirectionEuler(basis.n, "y"),
-          color: 0x16a34a,
-          opacity: 0.85,
-        });
-        setGeometryCreateActionStatus("Face normal helper created.");
+        handleCreateDerivedFromFace("face-normal-line");
         return;
       }
       if (kind === "face-centroid") {
-        createGeometryHelperObject({
-          type: "sphere",
-          name: "Face centroid point",
-          params: { radius: Math.max(0.02, faceScale * 0.06), widthSegments: 20, heightSegments: 14 },
-          position: centroid,
-          color: 0x0ea5e9,
-          opacity: 0.9,
-        });
-        setGeometryCreateActionStatus("Face centroid helper created.");
+        handleCreateDerivedFromFace("face-centroid");
         return;
       }
-      const axisLen = faceScale * 0.6;
-      const radius = Math.max(0.01, axisLen * 0.025);
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Face frame X",
-        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
-        position: { x: centroid.x + basis.u.x * (axisLen * 0.5), y: centroid.y + basis.u.y * (axisLen * 0.5), z: centroid.z + basis.u.z * (axisLen * 0.5) },
-        rotation: resolveDirectionEuler(basis.u, "y"),
-        color: 0xef4444,
-        opacity: 0.9,
-      });
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Face frame Y",
-        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
-        position: { x: centroid.x + basis.v.x * (axisLen * 0.5), y: centroid.y + basis.v.y * (axisLen * 0.5), z: centroid.z + basis.v.z * (axisLen * 0.5) },
-        rotation: resolveDirectionEuler(basis.v, "y"),
-        color: 0x22c55e,
-        opacity: 0.9,
-      });
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Face frame Z",
-        params: { radiusTop: radius, radiusBottom: radius, height: axisLen, radialSegments: 12 },
-        position: { x: centroid.x + basis.n.x * (axisLen * 0.5), y: centroid.y + basis.n.y * (axisLen * 0.5), z: centroid.z + basis.n.z * (axisLen * 0.5) },
-        rotation: resolveDirectionEuler(basis.n, "y"),
-        color: 0x3b82f6,
-        opacity: 0.9,
-      });
-      setGeometryCreateActionStatus("Face local coordinate frame helpers created.");
+      handleCreateDerivedFromFace("face-centroid");
+      handleCreateDerivedFromFace("face-normal-line");
+      handleCreateDerivedFromFace("face-tangent-plane-preview");
     },
-    [createGeometryHelperObject, geometryProbeSelectionDetails, resolveDirectionEuler, resolveHelperTangentBasis]
+    [handleCreateDerivedFromFace]
   );
   const handleCreateHelperFromEdgeSelection = useCallback(
     (kind: "edge-midpoint" | "edge-direction" | "edge-perp-plane" | "edge-ruler") => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "edge" || !detail.edgePoints || !detail.edgeLength || !Number.isFinite(detail.edgeLength)) {
-        setGeometryCreateActionStatus("Select an edge first (Probe mode: Edge).");
-        return;
-      }
-      const [p0, p1] = detail.edgePoints;
-      const midpoint = { x: (p0.x + p1.x) * 0.5, y: (p0.y + p1.y) * 0.5, z: (p0.z + p1.z) * 0.5 };
-      const length = Math.max(0.12, detail.edgeLength);
-      const dir = {
-        x: (p1.x - p0.x) / length,
-        y: (p1.y - p0.y) / length,
-        z: (p1.z - p0.z) / length,
-      };
       if (kind === "edge-midpoint") {
-        createGeometryHelperObject({
-          type: "sphere",
-          name: "Edge midpoint",
-          params: { radius: Math.max(0.02, length * 0.06), widthSegments: 18, heightSegments: 12 },
-          position: midpoint,
-          color: 0x0ea5e9,
-          opacity: 0.92,
-        });
-        setGeometryCreateActionStatus("Edge midpoint helper created.");
+        handleCreateDerivedFromEdge("edge-midpoint");
         return;
       }
       if (kind === "edge-direction") {
-        createGeometryHelperObject({
-          type: "cylinder",
-          name: "Edge direction vector",
-          params: {
-            radiusTop: Math.max(0.01, length * 0.03),
-            radiusBottom: Math.max(0.01, length * 0.03),
-            height: length,
-            radialSegments: 14,
-          },
-          position: midpoint,
-          rotation: resolveDirectionEuler(dir, "y"),
-          color: 0x22c55e,
-          opacity: 0.88,
-        });
-        setGeometryCreateActionStatus("Edge direction helper created.");
+        handleCreateDerivedFromEdge("edge-direction-vector");
         return;
       }
       if (kind === "edge-perp-plane") {
-        createGeometryHelperObject({
-          type: "plane",
-          name: "Perpendicular plane",
-          params: { width: length, height: length, axis: "xy" },
-          position: midpoint,
-          rotation: resolveDirectionEuler(dir, "z"),
-          color: 0x6366f1,
-          opacity: 0.32,
-        });
-        setGeometryCreateActionStatus("Perpendicular plane helper created.");
+        handleCreateDerivedFromEdge("edge-perpendicular-bisector-line");
         return;
       }
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Ruler",
-        params: {
-          radiusTop: Math.max(0.008, length * 0.022),
-          radiusBottom: Math.max(0.008, length * 0.022),
-          height: length,
-          radialSegments: 10,
-        },
-        position: midpoint,
-        rotation: resolveDirectionEuler(dir, "y"),
-        color: 0xf59e0b,
-        opacity: 0.9,
-      });
-      setGeometryCreateActionStatus(`Ruler helper created (length ${fmt(length)}).`);
+      handleCreateDerivedFromEdge("edge-equal-length-copied-segment");
     },
-    [createGeometryHelperObject, fmt, geometryProbeSelectionDetails, resolveDirectionEuler]
+    [handleCreateDerivedFromEdge]
   );
   const handleCreateHelperFromVertexSelection = useCallback(
     (kind: "vertex-point" | "vertex-normal" | "vertex-frame") => {
-      const detail = geometryProbeSelectionDetails;
-      if (!detail || detail.mode !== "vertex") {
-        setGeometryCreateActionStatus("Select a vertex first (Probe mode: Vertex).");
-        return;
-      }
-      const origin = detail.point;
-      const basis = resolveHelperTangentBasis(detail.normal);
-      const scale = 0.35;
       if (kind === "vertex-point") {
-        createGeometryHelperObject({
-          type: "sphere",
-          name: "Point marker",
-          params: { radius: 0.04, widthSegments: 16, heightSegments: 12 },
-          position: origin,
-          color: 0x06b6d4,
-          opacity: 0.94,
-        });
-        setGeometryCreateActionStatus("Vertex point helper created.");
+        handleCreateDerivedFromVertex("vertex-point-marker");
         return;
       }
       if (kind === "vertex-normal") {
-        createGeometryHelperObject({
-          type: "cylinder",
-          name: "Vertex normal",
-          params: { radiusTop: 0.012, radiusBottom: 0.012, height: scale, radialSegments: 12 },
-          position: { x: origin.x + basis.n.x * (scale * 0.5), y: origin.y + basis.n.y * (scale * 0.5), z: origin.z + basis.n.z * (scale * 0.5) },
-          rotation: resolveDirectionEuler(basis.n, "y"),
-          color: 0x22c55e,
-          opacity: 0.9,
-        });
-        setGeometryCreateActionStatus("Vertex normal helper created.");
+        handleCreateDerivedFromVertex("vertex-normal-endpoint");
         return;
       }
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Vertex frame X",
-        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
-        position: { x: origin.x + basis.u.x * (scale * 0.5), y: origin.y + basis.u.y * (scale * 0.5), z: origin.z + basis.u.z * (scale * 0.5) },
-        rotation: resolveDirectionEuler(basis.u, "y"),
-        color: 0xef4444,
-        opacity: 0.9,
-      });
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Vertex frame Y",
-        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
-        position: { x: origin.x + basis.v.x * (scale * 0.5), y: origin.y + basis.v.y * (scale * 0.5), z: origin.z + basis.v.z * (scale * 0.5) },
-        rotation: resolveDirectionEuler(basis.v, "y"),
-        color: 0x22c55e,
-        opacity: 0.9,
-      });
-      createGeometryHelperObject({
-        type: "cylinder",
-        name: "Vertex frame Z",
-        params: { radiusTop: 0.01, radiusBottom: 0.01, height: scale, radialSegments: 12 },
-        position: { x: origin.x + basis.n.x * (scale * 0.5), y: origin.y + basis.n.y * (scale * 0.5), z: origin.z + basis.n.z * (scale * 0.5) },
-        rotation: resolveDirectionEuler(basis.n, "y"),
-        color: 0x3b82f6,
-        opacity: 0.9,
-      });
-      setGeometryCreateActionStatus("Vertex local frame helpers created.");
+      handleCreateDerivedFromVertex("vertex-coordinate-label");
+      handleCreateDerivedFromVertex("vertex-normal-endpoint");
     },
-    [createGeometryHelperObject, geometryProbeSelectionDetails, resolveDirectionEuler, resolveHelperTangentBasis]
+    [handleCreateDerivedFromVertex]
   );
   const resolveGeometryPlacementTarget = useCallback(
     (pick: {
@@ -11522,6 +11538,76 @@ const App: React.FC = () => {
       rotation: { x: e.x, y: e.y, z: e.z },
     });
   }, [geometryProbeSelectionDetails, geometrySelectedSceneObject, handleUpdateGeometryTransform]);
+  const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
+    const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
+    if (!selected) {
+      setGeometryCreateActionStatus("Select a derived construction object first.");
+      return;
+    }
+    if (selected.status !== "valid" || !selected.origin || !selected.direction) {
+      setGeometryCreateActionStatus("Selected derived object is not a valid plane reference.");
+      return;
+    }
+    const allowedPlaneTypes: GeometryDerivedConstructionType[] = [
+      "face-tangent-plane-preview",
+      "face-offset-plane",
+      "face-parallel-face-plane",
+      "object-symmetry-plane-preview",
+    ];
+    if (!allowedPlaneTypes.includes(selected.object.type)) {
+      setGeometryCreateActionStatus("Selected derived object is not a plane.");
+      return;
+    }
+    const resolved = resolveGeometrySceneMeshById(selected.object.sourceObjectId);
+    if (!resolved) {
+      setGeometryCreateActionStatus("Source object mesh is unavailable for section slicing.");
+      return;
+    }
+    const bounds = boundsFromPositions(resolved.mesh.positions);
+    const center = bounds
+      ? {
+          x: 0.5 * (bounds.min[0] + bounds.max[0]),
+          y: 0.5 * (bounds.min[1] + bounds.max[1]),
+          z: 0.5 * (bounds.min[2] + bounds.max[2]),
+        }
+      : { x: 0, y: 0, z: 0 };
+    const dirLen = Math.hypot(
+      selected.direction.x,
+      selected.direction.y,
+      selected.direction.z
+    );
+    if (!Number.isFinite(dirLen) || dirLen < 1e-9) {
+      setGeometryCreateActionStatus("Derived plane direction is invalid.");
+      return;
+    }
+    const normal = {
+      x: selected.direction.x / dirLen,
+      y: selected.direction.y / dirLen,
+      z: selected.direction.z / dirLen,
+    };
+    const offset =
+      (selected.origin.x - center.x) * normal.x +
+      (selected.origin.y - center.y) * normal.y +
+      (selected.origin.z - center.z) * normal.z;
+
+    setGeometrySelectedObjectId(selected.object.sourceObjectId);
+    setGeometrySectionPlanePreset("custom");
+    setGeometrySectionCustomNormal(normal);
+    setGeometrySectionPlaneOffset(offset);
+    setGeometrySectionShowCurve(true);
+    setGeometryProceduralPanelTab("analysis");
+    setGeometryCreateActionStatus(
+      `Section plane set from derived object "${selected.typeLabel}" on ${selected.sourceObjectName}.`
+    );
+  }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
+  const handleUseSelectedDerivedPlaneForSectionSlice = useCallback(() => {
+    const selectedId = geometrySelectedDerivedConstructionId;
+    if (!selectedId) {
+      setGeometryCreateActionStatus("Select a derived construction object first.");
+      return;
+    }
+    handleUseDerivedPlaneForSectionSliceById(selectedId);
+  }, [geometrySelectedDerivedConstructionId, handleUseDerivedPlaneForSectionSliceById]);
   const handleDistributeVisibleObjectsEvenly = useCallback(() => {
     const axis = geometryDistributeAxis;
     const axisIndex = axis === "x" ? 0 : axis === "y" ? 1 : 2;
@@ -12892,6 +12978,548 @@ const App: React.FC = () => {
     }
     return sets.length ? sets : null;
   }, [geometryMode, geometryProbeHoverSelectionDetails, geometryProbeSelectionDetails]);
+  const geometryDerivedConstructionOverlays = useMemo<{
+    groups: OverlayPolylineGroup[] | null;
+    pointSets: OverlayPointSet[] | null;
+    labelSets: OverlayLabelSet[] | null;
+    byId: Map<string, GeometryDerivedConstructionEvaluation>;
+  }>(() => {
+    const byId = new Map<string, GeometryDerivedConstructionEvaluation>();
+    if (geometryMode !== "procedural" || !geometryDerivedConstructions.length) {
+      return { groups: null, pointSets: null, labelSets: null, byId };
+    }
+
+    const groups: OverlayPolylineGroup[] = [];
+    const pointSets: OverlayPointSet[] = [];
+    const labels: OverlayLabelSet["labels"] = [];
+    const makeVec = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
+      x: b.x - a.x,
+      y: b.y - a.y,
+      z: b.z - a.z,
+    });
+    const norm = (v: { x: number; y: number; z: number }) => {
+      const len = Math.hypot(v.x, v.y, v.z);
+      if (!Number.isFinite(len) || len < 1e-9) return null;
+      return { x: v.x / len, y: v.y / len, z: v.z / len };
+    };
+    const cross = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
+      x: a.y * b.z - a.z * b.y,
+      y: a.z * b.x - a.x * b.z,
+      z: a.x * b.y - a.y * b.x,
+    });
+    const addCircle = (
+      lineSet: PolylineSet,
+      center: { x: number; y: number; z: number },
+      u: { x: number; y: number; z: number },
+      v: { x: number; y: number; z: number },
+      radius: number
+    ) => {
+      const segments = 42;
+      for (let i = 0; i < segments; i += 1) {
+        const t0 = (i / segments) * Math.PI * 2;
+        const t1 = ((i + 1) / segments) * Math.PI * 2;
+        lineSet.push([
+          {
+            x: center.x + radius * (u.x * Math.cos(t0) + v.x * Math.sin(t0)),
+            y: center.y + radius * (u.y * Math.cos(t0) + v.y * Math.sin(t0)),
+            z: center.z + radius * (u.z * Math.cos(t0) + v.z * Math.sin(t0)),
+          },
+          {
+            x: center.x + radius * (u.x * Math.cos(t1) + v.x * Math.sin(t1)),
+            y: center.y + radius * (u.y * Math.cos(t1) + v.y * Math.sin(t1)),
+            z: center.z + radius * (u.z * Math.cos(t1) + v.z * Math.sin(t1)),
+          },
+        ]);
+      }
+    };
+
+    for (const object of geometryDerivedConstructions) {
+      const source = resolveGeometrySceneObjectById(object.sourceObjectId);
+      const sourceObjectName = source?.name ?? object.sourceObjectId;
+      const evalGroups: OverlayPolylineGroup[] = [];
+      const evalPointSets: OverlayPointSet[] = [];
+      const evalLabelSets: OverlayLabelSet[] = [];
+      const evalLabels: OverlayLabelSet["labels"] = [];
+      const addEvalGroup = (lines: PolylineSet, color: number, opacity = 0.9, radiusScale = 1.9) => {
+        if (!lines.length) return;
+        const group: OverlayPolylineGroup = { lines, color, opacity, radiusScale };
+        evalGroups.push(group);
+        if (object.visible) groups.push(group);
+      };
+      const addEvalPoint = (point: { x: number; y: number; z: number }, color: number, size = 0.08, opacity = 0.96) => {
+        const set: OverlayPointSet = { points: [point], color, size, opacity };
+        evalPointSets.push(set);
+        if (object.visible) pointSets.push(set);
+      };
+      const addEvalLabel = (text: string, position: { x: number; y: number; z: number }, color = 0x1f2937) => {
+        const label = { text, position, color, size: 0.9, opacity: 0.96 };
+        evalLabels.push(label);
+        if (object.visible) labels.push(label);
+      };
+      const finish = (
+        status: GeometryDerivedConstructionStatus,
+        origin: { x: number; y: number; z: number } | null,
+        direction: { x: number; y: number; z: number } | null
+      ) => {
+        if (evalLabels.length) evalLabelSets.push({ labels: evalLabels, size: 0.9 });
+        byId.set(object.id, {
+          object,
+          status,
+          sourceObjectName,
+          typeLabel: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[object.type],
+          origin,
+          direction,
+          sourceFaceIndex: object.sourceFaceIndex ?? null,
+          sourceVertexIndex: object.sourceVertexIndex ?? null,
+          sourceEdgeVertexPair: object.sourceEdgeVertexPair ?? null,
+          groups: evalGroups,
+          pointSets: evalPointSets,
+          labelSets: evalLabelSets,
+        });
+      };
+
+      if (!source) {
+        finish("stale", null, null);
+        continue;
+      }
+      const resolved = resolveGeometrySceneMeshById(object.sourceObjectId);
+      if (!resolved || !resolved.mesh.positions.length) {
+        finish("stale", null, null);
+        continue;
+      }
+      const mesh = resolved.mesh;
+      const getVertex = (index: number | null | undefined) => {
+        if (!Number.isInteger(index)) return null;
+        const i = Number(index);
+        const count = Math.floor(mesh.positions.length / 3);
+        if (i < 0 || i >= count) return null;
+        const k = i * 3;
+        return { x: mesh.positions[k], y: mesh.positions[k + 1], z: mesh.positions[k + 2] };
+      };
+      const getFace = (faceIndex: number | null | undefined) => {
+        if (!Number.isInteger(faceIndex)) return null;
+        const fi = Number(faceIndex);
+        let ia = 0;
+        let ib = 0;
+        let ic = 0;
+        if (mesh.indices && mesh.indices.length >= 3) {
+          const base = fi * 3;
+          if (base + 2 >= mesh.indices.length) return null;
+          ia = Number(mesh.indices[base]);
+          ib = Number(mesh.indices[base + 1]);
+          ic = Number(mesh.indices[base + 2]);
+        } else {
+          const base = fi * 3;
+          const count = Math.floor(mesh.positions.length / 3);
+          if (base + 2 >= count) return null;
+          ia = base;
+          ib = base + 1;
+          ic = base + 2;
+        }
+        const a = getVertex(ia);
+        const b = getVertex(ib);
+        const c = getVertex(ic);
+        if (!a || !b || !c) return null;
+        const ab = makeVec(a, b);
+        const ac = makeVec(a, c);
+        const n = norm(cross(ab, ac));
+        if (!n) return null;
+        return {
+          a,
+          b,
+          c,
+          centroid: {
+            x: (a.x + b.x + c.x) / 3,
+            y: (a.y + b.y + c.y) / 3,
+            z: (a.z + b.z + c.z) / 3,
+          },
+          normal: n,
+        };
+      };
+      const getEdge = (pair: [number, number] | null | undefined) => {
+        if (!pair) return null;
+        const a = getVertex(pair[0]);
+        const b = getVertex(pair[1]);
+        if (!a || !b) return null;
+        const vec = makeVec(a, b);
+        const length = Math.hypot(vec.x, vec.y, vec.z);
+        const dir = norm(vec);
+        if (!dir || length < 1e-9) return null;
+        return {
+          a,
+          b,
+          length,
+          dir,
+          midpoint: { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
+        };
+      };
+      const bounds = boundsFromPositions(mesh.positions);
+      const objectCenter = bounds
+        ? {
+            x: 0.5 * (bounds.min[0] + bounds.max[0]),
+            y: 0.5 * (bounds.min[1] + bounds.max[1]),
+            z: 0.5 * (bounds.min[2] + bounds.max[2]),
+          }
+        : null;
+
+      if (object.type.startsWith("vertex-")) {
+        const vertex = getVertex(object.sourceVertexIndex) ?? object.sourcePoint ?? null;
+        const direction = norm(object.sourceNormal ?? { x: 0, y: 1, z: 0 }) ?? { x: 0, y: 1, z: 0 };
+        if (!vertex) {
+          finish("invalid", null, null);
+          continue;
+        }
+        if (object.type === "vertex-point-marker") {
+          addEvalPoint(vertex, 0x06b6d4, 0.095);
+          finish("valid", vertex, null);
+          continue;
+        }
+        if (object.type === "vertex-coordinate-label") {
+          addEvalPoint(vertex, 0x0891b2, 0.075);
+          addEvalLabel(
+            `(${fmt(vertex.x)}, ${fmt(vertex.y)}, ${fmt(vertex.z)})`,
+            { x: vertex.x + 0.05, y: vertex.y + 0.05, z: vertex.z + 0.05 },
+            0x0f172a
+          );
+          finish("valid", vertex, null);
+          continue;
+        }
+        const distance =
+          object.type === "vertex-translated-copy-point"
+            ? Math.max(0.01, Number(object.params?.distance) || 0.5)
+            : 0.28;
+        const endpoint = {
+          x: vertex.x + direction.x * distance,
+          y: vertex.y + direction.y * distance,
+          z: vertex.z + direction.z * distance,
+        };
+        addEvalPoint(endpoint, object.type === "vertex-normal-endpoint" ? 0x22c55e : 0x7c3aed, 0.088);
+        addEvalGroup([[vertex, endpoint]], object.type === "vertex-normal-endpoint" ? 0x16a34a : 0x7c3aed, 0.94, 1.9);
+        finish("valid", endpoint, direction);
+        continue;
+      }
+
+      if (object.type.startsWith("edge-")) {
+        const edge = getEdge(object.sourceEdgeVertexPair);
+        if (!edge) {
+          finish("invalid", null, null);
+          continue;
+        }
+        if (object.type === "edge-midpoint") {
+          addEvalPoint(edge.midpoint, 0x0ea5e9, 0.09);
+          finish("valid", edge.midpoint, edge.dir);
+          continue;
+        }
+        if (object.type === "edge-direction-vector") {
+          const p0 = {
+            x: edge.midpoint.x - edge.dir.x * edge.length * 0.5,
+            y: edge.midpoint.y - edge.dir.y * edge.length * 0.5,
+            z: edge.midpoint.z - edge.dir.z * edge.length * 0.5,
+          };
+          const p1 = {
+            x: edge.midpoint.x + edge.dir.x * edge.length * 0.5,
+            y: edge.midpoint.y + edge.dir.y * edge.length * 0.5,
+            z: edge.midpoint.z + edge.dir.z * edge.length * 0.5,
+          };
+          addEvalGroup([[p0, p1]], 0x22c55e, 0.95, 2.1);
+          addEvalPoint(p1, 0x16a34a, 0.08);
+          finish("valid", edge.midpoint, edge.dir);
+          continue;
+        }
+        if (object.type === "edge-perpendicular-bisector-line") {
+          const face = getFace(object.sourceFaceIndex);
+          const nFace = face?.normal ?? norm(object.sourceNormal ?? { x: 0, y: 1, z: 0 }) ?? { x: 0, y: 1, z: 0 };
+          let bisector = norm(cross(edge.dir, nFace));
+          if (!bisector) {
+            bisector = norm(cross(edge.dir, { x: 0, y: 0, z: 1 })) ?? { x: 1, y: 0, z: 0 };
+          }
+          const half = Math.max(0.25, edge.length * 0.75);
+          const a = {
+            x: edge.midpoint.x - bisector.x * half,
+            y: edge.midpoint.y - bisector.y * half,
+            z: edge.midpoint.z - bisector.z * half,
+          };
+          const b = {
+            x: edge.midpoint.x + bisector.x * half,
+            y: edge.midpoint.y + bisector.y * half,
+            z: edge.midpoint.z + bisector.z * half,
+          };
+          addEvalGroup([[a, b]], 0x6366f1, 0.94, 1.9);
+          finish("valid", edge.midpoint, bisector);
+          continue;
+        }
+        if (object.type === "edge-aligned-axis") {
+          const half = Math.max(0.35, edge.length * 1.25);
+          const a = {
+            x: edge.midpoint.x - edge.dir.x * half,
+            y: edge.midpoint.y - edge.dir.y * half,
+            z: edge.midpoint.z - edge.dir.z * half,
+          };
+          const b = {
+            x: edge.midpoint.x + edge.dir.x * half,
+            y: edge.midpoint.y + edge.dir.y * half,
+            z: edge.midpoint.z + edge.dir.z * half,
+          };
+          addEvalGroup([[a, b]], 0x0ea5e9, 0.92, 1.7);
+          finish("valid", edge.midpoint, edge.dir);
+          continue;
+        }
+        const len = Math.max(0.01, Number(object.params?.length) || edge.length);
+        const start = edge.midpoint;
+        const end = {
+          x: start.x + edge.dir.x * len,
+          y: start.y + edge.dir.y * len,
+          z: start.z + edge.dir.z * len,
+        };
+        addEvalGroup([[start, end]], 0xf59e0b, 0.95, 2);
+        addEvalPoint(end, 0xf59e0b, 0.08);
+        addEvalLabel(`L=${fmt(len)}`, { x: end.x + 0.04, y: end.y + 0.04, z: end.z + 0.04 }, 0x92400e);
+        finish("valid", start, edge.dir);
+        continue;
+      }
+
+      if (object.type.startsWith("face-")) {
+        const face = getFace(object.sourceFaceIndex);
+        if (!face) {
+          finish("invalid", null, null);
+          continue;
+        }
+        const d = Math.max(0.01, Number(object.params?.distance) || 0.5);
+        if (object.type === "face-centroid") {
+          addEvalPoint(face.centroid, 0x0ea5e9, 0.09);
+          finish("valid", face.centroid, face.normal);
+          continue;
+        }
+        if (object.type === "face-normal-line") {
+          const end = {
+            x: face.centroid.x + face.normal.x * d,
+            y: face.centroid.y + face.normal.y * d,
+            z: face.centroid.z + face.normal.z * d,
+          };
+          addEvalGroup([[face.centroid, end]], 0x16a34a, 0.95, 2.1);
+          addEvalPoint(end, 0x22c55e, 0.08);
+          finish("valid", face.centroid, face.normal);
+          continue;
+        }
+        const planeCenter =
+          object.type === "face-offset-plane"
+            ? {
+                x: face.centroid.x + face.normal.x * d,
+                y: face.centroid.y + face.normal.y * d,
+                z: face.centroid.z + face.normal.z * d,
+              }
+            : face.centroid;
+        const basis = resolveHelperTangentBasis(face.normal);
+        const half = Math.max(
+          0.15,
+          0.5 *
+            Math.max(
+              Math.hypot(face.a.x - face.b.x, face.a.y - face.b.y, face.a.z - face.b.z),
+              Math.hypot(face.b.x - face.c.x, face.b.y - face.c.y, face.b.z - face.c.z),
+              Math.hypot(face.c.x - face.a.x, face.c.y - face.a.y, face.c.z - face.a.z)
+            )
+        );
+        const corners = [
+          {
+            x: planeCenter.x + basis.u.x * half + basis.v.x * half,
+            y: planeCenter.y + basis.u.y * half + basis.v.y * half,
+            z: planeCenter.z + basis.u.z * half + basis.v.z * half,
+          },
+          {
+            x: planeCenter.x - basis.u.x * half + basis.v.x * half,
+            y: planeCenter.y - basis.u.y * half + basis.v.y * half,
+            z: planeCenter.z - basis.u.z * half + basis.v.z * half,
+          },
+          {
+            x: planeCenter.x - basis.u.x * half - basis.v.x * half,
+            y: planeCenter.y - basis.u.y * half - basis.v.y * half,
+            z: planeCenter.z - basis.u.z * half - basis.v.z * half,
+          },
+          {
+            x: planeCenter.x + basis.u.x * half - basis.v.x * half,
+            y: planeCenter.y + basis.u.y * half - basis.v.y * half,
+            z: planeCenter.z + basis.u.z * half - basis.v.z * half,
+          },
+        ];
+        const planeLines: PolylineSet = [
+          [corners[0], corners[1]],
+          [corners[1], corners[2]],
+          [corners[2], corners[3]],
+          [corners[3], corners[0]],
+        ];
+        addEvalGroup(planeLines, object.type === "face-offset-plane" ? 0x8b5cf6 : 0x6366f1, 0.78, 1.5);
+        finish("valid", planeCenter, face.normal);
+        continue;
+      }
+
+      if (!objectCenter) {
+        finish("invalid", null, null);
+        continue;
+      }
+      const dims = bounds
+        ? {
+            x: Math.max(0, bounds.max[0] - bounds.min[0]),
+            y: Math.max(0, bounds.max[1] - bounds.min[1]),
+            z: Math.max(0, bounds.max[2] - bounds.min[2]),
+          }
+        : { x: 0, y: 0, z: 0 };
+      const maxDim = Math.max(dims.x, dims.y, dims.z, 0.25);
+
+      if (object.type === "object-centroid") {
+        addEvalPoint(objectCenter, 0x06b6d4, 0.1);
+        finish("valid", objectCenter, null);
+        continue;
+      }
+      if (object.type === "object-bounding-box" && bounds) {
+        const c = [
+          { x: bounds.min[0], y: bounds.min[1], z: bounds.min[2] },
+          { x: bounds.max[0], y: bounds.min[1], z: bounds.min[2] },
+          { x: bounds.max[0], y: bounds.max[1], z: bounds.min[2] },
+          { x: bounds.min[0], y: bounds.max[1], z: bounds.min[2] },
+          { x: bounds.min[0], y: bounds.min[1], z: bounds.max[2] },
+          { x: bounds.max[0], y: bounds.min[1], z: bounds.max[2] },
+          { x: bounds.max[0], y: bounds.max[1], z: bounds.max[2] },
+          { x: bounds.min[0], y: bounds.max[1], z: bounds.max[2] },
+        ];
+        addEvalGroup(
+          [
+            [c[0], c[1]],
+            [c[1], c[2]],
+            [c[2], c[3]],
+            [c[3], c[0]],
+            [c[4], c[5]],
+            [c[5], c[6]],
+            [c[6], c[7]],
+            [c[7], c[4]],
+            [c[0], c[4]],
+            [c[1], c[5]],
+            [c[2], c[6]],
+            [c[3], c[7]],
+          ],
+          0x334155,
+          0.82,
+          1.3
+        );
+        finish("valid", objectCenter, null);
+        continue;
+      }
+      if (object.type === "object-principal-axes-preview") {
+        addEvalGroup(
+          [
+            [
+              { x: objectCenter.x - maxDim * 0.6, y: objectCenter.y, z: objectCenter.z },
+              { x: objectCenter.x + maxDim * 0.6, y: objectCenter.y, z: objectCenter.z },
+            ],
+            [
+              { x: objectCenter.x, y: objectCenter.y - maxDim * 0.6, z: objectCenter.z },
+              { x: objectCenter.x, y: objectCenter.y + maxDim * 0.6, z: objectCenter.z },
+            ],
+            [
+              { x: objectCenter.x, y: objectCenter.y, z: objectCenter.z - maxDim * 0.6 },
+              { x: objectCenter.x, y: objectCenter.y, z: objectCenter.z + maxDim * 0.6 },
+            ],
+          ],
+          0x0ea5e9,
+          0.92,
+          1.8
+        );
+        finish("valid", objectCenter, { x: 1, y: 0, z: 0 });
+        continue;
+      }
+      if (object.type === "object-symmetry-plane-preview") {
+        const normalAxis: "x" | "y" | "z" =
+          dims.x >= dims.y && dims.x >= dims.z ? "x" : dims.y >= dims.z ? "y" : "z";
+        const half = Math.max(0.2, maxDim * 0.45);
+        const lines: PolylineSet =
+          normalAxis === "x"
+            ? [
+                [{ x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z - half }, { x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z - half }],
+                [{ x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z - half }, { x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z + half }],
+                [{ x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z + half }, { x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z + half }],
+                [{ x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z + half }, { x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z - half }],
+              ]
+            : normalAxis === "y"
+              ? [
+                  [{ x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z - half }, { x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z - half }],
+                  [{ x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z - half }, { x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z + half }],
+                  [{ x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z + half }, { x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z + half }],
+                  [{ x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z + half }, { x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z - half }],
+                ]
+              : [
+                  [{ x: objectCenter.x - half, y: objectCenter.y - half, z: objectCenter.z }, { x: objectCenter.x + half, y: objectCenter.y - half, z: objectCenter.z }],
+                  [{ x: objectCenter.x + half, y: objectCenter.y - half, z: objectCenter.z }, { x: objectCenter.x + half, y: objectCenter.y + half, z: objectCenter.z }],
+                  [{ x: objectCenter.x + half, y: objectCenter.y + half, z: objectCenter.z }, { x: objectCenter.x - half, y: objectCenter.y + half, z: objectCenter.z }],
+                  [{ x: objectCenter.x - half, y: objectCenter.y + half, z: objectCenter.z }, { x: objectCenter.x - half, y: objectCenter.y - half, z: objectCenter.z }],
+                ];
+        addEvalGroup(lines, 0x8b5cf6, 0.76, 1.5);
+        finish(
+          "valid",
+          objectCenter,
+          normalAxis === "x"
+            ? { x: 1, y: 0, z: 0 }
+            : normalAxis === "y"
+              ? { x: 0, y: 1, z: 0 }
+              : { x: 0, y: 0, z: 1 }
+        );
+        continue;
+      }
+      if (object.type === "object-circumscribed-sphere-preview") {
+        const center = objectCenter;
+        let radius = 0;
+        for (let i = 0; i + 2 < mesh.positions.length; i += 3) {
+          const dx = mesh.positions[i] - center.x;
+          const dy = mesh.positions[i + 1] - center.y;
+          const dz = mesh.positions[i + 2] - center.z;
+          radius = Math.max(radius, Math.hypot(dx, dy, dz));
+        }
+        radius = Math.max(radius, 0.04);
+        const lines: PolylineSet = [];
+        addCircle(lines, center, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, radius);
+        addCircle(lines, center, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addCircle(lines, center, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addEvalGroup(lines, 0xf59e0b, 0.86, 1.35);
+        finish("valid", center, null);
+        continue;
+      }
+      if (object.type === "object-inscribed-reference-sphere") {
+        const supported =
+          "type" in source &&
+          (source.type === "box" ||
+            source.type === "sphere" ||
+            source.type === "cylinder" ||
+            source.type === "cone" ||
+            source.type === "torus");
+        if (!supported || !bounds) {
+          finish("invalid", objectCenter, null);
+          continue;
+        }
+        const radius = Math.max(0.02, Math.min(dims.x, dims.y, dims.z) * 0.5);
+        const lines: PolylineSet = [];
+        addCircle(lines, objectCenter, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, radius);
+        addCircle(lines, objectCenter, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addCircle(lines, objectCenter, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addEvalGroup(lines, 0x14b8a6, 0.88, 1.35);
+        finish("valid", objectCenter, null);
+        continue;
+      }
+      finish("invalid", objectCenter, null);
+    }
+
+    const labelSets: OverlayLabelSet[] | null = labels.length ? [{ labels, size: 0.9 }] : null;
+    return {
+      groups: groups.length ? groups : null,
+      pointSets: pointSets.length ? pointSets : null,
+      labelSets,
+      byId,
+    };
+  }, [
+    fmt,
+    geometryDerivedConstructions,
+    geometryMode,
+    resolveGeometrySceneMeshById,
+    resolveGeometrySceneObjectById,
+    resolveHelperTangentBasis,
+  ]);
   const geometryProceduralAnnotationOverlays = useMemo<{
     groups: OverlayPolylineGroup[] | null;
     pointSets: OverlayPointSet[] | null;
@@ -13128,6 +13756,22 @@ const App: React.FC = () => {
       labelSets,
     };
   }, [geometryAnnotations, geometryMode, resolveGeometrySceneMeshById]);
+  useEffect(() => {
+    if (!geometryDerivedConstructions.length) {
+      if (geometrySelectedDerivedConstructionId) setGeometrySelectedDerivedConstructionId(null);
+      return;
+    }
+    if (
+      !geometrySelectedDerivedConstructionId ||
+      !geometryDerivedConstructions.some((entry) => entry.id === geometrySelectedDerivedConstructionId)
+    ) {
+      setGeometrySelectedDerivedConstructionId(geometryDerivedConstructions[0].id);
+    }
+  }, [geometryDerivedConstructions, geometrySelectedDerivedConstructionId]);
+  const geometrySelectedDerivedConstructionEval = useMemo(() => {
+    if (!geometrySelectedDerivedConstructionId) return null;
+    return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
+  }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
   const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
     const colorByKind: Record<GeometrySnapPreviewKind, number> = {
@@ -13160,6 +13804,9 @@ const App: React.FC = () => {
     if (geometryProceduralAnnotationOverlays.pointSets?.length) {
       sets.push(...geometryProceduralAnnotationOverlays.pointSets);
     }
+    if (geometryDerivedConstructionOverlays.pointSets?.length) {
+      sets.push(...geometryDerivedConstructionOverlays.pointSets);
+    }
     if (geometryProceduralSelectionPointSets?.length) {
       sets.push(...geometryProceduralSelectionPointSets);
     }
@@ -13171,6 +13818,7 @@ const App: React.FC = () => {
     geometryMode,
     geometryProceduralFeatureOverlays.pointSets,
     geometryProceduralAnnotationOverlays.pointSets,
+    geometryDerivedConstructionOverlays.pointSets,
     geometryProceduralSelectionPointSets,
     geometryProceduralSnapPreviewPointSet,
   ]);
@@ -35844,6 +36492,7 @@ case "mobius":
     if (geometryProceduralPanelTab === "create") return geometryAddEnterPlacementMode ? "place" : "create";
     if (geometryProceduralPanelTab === "scene") return "place";
     if (
+      geometryProceduralPanelTab === "construct" ||
       geometryProceduralPanelTab === "object" ||
       geometryProceduralPanelTab === "transform" ||
       geometryProceduralPanelTab === "view" ||
@@ -39248,11 +39897,12 @@ case "mobius":
                     { id: "create" as const, label: "Create" },
                     { id: "scene" as const, label: "Scene" },
                     { id: "object" as const, label: "Object" },
-                    { id: "transform" as const, label: "Transform" },
+                    { id: "construct" as const, label: "Construct" },
+                    { id: "transform" as const, label: "Edit" },
                     { id: "view" as const, label: "View" },
                     { id: "history" as const, label: "History" },
-                    { id: "analysis" as const, label: "Analysis" },
-                    { id: "theory" as const, label: "Theory" },
+                    { id: "analysis" as const, label: "Compare" },
+                    { id: "theory" as const, label: "Measure" },
                   ] as const).map((entry) => {
                     const active = geometryProceduralPanelTab === entry.id;
                     return (
@@ -44662,6 +45312,267 @@ case "mobius":
                       )}
                     </details>
                     </>
+                    )}
+
+                    {geometryProceduralPanelTab === "construct" && (
+                    <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#f8fbff",
+                          display: "grid",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", color: "#0f172a" }}>
+                          GEOMETRY CONSTRUCT
+                        </div>
+                        <div style={{ fontSize: 11, color: "#475569" }}>
+                          Build dependent mathematical helpers from selected geometry without modifying source meshes.
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                          Left panel: Object / Edit / Construct / Measure / History / Compare.
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#ffffff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Construct source</div>
+                        <div style={{ fontSize: 11, color: "#475467" }}>
+                          Use Probe mode and click a vertex/edge/face, or select an object in Scene.
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          {([
+                            ["object", "Object"],
+                            ["face", "Face"],
+                            ["edge", "Edge"],
+                            ["vertex", "Vertex"],
+                          ] as const).map(([modeId, label]) => (
+                            <button
+                              key={`geometry-construct-probe-mode-${modeId}`}
+                              type="button"
+                              onClick={() => setGeometryProbeSelectionMode(modeId)}
+                              style={pill(geometryProbeSelectionMode === modeId)}
+                              aria-pressed={geometryProbeSelectionMode === modeId}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#475467" }}>
+                          Selected:
+                          {" "}
+                          {geometryProbeSelectionDetails
+                            ? `${geometryProbeSelectionDetails.mode}${geometryProbeSelectionDetails.faceIndex != null ? ` · face #${geometryProbeSelectionDetails.faceIndex}` : ""}${geometryProbeSelectionDetails.edgeVertexPair ? ` · edge [${geometryProbeSelectionDetails.edgeVertexPair[0]}, ${geometryProbeSelectionDetails.edgeVertexPair[1]}]` : ""}${geometryProbeSelectionDetails.vertexIndex != null ? ` · vertex #${geometryProbeSelectionDetails.vertexIndex}` : ""}`
+                            : geometrySelectedSceneObject
+                              ? `object · ${geometrySelectedSceneObject.name}`
+                              : "none"}
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#ffffff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>Construct</div>
+                        <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                          `Point` · `Line / Axis` · `Plane` · `Bounding Object` · `Derived Copy`
+                        </div>
+
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div><strong>From vertex:</strong> point marker, coordinate label, normal endpoint, translated copy point.</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-point-marker")}>Point marker</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-coordinate-label")}>Coordinate label</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-normal-endpoint")}>Normal endpoint</button>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              Translate
+                              <input
+                                type="number"
+                                min={0.01}
+                                step={0.05}
+                                value={geometryConstructTranslateDistance}
+                                onChange={(e) => setGeometryConstructTranslateDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                style={{ width: 66 }}
+                              />
+                            </label>
+                            <button type="button" onClick={() => handleCreateDerivedFromVertex("vertex-translated-copy-point")}>Translated copy point</button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div><strong>From edge:</strong> midpoint, direction vector, perpendicular bisector line, edge-aligned axis, equal-length copied segment.</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-midpoint")}>Midpoint</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-direction-vector")}>Direction vector</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-perpendicular-bisector-line")}>Perpendicular bisector</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}>Edge-aligned axis</button>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              Length
+                              <input
+                                type="number"
+                                min={0.01}
+                                step={0.05}
+                                value={geometryConstructCopiedLength}
+                                onChange={(e) => setGeometryConstructCopiedLength(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                style={{ width: 66 }}
+                              />
+                            </label>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-equal-length-copied-segment")}>Equal-length copy</button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div><strong>From face:</strong> face centroid, face normal line, tangent plane preview, offset plane, parallel face plane.</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-centroid")}>Face centroid</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal line</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-tangent-plane-preview")}>Tangent plane preview</button>
+                            <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                              Offset
+                              <input
+                                type="number"
+                                min={0.01}
+                                step={0.05}
+                                value={geometryConstructOffsetDistance}
+                                onChange={(e) => setGeometryConstructOffsetDistance(Math.max(0.01, Number(e.target.value) || 0.5))}
+                                style={{ width: 66 }}
+                              />
+                            </label>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-offset-plane")}>Offset plane</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-parallel-face-plane")}>Parallel face plane</button>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
+                          <div><strong>From object:</strong> centroid, bounding box, principal axes preview, symmetry plane preview, circumscribed sphere preview, inscribed reference sphere (supported primitives).</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-centroid")}>Centroid</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-bounding-box")}>Bounding box</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-principal-axes-preview")}>Principal axes</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-symmetry-plane-preview")}>Symmetry plane</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-circumscribed-sphere-preview")}>Circumscribed sphere</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromObject("object-inscribed-reference-sphere")}>Inscribed sphere</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          border: "1px solid #dbe4f0",
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          background: "#ffffff",
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Derived objects</div>
+                          <button type="button" onClick={handleClearDerivedConstructions} disabled={!geometryDerivedConstructions.length}>
+                            Clear
+                          </button>
+                        </div>
+                        {geometryDerivedConstructions.length ? (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            {geometryDerivedConstructions.slice(0, 40).map((entry) => {
+                              const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+                              const selected = geometrySelectedDerivedConstructionId === entry.id;
+                              return (
+                                <div
+                                  key={`geometry-derived-construction-${entry.id}`}
+                                  style={{
+                                    border: "1px solid " + (selected ? "#0a66c2" : "#dbe2ea"),
+                                    borderRadius: 8,
+                                    padding: "6px 8px",
+                                    background: selected ? "#eaf3ff" : "#fff",
+                                    display: "grid",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setGeometrySelectedDerivedConstructionId(entry.id)}
+                                      style={{ border: "none", background: "transparent", textAlign: "left", padding: 0, cursor: "pointer", fontSize: 11, fontWeight: 700 }}
+                                    >
+                                      {GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type]}
+                                    </button>
+                                    <span
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: 700,
+                                        color:
+                                          evalEntry?.status === "valid"
+                                            ? "#166534"
+                                            : evalEntry?.status === "stale"
+                                              ? "#92400e"
+                                              : "#991b1b",
+                                      }}
+                                    >
+                                      {evalEntry?.status ?? "pending"}
+                                    </span>
+                                  </div>
+                                  <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                                    Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={entry.visible}
+                                        onChange={() => handleToggleDerivedConstructionVisibility(entry.id)}
+                                      />
+                                      Visible
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setGeometrySelectedDerivedConstructionId(entry.id);
+                                        handleUseDerivedPlaneForSectionSliceById(entry.id);
+                                      }}
+                                      disabled={
+                                        !(
+                                          entry.type === "face-tangent-plane-preview" ||
+                                          entry.type === "face-offset-plane" ||
+                                          entry.type === "face-parallel-face-plane" ||
+                                          entry.type === "object-symmetry-plane-preview"
+                                        )
+                                      }
+                                      style={{ fontSize: 10.5 }}
+                                      title="Use selected derived plane for section slice"
+                                    >
+                                      Use for section slice
+                                    </button>
+                                    <button type="button" onClick={() => handleDeleteDerivedConstruction(entry.id)} style={{ fontSize: 10.5 }}>
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 10.5, color: "#667085" }}>No derived construction objects yet.</div>
+                        )}
+                      </div>
+                    </div>
                     )}
 
                     {geometryProceduralPanelTab === "view" && (
@@ -50282,6 +51193,7 @@ case "mobius":
                           ...(geometrySectionOverlayGroups ?? []),
                           ...(geometryBooleanPreviewOverlayGroups ?? []),
                           ...(geometryProceduralFeatureOverlays.groups ?? []),
+                          ...(geometryDerivedConstructionOverlays.groups ?? []),
                           ...(geometryProceduralAnnotationOverlays.groups ?? []),
                         ]
                       : null
@@ -50326,6 +51238,7 @@ case "mobius":
                         ? geometryConstructionState?.labels ?? null
                         : [
                             ...(geometryProceduralFeatureOverlays.labelSets ?? []),
+                            ...(geometryDerivedConstructionOverlays.labelSets ?? []),
                             ...(geometryProceduralAnnotationOverlays.labelSets ?? []),
                           ]
                   }
@@ -50532,6 +51445,60 @@ case "mobius":
                                 Open Gauss map workflow
                               </button>
                             </div>
+                            {geometrySelectedDerivedConstructionEval && (
+                              <div
+                                style={{
+                                  border: "1px solid #cbd5e1",
+                                  borderRadius: 8,
+                                  padding: "8px 10px",
+                                  background: "#f8fafc",
+                                  display: "grid",
+                                  gap: 4,
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 700 }}>Derived Object</div>
+                                <div><strong>Type:</strong> {geometrySelectedDerivedConstructionEval.typeLabel}</div>
+                                <div><strong>Source object:</strong> {geometrySelectedDerivedConstructionEval.sourceObjectName}</div>
+                                <div>
+                                  <strong>Source face:</strong>{" "}
+                                  {geometrySelectedDerivedConstructionEval.sourceFaceIndex != null
+                                    ? `#${geometrySelectedDerivedConstructionEval.sourceFaceIndex}`
+                                    : "n/a"}
+                                </div>
+                                <div>
+                                  <strong>Origin:</strong>{" "}
+                                  {geometrySelectedDerivedConstructionEval.origin
+                                    ? fmt3(geometrySelectedDerivedConstructionEval.origin)
+                                    : "n/a"}
+                                </div>
+                                <div>
+                                  <strong>Direction:</strong>{" "}
+                                  {geometrySelectedDerivedConstructionEval.direction
+                                    ? fmt3(geometrySelectedDerivedConstructionEval.direction)
+                                    : "n/a"}
+                                </div>
+                                <div><strong>Dependent:</strong> {geometrySelectedDerivedConstructionEval.object.dependent ? "yes" : "no"}</div>
+                                <div><strong>Status:</strong> {geometrySelectedDerivedConstructionEval.status}</div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                  <button
+                                    type="button"
+                                    onClick={handleUseSelectedDerivedPlaneForSectionSlice}
+                                    disabled={
+                                      !(
+                                        geometrySelectedDerivedConstructionEval.object.type === "face-tangent-plane-preview" ||
+                                        geometrySelectedDerivedConstructionEval.object.type === "face-offset-plane" ||
+                                        geometrySelectedDerivedConstructionEval.object.type === "face-parallel-face-plane" ||
+                                        geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview"
+                                      )
+                                    }
+                                    style={{ fontSize: 11 }}
+                                  >
+                                    Use selected derived plane for section slice
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </>
