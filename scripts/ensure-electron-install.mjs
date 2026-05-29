@@ -9,6 +9,14 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 
+function readBoundedIntegerEnv(name, { min, max, defaultValue }) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return defaultValue;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
+}
+
 function getElectronDir() {
   return path.dirname(require.resolve("electron/package.json"));
 }
@@ -63,7 +71,7 @@ function writeMarkerIfExecutableExists(paths) {
   return true;
 }
 
-async function downloadElectronArtifact(paths) {
+async function downloadElectronArtifact(paths, timeoutMs) {
   const { downloadArtifact } = require("@electron/get");
   const extract = require("extract-zip");
   const { version } = require("electron/package.json");
@@ -82,6 +90,11 @@ async function downloadElectronArtifact(paths) {
         : require("electron/checksums.json"),
     platform: getTargetPlatform(),
     arch: getTargetArch(),
+    downloadOptions: {
+      timeout: {
+        request: timeoutMs,
+      },
+    },
   });
 
   await extract(zipPath, { dir: distPath });
@@ -94,37 +107,54 @@ async function downloadElectronArtifact(paths) {
 }
 
 async function downloadElectronArtifactWithTimeout(paths) {
-  const timeoutMsRaw = Number(process.env.MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS);
-  const timeoutMs = Number.isFinite(timeoutMsRaw)
-    ? Math.max(30_000, Math.min(30 * 60_000, Math.floor(timeoutMsRaw)))
-    : 10 * 60_000;
+  const timeoutMs = readBoundedIntegerEnv("MATH3D_ELECTRON_DOWNLOAD_TIMEOUT_MS", {
+    min: 30_000,
+    max: 60 * 60_000,
+    defaultValue: 20 * 60_000,
+  });
+  const maxRetries = readBoundedIntegerEnv("MATH3D_ELECTRON_DOWNLOAD_RETRIES", {
+    min: 0,
+    max: 5,
+    defaultValue: 1,
+  });
+  const totalAttempts = maxRetries + 1;
+  let lastError = null;
 
-  let timeoutHandle;
-  const startMs = Date.now();
-  process.stderr.write(
-    `[ensure-electron] Downloading Electron (${getTargetPlatform()}/${getTargetArch()}); timeout=${timeoutMs}ms\n`
-  );
-  const heartbeatHandle = setInterval(() => {
-    const elapsedMs = Date.now() - startMs;
-    process.stderr.write(`[ensure-electron] Download in progress... elapsed=${elapsedMs}ms\n`);
-  }, 15_000);
-  if (typeof heartbeatHandle?.unref === "function") {
-    heartbeatHandle.unref();
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    const startMs = Date.now();
+    process.stderr.write(
+      `[ensure-electron] Downloading Electron (${getTargetPlatform()}/${getTargetArch()}); timeout=${timeoutMs}ms; attempt=${attempt}/${totalAttempts}\n`
+    );
+    const heartbeatHandle = setInterval(() => {
+      const elapsedMs = Date.now() - startMs;
+      process.stderr.write(`[ensure-electron] Download in progress... elapsed=${elapsedMs}ms\n`);
+    }, 15_000);
+    if (typeof heartbeatHandle?.unref === "function") {
+      heartbeatHandle.unref();
+    }
+
+    try {
+      await downloadElectronArtifact(paths, timeoutMs);
+      const totalMs = Date.now() - startMs;
+      process.stderr.write(`[ensure-electron] Download completed in ${totalMs}ms\n`);
+      return;
+    } catch (error) {
+      lastError = error;
+      clearInterval(heartbeatHandle);
+      const message = String(error?.message ?? error);
+      process.stderr.write(`[ensure-electron] Download attempt ${attempt}/${totalAttempts} failed: ${message}\n`);
+      if (attempt < totalAttempts) {
+        const backoffMs = Math.min(60_000, attempt * 15_000);
+        process.stderr.write(`[ensure-electron] Retrying after ${backoffMs}ms...\n`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+      continue;
+    } finally {
+      clearInterval(heartbeatHandle);
+    }
   }
 
-  try {
-    await Promise.race([
-      downloadElectronArtifact(paths),
-      new Promise((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(new Error(`Electron download timed out after ${timeoutMs}ms.`));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    clearInterval(heartbeatHandle);
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
+  throw lastError ?? new Error("Electron download failed.");
 }
 
 function listDist(paths) {
