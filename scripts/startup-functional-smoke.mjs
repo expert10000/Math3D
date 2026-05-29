@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { ensureElectronInstalled } from "./ensure-electron-install.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -43,7 +42,6 @@ function normalizeOutput(text) {
 }
 
 async function run() {
-  await ensureElectronInstalled();
   const electronBinary = require("electron");
 
   const childEnv = {
