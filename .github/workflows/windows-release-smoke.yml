@@ -42,14 +42,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            renderer/package-lock.json
+          node-version: '24.15.0'
+          cache: 'npm'
+
+      - name: Show Node version
+        run: node --version
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -131,7 +131,7 @@ jobs:
       - name: Build app
         run: npm run build:core
 
-      - name: Run startup functional smoke
+      - name: Run Electron startup smoke test
         run: npm run test:app:startup:smoke
 
       - name: Run geometry functional smoke
