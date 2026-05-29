@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -33,8 +35,42 @@ const requiredMarkers = [
 
 const normalize = (text) => String(text || "").replace(/\r\n/g, "\n");
 
+function getPlatformExecutableRelativePath() {
+  const platform = process.env.npm_config_platform || os.platform();
+  switch (platform) {
+    case "mas":
+    case "darwin":
+      return "Electron.app/Contents/MacOS/Electron";
+    case "freebsd":
+    case "openbsd":
+    case "linux":
+      return "electron";
+    case "win32":
+      return "electron.exe";
+    default:
+      throw new Error(`Unsupported Electron platform: ${platform}`);
+  }
+}
+
+function resolveElectronBinaryPath() {
+  try {
+    return require("electron");
+  } catch (error) {
+    const electronPkgPath = require.resolve("electron/package.json");
+    const electronDir = path.dirname(electronPkgPath);
+    const fallbackBinaryPath = path.join(electronDir, "dist", getPlatformExecutableRelativePath());
+    if (fs.existsSync(fallbackBinaryPath)) {
+      process.stderr.write(
+        "[geometry-smoke] electron/path.txt missing or invalid; using node_modules/electron/dist fallback\n"
+      );
+      return fallbackBinaryPath;
+    }
+    throw error;
+  }
+}
+
 async function run() {
-  const electronBinary = require("electron");
+  const electronBinary = resolveElectronBinaryPath();
 
   const childEnv = {
     ...process.env,
