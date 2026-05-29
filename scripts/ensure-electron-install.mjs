@@ -55,9 +55,7 @@ function getElectronPaths() {
     electronDir,
     platformPath,
     pathFile: path.join(electronDir, "path.txt"),
-    executablePath: process.env.ELECTRON_OVERRIDE_DIST_PATH
-      ? path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, platformPath)
-      : path.join(electronDir, "dist", platformPath),
+    executablePath: path.join(electronDir, "dist", platformPath),
   };
 }
 
@@ -77,6 +75,12 @@ function writeMarkerIfExecutableExists(paths) {
   if (!fs.existsSync(paths.executablePath)) return false;
   fs.writeFileSync(paths.pathFile, paths.platformPath);
   return true;
+}
+
+function markerMatches(paths) {
+  if (!fs.existsSync(paths.pathFile)) return false;
+  const marker = fs.readFileSync(paths.pathFile, "utf8").trim();
+  return marker === paths.platformPath && fs.existsSync(paths.executablePath);
 }
 
 function describeElectronState(paths) {
@@ -99,6 +103,11 @@ function runElectronInstall(timeoutMs) {
   if (removedSkipFlags.length > 0) {
     // The ensure script is an explicit repair path; always allow binary download here.
     process.stderr.write(`[ensure-electron] Ignoring ${removedSkipFlags.join(", ")} during repair\n`);
+  }
+  const removedOverrideFlags = unsetEnvKeyCaseInsensitive(childEnv, "ELECTRON_OVERRIDE_DIST_PATH");
+  if (removedOverrideFlags.length > 0) {
+    // Always repair into node_modules/electron/dist + path.txt so later scripts behave consistently.
+    process.stderr.write(`[ensure-electron] Ignoring ${removedOverrideFlags.join(", ")} during repair\n`);
   }
 
   const result = spawnSync(process.execPath, [installScript], {
@@ -124,7 +133,7 @@ async function downloadElectronArtifactDirect(paths, timeoutMs) {
   const { downloadArtifact } = require("@electron/get");
   const extract = require("extract-zip");
   const { version } = require("electron/package.json");
-  const distPath = process.env.ELECTRON_OVERRIDE_DIST_PATH || path.join(paths.electronDir, "dist");
+  const distPath = path.join(paths.electronDir, "dist");
   fs.rmSync(distPath, { recursive: true, force: true });
   fs.mkdirSync(distPath, { recursive: true });
 
@@ -165,19 +174,19 @@ function canRepair(message) {
 export async function ensureElectronInstalled() {
   const paths = getElectronPaths();
 
+  if (markerMatches(paths)) {
+    return;
+  }
+
   try {
     resolveElectronBinary();
-    return;
   } catch (error) {
     const message = String(error?.message ?? error);
-    if (!canRepair(message)) {
-      throw error;
-    }
+    if (!canRepair(message)) throw error;
   }
 
   if (writeMarkerIfExecutableExists(paths)) {
     process.stderr.write("[ensure-electron] Restored electron/path.txt from existing binary\n");
-    resolveElectronBinary();
     return;
   }
 
@@ -206,12 +215,12 @@ export async function ensureElectronInstalled() {
         );
         await downloadElectronArtifactDirect(paths, timeoutMs);
       }
-      if (writeMarkerIfExecutableExists(paths)) {
+      if (writeMarkerIfExecutableExists(paths) && markerMatches(paths)) {
         process.stderr.write("[ensure-electron] Restored electron/path.txt after repair\n");
+        process.stderr.write("[ensure-electron] Electron install repair succeeded\n");
+        return;
       }
-      resolveElectronBinary();
-      process.stderr.write("[ensure-electron] Electron install repair succeeded\n");
-      return;
+      throw new Error("Repair completed but marker/binary validation still failed.");
     } catch (error) {
       lastError = error;
       process.stderr.write(
