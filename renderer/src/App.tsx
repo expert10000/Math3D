@@ -2030,9 +2030,9 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "face-parallel-face-plane": "Parallel Face Plane",
   "object-centroid": "Centroid",
   "object-bounding-box": "Bounding Box",
-  "object-principal-axes-preview": "Principal Axes Preview",
-  "object-symmetry-plane-preview": "Symmetry Plane Preview",
-  "object-circumscribed-sphere-preview": "Circumscribed Sphere Preview",
+  "object-principal-axes-preview": "Principal Axes",
+  "object-symmetry-plane-preview": "Symmetry Plane",
+  "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
 };
 type GeometryMeasuredEdgeEntry = {
@@ -12995,6 +12995,486 @@ const App: React.FC = () => {
         ]);
       }
     };
+    const dot = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => a.x * b.x + a.y * b.y + a.z * b.z;
+    const add = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+    const sub = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+    const scale = (a: { x: number; y: number; z: number }, s: number) => ({ x: a.x * s, y: a.y * s, z: a.z * s });
+    const distSq = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dz = a.z - b.z;
+      return dx * dx + dy * dy + dz * dz;
+    };
+    const pushAxisLine = (
+      lines: PolylineSet,
+      center: { x: number; y: number; z: number },
+      axis: { x: number; y: number; z: number },
+      minT: number,
+      maxT: number
+    ) => {
+      lines.push([
+        { x: center.x + axis.x * minT, y: center.y + axis.y * minT, z: center.z + axis.z * minT },
+        { x: center.x + axis.x * maxT, y: center.y + axis.y * maxT, z: center.z + axis.z * maxT },
+      ]);
+    };
+    const meshPoints = (positions: Float32Array): Array<{ x: number; y: number; z: number }> => {
+      const out: Array<{ x: number; y: number; z: number }> = [];
+      for (let i = 0; i + 2 < positions.length; i += 3) {
+        out.push({ x: Number(positions[i]), y: Number(positions[i + 1]), z: Number(positions[i + 2]) });
+      }
+      return out;
+    };
+    const dedupePoints = (pts: Array<{ x: number; y: number; z: number }>, eps = 1e-7) => {
+      const inv = 1 / Math.max(1e-12, eps);
+      const map = new Map<string, { x: number; y: number; z: number }>();
+      for (const p of pts) {
+        const key = `${Math.round(p.x * inv)},${Math.round(p.y * inv)},${Math.round(p.z * inv)}`;
+        if (!map.has(key)) map.set(key, p);
+      }
+      return Array.from(map.values());
+    };
+    const buildConvexHullPoints = (pts: Array<{ x: number; y: number; z: number }>) => {
+      if (pts.length <= 4) return pts.slice();
+      try {
+        const verts = pts.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+        const hull = new ConvexGeometry(verts);
+        const attr = hull.getAttribute("position");
+        const raw: Array<{ x: number; y: number; z: number }> = [];
+        for (let i = 0; i + 2 < attr.count * 3; i += 3) {
+          raw.push({ x: Number(attr.array[i]), y: Number(attr.array[i + 1]), z: Number(attr.array[i + 2]) });
+        }
+        hull.dispose();
+        return dedupePoints(raw);
+      } catch {
+        return pts.slice();
+      }
+    };
+    const solve3x3 = (m: number[][], b: number[]): [number, number, number] | null => {
+      const a = [
+        [m[0][0], m[0][1], m[0][2], b[0]],
+        [m[1][0], m[1][1], m[1][2], b[1]],
+        [m[2][0], m[2][1], m[2][2], b[2]],
+      ];
+      for (let col = 0; col < 3; col += 1) {
+        let pivot = col;
+        for (let row = col + 1; row < 3; row += 1) {
+          if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row;
+        }
+        if (Math.abs(a[pivot][col]) < 1e-12) return null;
+        if (pivot !== col) {
+          const tmp = a[col];
+          a[col] = a[pivot];
+          a[pivot] = tmp;
+        }
+        const inv = 1 / a[col][col];
+        for (let k = col; k < 4; k += 1) a[col][k] *= inv;
+        for (let row = 0; row < 3; row += 1) {
+          if (row === col) continue;
+          const f = a[row][col];
+          for (let k = col; k < 4; k += 1) a[row][k] -= f * a[col][k];
+        }
+      }
+      return [a[0][3], a[1][3], a[2][3]];
+    };
+    const sphereFrom2 = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => {
+      const center = { x: 0.5 * (a.x + b.x), y: 0.5 * (a.y + b.y), z: 0.5 * (a.z + b.z) };
+      return { center, radius: Math.sqrt(distSq(a, b)) * 0.5 };
+    };
+    const sphereFrom3 = (
+      a: { x: number; y: number; z: number },
+      b: { x: number; y: number; z: number },
+      c: { x: number; y: number; z: number }
+    ) => {
+      const ab = sub(b, a);
+      const ac = sub(c, a);
+      const ab2 = dot(ab, ab);
+      const ac2 = dot(ac, ac);
+      const abac = dot(ab, ac);
+      const det = ab2 * ac2 - abac * abac;
+      if (Math.abs(det) < 1e-12) {
+        const s1 = sphereFrom2(a, b);
+        const s2 = sphereFrom2(a, c);
+        const s3 = sphereFrom2(b, c);
+        let best = s1;
+        if (s2.radius > best.radius) best = s2;
+        if (s3.radius > best.radius) best = s3;
+        return best;
+      }
+      const u = (0.5 * ab2 * ac2 - 0.5 * ac2 * abac) / det;
+      const v = (0.5 * ac2 * ab2 - 0.5 * ab2 * abac) / det;
+      const center = add(a, add(scale(ab, u), scale(ac, v)));
+      return { center, radius: Math.sqrt(Math.max(0, distSq(center, a))) };
+    };
+    const sphereFrom4 = (
+      a: { x: number; y: number; z: number },
+      b: { x: number; y: number; z: number },
+      c: { x: number; y: number; z: number },
+      d: { x: number; y: number; z: number }
+    ) => {
+      const m = [
+        [2 * (b.x - a.x), 2 * (b.y - a.y), 2 * (b.z - a.z)],
+        [2 * (c.x - a.x), 2 * (c.y - a.y), 2 * (c.z - a.z)],
+        [2 * (d.x - a.x), 2 * (d.y - a.y), 2 * (d.z - a.z)],
+      ];
+      const a2 = a.x * a.x + a.y * a.y + a.z * a.z;
+      const b2 = b.x * b.x + b.y * b.y + b.z * b.z;
+      const c2 = c.x * c.x + c.y * c.y + c.z * c.z;
+      const d2 = d.x * d.x + d.y * d.y + d.z * d.z;
+      const rhs = [b2 - a2, c2 - a2, d2 - a2];
+      const center = solve3x3(m, rhs);
+      if (!center) return null;
+      const c0 = { x: center[0], y: center[1], z: center[2] };
+      return { center: c0, radius: Math.sqrt(Math.max(0, distSq(c0, a))) };
+    };
+    const sphereContains = (sphere: { center: { x: number; y: number; z: number }; radius: number } | null, p: { x: number; y: number; z: number }) => {
+      if (!sphere) return false;
+      return distSq(sphere.center, p) <= (sphere.radius + 1e-7) * (sphere.radius + 1e-7);
+    };
+    const sphereFromBoundary = (boundary: Array<{ x: number; y: number; z: number }>) => {
+      if (boundary.length === 0) return { center: { x: 0, y: 0, z: 0 }, radius: 0 };
+      if (boundary.length === 1) return { center: boundary[0], radius: 0 };
+      if (boundary.length === 2) return sphereFrom2(boundary[0], boundary[1]);
+      if (boundary.length === 3) return sphereFrom3(boundary[0], boundary[1], boundary[2]);
+      const s4 = sphereFrom4(boundary[0], boundary[1], boundary[2], boundary[3]);
+      if (s4) return s4;
+      let best = sphereFrom2(boundary[0], boundary[1]);
+      for (let i = 0; i < 4; i += 1) {
+        for (let j = i + 1; j < 4; j += 1) {
+          for (let k = j + 1; k < 4; k += 1) {
+            const s = sphereFrom3(boundary[i], boundary[j], boundary[k]);
+            if (boundary.every((p) => sphereContains(s, p)) && s.radius >= best.radius) best = s;
+          }
+        }
+      }
+      return best;
+    };
+    const lcg = (seed: number) => () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 0xffffffff;
+    };
+    const shufflePointsDeterministic = (pts: Array<{ x: number; y: number; z: number }>) => {
+      const out = pts.slice();
+      const rand = lcg((pts.length * 2654435761) >>> 0);
+      for (let i = out.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(rand() * (i + 1));
+        const tmp = out[i];
+        out[i] = out[j];
+        out[j] = tmp;
+      }
+      return out;
+    };
+    const minimumEnclosingSphere = (pts: Array<{ x: number; y: number; z: number }>) => {
+      if (!pts.length) return null;
+      const shuffled = shufflePointsDeterministic(pts);
+      const recurse = (
+        n: number,
+        boundary: Array<{ x: number; y: number; z: number }>
+      ): { center: { x: number; y: number; z: number }; radius: number } => {
+        if (n === 0 || boundary.length === 4) return sphereFromBoundary(boundary);
+        const p = shuffled[n - 1];
+        const d = recurse(n - 1, boundary);
+        if (sphereContains(d, p)) return d;
+        boundary.push(p);
+        const out = recurse(n - 1, boundary);
+        boundary.pop();
+        return out;
+      };
+      return recurse(shuffled.length, []);
+    };
+    const pcaEigenSystem = (pts: Array<{ x: number; y: number; z: number }>) => {
+      if (pts.length < 3) return null;
+      let cx = 0;
+      let cy = 0;
+      let cz = 0;
+      for (const p of pts) {
+        cx += p.x;
+        cy += p.y;
+        cz += p.z;
+      }
+      cx /= pts.length;
+      cy /= pts.length;
+      cz /= pts.length;
+      let cxx = 0;
+      let cxy = 0;
+      let cxz = 0;
+      let cyy = 0;
+      let cyz = 0;
+      let czz = 0;
+      for (const p of pts) {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dz = p.z - cz;
+        cxx += dx * dx;
+        cxy += dx * dy;
+        cxz += dx * dz;
+        cyy += dy * dy;
+        cyz += dy * dz;
+        czz += dz * dz;
+      }
+      const inv = 1 / Math.max(1, pts.length);
+      const a = [
+        [cxx * inv, cxy * inv, cxz * inv],
+        [cxy * inv, cyy * inv, cyz * inv],
+        [cxz * inv, cyz * inv, czz * inv],
+      ];
+      const v = [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ];
+      for (let iter = 0; iter < 24; iter += 1) {
+        let p = 0;
+        let q = 1;
+        let maxOff = Math.abs(a[0][1]);
+        const a02 = Math.abs(a[0][2]);
+        const a12 = Math.abs(a[1][2]);
+        if (a02 > maxOff) {
+          maxOff = a02;
+          p = 0;
+          q = 2;
+        }
+        if (a12 > maxOff) {
+          maxOff = a12;
+          p = 1;
+          q = 2;
+        }
+        if (maxOff < 1e-12) break;
+        const app = a[p][p];
+        const aqq = a[q][q];
+        const apq = a[p][q];
+        const phi = 0.5 * Math.atan2(2 * apq, aqq - app);
+        const c = Math.cos(phi);
+        const s = Math.sin(phi);
+        for (let i = 0; i < 3; i += 1) {
+          if (i === p || i === q) continue;
+          const aip = a[i][p];
+          const aiq = a[i][q];
+          a[i][p] = c * aip - s * aiq;
+          a[p][i] = a[i][p];
+          a[i][q] = s * aip + c * aiq;
+          a[q][i] = a[i][q];
+        }
+        a[p][p] = c * c * app - 2 * s * c * apq + s * s * aqq;
+        a[q][q] = s * s * app + 2 * s * c * apq + c * c * aqq;
+        a[p][q] = 0;
+        a[q][p] = 0;
+        for (let i = 0; i < 3; i += 1) {
+          const vip = v[i][p];
+          const viq = v[i][q];
+          v[i][p] = c * vip - s * viq;
+          v[i][q] = s * vip + c * viq;
+        }
+      }
+      const eig = [
+        { value: a[0][0], axis: norm({ x: v[0][0], y: v[1][0], z: v[2][0] }) ?? { x: 1, y: 0, z: 0 } },
+        { value: a[1][1], axis: norm({ x: v[0][1], y: v[1][1], z: v[2][1] }) ?? { x: 0, y: 1, z: 0 } },
+        { value: a[2][2], axis: norm({ x: v[0][2], y: v[1][2], z: v[2][2] }) ?? { x: 0, y: 0, z: 1 } },
+      ].sort((l, r) => r.value - l.value);
+      for (const e of eig) {
+        const probe = pts.find((p) => Math.abs(dot(sub(p, { x: cx, y: cy, z: cz }), e.axis)) > 1e-9) ?? null;
+        if (probe && dot(sub(probe, { x: cx, y: cy, z: cz }), e.axis) < 0) {
+          e.axis = scale(e.axis, -1);
+        }
+      }
+      return {
+        center: { x: cx, y: cy, z: cz },
+        axes: [eig[0].axis, eig[1].axis, eig[2].axis] as [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }],
+      };
+    };
+    const bestSymmetryPlane = (pts: Array<{ x: number; y: number; z: number }>, pca: { center: { x: number; y: number; z: number }; axes: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }, { x: number; y: number; z: number }] }) => {
+      if (pts.length < 3) return null;
+      const sampleCap = 1400;
+      const stride = Math.max(1, Math.floor(pts.length / sampleCap));
+      const sample: Array<{ x: number; y: number; z: number }> = [];
+      for (let i = 0; i < pts.length; i += stride) sample.push(pts[i]);
+      if (!sample.length) return null;
+      const candidates: Array<{ x: number; y: number; z: number }> = [];
+      const pushCandidate = (v0: { x: number; y: number; z: number }) => {
+        const u = norm(v0);
+        if (!u) return;
+        if (!candidates.some((c) => Math.abs(dot(c, u)) > 0.999)) candidates.push(u);
+      };
+      pushCandidate(pca.axes[0]);
+      pushCandidate(pca.axes[1]);
+      pushCandidate(pca.axes[2]);
+      pushCandidate(add(pca.axes[0], pca.axes[1]));
+      pushCandidate(add(pca.axes[0], pca.axes[2]));
+      pushCandidate(add(pca.axes[1], pca.axes[2]));
+      pushCandidate(sub(pca.axes[0], pca.axes[1]));
+      pushCandidate(sub(pca.axes[0], pca.axes[2]));
+      pushCandidate(sub(pca.axes[1], pca.axes[2]));
+      if (!candidates.length) return null;
+      let best: { normal: { x: number; y: number; z: number }; error: number } | null = null;
+      for (const n of candidates) {
+        let err = 0;
+        for (const p of sample) {
+          const rel = sub(p, pca.center);
+          const reflected = sub(p, scale(n, 2 * dot(rel, n)));
+          const q = add(pca.center, reflected);
+          let bestD2 = Number.POSITIVE_INFINITY;
+          for (const c of sample) {
+            const d2 = distSq(q, c);
+            if (d2 < bestD2) bestD2 = d2;
+          }
+          err += bestD2;
+        }
+        err = Math.sqrt(err / sample.length);
+        if (!best || err < best.error) best = { normal: n, error: err };
+      }
+      return best?.normal ?? null;
+    };
+    const buildTriangles = (mesh: SurfaceMeshData) => {
+      const pts = mesh.positions;
+      const indices = mesh.indices;
+      const tris: Array<[THREE.Vector3, THREE.Vector3, THREE.Vector3]> = [];
+      if (indices && indices.length >= 3) {
+        for (let i = 0; i + 2 < indices.length; i += 3) {
+          const ia = Number(indices[i]) * 3;
+          const ib = Number(indices[i + 1]) * 3;
+          const ic = Number(indices[i + 2]) * 3;
+          if (ia + 2 >= pts.length || ib + 2 >= pts.length || ic + 2 >= pts.length) continue;
+          tris.push([
+            new THREE.Vector3(Number(pts[ia]), Number(pts[ia + 1]), Number(pts[ia + 2])),
+            new THREE.Vector3(Number(pts[ib]), Number(pts[ib + 1]), Number(pts[ib + 2])),
+            new THREE.Vector3(Number(pts[ic]), Number(pts[ic + 1]), Number(pts[ic + 2])),
+          ]);
+        }
+      } else {
+        for (let i = 0; i + 8 < pts.length; i += 9) {
+          tris.push([
+            new THREE.Vector3(Number(pts[i]), Number(pts[i + 1]), Number(pts[i + 2])),
+            new THREE.Vector3(Number(pts[i + 3]), Number(pts[i + 4]), Number(pts[i + 5])),
+            new THREE.Vector3(Number(pts[i + 6]), Number(pts[i + 7]), Number(pts[i + 8])),
+          ]);
+        }
+      }
+      return tris;
+    };
+    const rayTriangleT = (
+      origin: { x: number; y: number; z: number },
+      dir: { x: number; y: number; z: number },
+      tri: [THREE.Vector3, THREE.Vector3, THREE.Vector3]
+    ) => {
+      const edge1 = new THREE.Vector3().subVectors(tri[1], tri[0]);
+      const edge2 = new THREE.Vector3().subVectors(tri[2], tri[0]);
+      const pvec = new THREE.Vector3(
+        dir.y * edge2.z - dir.z * edge2.y,
+        dir.z * edge2.x - dir.x * edge2.z,
+        dir.x * edge2.y - dir.y * edge2.x
+      );
+      const det = edge1.dot(pvec);
+      if (Math.abs(det) < 1e-12) return null;
+      const invDet = 1 / det;
+      const tvec = new THREE.Vector3(origin.x - tri[0].x, origin.y - tri[0].y, origin.z - tri[0].z);
+      const u = tvec.dot(pvec) * invDet;
+      if (u < -1e-10 || u > 1 + 1e-10) return null;
+      const qvec = new THREE.Vector3().crossVectors(tvec, edge1);
+      const v = (dir.x * qvec.x + dir.y * qvec.y + dir.z * qvec.z) * invDet;
+      if (v < -1e-10 || u + v > 1 + 1e-10) return null;
+      const t = edge2.dot(qvec) * invDet;
+      if (t <= 1e-9) return null;
+      return t;
+    };
+    const isInsideMesh = (p: { x: number; y: number; z: number }, tris: Array<[THREE.Vector3, THREE.Vector3, THREE.Vector3]>) => {
+      if (!tris.length) return false;
+      const dirs = [
+        { x: 1, y: 0.193, z: 0.071 },
+        { x: -0.211, y: 1, z: 0.083 },
+        { x: 0.127, y: -0.331, z: 1 },
+      ].map((d) => norm(d) ?? { x: 1, y: 0, z: 0 });
+      let insideVotes = 0;
+      for (const d of dirs) {
+        const hits = new Set<number>();
+        for (const tri of tris) {
+          const t = rayTriangleT(p, d, tri);
+          if (t == null) continue;
+          hits.add(Math.round(t * 1e7));
+        }
+        if (hits.size % 2 === 1) insideVotes += 1;
+      }
+      return insideVotes >= 2;
+    };
+    const nearestDistToMesh = (p: { x: number; y: number; z: number }, tris: Array<[THREE.Vector3, THREE.Vector3, THREE.Vector3]>) => {
+      const query = new THREE.Vector3(p.x, p.y, p.z);
+      const closest = new THREE.Vector3();
+      const triTmp = new THREE.Triangle();
+      let bestSq = Number.POSITIVE_INFINITY;
+      for (const tri of tris) {
+        triTmp.set(tri[0], tri[1], tri[2]);
+        triTmp.closestPointToPoint(query, closest);
+        const d2 = closest.distanceToSquared(query);
+        if (d2 < bestSq) bestSq = d2;
+      }
+      return Math.sqrt(Math.max(0, bestSq));
+    };
+    const solveInscribedSphere = (
+      mesh: SurfaceMeshData,
+      centerHint: { x: number; y: number; z: number },
+      maxDim: number,
+      boundsHint: BBox3 | null
+    ) => {
+      const tris = buildTriangles(mesh);
+      if (!tris.length) return null;
+      let center = { ...centerHint };
+      if (!isInsideMesh(center, tris)) {
+        let foundCenter: { x: number; y: number; z: number } | null = null;
+        if (boundsHint) {
+          const sx = boundsHint.max[0] - boundsHint.min[0];
+          const sy = boundsHint.max[1] - boundsHint.min[1];
+          const sz = boundsHint.max[2] - boundsHint.min[2];
+          const sampleSteps = 5;
+          for (let ix = 0; ix < sampleSteps && !foundCenter; ix += 1) {
+            for (let iy = 0; iy < sampleSteps && !foundCenter; iy += 1) {
+              for (let iz = 0; iz < sampleSteps && !foundCenter; iz += 1) {
+                const tx = (ix + 0.5) / sampleSteps;
+                const ty = (iy + 0.5) / sampleSteps;
+                const tz = (iz + 0.5) / sampleSteps;
+                const probe = {
+                  x: boundsHint.min[0] + sx * tx,
+                  y: boundsHint.min[1] + sy * ty,
+                  z: boundsHint.min[2] + sz * tz,
+                };
+                if (isInsideMesh(probe, tris)) {
+                  foundCenter = probe;
+                }
+              }
+            }
+          }
+        }
+        if (!foundCenter) return null;
+        center = foundCenter;
+      }
+      let bestCenter = { ...center };
+      let bestRadius = nearestDistToMesh(center, tris);
+      const dirs: Array<{ x: number; y: number; z: number }> = [];
+      for (let ix = -1; ix <= 1; ix += 1) {
+        for (let iy = -1; iy <= 1; iy += 1) {
+          for (let iz = -1; iz <= 1; iz += 1) {
+            if (ix === 0 && iy === 0 && iz === 0) continue;
+            const d = norm({ x: ix, y: iy, z: iz });
+            if (d) dirs.push(d);
+          }
+        }
+      }
+      let step = Math.max(0.02, maxDim * 0.18);
+      for (let iter = 0; iter < 48; iter += 1) {
+        let improved = false;
+        for (const d of dirs) {
+          const candidate = { x: bestCenter.x + d.x * step, y: bestCenter.y + d.y * step, z: bestCenter.z + d.z * step };
+          if (!isInsideMesh(candidate, tris)) continue;
+          const r = nearestDistToMesh(candidate, tris);
+          if (r > bestRadius + Math.max(1e-6, bestRadius * 1e-5)) {
+            bestRadius = r;
+            bestCenter = candidate;
+            improved = true;
+          }
+        }
+        if (!improved) step *= 0.5;
+        if (step < Math.max(1e-4, maxDim * 1e-4)) break;
+      }
+      if (!Number.isFinite(bestRadius) || bestRadius <= 1e-6) return null;
+      return { center: bestCenter, radius: bestRadius };
+    };
 
     for (const object of geometryDerivedConstructions) {
       const source = resolveGeometrySceneObjectById(object.sourceObjectId);
@@ -13367,75 +13847,82 @@ const App: React.FC = () => {
         continue;
       }
       if (object.type === "object-principal-axes-preview") {
-        addEvalGroup(
-          [
-            [
-              { x: objectCenter.x - maxDim * 0.6, y: objectCenter.y, z: objectCenter.z },
-              { x: objectCenter.x + maxDim * 0.6, y: objectCenter.y, z: objectCenter.z },
-            ],
-            [
-              { x: objectCenter.x, y: objectCenter.y - maxDim * 0.6, z: objectCenter.z },
-              { x: objectCenter.x, y: objectCenter.y + maxDim * 0.6, z: objectCenter.z },
-            ],
-            [
-              { x: objectCenter.x, y: objectCenter.y, z: objectCenter.z - maxDim * 0.6 },
-              { x: objectCenter.x, y: objectCenter.y, z: objectCenter.z + maxDim * 0.6 },
-            ],
-          ],
-          0x0ea5e9,
-          0.92,
-          1.8
-        );
-        finish("valid", objectCenter, { x: 1, y: 0, z: 0 });
+        const pts = dedupePoints(meshPoints(mesh.positions));
+        const pca = pcaEigenSystem(pts);
+        if (!pca) {
+          finish("invalid", objectCenter, null);
+          continue;
+        }
+        const lines: PolylineSet = [];
+        const spans = pca.axes.map((axis) => {
+          let minT = Number.POSITIVE_INFINITY;
+          let maxT = Number.NEGATIVE_INFINITY;
+          for (const p of pts) {
+            const t = dot(sub(p, pca.center), axis);
+            if (t < minT) minT = t;
+            if (t > maxT) maxT = t;
+          }
+          if (!Number.isFinite(minT) || !Number.isFinite(maxT) || maxT - minT < 1e-6) {
+            const half = Math.max(0.08, maxDim * 0.2);
+            return { minT: -half, maxT: half };
+          }
+          return { minT, maxT };
+        });
+        pushAxisLine(lines, pca.center, pca.axes[0], spans[0].minT, spans[0].maxT);
+        pushAxisLine(lines, pca.center, pca.axes[1], spans[1].minT, spans[1].maxT);
+        pushAxisLine(lines, pca.center, pca.axes[2], spans[2].minT, spans[2].maxT);
+        addEvalGroup(lines, 0x0ea5e9, 0.92, 1.8);
+        finish("valid", pca.center, pca.axes[0]);
         continue;
       }
       if (object.type === "object-symmetry-plane-preview") {
-        const normalAxis: "x" | "y" | "z" =
-          dims.x >= dims.y && dims.x >= dims.z ? "x" : dims.y >= dims.z ? "y" : "z";
-        const half = Math.max(0.2, maxDim * 0.45);
-        const lines: PolylineSet =
-          normalAxis === "x"
-            ? [
-                [{ x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z - half }, { x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z - half }],
-                [{ x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z - half }, { x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z + half }],
-                [{ x: objectCenter.x, y: objectCenter.y + half, z: objectCenter.z + half }, { x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z + half }],
-                [{ x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z + half }, { x: objectCenter.x, y: objectCenter.y - half, z: objectCenter.z - half }],
-              ]
-            : normalAxis === "y"
-              ? [
-                  [{ x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z - half }, { x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z - half }],
-                  [{ x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z - half }, { x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z + half }],
-                  [{ x: objectCenter.x + half, y: objectCenter.y, z: objectCenter.z + half }, { x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z + half }],
-                  [{ x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z + half }, { x: objectCenter.x - half, y: objectCenter.y, z: objectCenter.z - half }],
-                ]
-              : [
-                  [{ x: objectCenter.x - half, y: objectCenter.y - half, z: objectCenter.z }, { x: objectCenter.x + half, y: objectCenter.y - half, z: objectCenter.z }],
-                  [{ x: objectCenter.x + half, y: objectCenter.y - half, z: objectCenter.z }, { x: objectCenter.x + half, y: objectCenter.y + half, z: objectCenter.z }],
-                  [{ x: objectCenter.x + half, y: objectCenter.y + half, z: objectCenter.z }, { x: objectCenter.x - half, y: objectCenter.y + half, z: objectCenter.z }],
-                  [{ x: objectCenter.x - half, y: objectCenter.y + half, z: objectCenter.z }, { x: objectCenter.x - half, y: objectCenter.y - half, z: objectCenter.z }],
-                ];
+        const pts = dedupePoints(meshPoints(mesh.positions));
+        const pca = pcaEigenSystem(pts);
+        if (!pca) {
+          finish("invalid", objectCenter, null);
+          continue;
+        }
+        const planeNormal = bestSymmetryPlane(pts, pca);
+        if (!planeNormal) {
+          finish("invalid", pca.center, null);
+          continue;
+        }
+        const basis = resolveHelperTangentBasis(planeNormal);
+        let maxU = 0;
+        let maxV = 0;
+        for (const p of pts) {
+          const rel = sub(p, pca.center);
+          maxU = Math.max(maxU, Math.abs(dot(rel, basis.u)));
+          maxV = Math.max(maxV, Math.abs(dot(rel, basis.v)));
+        }
+        const halfU = Math.max(0.18, maxU * 1.05);
+        const halfV = Math.max(0.18, maxV * 1.05);
+        const corners = [
+          add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, halfV)),
+          add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, halfV)),
+          add(add(pca.center, scale(basis.u, -halfU)), scale(basis.v, -halfV)),
+          add(add(pca.center, scale(basis.u, halfU)), scale(basis.v, -halfV)),
+        ];
+        const lines: PolylineSet = [
+          [corners[0], corners[1]],
+          [corners[1], corners[2]],
+          [corners[2], corners[3]],
+          [corners[3], corners[0]],
+        ];
         addEvalGroup(lines, 0x8b5cf6, 0.76, 1.5);
-        finish(
-          "valid",
-          objectCenter,
-          normalAxis === "x"
-            ? { x: 1, y: 0, z: 0 }
-            : normalAxis === "y"
-              ? { x: 0, y: 1, z: 0 }
-              : { x: 0, y: 0, z: 1 }
-        );
+        finish("valid", pca.center, planeNormal);
         continue;
       }
       if (object.type === "object-circumscribed-sphere-preview") {
-        const center = objectCenter;
-        let radius = 0;
-        for (let i = 0; i + 2 < mesh.positions.length; i += 3) {
-          const dx = mesh.positions[i] - center.x;
-          const dy = mesh.positions[i + 1] - center.y;
-          const dz = mesh.positions[i + 2] - center.z;
-          radius = Math.max(radius, Math.hypot(dx, dy, dz));
+        const pts = dedupePoints(meshPoints(mesh.positions));
+        const hullPts = buildConvexHullPoints(pts);
+        const sphere = minimumEnclosingSphere(hullPts);
+        if (!sphere) {
+          finish("invalid", objectCenter, null);
+          continue;
         }
-        radius = Math.max(radius, 0.04);
+        const center = sphere.center;
+        const radius = Math.max(sphere.radius, 0.04);
         const lines: PolylineSet = [];
         addCircle(lines, center, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, radius);
         addCircle(lines, center, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
@@ -13445,24 +13932,18 @@ const App: React.FC = () => {
         continue;
       }
       if (object.type === "object-inscribed-reference-sphere") {
-        const supported =
-          "type" in source &&
-          (source.type === "box" ||
-            source.type === "sphere" ||
-            source.type === "cylinder" ||
-            source.type === "cone" ||
-            source.type === "torus");
-        if (!supported || !bounds) {
+        const sphere = solveInscribedSphere(mesh, objectCenter, maxDim, bounds);
+        if (!sphere) {
           finish("invalid", objectCenter, null);
           continue;
         }
-        const radius = Math.max(0.02, Math.min(dims.x, dims.y, dims.z) * 0.5);
+        const radius = Math.max(0.02, sphere.radius);
         const lines: PolylineSet = [];
-        addCircle(lines, objectCenter, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, radius);
-        addCircle(lines, objectCenter, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
-        addCircle(lines, objectCenter, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addCircle(lines, sphere.center, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, radius);
+        addCircle(lines, sphere.center, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
+        addCircle(lines, sphere.center, { x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, radius);
         addEvalGroup(lines, 0x14b8a6, 0.88, 1.35);
-        finish("valid", objectCenter, null);
+        finish("valid", sphere.center, null);
         continue;
       }
       finish("invalid", objectCenter, null);
@@ -45720,7 +46201,7 @@ case "mobius":
                         </div>
 
                         <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                          <div><strong>From object:</strong> centroid, bounding box, principal axes preview, symmetry plane preview, circumscribed sphere preview, inscribed reference sphere (supported primitives).</div>
+                          <div><strong>From object:</strong> centroid, bounding box, principal axes (PCA eigensystem), symmetry plane, circumscribed sphere, inscribed reference sphere.</div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button type="button" onClick={() => handleCreateDerivedFromObject("object-centroid")}>Centroid</button>
                             <button type="button" onClick={() => handleCreateDerivedFromObject("object-bounding-box")}>Bounding box</button>
