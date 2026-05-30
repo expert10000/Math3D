@@ -1430,6 +1430,103 @@ const toDetachedMeshData = (mesh: SurfaceMeshData, labelOverride?: string): Surf
     },
   };
 };
+const geometryVecLen = (v: { x: number; y: number; z: number }) => Math.hypot(v.x, v.y, v.z);
+const geometryNormalizeVec = (v: { x: number; y: number; z: number }) => {
+  const len = geometryVecLen(v);
+  if (!Number.isFinite(len) || len < 1e-9) return null;
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+};
+const geometryDot = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>
+  a.x * b.x + a.y * b.y + a.z * b.z;
+const geometryCross = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const geometrySub = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => ({
+  x: a.x - b.x,
+  y: a.y - b.y,
+  z: a.z - b.z,
+});
+const geometryDistance = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) =>
+  Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+const geometryMeshTopologySignature = (mesh: SurfaceMeshData): string => {
+  const vertCount = Math.floor(mesh.positions.length / 3);
+  const triCount =
+    mesh.indices && mesh.indices.length >= 3 ? Math.floor(mesh.indices.length / 3) : Math.floor(vertCount / 3);
+  const posHead = Array.from(mesh.positions.slice(0, 18)).map((v) => Number(v).toFixed(5)).join(",");
+  const posTail = Array.from(mesh.positions.slice(Math.max(0, mesh.positions.length - 18)))
+    .map((v) => Number(v).toFixed(5))
+    .join(",");
+  const idxHead = mesh.indices ? Array.from(mesh.indices.slice(0, 18)).join(",") : "no-indices";
+  return `${vertCount}|${triCount}|${posHead}|${posTail}|${idxHead}`;
+};
+const geometryFaceSignatureFromTriangle = (
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number },
+  c: { x: number; y: number; z: number }
+) => {
+  const ab = geometrySub(b, a);
+  const ac = geometrySub(c, a);
+  const normalRaw = geometryCross(ab, ac);
+  const normal = geometryNormalizeVec(normalRaw) ?? { x: 0, y: 1, z: 0 };
+  const area = 0.5 * geometryVecLen(normalRaw);
+  return {
+    centroid: {
+      x: (a.x + b.x + c.x) / 3,
+      y: (a.y + b.y + c.y) / 3,
+      z: (a.z + b.z + c.z) / 3,
+    },
+    normal,
+    area,
+  };
+};
+const geometryEdgeSignatureFromPoints = (
+  a: { x: number; y: number; z: number },
+  b: { x: number; y: number; z: number }
+) => {
+  const raw = geometrySub(b, a);
+  const length = geometryVecLen(raw);
+  if (!Number.isFinite(length) || length < 1e-9) {
+    return {
+      midpoint: { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
+      direction: { x: 1, y: 0, z: 0 },
+      length: 0,
+    };
+  }
+  let direction = { x: raw.x / length, y: raw.y / length, z: raw.z / length };
+  if (
+    direction.x < 0 ||
+    (Math.abs(direction.x) < 1e-9 && direction.y < 0) ||
+    (Math.abs(direction.x) < 1e-9 && Math.abs(direction.y) < 1e-9 && direction.z < 0)
+  ) {
+    direction = { x: -direction.x, y: -direction.y, z: -direction.z };
+  }
+  return {
+    midpoint: { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
+    direction,
+    length,
+  };
+};
+const geometryFaceSignatureDistance = (
+  a: { centroid: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number }; area: number },
+  b: { centroid: { x: number; y: number; z: number }; normal: { x: number; y: number; z: number }; area: number }
+) => {
+  const centroidDelta = geometryDistance(a.centroid, b.centroid);
+  const normalDot = Math.abs(geometryDot(a.normal, b.normal));
+  const normalDelta = 1 - clampNumber(normalDot, 0, 1);
+  const areaDelta = Math.abs(a.area - b.area);
+  return { centroidDelta, normalDelta, areaDelta };
+};
+const geometryEdgeSignatureDistance = (
+  a: { midpoint: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; length: number },
+  b: { midpoint: { x: number; y: number; z: number }; direction: { x: number; y: number; z: number }; length: number }
+) => {
+  const midpointDelta = geometryDistance(a.midpoint, b.midpoint);
+  const directionDelta = 1 - clampNumber(Math.abs(geometryDot(a.direction, b.direction)), 0, 1);
+  const lengthDelta = Math.abs(a.length - b.length);
+  return { midpointDelta, directionDelta, lengthDelta };
+};
 
 const serializeSurfaceMeshData = (mesh: SurfaceMeshData): WorkbookEmbeddedMesh => ({
   label: mesh.label,
@@ -1901,6 +1998,17 @@ const GEOMETRY_BADGE_COLORS = {
   fail: "#c62828",
   invalid: "#6b7280",
 };
+const GEOMETRY_DEPENDENCY_STATE_META: Record<
+  GeometryDependencyState,
+  { label: string; color: string; background: string; border: string }
+> = {
+  valid: { label: "Valid", color: "#166534", background: "#ecfdf5", border: "#16a34a" },
+  updating: { label: "Updating", color: "#92400e", background: "#fffbeb", border: "#f59e0b" },
+  stale: { label: "Stale", color: "#9a3412", background: "#fff7ed", border: "#fb923c" },
+  "broken-source": { label: "Broken source", color: "#991b1b", background: "#fef2f2", border: "#ef4444" },
+  "ambiguous-target": { label: "Ambiguous target", color: "#7c2d12", background: "#fff7ed", border: "#fb923c" },
+  frozen: { label: "Frozen", color: "#1e3a8a", background: "#eff6ff", border: "#2563eb" },
+};
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const RAD_TO_DEG = 180 / Math.PI;
@@ -1937,7 +2045,8 @@ type GeometryRepeatAxis = "x" | "y" | "z" | "custom";
 type GeometryRepeatGridPlane = "xy" | "xz" | "yz";
 type GeometryRepeatMirrorPlane = "xy" | "xz" | "yz" | "selected-face";
 type GeometryRightPanelTab = "inspector" | "scene";
-type GeometryInspectorPanelTab = "probe";
+type GeometryInspectorPanelTab = "probe" | "dependencies";
+type GeometryDependencyState = "valid" | "updating" | "stale" | "broken-source" | "ambiguous-target" | "frozen";
 type GeometryProceduralPickInfo = {
   point: { x: number; y: number; z: number };
   normal: { x: number; y: number; z: number };
@@ -1995,6 +2104,29 @@ type GeometryDerivedConstructionObject = {
     distance?: number;
     length?: number;
   };
+  sourceRevision?: number;
+  sourceTopologySignature?: string | null;
+  sourceFaceSignature?: {
+    centroid: { x: number; y: number; z: number };
+    normal: { x: number; y: number; z: number };
+    area: number;
+  } | null;
+  sourceEdgeSignature?: {
+    midpoint: { x: number; y: number; z: number };
+    direction: { x: number; y: number; z: number };
+    length: number;
+  } | null;
+  sourceVertexSignature?: {
+    point: { x: number; y: number; z: number };
+  } | null;
+  frozenSnapshot?: {
+    origin: { x: number; y: number; z: number } | null;
+    direction: { x: number; y: number; z: number } | null;
+    groups: OverlayPolylineGroup[];
+    pointSets: OverlayPointSet[];
+    labelSets: OverlayLabelSet[];
+  } | null;
+  frozenAt?: number;
   dependent: boolean;
   visible: boolean;
   createdAt: number;
@@ -2002,6 +2134,13 @@ type GeometryDerivedConstructionObject = {
 type GeometryDerivedConstructionEvaluation = {
   object: GeometryDerivedConstructionObject;
   status: GeometryDerivedConstructionStatus;
+  dependencyState: GeometryDependencyState;
+  statusMessage: string | null;
+  sourceTopologyChanged: boolean;
+  recomputeFromRevision: number | null;
+  recomputeToRevision: number | null;
+  relinkCandidateFaceIndex: number | null;
+  relinkCandidateEdgeVertexPair: [number, number] | null;
   sourceObjectName: string;
   typeLabel: string;
   origin: { x: number; y: number; z: number } | null;
@@ -2012,6 +2151,27 @@ type GeometryDerivedConstructionEvaluation = {
   groups: OverlayPolylineGroup[];
   pointSets: OverlayPointSet[];
   labelSets: OverlayLabelSet[];
+};
+type GeometryDependencyNodeKind =
+  | "geometry-object"
+  | "derived-point"
+  | "derived-line"
+  | "derived-plane"
+  | "measurement"
+  | "section-result"
+  | "comparison";
+type GeometryDependencyNode = {
+  id: string;
+  kind: GeometryDependencyNodeKind;
+  label: string;
+  objectId?: string;
+  derivedId?: string;
+  status: GeometryDependencyState;
+};
+type GeometryDependencyEdge = {
+  sourceId: string;
+  targetId: string;
+  relation: "derived-from" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
 };
 const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstructionType, string> = {
   "vertex-point-marker": "Point Marker",
@@ -2034,6 +2194,15 @@ const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstruct
   "object-symmetry-plane-preview": "Symmetry Plane",
   "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
+};
+const geometryDependencyNodeKindFromConstructionType = (
+  type: GeometryDerivedConstructionType
+): GeometryDependencyNodeKind => {
+  if (type.includes("plane")) return "derived-plane";
+  if (type.includes("line") || type.includes("axis") || type.includes("vector") || type.includes("segment")) {
+    return "derived-line";
+  }
+  return "derived-point";
 };
 type GeometryMeasuredEdgeEntry = {
   id: string;
@@ -6866,7 +7035,7 @@ const App: React.FC = () => {
           intersection: 0,
         }
       ),
-    []
+    [geometryObjectRevisionById]
   );
   const curvePresetCountByGroup = useMemo(
     () =>
@@ -7250,6 +7419,18 @@ const App: React.FC = () => {
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
   const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
   const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
+  const geometryDerivedLastValidSnapshotRef = useRef<
+    Map<
+      string,
+      {
+        origin: { x: number; y: number; z: number } | null;
+        direction: { x: number; y: number; z: number } | null;
+        groups: OverlayPolylineGroup[];
+        pointSets: OverlayPointSet[];
+        labelSets: OverlayLabelSet[];
+      }
+    >
+  >(new Map());
   const [geometryConstructOffsetDistance, setGeometryConstructOffsetDistance] = useState(0.5);
   const [geometryConstructTranslateDistance, setGeometryConstructTranslateDistance] = useState(0.5);
   const [geometryConstructCopiedLength, setGeometryConstructCopiedLength] = useState(0.5);
@@ -7479,6 +7660,7 @@ const App: React.FC = () => {
   const [geometrySectionCustomNormal, setGeometrySectionCustomNormal] = useState<Vec3>({ x: 0, y: 0, z: 1 });
   const [geometrySectionShowCap, setGeometrySectionShowCap] = useState(false);
   const [geometrySectionShowCurve, setGeometrySectionShowCurve] = useState(true);
+  const [geometrySectionSourceDerivedId, setGeometrySectionSourceDerivedId] = useState<string | null>(null);
   const [geometrySectionSaveStatus, setGeometrySectionSaveStatus] = useState<string | null>(null);
   const [geometrySavedSectionCurves, setGeometrySavedSectionCurves] = useState<GeometrySavedSectionCurve[]>([]);
   const geometryObjectGeomCacheRef = useRef(
@@ -9778,6 +9960,47 @@ const App: React.FC = () => {
     },
     [proceduralMeshSet.meshes, resolveGeometrySceneObjectById]
   );
+  useEffect(() => {
+    setGeometryMeasuredEdges((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        const resolved = resolveGeometrySceneMeshById(entry.meshKey);
+        if (!resolved) return entry;
+        const mesh = resolved.mesh;
+        const getVertex = (index: number) => {
+          if (!Number.isInteger(index)) return null;
+          const count = Math.floor(mesh.positions.length / 3);
+          if (index < 0 || index >= count) return null;
+          const i = index * 3;
+          return {
+            x: Number(mesh.positions[i]),
+            y: Number(mesh.positions[i + 1]),
+            z: Number(mesh.positions[i + 2]),
+          };
+        };
+        const a = getVertex(entry.edgeVertexPair[0]);
+        const b = getVertex(entry.edgeVertexPair[1]);
+        if (!a || !b) return entry;
+        const length = geometryDistance(a, b);
+        if (
+          Math.abs(length - entry.length) < 1e-9 &&
+          !!entry.edgePoints &&
+          geometryDistance(entry.edgePoints[0], a) < 1e-9 &&
+          geometryDistance(entry.edgePoints[1], b) < 1e-9
+        ) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          objectName: resolved.object.name,
+          length,
+          edgePoints: [a, b],
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [geometryObjectRevisionById, resolveGeometrySceneMeshById]);
   const geometrySelectedSceneMeshInfo = useMemo(() => {
     if (!geometrySelectedSceneObject) return null;
     const mesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
@@ -10766,8 +10989,10 @@ const App: React.FC = () => {
     (
       draft: Omit<GeometryDerivedConstructionObject, "id" | "dependent" | "visible" | "createdAt">
     ) => {
+      const sourceRevision = geometryObjectRevisionById[draft.sourceObjectId] ?? 0;
       const next: GeometryDerivedConstructionObject = {
         ...draft,
+        sourceRevision,
         id: makeId(),
         dependent: true,
         visible: true,
@@ -10795,12 +11020,15 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Select a vertex first (Probe mode: Vertex).");
         return;
       }
+      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
       appendDerivedConstruction({
         type,
         sourceKind: "vertex",
         sourceObjectId: detail.meshKey,
+        sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceVertexIndex: detail.vertexIndex,
         sourcePoint: { ...detail.point },
+        sourceVertexSignature: { point: { ...detail.point } },
         sourceNormal: { ...detail.normal },
         params:
           type === "vertex-translated-copy-point"
@@ -10808,7 +11036,7 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructTranslateDistance, geometryProbeSelectionDetails]
+    [appendDerivedConstruction, geometryConstructTranslateDistance, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
   );
   const handleCreateDerivedFromEdge = useCallback(
     (
@@ -10824,11 +11052,17 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Select an edge first (Probe mode: Edge).");
         return;
       }
+      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
       appendDerivedConstruction({
         type,
         sourceKind: "edge",
         sourceObjectId: detail.meshKey,
+        sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceEdgeVertexPair: detail.edgeVertexPair,
+        sourceEdgeSignature:
+          detail.edgePoints && detail.edgePoints.length >= 2
+            ? geometryEdgeSignatureFromPoints(detail.edgePoints[0], detail.edgePoints[1])
+            : null,
         sourcePoint: { ...detail.point },
         sourceNormal: { ...detail.normal },
         params:
@@ -10845,7 +11079,7 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructCopiedLength, geometryProbeSelectionDetails]
+    [appendDerivedConstruction, geometryConstructCopiedLength, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
   );
   const handleCreateDerivedFromFace = useCallback(
     (
@@ -10861,11 +11095,17 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Select a face first (Probe mode: Face).");
         return;
       }
+      const resolved = resolveGeometrySceneMeshById(detail.meshKey);
       appendDerivedConstruction({
         type,
         sourceKind: "face",
         sourceObjectId: detail.meshKey,
+        sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceFaceIndex: detail.faceIndex,
+        sourceFaceSignature:
+          detail.faceVertices && detail.faceVertices.length >= 3
+            ? geometryFaceSignatureFromTriangle(detail.faceVertices[0], detail.faceVertices[1], detail.faceVertices[2])
+            : null,
         sourcePoint: { ...detail.point },
         sourceNormal: { ...detail.normal },
         params:
@@ -10874,7 +11114,7 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructOffsetDistance, geometryProbeSelectionDetails]
+    [appendDerivedConstruction, geometryConstructOffsetDistance, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
   );
   const handleCreateDerivedFromObject = useCallback(
     (
@@ -10891,21 +11131,27 @@ const App: React.FC = () => {
         setGeometryCreateActionStatus("Select an object first.");
         return;
       }
+      const resolved = resolveGeometrySceneMeshById(sourceObjectId);
       appendDerivedConstruction({
         type,
         sourceKind: "object",
         sourceObjectId,
+        sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
       });
     },
-    [appendDerivedConstruction, geometrySelectedObjectId]
+    [appendDerivedConstruction, geometrySelectedObjectId, resolveGeometrySceneMeshById]
   );
   const handleDeleteDerivedConstruction = useCallback((id: string) => {
     setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
     setGeometrySelectedDerivedConstructionId((prev) => (prev === id ? null : prev));
+    geometryDerivedLastValidSnapshotRef.current.delete(id);
+    setGeometrySectionSourceDerivedId((prev) => (prev === id ? null : prev));
   }, []);
   const handleClearDerivedConstructions = useCallback(() => {
     setGeometryDerivedConstructions([]);
     setGeometrySelectedDerivedConstructionId(null);
+    geometryDerivedLastValidSnapshotRef.current.clear();
+    setGeometrySectionSourceDerivedId(null);
     setGeometryCreateActionStatus("Cleared derived construction objects.");
   }, []);
   const handleToggleDerivedConstructionVisibility = useCallback((id: string) => {
@@ -10913,6 +11159,142 @@ const App: React.FC = () => {
       prev.map((entry) => (entry.id === id ? { ...entry, visible: !entry.visible } : entry))
     );
   }, []);
+  const handleFreezeDerivedConstruction = useCallback(
+    (id: string) => {
+      const snapshot = geometryDerivedLastValidSnapshotRef.current.get(id) ?? null;
+      if (!snapshot) {
+        setGeometryCreateActionStatus("Freeze failed: no valid derived result available yet.");
+        return;
+      }
+      setGeometryDerivedConstructions((prev) =>
+        prev.map((entry) =>
+          entry.id === id
+            ? {
+                ...entry,
+                frozenSnapshot: {
+                  origin: snapshot.origin ? { ...snapshot.origin } : null,
+                  direction: snapshot.direction ? { ...snapshot.direction } : null,
+                  groups: snapshot.groups.map((group) => ({
+                    ...group,
+                    lines: group.lines.map((line) => line.map((p) => ({ ...p }))),
+                  })),
+                  pointSets: snapshot.pointSets.map((set) => ({
+                    ...set,
+                    points: set.points.map((p) => ({ ...p })),
+                  })),
+                  labelSets: snapshot.labelSets.map((set) => ({
+                    ...set,
+                    labels: set.labels.map((label) => ({ ...label, position: { ...label.position } })),
+                  })),
+                },
+                frozenAt: Date.now(),
+              }
+            : entry
+        )
+      );
+      setGeometryCreateActionStatus("Derived object frozen at current resolved result.");
+    },
+    [setGeometryCreateActionStatus]
+  );
+  const handleUnfreezeDerivedConstruction = useCallback((id: string) => {
+    setGeometryDerivedConstructions((prev) =>
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, frozenSnapshot: null, frozenAt: undefined, sourceRevision: undefined } : entry
+      )
+    );
+    setGeometryCreateActionStatus("Derived object unfrozen.");
+  }, []);
+  const handleRelinkDerivedConstructionTarget = useCallback(
+    (id: string) => {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(id) ?? null;
+      const object = geometryDerivedConstructions.find((entry) => entry.id === id) ?? null;
+      if (!evalEntry || !object) {
+        setGeometryCreateActionStatus("Relink failed: derived object not found.");
+        return;
+      }
+      const resolved = resolveGeometrySceneMeshById(object.sourceObjectId);
+      if (!resolved) {
+        setGeometryCreateActionStatus("Relink failed: source mesh unavailable.");
+        return;
+      }
+      const nextSourceRevision = geometryObjectRevisionById[object.sourceObjectId] ?? object.sourceRevision ?? 0;
+      const topologySignature = geometryMeshTopologySignature(resolved.mesh);
+      if (evalEntry.relinkCandidateFaceIndex != null) {
+        const faceIndex = evalEntry.relinkCandidateFaceIndex;
+        let ia = 0;
+        let ib = 0;
+        let ic = 0;
+        if (resolved.mesh.indices && resolved.mesh.indices.length >= 3) {
+          const base = faceIndex * 3;
+          if (base + 2 < resolved.mesh.indices.length) {
+            ia = Number(resolved.mesh.indices[base]);
+            ib = Number(resolved.mesh.indices[base + 1]);
+            ic = Number(resolved.mesh.indices[base + 2]);
+          }
+        } else {
+          const base = faceIndex * 3;
+          ia = base;
+          ib = base + 1;
+          ic = base + 2;
+        }
+        const a = { x: resolved.mesh.positions[ia * 3], y: resolved.mesh.positions[ia * 3 + 1], z: resolved.mesh.positions[ia * 3 + 2] };
+        const b = { x: resolved.mesh.positions[ib * 3], y: resolved.mesh.positions[ib * 3 + 1], z: resolved.mesh.positions[ib * 3 + 2] };
+        const c = { x: resolved.mesh.positions[ic * 3], y: resolved.mesh.positions[ic * 3 + 1], z: resolved.mesh.positions[ic * 3 + 2] };
+        const signature = geometryFaceSignatureFromTriangle(a, b, c);
+        setGeometryDerivedConstructions((prev) =>
+          prev.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  sourceFaceIndex: faceIndex,
+                  sourceFaceSignature: signature,
+                  sourceTopologySignature: topologySignature,
+                  sourceRevision: nextSourceRevision,
+                }
+              : entry
+          )
+        );
+        setGeometryCreateActionStatus(`Derived target relinked to Face #${faceIndex}.`);
+        return;
+      }
+      if (evalEntry.relinkCandidateEdgeVertexPair) {
+        const pair = evalEntry.relinkCandidateEdgeVertexPair;
+        const a = {
+          x: resolved.mesh.positions[pair[0] * 3],
+          y: resolved.mesh.positions[pair[0] * 3 + 1],
+          z: resolved.mesh.positions[pair[0] * 3 + 2],
+        };
+        const b = {
+          x: resolved.mesh.positions[pair[1] * 3],
+          y: resolved.mesh.positions[pair[1] * 3 + 1],
+          z: resolved.mesh.positions[pair[1] * 3 + 2],
+        };
+        const signature = geometryEdgeSignatureFromPoints(a, b);
+        setGeometryDerivedConstructions((prev) =>
+          prev.map((entry) =>
+            entry.id === id
+              ? {
+                  ...entry,
+                  sourceEdgeVertexPair: pair,
+                  sourceEdgeSignature: signature,
+                  sourceTopologySignature: topologySignature,
+                  sourceRevision: nextSourceRevision,
+                }
+              : entry
+          )
+        );
+        setGeometryCreateActionStatus(`Derived target relinked to edge [${pair[0]}, ${pair[1]}].`);
+        return;
+      }
+      setGeometryCreateActionStatus("Relink failed: no candidate target found.");
+    },
+    [
+      geometryDerivedConstructionOverlays.byId,
+      geometryDerivedConstructions,
+      geometryObjectRevisionById,
+      resolveGeometrySceneMeshById,
+    ]
+  );
   const resolveDirectionEuler = useCallback(
     (dir: { x: number; y: number; z: number }, sourceAxis: "y" | "z" = "y") => {
       const target = new THREE.Vector3(dir.x, dir.y, dir.z);
@@ -13499,15 +13881,32 @@ const App: React.FC = () => {
         evalLabels.push(label);
         if (object.visible) labels.push(label);
       };
+      const currentSourceRevision = geometryObjectRevisionById[object.sourceObjectId] ?? 0;
+      let dependencyState: GeometryDependencyState = "valid";
+      let statusMessage: string | null = null;
+      let relinkCandidateFaceIndex: number | null = null;
+      let relinkCandidateEdgeVertexPair: [number, number] | null = null;
+      let sourceTopologyChanged = false;
+      const recomputeFromRevision = object.sourceRevision ?? null;
+      const recomputeToRevision = currentSourceRevision;
       const finish = (
         status: GeometryDerivedConstructionStatus,
         origin: { x: number; y: number; z: number } | null,
-        direction: { x: number; y: number; z: number } | null
+        direction: { x: number; y: number; z: number } | null,
+        dependencyStateOverride?: GeometryDependencyState,
+        statusMessageOverride?: string | null
       ) => {
         if (evalLabels.length) evalLabelSets.push({ labels: evalLabels, size: 0.9 });
         byId.set(object.id, {
           object,
           status,
+          dependencyState: dependencyStateOverride ?? dependencyState,
+          statusMessage: statusMessageOverride ?? statusMessage,
+          sourceTopologyChanged,
+          recomputeFromRevision,
+          recomputeToRevision,
+          relinkCandidateFaceIndex,
+          relinkCandidateEdgeVertexPair,
           sourceObjectName,
           typeLabel: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[object.type],
           origin,
@@ -13521,16 +13920,58 @@ const App: React.FC = () => {
         });
       };
 
+      if (object.frozenSnapshot) {
+        for (const group of object.frozenSnapshot.groups) {
+          evalGroups.push(group);
+          if (object.visible) groups.push(group);
+        }
+        for (const pointSet of object.frozenSnapshot.pointSets) {
+          evalPointSets.push(pointSet);
+          if (object.visible) pointSets.push(pointSet);
+        }
+        for (const labelSet of object.frozenSnapshot.labelSets) {
+          evalLabelSets.push(labelSet);
+          if (object.visible) labels.push(...labelSet.labels);
+        }
+        finish(
+          "valid",
+          object.frozenSnapshot.origin,
+          object.frozenSnapshot.direction,
+          "frozen",
+          "Derived object is frozen at its last resolved result."
+        );
+        continue;
+      }
+
       if (!source) {
-        finish("stale", null, null);
+        dependencyState = "broken-source";
+        statusMessage = "Derived source object no longer exists.";
+        finish("stale", null, null, "broken-source", statusMessage);
         continue;
       }
       const resolved = resolveGeometrySceneMeshById(object.sourceObjectId);
       if (!resolved || !resolved.mesh.positions.length) {
-        finish("stale", null, null);
+        dependencyState = "broken-source";
+        statusMessage = "Source mesh is unavailable.";
+        finish("stale", null, null, "broken-source", statusMessage);
         continue;
       }
       const mesh = resolved.mesh;
+      const meshTopologySignature = geometryMeshTopologySignature(mesh);
+      sourceTopologyChanged =
+        !!object.sourceTopologySignature && object.sourceTopologySignature !== meshTopologySignature;
+      const sourceChanged = (object.sourceRevision ?? 0) < currentSourceRevision;
+      if (sourceChanged) {
+        dependencyState = "updating";
+        statusMessage = "Source changed, recomputing derived result.";
+      }
+      const bounds = boundsFromPositions(mesh.positions);
+      const boundsDiag = bounds
+        ? Math.hypot(bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1], bounds.max[2] - bounds.min[2])
+        : 1;
+      const positionTol = Math.max(5e-5, boundsDiag * 1e-3);
+      const areaTol = Math.max(1e-5, boundsDiag * boundsDiag * 1e-3);
+      const lengthTol = Math.max(5e-5, boundsDiag * 1e-3);
       const getVertex = (index: number | null | undefined) => {
         if (!Number.isInteger(index)) return null;
         const i = Number(index);
@@ -13539,7 +13980,7 @@ const App: React.FC = () => {
         const k = i * 3;
         return { x: mesh.positions[k], y: mesh.positions[k + 1], z: mesh.positions[k + 2] };
       };
-      const getFace = (faceIndex: number | null | undefined) => {
+      const getFaceRaw = (faceIndex: number | null | undefined) => {
         if (!Number.isInteger(faceIndex)) return null;
         const fi = Number(faceIndex);
         let ia = 0;
@@ -13568,6 +14009,8 @@ const App: React.FC = () => {
         const n = norm(cross(ab, ac));
         if (!n) return null;
         return {
+          faceIndex: fi,
+          vertexIndices: [ia, ib, ic] as [number, number, number],
           a,
           b,
           c,
@@ -13577,9 +14020,94 @@ const App: React.FC = () => {
             z: (a.z + b.z + c.z) / 3,
           },
           normal: n,
+          area: 0.5 * Math.hypot(
+            (b.y - a.y) * (c.z - a.z) - (b.z - a.z) * (c.y - a.y),
+            (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z),
+            (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+          ),
         };
       };
-      const getEdge = (pair: [number, number] | null | undefined) => {
+      const findFaceRelinkCandidates = (signature: NonNullable<GeometryDerivedConstructionObject["sourceFaceSignature"]>) => {
+        const triCount =
+          mesh.indices && mesh.indices.length >= 3
+            ? Math.floor(mesh.indices.length / 3)
+            : Math.floor(mesh.positions.length / 9);
+        const candidates: Array<{ faceIndex: number; score: number }> = [];
+        for (let fi = 0; fi < triCount; fi += 1) {
+          const candidate = getFaceRaw(fi);
+          if (!candidate) continue;
+          const delta = geometryFaceSignatureDistance(signature, {
+            centroid: candidate.centroid,
+            normal: candidate.normal,
+            area: candidate.area,
+          });
+          if (delta.centroidDelta <= positionTol && delta.normalDelta <= 0.03 && delta.areaDelta <= areaTol) {
+            const score = delta.centroidDelta * 0.6 + delta.normalDelta * 0.3 + delta.areaDelta * 0.1;
+            candidates.push({ faceIndex: fi, score });
+          }
+        }
+        return candidates.sort((a, b) => a.score - b.score);
+      };
+      const getFace = (faceIndex: number | null | undefined) => {
+        const raw = getFaceRaw(faceIndex);
+        const signature = object.sourceFaceSignature;
+        if (!signature) return raw;
+        if (raw) {
+          const delta = geometryFaceSignatureDistance(signature, {
+            centroid: raw.centroid,
+            normal: raw.normal,
+            area: raw.area,
+          });
+          const exactMatch =
+            delta.centroidDelta <= positionTol && delta.normalDelta <= 0.03 && delta.areaDelta <= areaTol;
+          if (exactMatch) return raw;
+        }
+        const candidates = findFaceRelinkCandidates(signature);
+        if (candidates.length === 1) {
+          relinkCandidateFaceIndex = candidates[0].faceIndex;
+          dependencyState = "broken-source";
+          statusMessage =
+            `Derived plane source could not be resolved: original target Face #${object.sourceFaceIndex ?? "?"} changed after topology edit. Relink is available.`;
+        } else if (candidates.length > 1) {
+          dependencyState = "ambiguous-target";
+          statusMessage = "Multiple face candidates match the original target. Choose a relink target explicitly.";
+        } else {
+          dependencyState = "broken-source";
+          statusMessage =
+            `Derived plane source could not be resolved: original target Face #${object.sourceFaceIndex ?? "?"} changed after topology edit.`;
+        }
+        return null;
+      };
+      const collectMeshEdges = () => {
+        const edgeMap = new Map<string, [number, number]>();
+        const addEdge = (i0: number, i1: number) => {
+          if (!Number.isInteger(i0) || !Number.isInteger(i1)) return;
+          if (i0 === i1) return;
+          const a = Math.min(i0, i1);
+          const b = Math.max(i0, i1);
+          const key = `${a}:${b}`;
+          if (!edgeMap.has(key)) edgeMap.set(key, [a, b]);
+        };
+        if (mesh.indices && mesh.indices.length >= 3) {
+          for (let i = 0; i + 2 < mesh.indices.length; i += 3) {
+            const a = Number(mesh.indices[i]);
+            const b = Number(mesh.indices[i + 1]);
+            const c = Number(mesh.indices[i + 2]);
+            addEdge(a, b);
+            addEdge(b, c);
+            addEdge(c, a);
+          }
+        } else {
+          const count = Math.floor(mesh.positions.length / 3);
+          for (let i = 0; i + 2 < count; i += 3) {
+            addEdge(i, i + 1);
+            addEdge(i + 1, i + 2);
+            addEdge(i + 2, i);
+          }
+        }
+        return Array.from(edgeMap.values());
+      };
+      const getEdgeRaw = (pair: [number, number] | null | undefined) => {
         if (!pair) return null;
         const a = getVertex(pair[0]);
         const b = getVertex(pair[1]);
@@ -13596,7 +14124,48 @@ const App: React.FC = () => {
           midpoint: { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5, z: (a.z + b.z) * 0.5 },
         };
       };
-      const bounds = boundsFromPositions(mesh.positions);
+      const getEdge = (pair: [number, number] | null | undefined) => {
+        const raw = getEdgeRaw(pair);
+        const signature = object.sourceEdgeSignature;
+        if (!signature) return raw;
+        if (raw) {
+          const delta = geometryEdgeSignatureDistance(signature, {
+            midpoint: raw.midpoint,
+            direction: raw.dir,
+            length: raw.length,
+          });
+          const exactMatch =
+            delta.midpointDelta <= positionTol && delta.directionDelta <= 0.03 && delta.lengthDelta <= lengthTol;
+          if (exactMatch) return raw;
+        }
+        const candidates: Array<{ pair: [number, number]; score: number }> = [];
+        for (const nextPair of collectMeshEdges()) {
+          const nextEdge = getEdgeRaw(nextPair);
+          if (!nextEdge) continue;
+          const delta = geometryEdgeSignatureDistance(signature, {
+            midpoint: nextEdge.midpoint,
+            direction: nextEdge.dir,
+            length: nextEdge.length,
+          });
+          if (delta.midpointDelta <= positionTol && delta.directionDelta <= 0.03 && delta.lengthDelta <= lengthTol) {
+            const score = delta.midpointDelta * 0.6 + delta.directionDelta * 0.2 + delta.lengthDelta * 0.2;
+            candidates.push({ pair: nextPair, score });
+          }
+        }
+        candidates.sort((a, b) => a.score - b.score);
+        if (candidates.length === 1) {
+          relinkCandidateEdgeVertexPair = candidates[0].pair;
+          dependencyState = "broken-source";
+          statusMessage = `Derived edge source [${object.sourceEdgeVertexPair?.[0] ?? "?"}, ${object.sourceEdgeVertexPair?.[1] ?? "?"}] could not be resolved after topology change. Relink is available.`;
+        } else if (candidates.length > 1) {
+          dependencyState = "ambiguous-target";
+          statusMessage = "Multiple edge candidates match the original target. Choose a relink target explicitly.";
+        } else {
+          dependencyState = "broken-source";
+          statusMessage = `Derived edge source [${object.sourceEdgeVertexPair?.[0] ?? "?"}, ${object.sourceEdgeVertexPair?.[1] ?? "?"}] could not be resolved after topology change.`;
+        }
+        return null;
+      };
       const objectCenter = bounds
         ? {
             x: 0.5 * (bounds.min[0] + bounds.max[0]),
@@ -13606,10 +14175,44 @@ const App: React.FC = () => {
         : null;
 
       if (object.type.startsWith("vertex-")) {
-        const vertex = getVertex(object.sourceVertexIndex) ?? object.sourcePoint ?? null;
+        const sourceVertex = getVertex(object.sourceVertexIndex);
+        let vertex = sourceVertex;
+        if (object.sourceVertexSignature && sourceVertex) {
+          const d = geometryDistance(sourceVertex, object.sourceVertexSignature.point);
+          if (d > positionTol) {
+            vertex = null;
+            dependencyState = sourceTopologyChanged ? "broken-source" : "ambiguous-target";
+            statusMessage =
+              "Derived vertex source could not be resolved: original target changed after topology edit.";
+          }
+        }
+        if (!vertex && object.sourceVertexSignature) {
+          const count = Math.floor(mesh.positions.length / 3);
+          let bestIndex: number | null = null;
+          let bestDist = Number.POSITIVE_INFINITY;
+          let nearCount = 0;
+          for (let i = 0; i < count; i += 1) {
+            const candidate = getVertex(i);
+            if (!candidate) continue;
+            const d = geometryDistance(candidate, object.sourceVertexSignature.point);
+            if (d <= positionTol * 1.5) nearCount += 1;
+            if (d < bestDist) {
+              bestDist = d;
+              bestIndex = i;
+            }
+          }
+          if (bestIndex != null && bestDist <= positionTol * 1.5 && nearCount === 1) {
+            dependencyState = "broken-source";
+            statusMessage =
+              "Derived vertex source moved after topology change. Relink vertex by picking the new target.";
+          } else if (nearCount > 1) {
+            dependencyState = "ambiguous-target";
+            statusMessage = "Multiple vertices match the original target. Relink target explicitly.";
+          }
+        }
         const direction = norm(object.sourceNormal ?? { x: 0, y: 1, z: 0 }) ?? { x: 0, y: 1, z: 0 };
         if (!vertex) {
-          finish("invalid", null, null);
+          finish("invalid", null, null, dependencyState, statusMessage);
           continue;
         }
         if (object.type === "vertex-point-marker") {
@@ -13645,7 +14248,7 @@ const App: React.FC = () => {
       if (object.type.startsWith("edge-")) {
         const edge = getEdge(object.sourceEdgeVertexPair);
         if (!edge) {
-          finish("invalid", null, null);
+          finish("invalid", null, null, dependencyState, statusMessage);
           continue;
         }
         if (object.type === "edge-midpoint") {
@@ -13724,7 +14327,7 @@ const App: React.FC = () => {
       if (object.type.startsWith("face-")) {
         const face = getFace(object.sourceFaceIndex);
         if (!face) {
-          finish("invalid", null, null);
+          finish("invalid", null, null, dependencyState, statusMessage);
           continue;
         }
         const d = Math.max(0.01, Number(object.params?.distance) || 0.5);
@@ -13960,6 +14563,7 @@ const App: React.FC = () => {
     fmt,
     geometryDerivedConstructions,
     geometryMode,
+    geometryObjectRevisionById,
     resolveGeometrySceneMeshById,
     resolveGeometrySceneObjectById,
     resolveHelperTangentBasis,
@@ -14212,10 +14816,219 @@ const App: React.FC = () => {
       setGeometrySelectedDerivedConstructionId(geometryDerivedConstructions[0].id);
     }
   }, [geometryDerivedConstructions, geometrySelectedDerivedConstructionId]);
+  useEffect(() => {
+    if (!geometrySectionSourceDerivedId) return;
+    if (geometryDerivedConstructions.some((entry) => entry.id === geometrySectionSourceDerivedId)) return;
+    setGeometrySectionSourceDerivedId(null);
+  }, [geometryDerivedConstructions, geometrySectionSourceDerivedId]);
   const geometrySelectedDerivedConstructionEval = useMemo(() => {
     if (!geometrySelectedDerivedConstructionId) return null;
     return geometryDerivedConstructionOverlays.byId.get(geometrySelectedDerivedConstructionId) ?? null;
   }, [geometryDerivedConstructionOverlays.byId, geometrySelectedDerivedConstructionId]);
+  useEffect(() => {
+    const byId = geometryDerivedConstructionOverlays.byId;
+    if (!byId.size) return;
+    for (const evalEntry of byId.values()) {
+      if (evalEntry.status !== "valid" || evalEntry.dependencyState === "frozen") continue;
+      geometryDerivedLastValidSnapshotRef.current.set(evalEntry.object.id, {
+        origin: evalEntry.origin ? { ...evalEntry.origin } : null,
+        direction: evalEntry.direction ? { ...evalEntry.direction } : null,
+        groups: evalEntry.groups.map((group) => ({
+          ...group,
+          lines: group.lines.map((line) => line.map((p) => ({ ...p }))),
+        })),
+        pointSets: evalEntry.pointSets.map((set) => ({
+          ...set,
+          points: set.points.map((p) => ({ ...p })),
+        })),
+        labelSets: evalEntry.labelSets.map((set) => ({
+          ...set,
+          labels: set.labels.map((label) => ({ ...label, position: { ...label.position } })),
+        })),
+      });
+    }
+    setGeometryDerivedConstructions((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        if (entry.frozenSnapshot) return entry;
+        const evalEntry = byId.get(entry.id);
+        if (!evalEntry || evalEntry.status !== "valid") return entry;
+        const nextRevision = evalEntry.recomputeToRevision ?? entry.sourceRevision ?? 0;
+        const nextTopology = evalEntry.object.sourceObjectId
+          ? resolveGeometrySceneMeshById(evalEntry.object.sourceObjectId)?.mesh
+          : null;
+        const nextTopologySignature = nextTopology ? geometryMeshTopologySignature(nextTopology) : entry.sourceTopologySignature;
+        if (
+          entry.sourceRevision === nextRevision &&
+          entry.sourceTopologySignature === nextTopologySignature
+        ) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          sourceRevision: nextRevision,
+          sourceTopologySignature: nextTopologySignature ?? entry.sourceTopologySignature ?? null,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [geometryDerivedConstructionOverlays.byId, resolveGeometrySceneMeshById]);
+  const geometryDependencyGraph = useMemo(() => {
+    const nodes: GeometryDependencyNode[] = [];
+    const edges: GeometryDependencyEdge[] = [];
+    const nodeById = new Map<string, GeometryDependencyNode>();
+    const addNode = (node: GeometryDependencyNode) => {
+      if (nodeById.has(node.id)) return;
+      nodeById.set(node.id, node);
+      nodes.push(node);
+    };
+    const addEdge = (edge: GeometryDependencyEdge) => {
+      edges.push(edge);
+    };
+    for (const object of [...geometryObjects, ...geometryDatasetMeshObjects]) {
+      addNode({
+        id: `object:${object.id}`,
+        kind: "geometry-object",
+        label: object.name,
+        objectId: object.id,
+        status: "valid",
+      });
+    }
+    for (const entry of geometryDerivedConstructions) {
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+      addNode({
+        id: `derived:${entry.id}`,
+        kind: geometryDependencyNodeKindFromConstructionType(entry.type),
+        label: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type],
+        objectId: entry.sourceObjectId,
+        derivedId: entry.id,
+        status: evalEntry?.dependencyState ?? "stale",
+      });
+      addEdge({
+        sourceId: `object:${entry.sourceObjectId}`,
+        targetId: `derived:${entry.id}`,
+        relation: "derived-from",
+      });
+    }
+    for (const edgeMeasurement of geometryMeasuredEdges) {
+      const source = resolveGeometrySceneMeshById(edgeMeasurement.meshKey);
+      const validSource = !!source?.mesh?.positions?.length;
+      addNode({
+        id: `measurement:${edgeMeasurement.id}`,
+        kind: "measurement",
+        label: `Edge length [${edgeMeasurement.edgeVertexPair[0]}, ${edgeMeasurement.edgeVertexPair[1]}]`,
+        objectId: edgeMeasurement.meshKey,
+        status: validSource ? "valid" : "broken-source",
+      });
+      addEdge({
+        sourceId: `object:${edgeMeasurement.meshKey}`,
+        targetId: `measurement:${edgeMeasurement.id}`,
+        relation: "measured-from",
+      });
+    }
+    for (const section of geometrySavedSectionCurves) {
+      addNode({
+        id: `section:${section.id}`,
+        kind: "section-result",
+        label: section.name,
+        objectId: section.objectId,
+        status: geometryObjectIdSet.has(section.objectId) ? "valid" : "broken-source",
+      });
+      addEdge({
+        sourceId: `object:${section.objectId}`,
+        targetId: `section:${section.id}`,
+        relation: "section-of",
+      });
+    }
+    if (geometrySelectedSceneObject && geometrySectionPreview) {
+      let liveStatus: GeometryDependencyState = "valid";
+      if (!geometrySectionPreview.section.polylines.length) liveStatus = "stale";
+      if (geometrySectionSourceDerivedId) {
+        const sourceEval = geometryDerivedConstructionOverlays.byId.get(geometrySectionSourceDerivedId) ?? null;
+        if (!sourceEval) {
+          liveStatus = "broken-source";
+        } else if (sourceEval.dependencyState === "broken-source") {
+          liveStatus = "broken-source";
+        } else if (sourceEval.dependencyState === "ambiguous-target") {
+          liveStatus = "ambiguous-target";
+        } else if (sourceEval.dependencyState === "frozen") {
+          liveStatus = "frozen";
+        } else if (sourceEval.dependencyState === "updating" && liveStatus === "valid") {
+          liveStatus = "updating";
+        }
+      }
+      addNode({
+        id: "section:live",
+        kind: "section-result",
+        label: "Live section curve",
+        objectId: geometrySelectedSceneObject.id,
+        status: liveStatus,
+      });
+      addEdge({
+        sourceId: `object:${geometrySelectedSceneObject.id}`,
+        targetId: "section:live",
+        relation: "section-of",
+      });
+      if (geometrySectionSourceDerivedId) {
+        addEdge({
+          sourceId: `derived:${geometrySectionSourceDerivedId}`,
+          targetId: "section:live",
+          relation: "aligned-to",
+        });
+      }
+    }
+    if (geometryCompareObjectAId && geometryCompareObjectBId) {
+      addNode({
+        id: "comparison:active",
+        kind: "comparison",
+        label: "Active comparison",
+        status: "valid",
+      });
+      addEdge({
+        sourceId: `object:${geometryCompareObjectAId}`,
+        targetId: "comparison:active",
+        relation: "compared-with",
+      });
+      addEdge({
+        sourceId: `object:${geometryCompareObjectBId}`,
+        targetId: "comparison:active",
+        relation: "compared-with",
+      });
+    }
+    const brokenNodes = nodes.filter(
+      (node) => node.status === "broken-source" || node.status === "ambiguous-target"
+    );
+    return { nodes, edges, nodeById, brokenNodes };
+  }, [
+    geometryCompareObjectAId,
+    geometryCompareObjectBId,
+    geometryDatasetMeshObjects,
+    geometryDerivedConstructions,
+    geometryDerivedConstructionOverlays.byId,
+    geometryMeasuredEdges,
+    geometryObjectIdSet,
+    geometryObjects,
+    geometrySavedSectionCurves,
+    geometrySectionPreview,
+    geometrySectionSourceDerivedId,
+    geometrySelectedSceneObject,
+    resolveGeometrySceneMeshById,
+  ]);
+  const geometryInspectorSelectedDependencyNodeId = useMemo(() => {
+    if (geometrySelectedDerivedConstructionId) return `derived:${geometrySelectedDerivedConstructionId}`;
+    if (geometrySelectedSceneObject) return `object:${geometrySelectedSceneObject.id}`;
+    return null;
+  }, [geometrySelectedDerivedConstructionId, geometrySelectedSceneObject]);
+  const geometryInspectorDependencyDetails = useMemo(() => {
+    const nodeId = geometryInspectorSelectedDependencyNodeId;
+    if (!nodeId) return null;
+    const node = geometryDependencyGraph.nodeById.get(nodeId) ?? null;
+    if (!node) return null;
+    const inputs = geometryDependencyGraph.edges.filter((edge) => edge.targetId === nodeId);
+    const outputs = geometryDependencyGraph.edges.filter((edge) => edge.sourceId === nodeId);
+    return { node, inputs, outputs };
+  }, [geometryDependencyGraph, geometryInspectorSelectedDependencyNodeId]);
   const handleUseDerivedPlaneForSectionSliceById = useCallback((derivedId: string) => {
     const selected = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
     if (!selected) {
@@ -14269,6 +15082,7 @@ const App: React.FC = () => {
     setGeometrySectionCustomNormal(normal);
     setGeometrySectionPlaneOffset(offset);
     setGeometrySectionShowCurve(true);
+    setGeometrySectionSourceDerivedId(derivedId);
     setGeometryProceduralPanelTab("analysis");
     setGeometryCreateActionStatus(
       `Section plane set from derived object "${selected.typeLabel}" on ${selected.sourceObjectName}.`
@@ -21358,7 +22172,9 @@ const App: React.FC = () => {
     if (displayMode !== "inspect") return;
     if (!showRightPanel) setShowRightPanel(true);
     if (geometryRightPanelTab !== "inspector") setGeometryRightPanelTab("inspector");
-    if (geometryInspectorPanelTab !== "probe") setGeometryInspectorPanelTab("probe");
+    if (geometryInspectorPanelTab !== "probe" && geometryInspectorPanelTab !== "dependencies") {
+      setGeometryInspectorPanelTab("probe");
+    }
   }, [displayMode, geometryInspectorPanelTab, geometryMode, geometryRightPanelTab, mode, showRightPanel]);
   useEffect(() => {
     if (!viewMenuOpen) return;
@@ -46234,6 +47050,11 @@ case "mobius":
                             {geometryDerivedConstructions.slice(0, 40).map((entry) => {
                               const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
                               const selected = geometrySelectedDerivedConstructionId === entry.id;
+                              const dependencyState = evalEntry?.dependencyState ?? (entry.frozenSnapshot ? "frozen" : "stale");
+                              const dependencyMeta = GEOMETRY_DEPENDENCY_STATE_META[dependencyState];
+                              const canRelink =
+                                !!evalEntry &&
+                                (evalEntry.relinkCandidateFaceIndex != null || !!evalEntry.relinkCandidateEdgeVertexPair);
                               return (
                                 <div
                                   key={`geometry-derived-construction-${entry.id}`}
@@ -46258,20 +47079,31 @@ case "mobius":
                                       style={{
                                         fontSize: 10,
                                         fontWeight: 700,
-                                        color:
-                                          evalEntry?.status === "valid"
-                                            ? "#166534"
-                                            : evalEntry?.status === "stale"
-                                              ? "#92400e"
-                                              : "#991b1b",
+                                        color: dependencyMeta.color,
+                                        border: `1px solid ${dependencyMeta.border}`,
+                                        borderRadius: 999,
+                                        background: dependencyMeta.background,
+                                        padding: "1px 6px",
                                       }}
                                     >
-                                      {evalEntry?.status ?? "pending"}
+                                      {dependencyMeta.label}
                                     </span>
                                   </div>
                                   <div style={{ fontSize: 10.5, color: "#64748b" }}>
                                     Source: {evalEntry?.sourceObjectName ?? entry.sourceObjectId}
                                   </div>
+                                  {evalEntry?.statusMessage && (
+                                    <div style={{ fontSize: 10.5, color: "#7a271a" }}>{evalEntry.statusMessage}</div>
+                                  )}
+                                  {dependencyState === "broken-source" && entry.sourceFaceIndex != null && (
+                                    <div style={{ fontSize: 10.5, color: "#7a271a" }}>
+                                      Derived plane source could not be resolved:
+                                      {" "}
+                                      original target Face #{entry.sourceFaceIndex}
+                                      {" "}
+                                      reason: source topology changed after extrude operation
+                                    </div>
+                                  )}
                                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                     <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5 }}>
                                       <input
@@ -46300,6 +47132,32 @@ case "mobius":
                                     >
                                       Use for section slice
                                     </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRelinkDerivedConstructionTarget(entry.id)}
+                                      disabled={!canRelink}
+                                      style={{ fontSize: 10.5 }}
+                                      title="Relink derived object to the best candidate target"
+                                    >
+                                      Relink target
+                                    </button>
+                                    {entry.frozenSnapshot ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUnfreezeDerivedConstruction(entry.id)}
+                                        style={{ fontSize: 10.5 }}
+                                      >
+                                        Unfreeze
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleFreezeDerivedConstruction(entry.id)}
+                                        style={{ fontSize: 10.5 }}
+                                      >
+                                        Freeze current result
+                                      </button>
+                                    )}
                                     <button type="button" onClick={() => handleDeleteDerivedConstruction(entry.id)} style={{ fontSize: 10.5 }}>
                                       Delete
                                     </button>
@@ -52045,7 +52903,10 @@ case "mobius":
                     {geometryRightPanelTab === "inspector" ? (
                       <>
                         <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                          {([["probe", "Probe"]] as const).map(([tabId, label]) => (
+                          {([
+                            ["probe", "Probe"],
+                            ["dependencies", "Dependencies"],
+                          ] as const).map(([tabId, label]) => (
                             <button
                               key={`geometry-inspector-tab-${tabId}`}
                               type="button"
@@ -52220,7 +53081,13 @@ case "mobius":
                                     : "n/a"}
                                 </div>
                                 <div><strong>Dependent:</strong> {geometrySelectedDerivedConstructionEval.object.dependent ? "yes" : "no"}</div>
-                                <div><strong>Status:</strong> {geometrySelectedDerivedConstructionEval.status}</div>
+                                <div>
+                                  <strong>Status:</strong>{" "}
+                                  {GEOMETRY_DEPENDENCY_STATE_META[geometrySelectedDerivedConstructionEval.dependencyState].label}
+                                </div>
+                                {geometrySelectedDerivedConstructionEval.statusMessage && (
+                                  <div style={{ color: "#7a271a" }}>{geometrySelectedDerivedConstructionEval.statusMessage}</div>
+                                )}
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
                                   <button
                                     type="button"
@@ -52237,9 +53104,135 @@ case "mobius":
                                   >
                                     Use selected derived plane for section slice
                                   </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRelinkDerivedConstructionTarget(geometrySelectedDerivedConstructionEval.object.id)}
+                                    disabled={
+                                      geometrySelectedDerivedConstructionEval.relinkCandidateFaceIndex == null &&
+                                      !geometrySelectedDerivedConstructionEval.relinkCandidateEdgeVertexPair
+                                    }
+                                    style={{ fontSize: 11 }}
+                                  >
+                                    Relink target
+                                  </button>
+                                  {geometrySelectedDerivedConstructionEval.object.frozenSnapshot ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUnfreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      Unfreeze
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFreezeDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
+                                      style={{ fontSize: 11 }}
+                                    >
+                                      Freeze current result
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteDerivedConstruction(geometrySelectedDerivedConstructionEval.object.id)}
+                                    style={{ fontSize: 11 }}
+                                  >
+                                    Delete derived object
+                                  </button>
                                 </div>
                               </div>
                             )}
+                          </div>
+                        )}
+                        {geometryInspectorPanelTab === "dependencies" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#ffffff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Dependencies</div>
+                            {geometryInspectorDependencyDetails ? (
+                              <>
+                                <div>
+                                  <strong>Selected node:</strong> {geometryInspectorDependencyDetails.node.label}
+                                </div>
+                                <div style={{ display: "inline-flex", width: "fit-content" }}>
+                                  <span
+                                    style={{
+                                      fontSize: 10.5,
+                                      fontWeight: 700,
+                                      color: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].color,
+                                      border: `1px solid ${GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].border}`,
+                                      background: GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].background,
+                                      borderRadius: 999,
+                                      padding: "2px 8px",
+                                    }}
+                                  >
+                                    Recompute status: {GEOMETRY_DEPENDENCY_STATE_META[geometryInspectorDependencyDetails.node.status].label}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Inputs</div>
+                                  {geometryInspectorDependencyDetails.inputs.length ? (
+                                    <div style={{ display: "grid", gap: 3 }}>
+                                      {geometryInspectorDependencyDetails.inputs.map((edge) => (
+                                        <div key={`dep-input-${edge.sourceId}-${edge.targetId}-${edge.relation}`} style={{ color: "#475467" }}>
+                                          {edge.relation}: {geometryDependencyGraph.nodeById.get(edge.sourceId)?.label ?? edge.sourceId}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: "#64748b" }}>None</div>
+                                  )}
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Outputs</div>
+                                  {geometryInspectorDependencyDetails.outputs.length ? (
+                                    <div style={{ display: "grid", gap: 3 }}>
+                                      {geometryInspectorDependencyDetails.outputs.map((edge) => (
+                                        <div key={`dep-output-${edge.sourceId}-${edge.targetId}-${edge.relation}`} style={{ color: "#475467" }}>
+                                          {edge.relation}: {geometryDependencyGraph.nodeById.get(edge.targetId)?.label ?? edge.targetId}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: "#64748b" }}>None</div>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ color: "#64748b" }}>Select a scene object or derived object to inspect dependencies.</div>
+                            )}
+                            <div>
+                              <div style={{ fontWeight: 700, marginBottom: 4 }}>Broken links</div>
+                              {geometryDependencyGraph.brokenNodes.length ? (
+                                <div style={{ display: "grid", gap: 4 }}>
+                                  {geometryDependencyGraph.brokenNodes.map((node) => (
+                                    <div
+                                      key={`dep-broken-${node.id}`}
+                                      style={{
+                                        border: "1px solid #fecaca",
+                                        borderRadius: 6,
+                                        padding: "6px 8px",
+                                        background: "#fef2f2",
+                                        color: "#7f1d1d",
+                                      }}
+                                    >
+                                      <div style={{ fontWeight: 700 }}>{node.label}</div>
+                                      <div>{GEOMETRY_DEPENDENCY_STATE_META[node.status].label}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div style={{ color: "#64748b" }}>No broken links.</div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </>
