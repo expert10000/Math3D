@@ -305,16 +305,3 @@ npm ci usually installs Electron correctly, so no extra check was needed.
 On runners where install was partial/corrupted/cache-odd, tests could still pass sometimes if Electron happened to be present enough.
 The new ensure:electron made this explicit and deterministic, so now CI fails early instead of failing later or passing by luck
 
-What’s implemented now:
-
-Vertex: point marker, coordinate label, normal endpoint, translated copy point
-Edge: midpoint, direction vector, perpendicular bisector line, edge-aligned axis, equal-length copied segment
-Face: face centroid, face normal line, tangent plane preview, offset plane, parallel face plane
-Object: centroid, bounding box, principal axes preview, symmetry plane preview, circumscribed sphere preview, inscribed reference sphere (gated by support)
-Important precision note:
-
-Several object-level ones are currently preview approximations (not full exact geometric solvers), especially:
-principal axes preview (axis-aligned preview, not PCA eigensystem)
-symmetry plane preview (heuristic preview)
-circumscribed sphere preview (preview from bbox-centered radius)
-inscribed reference sphere (preview/gated support behavior)

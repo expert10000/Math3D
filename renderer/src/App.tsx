@@ -2073,15 +2073,23 @@ type GeometryDerivedConstructionType =
   | "vertex-normal-endpoint"
   | "vertex-translated-copy-point"
   | "edge-midpoint"
+  | "edge-line-through-two-vertices"
+  | "edge-line-through-midpoint-and-vertex"
   | "edge-direction-vector"
   | "edge-perpendicular-bisector-line"
   | "edge-aligned-axis"
+  | "edge-parallel-line-through-vertex"
   | "edge-equal-length-copied-segment"
+  | "plane-normal-line-through-vertex"
   | "face-centroid"
   | "face-normal-line"
+  | "face-line-perpendicular-to-plane"
   | "face-tangent-plane-preview"
+  | "face-plane-through-centroid"
+  | "face-plane-normal-to-selected-edge"
   | "face-offset-plane"
   | "face-parallel-face-plane"
+  | "face-plane-through-three-vertices"
   | "object-centroid"
   | "object-bounding-box"
   | "object-principal-axes-preview"
@@ -2115,6 +2123,22 @@ type GeometryDerivedConstructionObject = {
     midpoint: { x: number; y: number; z: number };
     direction: { x: number; y: number; z: number };
     length: number;
+  } | null;
+  secondaryVertexRef?: {
+    objectId: string;
+    vertexIndex: number;
+    point: { x: number; y: number; z: number };
+  } | null;
+  tertiaryVertexRef?: {
+    objectId: string;
+    vertexIndex: number;
+    point: { x: number; y: number; z: number };
+  } | null;
+  selectedEdgeRef?: {
+    objectId: string;
+    edgeVertexPair: [number, number];
+    a: { x: number; y: number; z: number };
+    b: { x: number; y: number; z: number };
   } | null;
   sourceVertexSignature?: {
     point: { x: number; y: number; z: number };
@@ -2173,27 +2197,57 @@ type GeometryDependencyEdge = {
   targetId: string;
   relation: "derived-from" | "measured-from" | "section-of" | "compared-with" | "aligned-to";
 };
+type GeometryDerivedRelationType =
+  | "center-on-derived-point"
+  | "align-local-axis-to-derived-line"
+  | "attach-face-to-derived-plane"
+  | "maintain-offset-from-derived-plane";
+type GeometryDerivedRelationConstraint = {
+  id: string;
+  type: GeometryDerivedRelationType;
+  objectId: string;
+  derivedId: string;
+  localAxis?: "x" | "y" | "z";
+  faceSide?: "min" | "max";
+  offset?: number;
+  enabled: boolean;
+  createdAt: number;
+};
 const GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS: Record<GeometryDerivedConstructionType, string> = {
   "vertex-point-marker": "Point Marker",
   "vertex-coordinate-label": "Coordinate Label",
   "vertex-normal-endpoint": "Normal Endpoint",
   "vertex-translated-copy-point": "Translated Copy Point",
   "edge-midpoint": "Midpoint",
+  "edge-line-through-two-vertices": "Line Through Two Vertices",
+  "edge-line-through-midpoint-and-vertex": "Line Through Midpoint + Vertex",
   "edge-direction-vector": "Direction Vector",
   "edge-perpendicular-bisector-line": "Perpendicular Bisector Line",
   "edge-aligned-axis": "Edge-Aligned Axis",
+  "edge-parallel-line-through-vertex": "Line Parallel To Edge",
   "edge-equal-length-copied-segment": "Equal-Length Copied Segment",
+  "plane-normal-line-through-vertex": "Line Normal To Plane",
   "face-centroid": "Face Centroid",
   "face-normal-line": "Face Normal Line",
+  "face-line-perpendicular-to-plane": "Line Perpendicular To Plane",
   "face-tangent-plane-preview": "Tangent Plane Preview",
+  "face-plane-through-centroid": "Plane Through Face Centroid",
+  "face-plane-normal-to-selected-edge": "Plane Normal To Selected Edge",
   "face-offset-plane": "Offset Plane",
   "face-parallel-face-plane": "Parallel Face Plane",
+  "face-plane-through-three-vertices": "Plane Through Three Vertices",
   "object-centroid": "Centroid",
   "object-bounding-box": "Bounding Box",
   "object-principal-axes-preview": "Principal Axes",
   "object-symmetry-plane-preview": "Symmetry Plane",
   "object-circumscribed-sphere-preview": "Circumscribed Sphere",
   "object-inscribed-reference-sphere": "Inscribed Reference Sphere",
+};
+const GEOMETRY_DERIVED_RELATION_TYPE_LABELS: Record<GeometryDerivedRelationType, string> = {
+  "center-on-derived-point": "Place Object Center On Point",
+  "align-local-axis-to-derived-line": "Align Local Axis To Derived Line",
+  "attach-face-to-derived-plane": "Attach Face To Derived Plane",
+  "maintain-offset-from-derived-plane": "Maintain Fixed Offset From Plane",
 };
 const geometryDependencyNodeKindFromConstructionType = (
   type: GeometryDerivedConstructionType
@@ -7419,6 +7473,13 @@ const App: React.FC = () => {
   const [geometryAnnotationStatus, setGeometryAnnotationStatus] = useState<string | null>(null);
   const [geometryDerivedConstructions, setGeometryDerivedConstructions] = useState<GeometryDerivedConstructionObject[]>([]);
   const [geometrySelectedDerivedConstructionId, setGeometrySelectedDerivedConstructionId] = useState<string | null>(null);
+  const [geometryDerivedRelationConstraints, setGeometryDerivedRelationConstraints] = useState<
+    GeometryDerivedRelationConstraint[]
+  >([]);
+  const [geometryRelationTargetDerivedId, setGeometryRelationTargetDerivedId] = useState<string | null>(null);
+  const [geometryRelationLocalAxis, setGeometryRelationLocalAxis] = useState<"x" | "y" | "z">("y");
+  const [geometryRelationFaceSide, setGeometryRelationFaceSide] = useState<"min" | "max">("max");
+  const [geometryRelationPlaneOffset, setGeometryRelationPlaneOffset] = useState(0);
   const geometryDerivedLastValidSnapshotRef = useRef<
     Map<
       string,
@@ -8909,6 +8970,7 @@ const App: React.FC = () => {
   const handleRemoveGeometryObject = useCallback((id: string) => {
     if (geometryLockedObjectIds.has(id)) return;
     setGeometrySelectedObjectId((current) => (current === id ? null : current));
+    setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.objectId !== id));
     setGeometryObjects((prev) => prev.filter((o) => o.id !== id));
     setGeometryDatasetMeshObjects((prev) => prev.filter((o) => o.id !== id));
   }, [geometryLockedObjectIds]);
@@ -11042,9 +11104,12 @@ const App: React.FC = () => {
     (
       type:
         | "edge-midpoint"
+        | "edge-line-through-two-vertices"
+        | "edge-line-through-midpoint-and-vertex"
         | "edge-direction-vector"
         | "edge-perpendicular-bisector-line"
         | "edge-aligned-axis"
+        | "edge-parallel-line-through-vertex"
         | "edge-equal-length-copied-segment"
     ) => {
       const detail = geometryProbeSelectionDetails;
@@ -11053,12 +11118,26 @@ const App: React.FC = () => {
         return;
       }
       const resolved = resolveGeometrySceneMeshById(detail.meshKey);
+      const secondaryFromEdge = (() => {
+        const pair = detail.edgeVertexPair;
+        if (!detail.edgePoints || detail.edgePoints.length < 2 || !pair) return null;
+        const d0 = geometryDistance(detail.point, detail.edgePoints[0]);
+        const d1 = geometryDistance(detail.point, detail.edgePoints[1]);
+        const useFirst = d0 <= d1;
+        const index = useFirst ? pair[0] : pair[1];
+        const point = useFirst ? detail.edgePoints[0] : detail.edgePoints[1];
+        return { objectId: detail.meshKey as string, vertexIndex: index, point: { ...point } };
+      })();
       appendDerivedConstruction({
         type,
         sourceKind: "edge",
         sourceObjectId: detail.meshKey,
         sourceTopologySignature: resolved ? geometryMeshTopologySignature(resolved.mesh) : null,
         sourceEdgeVertexPair: detail.edgeVertexPair,
+        secondaryVertexRef:
+          type === "edge-line-through-midpoint-and-vertex" || type === "edge-parallel-line-through-vertex"
+            ? secondaryFromEdge
+            : undefined,
         sourceEdgeSignature:
           detail.edgePoints && detail.edgePoints.length >= 2
             ? geometryEdgeSignatureFromPoints(detail.edgePoints[0], detail.edgePoints[1])
@@ -11086,9 +11165,13 @@ const App: React.FC = () => {
       type:
         | "face-centroid"
         | "face-normal-line"
+        | "face-line-perpendicular-to-plane"
         | "face-tangent-plane-preview"
+        | "face-plane-through-centroid"
+        | "face-plane-normal-to-selected-edge"
         | "face-offset-plane"
         | "face-parallel-face-plane"
+        | "face-plane-through-three-vertices"
     ) => {
       const detail = geometryProbeSelectionDetails;
       if (!detail || detail.mode !== "face" || !detail.meshKey || detail.faceIndex == null) {
@@ -11096,6 +11179,26 @@ const App: React.FC = () => {
         return;
       }
       const resolved = resolveGeometrySceneMeshById(detail.meshKey);
+      const selectedEdgeRef = (() => {
+        const marked = geometryMarkedEdges.find((entry) => entry.meshKey === detail.meshKey) ?? null;
+        if (marked?.edgePoints && marked.edgePoints.length >= 2) {
+          return {
+            objectId: marked.meshKey,
+            edgeVertexPair: marked.edgeVertexPair,
+            a: { ...marked.edgePoints[0] },
+            b: { ...marked.edgePoints[1] },
+          };
+        }
+        if (detail.faceVertices && detail.faceVertices.length >= 3) {
+          return {
+            objectId: detail.meshKey as string,
+            edgeVertexPair: [0, 1] as [number, number],
+            a: { ...detail.faceVertices[0] },
+            b: { ...detail.faceVertices[1] },
+          };
+        }
+        return null;
+      })();
       appendDerivedConstruction({
         type,
         sourceKind: "face",
@@ -11106,6 +11209,7 @@ const App: React.FC = () => {
           detail.faceVertices && detail.faceVertices.length >= 3
             ? geometryFaceSignatureFromTriangle(detail.faceVertices[0], detail.faceVertices[1], detail.faceVertices[2])
             : null,
+        selectedEdgeRef: type === "face-plane-normal-to-selected-edge" ? selectedEdgeRef : undefined,
         sourcePoint: { ...detail.point },
         sourceNormal: { ...detail.normal },
         params:
@@ -11114,7 +11218,13 @@ const App: React.FC = () => {
             : undefined,
       });
     },
-    [appendDerivedConstruction, geometryConstructOffsetDistance, geometryProbeSelectionDetails, resolveGeometrySceneMeshById]
+    [
+      appendDerivedConstruction,
+      geometryConstructOffsetDistance,
+      geometryMarkedEdges,
+      geometryProbeSelectionDetails,
+      resolveGeometrySceneMeshById,
+    ]
   );
   const handleCreateDerivedFromObject = useCallback(
     (
@@ -11143,12 +11253,16 @@ const App: React.FC = () => {
   );
   const handleDeleteDerivedConstruction = useCallback((id: string) => {
     setGeometryDerivedConstructions((prev) => prev.filter((entry) => entry.id !== id));
+    setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.derivedId !== id));
     setGeometrySelectedDerivedConstructionId((prev) => (prev === id ? null : prev));
+    setGeometryRelationTargetDerivedId((prev) => (prev === id ? null : prev));
     geometryDerivedLastValidSnapshotRef.current.delete(id);
     setGeometrySectionSourceDerivedId((prev) => (prev === id ? null : prev));
   }, []);
   const handleClearDerivedConstructions = useCallback(() => {
     setGeometryDerivedConstructions([]);
+    setGeometryDerivedRelationConstraints([]);
+    setGeometryRelationTargetDerivedId(null);
     setGeometrySelectedDerivedConstructionId(null);
     geometryDerivedLastValidSnapshotRef.current.clear();
     setGeometrySectionSourceDerivedId(null);
@@ -14251,6 +14365,39 @@ const App: React.FC = () => {
           finish("invalid", null, null, dependencyState, statusMessage);
           continue;
         }
+        const secondaryVertex = (() => {
+          if (!object.secondaryVertexRef) return null;
+          if (object.secondaryVertexRef.objectId !== object.sourceObjectId) return object.secondaryVertexRef.point;
+          return getVertex(object.secondaryVertexRef.vertexIndex) ?? object.secondaryVertexRef.point;
+        })();
+        if (object.type === "edge-line-through-two-vertices") {
+          addEvalGroup([[edge.a, edge.b]], 0x0ea5e9, 0.92, 1.9);
+          finish("valid", edge.midpoint, edge.dir);
+          continue;
+        }
+        if (object.type === "edge-line-through-midpoint-and-vertex") {
+          const target = secondaryVertex ?? edge.a;
+          const dir = norm(sub(target, edge.midpoint));
+          if (!dir) {
+            finish("invalid", edge.midpoint, null, dependencyState, "Cannot build midpoint-vertex line.");
+            continue;
+          }
+          const half = Math.max(0.25, edge.length);
+          const a = {
+            x: edge.midpoint.x - dir.x * half,
+            y: edge.midpoint.y - dir.y * half,
+            z: edge.midpoint.z - dir.z * half,
+          };
+          const b = {
+            x: edge.midpoint.x + dir.x * half,
+            y: edge.midpoint.y + dir.y * half,
+            z: edge.midpoint.z + dir.z * half,
+          };
+          addEvalGroup([[a, b]], 0x38bdf8, 0.93, 1.85);
+          addEvalPoint(target, 0x0ea5e9, 0.075);
+          finish("valid", edge.midpoint, dir);
+          continue;
+        }
         if (object.type === "edge-midpoint") {
           addEvalPoint(edge.midpoint, 0x0ea5e9, 0.09);
           finish("valid", edge.midpoint, edge.dir);
@@ -14310,6 +14457,23 @@ const App: React.FC = () => {
           finish("valid", edge.midpoint, edge.dir);
           continue;
         }
+        if (object.type === "edge-parallel-line-through-vertex") {
+          const anchor = secondaryVertex ?? edge.midpoint;
+          const half = Math.max(0.35, edge.length * 1.2);
+          const a = {
+            x: anchor.x - edge.dir.x * half,
+            y: anchor.y - edge.dir.y * half,
+            z: anchor.z - edge.dir.z * half,
+          };
+          const b = {
+            x: anchor.x + edge.dir.x * half,
+            y: anchor.y + edge.dir.y * half,
+            z: anchor.z + edge.dir.z * half,
+          };
+          addEvalGroup([[a, b]], 0x14b8a6, 0.93, 1.85);
+          finish("valid", anchor, edge.dir);
+          continue;
+        }
         const len = Math.max(0.01, Number(object.params?.length) || edge.length);
         const start = edge.midpoint;
         const end = {
@@ -14336,6 +14500,16 @@ const App: React.FC = () => {
           finish("valid", face.centroid, face.normal);
           continue;
         }
+        if (object.type === "face-line-perpendicular-to-plane") {
+          const end = {
+            x: face.centroid.x + face.normal.x * d,
+            y: face.centroid.y + face.normal.y * d,
+            z: face.centroid.z + face.normal.z * d,
+          };
+          addEvalGroup([[face.centroid, end]], 0x0f766e, 0.94, 2.05);
+          finish("valid", face.centroid, face.normal);
+          continue;
+        }
         if (object.type === "face-normal-line") {
           const end = {
             x: face.centroid.x + face.normal.x * d,
@@ -14347,6 +14521,58 @@ const App: React.FC = () => {
           finish("valid", face.centroid, face.normal);
           continue;
         }
+        if (object.type === "face-plane-normal-to-selected-edge") {
+          const edgeRef = object.selectedEdgeRef;
+          const edgeDir = edgeRef
+            ? norm({
+                x: edgeRef.b.x - edgeRef.a.x,
+                y: edgeRef.b.y - edgeRef.a.y,
+                z: edgeRef.b.z - edgeRef.a.z,
+              })
+            : null;
+          const planeNormal = edgeDir ?? face.normal;
+          const basis = resolveHelperTangentBasis(planeNormal);
+          const half = Math.max(
+            0.15,
+            0.5 *
+              Math.max(
+                Math.hypot(face.a.x - face.b.x, face.a.y - face.b.y, face.a.z - face.b.z),
+                Math.hypot(face.b.x - face.c.x, face.b.y - face.c.y, face.b.z - face.c.z),
+                Math.hypot(face.c.x - face.a.x, face.c.y - face.a.y, face.c.z - face.a.z)
+              )
+          );
+          const corners = [
+            {
+              x: face.centroid.x + basis.u.x * half + basis.v.x * half,
+              y: face.centroid.y + basis.u.y * half + basis.v.y * half,
+              z: face.centroid.z + basis.u.z * half + basis.v.z * half,
+            },
+            {
+              x: face.centroid.x - basis.u.x * half + basis.v.x * half,
+              y: face.centroid.y - basis.u.y * half + basis.v.y * half,
+              z: face.centroid.z - basis.u.z * half + basis.v.z * half,
+            },
+            {
+              x: face.centroid.x - basis.u.x * half - basis.v.x * half,
+              y: face.centroid.y - basis.u.y * half - basis.v.y * half,
+              z: face.centroid.z - basis.u.z * half - basis.v.z * half,
+            },
+            {
+              x: face.centroid.x + basis.u.x * half - basis.v.x * half,
+              y: face.centroid.y + basis.u.y * half - basis.v.y * half,
+              z: face.centroid.z + basis.u.z * half - basis.v.z * half,
+            },
+          ];
+          const planeLines: PolylineSet = [
+            [corners[0], corners[1]],
+            [corners[1], corners[2]],
+            [corners[2], corners[3]],
+            [corners[3], corners[0]],
+          ];
+          addEvalGroup(planeLines, 0x4f46e5, 0.78, 1.5);
+          finish("valid", face.centroid, planeNormal);
+          continue;
+        }
         const planeCenter =
           object.type === "face-offset-plane"
             ? {
@@ -14355,7 +14581,19 @@ const App: React.FC = () => {
                 z: face.centroid.z + face.normal.z * d,
               }
             : face.centroid;
-        const basis = resolveHelperTangentBasis(face.normal);
+        const planeNormal =
+          object.type === "face-plane-normal-to-selected-edge"
+            ? norm(
+                object.selectedEdgeRef
+                  ? {
+                      x: object.selectedEdgeRef.b.x - object.selectedEdgeRef.a.x,
+                      y: object.selectedEdgeRef.b.y - object.selectedEdgeRef.a.y,
+                      z: object.selectedEdgeRef.b.z - object.selectedEdgeRef.a.z,
+                    }
+                  : face.normal
+              ) ?? face.normal
+            : face.normal;
+        const basis = resolveHelperTangentBasis(planeNormal);
         const half = Math.max(
           0.15,
           0.5 *
@@ -14393,8 +14631,16 @@ const App: React.FC = () => {
           [corners[2], corners[3]],
           [corners[3], corners[0]],
         ];
-        addEvalGroup(planeLines, object.type === "face-offset-plane" ? 0x8b5cf6 : 0x6366f1, 0.78, 1.5);
-        finish("valid", planeCenter, face.normal);
+        const planeColor =
+          object.type === "face-offset-plane"
+            ? 0x8b5cf6
+            : object.type === "face-plane-through-three-vertices"
+              ? 0x2563eb
+              : object.type === "face-plane-through-centroid"
+                ? 0x1d4ed8
+                : 0x6366f1;
+        addEvalGroup(planeLines, planeColor, 0.78, 1.5);
+        finish("valid", planeCenter, planeNormal);
         continue;
       }
 
@@ -14911,6 +15157,15 @@ const App: React.FC = () => {
         relation: "derived-from",
       });
     }
+    for (const relation of geometryDerivedRelationConstraints) {
+      if (!geometryObjectIdSet.has(relation.objectId)) continue;
+      if (!geometryDerivedConstructions.some((entry) => entry.id === relation.derivedId)) continue;
+      addEdge({
+        sourceId: `derived:${relation.derivedId}`,
+        targetId: `object:${relation.objectId}`,
+        relation: "aligned-to",
+      });
+    }
     for (const edgeMeasurement of geometryMeasuredEdges) {
       const source = resolveGeometrySceneMeshById(edgeMeasurement.meshKey);
       const validSource = !!source?.mesh?.positions?.length;
@@ -15005,6 +15260,7 @@ const App: React.FC = () => {
     geometryCompareObjectBId,
     geometryDatasetMeshObjects,
     geometryDerivedConstructions,
+    geometryDerivedRelationConstraints,
     geometryDerivedConstructionOverlays.byId,
     geometryMeasuredEdges,
     geometryObjectIdSet,
@@ -15041,6 +15297,9 @@ const App: React.FC = () => {
     }
     const allowedPlaneTypes: GeometryDerivedConstructionType[] = [
       "face-tangent-plane-preview",
+      "face-plane-through-centroid",
+      "face-plane-through-three-vertices",
+      "face-plane-normal-to-selected-edge",
       "face-offset-plane",
       "face-parallel-face-plane",
       "object-symmetry-plane-preview",
@@ -15096,6 +15355,293 @@ const App: React.FC = () => {
     }
     handleUseDerivedPlaneForSectionSliceById(selectedId);
   }, [geometrySelectedDerivedConstructionId, handleUseDerivedPlaneForSectionSliceById]);
+  const geometryRelationDerivedCandidates = useMemo(
+    () =>
+      geometryDerivedConstructions.map((entry) => {
+        const evalEntry = geometryDerivedConstructionOverlays.byId.get(entry.id) ?? null;
+        return {
+          id: entry.id,
+          label: GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[entry.type],
+          sourceName: evalEntry?.sourceObjectName ?? entry.sourceObjectId,
+          status: evalEntry?.status ?? "invalid",
+          hasOrigin: !!evalEntry?.origin,
+          hasDirection: !!evalEntry?.direction,
+          type: entry.type,
+        };
+      }),
+    [geometryDerivedConstructions, geometryDerivedConstructionOverlays.byId]
+  );
+  const appendGeometryDerivedRelationConstraint = useCallback(
+    (draft: Omit<GeometryDerivedRelationConstraint, "id" | "enabled" | "createdAt">) => {
+      const next: GeometryDerivedRelationConstraint = {
+        ...draft,
+        id: makeId(),
+        enabled: true,
+        createdAt: Date.now(),
+      };
+      setGeometryDerivedRelationConstraints((prev) => [next, ...prev]);
+      setGeometryCreateActionStatus(`Constraint added: ${GEOMETRY_DERIVED_RELATION_TYPE_LABELS[next.type]}.`);
+    },
+    []
+  );
+  const handleCreateGeometryDerivedRelationConstraint = useCallback(
+    (type: GeometryDerivedRelationType) => {
+      const objectId = geometrySelectedObjectId;
+      if (!objectId) {
+        setGeometryCreateActionStatus("Select an object first.");
+        return;
+      }
+      const derivedId = geometryRelationTargetDerivedId ?? geometrySelectedDerivedConstructionId;
+      if (!derivedId) {
+        setGeometryCreateActionStatus("Select a derived construction target first.");
+        return;
+      }
+      const evalEntry = geometryDerivedConstructionOverlays.byId.get(derivedId) ?? null;
+      if (!evalEntry || evalEntry.status !== "valid" || !evalEntry.origin) {
+        setGeometryCreateActionStatus("Selected derived target is invalid.");
+        return;
+      }
+      if (type === "center-on-derived-point") {
+        appendGeometryDerivedRelationConstraint({ type, objectId, derivedId });
+        return;
+      }
+      if (type === "align-local-axis-to-derived-line") {
+        if (!evalEntry.direction) {
+          setGeometryCreateActionStatus("Selected derived target must provide a line direction.");
+          return;
+        }
+        appendGeometryDerivedRelationConstraint({
+          type,
+          objectId,
+          derivedId,
+          localAxis: geometryRelationLocalAxis,
+        });
+        return;
+      }
+      if (type === "attach-face-to-derived-plane") {
+        if (!evalEntry.direction) {
+          setGeometryCreateActionStatus("Selected derived target must provide a plane normal.");
+          return;
+        }
+        appendGeometryDerivedRelationConstraint({
+          type,
+          objectId,
+          derivedId,
+          faceSide: geometryRelationFaceSide,
+        });
+        return;
+      }
+      if (!evalEntry.direction) {
+        setGeometryCreateActionStatus("Selected derived target must provide a plane normal.");
+        return;
+      }
+      appendGeometryDerivedRelationConstraint({
+        type,
+        objectId,
+        derivedId,
+        offset: Number.isFinite(geometryRelationPlaneOffset) ? geometryRelationPlaneOffset : 0,
+      });
+    },
+    [
+      appendGeometryDerivedRelationConstraint,
+      geometryDerivedConstructionOverlays.byId,
+      geometryRelationFaceSide,
+      geometryRelationLocalAxis,
+      geometryRelationPlaneOffset,
+      geometryRelationTargetDerivedId,
+      geometrySelectedDerivedConstructionId,
+      geometrySelectedObjectId,
+    ]
+  );
+  const handleToggleGeometryDerivedRelationConstraint = useCallback((id: string) => {
+    setGeometryDerivedRelationConstraints((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, enabled: !entry.enabled } : entry))
+    );
+  }, []);
+  const handleDeleteGeometryDerivedRelationConstraint = useCallback((id: string) => {
+    setGeometryDerivedRelationConstraints((prev) => prev.filter((entry) => entry.id !== id));
+  }, []);
+  useEffect(() => {
+    if (!geometryRelationTargetDerivedId) return;
+    if (geometryDerivedConstructions.some((entry) => entry.id === geometryRelationTargetDerivedId)) return;
+    setGeometryRelationTargetDerivedId(null);
+  }, [geometryDerivedConstructions, geometryRelationTargetDerivedId]);
+  useEffect(() => {
+    if (!geometryDerivedRelationConstraints.length) return;
+    const validObjectIds = new Set([...geometryObjects.map((entry) => entry.id), ...geometryDatasetMeshObjects.map((entry) => entry.id)]);
+    const validDerivedIds = new Set(geometryDerivedConstructions.map((entry) => entry.id));
+    setGeometryDerivedRelationConstraints((prev) => {
+      const next = prev.filter((entry) => validObjectIds.has(entry.objectId) && validDerivedIds.has(entry.derivedId));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [geometryDatasetMeshObjects, geometryDerivedConstructions, geometryDerivedRelationConstraints.length, geometryObjects]);
+  useEffect(() => {
+    if (geometryMode !== "procedural" || !geometryDerivedRelationConstraints.length) return;
+    const byId = geometryDerivedConstructionOverlays.byId;
+    const localAxisVec = (axis: "x" | "y" | "z"): Vec3 => {
+      if (axis === "x") return { x: 1, y: 0, z: 0 };
+      if (axis === "z") return { x: 0, y: 0, z: 1 };
+      return { x: 0, y: 1, z: 0 };
+    };
+    const resolvedPatches = new Map<string, { position?: Vec3; rotation?: Vec3 }>();
+
+    for (const relation of geometryDerivedRelationConstraints) {
+      if (!relation.enabled) continue;
+      if (geometryLockedObjectIds.has(relation.objectId)) continue;
+      const evalEntry = byId.get(relation.derivedId) ?? null;
+      if (!evalEntry || evalEntry.status !== "valid" || !evalEntry.origin) continue;
+      const object = resolveGeometrySceneObjectById(relation.objectId);
+      if (!object) continue;
+      const baseMesh = proceduralMeshSet.meshes.find((entry) => entry.id === relation.objectId);
+      if (!baseMesh) continue;
+
+      const patch = resolvedPatches.get(relation.objectId) ?? {};
+      const currentTransform: GeometryObjectTransform = {
+        position: patch.position ? { ...patch.position } : { ...object.transform.position },
+        rotation: patch.rotation ? { ...patch.rotation } : { ...object.transform.rotation },
+        scale: { ...object.transform.scale },
+      };
+      const worldMesh = transformSurfaceMeshByGeometryTransform(baseMesh, currentTransform);
+      const bounds = boundsFromPositions(worldMesh.positions);
+      const center = bounds
+        ? {
+            x: 0.5 * (bounds.min[0] + bounds.max[0]),
+            y: 0.5 * (bounds.min[1] + bounds.max[1]),
+            z: 0.5 * (bounds.min[2] + bounds.max[2]),
+          }
+        : null;
+
+      if (relation.type === "center-on-derived-point" && center) {
+        patch.position = {
+          x: currentTransform.position.x + (evalEntry.origin.x - center.x),
+          y: currentTransform.position.y + (evalEntry.origin.y - center.y),
+          z: currentTransform.position.z + (evalEntry.origin.z - center.z),
+        };
+        resolvedPatches.set(relation.objectId, patch);
+        continue;
+      }
+
+      if (!evalEntry.direction) continue;
+      const nLen = Math.hypot(evalEntry.direction.x, evalEntry.direction.y, evalEntry.direction.z);
+      if (!Number.isFinite(nLen) || nLen <= 1e-9) continue;
+      const n = {
+        x: evalEntry.direction.x / nLen,
+        y: evalEntry.direction.y / nLen,
+        z: evalEntry.direction.z / nLen,
+      };
+
+      if (relation.type === "align-local-axis-to-derived-line") {
+        const axis = localAxisVec(relation.localAxis ?? "y");
+        const q = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(axis.x, axis.y, axis.z),
+          new THREE.Vector3(n.x, n.y, n.z)
+        );
+        const e = new THREE.Euler().setFromQuaternion(q, "XYZ");
+        patch.rotation = { x: e.x, y: e.y, z: e.z };
+        resolvedPatches.set(relation.objectId, patch);
+        continue;
+      }
+
+      const count = Math.floor(worldMesh.positions.length / 3);
+      if (count <= 0) continue;
+      let minSupport = Number.POSITIVE_INFINITY;
+      let maxSupport = Number.NEGATIVE_INFINITY;
+      for (let i = 0; i < count; i += 1) {
+        const k = i * 3;
+        const x = Number(worldMesh.positions[k] ?? 0);
+        const y = Number(worldMesh.positions[k + 1] ?? 0);
+        const z = Number(worldMesh.positions[k + 2] ?? 0);
+        const s = x * n.x + y * n.y + z * n.z;
+        if (s < minSupport) minSupport = s;
+        if (s > maxSupport) maxSupport = s;
+      }
+      const planeSupport = evalEntry.origin.x * n.x + evalEntry.origin.y * n.y + evalEntry.origin.z * n.z;
+
+      if (relation.type === "attach-face-to-derived-plane") {
+        const side = relation.faceSide ?? "max";
+        const currentSupport = side === "min" ? minSupport : maxSupport;
+        const delta = planeSupport - currentSupport;
+        patch.position = {
+          x: currentTransform.position.x + n.x * delta,
+          y: currentTransform.position.y + n.y * delta,
+          z: currentTransform.position.z + n.z * delta,
+        };
+        resolvedPatches.set(relation.objectId, patch);
+        continue;
+      }
+
+      if (center) {
+        const centerSupport = center.x * n.x + center.y * n.y + center.z * n.z;
+        const targetSupport = planeSupport + (Number.isFinite(relation.offset ?? Number.NaN) ? Number(relation.offset) : 0);
+        const delta = targetSupport - centerSupport;
+        patch.position = {
+          x: currentTransform.position.x + n.x * delta,
+          y: currentTransform.position.y + n.y * delta,
+          z: currentTransform.position.z + n.z * delta,
+        };
+        resolvedPatches.set(relation.objectId, patch);
+      }
+    }
+
+    if (!resolvedPatches.size) return;
+    const eps = 1e-6;
+    const hasDelta = (a: Vec3, b: Vec3) =>
+      Math.abs(a.x - b.x) > eps || Math.abs(a.y - b.y) > eps || Math.abs(a.z - b.z) > eps;
+
+    setGeometryObjects((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        const patch = resolvedPatches.get(entry.id);
+        if (!patch) return entry;
+        const nextPosition = patch.position ?? entry.transform.position;
+        const nextRotation = patch.rotation ?? entry.transform.rotation;
+        if (!hasDelta(nextPosition, entry.transform.position) && !hasDelta(nextRotation, entry.transform.rotation)) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          transform: {
+            ...entry.transform,
+            position: { ...nextPosition },
+            rotation: { ...nextRotation },
+          },
+        };
+      });
+      return changed ? next : prev;
+    });
+    setGeometryDatasetMeshObjects((prev) => {
+      let changed = false;
+      const next = prev.map((entry) => {
+        const patch = resolvedPatches.get(entry.id);
+        if (!patch) return entry;
+        const nextPosition = patch.position ?? entry.transform.position;
+        const nextRotation = patch.rotation ?? entry.transform.rotation;
+        if (!hasDelta(nextPosition, entry.transform.position) && !hasDelta(nextRotation, entry.transform.rotation)) {
+          return entry;
+        }
+        changed = true;
+        return {
+          ...entry,
+          transform: {
+            ...entry.transform,
+            position: { ...nextPosition },
+            rotation: { ...nextRotation },
+          },
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [
+    geometryDatasetMeshObjects,
+    geometryDerivedConstructionOverlays.byId,
+    geometryDerivedRelationConstraints,
+    geometryLockedObjectIds,
+    geometryMode,
+    geometryObjects,
+    proceduralMeshSet.meshes,
+    resolveGeometrySceneObjectById,
+  ]);
   const geometryProceduralSnapPreviewPointSet = useMemo<OverlayPointSet[] | null>(() => {
     if (geometryMode !== "procedural" || !geometrySnapPreview) return null;
     const colorByKind: Record<GeometrySnapPreviewKind, number> = {
@@ -46973,12 +47519,15 @@ case "mobius":
                         </div>
 
                         <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                          <div><strong>From edge:</strong> midpoint, direction vector, perpendicular bisector line, edge-aligned axis, equal-length copied segment.</div>
+                          <div><strong>From edge:</strong> line through two vertices, line through midpoint and vertex, midpoint, direction vector, perpendicular bisector line, edge-aligned axis, parallel line through vertex, equal-length copied segment.</div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-two-vertices")}>Line through two vertices</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-line-through-midpoint-and-vertex")}>Line midpoint + vertex</button>
                             <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-midpoint")}>Midpoint</button>
                             <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-direction-vector")}>Direction vector</button>
                             <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-perpendicular-bisector-line")}>Perpendicular bisector</button>
                             <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-aligned-axis")}>Edge-aligned axis</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromEdge("edge-parallel-line-through-vertex")}>Parallel through vertex</button>
                             <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
                               Length
                               <input
@@ -46995,11 +47544,15 @@ case "mobius":
                         </div>
 
                         <div style={{ display: "grid", gap: 6, fontSize: 11 }}>
-                          <div><strong>From face:</strong> face centroid, face normal line, tangent plane preview, offset plane, parallel face plane.</div>
+                          <div><strong>From face:</strong> face centroid, line normal/perpendicular to face, tangent plane, plane through face centroid, plane through three vertices, plane normal to selected edge, offset plane, parallel face plane.</div>
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             <button type="button" onClick={() => handleCreateDerivedFromFace("face-centroid")}>Face centroid</button>
                             <button type="button" onClick={() => handleCreateDerivedFromFace("face-normal-line")}>Face normal line</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-line-perpendicular-to-plane")}>Line perpendicular to plane</button>
                             <button type="button" onClick={() => handleCreateDerivedFromFace("face-tangent-plane-preview")}>Tangent plane preview</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-centroid")}>Plane through centroid</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-through-three-vertices")}>Plane through 3 vertices</button>
+                            <button type="button" onClick={() => handleCreateDerivedFromFace("face-plane-normal-to-selected-edge")}>Plane normal to selected edge</button>
                             <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
                               Offset
                               <input
@@ -47122,6 +47675,9 @@ case "mobius":
                                       disabled={
                                         !(
                                           entry.type === "face-tangent-plane-preview" ||
+                                          entry.type === "face-plane-through-centroid" ||
+                                          entry.type === "face-plane-through-three-vertices" ||
+                                          entry.type === "face-plane-normal-to-selected-edge" ||
                                           entry.type === "face-offset-plane" ||
                                           entry.type === "face-parallel-face-plane" ||
                                           entry.type === "object-symmetry-plane-preview"
@@ -47748,6 +48304,150 @@ case "mobius":
                           <button type="button" onClick={handleApplyConstraintAngle} disabled={!geometrySelectedSceneObject}>
                             Apply angle
                           </button>
+                        </div>
+                        <div style={{ borderTop: "1px dashed #d6dce7", paddingTop: 8, display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700 }}>Construction relations (PR29)</div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
+                            <label>
+                              Derived target
+                              <select
+                                value={geometryRelationTargetDerivedId ?? ""}
+                                onChange={(e) => setGeometryRelationTargetDerivedId(e.target.value || null)}
+                                style={{ marginLeft: 6, minWidth: 210 }}
+                              >
+                                <option value="">Select derived object</option>
+                                {geometryRelationDerivedCandidates.map((entry) => (
+                                  <option key={`geometry-relation-target-${entry.id}`} value={entry.id}>
+                                    {entry.label} · {entry.sourceName}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Local axis
+                              <select
+                                value={geometryRelationLocalAxis}
+                                onChange={(e) => setGeometryRelationLocalAxis(e.target.value as "x" | "y" | "z")}
+                                style={{ marginLeft: 6 }}
+                              >
+                                <option value="x">X</option>
+                                <option value="y">Y</option>
+                                <option value="z">Z</option>
+                              </select>
+                            </label>
+                            <label>
+                              Face side
+                              <select
+                                value={geometryRelationFaceSide}
+                                onChange={(e) => setGeometryRelationFaceSide(e.target.value as "min" | "max")}
+                                style={{ marginLeft: 6 }}
+                              >
+                                <option value="max">Max support</option>
+                                <option value="min">Min support</option>
+                              </select>
+                            </label>
+                            <label>
+                              Offset
+                              <input
+                                type="number"
+                                step={0.05}
+                                value={geometryRelationPlaneOffset}
+                                onChange={(e) => setGeometryRelationPlaneOffset(Number(e.target.value) || 0)}
+                                style={{ marginLeft: 6, width: 82 }}
+                              />
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", fontSize: 11 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryDerivedRelationConstraint("center-on-derived-point")}
+                              disabled={!geometrySelectedSceneObject || !(geometryRelationTargetDerivedId ?? geometrySelectedDerivedConstructionId)}
+                            >
+                              Place center on point
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryDerivedRelationConstraint("align-local-axis-to-derived-line")}
+                              disabled={!geometrySelectedSceneObject || !(geometryRelationTargetDerivedId ?? geometrySelectedDerivedConstructionId)}
+                            >
+                              Align local axis to line
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryDerivedRelationConstraint("attach-face-to-derived-plane")}
+                              disabled={!geometrySelectedSceneObject || !(geometryRelationTargetDerivedId ?? geometrySelectedDerivedConstructionId)}
+                            >
+                              Attach face to plane
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCreateGeometryDerivedRelationConstraint("maintain-offset-from-derived-plane")}
+                              disabled={!geometrySelectedSceneObject || !(geometryRelationTargetDerivedId ?? geometrySelectedDerivedConstructionId)}
+                            >
+                              Maintain plane offset
+                            </button>
+                          </div>
+                          {geometryDerivedRelationConstraints.length ? (
+                            <div style={{ display: "grid", gap: 4 }}>
+                              {geometryDerivedRelationConstraints.slice(0, 24).map((entry) => {
+                                const derived = geometryDerivedConstructions.find((item) => item.id === entry.derivedId) ?? null;
+                                const object = resolveGeometrySceneObjectById(entry.objectId);
+                                const summary = derived
+                                  ? GEOMETRY_DERIVED_CONSTRUCTION_TYPE_LABELS[derived.type]
+                                  : entry.derivedId;
+                                return (
+                                  <div
+                                    key={`geometry-relation-entry-${entry.id}`}
+                                    style={{
+                                      border: "1px solid #dbe2ea",
+                                      borderRadius: 6,
+                                      padding: "5px 7px",
+                                      background: "#fff",
+                                      display: "grid",
+                                      gap: 3,
+                                      fontSize: 10.5,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                                      <strong>{GEOMETRY_DERIVED_RELATION_TYPE_LABELS[entry.type]}</strong>
+                                      <label style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={entry.enabled}
+                                          onChange={() => handleToggleGeometryDerivedRelationConstraint(entry.id)}
+                                        />
+                                        enabled
+                                      </label>
+                                    </div>
+                                    <div>Object: {object?.name ?? entry.objectId}</div>
+                                    <div>Derived: {summary}</div>
+                                    {entry.type === "align-local-axis-to-derived-line" && (
+                                      <div>Axis: {(entry.localAxis ?? "y").toUpperCase()}</div>
+                                    )}
+                                    {entry.type === "attach-face-to-derived-plane" && (
+                                      <div>Face side: {entry.faceSide ?? "max"}</div>
+                                    )}
+                                    {entry.type === "maintain-offset-from-derived-plane" && (
+                                      <div>Offset: {fmt(Number(entry.offset ?? 0))}</div>
+                                    )}
+                                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteGeometryDerivedRelationConstraint(entry.id)}
+                                        style={{ fontSize: 10.5 }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 10.5, color: "#667085" }}>
+                              No construction relations yet.
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -53092,14 +53792,17 @@ case "mobius":
                                   <button
                                     type="button"
                                     onClick={handleUseSelectedDerivedPlaneForSectionSlice}
-                                    disabled={
-                                      !(
-                                        geometrySelectedDerivedConstructionEval.object.type === "face-tangent-plane-preview" ||
-                                        geometrySelectedDerivedConstructionEval.object.type === "face-offset-plane" ||
-                                        geometrySelectedDerivedConstructionEval.object.type === "face-parallel-face-plane" ||
-                                        geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview"
-                                      )
-                                    }
+                                      disabled={
+                                        !(
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-tangent-plane-preview" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-through-centroid" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-through-three-vertices" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-plane-normal-to-selected-edge" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-offset-plane" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "face-parallel-face-plane" ||
+                                          geometrySelectedDerivedConstructionEval.object.type === "object-symmetry-plane-preview"
+                                        )
+                                      }
                                     style={{ fontSize: 11 }}
                                   >
                                     Use selected derived plane for section slice
