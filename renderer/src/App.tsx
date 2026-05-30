@@ -351,9 +351,15 @@ type GeometryProceduralPanelTab =
   | "view"
   | "history"
   | "analysis"
+  | "demonstrations"
   | "theory"
   | "script"
   | "euler";
+type GeometryDemonstrationCategory =
+  | "cross_sections"
+  | "volume_relations"
+  | "scaling"
+  | "polyhedra_topology";
 type GeometryEulerScope = "selected" | "scene";
 type GeometryEulerPolygonTemplateId =
   | "torus_abab_inv"
@@ -463,9 +469,16 @@ const GEOMETRY_PROCEDURAL_PANEL_VALUES: GeometryProceduralPanelTab[] = [
   "view",
   "history",
   "analysis",
+  "demonstrations",
   "theory",
   "script",
   "euler",
+];
+const GEOMETRY_DEMONSTRATION_CATEGORY_OPTIONS: Array<{ id: GeometryDemonstrationCategory; label: string }> = [
+  { id: "cross_sections", label: "Cross-sections" },
+  { id: "volume_relations", label: "Volume relations" },
+  { id: "scaling", label: "Scaling" },
+  { id: "polyhedra_topology", label: "Polyhedra topology" },
 ];
 const GEOMETRY_WORKSPACE_TAB_VALUES: ConstructionWorkspaceTab[] = ["task", "build", "inspect", "claims", "script", "scene"];
 const SURFACES_LEFT_TAB_VALUES = ["scene", "object", "view", "analysis", "theory"] as const;
@@ -7089,7 +7102,7 @@ const App: React.FC = () => {
           intersection: 0,
         }
       ),
-    [geometryObjectRevisionById]
+    []
   );
   const curvePresetCountByGroup = useMemo(
     () =>
@@ -7577,6 +7590,10 @@ const App: React.FC = () => {
   const [geometrySelectedObjectId, setGeometrySelectedObjectId] = useState<string | null>(null);
   const [geometryCompareObjectAId, setGeometryCompareObjectAId] = useState<string | null>(null);
   const [geometryCompareObjectBId, setGeometryCompareObjectBId] = useState<string | null>(null);
+  const [geometryDemonstrationCategory, setGeometryDemonstrationCategory] =
+    useState<GeometryDemonstrationCategory>("cross_sections");
+  const [geometryDemoSectionAnimationEnabled, setGeometryDemoSectionAnimationEnabled] = useState(false);
+  const geometryDemoSectionAnimationStartRef = useRef(0);
   const [geometryVariantSets, setGeometryVariantSets] = useState<Record<string, GeometryVariantSet>>({});
   const [geometrySelectedVariantId, setGeometrySelectedVariantId] = useState<string | null>(null);
   const [geometrySelectedVariantCompareId, setGeometrySelectedVariantCompareId] = useState<string | null>(null);
@@ -8902,6 +8919,94 @@ const App: React.FC = () => {
     geometryAddSelectNewObject,
     geometryNewObjectType,
   ]);
+  const handleLoadCavalieriDemoPair = useCallback(() => {
+    const aId = handleAddGeometryObject({
+      type: "cylinder",
+      name: "Cavalieri solid A",
+      params: { radiusTop: 0.85, radiusBottom: 0.85, height: 2.2, radialSegments: 48, heightSegments: 1, openEnded: false },
+    });
+    const bId = handleAddGeometryObject({
+      type: "cylinder",
+      name: "Cavalieri solid B",
+      params: { radiusTop: 0.85, radiusBottom: 0.85, height: 2.2, radialSegments: 48, heightSegments: 1, openEnded: false },
+    });
+    const placeObject = (id: string, x: number, y: number, z: number) => {
+      setGeometryObjects((prev) =>
+        prev.map((entry) =>
+          entry.id === id
+            ? { ...entry, transform: { ...entry.transform, position: { x, y, z } } }
+            : entry
+        )
+      );
+      setGeometryDatasetMeshObjects((prev) =>
+        prev.map((entry) =>
+          entry.id === id
+            ? { ...entry, transform: { ...entry.transform, position: { x, y, z } } }
+            : entry
+        )
+      );
+    };
+    placeObject(aId, -1.8, 0, 0);
+    placeObject(bId, 1.8, 0, 0);
+    setGeometrySelectedObjectId(aId);
+    setGeometryCompareObjectAId(aId);
+    setGeometryCompareObjectBId(bId);
+    setGeometrySectionPlanePreset("xz");
+    setGeometrySectionPlaneOffset(0);
+    setGeometrySectionShowCurve(true);
+    setGeometrySectionShowCap(false);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("demonstrations");
+    setGeometryDemonstrationCategory("cross_sections");
+    setGeometryCreateActionStatus("Loaded Cavalieri pair: move/animate section plane and compare A1(h), A2(h).");
+  }, [handleAddGeometryObject]);
+  const handleLoadArchimedesVolumeDemo = useCallback(() => {
+    const sphereId = handleAddGeometryObject({
+      type: "sphere",
+      name: "Archimedes sphere",
+      params: { radius: 1, widthSegments: 56, heightSegments: 36, phiStart: 0, phiLength: Math.PI * 2, thetaStart: 0, thetaLength: Math.PI },
+    });
+    const cylinderId = handleAddGeometryObject({
+      type: "cylinder",
+      name: "Archimedes cylinder",
+      params: { radiusTop: 1, radiusBottom: 1, height: 2, radialSegments: 56, heightSegments: 1, openEnded: false },
+    });
+    const coneId = handleAddGeometryObject({
+      type: "cone",
+      name: "Archimedes cone",
+      params: { radius: 1, height: 2, radialSegments: 56, heightSegments: 1, openEnded: false },
+    });
+    const placeObject = (id: string, x: number, y: number, z: number) => {
+      setGeometryObjects((prev) =>
+        prev.map((entry) =>
+          entry.id === id
+            ? { ...entry, transform: { ...entry.transform, position: { x, y, z } } }
+            : entry
+        )
+      );
+      setGeometryDatasetMeshObjects((prev) =>
+        prev.map((entry) =>
+          entry.id === id
+            ? { ...entry, transform: { ...entry.transform, position: { x, y, z } } }
+            : entry
+        )
+      );
+    };
+    placeObject(sphereId, 0, 0, 0);
+    placeObject(cylinderId, -2.7, 0, 0);
+    placeObject(coneId, 2.7, 0, 0);
+    setGeometrySelectedObjectId(sphereId);
+    setGeometryCompareObjectAId(cylinderId);
+    setGeometryCompareObjectBId(coneId);
+    setGeometrySectionPlanePreset("xz");
+    setGeometrySectionPlaneOffset(0);
+    setGeometrySectionShowCurve(true);
+    setGeometrySectionShowCap(false);
+    setGeometryMode("procedural");
+    setGeometryProceduralPanelTab("demonstrations");
+    setGeometryDemonstrationCategory("volume_relations");
+    setGeometryCreateActionStatus("Loaded cylinder/cone/sphere trio for volume relation demonstration.");
+  }, [handleAddGeometryObject]);
   const handleAddGeometryGalleryDefault = useCallback((card: GeometryGalleryCard) => {
     if (!card.supported || !card.defaultRecipe) return;
     setGeometryGallerySelectedCardId(card.id);
@@ -10215,6 +10320,177 @@ const App: React.FC = () => {
       planeFrameLines,
     };
   }, [geometrySectionCustomNormal, geometrySectionPlaneOffset, geometrySectionPlanePreset, geometrySelectedSceneMesh]);
+  const resolveSectionForObjectAtCurrentOffset = useCallback(
+    (objectId: string) => {
+      const resolved = resolveGeometrySceneMeshById(objectId);
+      if (!resolved) return null;
+      const bounds = boundsFromPositions(resolved.mesh.positions);
+      const center = bounds
+        ? {
+            x: 0.5 * (bounds.min[0] + bounds.max[0]),
+            y: 0.5 * (bounds.min[1] + bounds.max[1]),
+            z: 0.5 * (bounds.min[2] + bounds.max[2]),
+          }
+        : { x: 0, y: 0, z: 0 };
+      const dx = bounds ? bounds.max[0] - bounds.min[0] : 1;
+      const dy = bounds ? bounds.max[1] - bounds.min[1] : 1;
+      const dz = bounds ? bounds.max[2] - bounds.min[2] : 1;
+      const diag = Math.max(1e-6, Math.hypot(dx, dy, dz));
+      const normal = sectionPlaneNormalFromPreset(geometrySectionPlanePreset, geometrySectionCustomNormal);
+      const planeOrigin = {
+        x: center.x + normal.x * geometrySectionPlaneOffset,
+        y: center.y + normal.y * geometrySectionPlaneOffset,
+        z: center.z + normal.z * geometrySectionPlaneOffset,
+      };
+      const section = computeMeshSection(
+        resolved.mesh,
+        { origin: planeOrigin, normal },
+        Math.max(1e-7, diag * 1e-6)
+      );
+      const metrics = computeTriangleMeshGeometricMetrics(resolved.mesh);
+      return {
+        object: resolved.object,
+        section,
+        metrics,
+        center,
+        diag,
+      };
+    },
+    [geometrySectionCustomNormal, geometrySectionPlaneOffset, geometrySectionPlanePreset, resolveGeometrySceneMeshById]
+  );
+  const geometryCavalieriDemo = useMemo(() => {
+    if (!geometryCompareEntryA || !geometryCompareEntryB) return null;
+    const sampleA = resolveSectionForObjectAtCurrentOffset(geometryCompareEntryA.object.id);
+    const sampleB = resolveSectionForObjectAtCurrentOffset(geometryCompareEntryB.object.id);
+    if (!sampleA || !sampleB) return null;
+    const areaDelta = sampleB.section.area - sampleA.section.area;
+    const volumeDelta = sampleB.metrics.volume - sampleA.metrics.volume;
+    return {
+      a: sampleA,
+      b: sampleB,
+      areaDelta,
+      volumeDelta,
+      areasNearEqual: Math.abs(areaDelta) <= Math.max(0.02, 0.02 * Math.max(sampleA.section.area, sampleB.section.area, 1)),
+      volumesNearEqual: Math.abs(volumeDelta) <= Math.max(0.05, 0.03 * Math.max(sampleA.metrics.volume, sampleB.metrics.volume, 1)),
+    };
+  }, [geometryCompareEntryA, geometryCompareEntryB, resolveSectionForObjectAtCurrentOffset]);
+  const geometrySphereSectionDemo = useMemo(() => {
+    if (!geometrySelectedSceneObject || !geometrySectionPreview || !geometrySelectedSceneMeshInfo?.dimensions) return null;
+    const dimensions = geometrySelectedSceneMeshInfo.dimensions;
+    const rx = 0.5 * Math.max(0, dimensions.x);
+    const ry = 0.5 * Math.max(0, dimensions.y);
+    const rz = 0.5 * Math.max(0, dimensions.z);
+    const meanRadius = (rx + ry + rz) / 3;
+    const uniformDeviation = Math.max(Math.abs(rx - meanRadius), Math.abs(ry - meanRadius), Math.abs(rz - meanRadius));
+    const approximatelySphere = uniformDeviation <= Math.max(1e-3, meanRadius * 0.04);
+    const R = meanRadius;
+    const h = geometrySectionPlaneOffset;
+    const predictedRadiusSquared = Math.max(0, R * R - h * h);
+    const predictedArea = Math.PI * predictedRadiusSquared;
+    const measuredArea = geometrySectionPreview.section.area;
+    const measuredRadiusSquared = measuredArea > 0 ? measuredArea / Math.PI : 0;
+    return {
+      approximatelySphere,
+      R,
+      h,
+      predictedRadiusSquared,
+      measuredRadiusSquared,
+      predictedArea,
+      measuredArea,
+      areaResidual: measuredArea - predictedArea,
+    };
+  }, [geometrySectionPlaneOffset, geometrySectionPreview, geometrySelectedSceneMeshInfo?.dimensions, geometrySelectedSceneObject]);
+  const geometryVolumeRelationDemo = useMemo(() => {
+    const sphere = geometryObjects.find((entry) => entry.type === "sphere") ?? null;
+    const cylinder = geometryObjects.find(
+      (entry) =>
+        entry.type === "cylinder" &&
+        Number.isFinite(Number(entry.params.radiusTop)) &&
+        Number.isFinite(Number(entry.params.radiusBottom)) &&
+        Math.abs(Number(entry.params.radiusTop) - Number(entry.params.radiusBottom)) <= 1e-6
+    ) ?? null;
+    const cone = geometryObjects.find((entry) => entry.type === "cone") ?? null;
+    if (!sphere || !cylinder || !cone) return null;
+    const sphereResolved = resolveGeometrySceneMeshById(sphere.id);
+    const cylinderResolved = resolveGeometrySceneMeshById(cylinder.id);
+    const coneResolved = resolveGeometrySceneMeshById(cone.id);
+    if (!sphereResolved || !cylinderResolved || !coneResolved) return null;
+    const sphereMetrics = computeTriangleMeshGeometricMetrics(sphereResolved.mesh);
+    const cylinderMetrics = computeTriangleMeshGeometricMetrics(cylinderResolved.mesh);
+    const coneMetrics = computeTriangleMeshGeometricMetrics(coneResolved.mesh);
+    const cylinderMinusCone = cylinderMetrics.volume - coneMetrics.volume;
+    return {
+      sphere: { id: sphere.id, name: sphere.name, volume: sphereMetrics.volume },
+      cylinder: { id: cylinder.id, name: cylinder.name, volume: cylinderMetrics.volume },
+      cone: { id: cone.id, name: cone.name, volume: coneMetrics.volume },
+      sphereMinusCylMinusCone: sphereMetrics.volume - cylinderMinusCone,
+      sphereToCylinderRatio: cylinderMetrics.volume !== 0 ? sphereMetrics.volume / cylinderMetrics.volume : null,
+      sphereToConeRatio: coneMetrics.volume !== 0 ? sphereMetrics.volume / coneMetrics.volume : null,
+    };
+  }, [geometryObjects, resolveGeometrySceneMeshById]);
+  const geometryScalingDemo = useMemo(() => {
+    if (!geometrySelectedSceneObject) return null;
+    const rawMesh = proceduralMeshSet.meshes.find((entry) => entry.id === geometrySelectedSceneObject.id);
+    const resolved = resolveGeometrySceneMeshById(geometrySelectedSceneObject.id);
+    if (!rawMesh || !resolved) return null;
+    const sx = Math.max(1e-6, geometrySelectedSceneObject.transform.scale.x);
+    const sy = Math.max(1e-6, geometrySelectedSceneObject.transform.scale.y);
+    const sz = Math.max(1e-6, geometrySelectedSceneObject.transform.scale.z);
+    const sMean = (sx + sy + sz) / 3;
+    const uniformDeviation = Math.max(Math.abs(sx - sMean), Math.abs(sy - sMean), Math.abs(sz - sMean));
+    const baseMesh = transformSurfaceMeshByGeometryTransform(rawMesh, {
+      position: { ...geometrySelectedSceneObject.transform.position },
+      rotation: { ...geometrySelectedSceneObject.transform.rotation },
+      scale: { x: 1, y: 1, z: 1 },
+    });
+    const scaledMetrics = computeTriangleMeshGeometricMetrics(resolved.mesh);
+    const baseMetrics = computeTriangleMeshGeometricMetrics(baseMesh);
+    const lengthRatio =
+      baseMetrics.dimensions && scaledMetrics.dimensions && baseMetrics.dimensions.x > 1e-9
+        ? scaledMetrics.dimensions.x / baseMetrics.dimensions.x
+        : null;
+    const areaRatio = baseMetrics.surfaceArea > 1e-9 ? scaledMetrics.surfaceArea / baseMetrics.surfaceArea : null;
+    const volumeRatio = baseMetrics.volume > 1e-9 ? scaledMetrics.volume / baseMetrics.volume : null;
+    return {
+      sx,
+      sy,
+      sz,
+      sMean,
+      uniformDeviation,
+      lengthRatio,
+      areaRatio,
+      volumeRatio,
+      expectedAreaRatio: sMean * sMean,
+      expectedVolumeRatio: sMean * sMean * sMean,
+    };
+  }, [geometrySelectedSceneObject, proceduralMeshSet.meshes, resolveGeometrySceneMeshById]);
+  useEffect(() => {
+    if (!geometryDemoSectionAnimationEnabled) return;
+    if (geometryMode !== "procedural" || geometryProceduralPanelTab !== "demonstrations") return;
+    const range = geometrySectionPreview?.offsetRange ?? null;
+    if (!range || range <= 0) return;
+    const amplitude = Math.max(0.05, range * 0.85);
+    let raf = 0;
+    const step = (timestamp: number) => {
+      if (!geometryDemoSectionAnimationStartRef.current) {
+        geometryDemoSectionAnimationStartRef.current = timestamp;
+      }
+      const elapsed = timestamp - geometryDemoSectionAnimationStartRef.current;
+      const phase = elapsed / 2200;
+      setGeometrySectionPlaneOffset(Math.sin(phase * Math.PI * 2) * amplitude);
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+      geometryDemoSectionAnimationStartRef.current = 0;
+    };
+  }, [geometryDemoSectionAnimationEnabled, geometryMode, geometryProceduralPanelTab, geometrySectionPreview?.offsetRange]);
+  useEffect(() => {
+    if (geometryProceduralPanelTab === "demonstrations") return;
+    if (!geometryDemoSectionAnimationEnabled) return;
+    setGeometryDemoSectionAnimationEnabled(false);
+  }, [geometryDemoSectionAnimationEnabled, geometryProceduralPanelTab]);
   const resolveGeometryProbeSelectionDetails = useCallback(
     (pick: GeometryProceduralPickInfo | null): GeometryProbeSelectionDetails | null => {
       if (!pick) return null;
@@ -11403,7 +11679,6 @@ const App: React.FC = () => {
       setGeometryCreateActionStatus("Relink failed: no candidate target found.");
     },
     [
-      geometryDerivedConstructionOverlays.byId,
       geometryDerivedConstructions,
       geometryObjectRevisionById,
       resolveGeometrySceneMeshById,
@@ -38602,6 +38877,7 @@ case "mobius":
     }
     if (
       geometryProceduralPanelTab === "analysis" ||
+      geometryProceduralPanelTab === "demonstrations" ||
       geometryProceduralPanelTab === "euler" ||
       geometryProceduralPanelTab === "theory"
     ) {
@@ -41994,20 +42270,22 @@ case "mobius":
                 >
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginRight: 2 }}>Panel</span>
                   {([
-                    { id: "create" as const, label: "Create" },
-                    { id: "scene" as const, label: "Scene" },
-                    { id: "object" as const, label: "Object" },
-                    { id: "construct" as const, label: "Construct" },
-                    { id: "transform" as const, label: "Edit" },
-                    { id: "view" as const, label: "View" },
-                    { id: "history" as const, label: "History" },
-                    { id: "analysis" as const, label: "Compare" },
-                    { id: "theory" as const, label: "Measure" },
+                    { key: "create", id: "create" as const, label: "Create" },
+                    { key: "scene", id: "scene" as const, label: "Scene" },
+                    { key: "object", id: "object" as const, label: "Object" },
+                    { key: "construct", id: "construct" as const, label: "Construct" },
+                    { key: "transform", id: "transform" as const, label: "Edit" },
+                    { key: "view", id: "view" as const, label: "View" },
+                    { key: "history", id: "history" as const, label: "History" },
+                    { key: "analysis", id: "analysis" as const, label: "Analyze" },
+                    { key: "compare", id: "analysis" as const, label: "Compare" },
+                    { key: "demonstrations", id: "demonstrations" as const, label: "Demonstrations" },
+                    { key: "theory", id: "theory" as const, label: "Measure" },
                   ] as const).map((entry) => {
                     const active = geometryProceduralPanelTab === entry.id;
                     return (
                       <button
-                        key={`geometry-procedural-panel-top-${entry.id}`}
+                        key={`geometry-procedural-panel-top-${entry.key}`}
                         type="button"
                         onClick={() => setGeometryProceduralPanelTab(entry.id)}
                         aria-pressed={active}
@@ -52250,6 +52528,275 @@ case "mobius":
                             </table>
                           </div>
                         </div>
+                      </div>
+                    )}
+                    {geometryProceduralPanelTab === "demonstrations" && (
+                      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                        <div
+                          style={{
+                            border: "1px solid #dbe2ea",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            background: "#fbfdff",
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>Geometry → Demonstrations</div>
+                          <div style={{ fontSize: 11, color: "#475467" }}>
+                            Guided theorem workflows built on existing section planes, comparison metrics, annotations, and Euler counts.
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <button type="button" onClick={() => setGeometryProceduralPanelTab("construct")} style={{ fontSize: 11 }}>
+                              Construct
+                            </button>
+                            <button type="button" onClick={() => setGeometryProceduralPanelTab("analysis")} style={{ fontSize: 11 }}>
+                              Analyze
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setGeometryProceduralPanelTab("analysis");
+                                setGeometryDemonstrationCategory("cross_sections");
+                              }}
+                              style={{ fontSize: 11 }}
+                            >
+                              Compare
+                            </button>
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {GEOMETRY_DEMONSTRATION_CATEGORY_OPTIONS.map((entry) => (
+                              <button
+                                key={`geometry-demo-category-${entry.id}`}
+                                type="button"
+                                onClick={() => setGeometryDemonstrationCategory(entry.id)}
+                                style={pill(geometryDemonstrationCategory === entry.id)}
+                                aria-pressed={geometryDemonstrationCategory === entry.id}
+                              >
+                                {entry.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {geometryDemonstrationCategory === "cross_sections" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fbfdff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Cavalieri principle + sphere cross-sections</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={handleLoadCavalieriDemoPair} style={{ fontSize: 11 }}>
+                                Load Cavalieri pair
+                              </button>
+                              <button type="button" onClick={handleLoadArchimedesVolumeDemo} style={{ fontSize: 11 }}>
+                                Load sphere/cylinder/cone trio
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryDemoSectionAnimationEnabled((prev) => !prev)}
+                                style={pill(geometryDemoSectionAnimationEnabled)}
+                                aria-pressed={geometryDemoSectionAnimationEnabled}
+                              >
+                                {geometryDemoSectionAnimationEnabled ? "Stop plane animation" : "Animate section plane"}
+                              </button>
+                            </div>
+                            <div style={{ fontFamily: "monospace", color: "#334155" }}>
+                              h = {fmt(geometrySectionPlaneOffset)} · section plane = {geometrySectionPlanePreset.toUpperCase()}
+                            </div>
+                            {geometryCavalieriDemo ? (
+                              <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div><strong>Cavalieri pair</strong>: {geometryCavalieriDemo.a.object.name} vs {geometryCavalieriDemo.b.object.name}</div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  A1(h)={fmt(geometryCavalieriDemo.a.section.area)} · A2(h)={fmt(geometryCavalieriDemo.b.section.area)} · ΔA={fmt(geometryCavalieriDemo.areaDelta)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V1={fmt(geometryCavalieriDemo.a.metrics.volume)} · V2={fmt(geometryCavalieriDemo.b.metrics.volume)} · ΔV={fmt(geometryCavalieriDemo.volumeDelta)}
+                                </div>
+                                <div>
+                                  {geometryCavalieriDemo.areasNearEqual
+                                    ? "Section areas are nearly equal at current h; equal-area slices imply equal volumes."
+                                    : "Section areas differ at current h; adjust solids/plane to satisfy the Cavalieri condition."}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>Pick Object A and Object B in Analyze/Compare to evaluate A1(h), A2(h), and volumes.</div>
+                            )}
+                            {geometrySphereSectionDemo ? (
+                              <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div><strong>Sphere section formula</strong></div>
+                                {!geometrySphereSectionDemo.approximatelySphere && (
+                                  <div style={{ color: "#b42318" }}>
+                                    Selected object is not close to a sphere (non-uniform radii), so formula fit is approximate.
+                                  </div>
+                                )}
+                                <div style={{ fontFamily: "monospace" }}>
+                                  r(h)^2 = R^2 - h^2 = {fmt(geometrySphereSectionDemo.R)}^2 - {fmt(geometrySphereSectionDemo.h)}^2 = {fmt(geometrySphereSectionDemo.predictedRadiusSquared)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  Area = π(R^2 - h^2) = {fmt(geometrySphereSectionDemo.predictedArea)} · measured area = {fmt(geometrySphereSectionDemo.measuredArea)}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>Select a sphere-like object and use Section controls to evaluate r(h)^2 = R^2 - h^2.</div>
+                            )}
+                          </div>
+                        )}
+
+                        {geometryDemonstrationCategory === "volume_relations" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fbfdff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Volume comparison: cylinder, cone, sphere</div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={handleLoadArchimedesVolumeDemo} style={{ fontSize: 11 }}>
+                                Load canonical trio
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setGeometryDemoSectionAnimationEnabled((prev) => !prev)}
+                                style={pill(geometryDemoSectionAnimationEnabled)}
+                                aria-pressed={geometryDemoSectionAnimationEnabled}
+                              >
+                                {geometryDemoSectionAnimationEnabled ? "Stop section animation" : "Animate section plane"}
+                              </button>
+                            </div>
+                            {geometryVolumeRelationDemo ? (
+                              <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V(cylinder)={fmt(geometryVolumeRelationDemo.cylinder.volume)} · V(cone)={fmt(geometryVolumeRelationDemo.cone.volume)} · V(sphere)={fmt(geometryVolumeRelationDemo.sphere.volume)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V(sphere) - (V(cylinder) - V(cone)) = {fmt(geometryVolumeRelationDemo.sphereMinusCylMinusCone)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V(sphere)/V(cylinder) = {fmt(geometryVolumeRelationDemo.sphereToCylinderRatio)} · V(sphere)/V(cone) = {fmt(geometryVolumeRelationDemo.sphereToConeRatio)}
+                                </div>
+                                <div style={{ color: "#475467" }}>
+                                  For the classical Archimedes setup (same radius R, height 2R): V(sphere)=V(cylinder)-V(cone)=2/3 V(cylinder).
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>
+                                Need one sphere, one right cylinder, and one cone in the scene. Use "Load canonical trio" to seed them.
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {geometryDemonstrationCategory === "scaling" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fbfdff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Surface area and volume under scaling</div>
+                            {geometrySelectedObjectId && (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {[0.5, 1, 2].map((s) => (
+                                  <button
+                                    key={`geometry-scaling-preset-${s}`}
+                                    type="button"
+                                    onClick={() => handleUpdateGeometryTransform(geometrySelectedObjectId, { scale: { x: s, y: s, z: s } })}
+                                    style={{ fontSize: 11 }}
+                                  >
+                                    Set s={s}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {geometryScalingDemo ? (
+                              <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  s≈{fmt(geometryScalingDemo.sMean)} · scale=({fmt(geometryScalingDemo.sx)}, {fmt(geometryScalingDemo.sy)}, {fmt(geometryScalingDemo.sz)})
+                                </div>
+                                {geometryScalingDemo.uniformDeviation > 1e-3 && (
+                                  <div style={{ color: "#b42318" }}>
+                                    Non-uniform scaling detected. Exact s, s², s³ law applies to uniform scale only.
+                                  </div>
+                                )}
+                                <div style={{ fontFamily: "monospace" }}>
+                                  Length × s → measured {fmt(geometryScalingDemo.lengthRatio)} · expected {fmt(geometryScalingDemo.sMean)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  Area × s² → measured {fmt(geometryScalingDemo.areaRatio)} · expected {fmt(geometryScalingDemo.expectedAreaRatio)}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  Volume × s³ → measured {fmt(geometryScalingDemo.volumeRatio)} · expected {fmt(geometryScalingDemo.expectedVolumeRatio)}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>Select a mesh-backed object to evaluate scaling laws.</div>
+                            )}
+                          </div>
+                        )}
+
+                        {geometryDemonstrationCategory === "polyhedra_topology" && (
+                          <div
+                            style={{
+                              border: "1px solid #dbe2ea",
+                              borderRadius: 8,
+                              padding: "8px 10px",
+                              background: "#fbfdff",
+                              display: "grid",
+                              gap: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, fontWeight: 700 }}>Euler characteristic for polyhedra</div>
+                            <div style={{ color: "#475467" }}>
+                              Use Probe mode to inspect vertices/edges/faces and verify V - E + F = 2 on closed convex polyhedra.
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                              <button type="button" onClick={() => setGeometryProbeSelectionMode("vertex")} style={pill(geometryProbeSelectionMode === "vertex")}>
+                                Highlight vertices
+                              </button>
+                              <button type="button" onClick={() => setGeometryProbeSelectionMode("edge")} style={pill(geometryProbeSelectionMode === "edge")}>
+                                Highlight edges
+                              </button>
+                              <button type="button" onClick={() => setGeometryProbeSelectionMode("face")} style={pill(geometryProbeSelectionMode === "face")}>
+                                Highlight faces
+                              </button>
+                              <button type="button" onClick={() => setGeometryProceduralPanelTab("analysis")} style={{ fontSize: 11 }}>
+                                Open full Euler tools
+                              </button>
+                            </div>
+                            {geometryEulerActiveMeshCounts ? (
+                              <div style={{ display: "grid", gap: 4, border: "1px solid #e2e8f0", borderRadius: 6, padding: "6px 8px", background: "#fff" }}>
+                                <div>{geometryEulerActiveMeshLabel}</div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V={geometryEulerActiveMeshCounts.c0.toLocaleString()} · E={geometryEulerActiveMeshCounts.c1.toLocaleString()} · F={geometryEulerActiveMeshCounts.c2.toLocaleString()}
+                                </div>
+                                <div style={{ fontFamily: "monospace" }}>
+                                  V - E + F = {geometryEulerActiveMeshCounts.chi.toLocaleString()}
+                                </div>
+                              </div>
+                            ) : (
+                              <div style={{ color: "#475467" }}>No mesh counts available yet. Select/show a polyhedron mesh first.</div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
