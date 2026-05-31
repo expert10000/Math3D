@@ -62,6 +62,26 @@ export type ViewportDebugSnapshot = {
     target: { x: number; y: number; z: number };
   };
 };
+export type SurfacePerformanceSnapshot = {
+  ts: number;
+  fps: number;
+  frameTimeMs: number;
+  drawCalls: number;
+  triangles: number;
+  vertices: number;
+  meshObjects: number;
+  overlayObjects: number;
+  raycastTimeMs: number;
+  lastMeshBuildMs: number | null;
+  lodLevel: "Performance" | "Balanced" | "Full";
+  bvhStatus: "Off";
+  gpuMemoryEstimateBytes: number;
+  gpuMemoryEstimateLabel: string;
+  rendererMemory: {
+    geometries: number;
+    textures: number;
+  };
+};
 export type RenderQuality = "performance" | "balanced" | "sharp";
 export type SceneBackgroundMode = "default" | "calm" | "transparent";
 export type CameraTourMode =
@@ -255,6 +275,14 @@ const PROBE_HUD_FONT_FAMILY =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace";
 
 const formatProbeNumber = (value: number) => (Number.isFinite(value) ? value.toFixed(3) : "nan");
+
+const formatBytes = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(2)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${Math.round(value)} B`;
+};
 
 function isImplicitMeshObj(obj: THREE.Object3D) {
   const anyObj = obj as any;
@@ -1278,6 +1306,8 @@ type Props = {
   windowReframeToken?: number;
   reframePaddingFactor?: number;
   onViewportDebug?: (snapshot: ViewportDebugSnapshot) => void;
+  onPerformanceSnapshot?: (snapshot: SurfacePerformanceSnapshot) => void;
+  lastMeshBuildMs?: number | null;
 
   dragEnabled?: boolean;
   onDragStart?: (info: {
@@ -1478,6 +1508,8 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     windowReframeToken = 0,
     reframePaddingFactor = 1.08,
     onViewportDebug,
+    onPerformanceSnapshot,
+    lastMeshBuildMs = null,
     dragEnabled = false,
     onDragStart,
     onDrag,
@@ -1679,6 +1711,19 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
   const radiusRef = useRef<number>(3);
   const forceReframeRef = useRef<(() => void) | null>(null);
   const onCameraTourEventRef = useRef<Props["onCameraTourEvent"] | undefined>(undefined);
+  const onPerformanceSnapshotRef = useRef<Props["onPerformanceSnapshot"] | undefined>(undefined);
+  const lastMeshBuildMsRef = useRef<number | null>(lastMeshBuildMs);
+  const perfFrameRef = useRef<{ lastFrameAt: number; fps: number; frameTimeMs: number; lastEmitAt: number }>({
+    lastFrameAt: 0,
+    fps: 0,
+    frameTimeMs: 0,
+    lastEmitAt: 0,
+  });
+  const raycastPerfRef = useRef<{ lastMs: number; emaMs: number; samples: number }>({
+    lastMs: 0,
+    emaMs: 0,
+    samples: 0,
+  });
 
     const onProbeRef = useRef<Props["onProbe"] | undefined>(undefined);
     useEffect(() => {
@@ -1687,6 +1732,12 @@ export const SurfaceViewer: React.FC<Props> = (props) => {
     useEffect(() => {
       onCameraTourEventRef.current = onCameraTourEvent;
     }, [onCameraTourEvent]);
+    useEffect(() => {
+      onPerformanceSnapshotRef.current = onPerformanceSnapshot;
+    }, [onPerformanceSnapshot]);
+    useEffect(() => {
+      lastMeshBuildMsRef.current = Number.isFinite(lastMeshBuildMs) ? Number(lastMeshBuildMs) : null;
+    }, [lastMeshBuildMs]);
 
   const stopCameraTourCapture = useCallback((reason: "completed" | "stopped" | "interrupted") => {
     const stop = cameraTourCaptureStopRef.current;
@@ -3282,6 +3333,103 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       lastViewportDebugAt = now;
       emitViewportDebug(phase);
     };
+    const recordRaycastDuration = (startAt: number) => {
+      const elapsed = Math.max(0, performance.now() - startAt);
+      const stats = raycastPerfRef.current;
+      stats.lastMs = elapsed;
+      stats.samples += 1;
+      stats.emaMs = stats.samples <= 1 ? elapsed : stats.emaMs * 0.82 + elapsed * 0.18;
+    };
+    const estimateGpuBytes = (root: THREE.Object3D): number => {
+      const seen = new Set<string>();
+      let total = 0;
+      root.traverse((obj) => {
+        const geom = (obj as THREE.Mesh).geometry;
+        if (!(geom instanceof THREE.BufferGeometry)) return;
+        if (seen.has(geom.uuid)) return;
+        seen.add(geom.uuid);
+        for (const key of Object.keys(geom.attributes)) {
+          const attr = geom.attributes[key] as THREE.BufferAttribute | undefined;
+          const array = attr?.array as ArrayLike<number> | undefined;
+          if (!array) continue;
+          const byteLength = (array as { byteLength?: number }).byteLength;
+          if (Number.isFinite(byteLength)) total += Number(byteLength);
+        }
+        const indexArray = geom.index?.array as ArrayLike<number> | undefined;
+        if (indexArray) {
+          const byteLength = (indexArray as { byteLength?: number }).byteLength;
+          if (Number.isFinite(byteLength)) total += Number(byteLength);
+        }
+      });
+      return total;
+    };
+    const countRenderableObjects = (root: THREE.Object3D | null): number => {
+      if (!root) return 0;
+      let count = 0;
+      root.traverse((obj) => {
+        if (!obj.visible) return;
+        const anyObj = obj as THREE.Object3D & { isMesh?: boolean; isLine?: boolean; isPoints?: boolean; isSprite?: boolean };
+        if (anyObj.isMesh || anyObj.isLine || anyObj.isPoints || anyObj.isSprite) count += 1;
+      });
+      return count;
+    };
+    const estimateOverlayCount = (): number => {
+      return (
+        countRenderableObjects(selectionOverlayRef.current) +
+        countRenderableObjects(selectionSphereRef.current) +
+        countRenderableObjects(inspectMarkerRef.current) +
+        countRenderableObjects(geodesicPathLineRef.current) +
+        countRenderableObjects(geodesicHeatLineRef.current) +
+        countRenderableObjects(overlayPolylinesRef.current) +
+        countRenderableObjects(overlayPolylineGroupsRef.current) +
+        countRenderableObjects(principalProjectionGroupRef.current) +
+        countRenderableObjects(overlayPointSetsRef.current) +
+        countRenderableObjects(overlayMeshGroupsRef.current) +
+        countRenderableObjects(overlayLabelSetsRef.current) +
+        countRenderableObjects(chartGridRef.current) +
+        countRenderableObjects(geodesicDiskGroupRef.current) +
+        countRenderableObjects(principalGroupRef.current) +
+        countRenderableObjects(curvatureLinesRef.current) +
+        countRenderableObjects(ridgeLinesRef.current) +
+        countRenderableObjects(valleyLinesRef.current)
+      );
+    };
+    const emitPerformanceSnapshot = () => {
+      const perfCb = onPerformanceSnapshotRef.current;
+      if (!perfCb) return;
+      const now = performance.now();
+      const perfFrame = perfFrameRef.current;
+      if (perfFrame.lastEmitAt !== 0 && now - perfFrame.lastEmitAt < 250) return;
+      perfFrame.lastEmitAt = now;
+      const renderInfo = renderer.info.render;
+      const drawCalls = Math.max(0, Math.round(renderInfo.calls ?? 0));
+      const triangles = Math.max(0, Math.round(renderInfo.triangles ?? 0));
+      const lines = Math.max(0, Math.round(renderInfo.lines ?? 0));
+      const points = Math.max(0, Math.round(renderInfo.points ?? 0));
+      const vertices = Math.max(0, Math.round(triangles * 3 + lines * 2 + points));
+      const gpuBytes = estimateGpuBytes(scene);
+      const primaryMeshObjects = countRenderableObjects(surfaceObjRef.current);
+      perfCb({
+        ts: Date.now(),
+        fps: perfFrame.fps,
+        frameTimeMs: perfFrame.frameTimeMs,
+        drawCalls,
+        triangles,
+        vertices,
+        meshObjects: primaryMeshObjects,
+        overlayObjects: estimateOverlayCount(),
+        raycastTimeMs: raycastPerfRef.current.emaMs,
+        lastMeshBuildMs: lastMeshBuildMsRef.current,
+        lodLevel: renderQuality === "performance" ? "Performance" : renderQuality === "sharp" ? "Full" : "Balanced",
+        bvhStatus: "Off",
+        gpuMemoryEstimateBytes: gpuBytes,
+        gpuMemoryEstimateLabel: formatBytes(gpuBytes),
+        rendererMemory: {
+          geometries: renderer.info.memory.geometries ?? 0,
+          textures: renderer.info.memory.textures ?? 0,
+        },
+      });
+    };
     const handleControlsChangeDebug = () => {
       emitViewportDebugThrottled("controls");
     };
@@ -4245,7 +4393,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       raycaster.setFromCamera(pointer, camera);
       const gridPickMesh = chartGridPickMeshRef.current;
       if (showChartGridRef.current && surfaceCellSelectionEnabledRef.current && gridPickMesh) {
+        const gridPickStartAt = performance.now();
         const cellHits = raycaster.intersectObject(gridPickMesh, false);
+        recordRaycastDuration(gridPickStartAt);
         if (cellHits.length) {
           const faceIndex = cellHits[0].faceIndex ?? -1;
           const cellFaceFactor = Math.max(1, chartGridCellFaceFactorRef.current);
@@ -4272,7 +4422,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
           }
         }
       }
+      const pickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
+      recordRaycastDuration(pickStartAt);
       if (!intersects.length) return;
       const resolveHitMeshKey = (candidate: THREE.Intersection<THREE.Object3D>) => {
         const key = (candidate.object as any)?.userData?.__surfaceMeshOverrideId;
@@ -4548,7 +4700,9 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       if (!inspectEnabledRef.current) return;
       const inspectHoverCb = onInspectHoverRef.current;
       if (!inspectHoverCb) return;
+      const hoverPickStartAt = performance.now();
       const intersects = raycaster.intersectObjects([surfaceObj], true);
+      recordRaycastDuration(hoverPickStartAt);
       if (!intersects.length) return;
       const hit = intersects[0];
       const point = hit.point.clone();
@@ -4708,8 +4862,19 @@ debugMesh("[recolorFirstMesh] AFTER", mesh, { surfaceId, colorMode, colorPalette
       frameId = requestAnimationFrame(animate);
       if (suspendRenderingRef.current) return;
 
+      const now = performance.now();
+      const perfFrame = perfFrameRef.current;
+      if (perfFrame.lastFrameAt > 0) {
+        const dt = Math.max(0.0001, now - perfFrame.lastFrameAt);
+        perfFrame.frameTimeMs = perfFrame.frameTimeMs === 0 ? dt : perfFrame.frameTimeMs * 0.82 + dt * 0.18;
+        const fps = 1000 / dt;
+        perfFrame.fps = perfFrame.fps === 0 ? fps : perfFrame.fps * 0.82 + fps * 0.18;
+      }
+      perfFrame.lastFrameAt = now;
+
       controls.update();
       renderer.render(scene, camera);
+      emitPerformanceSnapshot();
     };
 
     animate();

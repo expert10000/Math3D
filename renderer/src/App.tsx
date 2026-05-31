@@ -38,6 +38,7 @@ import {
   SurfaceViewer,
   type SurfaceId,
   type ColorMode,
+  type SurfacePerformanceSnapshot,
   type OverlayLabelSet,
   type OverlayPointSet,
   type OverlayPolylineGroup,
@@ -1322,6 +1323,86 @@ type VtkResultSummary = {
   warnings: string[];
   outputMode: "replace" | "derived";
   timestamp: number;
+};
+
+type MeshPerfBenchmarkId =
+  | "tri-50k"
+  | "tri-250k"
+  | "tri-1m"
+  | "tri-250k-wireframe"
+  | "tri-250k-normals"
+  | "tri-250k-picking";
+
+type MeshPerfBenchmarkPreset = {
+  id: MeshPerfBenchmarkId;
+  label: string;
+  targetTriangles: number;
+  enableWireframe?: boolean;
+  enableInspect?: boolean;
+  enableNormalsOverlay?: boolean;
+};
+
+const MESH_PERF_BENCHMARK_PRESETS: MeshPerfBenchmarkPreset[] = [
+  { id: "tri-50k", label: "50k triangles", targetTriangles: 50_000 },
+  { id: "tri-250k", label: "250k triangles", targetTriangles: 250_000 },
+  { id: "tri-1m", label: "1M triangles", targetTriangles: 1_000_000 },
+  { id: "tri-250k-wireframe", label: "250k + wireframe", targetTriangles: 250_000, enableWireframe: true },
+  { id: "tri-250k-normals", label: "250k + normals", targetTriangles: 250_000, enableNormalsOverlay: true },
+  { id: "tri-250k-picking", label: "250k + face picking", targetTriangles: 250_000, enableInspect: true },
+];
+
+const buildMeshPerformanceBenchmark = (preset: MeshPerfBenchmarkPreset): SurfaceMeshData => {
+  const targetTriangles = Math.max(2, Math.round(preset.targetTriangles));
+  const cellsPerSide = Math.max(1, Math.ceil(Math.sqrt(targetTriangles / 2)));
+  const cols = cellsPerSide + 1;
+  const rows = cellsPerSide + 1;
+  const vertexCount = cols * rows;
+  const triangleCount = cellsPerSide * cellsPerSide * 2;
+  const positions = new Float32Array(vertexCount * 3);
+  const normals = new Float32Array(vertexCount * 3);
+  const indices = new Uint32Array(triangleCount * 3);
+
+  let ptr = 0;
+  for (let y = 0; y < rows; y += 1) {
+    const v = rows > 1 ? y / (rows - 1) : 0;
+    for (let x = 0; x < cols; x += 1) {
+      const u = cols > 1 ? x / (cols - 1) : 0;
+      const px = (u - 0.5) * 8;
+      const pz = (v - 0.5) * 8;
+      const py = 0.06 * Math.sin(px * 1.6) * Math.cos(pz * 1.4);
+      positions[ptr * 3 + 0] = px;
+      positions[ptr * 3 + 1] = py;
+      positions[ptr * 3 + 2] = pz;
+      normals[ptr * 3 + 0] = 0;
+      normals[ptr * 3 + 1] = 1;
+      normals[ptr * 3 + 2] = 0;
+      ptr += 1;
+    }
+  }
+
+  let indexPtr = 0;
+  for (let y = 0; y < cellsPerSide; y += 1) {
+    for (let x = 0; x < cellsPerSide; x += 1) {
+      const a = y * cols + x;
+      const b = a + 1;
+      const c = a + cols;
+      const d = c + 1;
+      indices[indexPtr++] = a;
+      indices[indexPtr++] = c;
+      indices[indexPtr++] = b;
+      indices[indexPtr++] = b;
+      indices[indexPtr++] = c;
+      indices[indexPtr++] = d;
+    }
+  }
+
+  return {
+    label: `Benchmark ${preset.label}`,
+    positions,
+    indices,
+    normals,
+    source: { kind: "bakedFromImplicit" },
+  };
 };
 
 const DETERMINISTIC_IMPLICIT_SAMPLE_EXPR = "x*x + y*y + z*z - 1";
@@ -22869,12 +22950,67 @@ const App: React.FC = () => {
   const [showViewportDebug, setShowViewportDebug] = useState(false);
   const [viewportDebugPrimary, setViewportDebugPrimary] = useState<ViewportDebugSnapshot | null>(null);
   const [viewportDebugSecondary, setViewportDebugSecondary] = useState<ViewportDebugSnapshot | null>(null);
+  const [surfacePerformanceSnapshot, setSurfacePerformanceSnapshot] = useState<SurfacePerformanceSnapshot | null>(null);
+  const [meshPerformanceLastBuildMs, setMeshPerformanceLastBuildMs] = useState<number | null>(null);
+  const [meshPerfBenchmarkId, setMeshPerfBenchmarkId] = useState<MeshPerfBenchmarkId | null>(null);
+  const meshPerfBaselineRef = useRef<{
+    mesh: SurfaceMeshData | null;
+    viewerKind: SurfaceViewerKind;
+    wireframe: boolean;
+    inspectEnabled: boolean;
+    implicitOverlay: "none" | "normals" | "curvature";
+  } | null>(null);
   const handlePrimaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
     setViewportDebugPrimary(snapshot);
   }, []);
   const handleSecondaryViewportDebug = useCallback((snapshot: ViewportDebugSnapshot) => {
     setViewportDebugSecondary(snapshot);
   }, []);
+  const handleSurfacePerformanceSnapshot = useCallback((snapshot: SurfacePerformanceSnapshot) => {
+    setSurfacePerformanceSnapshot(snapshot);
+  }, []);
+  const handleRunMeshPerformanceBenchmark = useCallback(
+    (benchmarkId: MeshPerfBenchmarkId) => {
+      const preset = MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === benchmarkId);
+      if (!preset) return;
+      if (!meshPerfBaselineRef.current) {
+        meshPerfBaselineRef.current = {
+          mesh: surfaceMeshData ? cloneSurfaceMeshData(surfaceMeshData, surfaceMeshData.label) : null,
+          viewerKind: surfaceViewerKind,
+          wireframe: showWireframe,
+          inspectEnabled,
+          implicitOverlay,
+        };
+      }
+      const mesh = buildMeshPerformanceBenchmark(preset);
+      setMeshDataset(mesh);
+      setDatasetKind("surface");
+      setSurfaceViewerKind("mesh");
+      setShowWireframe(Boolean(preset.enableWireframe));
+      setInspectEnabled(Boolean(preset.enableInspect));
+      setImplicitOverlay(preset.enableNormalsOverlay ? "normals" : "none");
+      setMeshPerfBenchmarkId(preset.id);
+    },
+    [
+      implicitOverlay,
+      inspectEnabled,
+      setMeshDataset,
+      setSurfaceViewerKind,
+      showWireframe,
+      surfaceMeshData,
+      surfaceViewerKind,
+    ]
+  );
+  const handleRestoreMeshPerformanceBaseline = useCallback(() => {
+    const baseline = meshPerfBaselineRef.current;
+    if (!baseline) return;
+    setMeshDataset(baseline.mesh ? cloneSurfaceMeshData(baseline.mesh, baseline.mesh.label) : null);
+    setSurfaceViewerKind(baseline.viewerKind);
+    setShowWireframe(baseline.wireframe);
+    setInspectEnabled(baseline.inspectEnabled);
+    setImplicitOverlay(baseline.implicitOverlay);
+    setMeshPerfBenchmarkId(null);
+  }, [setMeshDataset, setSurfaceViewerKind]);
 
   // resizable panels
   const [leftWidth, setLeftWidth] = useState(320);
@@ -35713,6 +35849,7 @@ case "mobius":
 
     setVtkPreviewBusy(true);
     setVtkPreviewError(null);
+    const startedAt = performance.now();
     try {
       const res = await vtkPreviewImplicit({
         expr,
@@ -35722,10 +35859,12 @@ case "mobius":
         targetFaces: vtkPreviewUseDecimate ? targetFaces : undefined,
       });
       if (!res.ok) {
+        setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         setVtkPreviewError(res.error);
         setGenerateSurfaceStatus({ state: "error", message: res.error, at: Date.now() });
         return;
       }
+      setMeshPerformanceLastBuildMs(performance.now() - startedAt);
       applyVtkResultToSurfaceMesh("VTK preview", res, {
         operation: "VTK preview",
         beforeFaces: surfaceMeshStats?.triCount ?? 0,
@@ -35738,6 +35877,7 @@ case "mobius":
         at: Date.now(),
       });
     } catch (err: any) {
+      setMeshPerformanceLastBuildMs(performance.now() - startedAt);
       const msg = err?.message ?? "VTK preview failed.";
       setVtkPreviewError(msg);
       setGenerateSurfaceStatus({ state: "error", message: msg, at: Date.now() });
@@ -35786,6 +35926,7 @@ case "mobius":
     }
 
     setCgalBusy(true);
+    const startedAt = performance.now();
     try {
       const domain = cgalDomainPreview;
       const diag = cgalDomainDiag;
@@ -35834,9 +35975,11 @@ case "mobius":
       });
 
       if (!res.ok) {
+        setMeshPerformanceLastBuildMs(performance.now() - startedAt);
         setCgalError(res.error);
         return;
       }
+      setMeshPerformanceLastBuildMs(performance.now() - startedAt);
 
       setCgalMeshState({
         surfaceId: activeEqSurfaceId,
@@ -35847,6 +35990,7 @@ case "mobius":
       });
       setCgalMeshToken((t) => t + 1);
     } catch (e: any) {
+      setMeshPerformanceLastBuildMs(performance.now() - startedAt);
       setCgalError(e?.message ?? String(e));
     } finally {
       setCgalBusy(false);
@@ -43716,6 +43860,8 @@ case "mobius":
                             windowReframeToken={windowReframeToken}
                             reframePaddingFactor={surfacePreviewReframePaddingFactor}
                             onViewportDebug={handlePrimaryViewportDebug}
+                            onPerformanceSnapshot={handleSurfacePerformanceSnapshot}
+                            lastMeshBuildMs={meshPerformanceLastBuildMs}
                             graphProbeXY={graphProbeXY}
                             graphProbeToken={graphProbeToken}
                             implicitProbeXYZ={implicitProbeXYZ}
@@ -45216,6 +45362,12 @@ case "mobius":
                       onRunCgalMesh={handleRunCgalMesh}
                       onStopCgalWorker={handleStopCgalWorker}
                       cgalMeshInfo={cgalMeshInfo}
+                      isDevMode={isDev}
+                      surfacePerformanceSnapshot={surfacePerformanceSnapshot}
+                      meshPerformanceBenchmarkId={meshPerfBenchmarkId}
+                      meshPerformanceLastBuildMs={meshPerformanceLastBuildMs}
+                      onRunMeshPerformanceBenchmark={handleRunMeshPerformanceBenchmark}
+                      onRestoreMeshPerformanceBaseline={handleRestoreMeshPerformanceBaseline}
                       meshInspectorStats={surfaceInspectorMeshStats}
                       badTriangleCount={surfaceInspectorBadTriangleCount}
                       geodesicPathLength={geodesicHeatLength}
@@ -71075,6 +71227,12 @@ type SurfacesRightPanelProps = {
   onRunCgalMesh: () => void;
   onStopCgalWorker: () => void;
   cgalMeshInfo: { vertexCount: number; triCount: number } | null;
+  isDevMode: boolean;
+  surfacePerformanceSnapshot: SurfacePerformanceSnapshot | null;
+  meshPerformanceBenchmarkId: MeshPerfBenchmarkId | null;
+  meshPerformanceLastBuildMs: number | null;
+  onRunMeshPerformanceBenchmark: (id: MeshPerfBenchmarkId) => void;
+  onRestoreMeshPerformanceBaseline: () => void;
   meshInspectorStats: {
     vertexCount: number | null;
     faceCount: number | null;
@@ -71252,6 +71410,12 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   onRunCgalMesh,
   onStopCgalWorker,
   cgalMeshInfo,
+  isDevMode,
+  surfacePerformanceSnapshot,
+  meshPerformanceBenchmarkId,
+  meshPerformanceLastBuildMs,
+  onRunMeshPerformanceBenchmark,
+  onRestoreMeshPerformanceBaseline,
   meshInspectorStats,
   badTriangleCount,
   geodesicPathLength,
@@ -71889,6 +72053,11 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
   const stickyPickLabel = stickyPickPoint
     ? `(${fmt(stickyPickPoint.x)}, ${fmt(stickyPickPoint.y)}, ${fmt(stickyPickPoint.z)})`
     : "none";
+  const meshPerformanceModeLabel = meshPerformanceBenchmarkId ? "Mesh Demonstration" : "Regular Scene";
+  const activeMeshPerformancePresetLabel =
+    MESH_PERF_BENCHMARK_PRESETS.find((entry) => entry.id === meshPerformanceBenchmarkId)?.label ?? null;
+  const formatPerfMetric = (value: number | null | undefined, digits = 1) =>
+    value == null || !Number.isFinite(value) ? "n/a" : Number(value).toFixed(digits);
 
   const resultsOnlyInspector = true;
   if (resultsOnlyInspector) {
@@ -71981,6 +72150,79 @@ const SurfacesRightPanel: React.FC<SurfacesRightPanelProps> = ({
                 <div style={{ fontSize: 11, color: "#556" }}>No mesh operation result yet.</div>
               )}
             </div>
+
+            {isDevMode && (
+              <div style={inspectorSectionCard}>
+                <div style={inspectorSectionTitle}>Mesh Performance</div>
+                <div style={{ fontSize: 11, display: "grid", gap: 6 }}>
+                  <div><strong>Mode:</strong> {meshPerformanceModeLabel}</div>
+                  {activeMeshPerformancePresetLabel && (
+                    <div><strong>Benchmark:</strong> {activeMeshPerformancePresetLabel}</div>
+                  )}
+                  <div><strong>FPS:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.fps ?? null, 1)}</div>
+                  <div><strong>Frame time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.frameTimeMs ?? null, 1)} ms</div>
+                  <div><strong>Triangles visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.triangles ?? null)}</div>
+                  <div><strong>Vertices visible:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.vertices ?? null)}</div>
+                  <div><strong>Draw calls:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.drawCalls ?? null)}</div>
+                  <div><strong>Mesh objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.meshObjects ?? null)}</div>
+                  <div><strong>Overlay objects:</strong> {formatInspectorCount(surfacePerformanceSnapshot?.overlayObjects ?? null)}</div>
+                  <div><strong>Raycast time:</strong> {formatPerfMetric(surfacePerformanceSnapshot?.raycastTimeMs ?? null, 2)} ms</div>
+                  <div>
+                    <strong>Last mesh build:</strong>{" "}
+                    {formatPerfMetric(surfacePerformanceSnapshot?.lastMeshBuildMs ?? meshPerformanceLastBuildMs, 1)} ms
+                  </div>
+                  <div><strong>LOD level:</strong> {surfacePerformanceSnapshot?.lodLevel ?? "n/a"}</div>
+                  <div><strong>BVH status:</strong> {surfacePerformanceSnapshot?.bvhStatus ?? "n/a"}</div>
+                  <div><strong>GPU memory estimate:</strong> {surfacePerformanceSnapshot?.gpuMemoryEstimateLabel ?? "n/a"}</div>
+                  <div>
+                    <strong>Renderer memory:</strong>{" "}
+                    {surfacePerformanceSnapshot
+                      ? `geometries ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.geometries)} · textures ${formatInspectorCount(surfacePerformanceSnapshot.rendererMemory.textures)}`
+                      : "n/a"}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const payload = {
+                          capturedAt: new Date().toISOString(),
+                          mode: meshPerformanceModeLabel,
+                          benchmark: activeMeshPerformancePresetLabel,
+                          snapshot: surfacePerformanceSnapshot,
+                        };
+                        const text = JSON.stringify(payload, null, 2);
+                        const clipboard = typeof navigator !== "undefined" ? navigator.clipboard : undefined;
+                        if (clipboard?.writeText) {
+                          void clipboard.writeText(text);
+                        }
+                      }}
+                    >
+                      Copy performance snapshot
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onRestoreMeshPerformanceBaseline}
+                      disabled={!meshPerformanceBenchmarkId}
+                    >
+                      Restore baseline
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                    {MESH_PERF_BENCHMARK_PRESETS.map((preset) => (
+                      <button
+                        key={`mesh-perf-benchmark-${preset.id}`}
+                        type="button"
+                        onClick={() => onRunMeshPerformanceBenchmark(preset.id)}
+                        style={pill(meshPerformanceBenchmarkId === preset.id)}
+                        aria-pressed={meshPerformanceBenchmarkId === preset.id}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

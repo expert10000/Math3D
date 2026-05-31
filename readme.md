@@ -64,6 +64,33 @@ Quick start after install (pick one):
 
 ## Run
 
+### Desktop dev mode (recommended for feature work)
+
+Start desktop + renderer hot-reload together:
+
+```bash
+npm run dev
+```
+
+What this does:
+- starts Vite renderer on `http://127.0.0.1:5174` (strict port)
+- starts Electron main process and points it to that dev renderer
+
+If you had old dev sessions open, close them first. If needed, clear stale local listeners on `5173-5176` before relaunching.
+
+Windows note:
+- if Electron ever starts in Node mode, clear this env var and relaunch:
+
+```powershell
+Remove-Item Env:ELECTRON_RUN_AS_NODE
+```
+
+Mesh benchmark location in dev mode:
+- open right panel `Inspector`
+- select `Object`
+- scroll to `Mesh Performance`
+- use benchmark buttons: `50k triangles`, `250k triangles`, `1M triangles`, etc.
+
 ### Run modes (quick guide)
 
 | Mode | Where it runs | Worker/Python setup needed on host? | When to use |
